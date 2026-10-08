@@ -13,6 +13,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
+use rayon::prelude::*;
+
 use taffy::prelude::{AvailableSpace, Size as TSize};
 
 pub(crate) use paint::{PageNumbers, TextPainter};
@@ -201,7 +203,7 @@ pub(crate) trait TextShaper {
 pub(crate) struct RustybuzzShaper<'f, 'a> {
     pub fonts: &'f FontSet<'a>,
     pub unicode: UnicodeMap,
-    pub hyphenator: Box<dyn hyphen::Hyphenator>,
+    pub hyphenator: &'static dyn hyphen::Hyphenator,
     shapes: prepare::ShapeCache,
 }
 
@@ -229,7 +231,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
         Self {
             fonts,
             unicode,
-            hyphenator: Box::new(hyphen::HypherHyphenator),
+            hyphenator: &hyphen::HypherHyphenator,
             shapes: prepare::ShapeCache::default(),
         }
     }
@@ -244,7 +246,7 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
         let opts = prepare::ParagraphOptions {
             white_space: style.white_space,
             hyphenate: lang,
-            hyphenator: self.hyphenator.as_ref(),
+            hyphenator: self.hyphenator,
             runs,
         };
         prepare::prepare(&opts, self.fonts, &mut self.shapes, &mut self.unicode)
@@ -279,6 +281,39 @@ struct Entry {
     layouts: Vec<(u32, Arc<LineLayout>)>,
 }
 
+/// Shapes a text node into a cache entry.
+fn new_entry<S: TextShaper>(
+    shaper: &mut S,
+    node: &Node,
+    runs: &[TextRun],
+    lang: Option<&str>,
+) -> Entry {
+    let style = ParaStyle::from_style(&node.style, lang);
+    let prepared = shaper.prepare(runs, &style);
+    let mut min_content = 0.0f32;
+    let mut start = 0usize;
+    let bounds = prepared
+        .breaks
+        .iter()
+        .map(|b| b.glyph as usize)
+        .chain(std::iter::once(prepared.glyphs.len()));
+    for end in bounds {
+        let mut e = end;
+        while e > start && prepared.glyphs[e - 1].flags & (GLYPH_SPACE | GLYPH_INVISIBLE) != 0 {
+            e -= 1;
+        }
+        let w: f32 = prepared.glyphs[start..e].iter().map(|g| g.advance).sum();
+        min_content = min_content.max(w);
+        start = end;
+    }
+    Entry {
+        style,
+        prepared,
+        min_content,
+        layouts: Vec::new(),
+    }
+}
+
 /// Per-render cache of shaped paragraphs, keyed by node identity. Also
 /// the layout engine's measure function for text leaves.
 pub(crate) struct TextCache<'s, S: TextShaper> {
@@ -289,6 +324,59 @@ pub(crate) struct TextCache<'s, S: TextShaper> {
 
 fn node_key(n: &Node) -> usize {
     n as *const Node as usize
+}
+
+impl<'s, 'f, 'a> TextCache<'s, RustybuzzShaper<'f, 'a>> {
+    /// Shapes `nodes` (text nodes in document order) ahead of layout, in
+    /// parallel. Each worker has its own shaper; glyph-to-Unicode maps are
+    /// merged in document order, keeping the first mapping of each glyph,
+    /// so the result does not depend on the thread count.
+    pub fn prepare_all(&mut self, nodes: &[&Node]) {
+        const MIN_CHUNK: usize = 64;
+        let todo: Vec<&Node> = nodes
+            .iter()
+            .copied()
+            .filter(|n| matches!(n.kind, NodeKind::Text { .. }))
+            .filter(|n| !self.entries.contains_key(&node_key(n)))
+            .collect();
+        let threads = rayon::current_num_threads();
+        if threads <= 1 || todo.len() < 2 * MIN_CHUNK {
+            for n in todo {
+                if let NodeKind::Text { runs } = &n.kind {
+                    self.entry(n, runs);
+                }
+            }
+            return;
+        }
+        let chunk = todo.len().div_ceil(threads * 4).max(MIN_CHUNK);
+        let (fonts, hyphenator, lang) = (self.shaper.fonts, self.shaper.hyphenator, self.doc_lang);
+        let parts: Vec<(Vec<(usize, Entry)>, UnicodeMap)> = todo
+            .par_chunks(chunk)
+            .map(|nodes| {
+                let mut shaper = RustybuzzShaper::new(fonts);
+                shaper.hyphenator = hyphenator;
+                let entries = nodes
+                    .iter()
+                    .filter_map(|n| match &n.kind {
+                        NodeKind::Text { runs } => {
+                            Some((node_key(n), new_entry(&mut shaper, n, runs, lang)))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                (entries, shaper.unicode)
+            })
+            .collect();
+        for (entries, unicode) in parts {
+            self.entries.extend(entries);
+            for (font, map) in unicode.fonts {
+                let target = self.shaper.unicode.fonts.entry(font).or_default();
+                for (gid, text) in map {
+                    target.entry(gid).or_insert(text);
+                }
+            }
+        }
+    }
 }
 
 impl<'s, S: TextShaper> TextCache<'s, S> {
@@ -303,37 +391,11 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
     fn entry(&mut self, node: &Node, runs: &[TextRun]) -> &mut Entry {
         let lang = self.doc_lang;
         let shaper = &mut self.shaper;
-        self.entries.entry(node_key(node)).or_insert_with(|| {
-            let style = ParaStyle::from_style(&node.style, lang);
-            let prepared = shaper.prepare(runs, &style);
-            let mut min_content = 0.0f32;
-            let mut start = 0usize;
-            let bounds = prepared
-                .breaks
-                .iter()
-                .map(|b| b.glyph as usize)
-                .chain(std::iter::once(prepared.glyphs.len()));
-            for end in bounds {
-                let mut e = end;
-                while e > start
-                    && prepared.glyphs[e - 1].flags & (GLYPH_SPACE | GLYPH_INVISIBLE) != 0
-                {
-                    e -= 1;
-                }
-                let w: f32 = prepared.glyphs[start..e].iter().map(|g| g.advance).sum();
-                min_content = min_content.max(w);
-                start = end;
-            }
-            Entry {
-                style,
-                prepared,
-                min_content,
-                layouts: Vec::new(),
-            }
-        })
+        self.entries
+            .entry(node_key(node))
+            .or_insert_with(|| new_entry(shaper, node, runs, lang))
     }
 
-    /// Line layout of text `node` at `width` (cached per 0.5 pt bucket).
     pub fn layout(&mut self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;

@@ -63,7 +63,11 @@ fn all_fixtures_render() {
         };
         let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        let b = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images).unwrap();
+        let single = RenderOptions {
+            threads: Some(1),
+            ..opts.clone()
+        };
+        let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
         assert!(a == b, "{name}: output is not deterministic");
 
         let out = out_dir.join(format!("{name}.pdf"));
@@ -82,4 +86,53 @@ fn all_fixtures_render() {
             );
         }
     }
+}
+
+/// Enough paragraphs for shaping and painting to be split across threads:
+/// the output must not depend on the thread count.
+#[test]
+fn output_is_independent_of_thread_count() {
+    let (fonts, images) = stores();
+    let words = [
+        "Lorem",
+        "ipsum",
+        "dolor",
+        "sit",
+        "amet,",
+        "conșectetur",
+        "ﬁnancial",
+        "AVATAR",
+        "Wave",
+        "Tokyo",
+    ];
+    let mut paras = Vec::new();
+    for i in 0..600 {
+        let text: Vec<&str> = (0..12 + i % 17)
+            .map(|k| words[(i * 7 + k * 3) % words.len()])
+            .collect();
+        let font = [
+            "Inter-Regular",
+            "Inter-Bold",
+            "NotoSans-Regular",
+            "RobotoMono-Regular",
+        ][i % 4];
+        paras.push(format!(
+            r#"{{"type":"text","style":{{"textAlign":"justify","hyphenate":true}},"runs":[{{"text":"{} {i}","font":"{font}","size":9}}]}}"#,
+            text.join(" ")
+        ));
+    }
+    let doc = format!(
+        r#"{{"version":1,"meta":{{"lang":"ro"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"Inter-Bold","family":"Inter","weight":700}},{{"id":"NotoSans-Regular","family":"Noto Sans"}},{{"id":"RobotoMono-Regular","family":"Roboto Mono"}}],"pages":[{{"size":{{"width":420,"height":595}},"margin":{{"top":30,"right":30,"bottom":30,"left":30}},"children":[{}]}}]}}"#,
+        paras.join(",")
+    );
+    let render = |threads| {
+        let opts = RenderOptions {
+            threads: Some(threads),
+            ..Default::default()
+        };
+        inkoxide::render(doc.as_bytes(), InputFormat::Json, &opts, &fonts, &images).unwrap()
+    };
+    let one = render(1);
+    assert!(one == render(3), "3 threads differ from 1");
+    assert!(one == render(8), "8 threads differ from 1");
 }

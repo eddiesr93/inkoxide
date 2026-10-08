@@ -482,3 +482,23 @@ one-child cell).
 4.4 s to 2.4 s single-threaded and 1.7 s with 4 threads, and peak RSS
 from 543 MB to 290 MB. Layout (shaping) and parse are now the sequential
 floor.
+
+## ADR-030 — Shaping ahead of layout, in parallel (M6)
+
+**Context.** After ADR-028, shaping was the largest sequential cost. It
+depends only on each paragraph's runs and style, not on layout.
+
+**Decision.** Before layout, every text node of the document (flow,
+headers, footers and cell contents, in document order) is shaped in
+parallel chunks. Each worker has its own `RustybuzzShaper` (word and plan
+caches, glyph-to-Unicode map). Results are merged into the text cache in
+chunk order. For each glyph, the Unicode text from its first occurrence in
+document order wins, so ToUnicode maps, and the whole output, are identical
+for any thread count. A test renders 600 mixed-font justified, hyphenated
+paragraphs with 1, 3 and 8 threads and compares the bytes. Small documents
+(under 128 text nodes) or a single thread shape sequentially.
+
+**Consequences.** The 100-page report renders in about 150 ms with 4
+threads. Workers do not share their word caches, so repeated words are
+shaped once per worker instead of once per document; that costs a little
+total CPU for a much shorter wall-clock time.

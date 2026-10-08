@@ -77,6 +77,18 @@ pub(crate) fn run<T: Send>(
     images: &ImageSet,
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
 ) -> Result<Vec<T>, InkoxideError> {
+    // Shaping is the bulk of layout and independent per paragraph: do it
+    // up front, in parallel.
+    let mut texts = Vec::new();
+    for spec in &doc.pages {
+        let fixed = spec.header.iter().chain(&spec.footer).map(|b| &**b);
+        for n in fixed.chain(&spec.children) {
+            collect_texts(n, &mut texts);
+        }
+    }
+    text.prepare_all(&texts);
+    drop(texts);
+
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
         let _span = tracing::debug_span!("layout+paginate").entered();
@@ -123,6 +135,32 @@ pub(crate) fn run<T: Send>(
             encode(paint_page(l, k, numbers, fonts, text, images))
         })
         .collect()
+}
+
+/// Text nodes under `node`, in document order.
+fn collect_texts<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
+    if node.style.display == Some(crate::schema::Display::None) {
+        return;
+    }
+    match &node.kind {
+        NodeKind::Text { .. } => out.push(node),
+        NodeKind::Box { children } => {
+            for c in children {
+                collect_texts(c, out);
+            }
+        }
+        NodeKind::Table(t) => {
+            for c in t.rows.iter().flat_map(|r| &r.cells) {
+                if c.style.display == Some(crate::schema::Display::None) {
+                    continue;
+                }
+                for n in &c.children {
+                    collect_texts(n, out);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn paint_page(
