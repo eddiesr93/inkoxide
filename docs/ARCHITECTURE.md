@@ -26,6 +26,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding, ToUnicode) | M2 ✅ |
 | Text | `text` (rustybuzz shaping, UAX #14 breaking, hyphenation, fallback, justify, ellipsis) | M2 ✅ |
 | Layout | `layout` (arena tree + Taffy) | M1 ✅ |
+| Tables | `layout/table.rs` (columns, rows, spans, collapsed borders) + table splitting and header repeat | M4 ✅ |
 | Pagination | `paginate` (shift accumulation, head rule, atomic nodes, forced breaks) + `pipeline` | M3 ✅ |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
 | PDF | `pdf` | M0 ✅: pages, page tree, content streams, Info |

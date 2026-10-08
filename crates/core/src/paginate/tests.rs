@@ -272,3 +272,32 @@ fn text_splits_between_lines() {
     assert!(after_bottom > prev_top);
     check_invariants(&tree, &p);
 }
+
+#[test]
+fn tables_split_between_rows_and_reserve_header_space() {
+    let rows: Vec<String> = (0..40)
+        .map(|_| r#"{"cells":[{"style":{"height":10}}]}"#.to_string())
+        .collect();
+    let d = doc(&format!(
+        r#"{},{{"type":"table","columns":[{{"width":"1fr"}}],"headerRows":1,"rows":[{}]}}"#,
+        boxes(&[20.0]),
+        rows.join(",")
+    ));
+    let (t, p) = run(&d);
+    let rows: Vec<u32> = t.children(2).collect();
+    // The table starts on page 0 right after the box.
+    assert_eq!(p.shift_top[rows[0] as usize], 0.0);
+    // Every page after the first starts with 10pt reserved for the header.
+    for &r in &rows[1..] {
+        let (top, h) = p.paged_rect(&t, r);
+        let pg = page(top);
+        assert_eq!(pg, page_of_bottom(top + h), "row crosses a page");
+        if pg > 0 {
+            assert!(
+                top - pg as f32 * H >= 10.0 - EPS,
+                "row {r} overlaps the repeated header at {top}"
+            );
+        }
+    }
+    check_invariants(&t, &p);
+}

@@ -25,8 +25,9 @@ use crate::schema::{
 };
 use crate::text::{LineLayout, TextCache, TextShaper};
 
-/// Float tolerance in points.
-const EPS: f32 = 0.01;
+/// Float tolerance in points. Paged coordinates of long documents reach
+/// ~10⁶ pt, where one f32 step is ~0.06 pt; 0.1 pt is still invisible.
+pub(crate) const EPS: f32 = 0.1;
 
 /// Result of paginating one flow.
 #[derive(Debug, Clone)]
@@ -187,7 +188,7 @@ impl Paginator<'_, '_, '_> {
             return true;
         }
         match &node.kind {
-            NodeKind::Text { .. } => false,
+            NodeKind::Text { .. } | NodeKind::Table(_) => false,
             NodeKind::Box { children } => {
                 children.is_empty()
                     || s.display == Some(Display::Grid)
@@ -224,6 +225,21 @@ impl Paginator<'_, '_, '_> {
                     }
                     _ => g.h,
                 }
+            }
+            NodeKind::Table(_) => {
+                // Header rows plus the first body row group.
+                let Some(t) = self.tree.tables.get(&i).cloned() else {
+                    return g.h;
+                };
+                let (_, cy, _, _) = g.content_box();
+                let first_body = t.groups.iter().find(|r| r.start >= t.header_rows);
+                let end = first_body.map_or(t.row_y.len(), |r| r.end);
+                let bottom = if end == 0 {
+                    0.0
+                } else {
+                    t.row_y[end - 1] + t.row_h[end - 1]
+                };
+                (cy - g.y) + bottom
             }
             NodeKind::Box { .. } => {
                 let first = self.tree.children(i).find(|&c| self.in_flow(c));
@@ -291,6 +307,7 @@ impl Paginator<'_, '_, '_> {
             self.out.shift_top[i as usize] = self.shift;
             match &node.kind {
                 NodeKind::Text { .. } => self.split_text(i, node),
+                NodeKind::Table(_) => self.split_table(i),
                 NodeKind::Box { .. } => {
                     let kids: Vec<NodeIdx> = self.tree.children(i).collect();
                     let box_shift = self.shift;
@@ -313,6 +330,50 @@ impl Paginator<'_, '_, '_> {
 
         if node.brk.after == BreakMode::Page {
             self.push(g.y + g.h + self.shift);
+        }
+    }
+
+    /// Places a table row group by row group. A group that does not fit
+    /// moves to the next page, leaving room for the repeated header rows.
+    fn split_table(&mut self, i: NodeIdx) {
+        let Some(t) = self.tree.tables.get(&i).cloned() else {
+            self.set_subtree(i);
+            return;
+        };
+        let rows: Vec<NodeIdx> = self.tree.children(i).collect();
+        let header_h = t.header_height();
+        // Paged y where body rows start on the current continuation page;
+        // a group placed there is never pushed again (it is sliced).
+        let mut fresh_start = f32::NEG_INFINITY;
+        let table_top = self.tree.nodes[i as usize].geo.y + self.shift;
+        for group in &t.groups {
+            let first = rows[group.start];
+            let g_top = self.tree.nodes[first as usize].geo.y;
+            let g_h: f32 = t.row_h[group.clone()].iter().sum();
+            let top = g_top + self.shift;
+            let is_header = group.end <= t.header_rows;
+            if !is_header && (top - fresh_start).abs() > EPS {
+                let overflows = top + g_h > self.page_end(top) + EPS && !self.at_page_top(top);
+                // A group that lands exactly at the top of a later page
+                // (without being pushed) also needs room for the header.
+                let at_new_page =
+                    self.at_page_top(top) && self.page_of(top) > self.page_of(table_top);
+                if overflows || at_new_page {
+                    let to_next = if overflows {
+                        self.page_end(top) - top
+                    } else {
+                        0.0
+                    };
+                    self.shift += to_next + header_h;
+                    fresh_start = g_top + self.shift;
+                    if g_h + header_h > self.h + EPS {
+                        tracing::warn!(height = g_h, "table row taller than a page is sliced");
+                    }
+                }
+            }
+            for r in group.clone() {
+                self.set_subtree(rows[r]);
+            }
         }
     }
 

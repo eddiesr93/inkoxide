@@ -1,0 +1,2276 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Table basics",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 48,
+    "right": 48,
+    "bottom": 48,
+    "left": 48
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Tables",
+       "font": "Inter-Bold",
+       "size": 20,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Fixed, fr and auto columns · row and column spans · collapsed borders · vertical alignment",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.45,
+        0.47,
+        0.53,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 14
+      }
+     }
+    },
+    {
+     "type": "table",
+     "columns": [
+      {
+       "width": 90
+      },
+      {
+       "width": "1fr"
+      },
+      {
+       "width": "2fr"
+      },
+      {
+       "width": "auto"
+      }
+     ],
+     "headerRows": 1,
+     "rows": [
+      {
+       "backgroundColor": [
+        0.93,
+        0.95,
+        0.99,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Fixed 90pt",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1fr",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "2fr",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "auto",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "verticalAlign": "middle",
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Row span 2, middle",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ],
+         "rowSpan": 2
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Column span 2 across the fr columns",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ],
+         "colSpan": 2
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "short",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "backgroundColor": [
+        0.975,
+        0.98,
+        0.99,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "A wrapping paragraph inside a fractional column keeps the row tall.",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "verticalAlign": "bottom",
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "bottom",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "auto grows to fit",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "plain",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "right",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "center",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "center"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1 234,56",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "minHeight": 40,
+       "backgroundColor": [
+        0.975,
+        0.98,
+        0.99,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "minHeight 40",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "box",
+           "style": {
+            "flexDirection": "row",
+            "gap": 4,
+            "alignItems": "center"
+           },
+           "children": [
+            {
+             "type": "box",
+             "style": {
+              "width": 10,
+              "height": 10,
+              "borderRadius": 5,
+              "backgroundColor": [
+               0.16,
+               0.36,
+               0.86,
+               1
+              ]
+             }
+            },
+            {
+             "type": "text",
+             "runs": [
+              {
+               "text": "box + text in a cell",
+               "font": "Inter-Regular",
+               "size": 9,
+               "color": [
+                0.1,
+                0.11,
+                0.14,
+                1
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "right": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ],
+           "left": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "center"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Rules only (thick header line, hairlines between rows)",
+       "font": "Inter-Bold",
+       "size": 11,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 20,
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "table",
+     "style": {
+      "width": 300
+     },
+     "columns": [
+      {
+       "width": "1fr"
+      },
+      {
+       "width": 50
+      },
+      {
+       "width": 70
+      }
+     ],
+     "headerRows": 1,
+     "rows": [
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 2
+          },
+          "borderColor": {
+           "bottom": [
+            0.1,
+            0.11,
+            0.14,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 2
+          },
+          "borderColor": {
+           "bottom": [
+            0.1,
+            0.11,
+            0.14,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Qty",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 2
+          },
+          "borderColor": {
+           "bottom": [
+            0.1,
+            0.11,
+            0.14,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Price",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Paper",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "3",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "4.50",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Ink",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "12.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Binding",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "2",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "borderWidth": {
+           "bottom": 0.5
+          },
+          "borderColor": {
+           "bottom": [
+            0.82,
+            0.84,
+            0.88,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "7.25",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Outer border on the table box, rounded",
+       "font": "Inter-Bold",
+       "size": 11,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 20,
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "table",
+     "style": {
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.16,
+        0.36,
+        0.86,
+        1
+       ],
+       "right": [
+        0.16,
+        0.36,
+        0.86,
+        1
+       ],
+       "bottom": [
+        0.16,
+        0.36,
+        0.86,
+        1
+       ],
+       "left": [
+        0.16,
+        0.36,
+        0.86,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "overflow": "hidden"
+     },
+     "columns": [
+      {
+       "width": "1fr"
+      },
+      {
+       "width": "1fr"
+      }
+     ],
+     "headerRows": 1,
+     "rows": [
+      {
+       "backgroundColor": [
+        0.93,
+        0.95,
+        0.99,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Key",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Value",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "key-0",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "value 0",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "key-1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "value 1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ],
+       "backgroundColor": [
+        0.975,
+        0.98,
+        0.99,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "key-2",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "value 2",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "key-3",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "value 3",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        }
+       ],
+       "backgroundColor": [
+        0.975,
+        0.98,
+        0.99,
+        1
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

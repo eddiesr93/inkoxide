@@ -9,10 +9,12 @@ keep-together blocks, headers and footers, page numbers.
 render(document_tree, options) -> pdf_bytes
 ```
 
-> Status: **M3 (pagination)**. Schema, validation, flex/grid layout, box
+> Status: **M4 (tables)**. Schema, validation, flex/grid layout, box
 > painting, text (shaping, wrapping, justification, hyphenation, fallback,
 > selectable output) and pagination (splitting, keep-together, forced
-> breaks, headers/footers, page numbers) work. Tables land in M4. See
+> breaks, headers/footers, page numbers) and tables (spans, collapsed
+> borders, row splitting with repeated headers) work. Images and the npm
+> package land in M5. See
 > [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start

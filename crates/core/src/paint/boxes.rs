@@ -3,7 +3,8 @@
 
 use super::shapes::{inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII};
 use super::{Dash, FillRule, Op, Path};
-use crate::layout::{Geometry, NodeIdx, Tree};
+use crate::layout::table::TableLayout;
+use crate::layout::{Geometry, NodeIdx, Part, Tree};
 use crate::paginate::Placement;
 use crate::schema::{BorderStyle, Color, Display, Node, Overflow};
 
@@ -63,6 +64,7 @@ pub(crate) fn paint_flow(
         page,
         dx,
         dy,
+        override_shift: None,
         opacity: 1.0,
         content,
         ops,
@@ -92,6 +94,9 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
     page: u32,
     dx: f32,
     dy: f32,
+    /// Paints a subtree at a fixed shift, ignoring pagination (repeated
+    /// table header rows).
+    override_shift: Option<f32>,
     /// Cumulative opacity of the ancestors.
     opacity: f32,
     content: &'c mut dyn ContentPainter,
@@ -101,12 +106,24 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
 impl BoxPainter<'_, '_, '_, '_> {
     fn node(&mut self, i: NodeIdx, as_fixed: bool) {
         let ln = &self.tree.nodes[i as usize];
-        let Some(node) = ln.node else { return };
+        let Some(node) = ln.node else {
+            // Rows and cells: the table paints their backgrounds and borders.
+            if let (Some(pl), None, false) = (self.placement, self.override_shift, as_fixed) {
+                if !pl.on_page(i, self.page) {
+                    return;
+                }
+            }
+            for c in self.tree.children(i) {
+                self.node(c, as_fixed);
+            }
+            return;
+        };
         let s = &node.style;
         if s.display == Some(Display::None) {
             return;
         }
         let window = match self.placement {
+            Some(_) if self.override_shift.is_some() => None,
             Some(pl) if !as_fixed => {
                 // Fixed nodes are painted by the fixed pass on every page.
                 if node.brk.fixed || !pl.on_page(i, self.page) {
@@ -118,12 +135,13 @@ impl BoxPainter<'_, '_, '_, '_> {
             _ => None,
         };
         let g = ln.geo;
-        let (shift, extra) = match self.placement {
-            Some(pl) => {
+        let (shift, extra) = match (self.override_shift, self.placement) {
+            (Some(o), _) => (o, 0.0),
+            (None, Some(pl)) => {
                 let st = pl.shift_top[i as usize];
                 (st, pl.shift_bottom[i as usize] - st)
             }
-            None => (0.0, 0.0),
+            (None, None) => (0.0, 0.0),
         };
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
 
@@ -181,14 +199,21 @@ impl BoxPainter<'_, '_, '_, '_> {
             });
         }
 
+        // After the clip: row backgrounds must not escape rounded corners.
+        let table = self.tree.tables.get(&i).cloned();
+        if let Some(t) = &table {
+            self.table_body(i, &g, t);
+        }
+
         let ctx = ContentCtx {
             idx: i,
             dx: self.dx,
             dy: self.dy,
             shift,
-            line_shifts: self
-                .placement
-                .map_or(&[][..], |pl| pl.line_shifts[i as usize].as_slice()),
+            line_shifts: match (self.override_shift, self.placement) {
+                (None, Some(pl)) => pl.line_shifts[i as usize].as_slice(),
+                _ => &[][..],
+            },
             window,
             opacity: self.opacity,
         };
@@ -196,11 +221,191 @@ impl BoxPainter<'_, '_, '_, '_> {
         for c in self.tree.children(i) {
             self.node(c, as_fixed);
         }
+        if let Some(t) = &table {
+            self.repeat_header(i, &g, t);
+        }
 
         if saved {
             self.ops.push(Op::Restore);
         }
         self.opacity = outer_opacity;
+    }
+
+    /// Shift of table row `r` (paged space).
+    fn row_shift(&self, rows: &[NodeIdx], r: usize) -> f32 {
+        match (self.override_shift, self.placement) {
+            (Some(o), _) => o,
+            (None, Some(pl)) => pl.shift_top[rows[r] as usize],
+            (None, None) => 0.0,
+        }
+    }
+
+    fn row_visible(&self, rows: &[NodeIdx], r: usize) -> bool {
+        match (self.override_shift, self.placement) {
+            (None, Some(pl)) => pl.on_page(rows[r], self.page),
+            _ => true,
+        }
+    }
+
+    /// Row and cell backgrounds and collapsed borders of the rows on this
+    /// page (or of the header rows, when repeating them).
+    fn table_body(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
+        let rows: Vec<NodeIdx> = self.tree.children(i).collect();
+        let n = rows.len();
+        let range = if self.override_shift.is_some() {
+            0..t.header_rows
+        } else {
+            0..n
+        };
+        let visible: Vec<bool> = (0..n)
+            .map(|r| range.contains(&r) && self.row_visible(&rows, r))
+            .collect();
+        let shift: Vec<f32> = (0..n).map(|r| self.row_shift(&rows, r)).collect();
+        let (cx, cy, _, _) = g.content_box();
+        let (ox, oy) = (cx + self.dx, cy + self.dy);
+
+        for r in 0..n {
+            if !visible[r] {
+                continue;
+            }
+            if let Part::Row(row, _) = self.tree.nodes[rows[r] as usize].part {
+                if let Some(bg) = row.background_color.filter(|c| c[3] > 0.0) {
+                    let path = rounded_rect(
+                        ox,
+                        oy + t.row_y[r] + shift[r],
+                        t.width,
+                        t.row_h[r],
+                        &NO_RADII,
+                    );
+                    self.fill(path, bg);
+                }
+            }
+        }
+        for cell in &t.cells {
+            if !visible[cell.row] {
+                continue;
+            }
+            let style = self.tree.nodes[cell.idx as usize].style();
+            if let Some(bg) = style.background_color.filter(|c| c[3] > 0.0) {
+                let path = rounded_rect(
+                    ox + cell.x,
+                    oy + cell.y + shift[cell.row],
+                    cell.w,
+                    cell.h,
+                    &NO_RADII,
+                );
+                self.fill(path, bg);
+            }
+        }
+
+        let rect = |painter: &mut Self, x: f32, y: f32, w: f32, h: f32, color: Color| {
+            let path = rounded_rect(x, y, w, h, &NO_RADII);
+            painter.fill(path, color);
+        };
+        let repeating_header = t.header_rows > 0 && self.override_shift.is_none();
+        for e in &t.h_edges {
+            let (x, w) = (ox + t.col_x[e.col], t.col_w[e.col]);
+            let l = e.line;
+            if l == 0 {
+                if visible[0] {
+                    rect(self, x, oy + shift[0], w, e.width, e.color);
+                }
+            } else if l == n {
+                if visible[n - 1] {
+                    rect(
+                        self,
+                        x,
+                        oy + t.row_y[n - 1] + t.row_h[n - 1] - e.width + shift[n - 1],
+                        w,
+                        e.width,
+                        e.color,
+                    );
+                }
+            } else if (shift[l - 1] - shift[l]).abs() < 1e-3 {
+                if visible[l - 1] || visible[l] {
+                    rect(
+                        self,
+                        x,
+                        oy + t.row_y[l] - e.width / 2.0 + shift[l],
+                        w,
+                        e.width,
+                        e.color,
+                    );
+                }
+            } else {
+                // The line falls on a page break: close the fragment above,
+                // and open the one below unless a repeated header does.
+                if visible[l - 1] {
+                    rect(
+                        self,
+                        x,
+                        oy + t.row_y[l] - e.width + shift[l - 1],
+                        w,
+                        e.width,
+                        e.color,
+                    );
+                }
+                if visible[l] && !(repeating_header && l > t.header_rows) {
+                    rect(self, x, oy + t.row_y[l] + shift[l], w, e.width, e.color);
+                }
+            }
+        }
+        for e in &t.v_edges {
+            if !visible[e.row] {
+                continue;
+            }
+            let lx = if e.line < t.col_x.len() {
+                t.col_x[e.line]
+            } else {
+                t.width
+            };
+            let x = if e.line == 0 {
+                lx
+            } else if e.line == t.col_x.len() {
+                lx - e.width
+            } else {
+                lx - e.width / 2.0
+            };
+            let h: f32 = t.row_h[e.row..e.row + e.rows].iter().sum();
+            rect(
+                self,
+                ox + x,
+                oy + t.row_y[e.row] + shift[e.row],
+                e.width,
+                h,
+                e.color,
+            );
+        }
+    }
+
+    /// On continuation pages, repaints the header rows at the top of the
+    /// page, above the first body row (which pagination pushed down).
+    fn repeat_header(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
+        let (Some(pl), None) = (self.placement, self.override_shift) else {
+            return;
+        };
+        if t.header_rows == 0 {
+            return;
+        }
+        let rows: Vec<NodeIdx> = self.tree.children(i).collect();
+        let page_top = self.page as f32 * pl.page_h;
+        // First body row on this page, if it starts below a reserved header.
+        let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], self.page))
+        else {
+            return;
+        };
+        let (_, cy, _, _) = g.content_box();
+        let first_top = cy + t.row_y[first] + pl.shift_top[rows[first] as usize];
+        if (first_top - (page_top + t.header_height())).abs() > crate::paginate::EPS {
+            return;
+        }
+        let shift = page_top - (cy + t.row_y[0]);
+        self.override_shift = Some(shift);
+        self.table_body(i, g, t);
+        for &r in &rows[..t.header_rows] {
+            self.node(r, false);
+        }
+        self.override_shift = None;
     }
 
     fn fill(&mut self, path: Path, color: Color) {

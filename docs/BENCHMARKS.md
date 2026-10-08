@@ -13,6 +13,14 @@ absolute numbers as upper bounds.
 | M2 | `text-wrapping` | 1 | 3.7 ms | 5 fonts embedded, ~20 paragraphs |
 | M2 | `text-justify-hyphenate-ro` | 1 | 2.5 ms | |
 
+| M4 | `table-dump-500p` (generated, `scripts/fixtures/table_dump.py`) | 435 | 4.4 s | 20k rows × 5 cells; target < 2.5 s, see below |
+
+M4 stage breakdown for the table dump (single run, release): parse 0.48 s
+(27 MB JSON), layout 1.85 s (one Taffy subtree per cell, two to three
+times per cell), paginate 0.02 s, paint 1.19 s, PDF 0.51 s. The planned
+M6 work targets layout (fast path for single-text cells, cheaper per-cell
+Taffy trees) and paint (parallel per page, ADR to come).
+
 M2 numbers are `inkoxide bench --iterations 50` medians (release). The
 first render of a process is slower (~45 ms here) because each font program
 is Flate-compressed once and then cached (ADR-017).

@@ -317,3 +317,40 @@ their template at the same page-relative position as on their first page,
 above the flow. Page numbers are global across templates: `pageNumber`
 is the physical page index (1-based) and `totalPages` the document's
 page count, both substituted at paint time.
+
+## ADR-023 — Tables: own layout, cells as Taffy subtrees, collapsed borders (M4)
+
+**Decision.** In the arena a table is table → rows → cells → content. For
+Taffy the table is a leaf whose measure runs `layout/table.rs`: fixed /
+`fr` / `auto` columns (auto = max-content of single-span cells, shrunk
+towards min-content when short), row height = tallest single-row cell
+(at least `minHeight`), row-span deficits added to the span's last row.
+Each cell is laid out as its own small Taffy subtree (flex column, height
+fixed to its rows, `verticalAlign` → `justify-content`). After the flow
+layout, tables are laid out at their final width in arena order (outer
+before nested) and their rows, cells and contents get absolute geometry.
+Layouts are cached per (table, width) and per (cell, width).
+
+**Borders** use the collapsed model only: each grid edge takes the wider of
+the two adjacent cell borders (later cell wins ties). Cells reserve the
+full width of outer edges and half of inner ones. The table, not the
+cells, paints row backgrounds, cell backgrounds and edges.
+
+**Pagination.** Row groups (rows tied by row spans) are atomic. A group
+that does not fit, or that lands exactly on a later page's top, moves down
+by the page remainder plus the header height. The painter redraws the
+header rows (backgrounds, edges, contents) at the top of each continuation
+page through a shift override. At a page break the edge between two rows
+closes the fragment above; the fragment below is opened by the repeated
+header, or by the edge itself when there is no header. A group taller
+than a page is sliced with a warning (splitting a row between its cells'
+lines remains an M4 stretch goal).
+
+## ADR-024 — Paging tolerance of 0.1 pt (M4)
+
+**Context.** The 20k-row table dump (435 pages) reaches paged coordinates
+of ~335,000 pt, where one f32 step is ~0.03 pt, so 0.01 pt comparisons
+failed and some pages lost their repeated header. **Decision.** Page
+decisions use a 0.1 pt tolerance (invisible). If documents grow by
+another order of magnitude, paged positions move to (page, offset) pairs
+or f64 in M6.
