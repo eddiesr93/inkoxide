@@ -61,6 +61,7 @@ The API is in [npm/index.d.ts](npm/index.d.ts). Errors are
 - `crates/node`: napi-rs binding; `npm/`: the JS package around it
 - `fixtures/`: input documents, OFL fonts, images, expected renders
 - `docs/DECISIONS.md`: architecture decision log
+- `docs/DEPENDENCY_WATCH.md`: the pending rustybuzz/ttf-parser swap (`scripts/dep-watch.sh`)
 
 ## Development
 

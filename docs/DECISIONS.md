@@ -278,6 +278,11 @@ been out for a few weeks (target: M6, with before/after benchmarks and the
 visual suite as the safety net). The project owner may prefer to do it
 sooner.
 
+**Update (post-M7).** Not done in M6: harfrust and read-fonts were still
+making breaking releases every few weeks. The criteria for doing it and
+the files it touches are in [DEPENDENCY_WATCH.md](DEPENDENCY_WATCH.md);
+`scripts/dep-watch.sh` prints the current versions.
+
 ## ADR-021 — Pagination by shift accumulation over one layout (M3)
 
 **Decision.** Each page template's flow is laid out once (unbounded
