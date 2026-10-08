@@ -5,6 +5,8 @@
 //! engine works with [`Prepared`] paragraphs and [`LineLayout`]s.
 
 mod hyphen;
+pub use hyphen::HyphenationStore;
+pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
 mod paint;
 mod prepare;
@@ -206,7 +208,7 @@ pub(crate) trait TextShaper {
 pub(crate) struct RustybuzzShaper<'f, 'a> {
     pub fonts: &'f FontSet<'a>,
     pub unicode: UnicodeMap,
-    pub hyphenator: &'static dyn hyphen::Hyphenator,
+    pub hyphenator: &'f dyn hyphen::Hyphenator,
     shapes: prepare::ShapeCache,
 }
 

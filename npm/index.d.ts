@@ -37,6 +37,7 @@ export type ErrorCode =
   | 'IMAGE_ERROR'
   | 'LAYOUT_ERROR'
   | 'PDF_ERROR'
+  | 'HYPHENATION_ERROR'
   | 'INVALID_ARGUMENT'
   | 'INTERNAL';
 
@@ -87,6 +88,17 @@ export class InkoxideError extends Error {
 export function registerFont(id: string, data: Uint8Array): void;
 /** Removes a registered font; returns whether it existed. */
 export function unregisterFont(id: string): boolean;
+/**
+ * Registers (or replaces), for all later renders, TeX hyphenation patterns
+ * for a language: a hyph-utf8 file such as `hyph-ro.tex` with
+ * `\patterns{…}` and optional `\hyphenation{…}` groups, in UTF-8.
+ * `lang` is a BCP-47 tag (`"ro"`, `"en-GB"`); patterns apply to its
+ * language. Registered patterns win over the built-in ones. Throws
+ * `HYPHENATION_ERROR` for malformed patterns.
+ */
+export function registerHyphenationPatterns(lang: string, data: Uint8Array | string): void;
+/** Removes registered patterns; returns whether there were any. */
+export function unregisterHyphenationPatterns(lang: string): boolean;
 /**
  * Validates a document against the schema and the registered fonts. Image
  * references are checked only when `images` is given.

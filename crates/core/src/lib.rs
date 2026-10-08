@@ -30,6 +30,7 @@ pub use error::{InkoxideError, ValidationCode, ValidationError};
 pub use fonts::FontStore;
 pub use images::ImageStore;
 pub use schema::SCHEMA_VERSION;
+pub use text::HyphenationStore;
 
 use fonts::FontSet;
 use pdf::{DocumentOut, PdfSink, PdfWriterSink};
@@ -82,6 +83,9 @@ pub struct RenderOptions {
     /// intent and a file identifier; CMYK JPEGs are converted to RGB and
     /// `.notdef` glyphs are left out (ADR-039).
     pub pdf_a: bool,
+    /// Hyphenation patterns registered at runtime; they win over the
+    /// built-in ones for their language (ADR-044). Default: none.
+    pub hyphenation: HyphenationStore,
 }
 
 impl Default for RenderOptions {
@@ -93,6 +97,7 @@ impl Default for RenderOptions {
             threads: None,
             subset_fonts: true,
             pdf_a: false,
+            hyphenation: HyphenationStore::new(),
         }
     }
 }
@@ -137,6 +142,13 @@ impl RenderOptions {
     #[must_use]
     pub fn with_pdf_a(mut self, pdf_a: bool) -> Self {
         self.pdf_a = pdf_a;
+        self
+    }
+
+    /// Sets [`hyphenation`](Self::hyphenation).
+    #[must_use]
+    pub fn with_hyphenation(mut self, store: HyphenationStore) -> Self {
+        self.hyphenation = store;
         self
     }
 }
@@ -210,10 +222,12 @@ fn render_inner(
     };
 
     let font_set = FontSet::load(&document, fonts)?;
-    let mut text = TextCache::new(
-        RustybuzzShaper::new(&font_set),
-        document.meta.lang.as_deref(),
-    );
+    let hyphenator = text::ResolvedHyphenator {
+        store: &options.hyphenation,
+    };
+    let mut shaper = RustybuzzShaper::new(&font_set);
+    shaper.hyphenator = &hyphenator;
+    let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
     let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),

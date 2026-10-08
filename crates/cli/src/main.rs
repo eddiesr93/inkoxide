@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! inkoxide render doc.json --fonts fixtures/fonts -o out.pdf [--msgpack] [--png-dir out/]
+//!   [--hyphenation ro=hyph-ro.tex]
 //! inkoxide validate doc.json --fonts fixtures/fonts
 //! inkoxide bench doc.json --fonts fixtures/fonts --iterations 30
 //! ```
@@ -12,7 +13,9 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
-use inkoxide::{FontStore, ImageStore, InputFormat, RenderOptions, ValidationError};
+use inkoxide::{
+    FontStore, HyphenationStore, ImageStore, InputFormat, RenderOptions, ValidationError,
+};
 
 #[derive(Parser)]
 #[command(
@@ -40,6 +43,11 @@ struct Resources {
     /// Read the document as `MessagePack` (implied by a .msgpack/.mpk extension).
     #[arg(long)]
     msgpack: bool,
+    /// TeX hyphenation patterns for a language, as LANG=PATH
+    /// (`--hyphenation ro=hyph-ro.tex`); repeatable. They win over the
+    /// built-in patterns.
+    #[arg(long, value_name = "LANG=PATH")]
+    hyphenation: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -131,6 +139,20 @@ fn load_resources(res: &Resources) -> Result<(FontStore, ImageStore), String> {
     Ok((fonts, images))
 }
 
+fn load_hyphenation(res: &Resources) -> Result<HyphenationStore, String> {
+    let mut store = HyphenationStore::new();
+    for spec in &res.hyphenation {
+        let (lang, path) = spec
+            .split_once('=')
+            .ok_or_else(|| format!("--hyphenation `{spec}`: expected LANG=PATH"))?;
+        let bytes = read(Path::new(path))?;
+        store
+            .register(lang, &bytes)
+            .map_err(|e| format!("{path}: {e}"))?;
+    }
+    Ok(store)
+}
+
 /// Regular files of `dir` as (stem, path), sorted for determinism.
 fn dir_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     let mut out = Vec::new();
@@ -196,7 +218,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .with_compress(!no_compress)
                 .with_threads(threads)
                 .with_subset_fonts(!res.full_fonts)
-                .with_pdf_a(pdf_a);
+                .with_pdf_a(pdf_a)
+                .with_hyphenation(load_hyphenation(&res)?);
             opts.creation_date = creation_date;
             let start = Instant::now();
             let pdf = match inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
@@ -230,7 +253,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             let input = read(&doc)?;
             let opts = RenderOptions::default()
                 .with_threads(threads)
-                .with_subset_fonts(!res.full_fonts);
+                .with_subset_fonts(!res.full_fonts)
+                .with_hyphenation(load_hyphenation(&res)?);
             // Cold start: font registration plus the first render, which
             // also fills the process-wide caches.
             let cold = Instant::now();

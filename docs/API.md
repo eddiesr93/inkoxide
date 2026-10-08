@@ -17,6 +17,7 @@ versions; removing or renaming any of them is a major version.
 | Register a font | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
 | Remove a font | `FontStore::unregister(id) -> bool` | `unregisterFont(id): boolean` |
 | Images | `ImageStore::insert(id, bytes)`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
+| Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
 | Validate | `validate(doc, format, &fonts, &images) -> Vec<ValidationError>` | `validate(doc, format?, images?): ValidationError[]` |
 | Render | `render(doc, format, &options, &fonts, &images) -> Result<Vec<u8>, InkoxideError>` | `render(doc, options?): Promise<Uint8Array>` (libuv pool) |
 | Render, blocking | (same `render`) | `renderSync(doc, options?): Uint8Array` |
@@ -37,6 +38,7 @@ string, which is read as UTF-8 JSON.
 | `threads` / `with_threads` | `threads` | all cores | Worker threads for this render; `1` stays on the calling thread |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b (ADR-039) |
+| `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns (ADR-044) |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG or SVG |
 
@@ -60,10 +62,46 @@ registerFont('Inter-Regular', fs.readFileSync('Inter-Regular.ttf'));
 const pdf = await render(JSON.stringify(doc), { threads: 1, creationDate: '2026-01-01T00:00:00Z' });
 ```
 
+## Hyphenation patterns
+
+A text node with `hyphenate: true` is hyphenated in its `lang` (or
+`meta.lang`). The patterns are chosen in this order:
+
+1. patterns registered for the language;
+2. hypher's built-in patterns (about 50 languages, but not Romanian);
+3. none.
+
+Soft hyphens (U+00AD) in the text are always honoured.
+
+Patterns are TeX files in the hyph-utf8 format: `\patterns{…}`, with
+an optional `\hyphenation{…}` exception list, in UTF-8. To hyphenate
+Romanian with the standard patterns:
+
+1. Download `hyph-ro.tex` from hyph-utf8, for example from
+   `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-ro.tex`.
+2. Check that its licence suits you. It is not shipped with Inkoxide
+   (ADR-015).
+3. Register it:
+
+```js
+registerHyphenationPatterns('ro', fs.readFileSync('hyph-ro.tex')); // once, at startup
+```
+
+```sh
+inkoxide render doc.json --fonts fonts/ --hyphenation ro=hyph-ro.tex
+```
+
+```rust
+let mut patterns = inkoxide::HyphenationStore::new();
+patterns.register("ro", &std::fs::read("hyph-ro.tex")?)?;
+let options = RenderOptions::default().with_hyphenation(patterns);
+```
+
 ## Determinism
 
 For a fixed `creationDate` (or `meta.creationDate`), output bytes depend
-only on the document, the font and image bytes, and the options. They
+only on the document, the font, image and hyphenation pattern bytes, and
+the options. They
 do not depend on the thread count or on JSON versus MessagePack input.
 Without any creation date, no date is written, so output is still
 deterministic.
@@ -82,6 +120,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be decoded or embedded |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed |
+| `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
 | `INTERNAL` | `InkoxideError::Internal` | same, plus caught panics | A bug in the engine; the process keeps running |
 | `INVALID_ARGUMENT` | n/a (types are checked at compile time) | Node only | A JS argument has the wrong type or is out of range |
 

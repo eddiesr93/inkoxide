@@ -127,3 +127,22 @@ test('compressionLevel changes the output size', () => {
   const best = ink.renderSync(doc, { compressionLevel: 9 });
   assert.ok(best.length < fast.length, `${best.length} vs ${fast.length}`);
 });
+
+test('registered hyphenation patterns win over the built-in ones', () => {
+  const doc = fixture('docs/text-hyphenate-ro-patterns.json');
+  const patterns = fixture('hyphenation/text-hyphenate-ro-patterns.ro.tex');
+  const without = ink.renderSync(doc, { compress: false });
+  ink.registerHyphenationPatterns('ro', patterns);
+  try {
+    const withPatterns = ink.renderSync(doc, { compress: false });
+    assert.notDeepStrictEqual(withPatterns, without);
+    assert.deepStrictEqual(ink.renderSync(doc, { compress: false }), withPatterns);
+  } finally {
+    assert.strictEqual(ink.unregisterHyphenationPatterns('ro'), true);
+  }
+  assert.deepStrictEqual(ink.renderSync(doc, { compress: false }), without);
+  assert.throws(() => ink.registerHyphenationPatterns('ro', '1ba 1ca'), {
+    name: 'InkoxideError',
+    code: 'HYPHENATION_ERROR',
+  });
+});

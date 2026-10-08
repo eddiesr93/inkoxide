@@ -214,6 +214,8 @@ register TeX patterns at runtime (new public API), or (c) accept no
 Romanian hyphenation. The `Hyphenator` boundary makes (a) or (b) a small,
 local change.
 
+**Resolved (post-M7).** The owner chose (b); see ADR-044.
+
 ## ADR-016 — Newlines in `whiteSpace: normal` are forced breaks (M2)
 
 **Context.** CSS `normal` collapses newlines into spaces; react-pdf breaks
@@ -977,3 +979,59 @@ should come from it, not be written a second time.
 - A schema change needs `scripts/schema/gen-ts.sh`, or CI fails.
 - Regenerating needs pnpm and access to the npm registry. The engine
   build does not.
+
+## ADR-044 — Hyphenation patterns registered at runtime (post-M7)
+
+**Context.** ADR-015 left Romanian hyphenation open. The owner chose
+option (b): clients register TeX patterns at runtime. That way no
+pattern file with an unclear licence enters the repository.
+
+**Decision.**
+- **`HyphenationStore`.** It is public in core, with
+  `register(lang, patterns: &[u8])`, `unregister`, `contains`, `len`
+  and `is_empty`. It is passed through
+  `RenderOptions::with_hyphenation`, the additive way allowed by
+  ADR-042. `render` and `validate` keep their signatures. Cloning is
+  cheap, because parsed patterns sit behind an `Arc`.
+- **Parser and trie.** They are our own, about 150 lines in
+  `text/hyphen.rs`. hypher 0.1.8 builds its tries at compile time and
+  exposes no builder, so it cannot load patterns at runtime.
+  - The input is UTF-8 TeX, as in hyph-utf8. Every `\patterns{…}` group
+    feeds a Liang trie with sorted edges and flat level storage.
+    Every `\hyphenation{…}` group adds exception words (`ta-ble`), which
+    win over the patterns.
+  - `%` comments are stripped.
+  - These are errors: TeX escapes (`^^xx`, `\`) inside patterns, two
+    digits in a row, unbalanced braces, invalid UTF-8, and input
+    without any group.
+  - Words are matched in lowercase, and offsets are byte offsets in the
+    original word.
+  - `\lefthyphenmin` and `\righthyphenmin` are fixed at 2/2, the
+    hyph-utf8 value for Romanian and most other languages. The existing
+    "words longer than five letters" rule (ADR-015) still applies.
+- **Resolution order.** Registered patterns for the paragraph's language
+  come first, then hypher's built-in patterns, then nothing. Soft
+  hyphens in the text are always honoured. Patterns are keyed by the
+  two-letter language subtag, so `ro-RO` and `ro` share them.
+- **Errors.** A malformed pattern file is `HYPHENATION_ERROR`, a new
+  `InkoxideError::Hyphenation` variant. Adding it is not a breaking
+  change, because the enum is `#[non_exhaustive]`.
+- **Surfaces.**
+  - Node: `registerHyphenationPatterns(lang, data)` and
+    `unregisterHyphenationPatterns(lang)`, process-wide like fonts.
+    Each render takes a snapshot.
+  - CLI: `--hyphenation LANG=PATH`, repeatable.
+- **Test data.** The fixture `text-hyphenate-ro-patterns` registers about
+  60 hand-written patterns (`fixtures/hyphenation/`, MIT). The fixture
+  test registers a pattern file only for the fixture whose name
+  prefixes it, so every other fixture still renders without them.
+  `hyph-ro.tex` is not in the repository. It parses and renders with
+  this code (checked locally), and `docs/API.md` explains how to use
+  it.
+
+**Consequences.**
+- Output stays deterministic for fixed inputs. Patterns are part of the
+  inputs, like fonts.
+- The pattern set a client registers decides hyphenation quality, and
+  the engine neither ships nor endorses a Romanian set.
+

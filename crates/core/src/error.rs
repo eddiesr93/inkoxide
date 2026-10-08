@@ -140,6 +140,9 @@ pub enum InkoxideError {
     /// Writing the PDF failed.
     #[error("pdf error: {0}")]
     Pdf(String),
+    /// Hyphenation patterns could not be parsed.
+    #[error("hyphenation error: {0}")]
+    Hyphenation(String),
     /// A bug or resource failure inside the engine (e.g. the worker pool
     /// could not be built).
     #[error("internal error: {0}")]
@@ -156,6 +159,7 @@ impl InkoxideError {
             Self::Image(_) => "IMAGE_ERROR",
             Self::Layout(_) => "LAYOUT_ERROR",
             Self::Pdf(_) => "PDF_ERROR",
+            Self::Hyphenation(_) => "HYPHENATION_ERROR",
             Self::Internal(_) => "INTERNAL",
         }
     }

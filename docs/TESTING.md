@@ -24,6 +24,8 @@ scripts/ci.sh --quick  # fmt + tests + schema
 - `scripts/visual-diff.py`: rasterises fixture PDFs and compares them with
   `fixtures/expected/*.png`; `scripts/update-expected.sh` regenerates the
   references for review.
+- `fixtures/hyphenation/<fixture>.<lang>.tex`: hyphenation patterns
+  registered only while rendering `<fixture>` (ADR-044).
 - `npm/test`: the Node binding (`scripts/build-node.sh` first).
 - `examples/node-smoke`: a separate package that installs `npm/` with
   `file:../../npm` and uses it like a client app: it registers two fonts,

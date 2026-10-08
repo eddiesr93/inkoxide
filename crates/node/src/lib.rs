@@ -19,13 +19,16 @@ use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{LazyLock, RwLock};
 
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat};
+use inkoxide::{FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat};
 use napi::bindgen_prelude::{AsyncTask, Buffer, Either, Uint8Array};
 use napi::{Env, Error, Result, Task};
 use napi_derive::napi;
 
 /// Fonts registered through `registerFont`, shared by all renders.
 static FONTS: LazyLock<RwLock<FontStore>> = LazyLock::new(Default::default);
+/// Patterns registered through `registerHyphenationPatterns`, shared by all
+/// renders.
+static HYPHENATION: LazyLock<RwLock<HyphenationStore>> = LazyLock::new(Default::default);
 
 fn engine_error(code: &str, path: &str, message: &str) -> Error {
     let reason = format!(
@@ -136,7 +139,8 @@ pub struct RenderJob {
 impl RenderJob {
     fn new(doc: Either<Uint8Array, String>, options: Option<RenderOptions>) -> Result<Self> {
         let mut images = ImageStore::new();
-        let mut core = inkoxide::RenderOptions::default();
+        let mut core = inkoxide::RenderOptions::default()
+            .with_hyphenation(HYPHENATION.read().map(|h| h.clone()).unwrap_or_default());
         let mut format = InputFormat::Json;
         if let Some(o) = options {
             format = input_format(o.format.as_deref())?;
@@ -221,6 +225,23 @@ pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
 #[napi]
 pub fn unregister_font(id: String) -> bool {
     FONTS.write().is_ok_and(|mut f| f.unregister(&id))
+}
+
+/// Registers (or replaces) TeX hyphenation patterns for a language, used
+/// by all later renders before the built-in patterns.
+#[napi]
+pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, String>) -> Result<()> {
+    let bytes = doc_bytes(data);
+    let mut store = HYPHENATION
+        .write()
+        .map_err(|_| engine_error("INTERNAL", "", "hyphenation registry poisoned"))?;
+    store.register(&lang, &bytes).map_err(from_engine)
+}
+
+/// Removes registered patterns; returns whether there were any.
+#[napi]
+pub fn unregister_hyphenation_patterns(lang: String) -> bool {
+    HYPHENATION.write().is_ok_and(|mut h| h.unregister(&lang))
 }
 
 /// Validates a document against the schema and the registered fonts.

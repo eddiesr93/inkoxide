@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use inkoxide::{FontStore, ImageStore, InputFormat, RenderOptions};
+use inkoxide::{FontStore, HyphenationStore, ImageStore, InputFormat, RenderOptions};
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -41,6 +41,23 @@ fn stores() -> (FontStore, ImageStore) {
     (fonts, images)
 }
 
+/// Patterns registered for one fixture only:
+/// `fixtures/hyphenation/<fixture>.<lang>.tex`.
+fn hyphenation_for(name: &str) -> HyphenationStore {
+    let mut store = HyphenationStore::new();
+    for p in sorted_files(&root().join("fixtures/hyphenation"), &["tex"]) {
+        let file = p.file_name().unwrap().to_str().unwrap();
+        if let Some(lang) = file
+            .strip_prefix(name)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .and_then(|rest| rest.strip_suffix(".tex"))
+        {
+            store.register(lang, &fs::read(&p).unwrap()).unwrap();
+        }
+    }
+    store
+}
+
 fn qpdf_available() -> bool {
     Command::new("qpdf").arg("--version").output().is_ok()
 }
@@ -60,7 +77,9 @@ fn all_fixtures_render() {
         let errors = inkoxide::validate(&input, InputFormat::Json, &fonts, &images);
         assert!(errors.is_empty(), "{name}: {errors:#?}");
 
-        let opts = RenderOptions::default().with_creation_date("2026-10-08T00:00:00Z");
+        let opts = RenderOptions::default()
+            .with_creation_date("2026-10-08T00:00:00Z")
+            .with_hyphenation(hyphenation_for(name));
         let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         let single = opts.clone().with_threads(1);
@@ -106,7 +125,8 @@ fn pdf_a_fixtures() {
         let input = fs::read(&doc).unwrap();
         let opts = RenderOptions::default()
             .with_creation_date("2026-10-08T12:30:00+03:00")
-            .with_pdf_a(true);
+            .with_pdf_a(true)
+            .with_hyphenation(hyphenation_for(name));
         let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         let single = opts.clone().with_threads(1);
@@ -140,6 +160,36 @@ fn pdf_a_fixtures() {
         let passed = report.lines().filter(|l| l.starts_with("PASS ")).count();
         assert_eq!(passed, outputs.len(), "veraPDF:\n{report}");
     }
+}
+
+/// Registered patterns change line breaks only where a paragraph asks for
+/// hyphenation in their language, and only that fixture registers them.
+#[test]
+fn registered_hyphenation_patterns() {
+    let (fonts, images) = stores();
+    let name = "text-hyphenate-ro-patterns";
+    let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
+    let store = hyphenation_for(name);
+    assert!(store.contains("ro"));
+    let render = |store: HyphenationStore| {
+        let opts = RenderOptions::default()
+            .with_compress(false)
+            .with_hyphenation(store);
+        inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images).unwrap()
+    };
+    let without = render(HyphenationStore::new());
+    let with = render(store.clone());
+    assert!(with != without, "patterns did not change the layout");
+    // Patterns for another language change nothing.
+    let mut other = HyphenationStore::new();
+    other
+        .register("hu", br"\patterns{ 1b 1c 1d 1n 1t }")
+        .unwrap();
+    assert!(
+        render(other) == without,
+        "patterns for another language changed the output"
+    );
+    assert!(render(store) == with, "not deterministic");
 }
 
 /// Enough paragraphs for shaping and painting to be split across threads:

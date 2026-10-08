@@ -106,6 +106,10 @@ function toUint8Array(b) {
 exports.InkoxideError = InkoxideError;
 exports.registerFont = (id, data) => call(native.registerFont, [id, data]);
 exports.unregisterFont = (id) => call(native.unregisterFont, [id]);
+exports.registerHyphenationPatterns = (lang, data) =>
+  call(native.registerHyphenationPatterns, [lang, data]);
+exports.unregisterHyphenationPatterns = (lang) =>
+  call(native.unregisterHyphenationPatterns, [lang]);
 exports.validate = (doc, format, images) =>
   call(native.validate, [doc, format ?? undefined, images ?? undefined]);
 exports.render = async (doc, options) => {

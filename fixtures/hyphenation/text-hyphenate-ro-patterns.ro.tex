@@ -1,0 +1,20 @@
+% Small hand-written Romanian hyphenation patterns for the fixture
+% text-hyphenate-ro-patterns.json (MIT, like the rest of this repository).
+% They are NOT a complete Romanian pattern set: they only demonstrate
+% runtime pattern registration (ADR-044). For real documents register
+% hyph-ro.tex from hyph-utf8 (see docs/CLIENT_INTEGRATION.md).
+%
+% Rules, in Liang's notation (odd = may break, even = may not, max wins):
+%   1. A hyphen may go before any consonant (V-CV):        1b 1c 1d ...
+%   2. Between two consonants, break between them (VC-CV):  2nt 2rs ...
+%   3. Consonant + l/r and the digraphs ch/gh stay together: c2r g2h ...
+\patterns{
+  1b 1c 1d 1f 1g 1j 1l 1m 1n 1p 1r 1s 1ș 1t 1ț 1v 1z
+  2nt 2nd 2ns 2nț 2nc 2mp 2mb 2rt 2rs 2rm 2rn 2rd 2rg 2rc 2rț
+  2st 2sc 2sp 2ct 2pt 2lt 2lm 2lc 2ld 2bs 2șt 2ng 2nf 2nv 2mn
+  c2h g2h b2l b2r c2l c2r d2r f2l f2r g2l g2r p2l p2r t2r v2r
+}
+\hyphenation{
+  în-tre-prin-de-re
+  ad-mi-nis-tra-ți-e
+}

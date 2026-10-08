@@ -1,0 +1,319 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Romanian hyphenation with registered patterns",
+  "lang": "ro"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 420
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "runs": [
+      {
+       "text": "Despărțire în silabe cu pattern-uri înregistrate",
+       "font": "Inter-Bold",
+       "size": 14,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "width": 150
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · FĂRĂ DESPĂRȚIRE",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": false
+         },
+         "runs": [
+          {
+           "text": "Întreprinderea a înregistrat o creștere semnificativă a productivității, iar conducerea administrației locale consideră că investițiile în infrastructură sunt indispensabile pentru dezvoltarea economică și socială a comunităților rurale.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "width": 150
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · PATTERN-URI ÎNREGISTRATE",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true
+         },
+         "runs": [
+          {
+           "text": "Întreprinderea a înregistrat o creștere semnificativă a productivității, iar conducerea administrației locale consideră că investițiile în infrastructură sunt indispensabile pentru dezvoltarea economică și socială a comunităților rurale.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "width": 150
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · DOAR CRATIME MOI (U+00AD)",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": false
+         },
+         "runs": [
+          {
+           "text": "Întreprinderea a înregistrat o creștere sem­ni­fi­ca­ti­vă a pro­duc­ti­vi­tă­ții, iar con­du­ce­rea administrației locale consideră că investițiile în infrastructură sunt in­dis­pen­sa­bi­le pentru dezvoltarea economică și socială a comunităților rurale.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
