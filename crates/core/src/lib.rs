@@ -16,6 +16,7 @@ mod date;
 mod error;
 mod fonts;
 mod images;
+mod layout;
 mod paint;
 mod pdf;
 mod schema;
@@ -26,6 +27,7 @@ pub use fonts::FontStore;
 pub use images::ImageStore;
 pub use schema::SCHEMA_VERSION;
 
+use layout::{LayoutEngine, NoContent, TaffyLayout, Tree};
 use paint::{Op, PageContent};
 use pdf::{DocumentOut, PdfSink, PdfWriterSink};
 
@@ -105,21 +107,10 @@ pub fn render(
             .and_then(date::parse_rfc3339),
     };
 
-    // M0: one physical page per page template, background only.
-    let pages: Vec<PageContent> = document
-        .pages
-        .iter()
-        .map(|spec| {
-            let mut page = PageContent::new(spec.size.width, spec.size.height);
-            if let Some(bg) = spec.background {
-                page.ops.push(Op::FillRect {
-                    rect: paint::Rect::new(0.0, 0.0, spec.size.width, spec.size.height),
-                    color: bg,
-                });
-            }
-            page
-        })
-        .collect();
+    let mut pages = Vec::with_capacity(document.pages.len());
+    for spec in &document.pages {
+        pages.push(render_page_spec(spec)?);
+    }
 
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
@@ -138,4 +129,46 @@ pub fn debug_raw_parse_error(doc: &[u8]) -> Option<String> {
     serde_json::from_slice::<schema::Document>(doc)
         .err()
         .map(|e| e.to_string())
+}
+
+/// M1: lays out one page template's flow and paints it on a single page.
+/// Content taller than the content box is clipped (pagination is M3).
+fn render_page_spec(spec: &schema::PageSpec) -> Result<PageContent, InkoxideError> {
+    let m = spec.margin;
+    let content_w = spec.size.width - m.left - m.right;
+    let content_h = spec.size.height - m.top - m.bottom;
+
+    let mut tree = Tree::build(&spec.children);
+    TaffyLayout.compute(&mut tree, content_w, &mut NoContent)?;
+
+    let mut page = PageContent::new(spec.size.width, spec.size.height);
+    if let Some(bg) = spec.background {
+        page.ops.push(Op::FillRect {
+            rect: paint::Rect::new(0.0, 0.0, spec.size.width, spec.size.height),
+            color: bg,
+        });
+    }
+    let overflow = tree.nodes[0].geo.h > content_h + 0.01;
+    if overflow {
+        tracing::warn!(
+            height = tree.nodes[0].geo.h,
+            available = content_h,
+            "content overflows the page and is clipped"
+        );
+        page.ops.push(Op::Save);
+        page.ops.push(Op::ClipRect(paint::Rect::new(
+            m.left, m.top, content_w, content_h,
+        )));
+    }
+    paint::paint_flow(
+        &tree,
+        m.left,
+        m.top,
+        &mut paint::NoContentPainter,
+        &mut page.ops,
+    );
+    if overflow {
+        page.ops.push(Op::Restore);
+    }
+    Ok(page)
 }

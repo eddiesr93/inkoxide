@@ -9,8 +9,8 @@ keep-together blocks, headers and footers, page numbers.
 render(document_tree, options) -> pdf_bytes
 ```
 
-> Status: **M0 (skeleton)**. The schema, validation and PDF writer are in
-> place; layout lands in M1. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> Status: **M1 (boxes)**. Schema, validation, flex/grid layout and box
+> painting work; text lands in M2. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 

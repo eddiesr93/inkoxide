@@ -25,9 +25,9 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Validate | `validate` | M0 ✅ |
 | Fonts | `fonts` | registry only (M2) |
 | Text | `text` | M2 |
-| Layout | `layout` | M1 |
+| Layout | `layout` (arena tree + Taffy) | M1 ✅ |
 | Pagination | `paginate` | M3 |
-| Paint | `paint` (display list types) | types only (M1) |
+| Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
 | PDF | `pdf` | M0 ✅: pages, page tree, content streams, Info |
 | Images | `images` | registry only (M5) |
 
@@ -41,6 +41,15 @@ pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &
 
 Everything else is `pub(crate)`.
 
+## Layout data model
+
+`layout::Tree` is an arena (`Vec<LNode>`) in breadth-first order, so each
+node's children are a contiguous index range. Index 0 is a synthetic root:
+the page content box (column flex, fixed width, unbounded height). After
+`LayoutEngine::compute` every node holds absolute `Geometry` (border box,
+plus resolved border and padding) in flow coordinates; paint adds the page
+margin offset.
+
 ## Testing
 
 - Unit tests next to each module (`validate/tests.rs`, `date.rs`, …).
@@ -49,4 +58,8 @@ Everything else is `pub(crate)`.
 - `crates/core/tests/schema_parity.rs`: serde structs accept exactly the
   properties the JSON Schema declares.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.
+- `scripts/visual-diff.py`: rasterises fixture PDFs (`pdftoppm -r 72`) and
+  compares them with `fixtures/expected/*.png` (≤ 0.1 % differing pixels);
+  `scripts/update-expected.sh` regenerates the references for review.
+- `cargo bench -p inkoxide`: criterion benchmark of every fixture.
 - `scripts/ci.sh`: runs all of the above plus fmt, clippy and cargo-deny.

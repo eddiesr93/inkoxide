@@ -4,10 +4,14 @@ use std::io::Write as _;
 
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use pdf_writer::{Content, Filter, Finish, Pdf, Rect as PdfRect, Ref, TextStr};
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
 
 use crate::date::Timestamp;
-use crate::paint::{Op, PageContent, PathSeg};
+use std::collections::BTreeMap;
+
+use pdf_writer::types::LineCapStyle;
+
+use crate::paint::{FillRule, Op, PageContent, PathSeg};
 use crate::schema::{Color, Meta};
 use crate::InkoxideError;
 
@@ -65,13 +69,36 @@ impl PdfSink for PdfWriterSink {
             &page_refs.iter().map(|p| p.0).collect::<Vec<_>>(),
         );
 
+        // Shared graphics states, one per distinct opacity, in value order.
+        let mut opacities: BTreeMap<u16, Ref> = BTreeMap::new();
+        for page in doc.pages {
+            for op in &page.ops {
+                if let Op::SetOpacity(a) = op {
+                    opacities.entry(alpha_key(*a)).or_insert(Ref::new(1));
+                }
+            }
+        }
+        for (key, r) in opacities.iter_mut() {
+            *r = alloc.next();
+            let a = f32::from(*key) / 1000.0;
+            pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
+        }
+
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
             let parent = tree_root.leaf_parents[i / PAGE_TREE_FANOUT];
             let mut p = pdf.page(*page_ref);
             p.parent(parent)
                 .media_box(PdfRect::new(0.0, 0.0, q(page.width), q(page.height)))
                 .contents(*content_ref);
-            p.resources();
+            let mut res = p.resources();
+            let used = page_opacities(page);
+            if !used.is_empty() {
+                let mut gs = res.ext_g_states();
+                for key in used {
+                    gs.pair(Name(gs_name(key).as_bytes()), opacities[&key]);
+                }
+            }
+            res.finish();
             p.finish();
 
             let raw = content_stream(page);
@@ -208,6 +235,25 @@ fn write_page_tree(pdf: &mut Pdf, alloc: &mut RefAlloc, pages: &[Ref]) -> PageTr
     PageTree { root, leaf_parents }
 }
 
+/// Opacity quantised to 1/1000: the key of its shared graphics state.
+fn alpha_key(a: f32) -> u16 {
+    (a.clamp(0.0, 1.0) * 1000.0).round() as u16
+}
+
+fn gs_name(key: u16) -> String {
+    format!("A{key}")
+}
+
+fn page_opacities(page: &PageContent) -> std::collections::BTreeSet<u16> {
+    page.ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::SetOpacity(a) => Some(alpha_key(*a)),
+            _ => None,
+        })
+        .collect()
+}
+
 fn set_fill(c: &mut Content, color: &Color) {
     c.set_fill_rgb(q(color[0]), q(color[1]), q(color[2]));
 }
@@ -253,9 +299,12 @@ pub(crate) fn content_stream(page: &PageContent) -> Vec<u8> {
                 c.clip_nonzero();
                 c.end_path();
             }
-            Op::ClipPath(p) => {
+            Op::ClipPath { path: p, rule } => {
                 path(&mut c, &p.segs);
-                c.clip_nonzero();
+                match rule {
+                    FillRule::NonZero => c.clip_nonzero(),
+                    FillRule::EvenOdd => c.clip_even_odd(),
+                };
                 c.end_path();
             }
             Op::FillRect { rect, color } => {
@@ -263,10 +312,39 @@ pub(crate) fn content_stream(page: &PageContent) -> Vec<u8> {
                 c.rect(q(rect.x), q(rect.y), q(rect.w), q(rect.h));
                 c.fill_nonzero();
             }
-            Op::FillPath { path: p, color } => {
+            Op::FillPath {
+                path: p,
+                color,
+                rule,
+            } => {
                 set_fill(&mut c, color);
                 path(&mut c, &p.segs);
-                c.fill_nonzero();
+                match rule {
+                    FillRule::NonZero => c.fill_nonzero(),
+                    FillRule::EvenOdd => c.fill_even_odd(),
+                };
+            }
+            Op::StrokePath {
+                path: p,
+                color,
+                width,
+                dash,
+            } => {
+                c.save_state();
+                c.set_stroke_rgb(q(color[0]), q(color[1]), q(color[2]));
+                c.set_line_width(q(*width));
+                if let Some(d) = dash {
+                    c.set_dash_pattern(d.pattern.map(q), 0.0);
+                    if d.round_cap {
+                        c.set_line_cap(LineCapStyle::RoundCap);
+                    }
+                }
+                path(&mut c, &p.segs);
+                c.stroke();
+                c.restore_state();
+            }
+            Op::SetOpacity(a) => {
+                c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
         }
     }

@@ -4,6 +4,11 @@
 //! and y growing downwards (like the layout tree). The PDF sink flips once
 //! per page.
 
+mod boxes;
+mod shapes;
+
+pub(crate) use boxes::{paint_flow, NoContentPainter};
+
 use crate::schema::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -33,6 +38,19 @@ pub(crate) struct Path {
     pub segs: Vec<PathSeg>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FillRule {
+    NonZero,
+    EvenOdd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Dash {
+    /// On/off lengths.
+    pub pattern: [f32; 2],
+    pub round_cap: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Op {
     Save,
@@ -40,7 +58,10 @@ pub(crate) enum Op {
     /// Concatenates `[a b c d e f]` to the current transform.
     Transform([f32; 6]),
     ClipRect(Rect),
-    ClipPath(Path),
+    ClipPath {
+        path: Path,
+        rule: FillRule,
+    },
     FillRect {
         rect: Rect,
         color: Color,
@@ -48,7 +69,17 @@ pub(crate) enum Op {
     FillPath {
         path: Path,
         color: Color,
+        rule: FillRule,
     },
+    StrokePath {
+        path: Path,
+        color: Color,
+        width: f32,
+        dash: Option<Dash>,
+    },
+    /// Sets the absolute fill and stroke alpha (cumulative opacity is
+    /// computed by the painter; PDF `gs` does not multiply).
+    SetOpacity(f32),
 }
 
 #[derive(Debug, Clone, PartialEq)]

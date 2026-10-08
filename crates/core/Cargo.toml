@@ -14,7 +14,13 @@ serde_path_to_error.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 pdf-writer.workspace = true
+taffy.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "render"
+harness = false

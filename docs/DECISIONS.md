@@ -103,3 +103,48 @@ Each content stream starts with one `1 0 0 -1 0 H cm` flip; text uses a
 flipped text matrix and images a flipped image matrix. All numbers are
 rounded to 1/1000 pt before writing (≤ 3 decimals; pdf-writer then prints
 the shortest round-trip form).
+
+## ADR-009 — Taffy through its high-level tree, rounding off (M1)
+
+**Context.** Taffy can run on its own `TaffyTree` or on a custom tree that
+implements its traits. **Decision.** Use `TaffyTree<NodeIdx>` built from our
+BFS arena (back to front, so children exist before parents), with
+`disable_rounding()` — PDF coordinates are fractional and pixel snapping
+would only add error. Leaves carry their arena index as context; the
+measure closure dispatches through our `LeafMeasure` trait. Absolute
+geometry is copied back into the arena and the Taffy tree is dropped.
+**Consequences.** ~100 lines of glue behind `LayoutEngine`. If profiling
+(M6) shows tree construction matters, implement Taffy's traits directly on
+the arena without changing callers.
+
+## ADR-010 — Opacity via ExtGState, not transparency groups (M1)
+
+**Context.** CSS `opacity` composites a subtree as a group. PDF's `ca/CA`
+apply per painted object, so overlapping children of a translucent box
+show through each other; true group opacity needs a Form XObject with a
+transparency `/Group`. **Decision.** v1 uses `ExtGState` alpha. The painter
+tracks cumulative opacity (PDF `gs` sets an absolute value, it does not
+multiply) and one shared `ExtGState` exists per distinct value (quantised
+to 1/1000). Colour alpha folds into the same mechanism. **Consequences.**
+Correct for the common case (a translucent box with non-overlapping
+content). Group opacity becomes a form XObject later if needed (M7).
+
+## ADR-011 — Border model (M1)
+
+**Decision.** Borders are painted inside the border box. With one colour
+and solid style, the border is a single even-odd fill of the ring between
+the outer (border-box) and inner (padding-box) rounded rectangles; inner
+radii are the outer radii minus the adjacent widths. With several colours,
+each side is a mitred trapezoid clipped by that ring, so corners and radii
+come out right without per-corner geometry. Dashed/dotted borders stroke
+the middle of each side (dash `3w/3w`, dots as zero-length dashes with
+round caps); a uniform dashed border with radius strokes one rounded path.
+Default border colour is black (CSS `currentColor` has no meaning here).
+**Consequences.** Dashed borders with mixed widths and radii are
+approximate at the corners; acceptable for v1.
+
+## ADR-012 — M1 overflow: clip with a warning (M1)
+
+**Decision.** Until pagination (M3), each page template renders on one page
+and content taller than the content box is clipped to it, with
+`tracing::warn!`. Replaced by real pagination in M3.
