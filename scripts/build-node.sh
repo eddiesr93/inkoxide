@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the native Node binding for the host platform into
-# npm/inkoxide.<platform>.node (what npm/index.js loads first).
+# npm/inkoxide.<platform>.node (what npm/index.js loads first), which makes
+# npm/ a complete package: install it with `pnpm add file:<repo>/npm`.
 #   scripts/build-node.sh            # release
 #   scripts/build-node.sh --debug
 set -euo pipefail
@@ -29,3 +30,9 @@ case "$(uname -s)" in
 esac
 cp "target/$profile/$lib" "npm/inkoxide.$triple.node"
 echo "npm/inkoxide.$triple.node"
+
+# The package must ship the loader, the types and the binary.
+packed=$(cd npm && npm pack --dry-run --json 2>/dev/null)
+for f in index.js index.d.ts README.md package.json "inkoxide.$triple.node"; do
+  grep -q "\"path\": \"$f\"" <<<"$packed" || { echo "npm/ package is missing $f" >&2; exit 1; }
+done

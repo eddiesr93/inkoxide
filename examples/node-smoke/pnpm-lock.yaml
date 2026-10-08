@@ -1,0 +1,23 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      inkoxide:
+        specifier: file:../../npm
+        version: file:../../npm
+
+packages:
+
+  inkoxide@file:../../npm:
+    resolution: {directory: ../../npm, type: directory}
+    engines: {node: '>= 18'}
+
+snapshots:
+
+  inkoxide@file:../../npm: {}

@@ -25,6 +25,16 @@ scripts/ci.sh --quick  # fmt + tests + schema
   `fixtures/expected/*.png`; `scripts/update-expected.sh` regenerates the
   references for review.
 - `npm/test`: the Node binding (`scripts/build-node.sh` first).
+- `examples/node-smoke`: a separate package that installs `npm/` with
+  `file:../../npm` and uses it like a client app: it registers two fonts,
+  renders the invoice asynchronously, checks `%PDF-` and `qpdf --check`,
+  prints timings, checks that a 10 ms interval keeps ticking during a
+  100-page render, and checks the error shapes (`UNKNOWN_FONT` with a
+  path, `INVALID_ARGUMENT`, `INTERNAL`). Run it with
+  `scripts/build-node.sh && cd examples/node-smoke && pnpm install && pnpm test`.
+  After rebuilding the binary, run `pnpm install --force`, because pnpm
+  copies `file:` packages. The `INTERNAL` case prints a Rust panic
+  message to stderr; that is expected.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).
 
 ## Fuzzing

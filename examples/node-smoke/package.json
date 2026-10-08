@@ -1,0 +1,13 @@
+{
+  "name": "inkoxide-node-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Consumes the local inkoxide npm package the way a client app does.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "inkoxide": "file:../../npm"
+  }
+}

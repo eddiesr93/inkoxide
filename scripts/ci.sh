@@ -34,6 +34,14 @@ step "node binding (npm/)"
 if command -v node >/dev/null; then
   scripts/build-node.sh --debug >/dev/null
   (cd npm && node --test test/*.test.js test/*.test.mjs) | grep -E '^# (pass|fail)'
+  step "node smoke (examples/node-smoke, installed from file:../../npm)"
+  if command -v pnpm >/dev/null; then
+    # --force re-copies the local package, so the binary just built is used.
+    (cd examples/node-smoke && pnpm install --force --silent && pnpm test) |
+      grep -E '^# (inkoxide|invoice|report|pass|fail)'
+  else
+    echo "pnpm not installed; skipped (npm i -g pnpm)"
+  fi
 else
   echo "node not installed; skipped"
 fi
