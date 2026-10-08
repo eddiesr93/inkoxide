@@ -1,0 +1,1170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://inkoxide.dev/schema/document.v1.json",
+  "title": "Inkoxide document, version 1",
+  "description": "A fully resolved, declarative document tree rendered to PDF by the Inkoxide engine. All lengths are PDF points (1/72 in); all colours are RGBA floats in [0, 1]. Unknown properties are errors.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "pages"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "meta": {
+      "$ref": "#/$defs/Meta"
+    },
+    "fonts": {
+      "description": "Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FontDecl"
+      }
+    },
+    "fallbackFonts": {
+      "description": "Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/PageSpec"
+      }
+    }
+  },
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "Link": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected."
+    },
+    "Bookmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ],
+      "description": "Document outline entry pointing at the top of its node. Entries appear in document order; an entry nests under the nearest earlier entry with a lower `level`. Flowing content only (not headers or footers).",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 1
+        }
+      }
+    },
+    "Meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "keywords": {
+          "type": "string"
+        },
+        "creator": {
+          "type": "string"
+        },
+        "lang": {
+          "type": "string",
+          "description": "BCP-47 language tag of the document, e.g. \"ro\" or \"en-GB\"."
+        },
+        "creationDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic)."
+        }
+      }
+    },
+    "FontDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "family"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 400
+        },
+        "style": {
+          "enum": [
+            "normal",
+            "italic"
+          ],
+          "default": "normal"
+        }
+      }
+    },
+    "NonNegative": {
+      "type": "number",
+      "minimum": 0
+    },
+    "Percent": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(\\.[0-9]+)?%$"
+    },
+    "Length": {
+      "description": "Points, a percentage of the containing block, or \"auto\".",
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/Percent"
+        },
+        {
+          "const": "auto"
+        }
+      ]
+    },
+    "LengthPercent": {
+      "description": "Points or a percentage of the containing block's width.",
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/Percent"
+        }
+      ]
+    },
+    "Color": {
+      "description": "[r, g, b, a], each in [0, 1].",
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "Size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height"
+      ],
+      "properties": {
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 14400
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 14400
+        }
+      }
+    },
+    "EdgesNumber": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "right": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "bottom": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "left": {
+          "$ref": "#/$defs/NonNegative"
+        }
+      }
+    },
+    "EdgesLengthPercent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/LengthPercent"
+        },
+        "right": {
+          "$ref": "#/$defs/LengthPercent"
+        },
+        "bottom": {
+          "$ref": "#/$defs/LengthPercent"
+        },
+        "left": {
+          "$ref": "#/$defs/LengthPercent"
+        }
+      }
+    },
+    "EdgesLength": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/Length"
+        },
+        "right": {
+          "$ref": "#/$defs/Length"
+        },
+        "bottom": {
+          "$ref": "#/$defs/Length"
+        },
+        "left": {
+          "$ref": "#/$defs/Length"
+        }
+      }
+    },
+    "EdgesColor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/Color"
+        },
+        "right": {
+          "$ref": "#/$defs/Color"
+        },
+        "bottom": {
+          "$ref": "#/$defs/Color"
+        },
+        "left": {
+          "$ref": "#/$defs/Color"
+        }
+      }
+    },
+    "PageSpec": {
+      "description": "A page template. Its content flows across as many physical pages as needed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "size"
+      ],
+      "properties": {
+        "size": {
+          "$ref": "#/$defs/Size"
+        },
+        "margin": {
+          "$ref": "#/$defs/EdgesNumber"
+        },
+        "background": {
+          "$ref": "#/$defs/Color"
+        },
+        "header": {
+          "description": "Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it.",
+          "$ref": "#/$defs/Node"
+        },
+        "footer": {
+          "description": "Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page.",
+          "$ref": "#/$defs/Node"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        }
+      }
+    },
+    "Break": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "enum": [
+            "auto",
+            "page"
+          ],
+          "default": "auto"
+        },
+        "after": {
+          "enum": [
+            "auto",
+            "page"
+          ],
+          "default": "auto"
+        },
+        "inside": {
+          "enum": [
+            "auto",
+            "avoid"
+          ],
+          "default": "auto"
+        },
+        "minPresenceAhead": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "fixed": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "GridPlacement": {
+      "description": "1-based CSS grid line placement. Negative lines count from the end. Use `span` alone or with `start`.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "integer"
+        },
+        "end": {
+          "type": "integer"
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "TrackSize": {
+      "description": "Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TrackBreadth"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "min",
+            "max"
+          ],
+          "properties": {
+            "min": {
+              "$ref": "#/$defs/TrackBreadth"
+            },
+            "max": {
+              "$ref": "#/$defs/TrackBreadth"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fitContent"
+          ],
+          "properties": {
+            "fitContent": {
+              "$ref": "#/$defs/LengthPercent"
+            }
+          }
+        }
+      ]
+    },
+    "Style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display": {
+          "enum": [
+            "flex",
+            "grid",
+            "none"
+          ],
+          "default": "flex"
+        },
+        "flexDirection": {
+          "enum": [
+            "row",
+            "column",
+            "row-reverse",
+            "column-reverse"
+          ],
+          "default": "column"
+        },
+        "flexWrap": {
+          "enum": [
+            "nowrap",
+            "wrap",
+            "wrap-reverse"
+          ],
+          "default": "nowrap"
+        },
+        "justifyContent": {
+          "enum": [
+            "flex-start",
+            "flex-end",
+            "center",
+            "space-between",
+            "space-around",
+            "space-evenly",
+            "start",
+            "end",
+            "stretch"
+          ]
+        },
+        "alignItems": {
+          "enum": [
+            "flex-start",
+            "flex-end",
+            "center",
+            "baseline",
+            "stretch",
+            "start",
+            "end"
+          ]
+        },
+        "alignSelf": {
+          "enum": [
+            "auto",
+            "flex-start",
+            "flex-end",
+            "center",
+            "baseline",
+            "stretch",
+            "start",
+            "end"
+          ]
+        },
+        "alignContent": {
+          "enum": [
+            "flex-start",
+            "flex-end",
+            "center",
+            "space-between",
+            "space-around",
+            "space-evenly",
+            "stretch",
+            "start",
+            "end"
+          ]
+        },
+        "flexGrow": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "flexShrink": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "flexBasis": {
+          "$ref": "#/$defs/Length"
+        },
+        "gap": {
+          "$ref": "#/$defs/LengthPercent",
+          "description": "Sets both rowGap and columnGap; either of those, when present, wins."
+        },
+        "rowGap": {
+          "$ref": "#/$defs/LengthPercent"
+        },
+        "columnGap": {
+          "$ref": "#/$defs/LengthPercent"
+        },
+        "width": {
+          "$ref": "#/$defs/Length"
+        },
+        "height": {
+          "$ref": "#/$defs/Length"
+        },
+        "minWidth": {
+          "$ref": "#/$defs/Length"
+        },
+        "minHeight": {
+          "$ref": "#/$defs/Length"
+        },
+        "maxWidth": {
+          "$ref": "#/$defs/Length"
+        },
+        "maxHeight": {
+          "$ref": "#/$defs/Length"
+        },
+        "aspectRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "padding": {
+          "$ref": "#/$defs/EdgesLengthPercent"
+        },
+        "margin": {
+          "$ref": "#/$defs/EdgesLength"
+        },
+        "position": {
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative"
+        },
+        "inset": {
+          "$ref": "#/$defs/EdgesLength",
+          "description": "top/right/bottom/left offsets for positioned boxes."
+        },
+        "gridTemplateColumns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TemplateTrack"
+          }
+        },
+        "gridTemplateRows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TemplateTrack"
+          }
+        },
+        "gridTemplateAreas": {
+          "description": "Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "gridAutoColumns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TrackSize"
+          }
+        },
+        "gridAutoRows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TrackSize"
+          }
+        },
+        "gridAutoFlow": {
+          "enum": [
+            "row",
+            "column",
+            "row dense",
+            "column dense"
+          ]
+        },
+        "gridColumn": {
+          "$ref": "#/$defs/GridPlacement"
+        },
+        "gridRow": {
+          "$ref": "#/$defs/GridPlacement"
+        },
+        "gridArea": {
+          "description": "Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "justifyItems": {
+          "enum": [
+            "flex-start",
+            "flex-end",
+            "center",
+            "baseline",
+            "stretch",
+            "start",
+            "end"
+          ],
+          "description": "Grid only: default inline-axis alignment of the items."
+        },
+        "justifySelf": {
+          "enum": [
+            "auto",
+            "flex-start",
+            "flex-end",
+            "center",
+            "baseline",
+            "stretch",
+            "start",
+            "end"
+          ],
+          "description": "Grid only: inline-axis alignment of this item."
+        },
+        "overflow": {
+          "enum": [
+            "visible",
+            "hidden"
+          ],
+          "default": "visible"
+        },
+        "backgroundColor": {
+          "$ref": "#/$defs/Color"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "borderWidth": {
+          "$ref": "#/$defs/EdgesNumber"
+        },
+        "borderColor": {
+          "$ref": "#/$defs/EdgesColor"
+        },
+        "borderRadius": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "borderStyle": {
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted"
+          ],
+          "default": "solid"
+        },
+        "rotate": {
+          "type": "number",
+          "description": "Degrees, clockwise, around the box centre."
+        },
+        "textAlign": {
+          "enum": [
+            "left",
+            "center",
+            "right",
+            "justify"
+          ],
+          "description": "text nodes only"
+        },
+        "lineHeight": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "text nodes only; multiplier of the largest run size on the line"
+        },
+        "maxLines": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "text nodes only"
+        },
+        "ellipsis": {
+          "type": "boolean",
+          "description": "text nodes only; requires maxLines"
+        },
+        "hyphenate": {
+          "type": "boolean",
+          "description": "text nodes only"
+        },
+        "lang": {
+          "type": "string",
+          "description": "text nodes only; BCP-47, selects hyphenation patterns"
+        },
+        "whiteSpace": {
+          "enum": [
+            "normal",
+            "pre",
+            "nowrap"
+          ],
+          "description": "text nodes only"
+        },
+        "verticalAlign": {
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ],
+          "description": "table cells only"
+        },
+        "borderCollapse": {
+          "enum": [
+            "collapse",
+            "separate"
+          ],
+          "default": "collapse",
+          "description": "Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart."
+        },
+        "borderSpacing": {
+          "$ref": "#/$defs/NonNegative",
+          "description": "Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0."
+        }
+      }
+    },
+    "TextRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "font",
+        "size"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Required unless `placeholder` is set; forbidden when it is."
+        },
+        "font": {
+          "$ref": "#/$defs/Id"
+        },
+        "size": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "color": {
+          "$ref": "#/$defs/Color"
+        },
+        "letterSpacing": {
+          "type": "number"
+        },
+        "decoration": {
+          "enum": [
+            "none",
+            "underline",
+            "lineThrough"
+          ]
+        },
+        "placeholder": {
+          "enum": [
+            "pageNumber",
+            "totalPages"
+          ]
+        },
+        "link": {
+          "$ref": "#/$defs/Link",
+          "description": "Makes the run a link; the clickable area covers the run's glyphs on each line."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "text"
+          ],
+          "not": {
+            "required": [
+              "placeholder"
+            ]
+          }
+        },
+        {
+          "required": [
+            "placeholder"
+          ],
+          "not": {
+            "required": [
+              "text"
+            ]
+          }
+        }
+      ]
+    },
+    "ColumnSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width"
+      ],
+      "properties": {
+        "width": {
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?fr$"
+            },
+            {
+              "const": "auto"
+            }
+          ]
+        }
+      }
+    },
+    "TableCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "colSpan": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "rowSpan": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        }
+      }
+    },
+    "TableRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cells"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "minHeight": {
+          "$ref": "#/$defs/NonNegative"
+        },
+        "backgroundColor": {
+          "$ref": "#/$defs/Color"
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TableCell"
+          }
+        }
+      }
+    },
+    "Node": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "box",
+            "text",
+            "image",
+            "table",
+            "pageBreak",
+            "spacer"
+          ]
+        }
+      },
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BoxNode"
+        },
+        {
+          "$ref": "#/$defs/TextNode"
+        },
+        {
+          "$ref": "#/$defs/ImageNode"
+        },
+        {
+          "$ref": "#/$defs/TableNode"
+        },
+        {
+          "$ref": "#/$defs/PageBreakNode"
+        },
+        {
+          "$ref": "#/$defs/SpacerNode"
+        }
+      ]
+    },
+    "BoxNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "box"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        }
+      }
+    },
+    "TextNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "runs"
+      ],
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TextRun"
+          }
+        }
+      }
+    },
+    "ImageNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
+        "src": {
+          "$ref": "#/$defs/Id",
+          "description": "Key into the render option `images`."
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "Inline image bytes (JPEG, PNG or SVG), base64-encoded; a `data:<mime>;base64,` URL is also accepted."
+        },
+        "fit": {
+          "enum": [
+            "fill",
+            "contain",
+            "cover",
+            "none"
+          ],
+          "default": "fill"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "src"
+          ],
+          "not": {
+            "required": [
+              "data"
+            ]
+          }
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "not": {
+            "required": [
+              "src"
+            ]
+          }
+        }
+      ]
+    },
+    "TableNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "columns",
+        "rows"
+      ],
+      "properties": {
+        "type": {
+          "const": "table"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ColumnSpec"
+          }
+        },
+        "headerRows": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TableRow"
+          }
+        }
+      }
+    },
+    "PageBreakNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "pageBreak"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        }
+      }
+    },
+    "SpacerNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "spacer"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        }
+      }
+    },
+    "TrackBreadth": {
+      "description": "Grid track breadth: points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\".",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "$ref": "#/$defs/Percent"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?fr$"
+        },
+        {
+          "enum": [
+            "auto",
+            "min-content",
+            "max-content"
+          ]
+        }
+      ]
+    },
+    "TemplateTrack": {
+      "description": "Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TrackSize"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repeat",
+            "tracks"
+          ],
+          "properties": {
+            "repeat": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                {
+                  "enum": [
+                    "auto-fill",
+                    "auto-fit"
+                  ]
+                }
+              ]
+            },
+            "tracks": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/TrackSize"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

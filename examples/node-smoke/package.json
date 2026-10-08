@@ -5,9 +5,14 @@
   "description": "Consumes the local inkoxide npm package the way a client app does.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "tsc --noEmit && node --test test/*.test.mjs"
   },
   "dependencies": {
-    "inkoxide": "file:../../npm"
+    "inkoxide": "file:../../npm",
+    "@inkoxide/schema": "file:../../npm-schema"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "typescript": "5.9.3"
   }
 }

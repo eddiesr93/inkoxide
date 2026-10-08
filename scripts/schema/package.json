@@ -1,0 +1,11 @@
+{
+  "name": "inkoxide-schema-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev tooling that generates npm-schema/ from schema/document.v1.json.",
+  "type": "module",
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "json-schema-to-typescript": "16.0.0"
+  }
+}

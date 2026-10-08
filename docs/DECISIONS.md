@@ -933,3 +933,47 @@ surface should be additive, so the shape has to be settled now.
   must update `npm/index.d.ts`, `docs/API.md` and this mapping in the
   same commit.
 
+
+## ADR-043 — `@inkoxide/schema`: generated types, bundled JSON Schema
+
+**Context.** The client builds documents in TypeScript and wants to
+type-check them and validate them in the browser before a round trip
+to the engine. The JSON Schema is the contract (ADR-003), so the types
+should come from it, not be written a second time.
+
+**Decision.**
+- `npm-schema/` is the package `@inkoxide/schema` (1.0.0, not
+  published).
+  - `index.d.ts` is generated from `schema/document.v1.json` by
+    `json-schema-to-typescript` 16.0.0, a pinned dev dependency of
+    `scripts/schema/`, through `scripts/schema/gen-ts.sh`.
+  - `document.v1.json` is a copy of the schema.
+  - `index.js` is hand-written. It exports `SCHEMA_VERSION`, `schema`
+    and `enginePath`.
+  - Generated files are checked in. `scripts/ci.sh` regenerates them
+    and fails on any diff.
+- The generator normalises the schema for TypeScript only:
+  - The root type is named `Document`, and every `$defs` entry keeps
+    its key as its type name.
+  - `Node` becomes a plain union of its variants.
+  - A `$ref` with a sibling `description` is wrapped in `allOf`, so the
+    named type is reused rather than copied under a new name.
+  - "Exactly one of" constraints (`oneOf` of `required` clauses), such
+    as `text`/`placeholder` and `src`/`data`, are dropped. TypeScript
+    cannot express them without index signatures that would accept any
+    property.
+- `Node` in the schema gains `discriminator: { propertyName: "type" }`.
+  - It is an annotation, ignored by draft 2020-12 validators, so it is
+    not a breaking change.
+  - With ajv's `discriminator: true`, errors are reported only for the
+    node type named by `type`, at the same paths as the engine.
+    `examples/node-smoke` checks this.
+- `enginePath(ajvError)` converts ajv's JSON Pointer to the engine's
+  path syntax. For `additionalProperties` and `required` it appends the
+  property name, as the engine does. The cases where the two still
+  differ are listed in `npm-schema/README.md`.
+
+**Consequences.**
+- A schema change needs `scripts/schema/gen-ts.sh`, or CI fails.
+- Regenerating needs pnpm and access to the npm registry. The engine
+  build does not.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Validates every fixtures/docs/*.json against schema/document.v1.json.
+"""Validates every fixtures/docs/*.json, and every ```json block in
+schema/EXAMPLES.md, against schema/document.v1.json.
 
 Together with crates/core/tests/schema_parity.rs this keeps the JSON Schema
 (the contract) and the Rust structs in agreement.
@@ -16,14 +17,17 @@ schema = json.loads((root / "schema/document.v1.json").read_text())
 Draft202012Validator.check_schema(schema)
 validator = Draft202012Validator(schema)
 
+docs = [(p.name, json.loads(p.read_text())) for p in sorted((root / "fixtures/docs").glob("*.json"))]
+examples = (root / "schema/EXAMPLES.md").read_text().split("```json\n")[1:]
+docs += [(f"EXAMPLES.md #{i + 1}", json.loads(b.split("\n```")[0])) for i, b in enumerate(examples)]
+
 failed = 0
-docs = sorted((root / "fixtures/docs").glob("*.json"))
-for doc in docs:
-    errors = sorted(validator.iter_errors(json.loads(doc.read_text())), key=lambda e: list(e.path))
+for name, doc in docs:
+    errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
     for e in errors[:5]:
         path = "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in e.path)
-        print(f"{doc.name}: {path or '<root>'}: {e.message[:200]}")
+        print(f"{name}: {path or '<root>'}: {e.message[:200]}")
     failed += bool(errors)
 
-print(f"schema check: {len(docs) - failed}/{len(docs)} fixtures conform")
+print(f"schema check: {len(docs) - failed}/{len(docs)} documents conform ({len(examples)} from EXAMPLES.md)")
 sys.exit(1 if failed else 0)

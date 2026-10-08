@@ -24,3 +24,7 @@ first npm release (M5); after that, breaking changes bump `version`.
   `{repeat, tracks}` in `gridTemplateColumns`/`gridTemplateRows`
   (count, `auto-fill` or `auto-fit`); `gridAutoColumns`, `gridAutoRows`,
   `gridTemplateAreas`, `gridArea`, `justifyItems`, `justifySelf`.
+- Post-M7: `discriminator: { propertyName: "type" }` on `Node`. It is an
+  annotation only (draft 2020-12 ignores it); ajv with
+  `discriminator: true` uses it to report errors for the matching node
+  type only, with the same paths as the engine.

@@ -856,6 +856,9 @@
           ]
         }
       },
+      "discriminator": {
+        "propertyName": "type"
+      },
       "oneOf": [
         {
           "$ref": "#/$defs/BoxNode"

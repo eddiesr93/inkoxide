@@ -52,6 +52,18 @@ python3 scripts/gen-schema-doc.py --check
 step "schema conformance of fixtures"
 python3 scripts/check-schema.py
 
+step "@inkoxide/schema types up to date (npm-schema/)"
+if command -v pnpm >/dev/null; then
+  scripts/schema/gen-ts.sh >/dev/null
+  git diff --exit-code -- npm-schema/ || {
+    echo "npm-schema/ is stale: run scripts/schema/gen-ts.sh and commit the result"
+    exit 1
+  }
+  echo "npm-schema: up to date"
+else
+  echo "pnpm not installed; skipped"
+fi
+
 step "fixture outputs (qpdf --check)"
 if command -v qpdf >/dev/null; then
   for f in target/fixtures/*.pdf; do

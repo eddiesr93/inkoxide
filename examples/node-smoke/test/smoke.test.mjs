@@ -85,3 +85,47 @@ test('anything else is INTERNAL, and the process survives', async () => {
   // Still usable afterwards.
   assert.ok((await render(readFileSync(repo('fixtures/docs/invoice.json')))).length > 0);
 });
+
+test('a typed TypeScript document renders like the JSON fixture', async () => {
+  // Node strips the types; `tsc --noEmit` (pnpm test) checks them.
+  const { invoice } = await import('../invoice.ts');
+  const opts = { creationDate: '2026-10-08T00:00:00Z' };
+  const fromTs = await render(JSON.stringify(invoice), opts);
+  const fromJson = await render(readFileSync(repo('fixtures/docs/invoice.json')), opts);
+  assert.deepStrictEqual(fromTs, fromJson);
+});
+
+test('client-side ajv validation reports the engine paths', async () => {
+  const { default: Ajv2020 } = await import('ajv/dist/2020.js');
+  const { schema, enginePath } = await import('@inkoxide/schema');
+  const ink = await import('inkoxide');
+  const validateDoc = new Ajv2020({ discriminator: true, strict: false, validateFormats: false }).compile(schema);
+  const page = (child) => ({ version: 1, fonts: [], pages: [{ size: { width: 100, height: 100 }, children: [child] }] });
+  const cases = [
+    page({ type: 'box', colour: 1 }),
+    page({ type: 'box', style: { width: 'wide' } }),
+    page({ type: 'box', style: { flexDirection: 'diagonal' } }),
+    page({ type: 'nope' }),
+    page({ type: 'spacer', style: { opacity: 2 } }),
+    page({ type: 'box', children: [{ type: 'box', style: { padding: { left: 'x' } } }] }),
+    { version: 1, pages: [{ size: { width: 100 }, children: [] }] },
+  ];
+  for (const doc of cases) {
+    assert.strictEqual(validateDoc(doc), false);
+    const engine = ink.validate(JSON.stringify(doc)).map((e) => e.path);
+    assert.ok(engine.length > 0);
+    for (const e of validateDoc.errors) {
+      assert.ok(engine.includes(enginePath(e)) || e.keyword === 'discriminator', `${enginePath(e)} not in ${engine}`);
+    }
+  }
+});
+
+test('every document in schema/EXAMPLES.md renders', async () => {
+  const blocks = readFileSync(repo('schema/EXAMPLES.md'), 'utf8').split('```json\n').slice(1);
+  assert.strictEqual(blocks.length, 3);
+  for (const block of blocks) {
+    const doc = block.split('\n```')[0];
+    const pdf = await render(doc);
+    assert.strictEqual(Buffer.from(pdf.subarray(0, 5)).toString('latin1'), '%PDF-');
+  }
+});

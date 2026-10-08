@@ -35,6 +35,13 @@ scripts/ci.sh --quick  # fmt + tests + schema
   After rebuilding the binary, run `pnpm install --force`, because pnpm
   copies `file:` packages. The `INTERNAL` case prints a Rust panic
   message to stderr; that is expected.
+  The same package type-checks `invoice.ts` against `@inkoxide/schema`
+  (`tsc --noEmit`), renders it, and checks that the result is
+  byte-identical to `fixtures/docs/invoice.json`. It also renders every
+  document in `schema/EXAMPLES.md` and checks that ajv error paths match
+  the engine's.
+- `scripts/schema/gen-ts.sh`: regenerates `npm-schema/`. `ci.sh` fails
+  when the checked-in output is stale.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).
 
 ## Fuzzing
