@@ -48,19 +48,44 @@ class InkoxideError extends Error {
   }
 }
 
+// napi statuses that mean a JS value had the wrong type.
+const ARGUMENT_STATUSES = new Set([
+  'InvalidArg',
+  'ObjectExpected',
+  'StringExpected',
+  'NameExpected',
+  'FunctionExpected',
+  'NumberExpected',
+  'BooleanExpected',
+  'ArrayExpected',
+  'BigintExpected',
+  'DateExpected',
+  'ArrayBufferExpected',
+]);
+
+function engineError(code, path, message, cause) {
+  const err = new InkoxideError(code, path, message);
+  // Keep `message` the engine's text, as documented.
+  Object.defineProperty(err, 'message', { value: message, enumerable: false, writable: true });
+  if (cause) err.cause = cause;
+  return err;
+}
+
+// Every failure surfaces as an InkoxideError: the engine's own codes, or
+// INVALID_ARGUMENT for values napi could not convert, or INTERNAL.
 function wrapError(e) {
-  if (e && typeof e.message === 'string' && e.message.startsWith('{')) {
+  if (e instanceof InkoxideError) return e;
+  const text = e && typeof e.message === 'string' ? e.message : String(e);
+  if (text.startsWith('{')) {
     try {
-      const { code, path, message } = JSON.parse(e.message);
-      const err = new InkoxideError(code, path, message);
-      // Keep `message` the engine's text, as documented.
-      Object.defineProperty(err, 'message', { value: message, enumerable: false, writable: true });
-      return err;
+      const { code, path, message } = JSON.parse(text);
+      return engineError(code, path, message);
     } catch {
       /* not ours */
     }
   }
-  return e;
+  const code = e && ARGUMENT_STATUSES.has(e.code) ? 'INVALID_ARGUMENT' : 'INTERNAL';
+  return engineError(code, '', text, e);
 }
 
 function call(fn, args) {
@@ -92,4 +117,6 @@ exports.render = async (doc, options) => {
 };
 exports.renderSync = (doc, options) =>
   toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
-exports.version = () => native.version();
+exports.version = () => call(native.version, []);
+// Test hook (not public API): a panic behind the native boundary.
+Object.defineProperty(exports, '__testPanic', { value: () => call(native.__testPanic, []) });

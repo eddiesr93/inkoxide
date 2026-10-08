@@ -400,7 +400,7 @@ user asked that nothing be published and no hosted CI run.
 **Decision.** Native errors carry a JSON reason `{code, path, message}`;
 `npm/index.js` (hand-written, like `index.d.ts`) turns it into an
 `InkoxideError` with those properties. Engine panics are caught at the
-boundary (`catch_unwind`) and become `INTERNAL_ERROR`. Fonts live in a
+boundary (`catch_unwind`) and become `INTERNAL` (renamed from `INTERNAL_ERROR` in ADR-042). Fonts live in a
 process-wide `RwLock<FontStore>`; each render takes a snapshot (cloning
 `Arc`s), so `registerFont` never waits for a running render. Renders
 return a `Buffer` built from the engine's `Vec<u8>` without copying,
@@ -880,10 +880,56 @@ reviewer having to notice regressions.
 - `inkoxide` (core) warns on `missing_docs`; every public item is
   documented, and fallible functions have an `# Errors` section.
 - `ValidationCode` and `InkoxideError` are `#[non_exhaustive]`, so new
-  codes are not breaking changes. `RenderOptions` stays exhaustive so
-  callers can use struct-update syntax.
+  codes are not breaking changes. (`RenderOptions` stayed exhaustive
+  here; ADR-042 later made it `#[non_exhaustive]` with builders.)
 - The crate-wide `allow(dead_code)` from M1 is gone. Schema fields that
   are accepted but unused carry an `#[expect(dead_code, reason = …)]`.
 - The Node crate allows `needless_pass_by_value`, `missing_errors_doc`
   and `missing_debug_implementations`: napi exports take owned JS values,
   and their errors are documented in `npm/index.d.ts`.
+
+## ADR-042 — API freeze for integration (post-M7)
+
+**Context.** The client (`pdf-studio`) is about to depend on the engine
+through the local npm package. Every later change to the Rust or Node
+surface should be additive, so the shape has to be settled now.
+
+**Decision.**
+- **Rust.** `RenderOptions` and `InputFormat` are `#[non_exhaustive]`,
+  like `ValidationCode` and `InkoxideError` (ADR-041). Other crates
+  build options from `RenderOptions::default()` and `with_*` setters
+  (`with_compress`, `with_compression_level`, `with_creation_date`,
+  `with_threads`, `with_subset_fonts`, `with_pdf_a`); the fields stay
+  public for reading and assignment. A new option is then a minor
+  version, not a breaking one.
+- **Node options** are the Rust options in camelCase (`compress`,
+  `compressionLevel`, `creationDate`, `threads`, `subsetFonts`, `pdfA`)
+  plus the per-render `format` and `images`. Defaults are documented in
+  `npm/index.d.ts`. `compressionLevel` outside 0–9 is
+  `INVALID_ARGUMENT`.
+- **Error codes.** Every Node failure is an `InkoxideError` with `code`,
+  `path` and `message`. The set is closed: the `ValidationCode` strings,
+  the resource codes (`FONT_ERROR`, `IMAGE_ERROR`, `LAYOUT_ERROR`,
+  `PDF_ERROR`), `INVALID_ARGUMENT` for JS values napi cannot convert
+  or that are out of range, and `INTERNAL` for engine bugs, including
+  caught panics. `INTERNAL_ERROR` is renamed `INTERNAL` in Rust too, so
+  both surfaces print the same code. `index.d.ts` lists them as string
+  literal unions (`ValidationCode`, `ErrorCode`).
+- **`version()`** returns `{ engine, schema, gitSha }`. `gitSha` is the
+  12-digit commit the native binary was built from (`build.rs` runs
+  `git rev-parse`), or `"unknown"` outside a git checkout, so a client
+  can log exactly which build produced a PDF.
+- **Panic test hook.** The native module exports a hidden `__testPanic`
+  that panics behind the same `catch_unwind` boundary as `render`. It
+  is non-enumerable in `index.js`, absent from `index.d.ts`, and exists
+  only so the Node tests can prove a panic becomes `INTERNAL` without
+  crashing the process.
+
+**Consequences.**
+- Struct-literal construction of `RenderOptions` and exhaustive matches
+  on `InputFormat` no longer compile outside the crate. The CLI, tests
+  and fuzz targets use the builders.
+- `docs/API.md` describes both surfaces side by side. Any change to one
+  must update `npm/index.d.ts`, `docs/API.md` and this mapping in the
+  same commit.
+

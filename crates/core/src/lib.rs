@@ -40,6 +40,7 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Serialisation of the document tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum InputFormat {
     /// JSON text (UTF-8).
     #[default]
@@ -50,7 +51,19 @@ pub enum InputFormat {
 }
 
 /// Output settings for [`render`]; the document describes content only.
+///
+/// Fields are public to read and assign; the type is `#[non_exhaustive]`, so
+/// build it from [`RenderOptions::default`] and the `with_*` setters:
+///
+/// ```
+/// let options = inkoxide::RenderOptions::default()
+///     .with_threads(1)
+///     .with_creation_date("2026-01-01T00:00:00Z")
+///     .with_pdf_a(true);
+/// assert_eq!(options.threads, Some(1));
+/// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RenderOptions {
     /// Flate-compress content streams (default `true`).
     pub compress: bool,
@@ -81,6 +94,50 @@ impl Default for RenderOptions {
             subset_fonts: true,
             pdf_a: false,
         }
+    }
+}
+
+impl RenderOptions {
+    /// Sets [`compress`](Self::compress).
+    #[must_use]
+    pub fn with_compress(mut self, compress: bool) -> Self {
+        self.compress = compress;
+        self
+    }
+
+    /// Sets [`compression_level`](Self::compression_level) (clamped to 9).
+    #[must_use]
+    pub fn with_compression_level(mut self, level: u32) -> Self {
+        self.compression_level = level;
+        self
+    }
+
+    /// Sets [`creation_date`](Self::creation_date).
+    #[must_use]
+    pub fn with_creation_date(mut self, date: impl Into<String>) -> Self {
+        self.creation_date = Some(date.into());
+        self
+    }
+
+    /// Sets [`threads`](Self::threads); `None` uses the shared pool.
+    #[must_use]
+    pub fn with_threads(mut self, threads: impl Into<Option<usize>>) -> Self {
+        self.threads = threads.into();
+        self
+    }
+
+    /// Sets [`subset_fonts`](Self::subset_fonts).
+    #[must_use]
+    pub fn with_subset_fonts(mut self, subset: bool) -> Self {
+        self.subset_fonts = subset;
+        self
+    }
+
+    /// Sets [`pdf_a`](Self::pdf_a).
+    #[must_use]
+    pub fn with_pdf_a(mut self, pdf_a: bool) -> Self {
+        self.pdf_a = pdf_a;
+        self
     }
 }
 

@@ -1,12 +1,57 @@
 // Public contract of the `inkoxide` npm package. Hand-written; keep in
 // sync with crates/node/src/lib.rs and npm/index.js.
 
+/**
+ * Codes of document problems, from `validate` and from a failed `render`
+ * (mirrors Rust `ValidationCode`). New codes may be added in minor
+ * versions; handle unknown strings.
+ */
+export type ValidationCode =
+  | 'PARSE_ERROR'
+  | 'UNSUPPORTED_VERSION'
+  | 'UNKNOWN_FIELD'
+  | 'MISSING_FIELD'
+  | 'INVALID_TYPE'
+  | 'INVALID_VALUE'
+  | 'OUT_OF_RANGE'
+  | 'DUPLICATE_ID'
+  | 'UNKNOWN_FONT'
+  | 'FONT_NOT_REGISTERED'
+  | 'UNKNOWN_IMAGE'
+  | 'INVALID_IMAGE'
+  | 'IMAGE_TOO_LARGE'
+  | 'STYLE_NOT_APPLICABLE'
+  | 'INVALID_TABLE'
+  | 'INVALID_NODE'
+  | 'UNKNOWN_ANCHOR';
+
+/**
+ * Every `InkoxideError.code`: a document problem, a resource failure
+ * (mirrors Rust `InkoxideError::code`), a JS argument napi could not
+ * convert or that is out of range (`INVALID_ARGUMENT`), or a bug inside
+ * the engine (`INTERNAL`; the process keeps running).
+ */
+export type ErrorCode =
+  | ValidationCode
+  | 'FONT_ERROR'
+  | 'IMAGE_ERROR'
+  | 'LAYOUT_ERROR'
+  | 'PDF_ERROR'
+  | 'INVALID_ARGUMENT'
+  | 'INTERNAL';
+
+/** Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. */
 export interface RenderOptions {
   /** Input encoding of `doc`. Default `"json"`. */
   format?: 'json' | 'msgpack';
   /** Flate-compress page content streams. Default `true`. */
   compress?: boolean;
-  /** RFC 3339 timestamp; a fixed value makes output byte-for-byte deterministic. */
+  /** Flate level 0–9, used when `compress` is on. Default `6`. */
+  compressionLevel?: number;
+  /**
+   * RFC 3339 timestamp written as the creation date; overrides
+   * `meta.creationDate`. With neither set no date is written. Default: none.
+   */
   creationDate?: string;
   /** Worker threads for this render. Default: all cores. `1` renders on one thread. */
   threads?: number;
@@ -23,16 +68,17 @@ export interface RenderOptions {
 
 export interface ValidationError {
   /** Stable machine-readable code, e.g. `"UNKNOWN_FONT"`. */
-  code: string;
+  code: ValidationCode;
   /** Location in the document, e.g. `"pages[0].children[3].runs[1].font"`. */
   path: string;
+  /** Human-readable description. */
   message: string;
 }
 
 /** Thrown (or rejected) by every function on failure. */
 export class InkoxideError extends Error {
   readonly name: 'InkoxideError';
-  readonly code: string;
+  readonly code: ErrorCode;
   /** Empty for errors that are not tied to a document location. */
   readonly path: string;
 }
@@ -54,4 +100,12 @@ export function validate(
 export function render(doc: Uint8Array | string, options?: RenderOptions): Promise<Uint8Array>;
 /** Renders on the calling thread (CLIs, tests). */
 export function renderSync(doc: Uint8Array | string, options?: RenderOptions): Uint8Array;
-export function version(): { engine: string; schema: number };
+export interface Version {
+  /** Engine version, e.g. `"0.1.0"`. */
+  engine: string;
+  /** The document `version` this engine reads. */
+  schema: number;
+  /** Commit the native binary was built from (12 hex digits), or `"unknown"`. */
+  gitSha: string;
+}
+export function version(): Version;

@@ -156,7 +156,7 @@ impl InkoxideError {
             Self::Image(_) => "IMAGE_ERROR",
             Self::Layout(_) => "LAYOUT_ERROR",
             Self::Pdf(_) => "PDF_ERROR",
-            Self::Internal(_) => "INTERNAL_ERROR",
+            Self::Internal(_) => "INTERNAL",
         }
     }
 }

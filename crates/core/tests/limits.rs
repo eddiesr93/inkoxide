@@ -22,10 +22,7 @@ fn doc(children: &str) -> String {
 }
 
 fn render(doc: &str, threads: Option<usize>) -> Result<Vec<u8>, InkoxideError> {
-    let options = RenderOptions {
-        threads,
-        ..Default::default()
-    };
+    let options = RenderOptions::default().with_threads(threads);
     inkoxide::render(
         doc.as_bytes(),
         InputFormat::Json,

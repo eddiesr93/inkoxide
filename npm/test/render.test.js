@@ -21,6 +21,7 @@ test('version', () => {
   const v = ink.version();
   assert.strictEqual(v.schema, 1);
   assert.match(v.engine, /^\d+\.\d+\.\d+/);
+  assert.match(v.gitSha, /^([0-9a-f]{12}|unknown)$/);
 });
 
 test('render resolves to a deterministic PDF', async () => {
@@ -90,4 +91,39 @@ test('fonts can be unregistered', () => {
   assert.strictEqual(ink.unregisterFont('Tmp'), true);
   assert.strictEqual(ink.unregisterFont('Tmp'), false);
   assert.throws(() => ink.registerFont('Bad', new Uint8Array([1, 2, 3])), (e) => e.code === 'FONT_ERROR');
+});
+
+test('wrong argument types are INVALID_ARGUMENT errors', async () => {
+  const isArgError = (e) => {
+    assert.ok(e instanceof ink.InkoxideError, `${e}`);
+    assert.strictEqual(e.code, 'INVALID_ARGUMENT');
+    assert.strictEqual(e.path, '');
+    return true;
+  };
+  assert.throws(() => ink.renderSync(42), isArgError);
+  assert.throws(() => ink.renderSync('{}', { threads: 'x' }), isArgError);
+  assert.throws(() => ink.registerFont(1, 2), isArgError);
+  assert.throws(() => ink.validate({}), isArgError);
+  await assert.rejects(ink.render(42), isArgError);
+  await assert.rejects(ink.render('{}', { compressionLevel: 12 }), (e) => {
+    assert.strictEqual(e.code, 'INVALID_ARGUMENT');
+    assert.strictEqual(e.path, 'options.compressionLevel');
+    return true;
+  });
+});
+
+test('engine failures are coded errors, never a crash', async () => {
+  // A panic behind the boundary becomes INTERNAL.
+  assert.throws(() => ink.__testPanic(), (e) => e instanceof ink.InkoxideError && e.code === 'INTERNAL');
+  // Hostile input is a structured error.
+  const deep = '{"type":"box","children":['.repeat(5000) + ']}'.repeat(5000);
+  await assert.rejects(ink.render(`{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[${deep}]}]}`), ink.InkoxideError);
+  await assert.rejects(ink.render(new Uint8Array([0xff, 0x00, 0x13])), (e) => e.code === 'PARSE_ERROR');
+});
+
+test('compressionLevel changes the output size', () => {
+  const doc = fixture('docs/invoice.json');
+  const fast = ink.renderSync(doc, { compressionLevel: 0 });
+  const best = ink.renderSync(doc, { compressionLevel: 9 });
+  assert.ok(best.length < fast.length, `${best.length} vs ${fast.length}`);
 });

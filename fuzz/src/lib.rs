@@ -104,12 +104,10 @@ fn render_with(
     pdf_a: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
     let errors = inkoxide::validate(doc, format, &FONTS, images);
-    let options = RenderOptions {
-        compress: false,
-        threads: Some(1),
-        pdf_a,
-        ..Default::default()
-    };
+    let options = RenderOptions::default()
+        .with_compress(false)
+        .with_threads(1)
+        .with_pdf_a(pdf_a);
     let result = inkoxide::render(doc, format, &options, &FONTS, images);
     match &result {
         Ok(pdf) => {

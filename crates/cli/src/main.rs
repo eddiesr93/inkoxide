@@ -192,14 +192,12 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         } => {
             let (fonts, images) = load_resources(&res)?;
             let input = read(&doc)?;
-            let opts = RenderOptions {
-                compress: !no_compress,
-                creation_date,
-                threads,
-                subset_fonts: !res.full_fonts,
-                pdf_a,
-                ..Default::default()
-            };
+            let mut opts = RenderOptions::default()
+                .with_compress(!no_compress)
+                .with_threads(threads)
+                .with_subset_fonts(!res.full_fonts)
+                .with_pdf_a(pdf_a);
+            opts.creation_date = creation_date;
             let start = Instant::now();
             let pdf = match inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
             {
@@ -230,11 +228,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             threads,
         } => {
             let input = read(&doc)?;
-            let opts = RenderOptions {
-                threads,
-                subset_fonts: !res.full_fonts,
-                ..Default::default()
-            };
+            let opts = RenderOptions::default()
+                .with_threads(threads)
+                .with_subset_fonts(!res.full_fonts);
             // Cold start: font registration plus the first render, which
             // also fills the process-wide caches.
             let cold = Instant::now();

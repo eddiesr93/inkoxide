@@ -93,6 +93,8 @@ pub struct RenderOptions {
     pub format: Option<String>,
     /// Flate-compress content streams (default `true`).
     pub compress: Option<bool>,
+    /// Flate level 0–9 used when `compress` is set (default 6).
+    pub compression_level: Option<u32>,
     /// RFC 3339 timestamp; a fixed value gives byte-identical output.
     pub creation_date: Option<String>,
     /// Worker threads for this render (default: all cores).
@@ -114,8 +116,12 @@ pub struct ValidationError {
 
 #[napi(object)]
 pub struct Version {
+    /// Engine (crate) version, e.g. `"0.1.0"`.
     pub engine: String,
+    /// The document `version` this engine reads.
     pub schema: u32,
+    /// Commit the binding was built from (12 hex digits), or `"unknown"`.
+    pub git_sha: String,
 }
 
 /// Everything a render needs, owned, so it can move to a worker thread.
@@ -136,6 +142,15 @@ impl RenderJob {
             format = input_format(o.format.as_deref())?;
             if let Some(c) = o.compress {
                 core.compress = c;
+            }
+            if let Some(level) = o.compression_level {
+                if level > 9 {
+                    return Err(invalid_arg(
+                        "options.compressionLevel",
+                        "must be between 0 and 9",
+                    ));
+                }
+                core.compression_level = level;
             }
             core.creation_date = o.creation_date;
             if let Some(t) = o.threads {
@@ -175,7 +190,7 @@ impl RenderJob {
                 &self.images,
             )
         }))
-        .map_err(|_| engine_error("INTERNAL_ERROR", "", "the engine panicked"))?
+        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?
         .map_err(from_engine)
     }
 }
@@ -198,7 +213,7 @@ impl Task for RenderJob {
 pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
     let mut fonts = FONTS
         .write()
-        .map_err(|_| engine_error("INTERNAL_ERROR", "", "font registry poisoned"))?;
+        .map_err(|_| engine_error("INTERNAL", "", "font registry poisoned"))?;
     fonts.register(id, data.to_vec()).map_err(from_engine)
 }
 
@@ -228,7 +243,7 @@ pub fn validate(
     let errors = catch_unwind(AssertUnwindSafe(|| {
         inkoxide::validate(&bytes, format, &fonts, &store)
     }))
-    .map_err(|_| engine_error("INTERNAL_ERROR", "", "the engine panicked"))?;
+    .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?;
     Ok(errors
         .into_iter()
         .filter(|e| check_images || e.code != inkoxide::ValidationCode::UnknownImage)
@@ -264,5 +279,16 @@ pub fn version() -> Version {
     Version {
         engine: inkoxide::ENGINE_VERSION.to_string(),
         schema: inkoxide::SCHEMA_VERSION,
+        git_sha: env!("INKOXIDE_GIT_SHA").to_string(),
     }
+}
+
+/// Panics inside `catch_unwind`, exactly like an engine bug would, so the
+/// tests can check that a panic surfaces as an `INTERNAL` error instead of
+/// taking the process down. Not part of the public API.
+#[doc(hidden)]
+#[napi(js_name = "__testPanic")]
+pub fn test_panic() -> Result<()> {
+    catch_unwind(|| -> () { panic!("test panic") })
+        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))
 }

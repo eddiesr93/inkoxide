@@ -60,16 +60,10 @@ fn all_fixtures_render() {
         let errors = inkoxide::validate(&input, InputFormat::Json, &fonts, &images);
         assert!(errors.is_empty(), "{name}: {errors:#?}");
 
-        let opts = RenderOptions {
-            creation_date: Some("2026-10-08T00:00:00Z".into()),
-            ..Default::default()
-        };
+        let opts = RenderOptions::default().with_creation_date("2026-10-08T00:00:00Z");
         let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        let single = RenderOptions {
-            threads: Some(1),
-            ..opts.clone()
-        };
+        let single = opts.clone().with_threads(1);
         let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
         assert!(a == b, "{name}: output is not deterministic");
 
@@ -110,17 +104,12 @@ fn pdf_a_fixtures() {
     for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
         let name = doc.file_stem().unwrap().to_str().unwrap();
         let input = fs::read(&doc).unwrap();
-        let opts = RenderOptions {
-            creation_date: Some("2026-10-08T12:30:00+03:00".into()),
-            pdf_a: true,
-            ..Default::default()
-        };
+        let opts = RenderOptions::default()
+            .with_creation_date("2026-10-08T12:30:00+03:00")
+            .with_pdf_a(true);
         let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        let single = RenderOptions {
-            threads: Some(1),
-            ..opts.clone()
-        };
+        let single = opts.clone().with_threads(1);
         let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
         assert!(a == b, "{name}: PDF/A output is not deterministic");
         let has = |needle: &[u8]| a.windows(needle.len()).any(|w| w == needle);
@@ -191,10 +180,7 @@ fn output_is_independent_of_thread_count() {
         paras.join(",")
     );
     let render = |threads| {
-        let opts = RenderOptions {
-            threads: Some(threads),
-            ..Default::default()
-        };
+        let opts = RenderOptions::default().with_threads(threads);
         inkoxide::render(doc.as_bytes(), InputFormat::Json, &opts, &fonts, &images).unwrap()
     };
     let one = render(1);
