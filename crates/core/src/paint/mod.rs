@@ -7,7 +7,7 @@
 mod boxes;
 mod shapes;
 
-pub(crate) use boxes::{paint_flow, NoContentPainter};
+pub(crate) use boxes::{paint_flow, ContentPainter};
 
 use crate::schema::Color;
 
@@ -77,9 +77,32 @@ pub(crate) enum Op {
         width: f32,
         dash: Option<Dash>,
     },
+    Text(TextOp),
     /// Sets the absolute fill and stroke alpha (cumulative opacity is
     /// computed by the painter; PDF `gs` does not multiply).
     SetOpacity(f32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TextGlyph {
+    pub id: u16,
+    /// Pen position relative to the op's origin, in points.
+    pub x: f32,
+    /// Vertical offset, points, positive up.
+    pub y_offset: f32,
+}
+
+/// A run of glyphs in one font, size and colour on one baseline.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TextOp {
+    pub font: crate::fonts::FontKey,
+    pub size: f32,
+    /// RGB; alpha is applied through `SetOpacity`.
+    pub color: Color,
+    /// Baseline origin (layout space).
+    pub x: f32,
+    pub y: f32,
+    pub glyphs: Vec<TextGlyph>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -20,6 +20,7 @@ mod layout;
 mod paint;
 mod pdf;
 mod schema;
+mod text;
 mod validate;
 
 pub use error::{InkoxideError, ValidationCode, ValidationError};
@@ -27,9 +28,11 @@ pub use fonts::FontStore;
 pub use images::ImageStore;
 pub use schema::SCHEMA_VERSION;
 
-use layout::{LayoutEngine, NoContent, TaffyLayout, Tree};
+use fonts::FontSet;
+use layout::{LayoutEngine, TaffyLayout, Tree};
 use paint::{Op, PageContent};
 use pdf::{DocumentOut, PdfSink, PdfWriterSink};
+use text::{PageNumbers, RustybuzzShaper, TextCache, TextPainter, UnicodeMap};
 
 /// Engine version (the crate version).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -107,10 +110,21 @@ pub fn render(
             .and_then(date::parse_rfc3339),
     };
 
+    let font_set = FontSet::load(&document, fonts)?;
+    let mut text = TextCache::new(
+        RustybuzzShaper::new(&font_set),
+        document.meta.lang.as_deref(),
+    );
+    let total = document.pages.len() as u32;
     let mut pages = Vec::with_capacity(document.pages.len());
-    for spec in &document.pages {
-        pages.push(render_page_spec(spec)?);
+    for (i, spec) in document.pages.iter().enumerate() {
+        let numbers = PageNumbers {
+            current: i as u32 + 1,
+            total,
+        };
+        pages.push(render_page_spec(spec, &font_set, &mut text, numbers)?);
     }
+    let unicode: UnicodeMap = text.shaper.unicode;
 
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
@@ -119,6 +133,8 @@ pub fn render(
         pages: &pages,
         meta: &document.meta,
         creation_date,
+        fonts: &font_set,
+        unicode: &unicode,
     })
 }
 
@@ -133,13 +149,18 @@ pub fn debug_raw_parse_error(doc: &[u8]) -> Option<String> {
 
 /// M1: lays out one page template's flow and paints it on a single page.
 /// Content taller than the content box is clipped (pagination is M3).
-fn render_page_spec(spec: &schema::PageSpec) -> Result<PageContent, InkoxideError> {
+fn render_page_spec(
+    spec: &schema::PageSpec,
+    fonts: &FontSet<'_>,
+    text: &mut TextCache<'_, RustybuzzShaper<'_, '_>>,
+    numbers: PageNumbers,
+) -> Result<PageContent, InkoxideError> {
     let m = spec.margin;
     let content_w = spec.size.width - m.left - m.right;
     let content_h = spec.size.height - m.top - m.bottom;
 
     let mut tree = Tree::build(&spec.children);
-    TaffyLayout.compute(&mut tree, content_w, &mut NoContent)?;
+    TaffyLayout.compute(&mut tree, content_w, content_h, text)?;
 
     let mut page = PageContent::new(spec.size.width, spec.size.height);
     if let Some(bg) = spec.background {
@@ -160,13 +181,14 @@ fn render_page_spec(spec: &schema::PageSpec) -> Result<PageContent, InkoxideErro
             m.left, m.top, content_w, content_h,
         )));
     }
-    paint::paint_flow(
-        &tree,
-        m.left,
-        m.top,
-        &mut paint::NoContentPainter,
-        &mut page.ops,
-    );
+    let mut painter = TextPainter {
+        cache: text,
+        fonts,
+        numbers,
+        line_range: None,
+        line_shift: 0.0,
+    };
+    paint::paint_flow(&tree, m.left, m.top, &mut painter, &mut page.ops);
     if overflow {
         page.ops.push(Op::Restore);
     }

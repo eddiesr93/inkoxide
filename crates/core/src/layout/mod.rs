@@ -138,11 +138,13 @@ impl LeafMeasure for NoContent {
 /// Dependency firewall around the flex/grid engine (§5.1).
 pub(crate) trait LayoutEngine {
     /// Lays out `tree` in a column of the given `width` and unbounded
-    /// height, writing absolute geometry into every node.
+    /// height (at least `min_height`, so `flexGrow` can fill a short page),
+    /// writing absolute geometry into every node.
     fn compute(
         &mut self,
         tree: &mut Tree<'_>,
         width: f32,
+        min_height: f32,
         measure: &mut dyn LeafMeasure,
     ) -> Result<(), InkoxideError>;
 }
@@ -158,6 +160,7 @@ impl LayoutEngine for TaffyLayout {
         &mut self,
         tree: &mut Tree<'_>,
         width: f32,
+        min_height: f32,
         measure: &mut dyn LeafMeasure,
     ) -> Result<(), InkoxideError> {
         let mut taffy: TaffyTree<NodeIdx> = TaffyTree::with_capacity(tree.nodes.len());
@@ -174,6 +177,10 @@ impl LayoutEngine for TaffyLayout {
                     size: TSize {
                         width: taffy::style::Dimension::length(width),
                         height: taffy::style::Dimension::auto(),
+                    },
+                    min_size: TSize {
+                        width: taffy::style::LengthPercentageAuto::auto(),
+                        height: taffy::style::LengthPercentageAuto::length(min_height),
                     },
                     ..Default::default()
                 };

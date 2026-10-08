@@ -9,6 +9,13 @@ absolute numbers as upper bounds.
 |---|---|---|---|---|
 | M1 | `empty` | 1 | 13 µs | |
 | M1 | `boxes-nested` | 1 | 0.60 ms | ~60 boxes, borders, radii; includes Flate level 6 |
+| M2 | `invoice` | 1 | 2.4 ms | 2 fonts embedded in full (414 KB); target < 3 ms |
+| M2 | `text-wrapping` | 1 | 3.7 ms | 5 fonts embedded, ~20 paragraphs |
+| M2 | `text-justify-hyphenate-ro` | 1 | 2.5 ms | |
+
+M2 numbers are `inkoxide bench --iterations 50` medians (release). The
+first render of a process is slower (~45 ms here) because each font program
+is Flate-compressed once and then cached (ADR-017).
 
 ## Targets (§9)
 

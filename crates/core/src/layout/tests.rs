@@ -12,7 +12,7 @@ fn doc(children: &str) -> Document {
 fn layout(d: &Document, width: f32) -> Vec<(f32, f32, f32, f32)> {
     let mut tree = Tree::build(&d.pages[0].children);
     TaffyLayout
-        .compute(&mut tree, width, &mut NoContent)
+        .compute(&mut tree, width, 0.0, &mut NoContent)
         .unwrap();
     tree.nodes
         .iter()
@@ -65,7 +65,7 @@ fn borders_take_space_and_positions_are_absolute() {
     );
     let mut tree = Tree::build(&d.pages[0].children);
     TaffyLayout
-        .compute(&mut tree, 100.0, &mut NoContent)
+        .compute(&mut tree, 100.0, 0.0, &mut NoContent)
         .unwrap();
     let outer = tree.nodes[1].geo;
     assert_eq!((outer.y, outer.h), (7.0, 15.0));
@@ -106,4 +106,17 @@ fn grid_tracks_and_spans() {
     assert_eq!(g[3], (60.0, 0.0, 90.0, 20.0));
     assert_eq!(g[4], (160.0, 0.0, 90.0, 20.0));
     assert_eq!(g[5], (60.0, 30.0, 190.0, 20.0));
+}
+
+#[test]
+fn root_min_height_lets_flex_grow_fill_the_page() {
+    let d = doc(
+        r#"{"type":"box","style":{"height":10}},{"type":"box","style":{"flexGrow":1}},{"type":"box","style":{"height":10}}"#,
+    );
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 100.0, 300.0, &mut NoContent)
+        .unwrap();
+    assert_eq!(tree.nodes[0].geo.h, 300.0);
+    assert_eq!(tree.nodes[3].geo.y, 290.0);
 }

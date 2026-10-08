@@ -15,6 +15,10 @@ thiserror.workspace = true
 tracing.workspace = true
 pdf-writer.workspace = true
 taffy.workspace = true
+rustybuzz.workspace = true
+ttf-parser.workspace = true
+unicode-linebreak.workspace = true
+hypher.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]

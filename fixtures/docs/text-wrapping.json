@@ -1,0 +1,1130 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Text wrapping",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "Inter-Italic",
+   "family": "Inter",
+   "style": "italic"
+  },
+  {
+   "id": "RobotoMono-Regular",
+   "family": "Roboto Mono"
+  },
+  {
+   "id": "NotoSans-Regular",
+   "family": "Noto Sans"
+  }
+ ],
+ "fallbackFonts": [
+  "NotoSans-Regular"
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Text wrapping",
+       "font": "Inter-Bold",
+       "size": 22,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Alignment, mixed runs, decorations, spacing, truncation and whitespace modes.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 10,
+      "margin": {
+       "bottom": 10
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "LEFT",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide turns a declarative document tree into a PDF file. Every length is already resolved, every font is registered explicitly, and the same input always produces the same bytes. Paragraphs wrap at break opportunities defined by Unicode, and long words are hyphenated when asked to.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "lineHeight": 1.4
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RIGHT",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide turns a declarative document tree into a PDF file. Every length is already resolved, every font is registered explicitly, and the same input always produces the same bytes. Paragraphs wrap at break opportunities defined by Unicode, and long words are hyphenated when asked to.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "lineHeight": 1.4,
+          "textAlign": "right"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 10,
+      "margin": {
+       "bottom": 10
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "CENTER",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide turns a declarative document tree into a PDF file. Every length is already resolved, every font is registered explicitly, and the same input always produces the same bytes. Paragraphs wrap at break opportunities defined by Unicode, and long words are hyphenated when asked to.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "lineHeight": 1.4,
+          "textAlign": "center"
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "JUSTIFY",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide turns a declarative document tree into a PDF file. Every length is already resolved, every font is registered explicitly, and the same input always produces the same bytes. Paragraphs wrap at break opportunities defined by Unicode, and long words are hyphenated when asked to.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "lineHeight": 1.4,
+          "textAlign": "justify"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 4,
+      "padding": {
+       "top": 8,
+       "right": 10,
+       "bottom": 10,
+       "left": 10
+      },
+      "backgroundColor": [
+       0.97,
+       0.97,
+       0.98,
+       1
+      ],
+      "borderRadius": 4,
+      "flexGrow": 1,
+      "flexBasis": 0
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "MIXED RUNS",
+         "font": "Inter-Bold",
+         "size": 7,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ],
+         "letterSpacing": 0.8
+        }
+       ],
+       "style": {
+        "margin": {
+         "bottom": 3
+        }
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Runs carry their own ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "font",
+         "font": "Inter-Bold",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": ", ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "style",
+         "font": "Inter-Italic",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": ", ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "size",
+         "font": "Inter-Regular",
+         "size": 14,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": ", ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "colour",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.15,
+          0.35,
+          0.8,
+          1
+         ]
+        },
+        {
+         "text": " and ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "decoration",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ],
+         "decoration": "underline"
+        },
+        {
+         "text": " — even ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "struck-through text",
+         "font": "Inter-Regular",
+         "size": 10,
+         "decoration": "lineThrough",
+         "color": [
+          0.8,
+          0.2,
+          0.15,
+          1
+         ]
+        },
+        {
+         "text": " and ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "letter spacing",
+         "font": "Inter-Bold",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ],
+         "letterSpacing": 2
+        },
+        {
+         "text": ". Baselines align across sizes: ",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": "big",
+         "font": "Inter-Bold",
+         "size": 20,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": " small",
+         "font": "Inter-Regular",
+         "size": 7,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        },
+        {
+         "text": ".",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.3
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "height": 10
+     },
+     "children": []
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 10,
+      "margin": {
+       "bottom": 10
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "MAXLINES 2 + ELLIPSIS",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide turns a declarative document tree into a PDF file. Every length is already resolved, every font is registered explicitly, and the same input always produces the same bytes. Paragraphs wrap at break opportunities defined by Unicode, and long words are hyphenated when asked to.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "maxLines": 2,
+          "ellipsis": true
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "NOWRAP + ELLIPSIS",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide turns a declarative document tree into a PDF file. Every length is already resolved, every font is registered explicitly, and the same input always produces the same bytes. Paragraphs wrap at break opportunities defined by Unicode, and long words are hyphenated when asked to.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "whiteSpace": "nowrap",
+          "maxLines": 1,
+          "ellipsis": true
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 10,
+      "margin": {
+       "bottom": 10
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "PRE (ROBOTO MONO)",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "fn main() {\n    println!(\"hello\");\n}",
+           "font": "RobotoMono-Regular",
+           "size": 9,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "whiteSpace": "pre"
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "NEWLINES IN NORMAL",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Line one\nLine two   with   collapsed   spaces\n\nAfter an empty line",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "lineHeight": 1.3
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 4,
+      "padding": {
+       "top": 8,
+       "right": 10,
+       "bottom": 10,
+       "left": 10
+      },
+      "backgroundColor": [
+       0.97,
+       0.97,
+       0.98,
+       1
+      ],
+      "borderRadius": 4,
+      "flexGrow": 1,
+      "flexBasis": 0
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "ROMANIAN",
+         "font": "Inter-Bold",
+         "size": 7,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ],
+         "letterSpacing": 0.8
+        }
+       ],
+       "style": {
+        "margin": {
+         "bottom": 3
+        }
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Această documentație explică motorul de paginare: tabelele se împart pe mai multe pagini, antetele se repetă, iar diacriticele românești — ș, ț, ă, î, â — se afișează corect cu fonturile înregistrate.",
+         "font": "Inter-Regular",
+         "size": 11,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4,
+        "lang": "ro"
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "height": 10
+     },
+     "children": []
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 10
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "NARROW COLUMN, LONG WORD",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 90
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Supercalifragilisticexpialidocious antidisestablishmentarianism",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 4,
+        "padding": {
+         "top": 8,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "backgroundColor": [
+         0.97,
+         0.97,
+         0.98,
+         1
+        ],
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "FALLBACK FONT",
+           "font": "Inter-Bold",
+           "size": 7,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ],
+           "letterSpacing": 0.8
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inter + Noto: ₿ ≈ ∑ ⅓ ₹ ✓ ← → (missing glyphs fall back)",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

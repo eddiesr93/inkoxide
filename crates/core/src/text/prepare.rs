@@ -1,0 +1,352 @@
+//! Width-independent text preparation: whitespace processing, hyphenation
+//! points, font itemisation and shaping.
+
+use unicode_linebreak::{linebreaks, BreakOpportunity};
+
+use super::hyphen::Hyphenator;
+use super::{BreakKind, BreakPoint, Glyph, Prepared, Segment, GLYPH_INVISIBLE, GLYPH_SPACE};
+use crate::fonts::{FontKey, FontSet};
+use crate::schema::{TextRun, WhiteSpace};
+
+/// Soft hyphen: an invisible break opportunity that shows `-` when used.
+pub(crate) const SHY: char = '\u{00AD}';
+
+/// Text laid out in place of page-number placeholders: wide enough for
+/// three digits in any font, so painting the real number never reflows.
+pub(crate) const PLACEHOLDER_TEXT: &str = "999";
+
+pub(crate) struct ParagraphOptions<'a> {
+    pub white_space: WhiteSpace,
+    /// Language code to hyphenate in (only set when patterns exist).
+    pub hyphenate: Option<&'a str>,
+    pub hyphenator: &'a dyn Hyphenator,
+    pub runs: &'a [TextRun],
+}
+
+/// Combining marks stay in the font of their base character.
+fn is_mark(c: char) -> bool {
+    matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
+}
+
+/// Builds the paragraph text from the runs. Returns the text and, per run,
+/// its byte range in it.
+fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
+    let mut text = String::new();
+    let mut ranges = Vec::with_capacity(opts.runs.len());
+    // In collapsing modes: whether the text so far ends in a space or a
+    // line start (true initially: leading space is dropped).
+    let mut last_was_space = true;
+    for run in opts.runs {
+        let start = text.len();
+        let src: &str = match run.placeholder {
+            Some(_) => PLACEHOLDER_TEXT,
+            None => run.text.as_deref().unwrap_or(""),
+        };
+        match opts.white_space {
+            WhiteSpace::Pre => {
+                for c in src.chars() {
+                    match c {
+                        '\r' => {}
+                        '\t' => text.push_str("    "),
+                        _ => text.push(c),
+                    }
+                }
+            }
+            WhiteSpace::Normal | WhiteSpace::NoWrap => {
+                for c in src.chars() {
+                    if c == '\n' {
+                        // Forced break (like CSS `pre-line`; react-pdf
+                        // parity). A space just before it is dropped.
+                        if text.ends_with(' ') && text.len() > start {
+                            text.pop();
+                        }
+                        text.push('\n');
+                        last_was_space = true;
+                    } else if c.is_whitespace() && c != '\u{00A0}' && c != '\u{202F}' {
+                        // A collapsed space stays in the run where it
+                        // first occurs (matters for decorations).
+                        if !last_was_space {
+                            text.push(' ');
+                            last_was_space = true;
+                        }
+                    } else {
+                        text.push(c);
+                        last_was_space = false;
+                    }
+                }
+            }
+        }
+        if let Some(lang) = opts.hyphenate {
+            if opts.white_space == WhiteSpace::Normal && run.placeholder.is_none() {
+                let hyphenated = insert_soft_hyphens(&text[start..], opts.hyphenator, lang);
+                text.truncate(start);
+                text.push_str(&hyphenated);
+            }
+        }
+        ranges.push((start, text.len()));
+    }
+    (text, ranges)
+}
+
+/// Inserts U+00AD at hyphenation points of words longer than five letters.
+fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> String {
+    let mut out = String::with_capacity(s.len() + s.len() / 4);
+    let mut word_start: Option<usize> = None;
+    let flush = |out: &mut String, word: &str| {
+        if word.chars().count() > 5 {
+            let mut last = 0;
+            for at in hyphenator.hyphenate(word, lang) {
+                out.push_str(&word[last..at]);
+                out.push(SHY);
+                last = at;
+            }
+            out.push_str(&word[last..]);
+        } else {
+            out.push_str(word);
+        }
+    };
+    for (i, c) in s.char_indices() {
+        if c.is_alphabetic() {
+            word_start.get_or_insert(i);
+        } else {
+            if let Some(ws) = word_start.take() {
+                flush(&mut out, &s[ws..i]);
+            }
+            out.push(c);
+        }
+    }
+    if let Some(ws) = word_start {
+        flush(&mut out, &s[ws..]);
+    }
+    out
+}
+
+/// Chooses a font for every character: the run's font if it has the glyph,
+/// else the first fallback that has it, else the run's font (`.notdef`).
+fn itemize(
+    text: &str,
+    run_ranges: &[(usize, usize)],
+    runs: &[TextRun],
+    fonts: &FontSet<'_>,
+) -> Vec<Segment> {
+    let mut segs: Vec<Segment> = Vec::new();
+    for (ri, (&(start, end), run)) in run_ranges.iter().zip(runs).enumerate() {
+        let Some(primary) = fonts.key(&run.font) else {
+            continue;
+        };
+        let mut current: Option<(FontKey, usize)> = None;
+        for (off, c) in text[start..end].char_indices() {
+            let i = start + off;
+            let neutral = c.is_whitespace() || c == SHY || c.is_control() || is_mark(c);
+            let font = match current {
+                Some((f, _)) if neutral => f,
+                _ if fonts.get(primary).glyph(c).is_some() || neutral => primary,
+                _ => fonts
+                    .fallbacks
+                    .iter()
+                    .copied()
+                    .find(|&f| fonts.get(f).glyph(c).is_some())
+                    .unwrap_or(primary),
+            };
+            match current {
+                Some((f, _)) if f == font => {}
+                Some((f, s)) => {
+                    segs.push(Segment::new(ri, f, run, s..i));
+                    current = Some((font, i));
+                }
+                None => current = Some((font, i)),
+            }
+        }
+        if let Some((f, s)) = current {
+            segs.push(Segment::new(ri, f, run, s..end));
+        }
+    }
+    segs
+}
+
+/// Shapes the paragraph. `unicode` receives glyph → text mappings for the
+/// PDF ToUnicode CMaps.
+pub(crate) fn prepare(
+    opts: &ParagraphOptions<'_>,
+    fonts: &FontSet<'_>,
+    unicode: &mut super::UnicodeMap,
+) -> Prepared {
+    let (text, run_ranges) = build_text(opts);
+    let mut segments = itemize(&text, &run_ranges, opts.runs, fonts);
+    let mut glyphs: Vec<Glyph> = Vec::with_capacity(text.len());
+
+    for seg in &mut segments {
+        let run = &opts.runs[seg.run as usize];
+        let font = fonts.get(seg.font);
+        let scale = font.scale(run.size);
+        let letter_spacing = run.letter_spacing.unwrap_or(0.0);
+        let seg_text = &text[seg.text.start as usize..seg.text.end as usize];
+
+        let mut buf = rustybuzz::UnicodeBuffer::new();
+        buf.push_str(seg_text);
+        buf.guess_segment_properties();
+        let shaped = rustybuzz::shape(&font.face, &[], buf);
+        let infos = shaped.glyph_infos();
+        let positions = shaped.glyph_positions();
+
+        let first = glyphs.len() as u32;
+        for (k, (info, pos)) in infos.iter().zip(positions).enumerate() {
+            let cluster = info.cluster as usize;
+            let c = seg_text[cluster..].chars().next().unwrap_or(' ');
+            let mut flags = 0;
+            if c == ' ' || c == '\u{00A0}' {
+                flags |= GLYPH_SPACE;
+            }
+            if c == '\n' || c == SHY || (c.is_control() && c != '\t') {
+                flags |= GLYPH_INVISIBLE;
+            }
+            // Letter spacing goes after the last glyph of each cluster.
+            let cluster_end = infos.get(k + 1).is_none_or(|n| n.cluster != info.cluster);
+            let advance = if flags & GLYPH_INVISIBLE != 0 {
+                0.0
+            } else {
+                pos.x_advance as f32 * scale + if cluster_end { letter_spacing } else { 0.0 }
+            };
+            let gid = info.glyph_id as u16;
+            if flags & GLYPH_INVISIBLE == 0 && run.placeholder.is_none() {
+                // First glyph of a cluster carries the cluster's text.
+                let first_of_cluster = k == 0 || infos[k - 1].cluster != info.cluster;
+                if first_of_cluster {
+                    let next = infos[k + 1..]
+                        .iter()
+                        .map(|n| n.cluster as usize)
+                        .find(|&n| n != cluster)
+                        .unwrap_or(seg_text.len());
+                    let end = next.max(cluster + c.len_utf8()).min(seg_text.len());
+                    unicode.record(seg.font, gid, &seg_text[cluster..end]);
+                }
+            }
+            glyphs.push(Glyph {
+                id: gid,
+                advance,
+                x_offset: pos.x_offset as f32 * scale,
+                y_offset: pos.y_offset as f32 * scale,
+                cluster: seg.text.start + info.cluster,
+                flags,
+            });
+        }
+        seg.glyphs = first..glyphs.len() as u32;
+    }
+
+    // Break opportunities, as glyph indices where the next line starts.
+    let mut breaks = Vec::new();
+    let nowrap = matches!(opts.white_space, WhiteSpace::NoWrap | WhiteSpace::Pre);
+    let mut gi = 0usize;
+    for (pos, kind) in linebreaks(&text) {
+        if pos == text.len() {
+            break;
+        }
+        let prev = text[..pos].chars().next_back();
+        let kind = match kind {
+            BreakOpportunity::Mandatory => BreakKind::Mandatory,
+            BreakOpportunity::Allowed if nowrap => continue,
+            BreakOpportunity::Allowed if prev == Some(SHY) => BreakKind::Hyphen,
+            BreakOpportunity::Allowed => BreakKind::Allowed,
+        };
+        while gi < glyphs.len() && (glyphs[gi].cluster as usize) < pos {
+            gi += 1;
+        }
+        // Only break where a new cluster starts (never inside a ligature).
+        if gi < glyphs.len() && glyphs[gi].cluster as usize == pos {
+            breaks.push(BreakPoint {
+                glyph: gi as u32,
+                kind,
+            });
+        }
+    }
+
+    Prepared {
+        text,
+        segments,
+        glyphs,
+        breaks,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::hyphen::{language_code, HypherHyphenator, NoHyphenation};
+    use super::*;
+
+    fn run(text: &str) -> TextRun {
+        TextRun {
+            text: Some(text.into()),
+            font: "f".into(),
+            size: 10.0,
+            color: None,
+            letter_spacing: None,
+            decoration: None,
+            placeholder: None,
+        }
+    }
+
+    fn text_of(runs: &[TextRun], ws: WhiteSpace) -> String {
+        build_text(&ParagraphOptions {
+            white_space: ws,
+            hyphenate: None,
+            hyphenator: &NoHyphenation,
+            runs,
+        })
+        .0
+    }
+
+    #[test]
+    fn collapses_whitespace_across_runs() {
+        let runs = [run("  Hello \t "), run("  world  "), run("!")];
+        assert_eq!(text_of(&runs, WhiteSpace::Normal), "Hello world !");
+        // The collapsed space stays in the run where it occurs.
+        let (text, ranges) = build_text(&ParagraphOptions {
+            white_space: WhiteSpace::Normal,
+            hyphenate: None,
+            hyphenator: &NoHyphenation,
+            runs: &[run("a "), run(" b")],
+        });
+        assert_eq!(text, "a b");
+        assert_eq!(ranges, vec![(0, 2), (2, 3)]);
+    }
+
+    #[test]
+    fn newlines_force_breaks_and_eat_spaces() {
+        let runs = [run("a  \n  b")];
+        assert_eq!(text_of(&runs, WhiteSpace::Normal), "a\nb");
+    }
+
+    #[test]
+    fn pre_keeps_spaces() {
+        let runs = [run(" a\tb\r\n")];
+        assert_eq!(text_of(&runs, WhiteSpace::Pre), " a    b\n");
+    }
+
+    #[test]
+    fn nbsp_is_not_collapsed() {
+        let runs = [run("1\u{00A0}000")];
+        assert_eq!(text_of(&runs, WhiteSpace::Normal), "1\u{00A0}000");
+    }
+
+    #[test]
+    fn soft_hyphens_in_long_words_only() {
+        let out = insert_soft_hyphens("a documentation hyphenation", &HypherHyphenator, "en");
+        assert!(out.starts_with("a "));
+        assert!(
+            out.contains("doc\u{AD}u\u{AD}men\u{AD}ta\u{AD}tion"),
+            "{out:?}"
+        );
+        assert_eq!(out.replace('\u{AD}', ""), "a documentation hyphenation");
+    }
+
+    #[test]
+    fn lang_tags() {
+        assert_eq!(language_code("en-GB").as_deref(), Some("en"));
+        assert_eq!(language_code("DE").as_deref(), Some("de"));
+        assert_eq!(language_code("eng"), None);
+        assert_eq!(language_code("x"), None);
+        assert!(HypherHyphenator.supports("de"));
+        // hypher ships no Romanian patterns (ADR-015).
+        assert!(!HypherHyphenator.supports("ro"));
+    }
+}

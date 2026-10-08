@@ -6,6 +6,12 @@ all-features = false
 [advisories]
 version = 2
 yanked = "deny"
+# Unmaintained (not vulnerable) shaping/parsing crates, isolated behind the
+# TextShaper trait and the fonts module. Migration plan: ADR-020.
+ignore = [
+  { id = "RUSTSEC-2026-0206", reason = "rustybuzz unmaintained; only text/prepare.rs uses it; harfrust migration per ADR-020" },
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained; only fonts/ uses it; read-fonts migration per ADR-020" },
+]
 
 [licenses]
 version = 2

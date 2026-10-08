@@ -2,8 +2,12 @@ use crate::{validate, FontStore, ImageStore, InputFormat, ValidationCode as C, V
 
 fn fonts() -> FontStore {
     let mut f = FontStore::new();
-    // Validation only checks presence; any non-trivial bytes will do.
-    f.register("Inter-Regular", vec![0u8; 64]).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/Inter-Regular.ttf"
+    ))
+    .unwrap();
+    f.register("Inter-Regular", bytes).unwrap();
     f
 }
 

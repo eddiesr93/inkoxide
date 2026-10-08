@@ -148,3 +148,128 @@ approximate at the corners; acceptable for v1.
 **Decision.** Until pagination (M3), each page template renders on one page
 and content taller than the content box is clipped to it, with
 `tracing::warn!`. Replaced by real pagination in M3.
+
+## ADR-013 — Own paragraph layout on rustybuzz instead of cosmic-text (M2)
+
+**Context.** The brief picks cosmic-text for shaping, wrapping and
+fallback. cosmic-text 0.19 (current) no longer uses rustybuzz: it shapes
+with `harfrust` and hard-depends on `skrifa`, which the brief bans, plus
+`fontdb`, `swash` and `sys-locale`. It also resolves fonts by family,
+weight and style (not by our font id), and runs its own fallback lists
+rather than the document's `fallbackFonts` order.
+
+**Decision.** `text/` implements paragraph layout directly on the
+allowlisted `rustybuzz` (shaping) and `ttf-parser` (metrics), with
+`unicode-linebreak` (UAX #14 break opportunities; zero dependencies and
+already a transitive dependency of cosmic-text) and `hypher`. About 900
+lines in total:
+
+- `prepare`: whitespace processing → soft-hyphen insertion → per-character
+  font itemisation (run font, then `fallbackFonts` in order, marks and
+  spaces stick to the previous font) → shaping per segment. Width
+  independent, cached per node.
+- `lines`: greedy first-fit breaking over prefix sums of advances,
+  trailing spaces hang, unbreakable words break between clusters in
+  `normal` and overflow in `pre`/`nowrap`, `maxLines`/ellipsis, line boxes
+  with CSS half-leading.
+- `paint`: alignment, justification (extra space on U+0020/U+00A0
+  glyphs), decorations from the font's `post`/`OS/2` metrics,
+  placeholders.
+
+All of it sits behind `TextShaper`. **Consequences.** Exact font
+selection and fallback order, deterministic output, visible hyphens under
+our control (ADR-015). No bidi/complex-script line layout beyond what
+rustybuzz shapes (a v1 non-goal). rustybuzz has not had a release since
+Nov 2024; if that matters, `harfrust` can replace it inside
+`text/prepare.rs` only.
+
+## ADR-014 — TrueType outlines only; CFF and variable fonts rejected (M2)
+
+**Decision.** `FontStore::register` rejects fonts without a `glyf` table
+(CFF-based OpenType) and variable fonts, with a clear `FONT_ERROR`.
+Embedding is `Type0`/`Identity-H` with a `CIDFontType2` descendant and the
+full font program as `FontFile2` (Flate). **Consequences.** CFF support
+(`FontFile3`) is M7. Most web fonts ship TrueType builds.
+
+## ADR-015 — Hyphenation: soft hyphens + our own hyphen glyph; no Romanian patterns yet (M2)
+
+**Context.** The brief assumed `hypher` includes Romanian. hypher 0.1.8
+supports ~50 languages but **not Romanian**. The standard TeX patterns
+(`hyph-ro.tex`, hyph-utf8) state no licence ("licence: [None]"), which is
+presumably why hypher omits them.
+
+**Decision.** When `hyphenate: true`, words longer than five letters get
+U+00AD at hypher's break points before shaping. SHY glyphs are invisible
+and zero-width. When a line breaks at a SHY, the line layout appends
+U+2010 (or `-`) from the font of the preceding glyph and counts its width
+when fitting. This settles the "visible hyphen at SHY" spike from the
+brief: we never depend on the shaper to draw it. For languages hypher
+lacks (including `ro`), `hyphenate` is a no-op.
+
+**Open question (needs the project owner).** For Romanian, either
+(a) vendor `hyph-ro.tex` after clarifying its licence, (b) let clients
+register TeX patterns at runtime (new public API), or (c) accept no
+Romanian hyphenation. The `Hyphenator` boundary makes (a) or (b) a small,
+local change.
+
+## ADR-016 — Newlines in `whiteSpace: normal` are forced breaks (M2)
+
+**Context.** CSS `normal` collapses newlines into spaces; react-pdf breaks
+lines at `\n`. **Decision.** Follow react-pdf: in `normal` and `nowrap`,
+`\n` forces a line break and other whitespace collapses (CSS `pre-line`).
+In `pre`, everything is preserved (tabs become four spaces) and only `\n`
+breaks. A collapsed space stays in the run where it first occurs, so
+decorations do not start with a space.
+
+## ADR-017 — Font program compression cached per registered font (M2)
+
+**Decision.** `FontData` compresses the font program once (Flate level 6)
+and keeps it behind a `OnceLock`, so every later render that embeds the
+font copies bytes instead of re-compressing ~400 KB. **Consequences.**
+First use of a font costs a few ms; later renders do not. With full
+embedding (v1) every PDF carries the whole font, so subsetting (M7) is the
+next big win for file size.
+
+## ADR-018 — Flow root has the page content height as its minimum (M2)
+
+**Context.** The flow is laid out in an unbounded column for pagination,
+so a `flexGrow` spacer had nothing to grow into (react-pdf pins footers
+this way). **Decision.** The root's `min-height` is the page content
+height. Short documents fill the page; longer flows are unaffected.
+
+## ADR-019 — Text measurement is cached by exact width (M2)
+
+**Context.** The brief suggests 0.5 pt width buckets. Rounding a width
+down to its bucket can drop it below the paragraph's min-content width and
+break a word that fits. **Decision.** Shaping is cached per node (width
+independent); line layouts are cached per exact width. Taffy asks for few
+distinct widths per node, so the hit rate is the same. Cross-node
+memoisation by content hash (identical table cells) is left to M6,
+driven by profiles.
+
+## ADR-020 — rustybuzz and ttf-parser are unmaintained: keep for v1, plan the swap (M2)
+
+**Context.** RustSec now lists both crates as unmaintained:
+RUSTSEC-2026-0206 (rustybuzz, successor `harfrust` from the HarfBuzz
+project) and RUSTSEC-2026-0192 (ttf-parser, successor the fontations
+crates). These are the brief's own picks, and `cargo deny` fails on
+them.
+
+**Options.** (1) Swap now to `harfrust` + `read-fonts`. harfrust shapes
+on read-fonts' new `model::Font` (owned, `Arc`-shared, which is nicer than
+rustybuzz's borrowed face), and read-fonts covers our metric needs without
+`skrifa` (still banned). But harfrust 0.14 was published four days before
+this decision and the read-fonts `model` API is weeks old. (2) Keep the
+frozen, proven crates for v1 and swap later.
+
+**Decision.** (2) for now. The two advisories are ignored in `deny.toml`
+with reasons pointing here. "Unmaintained" is not a vulnerability, and
+both crates are pure Rust and `forbid(unsafe_code)`. The blast radius of
+a swap is `fonts/mod.rs` (parse + metrics + cmap/advance lookups) and
+`text/prepare.rs` (one `shape` call), so it is a one-module change, as the
+brief intends.
+
+**Follow-up.** Migrate once harfrust/read-fonts have a release that has
+been out for a few weeks (target: M6, with before/after benchmarks and the
+visual suite as the safety net). The project owner may prefer to do it
+sooner.

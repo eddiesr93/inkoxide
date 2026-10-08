@@ -1,0 +1,1658 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Invoice INV-2026-0142",
+  "author": "Inkoxide SRL",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 48,
+    "right": 48,
+    "bottom": 48,
+    "left": 48
+   },
+   "children": [
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "justifyContent": "space-between",
+      "alignItems": "flex-start",
+      "margin": {
+       "bottom": 28
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 8
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 26,
+          "height": 26,
+          "backgroundColor": [
+           0.16,
+           0.36,
+           0.86,
+           1
+          ],
+          "borderRadius": 6
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide",
+           "font": "Inter-Bold",
+           "size": 16,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "alignItems": "flex-end"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "INVOICE",
+           "font": "Inter-Bold",
+           "size": 20,
+           "color": [
+            0.16,
+            0.36,
+            0.86,
+            1
+           ],
+           "letterSpacing": 1.5
+          }
+         ],
+         "style": {
+          "textAlign": "right"
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "INV-2026-0142",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "textAlign": "right"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 20,
+      "margin": {
+       "bottom": 28
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "BILLED TO",
+           "font": "Inter-Bold",
+           "size": 7.5,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ],
+           "letterSpacing": 0.6
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 4
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Studio Nord SRL",
+           "font": "Inter-Bold",
+           "size": 10,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Str. Ion Câmpineanu 11",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 1
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "010031 București, România",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 1
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "CUI RO12345678",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 1
+          }
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "FROM",
+           "font": "Inter-Bold",
+           "size": 7.5,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ],
+           "letterSpacing": 0.6
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 4
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Inkoxide SRL",
+           "font": "Inter-Bold",
+           "size": 10,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Bd. Eroilor 25",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 1
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "400129 Cluj-Napoca, România",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 1
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "CUI RO87654321",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 1
+          }
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "width": 110
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "ISSUED",
+           "font": "Inter-Bold",
+           "size": 7.5,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ],
+           "letterSpacing": 0.6
+          }
+         ],
+         "style": {
+          "margin": {
+           "bottom": 4
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "8 October 2026",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "DUE",
+           "font": "Inter-Bold",
+           "size": 7.5,
+           "color": [
+            0.42,
+            0.45,
+            0.52,
+            1
+           ],
+           "letterSpacing": 0.6
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 8,
+           "bottom": 4
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "7 November 2026",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.88,
+        0.89,
+        0.92,
+        1
+       ],
+       "right": [
+        0.88,
+        0.89,
+        0.92,
+        1
+       ],
+       "bottom": [
+        0.88,
+        0.89,
+        0.92,
+        1
+       ],
+       "left": [
+        0.88,
+        0.89,
+        0.92,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "overflow": "hidden"
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 10,
+        "padding": {
+         "top": 7,
+         "bottom": 7,
+         "left": 10,
+         "right": 10
+        },
+        "backgroundColor": [
+         0.96,
+         0.97,
+         0.99,
+         1
+        ],
+        "borderWidth": {
+         "bottom": 1
+        },
+        "borderColor": {
+         "bottom": [
+          0.88,
+          0.89,
+          0.92,
+          1
+         ]
+        }
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "DESCRIPTION",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "left"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 40
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "QTY",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 70
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "UNIT PRICE",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 80
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "AMOUNT",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 10,
+        "padding": {
+         "top": 8,
+         "bottom": 8,
+         "left": 10,
+         "right": 10
+        },
+        "borderWidth": {
+         "bottom": 1
+        },
+        "borderColor": {
+         "bottom": [
+          0.88,
+          0.89,
+          0.92,
+          1
+         ]
+        }
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Engine licence — annual",
+             "font": "Inter-Bold",
+             "size": 9.5,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Inkoxide PDF engine, production use, 1 server",
+             "font": "Inter-Regular",
+             "size": 8.5,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "margin": {
+             "top": 2
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 40
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 70
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€1,200.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 80
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€1,200.00",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 10,
+        "padding": {
+         "top": 8,
+         "bottom": 8,
+         "left": 10,
+         "right": 10
+        },
+        "borderWidth": {
+         "bottom": 1
+        },
+        "borderColor": {
+         "bottom": [
+          0.88,
+          0.89,
+          0.92,
+          1
+         ]
+        }
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Integration support",
+             "font": "Inter-Bold",
+             "size": 9.5,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Remote pairing sessions (hours)",
+             "font": "Inter-Regular",
+             "size": 8.5,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "margin": {
+             "top": 2
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 40
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "6",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 70
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€95.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 80
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€570.00",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 10,
+        "padding": {
+         "top": 8,
+         "bottom": 8,
+         "left": 10,
+         "right": 10
+        },
+        "borderWidth": {
+         "bottom": 1
+        },
+        "borderColor": {
+         "bottom": [
+          0.88,
+          0.89,
+          0.92,
+          1
+         ]
+        }
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Custom font onboarding",
+             "font": "Inter-Bold",
+             "size": 9.5,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Validation and embedding of 4 corporate typefaces",
+             "font": "Inter-Regular",
+             "size": 8.5,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "margin": {
+             "top": 2
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 40
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "4",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 70
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€45.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 80
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€180.00",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 10,
+        "padding": {
+         "top": 8,
+         "bottom": 8,
+         "left": 10,
+         "right": 10
+        },
+        "borderWidth": {
+         "bottom": 1
+        },
+        "borderColor": {
+         "bottom": [
+          0.88,
+          0.89,
+          0.92,
+          1
+         ]
+        }
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Priority SLA",
+             "font": "Inter-Bold",
+             "size": 9.5,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Next-business-day response, 12 months",
+             "font": "Inter-Regular",
+             "size": 8.5,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "margin": {
+             "top": 2
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 40
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 70
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€480.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 80
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€480.00",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 10,
+        "padding": {
+         "top": 8,
+         "bottom": 8,
+         "left": 10,
+         "right": 10
+        },
+        "borderWidth": {
+         "bottom": 1
+        },
+        "borderColor": {
+         "bottom": [
+          0.88,
+          0.89,
+          0.92,
+          1
+         ]
+        }
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Training workshop",
+             "font": "Inter-Bold",
+             "size": 9.5,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Half-day workshop for the document team",
+             "font": "Inter-Regular",
+             "size": 8.5,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "margin": {
+             "top": 2
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 40
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 70
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€650.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "width": 80
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€650.00",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "textAlign": "right"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "justifyContent": "flex-end",
+      "margin": {
+       "top": 16
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "width": 210,
+        "gap": 6,
+        "padding": {
+         "top": 12,
+         "right": 12,
+         "bottom": 12,
+         "left": 12
+        },
+        "backgroundColor": [
+         0.96,
+         0.97,
+         0.99,
+         1
+        ],
+        "borderRadius": 6
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexDirection": "row",
+          "justifyContent": "space-between"
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Subtotal",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€3,080.00",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexDirection": "row",
+          "justifyContent": "space-between"
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "VAT 19%",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.42,
+              0.45,
+              0.52,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€585.20",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "height": 1,
+          "backgroundColor": [
+           0.88,
+           0.89,
+           0.92,
+           1
+          ],
+          "margin": {
+           "top": 2,
+           "bottom": 2
+          }
+         }
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexDirection": "row",
+          "justifyContent": "space-between"
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Total due",
+             "font": "Inter-Bold",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "€3,665.20",
+             "font": "Inter-Bold",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexGrow": 1
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "borderWidth": {
+       "top": 1
+      },
+      "borderColor": {
+       "top": [
+        0.88,
+        0.89,
+        0.92,
+        1
+       ]
+      },
+      "padding": {
+       "top": 12
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Payment details",
+         "font": "Inter-Bold",
+         "size": 9,
+         "color": [
+          0.09,
+          0.1,
+          0.13,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "margin": {
+         "bottom": 3
+        }
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "IBAN RO49 AAAA 1B31 0075 9384 0000 · BIC AAAARO2X · Reference INV-2026-0142",
+         "font": "Inter-Regular",
+         "size": 8.5,
+         "color": [
+          0.42,
+          0.45,
+          0.52,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Thank you for your business. Late payments accrue interest of 0.02% per day as per the agreement.",
+         "font": "Inter-Regular",
+         "size": 8.5,
+         "color": [
+          0.42,
+          0.45,
+          0.52,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "margin": {
+         "top": 6
+        },
+        "lineHeight": 1.4
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

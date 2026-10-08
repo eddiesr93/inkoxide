@@ -10,13 +10,17 @@ const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
 /// Paints leaf content (text, images, tables) inside a node's content box.
 pub(crate) trait ContentPainter {
-    fn paint(&mut self, node: &Node, geo: &Geometry, dx: f32, dy: f32, ops: &mut Vec<Op>);
-}
-
-pub(crate) struct NoContentPainter;
-
-impl ContentPainter for NoContentPainter {
-    fn paint(&mut self, _: &Node, _: &Geometry, _: f32, _: f32, _: &mut Vec<Op>) {}
+    /// `opacity` is the cumulative opacity in effect; content with its own
+    /// alpha (text colour) must multiply it.
+    fn paint(
+        &mut self,
+        node: &Node,
+        geo: &Geometry,
+        dx: f32,
+        dy: f32,
+        opacity: f32,
+        ops: &mut Vec<Op>,
+    );
 }
 
 /// Paints every node of `tree` (except the synthetic root) translated by
@@ -116,7 +120,8 @@ impl BoxPainter<'_, '_, '_> {
             });
         }
 
-        self.content.paint(node, &g, self.dx, self.dy, self.ops);
+        self.content
+            .paint(node, &g, self.dx, self.dy, self.opacity, self.ops);
         for c in self.tree.children(i) {
             self.node(c);
         }
@@ -173,7 +178,18 @@ impl BoxPainter<'_, '_, '_> {
         let same_color = active.windows(2).all(|p| colors[p[0]] == colors[p[1]]);
         let style = s.border_style.unwrap_or(BorderStyle::Solid);
 
-        if style == BorderStyle::Solid && same_color {
+        let (r, b) = (x + w, y + h);
+        let (ir, ib) = (ix + iw, iy + ih);
+        // Mitred trapezoid per side.
+        let sides = [
+            [(x, y), (r, y), (ir, iy), (ix, iy)],
+            [(r, y), (r, b), (ir, ib), (ir, iy)],
+            [(r, b), (x, b), (ix, ib), (ir, ib)],
+            [(x, b), (x, y), (ix, iy), (ix, ib)],
+        ];
+        let square = crate::paint::shapes::is_square(radii);
+
+        if style == BorderStyle::Solid && same_color && (active.len() == 4 || !square) {
             let color = colors[active[0]];
             self.with_alpha(color[3], |ops| {
                 ops.push(Op::FillPath {
@@ -184,22 +200,30 @@ impl BoxPainter<'_, '_, '_> {
             });
             return;
         }
+        if style == BorderStyle::Solid && square {
+            // No ring needed: avoids hairline seams where the outer and
+            // inner edges of a zero-width side coincide.
+            for &k in &active {
+                let color = colors[k];
+                let path = polygon(&sides[k]);
+                self.with_alpha(color[3], |ops| {
+                    ops.push(Op::FillPath {
+                        path,
+                        color,
+                        rule: FillRule::NonZero,
+                    })
+                });
+            }
+            return;
+        }
 
         self.ops.push(Op::Save);
         self.ops.push(Op::ClipPath {
             path: ring,
             rule: FillRule::EvenOdd,
         });
-        let (r, b) = (x + w, y + h);
-        let (ir, ib) = (ix + iw, iy + ih);
         if style == BorderStyle::Solid {
-            // Mitred trapezoids per side, cut to shape by the ring clip.
-            let sides = [
-                [(x, y), (r, y), (ir, iy), (ix, iy)],
-                [(r, y), (r, b), (ir, ib), (ir, iy)],
-                [(r, b), (x, b), (ix, ib), (ir, ib)],
-                [(x, b), (x, y), (ix, iy), (ix, ib)],
-            ];
+            // Rounded, several colours: trapezoids cut by the ring clip.
             for &k in &active {
                 let color = colors[k];
                 let path = polygon(&sides[k]);

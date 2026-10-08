@@ -1,0 +1,643 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Justified text with hyphenation",
+  "lang": "ro"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 48,
+    "right": 48,
+    "bottom": 48,
+    "left": 48
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "runs": [
+      {
+       "text": "Aliniere stânga-dreapta și despărțire în silabe",
+       "font": "Inter-Bold",
+       "size": 16,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12,
+      "margin": {
+       "top": 0
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "width": 150
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "EN · JUSTIFY, NO HYPHENATION",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": false,
+          "lang": "en"
+         },
+         "runs": [
+          {
+           "text": "Internationalization specifications recommend automatic hyphenation for justified paragraphs, because otherwise interword spacing becomes uneven and disproportionate.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": false,
+          "lang": "en"
+         },
+         "runs": [
+          {
+           "text": "Representatives of the commission considered the implementation and standardization of administrative procedures indispensable for institutional functioning.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "width": 150
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "EN · JUSTIFY + HYPHENATE",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true,
+          "lang": "en"
+         },
+         "runs": [
+          {
+           "text": "Internationalization specifications recommend automatic hyphenation for justified paragraphs, because otherwise interword spacing becomes uneven and disproportionate.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true,
+          "lang": "en"
+         },
+         "runs": [
+          {
+           "text": "Representatives of the commission considered the implementation and standardization of administrative procedures indispensable for institutional functioning.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · JUSTIFY + HYPHENATE (no patterns yet)",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true,
+          "lang": "ro"
+         },
+         "runs": [
+          {
+           "text": "Documentația tehnică a motorului de paginare descrie, în detaliu, comportamentul tabelelor care se împart pe mai multe pagini, repetarea antetelor și gestionarea blocurilor care trebuie păstrate împreună.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12,
+      "margin": {
+       "top": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · ȘI, ȚĂ, ÎN, ÂN",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true,
+          "lang": "ro"
+         },
+         "runs": [
+          {
+           "text": "Documentația tehnică a motorului de paginare descrie, în detaliu, comportamentul tabelelor care se împart pe mai multe pagini, repetarea antetelor și gestionarea blocurilor care trebuie păstrate împreună.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · ȘI, ȚĂ, ÎN, ÂN",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true,
+          "lang": "ro"
+         },
+         "runs": [
+          {
+           "text": "Specificațiile internaționale recomandă despărțirea automată în silabe pentru textele aliniate stânga-dreapta, deoarece altfel spațiile dintre cuvinte devin inegale și disproporționate.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 8,
+        "padding": {
+         "top": 10,
+         "right": 10,
+         "bottom": 10,
+         "left": 10
+        },
+        "borderWidth": {
+         "top": 1,
+         "right": 1,
+         "bottom": 1,
+         "left": 1
+        },
+        "borderColor": {
+         "top": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "right": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "bottom": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ],
+         "left": [
+          0.85,
+          0.86,
+          0.9,
+          1
+         ]
+        },
+        "borderRadius": 4,
+        "flexGrow": 1,
+        "flexBasis": 0
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "RO · ȘI, ȚĂ, ÎN, ÂN",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "textAlign": "justify",
+          "lineHeight": 1.45,
+          "hyphenate": true,
+          "lang": "ro"
+         },
+         "runs": [
+          {
+           "text": "Reprezentanții comisiei au considerat că implementarea și standardizarea procedurilor administrative sunt indispensabile pentru funcționarea instituțiilor.",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

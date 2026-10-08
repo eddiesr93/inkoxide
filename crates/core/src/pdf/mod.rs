@@ -1,18 +1,20 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
+mod font;
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
+use pdf_writer::types::LineCapStyle;
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
 
 use crate::date::Timestamp;
-use std::collections::BTreeMap;
-
-use pdf_writer::types::LineCapStyle;
-
-use crate::paint::{FillRule, Op, PageContent, PathSeg};
+use crate::fonts::{FontKey, FontSet};
+use crate::paint::{FillRule, Op, PageContent, PathSeg, TextOp};
 use crate::schema::{Color, Meta};
+use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
@@ -22,6 +24,8 @@ pub(crate) struct DocumentOut<'a> {
     pub pages: &'a [PageContent],
     pub meta: &'a Meta,
     pub creation_date: Option<Timestamp>,
+    pub fonts: &'a FontSet<'a>,
+    pub unicode: &'a UnicodeMap,
 }
 
 /// Dependency firewall around the PDF writer (§5.1).
@@ -84,6 +88,30 @@ impl PdfSink for PdfWriterSink {
             pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
         }
 
+        // Fonts: embed each font that is actually painted, with the glyphs
+        // used across the whole document.
+        let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
+        for page in doc.pages {
+            for op in &page.ops {
+                if let Op::Text(t) = op {
+                    used.entry(t.font)
+                        .or_default()
+                        .extend(t.glyphs.iter().map(|g| g.id));
+                }
+            }
+        }
+        let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
+        for (key, glyphs) in &used {
+            let r = font::write_font(
+                &mut pdf,
+                &mut || alloc.next(),
+                doc.fonts.get(*key),
+                glyphs,
+                doc.unicode.fonts.get(key),
+            )?;
+            font_refs.insert(*key, r);
+        }
+
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
             let parent = tree_root.leaf_parents[i / PAGE_TREE_FANOUT];
             let mut p = pdf.page(*page_ref);
@@ -98,10 +126,24 @@ impl PdfSink for PdfWriterSink {
                     gs.pair(Name(gs_name(key).as_bytes()), opacities[&key]);
                 }
             }
+            let page_fonts: BTreeSet<FontKey> = page
+                .ops
+                .iter()
+                .filter_map(|op| match op {
+                    Op::Text(t) => Some(t.font),
+                    _ => None,
+                })
+                .collect();
+            if !page_fonts.is_empty() {
+                let mut f = res.fonts();
+                for key in page_fonts {
+                    f.pair(Name(font_name(key).as_bytes()), font_refs[&key]);
+                }
+            }
             res.finish();
             p.finish();
 
-            let raw = content_stream(page);
+            let raw = content_stream(page, doc.fonts);
             match self.compression {
                 Some(level) => {
                     let data = deflate(&raw, level)?;
@@ -163,7 +205,7 @@ fn pdf_date(t: Timestamp) -> pdf_writer::Date {
     }
 }
 
-fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
+pub(crate) fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
     let mut enc = ZlibEncoder::new(
         Vec::with_capacity(data.len() / 3 + 64),
         Compression::new(level),
@@ -254,6 +296,56 @@ fn page_opacities(page: &PageContent) -> std::collections::BTreeSet<u16> {
         .collect()
 }
 
+fn font_name(key: FontKey) -> String {
+    format!("F{key}")
+}
+
+/// Text ops: one `TJ` per stretch of glyphs on the baseline, with kerning
+/// adjustments wherever our positions differ from the font's advances.
+fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>) {
+    let font = fonts.get(t.font);
+    let scale = font.scale(t.size);
+    let size = q(t.size);
+    set_fill(c, &t.color);
+    c.begin_text();
+    c.set_font(Name(font_name(t.font).as_bytes()), size);
+    let glyphs = &t.glyphs;
+    let mut i = 0;
+    while i < glyphs.len() {
+        let g0 = glyphs[i];
+        // Text space is y-up; the page is flipped, so flip back.
+        c.set_text_matrix([1.0, 0.0, 0.0, -1.0, q(t.x + g0.x), q(t.y - g0.y_offset)]);
+        if g0.y_offset != 0.0 {
+            c.show(Str(&g0.id.to_be_bytes()));
+            i += 1;
+            continue;
+        }
+        let mut shown = c.show_positioned();
+        let mut items = shown.items();
+        let mut buf: Vec<u8> = Vec::new();
+        let mut pen = g0.x;
+        while i < glyphs.len() && glyphs[i].y_offset == 0.0 {
+            let g = glyphs[i];
+            let delta = g.x - pen;
+            if delta.abs() > 1e-3 {
+                if !buf.is_empty() {
+                    items.show(Str(&buf));
+                    buf.clear();
+                }
+                // TJ adjustments are in thousandths of text space, inverted.
+                items.adjust(((-delta * 1000.0 / t.size) * 1000.0).round() / 1000.0);
+            }
+            buf.extend_from_slice(&g.id.to_be_bytes());
+            pen = g.x + font.advance(g.id) * scale;
+            i += 1;
+        }
+        if !buf.is_empty() {
+            items.show(Str(&buf));
+        }
+    }
+    c.end_text();
+}
+
 fn set_fill(c: &mut Content, color: &Color) {
     c.set_fill_rgb(q(color[0]), q(color[1]), q(color[2]));
 }
@@ -279,7 +371,7 @@ fn path(c: &mut Content, segs: &[PathSeg]) {
 
 /// Serialises one page's display list. Pure function of the page: safe to
 /// run per page in parallel.
-pub(crate) fn content_stream(page: &PageContent) -> Vec<u8> {
+pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>) -> Vec<u8> {
     let mut c = Content::new();
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(page.height)]);
@@ -346,6 +438,7 @@ pub(crate) fn content_stream(page: &PageContent) -> Vec<u8> {
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
+            Op::Text(t) => show_text(&mut c, t, fonts),
         }
     }
     c.finish().into_vec()

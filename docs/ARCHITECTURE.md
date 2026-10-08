@@ -23,8 +23,8 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 |---|---|---|
 | Parse | `schema` (+ `schema/de.rs`) | M0 ✅ |
 | Validate | `validate` | M0 ✅ |
-| Fonts | `fonts` | registry only (M2) |
-| Text | `text` | M2 |
+| Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding, ToUnicode) | M2 ✅ |
+| Text | `text` (rustybuzz shaping, UAX #14 breaking, hyphenation, fallback, justify, ellipsis) | M2 ✅ |
 | Layout | `layout` (arena tree + Taffy) | M1 ✅ |
 | Pagination | `paginate` | M3 |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
@@ -49,6 +49,19 @@ the page content box (column flex, fixed width, unbounded height). After
 `LayoutEngine::compute` every node holds absolute `Geometry` (border box,
 plus resolved border and padding) in flow coordinates; paint adds the page
 margin offset.
+
+## Text pipeline
+
+```
+runs ─▶ prepare (whitespace, soft hyphens, font per char, rustybuzz) ─▶ Prepared   (cached per node)
+Prepared + width ─▶ break_lines (greedy, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per width)
+LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
+```
+
+`TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
+for min-content / max-content / definite widths and gets the paragraph's
+size. Glyph → Unicode mappings are collected while shaping and become the
+ToUnicode CMaps, so text is selectable and searchable.
 
 ## Testing
 
