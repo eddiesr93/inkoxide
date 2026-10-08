@@ -8,6 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 quick=0
+echo "platform: $(uname -sm)"
 [[ "${1:-}" == "--quick" ]] && quick=1
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }

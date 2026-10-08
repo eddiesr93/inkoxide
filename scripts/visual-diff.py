@@ -9,9 +9,16 @@ target/fixtures/. Pages are rasterised with `pdftoppm -r 72`. A page fails
 when more than 0.1 % of its pixels differ by more than 24/255 in any channel
 (antialiasing varies slightly between poppler builds).
 
+Rasterisation differs slightly between platforms and poppler/FreeType
+versions even for identical PDFs. If a platform fails on byte-identical
+output, loosen the comparison here, never the engine:
+INKOXIDE_VISUAL_THRESHOLD (fraction of pixels, default 0.001) and
+INKOXIDE_VISUAL_TOLERANCE (per-channel difference, default 24).
+
 For long generated fixtures only the first MAX_PAGES pages are stored, plus
 the page count in `<name>.pages`.
 """
+import os
 import pathlib
 import shutil
 import subprocess
@@ -26,8 +33,8 @@ PDFS = ROOT / "target/fixtures"
 EXPECTED = ROOT / "fixtures/expected"
 OUT = ROOT / "target/visual"
 MAX_PAGES = 4
-THRESHOLD = 0.001
-CHANNEL_TOLERANCE = 24
+THRESHOLD = float(os.environ.get("INKOXIDE_VISUAL_THRESHOLD", "0.001"))
+CHANNEL_TOLERANCE = int(os.environ.get("INKOXIDE_VISUAL_TOLERANCE", "24"))
 
 
 def rasterise(pdf: pathlib.Path, dest: pathlib.Path) -> list:

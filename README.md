@@ -21,6 +21,14 @@ render(document_tree, options) -> pdf_bytes
 > crates.io yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 > [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
+## Supported platforms
+
+| Platform | Status |
+|---|---|
+| Linux x86_64 (glibc) | ✅ verified: `scripts/ci.sh` green |
+| macOS arm64 | ⏳ not yet verified; steps in [docs/TESTING.md](docs/TESTING.md#macos-apple-silicon) |
+| Linux musl, Linux arm64, macOS x86_64, Windows | untested |
+
 ## Quick start
 
 ```sh

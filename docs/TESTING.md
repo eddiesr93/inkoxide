@@ -64,3 +64,44 @@ cargo run --release --bin repro -- stats corpus/render_tree             # genera
 
 `scripts/ci.sh` runs a 30-second smoke per target when nightly and
 cargo-fuzz are installed and skips it otherwise.
+
+## macOS (Apple Silicon)
+
+The engine has been verified on Linux x86_64 only; the development
+container is Linux. To verify macOS arm64, run on the Mac:
+
+```sh
+# Tools (once)
+xcode-select --install                       # C toolchain / linker
+curl https://sh.rustup.rs -sSf | sh          # rustup; rust-toolchain.toml pins 1.97.0
+brew install qpdf poppler python node pnpm   # qpdf, pdftoppm/pdfinfo, python3, node ≥ 18
+python3 -m pip install --user jsonschema numpy pillow
+cargo install cargo-deny                     # optional; ci.sh skips it when missing
+rustup toolchain install nightly && cargo install cargo-fuzz   # optional (fuzz smoke)
+brew install verapdf                         # optional (PDF/A validation); or the veraPDF installer
+
+# Checks
+scripts/ci.sh
+```
+
+Expected output: the first line is `platform: Darwin arm64`, every step
+prints its `== …` header, the Node step prints `# fail 0`, the visual
+step lists `ok   <fixture>` for every fixture, and the run ends with
+`== all checks passed` (exit status 0).
+
+Notes:
+
+- The Node binding is built by `scripts/build-node.sh`, which runs
+  `cargo build -p inkoxide-node` and copies `libinkoxide_node.dylib` to
+  `npm/inkoxide.darwin-arm64.node`. `napi-build` sets the macOS linker
+  flags (`-undefined dynamic_lookup`), so `@napi-rs/cli` is not needed.
+- PDFs are byte-identical across platforms (the engine does no
+  platform-dependent arithmetic on the output path), but poppler and
+  FreeType from Homebrew may antialias slightly differently from the
+  Linux build that produced `fixtures/expected/`. If the visual step
+  fails while `cargo test` passes, compare `target/visual/*-diff.png`; for
+  pure antialiasing noise, rerun with a looser comparison, e.g.
+  `INKOXIDE_VISUAL_THRESHOLD=0.003 scripts/ci.sh`, and record the value
+  needed in this section. Do not regenerate the references on macOS.
+- To confirm cross-platform byte identity, compare
+  `shasum -a 256 target/fixtures/*.pdf` from both machines.
