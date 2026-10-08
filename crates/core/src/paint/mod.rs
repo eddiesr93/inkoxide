@@ -7,7 +7,7 @@
 mod boxes;
 mod shapes;
 
-pub(crate) use boxes::{paint_flow, ContentPainter};
+pub(crate) use boxes::{paint_flow, ContentCtx, ContentPainter, FlowPart};
 
 use crate::schema::Color;
 

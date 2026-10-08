@@ -26,7 +26,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding, ToUnicode) | M2 ✅ |
 | Text | `text` (rustybuzz shaping, UAX #14 breaking, hyphenation, fallback, justify, ellipsis) | M2 ✅ |
 | Layout | `layout` (arena tree + Taffy) | M1 ✅ |
-| Pagination | `paginate` | M3 |
+| Pagination | `paginate` (shift accumulation, head rule, atomic nodes, forced breaks) + `pipeline` | M3 ✅ |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
 | PDF | `pdf` | M0 ✅: pages, page tree, content streams, Info |
 | Images | `images` | registry only (M5) |
@@ -62,6 +62,15 @@ LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶
 for min-content / max-content / definite widths and gets the paragraph's
 size. Glyph → Unicode mappings are collected while shaping and become the
 ToUnicode CMaps, so text is selectable and searchable.
+
+## Pagination and paint
+
+`pipeline::run` lays out every page template (flow, header, footer),
+paginates each flow, then paints page by page: background → flow (clipped
+to the content band, only nodes and lines on the page) → fixed nodes →
+header → footer. `FlowPart` tells the box painter which part of a flow to
+paint; leaf painters get a `ContentCtx` with the node's shift, per-line
+shifts and the page window. See ADR-021/022.
 
 ## Testing
 

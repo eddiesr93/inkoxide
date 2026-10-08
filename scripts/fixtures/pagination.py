@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Generates the M3 pagination fixtures:
+multi-page-text, keep-together, header-footer-pagenumbers."""
+import json
+import pathlib
+
+OUT = pathlib.Path(__file__).resolve().parents[2] / "fixtures/docs"
+INK = [0.1, 0.11, 0.14, 1]
+MUTED = [0.45, 0.47, 0.53, 1]
+LINE = [0.86, 0.87, 0.9, 1]
+ACCENT = [0.16, 0.36, 0.86, 1]
+FONTS = [
+    {"id": "Inter-Regular", "family": "Inter"},
+    {"id": "Inter-Bold", "family": "Inter", "weight": 700},
+    {"id": "Inter-Italic", "family": "Inter", "style": "italic"},
+]
+A4 = {"width": 595.28, "height": 841.89}
+
+PARAS = [
+    "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+    "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+    "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+    "Headers and footers are laid out once per page template and painted on every page. Page numbers are placeholders that reserve the width of three digits during layout and are filled in after pagination, so the total page count never needs a second layout pass.",
+]
+
+
+def run(text, font="Inter-Regular", size=10.5, color=INK, **kw):
+    return {"text": text, "font": font, "size": size, "color": color, **kw}
+
+
+def text(*runs, brk=None, **style):
+    n = {"type": "text", "runs": list(runs)}
+    if style:
+        n["style"] = style
+    if brk:
+        n["break"] = brk
+    return n
+
+
+def box(*children, brk=None, **style):
+    n = {"type": "box", "style": style}
+    if children:
+        n["children"] = list(children)
+    if brk:
+        n["break"] = brk
+    return n
+
+
+def edges(v):
+    return {"top": v, "right": v, "bottom": v, "left": v}
+
+
+def heading(t, size=15):
+    return text(run(t, "Inter-Bold", size), brk={"minPresenceAhead": 60}, margin={"top": 14, "bottom": 6})
+
+
+def para(t, **kw):
+    return text(run(t), lineHeight=1.5, textAlign="justify", margin={"bottom": 8}, **kw)
+
+
+def write(name, doc):
+    (OUT / f"{name}.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
+    print(f"wrote fixtures/docs/{name}.json")
+
+
+# --- multi-page-text: ~5 pages of flowing paragraphs and headings ---------
+children = [text(run("Multi-page text", "Inter-Bold", 24), margin={"bottom": 4}),
+            text(run("Paragraphs, headings and a long quote flowing over several pages.", size=11, color=MUTED), margin={"bottom": 10})]
+for section in range(1, 9):
+    children.append(heading(f"{section}. Section heading"))
+    for k in range(3):
+        children.append(para(PARAS[(section + k) % len(PARAS)]))
+    if section == 3:
+        children.append(box(
+            *[para(PARAS[k], ) for k in range(4)],
+            padding={"top": 10, "right": 14, "bottom": 2, "left": 14},
+            backgroundColor=[0.95, 0.96, 0.99, 1], borderWidth={"left": 3}, borderColor={"left": ACCENT},
+            margin={"bottom": 8},
+        ))
+write("multi-page-text", {
+    "version": 1, "meta": {"title": "Multi-page text", "lang": "en"}, "fonts": FONTS,
+    "pages": [{"size": A4, "margin": edges(56), "children": children}],
+})
+
+# --- keep-together: cards that must not split, a forced page break -------
+def card(i, lines):
+    return box(
+        text(run(f"Card {i}", "Inter-Bold", 12)),
+        *[text(run(PARAS[(i + k) % 4], size=9.5, color=MUTED), lineHeight=1.4) for k in range(lines)],
+        brk={"inside": "avoid"},
+        gap=6, padding=edges(12), margin={"bottom": 10},
+        borderWidth=edges(1), borderColor=edges(LINE), borderRadius=6, backgroundColor=[0.99, 0.99, 1, 1],
+    )
+
+kt = [text(run("Keep-together blocks", "Inter-Bold", 22), margin={"bottom": 12})]
+kt += [card(i, 1 + i % 3) for i in range(1, 10)]
+kt.append({"type": "pageBreak"})
+kt.append(text(run("After an explicit page break", "Inter-Bold", 16), margin={"bottom": 8}))
+kt.append(para(PARAS[0]))
+kt.append(box(
+    text(run("A row of columns is unsplittable", "Inter-Bold", 12), margin={"bottom": 6}),
+    box(*[box(para(PARAS[k]), flexGrow=1, flexBasis=0) for k in range(3)], flexDirection="row", gap=12),
+    padding=edges(12), borderWidth=edges(1), borderColor=edges(LINE), borderRadius=6,
+))
+write("keep-together", {
+    "version": 1, "meta": {"title": "Keep together", "lang": "en"}, "fonts": FONTS,
+    "pages": [{"size": A4, "margin": edges(56), "children": kt}],
+})
+
+# --- header-footer-pagenumbers: two page templates, fixed watermark ------
+def header(title):
+    return box(
+        text(run(title, "Inter-Bold", 9, MUTED)),
+        text(run("Inkoxide · pagination fixture", size=9, color=MUTED)),
+        flexDirection="row", justifyContent="space-between",
+        padding={"top": 24, "right": 56, "bottom": 8, "left": 56},
+        borderWidth={"bottom": 1}, borderColor={"bottom": LINE},
+    )
+
+
+footer = box(
+    text(run("Confidential — generated by Inkoxide", size=8, color=MUTED)),
+    text(run("Page ", size=8, color=MUTED), {"placeholder": "pageNumber", "font": "Inter-Bold", "size": 8, "color": INK},
+         run(" of ", size=8, color=MUTED), {"placeholder": "totalPages", "font": "Inter-Bold", "size": 8, "color": INK}),
+    flexDirection="row", justifyContent="space-between", alignItems="center",
+    padding={"top": 8, "right": 56, "bottom": 24, "left": 56},
+)
+body = [heading("Chapter one", 20)]
+for k in range(14):
+    body.append(para(PARAS[k % 4]))
+body.insert(0, box(
+    text(run("DRAFT", "Inter-Bold", 72, [0.85, 0.2, 0.2, 0.12])),
+    brk={"fixed": True}, position="absolute", inset={"top": 300, "left": 130}, rotate=-30,
+))
+appendix = [heading("Appendix (landscape template)", 18)]
+for k in range(6):
+    appendix.append(para(PARAS[(k + 2) % 4]))
+write("header-footer-pagenumbers", {
+    "version": 1, "meta": {"title": "Headers, footers, page numbers", "lang": "en"}, "fonts": FONTS,
+    "pages": [
+        {"size": A4, "margin": {"top": 80, "right": 56, "bottom": 70, "left": 56},
+         "header": header("Report — main body"), "footer": footer, "children": body},
+        {"size": {"width": 841.89, "height": 595.28}, "margin": {"top": 80, "right": 56, "bottom": 70, "left": 56},
+         "header": header("Report — appendix"), "footer": footer, "children": appendix},
+    ],
+})

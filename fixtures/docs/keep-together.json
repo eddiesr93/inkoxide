@@ -1,0 +1,1296 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Keep together",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "Inter-Italic",
+   "family": "Inter",
+   "style": "italic"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 56,
+    "right": 56,
+    "bottom": 56,
+    "left": 56
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Keep-together blocks",
+       "font": "Inter-Bold",
+       "size": 22,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 1",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 2",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Headers and footers are laid out once per page template and painted on every page. Page numbers are placeholders that reserve the width of three digits during layout and are filled in after pagination, so the total page count never needs a second layout pass.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 3",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Headers and footers are laid out once per page template and painted on every page. Page numbers are placeholders that reserve the width of three digits during layout and are filled in after pagination, so the total page count never needs a second layout pass.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 4",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 5",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Headers and footers are laid out once per page template and painted on every page. Page numbers are placeholders that reserve the width of three digits during layout and are filled in after pagination, so the total page count never needs a second layout pass.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 6",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 7",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Headers and footers are laid out once per page template and painted on every page. Page numbers are placeholders that reserve the width of three digits during layout and are filled in after pagination, so the total page count never needs a second layout pass.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 8",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 6,
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "margin": {
+       "bottom": 10
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6,
+      "backgroundColor": [
+       0.99,
+       0.99,
+       1,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Card 9",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+         "font": "Inter-Regular",
+         "size": 9.5,
+         "color": [
+          0.45,
+          0.47,
+          0.53,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "lineHeight": 1.4
+       }
+      }
+     ],
+     "break": {
+      "inside": "avoid"
+     }
+    },
+    {
+     "type": "pageBreak"
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "After an explicit page break",
+       "font": "Inter-Bold",
+       "size": 16,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+       "font": "Inter-Regular",
+       "size": 10.5,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "lineHeight": 1.5,
+      "textAlign": "justify",
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "padding": {
+       "top": 12,
+       "right": 12,
+       "bottom": 12,
+       "left": 12
+      },
+      "borderWidth": {
+       "top": 1,
+       "right": 1,
+       "bottom": 1,
+       "left": 1
+      },
+      "borderColor": {
+       "top": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "right": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "bottom": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ],
+       "left": [
+        0.86,
+        0.87,
+        0.9,
+        1
+       ]
+      },
+      "borderRadius": 6
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "A row of columns is unsplittable",
+         "font": "Inter-Bold",
+         "size": 12,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "margin": {
+         "bottom": 6
+        }
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "gap": 12
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
+             "font": "Inter-Regular",
+             "size": 10.5,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "lineHeight": 1.5,
+            "textAlign": "justify",
+            "margin": {
+             "bottom": 8
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Paragraphs split between lines. A heading that would end up alone at the bottom of a page moves to the next one, together with the first lines of the text that follows it, because its minimum presence ahead asks for more room than the page has left.",
+             "font": "Inter-Regular",
+             "size": 10.5,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "lineHeight": 1.5,
+            "textAlign": "justify",
+            "margin": {
+             "bottom": 8
+            }
+           }
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1,
+          "flexBasis": 0
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Boxes split between their children. Their background and borders are sliced at the page edge, which is what CSS calls box-decoration-break: slice. Boxes that ask to be kept together move to the next page whole, unless they are taller than a page, in which case they are sliced with a warning.",
+             "font": "Inter-Regular",
+             "size": 10.5,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ],
+           "style": {
+            "lineHeight": 1.5,
+            "textAlign": "justify",
+            "margin": {
+             "bottom": 8
+            }
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

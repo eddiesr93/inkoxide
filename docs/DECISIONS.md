@@ -273,3 +273,47 @@ brief intends.
 been out for a few weeks (target: M6, with before/after benchmarks and the
 visual suite as the safety net). The project owner may prefer to do it
 sooner.
+
+## ADR-021 — Pagination by shift accumulation over one layout (M3)
+
+**Decision.** Each page template's flow is laid out once (unbounded
+column, §6.4). `paginate` walks it in document order with a running
+`shift`; each node records `shift_top`/`shift_bottom`, and split
+paragraphs record one shift per line. Paged position = layout position +
+shift; page `k` shows `[k·H, (k+1)·H)`. Rules:
+
+- **Head rule.** Before placing a node, its *head* (height up to the end
+  of its first unbreakable piece: first line, first child's head, or the
+  whole node if atomic) must fit, together with `minPresenceAhead`;
+  otherwise the whole node moves to the next page. This prevents empty
+  slivers (a box's top padding/border alone at a page bottom) and is how
+  `minPresenceAhead` works.
+- **Atomic nodes** move whole: `inside: avoid`, row / row-reverse /
+  column-reverse / wrapping flex boxes, grid boxes (the brief's v1 rule
+  for rows extended to every layout whose children are not stacked
+  vertically), images, spacers, empty boxes, tables until M4, positioned,
+  rotated and fixed nodes. Taller than a page, they are sliced and a
+  warning is logged.
+- **Forced breaks** (`before/after: page`, `pageBreak`) never create an
+  empty page: a break at the top of a page is a no-op.
+- **Painting** clips each page to its content band (full page width) and
+  paints only nodes whose page range includes the page and only the lines
+  in the page's window. Split boxes are therefore sliced at the page edge
+  (CSS `box-decoration-break: slice`): background on every fragment, top
+  border on the first, bottom border on the last.
+
+**Consequences.** Pagination is O(nodes + lines), with no re-layout.
+Splitting rows of columns is not supported in v1. No widow/orphan line
+control beyond the head rule.
+
+## ADR-022 — Headers, footers and fixed nodes (M3)
+
+**Decision.** Header and footer are laid out once per page template at the
+full page width (their own tree, no minimum height). The header is
+painted at y = 0, the footer bottom-aligned, on every page of the
+template, after the flow, so they sit above it. Nodes with `break.fixed`
+keep their layout space in the flow and are painted on every page of
+their template at the same page-relative position as on their first page,
+above the flow. Page numbers are global across templates: `pageNumber`
+is the physical page index (1-based) and `totalPages` the document's
+page count, both substituted at paint time.

@@ -4,7 +4,7 @@
 use super::{Ellipsis, Line, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE};
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
-use crate::paint::{ContentPainter, Op, Rect, TextGlyph, TextOp};
+use crate::paint::{ContentCtx, ContentPainter, Op, Rect, TextGlyph, TextOp};
 use crate::schema::{Color, Decoration, Node, NodeKind, Placeholder, TextAlign, TextRun};
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
@@ -20,50 +20,40 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     pub cache: &'c mut TextCache<'s, S>,
     pub fonts: &'f FontSet<'a>,
     pub numbers: PageNumbers,
-    /// Lines to paint per text node; `None` paints all of them. Used by
-    /// pagination to paint a slice of a split paragraph.
-    pub line_range: Option<std::ops::Range<usize>>,
-    /// Vertical shift applied to the painted lines (continuation slices
-    /// start at the top of their page).
-    pub line_shift: f32,
 }
 
 impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
-    fn paint(
-        &mut self,
-        node: &Node,
-        geo: &Geometry,
-        dx: f32,
-        dy: f32,
-        opacity: f32,
-        ops: &mut Vec<Op>,
-    ) {
+    fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
         let NodeKind::Text { runs } = &node.kind else {
             return;
         };
         let (cx, cy, cw, _) = geo.content_box();
-        let (cx, cy) = (cx + dx, cy + dy + self.line_shift);
         let Some(layout) = self.cache.layout(node, cw) else {
             return;
         };
         let Some((prepared, style)) = self.cache.prepared(node) else {
             return;
         };
-        let range = self.line_range.clone().unwrap_or(0..layout.lines.len());
-        for line in
-            &layout.lines[range.start.min(layout.lines.len())..range.end.min(layout.lines.len())]
-        {
+        for (li, line) in layout.lines.iter().enumerate() {
+            let shift = ctx.line_shifts.get(li).copied().unwrap_or(ctx.shift);
+            // Line top in paged space; only lines on this page are painted.
+            let top = cy + line.top + shift;
+            if let Some((w0, w1)) = ctx.window {
+                if top >= w1 - 0.01 || top + line.height <= w0 + 0.01 {
+                    continue;
+                }
+            }
             paint_line(
                 line,
                 prepared,
                 runs,
                 style.align,
-                cx,
-                cy,
+                cx + ctx.dx,
+                top - line.top + ctx.dy,
                 cw,
                 self.fonts,
                 self.numbers,
-                opacity,
+                ctx.opacity,
                 ops,
             );
         }

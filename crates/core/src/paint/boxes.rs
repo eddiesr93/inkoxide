@@ -1,52 +1,95 @@
 //! Box painting: background, borders, clipping, opacity, rotation, then
-//! children, in document order.
+//! content and children, in document order.
 
 use super::shapes::{inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII};
 use super::{Dash, FillRule, Op, Path};
 use crate::layout::{Geometry, NodeIdx, Tree};
+use crate::paginate::Placement;
 use crate::schema::{BorderStyle, Color, Display, Node, Overflow};
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
-/// Paints leaf content (text, images, tables) inside a node's content box.
-pub(crate) trait ContentPainter {
-    /// `opacity` is the cumulative opacity in effect; content with its own
-    /// alpha (text colour) must multiply it.
-    fn paint(
-        &mut self,
-        node: &Node,
-        geo: &Geometry,
-        dx: f32,
-        dy: f32,
-        opacity: f32,
-        ops: &mut Vec<Op>,
-    );
+/// What a leaf painter needs to know about the node it paints.
+pub(crate) struct ContentCtx<'p> {
+    pub idx: NodeIdx,
+    /// Translation from flow coordinates to page coordinates, horizontally.
+    pub dx: f32,
+    /// Translation from paged coordinates to page coordinates, vertically.
+    pub dy: f32,
+    /// The node's shift into paged space.
+    pub shift: f32,
+    /// Per-line shifts of a split paragraph (empty: use `shift`).
+    pub line_shifts: &'p [f32],
+    /// Paged y range shown on this page (`None`: everything).
+    pub window: Option<(f32, f32)>,
+    /// Cumulative opacity in effect; content with its own alpha multiplies it.
+    pub opacity: f32,
 }
 
-/// Paints every node of `tree` (except the synthetic root) translated by
-/// `(dx, dy)`.
+/// Paints leaf content (text, images, tables) inside a node's content box.
+pub(crate) trait ContentPainter {
+    fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>);
+}
+
+/// Which part of a flow to paint.
+#[derive(Clone, Copy)]
+pub(crate) enum FlowPart<'p> {
+    /// Everything, unpaginated (headers, footers).
+    All,
+    /// Page `page` of a paginated flow, without its fixed nodes.
+    Page { placement: &'p Placement, page: u32 },
+    /// The flow's fixed nodes, repeated on page `page`.
+    Fixed { placement: &'p Placement, page: u32 },
+}
+
+/// Paints part of `tree`. `dx`/`dy` translate flow (or paged) coordinates
+/// to page coordinates.
 pub(crate) fn paint_flow(
     tree: &Tree<'_>,
+    part: FlowPart<'_>,
     dx: f32,
     dy: f32,
     content: &mut dyn ContentPainter,
     ops: &mut Vec<Op>,
 ) {
+    let (placement, page, fixed_only) = match part {
+        FlowPart::All => (None, 0, false),
+        FlowPart::Page { placement, page } => (Some(placement), page, false),
+        FlowPart::Fixed { placement, page } => (Some(placement), page, true),
+    };
     let mut p = BoxPainter {
         tree,
+        placement,
+        page,
         dx,
         dy,
         opacity: 1.0,
         content,
         ops,
     };
-    for c in tree.children(0) {
-        p.node(c);
+    match (fixed_only, placement) {
+        (true, Some(pl)) => {
+            // Fixed nodes keep their position relative to their first page.
+            let h = pl.page_h;
+            for &i in &pl.fixed {
+                let first = pl.page_range[i as usize].0;
+                p.dy = dy + (page as f32 - first as f32) * h;
+                p.placement = Some(pl);
+                p.node(i, true);
+            }
+        }
+        _ => {
+            for c in tree.children(0) {
+                p.node(c, false);
+            }
+        }
     }
 }
 
-struct BoxPainter<'t, 'a, 'c> {
+struct BoxPainter<'t, 'a, 'c, 'p> {
     tree: &'t Tree<'a>,
+    placement: Option<&'p Placement>,
+    page: u32,
     dx: f32,
     dy: f32,
     /// Cumulative opacity of the ancestors.
@@ -55,16 +98,34 @@ struct BoxPainter<'t, 'a, 'c> {
     ops: &'c mut Vec<Op>,
 }
 
-impl BoxPainter<'_, '_, '_> {
-    fn node(&mut self, i: NodeIdx) {
+impl BoxPainter<'_, '_, '_, '_> {
+    fn node(&mut self, i: NodeIdx, as_fixed: bool) {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else { return };
         let s = &node.style;
         if s.display == Some(Display::None) {
             return;
         }
+        let window = match self.placement {
+            Some(pl) if !as_fixed => {
+                // Fixed nodes are painted by the fixed pass on every page.
+                if node.brk.fixed || !pl.on_page(i, self.page) {
+                    return;
+                }
+                let h = pl.page_h;
+                Some((self.page as f32 * h, (self.page + 1) as f32 * h))
+            }
+            _ => None,
+        };
         let g = ln.geo;
-        let (x, y, w, h) = (g.x + self.dx, g.y + self.dy, g.w, g.h);
+        let (shift, extra) = match self.placement {
+            Some(pl) => {
+                let st = pl.shift_top[i as usize];
+                (st, pl.shift_bottom[i as usize] - st)
+            }
+            None => (0.0, 0.0),
+        };
+        let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
 
         let opacity = s.opacity.unwrap_or(1.0);
         if opacity <= 0.0 {
@@ -103,7 +164,7 @@ impl BoxPainter<'_, '_, '_> {
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
             self.fill(rounded_rect(x, y, w, h, &radii), bg);
         }
-        self.borders(node, &g, x, y, &radii);
+        self.borders(node, &g, x, y, h, &radii);
 
         if clip {
             let b = g.border;
@@ -120,10 +181,20 @@ impl BoxPainter<'_, '_, '_> {
             });
         }
 
-        self.content
-            .paint(node, &g, self.dx, self.dy, self.opacity, self.ops);
+        let ctx = ContentCtx {
+            idx: i,
+            dx: self.dx,
+            dy: self.dy,
+            shift,
+            line_shifts: self
+                .placement
+                .map_or(&[][..], |pl| pl.line_shifts[i as usize].as_slice()),
+            window,
+            opacity: self.opacity,
+        };
+        self.content.paint(node, &g, &ctx, self.ops);
         for c in self.tree.children(i) {
-            self.node(c);
+            self.node(c, as_fixed);
         }
 
         if saved {
@@ -154,14 +225,16 @@ impl BoxPainter<'_, '_, '_> {
         self.ops.push(Op::Restore);
     }
 
-    fn borders(&mut self, node: &Node, g: &Geometry, x: f32, y: f32, radii: &Radii) {
+    /// `h` is the painted (paged) height, which can exceed the laid-out
+    /// height when the box is split across pages.
+    fn borders(&mut self, node: &Node, g: &Geometry, x: f32, y: f32, h: f32, radii: &Radii) {
         let s = &node.style;
         let widths = g.border;
         if widths.iter().all(|w| *w <= 0.0) {
             return;
         }
         let colors: [Color; 4] = s.border_color.map_or([BLACK; 4], |c| c.get(BLACK));
-        let (w, h) = (g.w, g.h);
+        let w = g.w;
         let [bt, br, bb, bl] = widths;
         let inner_radii = inset_radii(radii, widths);
         let ix = x + bl;
@@ -245,7 +318,7 @@ impl BoxPainter<'_, '_, '_> {
             ];
             let uniform =
                 active.len() == 4 && widths.windows(2).all(|p| p[0] == p[1]) && same_color;
-            if uniform && !crate::paint::shapes::is_square(radii) {
+            if uniform && !square {
                 let half = bt / 2.0;
                 let mid_radii = inset_radii(radii, [half; 4]);
                 let path = rounded_rect(x + half, y + half, w - bt, h - bt, &mid_radii);
