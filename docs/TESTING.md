@@ -95,8 +95,10 @@ Notes:
   `cargo build -p inkoxide-node` and copies `libinkoxide_node.dylib` to
   `npm/inkoxide.darwin-arm64.node`. `napi-build` sets the macOS linker
   flags (`-undefined dynamic_lookup`), so `@napi-rs/cli` is not needed.
-- PDFs are byte-identical across platforms (the engine does no
-  platform-dependent arithmetic on the output path), but poppler and
+- Output is deterministic on each platform. Across platforms it is
+  expected to match too, but this is not guaranteed: rotation, SVG arcs
+  and the sRGB curve call `sin`/`cos`/`powf`, which come from the
+  platform's libm and may differ in the last bit. Separately, poppler and
   FreeType from Homebrew may antialias slightly differently from the
   Linux build that produced `fixtures/expected/`. If the visual step
   fails while `cargo test` passes, compare `target/visual/*-diff.png`; for
