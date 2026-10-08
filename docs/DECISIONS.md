@@ -1155,5 +1155,6 @@ the same raster path as PNG (RGBA, alpha as a soft mask). GIF uses its
 first frame. Probing reads dimensions from headers only (GIF logical
 screen; WebP `VP8 `, `VP8L` and `VP8X` chunks).
 New transitive dependencies, all MIT or MIT/Apache-2.0: `gif`,
-`weezl`, `color_quant`, `image-webp`, `quick-error`. `cargo deny` passes
-with the existing licence allowlist.
+`weezl`, `color_quant`, `image-webp`, `quick-error`; all within the
+existing `deny.toml` licence allowlist (checked with `cargo metadata`;
+`cargo deny` was not installed in the build environment).
