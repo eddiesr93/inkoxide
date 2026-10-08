@@ -232,7 +232,7 @@ Type: `"solid"` \| `"dashed"` \| `"dotted"` or object with `top`, `right`, `bott
 
 One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.
 
-Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent`](#lengthpercent) `]`) or `{scale: …}` (array of `number`) or `{rotate: …}` (`number`) or `{skew: …}` (array of `number`) or `{matrix: …}` (array of `number`)
+Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale: …}` (array of `number`) or `{rotate: …}` (`number`) or `{skew: …}` (array of `number`) or `{matrix: …}` (array of `number`)
 
 ### Style
 
@@ -282,7 +282,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `borderStyle` | [`BorderStyles`](#borderstyles) |  | default `"solid"` |
 | `rotate` | `number` |  | Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
-| `transformOrigin` | `[` [`LengthPercent`](#lengthpercent), [`LengthPercent`](#lengthpercent) `]` |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
+| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
 | `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0; text nodes only; multiplier of the largest run size on the line |

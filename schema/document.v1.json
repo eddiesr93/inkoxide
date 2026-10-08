@@ -471,16 +471,11 @@
           "properties": {
             "translate": {
               "type": "array",
-              "prefixItems": [
-                {
-                  "$ref": "#/$defs/LengthPercent"
-                },
-                {
-                  "$ref": "#/$defs/LengthPercent"
-                }
-              ],
-              "items": false,
-              "minItems": 2
+              "items": {
+                "$ref": "#/$defs/LengthPercent"
+              },
+              "minItems": 2,
+              "maxItems": 2
             }
           }
         },
@@ -804,17 +799,12 @@
         },
         "transformOrigin": {
           "type": "array",
-          "prefixItems": [
-            {
-              "$ref": "#/$defs/LengthPercent"
-            },
-            {
-              "$ref": "#/$defs/LengthPercent"
-            }
-          ],
-          "items": false,
+          "items": {
+            "$ref": "#/$defs/LengthPercent"
+          },
           "minItems": 2,
-          "description": "x and y of the origin of `rotate` and `transform` within the border box. Default `[\"50%\", \"50%\"]`."
+          "description": "x and y of the origin of `rotate` and `transform` within the border box. Default `[\"50%\", \"50%\"]`.",
+          "maxItems": 2
         },
         "zIndex": {
           "type": "integer",

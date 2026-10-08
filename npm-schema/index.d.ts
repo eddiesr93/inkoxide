@@ -121,8 +121,9 @@ export type TransformOp =
   | {
       /**
        * @minItems 2
+       * @maxItems 2
        */
-      translate: never[];
+      translate: [LengthPercent, LengthPercent];
     }
   | {
       /**
@@ -366,8 +367,9 @@ export interface Style {
    * x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`.
    *
    * @minItems 2
+   * @maxItems 2
    */
-  transformOrigin?: never[];
+  transformOrigin?: [LengthPercent, LengthPercent];
   /**
    * Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells.
    */
