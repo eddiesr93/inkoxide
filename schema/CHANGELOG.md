@@ -44,3 +44,7 @@ first npm release (M5); after that, breaking changes bump `version`.
   page numbers, negative from the end) paints a node on some pages only.
   Table rows taller than a page now split between lines inside their
   cells instead of being sliced (behaviour only).
+- v1.1 forms: `field` node (`text`, `checkbox`, `radio`, `select`) writes
+  an interactive AcroForm field with appearance streams; radio buttons
+  sharing a `name` form one group. Images also accept GIF (first frame)
+  and WebP (lossy and lossless).

@@ -28,7 +28,7 @@ pub enum ValidationCode {
     FontNotRegistered,
     /// An image `src` is not present in the render-time image map.
     UnknownImage,
-    /// Image bytes are not a supported JPEG, PNG or SVG.
+    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
     InvalidImage,
     /// A decoded image exceeds the size guard.
     ImageTooLarge,

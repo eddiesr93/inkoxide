@@ -5,7 +5,7 @@
 // non-JSON inputs (MessagePack) can carry.
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 
 use serde::Deserialize;
@@ -14,8 +14,9 @@ use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, Display,
-    Document, GridTrack, Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, RepeatCount,
-    Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
+    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, OptEdges,
+    PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
+    SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -268,6 +269,7 @@ pub(crate) fn check(
         doc,
         anchors: None,
         in_fixed: false,
+        fields: HashMap::new(),
     };
     c.document(doc);
     c.errors
@@ -284,6 +286,8 @@ struct Checker<'a> {
     anchors: Option<HashSet<&'a str>>,
     /// Inside a header or footer (at any depth).
     in_fixed: bool,
+    /// Form field names seen so far, with their kind.
+    fields: HashMap<String, FieldKind>,
 }
 
 /// Longest link target accepted.
@@ -612,6 +616,123 @@ impl<'a> Checker<'a> {
                 }
             }
             NodeKind::Spacer => {}
+            NodeKind::Field(f) => self.at("field", false, |c| c.field(f)),
+        }
+    }
+
+    fn field(&mut self, f: &Field) {
+        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > 128 {
+            self.err(
+                Code::InvalidValue,
+                Some("name"),
+                "a field name is 1 to 128 characters, without `.`",
+            );
+        }
+        match self.fields.get(&f.name) {
+            Some(&k) if k != FieldKind::Radio || f.kind != FieldKind::Radio => self.err(
+                Code::DuplicateId,
+                Some("name"),
+                format!(
+                    "field name `{}` is already used (only radio buttons share a name)",
+                    f.name
+                ),
+            ),
+            _ => {
+                self.fields.insert(f.name.clone(), f.kind);
+            }
+        }
+        let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);
+        match (&f.font, text_like) {
+            (Some(font), _) if !self.declared.contains(font.as_str()) => self.err(
+                Code::UnknownFont,
+                Some("font"),
+                format!("font `{font}` is not declared in `fonts`"),
+            ),
+            (None, true) => self.err(
+                Code::MissingField,
+                Some("font"),
+                "text and select fields require `font`",
+            ),
+            _ => {}
+        }
+        if !(f.size > 0.0 && f.size <= 1000.0) {
+            self.err(Code::OutOfRange, Some("size"), "must be within (0, 1000]");
+        }
+        if let Some(c) = &f.color {
+            self.color(Some("color"), c);
+        }
+        let only = |c: &mut Self, set: bool, field: &str, kinds: &str| {
+            if set {
+                c.err(
+                    Code::InvalidValue,
+                    Some(field),
+                    format!("`{field}` only applies to {kinds} fields"),
+                );
+            }
+        };
+        let is = |k: FieldKind| f.kind == k;
+        only(
+            self,
+            !is(FieldKind::Text) && (f.multiline || f.password || f.max_length.is_some()),
+            if f.multiline {
+                "multiline"
+            } else if f.password {
+                "password"
+            } else {
+                "maxLength"
+            },
+            "text",
+        );
+        only(
+            self,
+            !is(FieldKind::Select) && !f.options.is_empty(),
+            "options",
+            "select",
+        );
+        only(
+            self,
+            !matches!(f.kind, FieldKind::Checkbox | FieldKind::Radio) && f.checked,
+            "checked",
+            "checkbox and radio",
+        );
+        only(
+            self,
+            is(FieldKind::Checkbox) && f.value.is_some(),
+            "value",
+            "text, select and radio",
+        );
+        if f.max_length == Some(0) {
+            self.err(Code::OutOfRange, Some("maxLength"), "must be at least 1");
+        }
+        if let (Some(max), Some(v)) = (f.max_length, &f.value) {
+            if v.chars().count() > max as usize {
+                self.err(
+                    Code::OutOfRange,
+                    Some("value"),
+                    "is longer than `maxLength`",
+                );
+            }
+        }
+        match f.kind {
+            FieldKind::Radio if f.value.as_deref().is_none_or(str::is_empty) => self.err(
+                Code::MissingField,
+                Some("value"),
+                "a radio button requires a non-empty `value` (what it exports)",
+            ),
+            FieldKind::Select => {
+                if f.options.is_empty() {
+                    self.err(
+                        Code::MissingField,
+                        Some("options"),
+                        "a select field requires `options`",
+                    );
+                } else if let Some(v) = &f.value {
+                    if !f.options.contains(v) {
+                        self.err(Code::InvalidValue, Some("value"), "is not one of `options`");
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -715,6 +836,18 @@ impl<'a> Checker<'a> {
                 Some("size"),
                 "font size must be within (0, 1000]",
             );
+        }
+        if let Some(t) = r.decoration_thickness {
+            if !(t > 0.0 && t <= 100.0) {
+                self.err(
+                    Code::OutOfRange,
+                    Some("decorationThickness"),
+                    "must be within (0, 100]",
+                );
+            }
+        }
+        if let Some(col) = &r.decoration_color {
+            self.color(Some("decorationColor"), col);
         }
         if let Some(col) = &r.color {
             self.color(Some("color"), col);
@@ -1001,6 +1134,15 @@ impl<'a> Checker<'a> {
         }
         if s.max_lines == Some(0) {
             self.err(Code::OutOfRange, Some("maxLines"), "must be at least 1");
+        }
+        if s.text_indent
+            .is_some_and(|v| !v.is_finite() || v.abs() > 10_000.0)
+        {
+            self.err(
+                Code::OutOfRange,
+                Some("textIndent"),
+                "must be within [-10000, 10000]",
+            );
         }
         for (name, v) in [("orphans", s.orphans), ("widows", s.widows)] {
             if v.is_some_and(|v| !(1..=100).contains(&v)) {

@@ -219,12 +219,66 @@ fn one_u8() -> u8 {
 
 #[derive(Debug, Clone)]
 pub enum NodeKind {
-    Box { children: Vec<Node> },
-    Text { runs: Vec<TextRun> },
-    Image { source: ImageSource, fit: ImageFit },
+    Box {
+        children: Vec<Node>,
+    },
+    Text {
+        runs: Vec<TextRun>,
+    },
+    Image {
+        source: ImageSource,
+        fit: ImageFit,
+    },
     Table(Table),
     PageBreak,
     Spacer,
+    /// An interactive form field (boxed: large and rare).
+    Field(Box<Field>),
+}
+
+/// An `AcroForm` field. Fields sharing a `name` are one field with several
+/// widgets (radio buttons: one per option).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Field {
+    pub name: String,
+    pub kind: FieldKind,
+    /// Text: the initial text. Select: the selected option. Radio: the
+    /// value this button exports when selected.
+    pub value: Option<String>,
+    /// Checkbox and radio: initially on.
+    #[serde(default)]
+    pub checked: bool,
+    /// Select: the choices.
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub multiline: bool,
+    #[serde(default)]
+    pub password: bool,
+    pub max_length: Option<u32>,
+    #[serde(default)]
+    pub read_only: bool,
+    #[serde(default)]
+    pub required: bool,
+    /// Text and select: a declared font id.
+    pub font: Option<String>,
+    #[serde(default = "default_field_size")]
+    pub size: f32,
+    pub color: Option<Color>,
+}
+
+fn default_field_size() -> f32 {
+    10.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FieldKind {
+    Text,
+    Checkbox,
+    Radio,
+    Select,
 }
 
 #[derive(Debug, Clone)]

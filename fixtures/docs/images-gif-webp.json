@@ -1,0 +1,179 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "GIF and WebP"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 220
+   },
+   "margin": {
+    "top": 24,
+    "right": 24,
+    "bottom": 24,
+    "left": 24
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "GIF (first frame, transparency) and WebP (lossy; lossless with alpha)",
+       "font": "Inter-Regular",
+       "size": 12,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12,
+      "margin": {
+       "top": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "width": 84,
+        "gap": 4,
+        "alignItems": "center"
+       },
+       "children": [
+        {
+         "type": "image",
+         "src": "anim",
+         "fit": "contain",
+         "style": {
+          "width": 64,
+          "height": 64,
+          "backgroundColor": [
+           0.9,
+           0.92,
+           0.95,
+           1
+          ]
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "anim.gif",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "width": 180,
+        "gap": 4,
+        "alignItems": "center"
+       },
+       "children": [
+        {
+         "type": "image",
+         "src": "photo-lossy",
+         "fit": "contain",
+         "style": {
+          "width": 160,
+          "height": 100,
+          "backgroundColor": [
+           0.9,
+           0.92,
+           0.95,
+           1
+          ]
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "photo-lossy.webp",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "width": 116,
+        "gap": 4,
+        "alignItems": "center"
+       },
+       "children": [
+        {
+         "type": "image",
+         "src": "badge-lossless",
+         "fit": "contain",
+         "style": {
+          "width": 96,
+          "height": 96,
+          "backgroundColor": [
+           0.9,
+           0.92,
+           0.95,
+           1
+          ]
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "badge-lossless.webp",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

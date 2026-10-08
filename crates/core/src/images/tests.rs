@@ -1,3 +1,4 @@
+use super::probe::ImageFormat;
 use super::*;
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -18,7 +19,7 @@ fn probes_jpeg_png_and_exif() {
     assert_eq!((c.components, c.adobe), (4, true));
     let p = probe(&fixture("logo.png")).unwrap();
     assert_eq!((p.width, p.height), (160, 160));
-    assert!(probe(b"GIF89a....").is_err());
+    assert!(probe(b"GIF89a..").is_err());
     assert!(probe(&[0xFF, 0xD8, 0xFF]).is_err());
     let mut huge = fixture("logo.png");
     huge[16..20].copy_from_slice(&100_000u32.to_be_bytes());
@@ -94,4 +95,37 @@ fn separate_stores_share_one_decode() {
     assert!(cache::contains(a.hash));
     let db = b.decoded(&ImageCrateDecoder).unwrap();
     assert!(Arc::ptr_eq(&da, &db));
+}
+
+#[test]
+fn probes_and_decodes_gif_and_webp() {
+    let g = probe(&fixture("anim.gif")).unwrap();
+    assert_eq!((g.format, g.width, g.height), (ImageFormat::Gif, 64, 64));
+    let lossy = probe(&fixture("photo-lossy.webp")).unwrap();
+    assert_eq!(
+        (lossy.format, lossy.width, lossy.height),
+        (ImageFormat::WebP, 160, 100)
+    );
+    let lossless = probe(&fixture("badge-lossless.webp")).unwrap();
+    assert_eq!((lossless.width, lossless.height), (96, 96));
+    assert!(probe(b"RIFF\0\0\0\0WEBPVP8Z").is_err());
+
+    // First frame of the animation, with GIF transparency as alpha.
+    let d = ImageCrateDecoder.decode(&fixture("anim.gif")).unwrap();
+    assert!(matches!(d.body, ImageBody::Raw { alpha: Some(_), .. }));
+    let d = ImageCrateDecoder
+        .decode(&fixture("photo-lossy.webp"))
+        .unwrap();
+    assert!(matches!(
+        d.body,
+        ImageBody::Raw {
+            color: RawColor::Rgb,
+            alpha: None,
+            ..
+        }
+    ));
+    let d = ImageCrateDecoder
+        .decode(&fixture("badge-lossless.webp"))
+        .unwrap();
+    assert!(matches!(d.body, ImageBody::Raw { alpha: Some(_), .. }));
 }

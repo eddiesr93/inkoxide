@@ -344,7 +344,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` | yes |  |
+| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` | yes |  |
 
 ### BoxNode
 
@@ -384,7 +384,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
-| `data` | `string` |  | Inline image bytes (JPEG, PNG or SVG), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
+| `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
 
 ### TableNode
@@ -420,6 +420,39 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+
+### FieldNode
+
+An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text: 150 pt wide, one line, or three when multiline; checkbox and radio: `size` + 2 pt square).
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"field"` | yes |  |
+| `id` | [`Id`](#id) |  |  |
+| `style` | [`Style`](#style) |  |  |
+| `break` | [`Break`](#break) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `field` | [`Field`](#field) | yes |  |
+
+### Field
+
+Fields with the same `name` are one field with several widgets (for example a field in a header, repeated on every page); only radio buttons may share a name with different values.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `name` | `string` matching `^[^.]+$` | yes | Field name (no `.`); unique in the document except for the buttons of one radio group. |
+| `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
+| `value` | `string` |  | text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected. |
+| `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
+| `options` | array of `string` |  | min items 1; select only: the choices |
+| `multiline` | `boolean` |  | default `false`; text only |
+| `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
+| `maxLength` | `integer` |  | ≥ 1; text only; maximum number of characters |
+| `readOnly` | `boolean` |  | default `false` |
+| `required` | `boolean` |  | default `false` |
+| `font` | [`Id`](#id) |  | text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
+| `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
+| `color` | [`Color`](#color) |  | text and mark colour; default black |
 
 ### TrackBreadth
 

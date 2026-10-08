@@ -1118,3 +1118,42 @@ way to show different content on the first or last page (React PDF's
   ignoring horizontal padding and borders, so their boxes were too short
   and content overflowed. Measures now use the content-box available
   width. No existing fixture changed.
+
+## ADR-048 — Interactive form fields (AcroForm) (v1.1)
+
+**Context.** React PDF ships form primitives (`TextInput`, `Checkbox`,
+`Select`, …); inkoxide had no interactive output.
+**Decision.**
+- A `field` node (`text`, `checkbox`, `radio`, `select`) is a layout
+  leaf: without a size it measures 150pt wide (or the available width)
+  by one line (three for `multiline`) for text and select, and
+  `size + 2` square for checkbox and radio. Painting emits a widget op on
+  the content box; the PDF writer turns ops into widget annotations.
+- Every widget gets an appearance stream for each state (the value's
+  glyph runs for text/select; a check mark or a dot for on states, an
+  empty stream for `Off`). `NeedAppearances` is never set, so forms stay
+  PDF/A-2b valid and look the same in every viewer before editing.
+- `/DA` and the form's `/DR` use the embedded document font. A subset
+  font cannot show characters it lacks, so editable text fields also
+  embed the common Latin range (ASCII, Latin-1, Latin Extended-A,
+  Romanian comma-below letters, typographic punctuation, `€`).
+- Fields sharing a name become one parent field with kid widgets (radio
+  groups; repeated text fields share their value). A lone non-radio
+  field is merged with its widget. Names must not contain `.` (PDF
+  hierarchy separator); duplicate names are rejected except for radios.
+**Limits.** Widget rectangles ignore `transform` (annotations are
+axis-aligned); multiline appearances show the value's explicit lines
+without wrapping; password values are never written.
+
+## ADR-049 — GIF and WebP images (v1.1)
+
+**Context.** React PDF accepts GIF and WebP; users otherwise convert
+assets before rendering.
+**Decision.** Enable the `gif` and `webp` features of the already used
+`image` crate (pure Rust, no unsafe C decoders) and decode both through
+the same raster path as PNG (RGBA, alpha as a soft mask). GIF uses its
+first frame. Probing reads dimensions from headers only (GIF logical
+screen; WebP `VP8 `, `VP8L` and `VP8X` chunks).
+New transitive dependencies, all MIT or MIT/Apache-2.0: `gif`,
+`weezl`, `color_quant`, `image-webp`, `quick-error`. `cargo deny` passes
+with the existing licence allowlist.

@@ -26,6 +26,10 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
 
 impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
+        if let NodeKind::Field(f) = &node.kind {
+            crate::forms::paint(f, geo, ctx, self.fonts, ops);
+            return;
+        }
         let NodeKind::Text { runs } = &node.kind else {
             return;
         };

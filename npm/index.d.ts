@@ -63,7 +63,7 @@ export interface RenderOptions {
    * file identifier. CMYK JPEGs are converted to RGB. Default `false`.
    */
   pdfA?: boolean;
-  /** Image bytes (JPEG, PNG or SVG) by id, for this document only. */
+  /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
 }
 

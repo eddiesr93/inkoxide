@@ -567,3 +567,97 @@ fn widows_orphans_and_page_filters() {
     let (code, _) = one(&doc(r#"{"type":"box","pages":"sometimes"}"#));
     assert_eq!(code, C::InvalidValue);
 }
+
+#[test]
+fn form_fields() {
+    let ok = doc(
+        r#"{"type":"field","field":{"name":"a","kind":"text","font":"Inter-Regular","value":"x","maxLength":3}},
+           {"type":"field","field":{"name":"r","kind":"radio","value":"1","checked":true}},
+           {"type":"field","field":{"name":"r","kind":"radio","value":"2"}},
+           {"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x","y"],"value":"y"}},
+           {"type":"field","field":{"name":"c","kind":"checkbox","checked":true}}"#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    let f = "pages[0].children[0].field";
+    let cases = [
+        (
+            r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}}"#,
+            C::InvalidValue,
+            "name",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"text"}}"#,
+            C::MissingField,
+            "font",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"text","font":"Nope"}}"#,
+            C::UnknownFont,
+            "font",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"radio"}}"#,
+            C::MissingField,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"select","font":"Inter-Regular","options":["x"],"value":"z"}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"checkbox","multiline":true}}"#,
+            C::InvalidValue,
+            "multiline",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"text","font":"Inter-Regular","value":"long","maxLength":2}}"#,
+            C::OutOfRange,
+            "value",
+        ),
+    ];
+    for (node, code, field) in cases {
+        assert_eq!(one(&doc(node)), (code, format!("{f}.{field}")), "{node}");
+    }
+    let dup = doc(
+        r#"{"type":"field","field":{"name":"a","kind":"checkbox"}},{"type":"field","field":{"name":"a","kind":"checkbox"}}"#,
+    );
+    assert_eq!(
+        one(&dup),
+        (
+            C::DuplicateId,
+            "pages[0].children[1].field.name".to_string()
+        )
+    );
+    let (code, path) = one(&doc(
+        r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::UnknownField, "pages[0].children[0].link")
+    );
+}
+
+#[test]
+fn decoration_thickness_and_colour_are_checked() {
+    let (code, path) = one(&doc(
+        r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10,"decorationThickness":0}]}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (
+            C::OutOfRange,
+            "pages[0].children[0].runs[0].decorationThickness"
+        )
+    );
+    let (code, path) = one(&doc(
+        r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10,"decorationColor":[2,0,0,1]}]}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (
+            C::OutOfRange,
+            "pages[0].children[0].runs[0].decorationColor"
+        )
+    );
+}

@@ -25,7 +25,8 @@ export type Color = [number, number, number, number];
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Node".
  */
-export type Node = BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode;
+export type Node =
+  BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode;
 /**
  * Points, a percentage of the containing block, or "auto".
  *
@@ -550,7 +551,7 @@ export interface ImageNode {
    */
   src?: Id;
   /**
-   * Inline image bytes (JPEG, PNG or SVG), base64-encoded; a `data:<mime>;base64,` URL is also accepted.
+   * Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted.
    */
   data?: string;
   fit?: 'fill' | 'contain' | 'cover' | 'none';
@@ -622,6 +623,73 @@ export interface SpacerNode {
   link?: Link;
   bookmark?: Bookmark;
   pages?: PageFilter;
+}
+/**
+ * An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text: 150 pt wide, one line, or three when multiline; checkbox and radio: `size` + 2 pt square).
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "FieldNode".
+ */
+export interface FieldNode {
+  type: 'field';
+  id?: Id;
+  style?: Style;
+  break?: Break;
+  pages?: PageFilter;
+  field: Field;
+}
+/**
+ * Fields with the same `name` are one field with several widgets (for example a field in a header, repeated on every page); only radio buttons may share a name with different values.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Field".
+ */
+export interface Field {
+  /**
+   * Field name (no `.`); unique in the document except for the buttons of one radio group.
+   */
+  name: string;
+  kind: 'text' | 'checkbox' | 'radio' | 'select';
+  /**
+   * text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected.
+   */
+  value?: string;
+  /**
+   * checkbox and radio: initially selected
+   */
+  checked?: boolean;
+  /**
+   * select only: the choices
+   *
+   * @minItems 1
+   */
+  options?: [string, ...string[]];
+  /**
+   * text only
+   */
+  multiline?: boolean;
+  /**
+   * text only; the value is neither shown nor stored
+   */
+  password?: boolean;
+  /**
+   * text only; maximum number of characters
+   */
+  maxLength?: number;
+  readOnly?: boolean;
+  required?: boolean;
+  /**
+   * text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display.
+   */
+  font?: Id;
+  /**
+   * font size; also the mark size of checkboxes and radio buttons
+   */
+  size?: number;
+  /**
+   * text and mark colour; default black
+   */
+  color?: Color;
 }
 
 /** The document `version` this schema describes. */

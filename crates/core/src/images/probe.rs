@@ -1,4 +1,4 @@
-//! Header-only inspection of JPEG and PNG files (SVG is parsed): format, pixel size,
+//! Header-only inspection of JPEG, PNG, GIF and WebP files (SVG is parsed): format, pixel size,
 //! components and EXIF orientation. Used by validation (cheap, no decode)
 //! and by the JPEG passthrough path.
 
@@ -6,6 +6,8 @@
 pub(crate) enum ImageFormat {
     Jpeg,
     Png,
+    Gif,
+    WebP,
     Svg,
 }
 
@@ -29,6 +31,10 @@ pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, String> {
         probe_png(bytes)?
     } else if bytes.starts_with(&[0xFF, 0xD8]) {
         probe_jpeg(bytes)?
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        probe_gif(bytes)?
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        probe_webp(bytes)?
     } else if super::svg::is_svg(bytes) {
         // No header to read: parsing is the only real check.
         let size = super::svg::parse(bytes)?.size();
@@ -41,7 +47,7 @@ pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, String> {
             orientation: 1,
         });
     } else {
-        return Err("unsupported image format (expected JPEG, PNG or SVG)".into());
+        return Err("unsupported image format (expected JPEG, PNG, GIF, WebP or SVG)".into());
     };
     if info.width == 0 || info.height == 0 {
         return Err("image has zero width or height".into());
@@ -82,6 +88,68 @@ fn probe_png(b: &[u8]) -> Result<ImageInfo, String> {
         adobe: false,
         orientation: 1,
     })
+}
+
+fn raster(format: ImageFormat, width: u32, height: u32) -> ImageInfo {
+    ImageInfo {
+        format,
+        width,
+        height,
+        components: 0,
+        adobe: false,
+        orientation: 1,
+    }
+}
+
+fn le16(b: &[u8], i: usize) -> Option<u32> {
+    Some(u32::from(u16::from_le_bytes([*b.get(i)?, *b.get(i + 1)?])))
+}
+
+fn le24(b: &[u8], i: usize) -> Option<u32> {
+    Some(u32::from_le_bytes([
+        *b.get(i)?,
+        *b.get(i + 1)?,
+        *b.get(i + 2)?,
+        0,
+    ]))
+}
+
+/// Logical screen size of a GIF (the first frame is drawn on it).
+fn probe_gif(b: &[u8]) -> Result<ImageInfo, String> {
+    let (w, h) = le16(b, 6)
+        .zip(le16(b, 8))
+        .ok_or("GIF header is truncated")?;
+    Ok(raster(ImageFormat::Gif, w, h))
+}
+
+/// Canvas size from the first chunk: `VP8X` (extended), `VP8L`
+/// (lossless) or `VP8 ` (lossy).
+fn probe_webp(b: &[u8]) -> Result<ImageInfo, String> {
+    let truncated = "WebP header is truncated";
+    let (w, h) = match b.get(12..16) {
+        Some(b"VP8X") => (
+            le24(b, 24).ok_or(truncated)? + 1,
+            le24(b, 27).ok_or(truncated)? + 1,
+        ),
+        Some(b"VP8L") => {
+            if b.get(20) != Some(&0x2F) {
+                return Err("WebP lossless signature is missing".into());
+            }
+            let bits = u32::from_le_bytes(b.get(21..25).ok_or(truncated)?.try_into().unwrap());
+            ((bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1)
+        }
+        Some(b"VP8 ") => {
+            if b.get(23..26) != Some(&[0x9D, 0x01, 0x2A]) {
+                return Err("WebP lossy start code is missing".into());
+            }
+            (
+                le16(b, 26).ok_or(truncated)? & 0x3FFF,
+                le16(b, 28).ok_or(truncated)? & 0x3FFF,
+            )
+        }
+        _ => return Err("WebP has no VP8, VP8L or VP8X chunk".into()),
+    };
+    Ok(raster(ImageFormat::WebP, w, h))
 }
 
 fn probe_jpeg(b: &[u8]) -> Result<ImageInfo, String> {

@@ -40,7 +40,7 @@ string, which is read as UTF-8 JSON.
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b (ADR-039) |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns (ADR-044) |
 | (argument `format`) | `format` | `'json'` | Input encoding |
-| (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG or SVG |
+| (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
 
 In Rust, `RenderOptions` is `#[non_exhaustive]`. Build it with the
 setters; the fields stay public for reading and assignment:

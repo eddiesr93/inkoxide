@@ -60,6 +60,7 @@ impl LeafMeasure for Leaves<'_, '_, '_, '_> {
     ) -> TSize<f32> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
+            NodeKind::Field(ref f) => crate::forms::measure(f, available),
             _ => self.text.measure(node, known, available),
         }
     }

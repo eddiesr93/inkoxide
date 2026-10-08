@@ -92,6 +92,10 @@ pub(crate) enum Op {
         rect: Rect,
         target: Box<str>,
     },
+    /// A form field widget (draws nothing here; the writer adds an
+    /// annotation with its appearance). Like links, transforms do not
+    /// apply to it.
+    Field(Box<crate::forms::FieldOp>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

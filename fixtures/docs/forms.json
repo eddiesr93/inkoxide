@@ -1,0 +1,988 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Formular",
+  "lang": "ro"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 595
+   },
+   "margin": {
+    "top": 32,
+    "right": 32,
+    "bottom": 32,
+    "left": 32
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Cerere de înscriere",
+       "font": "Inter-Bold",
+       "size": 16,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Formular PDF completabil: câmpurile pot fi editate în orice cititor.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "NUME ȘI PRENUME",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "field",
+     "style": {
+      "borderWidth": {
+       "top": 0.75,
+       "right": 0.75,
+       "bottom": 0.75,
+       "left": 0.75
+      },
+      "borderColor": {
+       "top": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "right": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "bottom": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "left": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ]
+      },
+      "borderRadius": 3,
+      "padding": {
+       "top": 2,
+       "right": 2,
+       "bottom": 2,
+       "left": 2
+      },
+      "backgroundColor": [
+       0.97,
+       0.98,
+       1,
+       1
+      ]
+     },
+     "field": {
+      "name": "nume",
+      "kind": "text",
+      "value": "Ștefănescu Țicu-Ioana",
+      "font": "Inter-Regular",
+      "size": 11,
+      "required": true
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "CNP",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 10,
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 3,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ]
+         },
+         "field": {
+          "name": "cnp",
+          "kind": "text",
+          "maxLength": 13,
+          "font": "Inter-Regular",
+          "size": 11
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "JUDEȚ",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 10,
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 3,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ]
+         },
+         "field": {
+          "name": "judet",
+          "kind": "select",
+          "options": [
+           "Alba",
+           "Brașov",
+           "Cluj",
+           "Iași",
+           "Timiș"
+          ],
+          "value": "Brașov",
+          "font": "Inter-Regular",
+          "size": 11
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "OBSERVAȚII",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "field",
+     "style": {
+      "borderWidth": {
+       "top": 0.75,
+       "right": 0.75,
+       "bottom": 0.75,
+       "left": 0.75
+      },
+      "borderColor": {
+       "top": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "right": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "bottom": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "left": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ]
+      },
+      "borderRadius": 3,
+      "padding": {
+       "top": 2,
+       "right": 2,
+       "bottom": 2,
+       "left": 2
+      },
+      "backgroundColor": [
+       0.97,
+       0.98,
+       1,
+       1
+      ]
+     },
+     "field": {
+      "name": "observatii",
+      "kind": "text",
+      "multiline": true,
+      "value": "Solicit înscrierea la cursul de vară.\nDisponibil în săptămânile 2–4.",
+      "font": "Inter-Regular",
+      "size": 10
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "TIP CERERE",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row"
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6,
+        "margin": {
+         "right": 16
+        }
+       },
+       "children": [
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 9,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ]
+         },
+         "field": {
+          "name": "tip",
+          "kind": "radio",
+          "value": "noua",
+          "checked": true
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Înscriere nouă",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6,
+        "margin": {
+         "right": 16
+        }
+       },
+       "children": [
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 9,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ]
+         },
+         "field": {
+          "name": "tip",
+          "kind": "radio",
+          "value": "reinscriere",
+          "checked": false
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Reînscriere",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6,
+        "margin": {
+         "right": 16
+        }
+       },
+       "children": [
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 9,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ]
+         },
+         "field": {
+          "name": "tip",
+          "kind": "radio",
+          "value": "transfer",
+          "checked": false
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Transfer",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.1,
+            0.1,
+            0.12,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "ACORDURI",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "gap": 6,
+      "margin": {
+       "right": 16
+      }
+     },
+     "children": [
+      {
+       "type": "field",
+       "style": {
+        "borderWidth": {
+         "top": 0.75,
+         "right": 0.75,
+         "bottom": 0.75,
+         "left": 0.75
+        },
+        "borderColor": {
+         "top": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "right": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "bottom": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "left": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ]
+        },
+        "borderRadius": 2,
+        "padding": {
+         "top": 2,
+         "right": 2,
+         "bottom": 2,
+         "left": 2
+        },
+        "backgroundColor": [
+         0.97,
+         0.98,
+         1,
+         1
+        ]
+       },
+       "field": {
+        "name": "gdpr",
+        "kind": "checkbox",
+        "checked": true
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Sunt de acord cu prelucrarea datelor personale",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 6
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "gap": 6,
+      "margin": {
+       "right": 16
+      }
+     },
+     "children": [
+      {
+       "type": "field",
+       "style": {
+        "borderWidth": {
+         "top": 0.75,
+         "right": 0.75,
+         "bottom": 0.75,
+         "left": 0.75
+        },
+        "borderColor": {
+         "top": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "right": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "bottom": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "left": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ]
+        },
+        "borderRadius": 2,
+        "padding": {
+         "top": 2,
+         "right": 2,
+         "bottom": 2,
+         "left": 2
+        },
+        "backgroundColor": [
+         0.97,
+         0.98,
+         1,
+         1
+        ]
+       },
+       "field": {
+        "name": "newsletter",
+        "kind": "checkbox"
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Doresc să primesc noutăți pe e-mail",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.1,
+          0.1,
+          0.12,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "CÂMP DOAR PENTRU CITIRE",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "field",
+     "style": {
+      "borderWidth": {
+       "top": 0.75,
+       "right": 0.75,
+       "bottom": 0.75,
+       "left": 0.75
+      },
+      "borderColor": {
+       "top": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "right": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "bottom": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "left": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ]
+      },
+      "borderRadius": 3,
+      "padding": {
+       "top": 2,
+       "right": 2,
+       "bottom": 2,
+       "left": 2
+      },
+      "backgroundColor": [
+       0.94,
+       0.95,
+       0.97,
+       1
+      ],
+      "width": 160
+     },
+     "field": {
+      "name": "numar",
+      "kind": "text",
+      "value": "Nr. 2026/0815",
+      "readOnly": true,
+      "font": "Inter-Bold",
+      "size": 10,
+      "color": [
+       0.16,
+       0.36,
+       0.86,
+       1
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -2,6 +2,7 @@
 
 pub(crate) mod cff;
 mod font;
+mod forms;
 mod image;
 mod pdfa;
 mod svg;
@@ -45,6 +46,8 @@ pub(crate) struct EncodedPage {
     pub images: BTreeSet<ImageKey>,
     /// Link areas (page coordinates, top-left origin) and their targets.
     pub links: Vec<(Rect, Box<str>)>,
+    /// Form field widgets.
+    pub fields: Vec<crate::forms::FieldOp>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -102,6 +105,7 @@ impl PdfSink for PdfWriterSink {
         let mut opacities = BTreeSet::new();
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
+        let mut fields = Vec::new();
         for op in &page.ops {
             match op {
                 Op::Text(t) => {
@@ -117,6 +121,16 @@ impl PdfSink for PdfWriterSink {
                     images.insert(*key);
                 }
                 Op::Link { rect, target } => links.push((*rect, target.clone())),
+                Op::Field(f) => {
+                    if let Some(font) = f.font {
+                        let used = glyphs.entry(font).or_default();
+                        for t in &f.text {
+                            used.extend(t.glyphs.iter().map(|g| g.id));
+                        }
+                        used.extend(&f.edit_glyphs);
+                    }
+                    fields.push((**f).clone());
+                }
                 _ => {}
             }
         }
@@ -134,6 +148,7 @@ impl PdfSink for PdfWriterSink {
             opacities,
             images,
             links,
+            fields,
         })
     }
 
@@ -230,6 +245,16 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
+        let form = forms::write_fields(
+            &mut pdf,
+            &mut alloc,
+            doc.pages,
+            &page_refs,
+            &font_refs,
+            doc.fonts,
+            self.pdf_a,
+            &mut annots,
+        );
         let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
 
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
@@ -271,6 +296,18 @@ impl PdfSink for PdfWriterSink {
 
         let mut cat = pdf.catalog(catalog);
         cat.pages(tree_root.root);
+        if let Some(form) = &form {
+            let mut acro = cat.form();
+            acro.fields(form.fields.iter().copied());
+            if !form.fonts.is_empty() {
+                let mut dr = acro.default_resources();
+                let mut f = dr.fonts();
+                for key in &form.fonts {
+                    f.pair(Name(font_name(*key).as_bytes()), font_refs[key]);
+                }
+            }
+            acro.finish();
+        }
         if let Some(root) = outline {
             cat.outlines(root);
             cat.page_mode(PageMode::UseOutlines);
@@ -728,7 +765,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } => {}
+            Op::Link { .. } | Op::Field(_) => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }

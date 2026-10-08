@@ -66,7 +66,7 @@ pub(crate) trait ImageDecoder: Sync {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String>;
 }
 
-/// JPEG passthrough plus PNG decoding with the `image` crate.
+/// JPEG passthrough plus PNG, GIF and WebP decoding with the `image` crate.
 pub(crate) struct ImageCrateDecoder;
 
 /// Flate level for image samples: decoded once and cached, so favour size.
@@ -101,7 +101,10 @@ impl ImageDecoder for ImageCrateDecoder {
                     },
                 },
             }),
-            ImageFormat::Png => decode_png(bytes),
+            ImageFormat::Png => decode_raster(bytes, image::ImageFormat::Png),
+            // The first frame of an animation.
+            ImageFormat::Gif => decode_raster(bytes, image::ImageFormat::Gif),
+            ImageFormat::WebP => decode_raster(bytes, image::ImageFormat::WebP),
             ImageFormat::Svg => Err("SVG was not recognised".into()),
         }
     }
@@ -111,10 +114,13 @@ fn zlib(data: &[u8]) -> Result<Vec<u8>, String> {
     crate::pdf::deflate(data, IMAGE_FLATE_LEVEL).map_err(|e| e.to_string())
 }
 
-fn decode_png(bytes: &[u8]) -> Result<DecodedImage, String> {
+/// PNG, GIF and WebP: decoded to 8-bit samples.
+fn decode_raster(bytes: &[u8], format: image::ImageFormat) -> Result<DecodedImage, String> {
     use image::ColorType;
-    let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
-        .map_err(|e| format!("PNG could not be decoded: {e}"))?;
+    let img = image::load_from_memory_with_format(bytes, format).map_err(|e| {
+        let name = format.extensions_str().first().copied().unwrap_or("image");
+        format!("{} could not be decoded: {e}", name.to_uppercase())
+    })?;
     let (width, height) = (img.width(), img.height());
     let color = img.color();
     let gray = matches!(

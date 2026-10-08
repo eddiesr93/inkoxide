@@ -60,7 +60,7 @@ impl ImageData {
     }
 }
 
-/// Encoded image bytes (JPEG, PNG or SVG) available to a render, keyed by the id
+/// Encoded image bytes (JPEG, PNG, GIF, WebP or SVG) available to a render, keyed by the id
 /// that `image` nodes reference in `src`. Cloning is cheap and clones share
 /// decoded data.
 #[derive(Debug, Clone, Default)]

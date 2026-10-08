@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    ImageFit, ImageSource, Node, NodeKind, OptEdges, PageFilter, PagePattern, Style, Table,
+    Field, ImageFit, ImageSource, Node, NodeKind, OptEdges, PageFilter, PagePattern, Style, Table,
     TableRow, TextRun,
 };
 
@@ -412,6 +412,7 @@ enum NodeType {
     Table,
     PageBreak,
     Spacer,
+    Field,
 }
 
 /// Every field any node type may carry. Converted into [`Node`] with
@@ -437,6 +438,7 @@ pub struct RawNode {
     columns: Option<Vec<ColumnSpec>>,
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
+    field: Option<Box<Field>>,
 }
 
 /// Drops the spare capacity serde leaves when growing a `Vec` of unknown
@@ -467,6 +469,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::Table => "table",
             NodeType::PageBreak => "pageBreak",
             NodeType::Spacer => "spacer",
+            NodeType::Field => "field",
         };
         let present = [
             ("style", r.style.is_some()),
@@ -482,6 +485,7 @@ impl TryFrom<RawNode> for Node {
             ("columns", r.columns.is_some()),
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
+            ("field", r.field.is_some()),
         ];
         let allowed: &[&str] = match r.ty {
             NodeType::Box => &["style", "break", "link", "bookmark", "pages", "children"],
@@ -501,6 +505,7 @@ impl TryFrom<RawNode> for Node {
             ],
             NodeType::PageBreak => &[],
             NodeType::Spacer => &["style", "break", "link", "bookmark", "pages"],
+            NodeType::Field => &["style", "break", "pages", "field"],
         };
         if let Some((field, _)) = present.iter().find(|(f, set)| *set && !allowed.contains(f)) {
             return Err(format!(
@@ -540,6 +545,7 @@ impl TryFrom<RawNode> for Node {
             }),
             NodeType::PageBreak => NodeKind::PageBreak,
             NodeType::Spacer => NodeKind::Spacer,
+            NodeType::Field => NodeKind::Field(r.field.ok_or_else(|| missing("field"))?),
         };
         Ok(Node {
             id: r.id,

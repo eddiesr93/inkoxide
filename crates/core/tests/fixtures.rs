@@ -33,7 +33,7 @@ fn stores() -> (FontStore, ImageStore) {
     let mut images = ImageStore::new();
     for p in sorted_files(
         &root().join("fixtures/images"),
-        &["png", "jpg", "jpeg", "svg"],
+        &["png", "jpg", "jpeg", "gif", "webp", "svg"],
     ) {
         let stem = p.file_stem().unwrap().to_str().unwrap().to_string();
         images.insert(stem, fs::read(&p).unwrap());

@@ -129,6 +129,11 @@ fn structs_match_schema() {
         Some("TableCell"),
         &node(r#"{"type":"table","columns":[{"width":1}],"rows":[{"cells":[{@"colSpan":1}]}]}"#),
     );
+    check(
+        &s,
+        Some("Field"),
+        &node(r#"{"type":"field","field":{@"name":"n","kind":"text"}}"#),
+    );
 
     // Node: the union of all node-type properties.
     let mut want = BTreeSet::new();
@@ -139,6 +144,7 @@ fn structs_match_schema() {
         "TableNode",
         "PageBreakNode",
         "SpacerNode",
+        "FieldNode",
     ] {
         want.extend(schema_props(&s, Some(d)));
     }

@@ -14,6 +14,7 @@
 mod date;
 mod error;
 mod fonts;
+mod forms;
 mod images;
 mod layout;
 mod lru;
