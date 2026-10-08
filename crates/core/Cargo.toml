@@ -1,0 +1,20 @@
+[package]
+name = "inkoxide"
+description = "Native PDF layout and rendering engine: declarative document tree in, PDF bytes out."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+pdf-writer.workspace = true
+flate2.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

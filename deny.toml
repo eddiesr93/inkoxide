@@ -1,0 +1,43 @@
+# cargo-deny: licences, advisories, bans. Run via scripts/ci.sh.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# Explicitly rejected in the build brief (§3). Adding any of these needs an
+# ADR in docs/DECISIONS.md first.
+deny = [
+  { crate = "printpdf" },
+  { crate = "lopdf" },
+  { crate = "genpdf" },
+  { crate = "krilla" },
+  { crate = "parley" },
+  { crate = "hyphenation" },
+  { crate = "rkyv" },
+  { crate = "pdfium-render" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,0 +1,255 @@
+//! `inkoxide` — development and CI front end for the engine.
+//!
+//! ```text
+//! inkoxide render doc.json --fonts fixtures/fonts -o out.pdf [--png-dir out/]
+//! inkoxide validate doc.json --fonts fixtures/fonts
+//! inkoxide bench doc.json --fonts fixtures/fonts --iterations 30
+//! ```
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode};
+use std::time::{Duration, Instant};
+
+use clap::{Args, Parser, Subcommand};
+use inkoxide::{FontStore, ImageStore, InputFormat, RenderOptions, ValidationError};
+
+#[derive(Parser)]
+#[command(
+    name = "inkoxide",
+    version,
+    about = "Render Inkoxide document trees to PDF"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Cmd,
+}
+
+#[derive(Args)]
+struct Resources {
+    /// Directory of .ttf/.otf files; each is registered under its file stem
+    /// (`Inter-Regular.ttf` → `Inter-Regular`).
+    #[arg(long)]
+    fonts: Vec<PathBuf>,
+    /// Directory of images; each is available to `src` under its file stem.
+    #[arg(long)]
+    images: Vec<PathBuf>,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Render a document to PDF.
+    Render {
+        doc: PathBuf,
+        #[command(flatten)]
+        res: Resources,
+        /// Output file (default: the input path with a .pdf extension).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Write uncompressed content streams (for inspection / snapshots).
+        #[arg(long)]
+        no_compress: bool,
+        /// RFC 3339 creation date to embed.
+        #[arg(long)]
+        creation_date: Option<String>,
+        /// Also rasterise every page to PNG with `pdftoppm` (if installed).
+        #[arg(long)]
+        png_dir: Option<PathBuf>,
+        /// Resolution for --png-dir.
+        #[arg(long, default_value_t = 72)]
+        dpi: u32,
+    },
+    /// Validate a document; prints every problem found.
+    Validate {
+        doc: PathBuf,
+        #[command(flatten)]
+        res: Resources,
+        /// Print errors as a JSON array.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render repeatedly and report timings.
+    Bench {
+        doc: PathBuf,
+        #[command(flatten)]
+        res: Resources,
+        #[arg(long, default_value_t = 30)]
+        iterations: u32,
+    },
+}
+
+fn main() -> ExitCode {
+    match run(Cli::parse()) {
+        Ok(code) => code,
+        Err(msg) => {
+            eprintln!("error: {msg}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn load_resources(res: &Resources) -> Result<(FontStore, ImageStore), String> {
+    let mut fonts = FontStore::new();
+    for dir in &res.fonts {
+        for (stem, path) in dir_files(dir)? {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if !matches!(ext.as_str(), "ttf" | "otf") {
+                continue;
+            }
+            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            fonts
+                .register(stem, bytes)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+    }
+    let mut images = ImageStore::new();
+    for dir in &res.images {
+        for (stem, path) in dir_files(dir)? {
+            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            images.insert(stem, bytes);
+        }
+    }
+    Ok((fonts, images))
+}
+
+/// Regular files of `dir` as (stem, path), sorted for determinism.
+fn dir_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.is_file() {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                out.push((stem.to_string(), path));
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+fn read(path: &Path) -> Result<Vec<u8>, String> {
+    fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn print_errors(errors: &[ValidationError], json: bool) {
+    if json {
+        let arr: Vec<_> = errors
+            .iter()
+            .map(|e| serde_json::json!({ "code": e.code.as_str(), "path": e.path, "message": e.message }))
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&arr).unwrap_or_default());
+    } else {
+        for e in errors {
+            eprintln!("{e}");
+        }
+    }
+}
+
+fn run(cli: Cli) -> Result<ExitCode, String> {
+    match cli.command {
+        Cmd::Validate { doc, res, json } => {
+            let (fonts, images) = load_resources(&res)?;
+            let errors = inkoxide::validate(&read(&doc)?, InputFormat::Json, &fonts, &images);
+            print_errors(&errors, json);
+            if errors.is_empty() {
+                if !json {
+                    eprintln!("{}: ok", doc.display());
+                }
+                Ok(ExitCode::SUCCESS)
+            } else {
+                Ok(ExitCode::from(1))
+            }
+        }
+        Cmd::Render {
+            doc,
+            res,
+            output,
+            no_compress,
+            creation_date,
+            png_dir,
+            dpi,
+        } => {
+            let (fonts, images) = load_resources(&res)?;
+            let input = read(&doc)?;
+            let opts = RenderOptions {
+                compress: !no_compress,
+                creation_date,
+                ..Default::default()
+            };
+            let start = Instant::now();
+            let pdf = match inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images) {
+                Ok(pdf) => pdf,
+                Err(e) => {
+                    eprintln!("{} {e}", e.code());
+                    return Ok(ExitCode::from(1));
+                }
+            };
+            let elapsed = start.elapsed();
+            let out = output.unwrap_or_else(|| doc.with_extension("pdf"));
+            fs::write(&out, &pdf).map_err(|e| format!("{}: {e}", out.display()))?;
+            eprintln!(
+                "{} ({} bytes) in {:.2} ms",
+                out.display(),
+                pdf.len(),
+                ms(elapsed)
+            );
+            if let Some(dir) = png_dir {
+                rasterise(&out, &dir, dpi)?;
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Cmd::Bench {
+            doc,
+            res,
+            iterations,
+        } => {
+            let (fonts, images) = load_resources(&res)?;
+            let input = read(&doc)?;
+            let opts = RenderOptions::default();
+            let mut times = Vec::with_capacity(iterations as usize);
+            let mut size = 0;
+            for _ in 0..iterations.max(1) {
+                let start = Instant::now();
+                let pdf = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
+                    .map_err(|e| format!("{} {e}", e.code()))?;
+                times.push(start.elapsed());
+                size = pdf.len();
+            }
+            times.sort();
+            let median = times[times.len() / 2];
+            println!(
+                "{}: {} iterations, min {:.3} ms, median {:.3} ms, max {:.3} ms, {} bytes",
+                doc.display(),
+                times.len(),
+                ms(times[0]),
+                ms(median),
+                ms(times[times.len() - 1]),
+                size
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+    }
+}
+
+fn ms(d: Duration) -> f64 {
+    d.as_secs_f64() * 1000.0
+}
+
+fn rasterise(pdf: &Path, dir: &Path, dpi: u32) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let stem = pdf.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
+    let status = Command::new("pdftoppm")
+        .args(["-png", "-r", &dpi.to_string()])
+        .arg(pdf)
+        .arg(dir.join(stem))
+        .status()
+        .map_err(|e| format!("could not run pdftoppm (is poppler installed?): {e}"))?;
+    if !status.success() {
+        return Err(format!("pdftoppm failed with {status}"));
+    }
+    Ok(())
+}

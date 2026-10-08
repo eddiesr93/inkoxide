@@ -1,0 +1,105 @@
+# Architecture decision log
+
+Format: context → decision → consequences. Newest last. Anything not
+obvious from the build brief goes here.
+
+## ADR-001 — No hosted CI; checks run locally (M0)
+
+**Context.** The brief specifies GitHub Actions for CI and releases. The
+project owner asked that no Actions minutes be used for now.
+
+**Decision.** No `.github/workflows`. `scripts/ci.sh` runs every check
+(fmt, clippy `-D warnings`, tests, schema conformance, `qpdf --check`,
+cargo-deny, visual diff) and must pass before pushing. The release
+matrix (M5) will be written as a script/docs, not a workflow, until hosted
+CI is approved.
+
+**Consequences.** Linux-only verification for now (no macOS/Windows runs).
+Re-introducing workflows later is mechanical: each workflow step maps to a
+step of `scripts/ci.sh`.
+
+## ADR-002 — JSON input in v1 (M0)
+
+**Context.** JSON vs a binary encoding. **Decision.** JSON (serde_json) in
+v1; MessagePack later behind `format`, sharing the same serde structs.
+**Consequences.** Debuggable fixtures and error paths; parse cost is small
+next to layout (measure in M6).
+
+## ADR-003 — Nodes deserialise through one flat raw struct (M0)
+
+**Context.** serde's internally tagged enums (`#[serde(tag = "type")]`)
+buffer each node into an intermediate `Content` value. That copies nested
+subtrees once per depth level and, worse, loses the error path below the
+first tagged enum, so `serde_path_to_error` could only point at the node.
+
+**Decision.** `RawNode` holds every field any node type can carry, with
+`deny_unknown_fields`, and is converted (`try_from`) into the typed `Node`.
+Fields that exist but are not valid for the node's type produce
+`UNKNOWN_FIELD` at the field's own path.
+
+**Consequences.** Precise paths (`pages[0].children[3].style.colour`), no
+buffering. The schema-parity test checks that the union of node properties
+in the JSON Schema equals the raw struct's fields.
+
+## ADR-004 — `serde_path_to_error` dependency (M0)
+
+**Context.** Errors need a JSON path (§4.8); serde alone gives line/column.
+**Decision.** Add `serde_path_to_error` (dtolnay, ~500 lines, no
+transitive deps beyond serde). **Consequences.** Works with any serde
+deserializer, so MessagePack input gets paths too.
+
+## ADR-005 — Structured codes from serde errors (M0)
+
+**Context.** Serde errors are strings. **Decision.** Our own deserialisers
+prefix messages with `[CODE]` or `[CODE@field]`; serde's built-in messages
+(`unknown field`, `missing field`, `invalid type`, …) are classified by
+prefix. All of it lives in `validate::classify`. **Consequences.** One
+small, tested mapping; serde message wording changes would show up in the
+validation tests.
+
+## ADR-006 — Schema shape choices (M0)
+
+Choices the brief left open, made when writing `document.v1.json`:
+
+- **Edges are objects**, `{top, right, bottom, left}` with each side
+  optional, for `padding`, `margin`, `borderWidth`, `borderColor` and
+  page `margin`. One shape everywhere, no shorthand precedence rules.
+- **Positioned offsets** live in `inset: {top, right, bottom, left}`
+  rather than four top-level style keys, for the same reason.
+- **`gap`** sets both gaps; `rowGap`/`columnGap` override it (CSS rule).
+- **`flexDirection` defaults to `column`** (document flow is vertical;
+  react-pdf does the same). Everything else follows CSS defaults.
+- **Lengths** accept `"auto"` besides points and percentages wherever CSS
+  does (`width`, `height`, `flexBasis`, `margin`, `inset`, min/max).
+- **Grid placement** is `{start, end, span}` with 1-based lines, not CSS
+  strings.
+- **Header/footer placement**: laid out at the full page width; header at
+  y = 0, footer bottom-aligned to the page. Insets come from their own
+  padding; margins must leave room.
+- **Placeholder runs** carry `placeholder` *instead of* `text` (exactly one
+  of the two).
+- **Text-only style properties on other nodes are errors**
+  (`STYLE_NOT_APPLICABLE`), consistent with "unknown properties are
+  errors": silent ignoring hides client bugs.
+- **`break` is only valid in the flow**, not inside headers, footers or
+  table cells, where it would have no meaning.
+- **Image intrinsic size** is 96 dpi (1 px = 0.75 pt), matching CSS, and
+  `fit` defaults to `fill` like CSS `object-fit`.
+- **Table rows** carry `minHeight` and `backgroundColor` directly; cell
+  styling goes on cells (`style`, including `verticalAlign`).
+
+## ADR-007 — No creation date unless asked (M0)
+
+**Context.** Determinism (§1.2) vs a useful Info dictionary.
+**Decision.** `/CreationDate` is written only when `options.creationDate`
+or `meta.creationDate` is set; there is no implicit "now", and the core
+never reads the clock. No `/ID` is written. **Consequences.** Output is
+byte-identical by default; callers that want a date pass one.
+
+## ADR-008 — Top-left display-list coordinates (M0)
+
+**Decision.** Layout and the display list use a top-left origin with y down.
+Each content stream starts with one `1 0 0 -1 0 H cm` flip; text uses a
+flipped text matrix and images a flipped image matrix. All numbers are
+rounded to 1/1000 pt before writing (≤ 3 decimals; pdf-writer then prints
+the shortest round-trip form).

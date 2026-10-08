@@ -1,0 +1,446 @@
+//! Serde mirror of `schema/document.v1.json`.
+//!
+//! The JSON Schema is the source of truth; these structs are checked against
+//! it in CI (every fixture must pass both). Structural rules that serde can
+//! express (unknown fields, types, enums) are enforced here; semantic rules
+//! (ranges, references, applicability) live in `validate`.
+
+mod de;
+
+use serde::Deserialize;
+
+pub use de::{GridLine, Length, LengthPercent, TrackSize};
+
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// RGBA, each component in [0, 1].
+pub type Color = [f32; 4];
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Document {
+    pub version: u32,
+    #[serde(default)]
+    pub meta: Meta,
+    #[serde(default)]
+    pub fonts: Vec<FontDecl>,
+    #[serde(default)]
+    pub fallback_fonts: Vec<String>,
+    pub pages: Vec<PageSpec>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Meta {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub subject: Option<String>,
+    pub keywords: Option<String>,
+    pub creator: Option<String>,
+    pub lang: Option<String>,
+    pub creation_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FontStyle {
+    #[default]
+    Normal,
+    Italic,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct FontDecl {
+    pub id: String,
+    pub family: String,
+    #[serde(default = "default_weight")]
+    pub weight: u16,
+    #[serde(default)]
+    pub style: FontStyle,
+}
+
+fn default_weight() -> u16 {
+    400
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Size {
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Edges<T: Default> {
+    #[serde(default)]
+    pub top: T,
+    #[serde(default)]
+    pub right: T,
+    #[serde(default)]
+    pub bottom: T,
+    #[serde(default)]
+    pub left: T,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct PageSpec {
+    pub size: Size,
+    #[serde(default)]
+    pub margin: Edges<f32>,
+    pub background: Option<Color>,
+    pub header: Option<Box<Node>>,
+    pub footer: Option<Box<Node>>,
+    #[serde(default)]
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BreakMode {
+    #[default]
+    Auto,
+    Page,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InsideMode {
+    #[default]
+    Auto,
+    Avoid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Break {
+    #[serde(default)]
+    pub before: BreakMode,
+    #[serde(default)]
+    pub after: BreakMode,
+    #[serde(default)]
+    pub inside: InsideMode,
+    pub min_presence_ahead: Option<f32>,
+    #[serde(default)]
+    pub fixed: bool,
+}
+
+/// A node of the document tree. Built from the flat [`de::RawNode`] so that
+/// field errors keep precise paths (serde's internally tagged enums buffer
+/// their content and lose both the path and some speed).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "de::RawNode")]
+pub struct Node {
+    pub id: Option<String>,
+    pub style: Style,
+    pub brk: Break,
+    pub kind: NodeKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum NodeKind {
+    Box { children: Vec<Node> },
+    Text { runs: Vec<TextRun> },
+    Image { source: ImageSource, fit: ImageFit },
+    Table(Table),
+    PageBreak,
+    Spacer,
+}
+
+impl NodeKind {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            NodeKind::Box { .. } => "box",
+            NodeKind::Text { .. } => "text",
+            NodeKind::Image { .. } => "image",
+            NodeKind::Table(_) => "table",
+            NodeKind::PageBreak => "pageBreak",
+            NodeKind::Spacer => "spacer",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ImageSource {
+    /// Key into the render-time image map.
+    Ref(String),
+    /// Inline base64 payload (decoded during validation).
+    Inline(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImageFit {
+    #[default]
+    Fill,
+    Contain,
+    Cover,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Decoration {
+    None,
+    Underline,
+    LineThrough,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Placeholder {
+    PageNumber,
+    TotalPages,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct TextRun {
+    pub text: Option<String>,
+    pub font: String,
+    pub size: f32,
+    pub color: Option<Color>,
+    pub letter_spacing: Option<f32>,
+    pub decoration: Option<Decoration>,
+    pub placeholder: Option<Placeholder>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(try_from = "de::RawColumnWidth")]
+pub enum ColumnWidth {
+    Points(f32),
+    Fr(f32),
+    Auto,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ColumnSpec {
+    pub width: ColumnWidth,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct TableCell {
+    pub id: Option<String>,
+    #[serde(default = "one")]
+    pub col_span: u32,
+    #[serde(default = "one")]
+    pub row_span: u32,
+    #[serde(default)]
+    pub style: Style,
+    #[serde(default)]
+    pub children: Vec<Node>,
+}
+
+fn one() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct TableRow {
+    pub id: Option<String>,
+    pub min_height: Option<f32>,
+    pub background_color: Option<Color>,
+    pub cells: Vec<TableCell>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Table {
+    pub columns: Vec<ColumnSpec>,
+    pub header_rows: u32,
+    pub rows: Vec<TableRow>,
+}
+
+// ---------------------------------------------------------------------------
+// Style
+// ---------------------------------------------------------------------------
+
+macro_rules! kebab_enum {
+    ($(#[$m:meta])* $name:ident { $($variant:ident = $s:literal),+ $(,)? }) => {
+        $(#[$m])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+        pub enum $name {
+            $(#[serde(rename = $s)] $variant),+
+        }
+    };
+}
+
+kebab_enum!(Display { Flex = "flex", Grid = "grid", None = "none" });
+kebab_enum!(FlexDirection {
+    Row = "row",
+    Column = "column",
+    RowReverse = "row-reverse",
+    ColumnReverse = "column-reverse",
+});
+kebab_enum!(FlexWrap { NoWrap = "nowrap", Wrap = "wrap", WrapReverse = "wrap-reverse" });
+kebab_enum!(JustifyContent {
+    FlexStart = "flex-start",
+    FlexEnd = "flex-end",
+    Center = "center",
+    SpaceBetween = "space-between",
+    SpaceAround = "space-around",
+    SpaceEvenly = "space-evenly",
+    Start = "start",
+    End = "end",
+    Stretch = "stretch",
+});
+kebab_enum!(AlignItems {
+    FlexStart = "flex-start",
+    FlexEnd = "flex-end",
+    Center = "center",
+    Baseline = "baseline",
+    Stretch = "stretch",
+    Start = "start",
+    End = "end",
+});
+kebab_enum!(AlignSelf {
+    Auto = "auto",
+    FlexStart = "flex-start",
+    FlexEnd = "flex-end",
+    Center = "center",
+    Baseline = "baseline",
+    Stretch = "stretch",
+    Start = "start",
+    End = "end",
+});
+kebab_enum!(AlignContent {
+    FlexStart = "flex-start",
+    FlexEnd = "flex-end",
+    Center = "center",
+    SpaceBetween = "space-between",
+    SpaceAround = "space-around",
+    SpaceEvenly = "space-evenly",
+    Stretch = "stretch",
+    Start = "start",
+    End = "end",
+});
+kebab_enum!(Position { Relative = "relative", Absolute = "absolute" });
+kebab_enum!(GridAutoFlow {
+    Row = "row",
+    Column = "column",
+    RowDense = "row dense",
+    ColumnDense = "column dense",
+});
+kebab_enum!(Overflow { Visible = "visible", Hidden = "hidden" });
+kebab_enum!(BorderStyle { Solid = "solid", Dashed = "dashed", Dotted = "dotted" });
+kebab_enum!(TextAlign { Left = "left", Center = "center", Right = "right", Justify = "justify" });
+kebab_enum!(WhiteSpace { Normal = "normal", Pre = "pre", NoWrap = "nowrap" });
+kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GridPlacement {
+    pub start: Option<GridLine>,
+    pub end: Option<GridLine>,
+    pub span: Option<u16>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OptEdges<T> {
+    pub top: Option<T>,
+    pub right: Option<T>,
+    pub bottom: Option<T>,
+    pub left: Option<T>,
+}
+
+impl<T: Copy> OptEdges<T> {
+    pub fn get(&self, default: T) -> [T; 4] {
+        [
+            self.top.unwrap_or(default),
+            self.right.unwrap_or(default),
+            self.bottom.unwrap_or(default),
+            self.left.unwrap_or(default),
+        ]
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &T)> {
+        [
+            ("top", self.top.as_ref()),
+            ("right", self.right.as_ref()),
+            ("bottom", self.bottom.as_ref()),
+            ("left", self.left.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| v.map(|v| (k, v)))
+    }
+}
+
+/// Every style property; `None` means "not set" (engine default applies).
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Style {
+    // Layout
+    pub display: Option<Display>,
+    pub flex_direction: Option<FlexDirection>,
+    pub flex_wrap: Option<FlexWrap>,
+    pub justify_content: Option<JustifyContent>,
+    pub align_items: Option<AlignItems>,
+    pub align_self: Option<AlignSelf>,
+    pub align_content: Option<AlignContent>,
+    pub flex_grow: Option<f32>,
+    pub flex_shrink: Option<f32>,
+    pub flex_basis: Option<Length>,
+    pub gap: Option<LengthPercent>,
+    pub row_gap: Option<LengthPercent>,
+    pub column_gap: Option<LengthPercent>,
+    pub width: Option<Length>,
+    pub height: Option<Length>,
+    pub min_width: Option<Length>,
+    pub min_height: Option<Length>,
+    pub max_width: Option<Length>,
+    pub max_height: Option<Length>,
+    pub aspect_ratio: Option<f32>,
+    pub padding: Option<OptEdges<LengthPercent>>,
+    pub margin: Option<OptEdges<Length>>,
+    pub position: Option<Position>,
+    pub inset: Option<OptEdges<Length>>,
+    pub grid_template_columns: Option<Vec<TrackSize>>,
+    pub grid_template_rows: Option<Vec<TrackSize>>,
+    pub grid_auto_flow: Option<GridAutoFlow>,
+    pub grid_column: Option<GridPlacement>,
+    pub grid_row: Option<GridPlacement>,
+    pub overflow: Option<Overflow>,
+
+    // Visual
+    pub background_color: Option<Color>,
+    pub opacity: Option<f32>,
+    pub border_width: Option<OptEdges<f32>>,
+    pub border_color: Option<OptEdges<Color>>,
+    pub border_radius: Option<f32>,
+    pub border_style: Option<BorderStyle>,
+    pub rotate: Option<f32>,
+
+    // Text (text nodes only)
+    pub text_align: Option<TextAlign>,
+    pub line_height: Option<f32>,
+    pub max_lines: Option<u32>,
+    pub ellipsis: Option<bool>,
+    pub hyphenate: Option<bool>,
+    pub lang: Option<String>,
+    pub white_space: Option<WhiteSpace>,
+
+    // Table cells only
+    pub vertical_align: Option<VerticalAlign>,
+}
+
+impl Style {
+    /// Names of text-only properties that are set, for applicability checks.
+    pub fn text_props_set(&self) -> impl Iterator<Item = &'static str> + '_ {
+        [
+            ("textAlign", self.text_align.is_some()),
+            ("lineHeight", self.line_height.is_some()),
+            ("maxLines", self.max_lines.is_some()),
+            ("ellipsis", self.ellipsis.is_some()),
+            ("hyphenate", self.hyphenate.is_some()),
+            ("lang", self.lang.is_some()),
+            ("whiteSpace", self.white_space.is_some()),
+        ]
+        .into_iter()
+        .filter_map(|(k, set)| set.then_some(k))
+    }
+}
