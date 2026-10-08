@@ -202,6 +202,7 @@ pub(crate) struct RustybuzzShaper<'f, 'a> {
     pub fonts: &'f FontSet<'a>,
     pub unicode: UnicodeMap,
     pub hyphenator: Box<dyn hyphen::Hyphenator>,
+    shapes: prepare::ShapeCache,
 }
 
 impl<'f, 'a> RustybuzzShaper<'f, 'a> {
@@ -229,6 +230,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
             fonts,
             unicode,
             hyphenator: Box::new(hyphen::HypherHyphenator),
+            shapes: prepare::ShapeCache::default(),
         }
     }
 }
@@ -245,7 +247,7 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
             hyphenator: self.hyphenator.as_ref(),
             runs,
         };
-        prepare::prepare(&opts, self.fonts, &mut self.unicode)
+        prepare::prepare(&opts, self.fonts, &mut self.shapes, &mut self.unicode)
     }
 
     fn break_lines(

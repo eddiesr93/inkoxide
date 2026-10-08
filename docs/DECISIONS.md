@@ -408,3 +408,23 @@ the `@inkoxide/<platform>` package names of §7. The release matrix and
 `npm publish` are deferred; `package.json` lists the six targets for
 `@napi-rs/cli` when that time comes. `validate` ignores `UNKNOWN_IMAGE`
 unless images are passed, since images are per-render options.
+
+## ADR-027 — Word-level shaping cache (M6)
+
+**Context.** Profiling the 100-page report showed about half of the render
+time in rustybuzz. Business documents repeat the same words heavily, and
+each `shape` call also rebuilt a `ShapePlan` from the font's GSUB/GPOS tables.
+
+**Decision.** The text is split into words (runs of non-spaces) and
+single spaces. Each word is shaped once per `(font, word)` and cached with
+its glyphs, advances and clusters. `ShapePlan`s are cached per
+`(font, direction, script)`. Both caches live in the `RustybuzzShaper`
+for one render, so output stays deterministic and memory is freed with the
+render. Glyph-to-Unicode mappings are recorded the first time a word is seen.
+
+**Consequences.** Kerning and contextual substitution across a space are
+lost, which is also how Blink's `CachingWordShaper` behaves. Expected
+renders moved by under 0.4% of pixels, mostly around headings. Ligatures
+and kerning inside words are unchanged. The report goes from about 900 ms
+to about 390 ms (see BENCHMARKS.md). Scripts without spaces (CJK, Thai)
+form long "words" and gain nothing, but stay correct.

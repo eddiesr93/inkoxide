@@ -1,6 +1,9 @@
 //! Width-independent text preparation: whitespace processing, hyphenation
 //! points, font itemisation and shaping.
 
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use unicode_linebreak::{linebreaks, BreakOpportunity};
 
 use super::hyphen::Hyphenator;
@@ -164,11 +167,116 @@ fn itemize(
     segs
 }
 
+/// A shaped glyph in font units, relative to its word.
+#[derive(Debug, Clone, Copy)]
+struct UnitGlyph {
+    id: u16,
+    x_advance: i32,
+    x_offset: i32,
+    y_offset: i32,
+    /// Byte offset of the cluster within the word.
+    cluster: u32,
+}
+
+/// Per-render shaping cache: shape plans per (font, direction, script) and
+/// shaped words per (font, text). Documents repeat words constantly
+/// (table cells, numbers, common vocabulary), so shaping word by word and
+/// reusing results removes most shaping work (ADR-027).
+#[derive(Default)]
+pub(crate) struct ShapeCache {
+    plans:
+        HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
+    words: HashMap<(FontKey, Box<str>), Rc<[UnitGlyph]>>,
+}
+
+impl ShapeCache {
+    /// Shapes `word` in `font`, recording glyph → text mappings the first
+    /// time a word is seen.
+    fn word(
+        &mut self,
+        key: FontKey,
+        fonts: &FontSet<'_>,
+        word: &str,
+        unicode: &mut super::UnicodeMap,
+    ) -> Rc<[UnitGlyph]> {
+        if let Some(g) = self.words.get(&(key, Box::from(word))) {
+            return g.clone();
+        }
+        let face = &fonts.get(key).face;
+        let mut buf = rustybuzz::UnicodeBuffer::new();
+        buf.push_str(word);
+        buf.guess_segment_properties();
+        let plan = self
+            .plans
+            .entry((key, buf.direction(), Some(buf.script())))
+            .or_insert_with(|| {
+                rustybuzz::ShapePlan::new(face, buf.direction(), Some(buf.script()), None, &[])
+            });
+        let shaped = rustybuzz::shape_with_plan(face, plan, buf);
+        let infos = shaped.glyph_infos();
+        let glyphs: Rc<[UnitGlyph]> = infos
+            .iter()
+            .zip(shaped.glyph_positions())
+            .map(|(i, p)| UnitGlyph {
+                id: i.glyph_id as u16,
+                x_advance: p.x_advance,
+                x_offset: p.x_offset,
+                y_offset: p.y_offset,
+                cluster: i.cluster,
+            })
+            .collect();
+        // The first glyph of a cluster carries the cluster's text.
+        for (k, g) in glyphs.iter().enumerate() {
+            let cluster = g.cluster as usize;
+            let Some(c) = word[cluster..].chars().next() else {
+                continue;
+            };
+            if c == '\n' || c == SHY || c.is_control() {
+                continue;
+            }
+            if k > 0 && glyphs[k - 1].cluster == g.cluster {
+                continue;
+            }
+            let next = glyphs[k + 1..]
+                .iter()
+                .map(|n| n.cluster as usize)
+                .find(|&n| n != cluster)
+                .unwrap_or(word.len());
+            let end = next.max(cluster + c.len_utf8()).min(word.len());
+            unicode.record(key, g.id, &word[cluster..end]);
+        }
+        self.words.insert((key, Box::from(word)), glyphs.clone());
+        glyphs
+    }
+}
+
+/// Splits text into shaping units: maximal runs of non-spaces, and single
+/// spaces.
+fn words(s: &str) -> impl Iterator<Item = (usize, &str)> {
+    let b = s.as_bytes();
+    let mut i = 0;
+    std::iter::from_fn(move || {
+        if i >= b.len() {
+            return None;
+        }
+        let start = i;
+        if b[i] == b' ' {
+            i += 1;
+        } else {
+            while i < b.len() && b[i] != b' ' {
+                i += 1;
+            }
+        }
+        Some((start, &s[start..i]))
+    })
+}
+
 /// Shapes the paragraph. `unicode` receives glyph → text mappings for the
 /// PDF ToUnicode CMaps.
 pub(crate) fn prepare(
     opts: &ParagraphOptions<'_>,
     fonts: &FontSet<'_>,
+    cache: &mut ShapeCache,
     unicode: &mut super::UnicodeMap,
 ) -> Prepared {
     let (text, run_ranges) = build_text(opts);
@@ -177,58 +285,38 @@ pub(crate) fn prepare(
 
     for seg in &mut segments {
         let run = &opts.runs[seg.run as usize];
-        let font = fonts.get(seg.font);
-        let scale = font.scale(run.size);
+        let scale = fonts.get(seg.font).scale(run.size);
         let letter_spacing = run.letter_spacing.unwrap_or(0.0);
         let seg_text = &text[seg.text.start as usize..seg.text.end as usize];
 
-        let mut buf = rustybuzz::UnicodeBuffer::new();
-        buf.push_str(seg_text);
-        buf.guess_segment_properties();
-        let shaped = rustybuzz::shape(&font.face, &[], buf);
-        let infos = shaped.glyph_infos();
-        let positions = shaped.glyph_positions();
-
         let first = glyphs.len() as u32;
-        for (k, (info, pos)) in infos.iter().zip(positions).enumerate() {
-            let cluster = info.cluster as usize;
-            let c = seg_text[cluster..].chars().next().unwrap_or(' ');
-            let mut flags = 0;
-            if c == ' ' || c == '\u{00A0}' {
-                flags |= GLYPH_SPACE;
-            }
-            if c == '\n' || c == SHY || (c.is_control() && c != '\t') {
-                flags |= GLYPH_INVISIBLE;
-            }
-            // Letter spacing goes after the last glyph of each cluster.
-            let cluster_end = infos.get(k + 1).is_none_or(|n| n.cluster != info.cluster);
-            let advance = if flags & GLYPH_INVISIBLE != 0 {
-                0.0
-            } else {
-                pos.x_advance as f32 * scale + if cluster_end { letter_spacing } else { 0.0 }
-            };
-            let gid = info.glyph_id as u16;
-            if flags & GLYPH_INVISIBLE == 0 && run.placeholder.is_none() {
-                // First glyph of a cluster carries the cluster's text.
-                let first_of_cluster = k == 0 || infos[k - 1].cluster != info.cluster;
-                if first_of_cluster {
-                    let next = infos[k + 1..]
-                        .iter()
-                        .map(|n| n.cluster as usize)
-                        .find(|&n| n != cluster)
-                        .unwrap_or(seg_text.len());
-                    let end = next.max(cluster + c.len_utf8()).min(seg_text.len());
-                    unicode.record(seg.font, gid, &seg_text[cluster..end]);
+        for (off, word) in words(seg_text) {
+            let shaped = cache.word(seg.font, fonts, word, unicode);
+            for (k, g) in shaped.iter().enumerate() {
+                let c = word[g.cluster as usize..].chars().next().unwrap_or(' ');
+                let mut flags = 0;
+                if c == ' ' || c == '\u{00A0}' {
+                    flags |= GLYPH_SPACE;
                 }
+                if c == '\n' || c == SHY || (c.is_control() && c != '\t') {
+                    flags |= GLYPH_INVISIBLE;
+                }
+                // Letter spacing goes after the last glyph of each cluster.
+                let cluster_end = shaped.get(k + 1).is_none_or(|n| n.cluster != g.cluster);
+                let advance = if flags & GLYPH_INVISIBLE != 0 {
+                    0.0
+                } else {
+                    g.x_advance as f32 * scale + if cluster_end { letter_spacing } else { 0.0 }
+                };
+                glyphs.push(Glyph {
+                    id: g.id,
+                    advance,
+                    x_offset: g.x_offset as f32 * scale,
+                    y_offset: g.y_offset as f32 * scale,
+                    cluster: seg.text.start + (off as u32) + g.cluster,
+                    flags,
+                });
             }
-            glyphs.push(Glyph {
-                id: gid,
-                advance,
-                x_offset: pos.x_offset as f32 * scale,
-                y_offset: pos.y_offset as f32 * scale,
-                cluster: seg.text.start + info.cluster,
-                flags,
-            });
         }
         seg.glyphs = first..glyphs.len() as u32;
     }
