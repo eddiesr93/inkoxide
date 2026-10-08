@@ -1,0 +1,1904 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Cerere de înscriere",
+  "author": "Școala Gimnazială nr. 7",
+  "lang": "ro"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 42,
+    "right": 50,
+    "bottom": 42,
+    "left": 50
+   },
+   "children": [
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "justifyContent": "space-between",
+      "alignItems": "flex-start",
+      "padding": {
+       "bottom": 10
+      },
+      "margin": {
+       "bottom": 22
+      },
+      "borderWidth": {
+       "bottom": 1
+      },
+      "borderColor": {
+       "bottom": [
+        0.12,
+        0.29,
+        0.6,
+        1
+       ]
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 2
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "ȘCOALA GIMNAZIALĂ NR. 7 „ȘTEFAN CEL MARE”",
+           "font": "Inter-Bold",
+           "size": 10,
+           "color": [
+            0.12,
+            0.29,
+            0.6,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Str. Înălțării nr. 4, 700259 Iași · Tel. 0232 210 000",
+           "font": "Inter-Regular",
+           "size": 8,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "alignItems": "flex-end",
+        "gap": 2
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Nr. înregistrare: 1482",
+           "font": "Inter-Regular",
+           "size": 8.5,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "textAlign": "right"
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Data: 08.10.2026",
+           "font": "Inter-Regular",
+           "size": 8.5,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "textAlign": "right"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "CERERE DE ÎNSCRIERE",
+       "font": "Inter-Bold",
+       "size": 17,
+       "color": [
+        0.09,
+        0.1,
+        0.13,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "textAlign": "center"
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "în clasa pregătitoare, anul școlar 2026–2027",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "textAlign": "center",
+      "margin": {
+       "top": 3,
+       "bottom": 18
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Domnule Director,",
+       "font": "Inter-Bold",
+       "size": 10.5,
+       "color": [
+        0.09,
+        0.1,
+        0.13,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "1. Date privind copilul și reprezentantul legal",
+       "font": "Inter-Bold",
+       "size": 10.5,
+       "color": [
+        0.12,
+        0.29,
+        0.6,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 14,
+       "bottom": 6
+      }
+     },
+     "break": {
+      "minPresenceAhead": 80
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "display": "grid",
+      "gridTemplateColumns": [
+       "1fr",
+       "1fr"
+      ],
+      "columnGap": 14,
+      "rowGap": 9
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Numele",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Popescu-Rădulescu",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Prenumele",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Ștefania Ioana",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Cod numeric personal (CNP)",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "6150314226785",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Data nașterii",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "14.03.2015",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Locul nașterii",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Iași, județul Iași",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Cetățenia",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "română",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3,
+        "gridColumn": {
+         "span": 2
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Domiciliul (stradă, număr, bloc, scară, apartament)",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Str. Țepeș Vodă nr. 18, bl. Î2, sc. A, ap. 7",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Localitatea",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Iași",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Județul",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Iași",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Numele părintelui / tutorelui legal",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Rădulescu Mihăiță-Ștefan",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Telefon",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "0744 123 456",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "gap": 3,
+        "gridColumn": {
+         "span": 2
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Adresa de e-mail",
+           "font": "Inter-Regular",
+           "size": 7.5,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "box",
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 7,
+           "bottom": 5,
+           "left": 7
+          },
+          "minHeight": 22,
+          "justifyContent": "center",
+          "backgroundColor": [
+           0.97,
+           0.975,
+           0.985,
+           1
+          ],
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "right": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "bottom": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ],
+           "left": [
+            0.55,
+            0.57,
+            0.62,
+            1
+           ]
+          },
+          "borderRadius": 2
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "mihaita.radulescu@exemplu.ro",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.09,
+              0.1,
+              0.13,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "2. Opțiuni",
+       "font": "Inter-Bold",
+       "size": 10.5,
+       "color": [
+        0.12,
+        0.29,
+        0.6,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 14,
+       "bottom": 6
+      }
+     },
+     "break": {
+      "minPresenceAhead": 80
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "flexWrap": "wrap",
+      "columnGap": 22,
+      "rowGap": 6
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 9,
+          "height": 9,
+          "alignItems": "center",
+          "justifyContent": "center",
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "right": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "bottom": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "left": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "box",
+           "style": {
+            "width": 5,
+            "height": 5,
+            "backgroundColor": [
+             0.09,
+             0.1,
+             0.13,
+             1
+            ]
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Program prelungit (After School)",
+           "font": "Inter-Regular",
+           "size": 9.5,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 9,
+          "height": 9,
+          "alignItems": "center",
+          "justifyContent": "center",
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "right": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "bottom": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "left": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "box",
+           "style": {
+            "width": 5,
+            "height": 5,
+            "backgroundColor": [
+             0.09,
+             0.1,
+             0.13,
+             1
+            ]
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Religie ortodoxă",
+           "font": "Inter-Regular",
+           "size": 9.5,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 9,
+          "height": 9,
+          "alignItems": "center",
+          "justifyContent": "center",
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "right": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "bottom": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "left": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "box",
+           "style": {
+            "width": 5,
+            "height": 5,
+            "backgroundColor": [
+             0.09,
+             0.1,
+             0.13,
+             1
+            ]
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Limba modernă: engleză",
+           "font": "Inter-Regular",
+           "size": 9.5,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": 6
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 9,
+          "height": 9,
+          "alignItems": "center",
+          "justifyContent": "center",
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "right": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "bottom": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ],
+           "left": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         },
+         "children": []
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Transport școlar",
+           "font": "Inter-Regular",
+           "size": 9.5,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "3. Declarație",
+       "font": "Inter-Bold",
+       "size": 10.5,
+       "color": [
+        0.12,
+        0.29,
+        0.6,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 14,
+       "bottom": 6
+      }
+     },
+     "break": {
+      "minPresenceAhead": 80
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Subsemnatul, în calitate de părinte al elevei menționate mai sus, solicit înscrierea acesteia în clasa pregătitoare pentru anul școlar 2026–2027. Declar pe propria răspundere că datele înscrise în prezenta cerere sunt corecte și complete și că am luat la cunoștință prevederile regulamentului de organizare și funcționare a unității de învățământ. Îmi exprim acordul ca datele cu caracter personal să fie prelucrate exclusiv în scopul înscrierii, potrivit Regulamentului (UE) 2016/679. Mă oblig să anunț în scris, în cel mult cincisprezece zile, orice modificare intervenită în situația declarată.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.09,
+        0.1,
+        0.13,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "textAlign": "justify",
+      "lineHeight": 1.5
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Anexez: copie certificat de naștere, copie act de identitate părinte, adeverință medicală.",
+       "font": "Inter-Regular",
+       "size": 9,
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 8
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "justifyContent": "space-between",
+      "alignItems": "flex-end",
+      "margin": {
+       "top": 34
+      }
+     },
+     "break": {
+      "inside": "avoid"
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "gap": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Data",
+           "font": "Inter-Regular",
+           "size": 8,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "08 octombrie 2026",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "width": 190,
+        "gap": 4,
+        "alignItems": "center"
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 190,
+          "height": 28,
+          "borderWidth": {
+           "bottom": 0.75
+          },
+          "borderColor": {
+           "bottom": [
+            0.09,
+            0.1,
+            0.13,
+            1
+           ]
+          }
+         }
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Semnătura părintelui / tutorelui",
+           "font": "Inter-Regular",
+           "size": 8,
+           "color": [
+            0.4,
+            0.42,
+            0.48,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "textAlign": "center"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

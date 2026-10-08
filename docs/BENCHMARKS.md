@@ -1,5 +1,18 @@
 # Benchmarks
 
+**Headline:** `scripts/bench-headline.sh` renders
+`fixtures/docs/report-100p-realistic.json` (98 pages, 40 tables, two
+fonts, a header, and a footer with page numbers) 10 times and prints the
+median. On the 4-vCPU container described below, measured 2026-10-08:
+
+| | Median |
+|---|---|
+| All cores (4) | **130 ms** (two runs: 125, 136) |
+| `--threads 1` | **277 ms** (two runs: 280, 274) |
+
+The brief's 100-page targets are < 500 ms single-threaded and < 200 ms
+on 8 threads.
+
 `cargo bench -p inkoxide --bench render` (criterion, release profile with
 fat LTO). Machine: cloud dev container, 4 vCPU Intel Xeon @ 2.8 GHz —
 slower than the M-series / 8-core targets in the brief (§9), so treat

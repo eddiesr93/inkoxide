@@ -49,6 +49,14 @@ fi
 step "schema docs up to date"
 python3 scripts/gen-schema-doc.py --check
 
+step "generated fixtures up to date"
+python3 scripts/fixtures/report_realistic.py >/dev/null
+git diff --exit-code -- fixtures/docs/report-100p-realistic.json || {
+  echo "report-100p-realistic.json is stale: run scripts/fixtures/report_realistic.py and commit the result"
+  exit 1
+}
+echo "report-100p-realistic.json: up to date"
+
 step "schema conformance of fixtures"
 python3 scripts/check-schema.py
 
