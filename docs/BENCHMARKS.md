@@ -54,6 +54,58 @@ most this machine has; the brief's multi-thread column assumes 8.
   `scripts/fixtures/` into `target/generated/`.
 - Times vary ±10% between runs on this shared machine.
 
+## Table dump, single thread (post-M7 profiling)
+
+Time-boxed profiling pass on `table-dump-500p`, single thread (work
+order T7). Stage wall times come from a temporary instrumented build
+(three runs; ranges show the noise on this shared machine). Instruction
+shares come from `valgrind --tool=callgrind` on a 2,000-row version of
+the same table (`scripts/fixtures/table_dump.py 2000`), counted inside
+`render` only. Instruction counts are deterministic, so they compare
+experiments better than wall time does here.
+
+| Stage | Wall time (20k rows) | Share of instructions | What it is |
+|---|---|---|---|
+| Parse | 0.25–0.45 s | 18.7% | serde_json over 27 MB, 100k styled nodes |
+| Validate | 0.05–0.09 s | ~2% | |
+| Shape | 0.44–0.58 s | 26.5% | rustybuzz on every distinct word (the word cache already reuses repeats); GPOS kerning of digit strings alone is 7% |
+| Layout + paginate | 0.31–0.45 s | 5.4% | Taffy is already skipped for every cell (fast path, ADR-028); what remains is line breaking and the per-cell size cache |
+| Paint | 0.36–0.39 s | ~9% | ops for 100k cells and their borders |
+| Content streams | 0.15–0.19 s | ~6% | 19 MB of operators; float formatting (ryu) is 3% |
+| Deflate (level 6) | 0.49–0.58 s | 26.6% | miniz_oxide, 19 MB in, 2.6 MB out |
+| Write | < 0.01 s | | |
+
+Experiments. Each one was kept only if the output stayed byte-identical
+and the gain was at least 5%:
+
+| Change | Instructions | Result |
+|---|---|---|
+| (a) Extend the simple-cell fast path to skip Taffy | n/a | Nothing to extend: every cell of this table already takes the fast path. Layout is 5% of the total |
+| (b) Reuse the `Vec<Op>` buffer per worker (`map_init`) | −0.03% | Rejected; byte-identical |
+| (c) Pre-size the content-stream buffer (48 bytes per op) | −0.07% | Rejected; byte-identical |
+| Share shaping results between text nodes with identical runs and style | +0.3% | Rejected; byte-identical. The existing word cache already avoids reshaping, and building the content key costs as much as it saves |
+
+Median single-thread wall time over these runs: 2.40–2.70 s (the M6
+figure was 2.59 s). The ≤ 2.3 s goal is not met on this machine, and the
+remaining cost is structural:
+
+- **Deflate is a quarter of the work.** At level 6, miniz_oxide must
+  compress 19 MB. A faster level or a different compressor changes the
+  output bytes, so it is a product decision, not an optimisation.
+  `compressionLevel` already lets callers trade size for speed.
+- **Shaping unique strings.** 20k rows of IDs, names and totals are
+  mostly distinct words, and each one goes through rustybuzz. This
+  changes with the harfrust migration (docs/DEPENDENCY_WATCH.md), not
+  before.
+- **Parsing 27 MB of JSON.** This is serde_json's speed. MessagePack
+  input is the existing lever.
+- What is left (paint, layout, content streams) is about 20% of the work
+  and spread over many small functions, with no hotspot above 3%.
+
+The multi-thread time (1.5 s on 4 threads) parallelises shaping, paint,
+content streams and deflate per page, which is where integrators should
+look for throughput.
+
 ## Targets (§9)
 
 | Document | Single-thread | Multi-thread (8) |
