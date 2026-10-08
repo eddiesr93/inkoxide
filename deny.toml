@@ -26,6 +26,8 @@ allow = [
   "ISC",
   "Zlib",
   "Unicode-3.0",
+  # Boost: permissive, OSI-approved (xxhash-rust, on the §3 allowlist).
+  "BSL-1.0",
 ]
 
 [bans]

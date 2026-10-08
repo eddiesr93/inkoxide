@@ -322,7 +322,7 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
-| `data` | `string` |  | Inline image bytes (JPEG or PNG). |
+| `data` | `string` |  | Inline image bytes (JPEG or PNG), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
 
 ### TableNode

@@ -1,14 +1,52 @@
 //! The render pipeline after validation: layout → pagination → paint.
 
+use taffy::{AvailableSpace, Size as TSize};
+
 use crate::fonts::FontSet;
-use crate::layout::{LayoutEngine, TaffyLayout, Tree};
+use crate::images::ImageSet;
+use crate::layout::{Geometry, LayoutEngine, LeafMeasure, TaffyLayout, Tree};
 use crate::paginate::{paginate, Placement};
-use crate::paint::{self, FlowPart, Op, PageContent, Rect};
-use crate::schema::{Document, PageSpec};
+use crate::paint::{self, ContentCtx, ContentPainter, FlowPart, Op, PageContent, Rect};
+use crate::schema::{Document, Node, NodeKind, PageSpec};
 use crate::text::{PageNumbers, RustybuzzShaper, TextCache, TextPainter};
 use crate::InkoxideError;
 
 type Cache<'s, 'f, 'a> = TextCache<'s, RustybuzzShaper<'f, 'a>>;
+
+/// Leaf measurement: text through the text cache, images by intrinsic size.
+struct Leaves<'x, 's, 'f, 'a> {
+    text: &'x mut Cache<'s, 'f, 'a>,
+    images: &'x ImageSet,
+}
+
+impl LeafMeasure for Leaves<'_, '_, '_, '_> {
+    fn measure(
+        &mut self,
+        node: &Node,
+        known: TSize<Option<f32>>,
+        available: TSize<AvailableSpace>,
+    ) -> TSize<f32> {
+        match node.kind {
+            NodeKind::Image { .. } => self.images.measure(node, known, available),
+            _ => self.text.measure(node, known, available),
+        }
+    }
+}
+
+/// Leaf painting: text and images.
+struct Content<'x, T: ContentPainter> {
+    text: T,
+    images: &'x ImageSet,
+}
+
+impl<T: ContentPainter> ContentPainter for Content<'_, T> {
+    fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
+        match node.kind {
+            NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
+            _ => self.text.paint(node, geo, ctx, ops),
+        }
+    }
+}
 
 /// One page template after layout and pagination.
 struct Laid<'a> {
@@ -20,12 +58,12 @@ struct Laid<'a> {
 }
 
 fn layout_fixed<'a>(
-    node: &'a crate::schema::Node,
+    node: &'a Node,
     width: f32,
-    text: &mut Cache<'_, '_, '_>,
+    leaves: &mut Leaves<'_, '_, '_, '_>,
 ) -> Result<Tree<'a>, InkoxideError> {
     let mut tree = Tree::build_single(node);
-    TaffyLayout.compute(&mut tree, width, 0.0, text)?;
+    TaffyLayout.compute(&mut tree, width, 0.0, leaves)?;
     Ok(tree)
 }
 
@@ -33,6 +71,7 @@ pub(crate) fn run(
     doc: &Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
+    images: &ImageSet,
 ) -> Result<Vec<PageContent>, InkoxideError> {
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
@@ -41,18 +80,19 @@ pub(crate) fn run(
         let content_w = spec.size.width - m.left - m.right;
         let content_h = spec.size.height - m.top - m.bottom;
         let mut flow = Tree::build(&spec.children);
-        TaffyLayout.compute(&mut flow, content_w, content_h, text)?;
-        let placement = paginate(&flow, content_h, text);
+        let mut leaves = Leaves { text, images };
+        TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
         let header = spec
             .header
             .as_deref()
-            .map(|n| layout_fixed(n, spec.size.width, text))
+            .map(|n| layout_fixed(n, spec.size.width, &mut leaves))
             .transpose()?;
         let footer = spec
             .footer
             .as_deref()
-            .map(|n| layout_fixed(n, spec.size.width, text))
+            .map(|n| layout_fixed(n, spec.size.width, &mut leaves))
             .transpose()?;
+        let placement = paginate(&flow, content_h, text);
         laid.push(Laid {
             spec,
             flow,
@@ -73,7 +113,7 @@ pub(crate) fn run(
                 current: number,
                 total,
             };
-            pages.push(paint_page(l, k, numbers, fonts, text));
+            pages.push(paint_page(l, k, numbers, fonts, text, images));
         }
     }
     Ok(pages)
@@ -85,6 +125,7 @@ fn paint_page(
     numbers: PageNumbers,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
+    images: &ImageSet,
 ) -> PageContent {
     let spec = l.spec;
     let (pw, ph) = (spec.size.width, spec.size.height);
@@ -97,10 +138,13 @@ fn paint_page(
             color: bg,
         });
     }
-    let mut painter = TextPainter {
-        cache: text,
-        fonts,
-        numbers,
+    let mut painter = Content {
+        text: TextPainter {
+            cache: text,
+            fonts,
+            numbers,
+        },
+        images,
     };
 
     // Flow: paged space [k·H, (k+1)·H) mapped onto the content band,

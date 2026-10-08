@@ -1,6 +1,7 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
 mod font;
+mod image;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
@@ -12,6 +13,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, 
 
 use crate::date::Timestamp;
 use crate::fonts::{FontKey, FontSet};
+use crate::images::{ImageKey, ImageSet};
 use crate::paint::{FillRule, Op, PageContent, PathSeg, TextOp};
 use crate::schema::{Color, Meta};
 use crate::text::UnicodeMap;
@@ -26,6 +28,7 @@ pub(crate) struct DocumentOut<'a> {
     pub creation_date: Option<Timestamp>,
     pub fonts: &'a FontSet<'a>,
     pub unicode: &'a UnicodeMap,
+    pub images: &'a ImageSet,
 }
 
 /// Dependency firewall around the PDF writer (§5.1).
@@ -112,6 +115,19 @@ impl PdfSink for PdfWriterSink {
             font_refs.insert(*key, r);
         }
 
+        // Images: one XObject per unique image actually painted.
+        let mut image_refs: BTreeMap<ImageKey, Ref> = BTreeMap::new();
+        for page in doc.pages {
+            for op in &page.ops {
+                if let Op::Image { key, .. } = op {
+                    image_refs.entry(*key).or_insert(Ref::new(1));
+                }
+            }
+        }
+        for (key, r) in image_refs.iter_mut() {
+            *r = image::write_image(&mut pdf, &mut || alloc.next(), doc.images.get(*key));
+        }
+
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
             let parent = tree_root.leaf_parents[i / PAGE_TREE_FANOUT];
             let mut p = pdf.page(*page_ref);
@@ -138,6 +154,20 @@ impl PdfSink for PdfWriterSink {
                 let mut f = res.fonts();
                 for key in page_fonts {
                     f.pair(Name(font_name(key).as_bytes()), font_refs[&key]);
+                }
+            }
+            let page_images: BTreeSet<ImageKey> = page
+                .ops
+                .iter()
+                .filter_map(|op| match op {
+                    Op::Image { key, .. } => Some(*key),
+                    _ => None,
+                })
+                .collect();
+            if !page_images.is_empty() {
+                let mut x = res.x_objects();
+                for key in page_images {
+                    x.pair(Name(image_name(key).as_bytes()), image_refs[&key]);
                 }
             }
             res.finish();
@@ -296,6 +326,10 @@ fn page_opacities(page: &PageContent) -> std::collections::BTreeSet<u16> {
         .collect()
 }
 
+fn image_name(key: ImageKey) -> String {
+    format!("Im{key}")
+}
+
 fn font_name(key: FontKey) -> String {
     format!("F{key}")
 }
@@ -439,6 +473,12 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>) -> Vec<u8>
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
             Op::Text(t) => show_text(&mut c, t, fonts),
+            Op::Image { key, matrix } => {
+                c.save_state();
+                c.transform(matrix.map(q));
+                c.x_object(Name(image_name(*key).as_bytes()));
+                c.restore_state();
+            }
         }
     }
     c.finish().into_vec()

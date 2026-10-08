@@ -20,6 +20,8 @@ ttf-parser.workspace = true
 unicode-linebreak.workspace = true
 hypher.workspace = true
 flate2.workspace = true
+image.workspace = true
+xxhash-rust.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

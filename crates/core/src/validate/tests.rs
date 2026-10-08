@@ -13,7 +13,14 @@ fn fonts() -> FontStore {
 
 fn run(doc: &str) -> Vec<ValidationError> {
     let mut images = ImageStore::new();
-    images.insert("logo", vec![0u8; 16]);
+    images.insert(
+        "logo",
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/images/logo.png"
+        ))
+        .unwrap(),
+    );
     validate(doc.as_bytes(), InputFormat::Json, &fonts(), &images)
 }
 
@@ -248,4 +255,29 @@ fn render_refuses_invalid_documents() {
     )
     .unwrap_err();
     assert_eq!(err.code(), "STYLE_NOT_APPLICABLE");
+}
+
+#[test]
+fn rejects_corrupt_and_unknown_images() {
+    let doc = r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
+      "children":[{"type":"image","src":"nope"},{"type":"image","data":"!!"},
+      {"type":"image","data":"R0lGODlh"}]}]}"#;
+    let e = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &FontStore::new(),
+        &ImageStore::new(),
+    );
+    let got: Vec<(&str, &str)> = e
+        .iter()
+        .map(|e| (e.code.as_str(), e.path.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("UNKNOWN_IMAGE", "pages[0].children[0].src"),
+            ("INVALID_IMAGE", "pages[0].children[1].data"),
+            ("INVALID_IMAGE", "pages[0].children[2].data"),
+        ]
+    );
 }

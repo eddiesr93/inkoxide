@@ -23,6 +23,8 @@ rustybuzz = "=0.20.1"
 ttf-parser = "=0.25.1"
 unicode-linebreak = "=0.1.5"
 hypher = "=0.1.8"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
 flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
 clap = { version = "=4.6.7", features = ["derive"] }
 insta = "=1.49.0"

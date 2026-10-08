@@ -397,22 +397,30 @@ impl<'a> Checker<'a> {
                 }
             }
             NodeKind::Image { source, .. } => match source {
-                crate::schema::ImageSource::Ref(id) => {
-                    if !self.images.contains(id) {
-                        self.err(
-                            Code::UnknownImage,
-                            Some("src"),
-                            format!("image `{id}` was not provided in the render options"),
-                        );
+                crate::schema::ImageSource::Ref(id) => match self.images.get(id) {
+                    None => self.err(
+                        Code::UnknownImage,
+                        Some("src"),
+                        format!("image `{id}` was not provided in the render options"),
+                    ),
+                    Some(data) => {
+                        if let Err(e) = crate::images::probe(&data.bytes) {
+                            self.err(
+                                Code::InvalidImage,
+                                Some("src"),
+                                format!("image `{id}`: {e}"),
+                            );
+                        }
                     }
-                }
+                },
                 crate::schema::ImageSource::Inline(data) => {
-                    if data.is_empty() {
-                        self.err(
-                            Code::InvalidImage,
-                            Some("data"),
-                            "inline image data is empty",
-                        );
+                    match crate::images::decode_inline(data) {
+                        Err(e) => self.err(Code::InvalidImage, Some("data"), e),
+                        Ok(bytes) => {
+                            if let Err(e) = crate::images::probe(&bytes) {
+                                self.err(Code::InvalidImage, Some("data"), e);
+                            }
+                        }
                     }
                 }
             },

@@ -78,6 +78,11 @@ pub(crate) enum Op {
         dash: Option<Dash>,
     },
     Text(TextOp),
+    /// Draws an image XObject with its unit square mapped by `matrix`.
+    Image {
+        key: crate::images::ImageKey,
+        matrix: [f32; 6],
+    },
     /// Sets the absolute fill and stroke alpha (cumulative opacity is
     /// computed by the painter; PDF `gs` does not multiply).
     SetOpacity(f32),

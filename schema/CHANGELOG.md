@@ -9,3 +9,8 @@ pagination controls (`break`); header/footer per page template;
 
 v1 stays a draft (non-breaking additions only, logged here) until the
 first npm release (M5); after that, breaking changes bump `version`.
+
+### Additions
+
+- M5: `image.data` also accepts a `data:<mime>;base64,` URL (description
+  only; any base64 string was already valid).

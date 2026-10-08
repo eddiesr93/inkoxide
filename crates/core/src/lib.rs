@@ -115,7 +115,8 @@ pub fn render(
         RustybuzzShaper::new(&font_set),
         document.meta.lang.as_deref(),
     );
-    let pages = pipeline::run(&document, &font_set, &mut text)?;
+    let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
+    let pages = pipeline::run(&document, &font_set, &mut text, &image_set)?;
     let unicode: UnicodeMap = text.shaper.unicode;
 
     let mut sink = PdfWriterSink {
@@ -127,6 +128,7 @@ pub fn render(
         creation_date,
         fonts: &font_set,
         unicode: &unicode,
+        images: &image_set,
     })
 }
 

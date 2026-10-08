@@ -354,3 +354,37 @@ failed and some pages lost their repeated header. **Decision.** Page
 decisions use a 0.1 pt tolerance (invisible). If documents grow by
 another order of magnitude, paged positions move to (page, offset) pairs
 or f64 in M6.
+
+## ADR-025 — Images: passthrough JPEG, decoded PNG, sizing and orientation (M5)
+
+**Context.** §6.6 asks for JPEG passthrough, PNG with alpha, dedupe and
+`fit` modes, but leaves sizing, colour and orientation details open.
+
+**Decision.**
+- **JPEG** is never decoded. A ~100-line header reader (`images/probe.rs`)
+  gets size, components (1/3/4), the Adobe APP14 marker and the EXIF
+  orientation; the bytes go out as `DCTDecode`. 4-component files with an
+  Adobe marker are inverted CMYK (Photoshop convention) and get
+  `/Decode [1 0 1 0 1 0 1 0]`. Only 8-bit baseline/progressive frames are
+  accepted; the `image` crate is built with the `png` feature only.
+- **PNG** is decoded with `image` to 8-bit grey or RGB plus an alpha plane;
+  a fully opaque alpha plane is dropped (no `SMask`). 16-bit samples are
+  reduced to 8 bits and ICC profiles are ignored (DeviceRGB, as §4.7).
+- **Compression** of image samples always uses Flate level 6, independent
+  of the content-stream `compress` option: samples are compressed once,
+  when an image is first decoded, and cached on the `ImageStore` entry for
+  the lifetime of the store (the process-wide cache of §5.2).
+- **Dedupe** is by xxh3-64 of the encoded bytes: one XObject per distinct
+  image per document, numbered in hash order (deterministic).
+- **Intrinsic size** is 96 dpi (1 px = 0.75 pt), as in browsers and
+  react-pdf, after EXIF orientation (5–8 swap the axes). A given width or
+  height determines the other through the aspect ratio. With neither, an
+  image wider than a definite available width is scaled down to it,
+  which matches what authors expect from `max-width: 100%` images.
+- **EXIF orientation** (JPEG only) is honoured through the image matrix,
+  not by re-encoding, so passthrough stays passthrough.
+- **Inline data** accepts plain base64 and `data:<mime>;base64,` URLs; a
+  20-line decoder avoids a dependency.
+- **Limits.** Images over 50 megapixels are a validation error
+  (`INVALID_IMAGE`), as are unreadable headers. Validation probes headers
+  only; decoding happens at render.
