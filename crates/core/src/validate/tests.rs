@@ -402,3 +402,96 @@ fn border_collapse() {
         assert_eq!(one(&doc(child)), (code, path.to_string()), "{child}");
     }
 }
+
+#[test]
+fn grid_parity() {
+    let ok = doc(r#"{"type":"box","style":{"display":"grid",
+            "gridTemplateColumns":[{"repeat":"auto-fill","tracks":[{"min":60,"max":"1fr"}]}],
+            "gridTemplateRows":[{"fitContent":40},{"repeat":2,"tracks":["auto",{"min":"min-content","max":"max-content"}]}],
+            "gridAutoRows":[20,{"min":10,"max":"auto"}],
+            "gridAutoColumns":["1fr"],
+            "gridTemplateAreas":["head head","side main",". main"],
+            "justifyItems":"center"},
+          "children":[{"type":"box","style":{"gridArea":"main","justifySelf":"end"}},{"type":"spacer","style":{"gridArea":"head"}}]}"#);
+    assert_eq!(run(&ok), vec![]);
+
+    let p = "pages[0].children[0].style";
+    for (style, code, path) in [
+        (
+            r#""gridTemplateColumns":[{"min":"1fr","max":10}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns[0]",
+        ),
+        (
+            r#""gridTemplateColumns":[{"min":10}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns[0]",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":0,"tracks":[10]}]"#,
+            C::OutOfRange,
+            "gridTemplateColumns[0].repeat",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":2,"tracks":[]}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns[0]",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":2,"tracks":[10],"min":5}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns[0]",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":"auto-fit","tracks":[10]},{"repeat":"auto-fill","tracks":[10]}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns[1].repeat",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":"auto-fill","tracks":[0,"0%"]}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns[0].tracks",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":"auto-fill","tracks":["auto"]}]"#,
+            C::InvalidValue,
+            "gridTemplateColumns",
+        ),
+        (
+            r#""gridTemplateColumns":[{"repeat":"auto-fill","tracks":[10]},"1fr"]"#,
+            C::InvalidValue,
+            "gridTemplateColumns",
+        ),
+        (
+            r#""gridTemplateRows":[{"min":-1,"max":5}]"#,
+            C::OutOfRange,
+            "gridTemplateRows[0]",
+        ),
+        (
+            r#""gridAutoRows":[{"repeat":2,"tracks":[10]}]"#,
+            C::UnknownField,
+            "gridAutoRows[0].repeat",
+        ),
+        (
+            r#""gridAutoRows":[{"fitContent":-3}]"#,
+            C::OutOfRange,
+            "gridAutoRows[0]",
+        ),
+        (
+            r#""gridTemplateAreas":["a b","b b"]"#,
+            C::InvalidValue,
+            "gridTemplateAreas",
+        ),
+        (r#""gridArea":"9x""#, C::InvalidValue, "gridArea"),
+        (
+            r#""gridArea":"a","gridRow":{"start":1}"#,
+            C::InvalidValue,
+            "gridArea",
+        ),
+        // Not in the parent's areas (the page root has none).
+        (r#""gridArea":"a""#, C::InvalidValue, "gridArea"),
+    ] {
+        let d = doc(&format!(r#"{{"type":"box","style":{{{style}}}}}"#));
+        assert_eq!(one(&d), (code, format!("{p}.{path}")), "{style}");
+    }
+}

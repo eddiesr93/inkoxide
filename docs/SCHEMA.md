@@ -212,9 +212,9 @@ A page template. Its content flows across as many physical pages as needed.
 
 ### TrackSize
 
-Grid track: points, a percentage, "<n>fr", "auto", "min-content" or "max-content".
+Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
 
-Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?fr$` or `"auto"` \| `"min-content"` \| `"max-content"`
+Type: [`TrackBreadth`](#trackbreadth) or `object` or `object`
 
 ### Style
 
@@ -244,11 +244,17 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `margin` | [`EdgesLength`](#edgeslength) |  |  |
 | `position` | `"relative"` \| `"absolute"` |  | default `"relative"` |
 | `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. |
-| `gridTemplateColumns` | array of [`TrackSize`](#tracksize) |  |  |
-| `gridTemplateRows` | array of [`TrackSize`](#tracksize) |  |  |
+| `gridTemplateColumns` | array of [`TemplateTrack`](#templatetrack) |  |  |
+| `gridTemplateRows` | array of [`TemplateTrack`](#templatetrack) |  |  |
+| `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. |
+| `gridAutoColumns` | array of [`TrackSize`](#tracksize) |  |  |
+| `gridAutoRows` | array of [`TrackSize`](#tracksize) |  |  |
 | `gridAutoFlow` | `"row"` \| `"column"` \| `"row dense"` \| `"column dense"` |  |  |
 | `gridColumn` | [`GridPlacement`](#gridplacement) |  |  |
 | `gridRow` | [`GridPlacement`](#gridplacement) |  |  |
+| `gridArea` | `string` |  | Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`. |
+| `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
+| `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
 | `backgroundColor` | [`Color`](#color) |  |  |
 | `opacity` | `number` |  | ≥ 0, ≤ 1 |
@@ -381,3 +387,15 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
+
+### TrackBreadth
+
+Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content".
+
+Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?fr$` or `"auto"` \| `"min-content"` \| `"max-content"`
+
+### TemplateTrack
+
+Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
+
+Type: [`TrackSize`](#tracksize) or `object`

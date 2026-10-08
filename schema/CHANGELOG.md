@@ -20,3 +20,7 @@ first npm release (M5); after that, breaking changes bump `version`.
 - M7: `borderCollapse: "collapse" | "separate"` and `borderSpacing` on
   tables (separate mode: each cell draws its own borders and background,
   cells are spaced by `borderSpacing`).
+- M7 grid parity: track objects `{min, max}` (minmax) and `{fitContent}`;
+  `{repeat, tracks}` in `gridTemplateColumns`/`gridTemplateRows`
+  (count, `auto-fill` or `auto-fit`); `gridAutoColumns`, `gridAutoRows`,
+  `gridTemplateAreas`, `gridArea`, `justifyItems`, `justifySelf`.

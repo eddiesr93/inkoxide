@@ -672,3 +672,36 @@ cells with their own background.
   left for later; it is additive.
 - The table's own background shows through the gaps. Like any split
   node, its fragment on a page runs to the bottom of the content area.
+
+## ADR-036 — Grid parity: areas, repeat, minmax (M7)
+
+**Context.** v1 grids took plain track lists and numeric line placement.
+Real layouts (dashboards, card walls) need what CSS grid users reach for
+first: named areas, `repeat(auto-fill, minmax(…))` and implicit track
+sizes. Taffy implements all of it.
+
+**Decision.**
+- Tracks stay JSON values. A string or number is a breadth as before.
+  `{min, max}` is `minmax()` (an fr minimum is rejected, as CSS does), and
+  `{fitContent}` is `fit-content()`. `{repeat, tracks}` is `repeat()` and
+  is allowed only in the two template lists. The count is 1..=1000,
+  `"auto-fill"` or `"auto-fit"`.
+- Auto-repeat rules are checked up front rather than letting Taffy
+  silently drop the template: one auto-repeat per list, every track in
+  the list with a fixed minimum or maximum, and a positive fixed size in
+  the repeated tracks. Taffy caps a grid at 10 000 tracks, which bounds
+  the work for small tracks on large pages.
+- `gridTemplateAreas` is the CSS string list. It is parsed by one shared
+  function (validation and layout), and each area must be a rectangle.
+  `gridArea: "name"` places an item via the implicit `name-start` /
+  `name-end` lines. It must name an area of the parent's template and
+  cannot be combined with `gridRow`/`gridColumn`. This is stricter than
+  CSS, which quietly places unknown names on implicit lines.
+- `gridAutoColumns`, `gridAutoRows`, `justifyItems` and `justifySelf` map
+  straight to Taffy.
+- Named lines (`[a] 1fr [b]`) are not offered. Areas cover the common
+  case, and Taffy panics on malformed line-name lists.
+
+**Consequences.**
+- All additions are optional fields; v1 documents are unchanged.
+- New `Style` fields are boxed slices and strings to keep `Node` small.

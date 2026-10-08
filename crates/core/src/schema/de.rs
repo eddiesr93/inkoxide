@@ -36,8 +36,9 @@ impl Default for LengthPercent {
     }
 }
 
+/// One grid track sizing value.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TrackSize {
+pub enum TrackBreadth {
     Points(f32),
     Percent(f32),
     Fr(f32),
@@ -45,6 +46,32 @@ pub enum TrackSize {
     MinContent,
     MaxContent,
 }
+
+/// A grid track: a single breadth, `minmax(min, max)` or `fit-content(limit)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrackSize {
+    Breadth(TrackBreadth),
+    MinMax(TrackBreadth, TrackBreadth),
+    FitContent(LengthPercent),
+}
+
+/// The first argument of `repeat()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepeatCount {
+    Count(u16),
+    AutoFill,
+    AutoFit,
+}
+
+/// An entry of `gridTemplateColumns` / `gridTemplateRows`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GridTrack {
+    Single(TrackSize),
+    Repeat(RepeatCount, Box<[TrackSize]>),
+}
+
+/// Most `repeat()` count accepted; Taffy caps a grid at 10 000 tracks anyway.
+pub const MAX_REPEAT: u16 = 1000;
 
 /// A 1-based, non-zero grid line index (negative counts from the end).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,20 +148,151 @@ num_or_str_visitor!(
     |s| parse_suffixed(s, "%").map(|p| LengthPercent::Percent(p / 100.0))
 );
 
-num_or_str_visitor!(
-    TrackSize,
-    "a number of points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\"",
-    |v| finite(v).map(TrackSize::Points),
-    |s| match s {
-        "auto" => Some(TrackSize::Auto),
-        "min-content" => Some(TrackSize::MinContent),
-        "max-content" => Some(TrackSize::MaxContent),
+const BREADTH: &str =
+    "a number of points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\"";
+
+fn breadth_str(s: &str) -> Option<TrackBreadth> {
+    match s {
+        "auto" => Some(TrackBreadth::Auto),
+        "min-content" => Some(TrackBreadth::MinContent),
+        "max-content" => Some(TrackBreadth::MaxContent),
         _ => parse_suffixed(s, "fr")
             .filter(|v| *v >= 0.0)
-            .map(TrackSize::Fr)
-            .or_else(|| parse_suffixed(s, "%").map(|p| TrackSize::Percent(p / 100.0))),
+            .map(TrackBreadth::Fr)
+            .or_else(|| parse_suffixed(s, "%").map(|p| TrackBreadth::Percent(p / 100.0))),
+    }
+}
+
+num_or_str_visitor!(
+    TrackBreadth,
+    "a number of points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\"",
+    |v| finite(v).map(TrackBreadth::Points),
+    |s| breadth_str(s)
+);
+
+num_or_str_visitor!(
+    RepeatCount,
+    "an integer repeat count, \"auto-fill\" or \"auto-fit\"",
+    |v| if v.fract() == 0.0 && (1.0..=f64::from(MAX_REPEAT)).contains(&v) {
+        Ok(RepeatCount::Count(v as u16))
+    } else {
+        Err(de::Error::custom(format_args!(
+            "[OUT_OF_RANGE] repeat count must be an integer within 1..={MAX_REPEAT}, found {v}"
+        )))
+    },
+    |s| match s {
+        "auto-fill" => Some(RepeatCount::AutoFill),
+        "auto-fit" => Some(RepeatCount::AutoFit),
+        _ => None,
     }
 );
+
+/// Object form of a track: `{min, max}`, `{fitContent}` or, in templates
+/// only, `{repeat, tracks}`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawTrack {
+    min: Option<TrackBreadth>,
+    max: Option<TrackBreadth>,
+    fit_content: Option<LengthPercent>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawTemplateTrack {
+    min: Option<TrackBreadth>,
+    max: Option<TrackBreadth>,
+    fit_content: Option<LengthPercent>,
+    repeat: Option<RepeatCount>,
+    tracks: Option<Vec<TrackSize>>,
+}
+
+const TRACK_OBJECT: &str =
+    "[INVALID_VALUE] a track object is either `{min, max}` or `{fitContent}`";
+
+fn track_object(
+    min: Option<TrackBreadth>,
+    max: Option<TrackBreadth>,
+    fit: Option<LengthPercent>,
+) -> Result<TrackSize, &'static str> {
+    match (min, max, fit) {
+        (Some(TrackBreadth::Fr(_)), Some(_), None) => {
+            Err("[INVALID_VALUE] the `min` of a minmax track cannot be a flexible (fr) size")
+        }
+        (Some(min), Some(max), None) => Ok(TrackSize::MinMax(min, max)),
+        (None, None, Some(f)) => Ok(TrackSize::FitContent(f)),
+        _ => Err(TRACK_OBJECT),
+    }
+}
+
+struct TrackVisitor<const TEMPLATE: bool>;
+
+impl<'de, const TEMPLATE: bool> Visitor<'de> for TrackVisitor<TEMPLATE> {
+    type Value = GridTrack;
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{BREADTH}, or a track object")
+    }
+    fn visit_f64<E: de::Error>(self, v: f64) -> Result<GridTrack, E> {
+        let b = finite(v).map(TrackBreadth::Points)?;
+        Ok(GridTrack::Single(TrackSize::Breadth(b)))
+    }
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<GridTrack, E> {
+        self.visit_f64(v as f64)
+    }
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<GridTrack, E> {
+        self.visit_f64(v as f64)
+    }
+    fn visit_str<E: de::Error>(self, s: &str) -> Result<GridTrack, E> {
+        breadth_str(s)
+            .map(|b| GridTrack::Single(TrackSize::Breadth(b)))
+            .ok_or_else(|| {
+                E::custom(format_args!(
+                    "[INVALID_VALUE] expected {BREADTH}, found \"{s}\""
+                ))
+            })
+    }
+    fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<GridTrack, A::Error> {
+        let d = de::value::MapAccessDeserializer::new(map);
+        if !TEMPLATE {
+            let r = RawTrack::deserialize(d)?;
+            return track_object(r.min, r.max, r.fit_content)
+                .map(GridTrack::Single)
+                .map_err(de::Error::custom);
+        }
+        let r = RawTemplateTrack::deserialize(d)?;
+        match (r.repeat, r.tracks) {
+            (None, None) => track_object(r.min, r.max, r.fit_content)
+                .map(GridTrack::Single)
+                .map_err(de::Error::custom),
+            (Some(n), Some(t)) if r.min.is_none() && r.max.is_none() && r.fit_content.is_none() => {
+                if t.is_empty() {
+                    return Err(de::Error::custom(
+                        "[INVALID_VALUE] `repeat` needs at least one track",
+                    ));
+                }
+                Ok(GridTrack::Repeat(n, t.into_boxed_slice()))
+            }
+            _ => Err(de::Error::custom(
+                "[INVALID_VALUE] a repeat object has exactly `repeat` and `tracks`",
+            )),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TrackSize {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match d.deserialize_any(TrackVisitor::<false>)? {
+            GridTrack::Single(t) => Ok(t),
+            GridTrack::Repeat(..) => Err(de::Error::custom(TRACK_OBJECT)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for GridTrack {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        d.deserialize_any(TrackVisitor::<true>)
+    }
+}
 
 impl<'de> Deserialize<'de> for GridLine {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {

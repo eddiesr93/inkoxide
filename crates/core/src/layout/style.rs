@@ -4,14 +4,15 @@ use taffy::prelude::*;
 use taffy::style::{
     AlignContent as TAlignContent, AlignItems as TAlignItems, AlignSelf as TAlignSelf,
     Display as TDisplay, FlexDirection as TFlexDirection, FlexWrap as TFlexWrap,
-    GridAutoFlow as TGridAutoFlow, GridTemplateComponent, JustifyContent as TJustifyContent,
-    Overflow as TOverflow, Position as TPosition,
+    GridAutoFlow as TGridAutoFlow, GridTemplateArea, GridTemplateAreas, GridTemplateComponent,
+    GridTemplateRepetition, JustifyContent as TJustifyContent, MaxTrackSizingFunction,
+    MinTrackSizingFunction, Overflow as TOverflow, Position as TPosition, RepetitionCount,
 };
 
 use crate::schema::{
     AlignContent, AlignItems, AlignSelf, Display, FlexDirection, FlexWrap, GridAutoFlow,
-    GridPlacement, JustifyContent, Length, LengthPercent, Overflow, Position, Style as S,
-    TrackSize,
+    GridPlacement, GridTrack, JustifyContent, Length, LengthPercent, Overflow, Position,
+    RepeatCount, Style as S, TrackBreadth, TrackSize,
 };
 
 fn dim(l: Option<Length>) -> Dimension {
@@ -39,15 +40,81 @@ fn lp(l: Option<LengthPercent>) -> LengthPercentage {
     }
 }
 
+fn min_track(b: TrackBreadth) -> MinTrackSizingFunction {
+    type M = MinTrackSizingFunction;
+    match b {
+        TrackBreadth::Points(v) => M::length(v),
+        TrackBreadth::Percent(v) => M::percent(v),
+        // Validation rejects fr minimums; `auto` is the CSS fallback.
+        TrackBreadth::Fr(_) | TrackBreadth::Auto => M::auto(),
+        TrackBreadth::MinContent => M::min_content(),
+        TrackBreadth::MaxContent => M::max_content(),
+    }
+}
+
+fn max_track(b: TrackBreadth) -> MaxTrackSizingFunction {
+    type M = MaxTrackSizingFunction;
+    match b {
+        TrackBreadth::Points(v) => M::length(v),
+        TrackBreadth::Percent(v) => M::percent(v),
+        TrackBreadth::Fr(v) => M::fr(v),
+        TrackBreadth::Auto => M::auto(),
+        TrackBreadth::MinContent => M::min_content(),
+        TrackBreadth::MaxContent => M::max_content(),
+    }
+}
+
 fn track(t: TrackSize) -> TrackSizingFunction {
     match t {
-        TrackSize::Points(v) => length(v),
-        TrackSize::Percent(v) => percent(v),
-        TrackSize::Fr(v) => fr(v),
-        TrackSize::Auto => auto(),
-        TrackSize::MinContent => min_content(),
-        TrackSize::MaxContent => max_content(),
+        TrackSize::Breadth(b) => match b {
+            TrackBreadth::Points(v) => length(v),
+            TrackBreadth::Percent(v) => percent(v),
+            TrackBreadth::Fr(v) => fr(v),
+            TrackBreadth::Auto => auto(),
+            TrackBreadth::MinContent => min_content(),
+            TrackBreadth::MaxContent => max_content(),
+        },
+        TrackSize::MinMax(min, max) => minmax(min_track(min), max_track(max)),
+        TrackSize::FitContent(l) => fit_content(lp(Some(l))),
     }
+}
+
+fn template(tracks: &[GridTrack]) -> Vec<GridTemplateComponent<String>> {
+    tracks
+        .iter()
+        .map(|t| match t {
+            GridTrack::Single(t) => GridTemplateComponent::Single(track(*t)),
+            GridTrack::Repeat(n, tracks) => GridTemplateComponent::Repeat(GridTemplateRepetition {
+                count: match n {
+                    RepeatCount::Count(n) => RepetitionCount::Count(*n),
+                    RepeatCount::AutoFill => RepetitionCount::AutoFill,
+                    RepeatCount::AutoFit => RepetitionCount::AutoFit,
+                },
+                tracks: tracks.iter().map(|&t| track(t)).collect(),
+                line_names: Vec::new(),
+            }),
+        })
+        .collect()
+}
+
+/// Invalid templates were rejected by validation; ignore them here.
+fn areas(rows: &[String]) -> Option<GridTemplateAreas<String>> {
+    let a = crate::schema::parse_areas(rows).ok()?;
+    Some(GridTemplateAreas {
+        areas: a
+            .areas
+            .iter()
+            .map(|a| GridTemplateArea {
+                name: a.name.to_string(),
+                row_start: a.rows.0 + 1,
+                row_end: a.rows.1 + 1,
+                column_start: a.cols.0 + 1,
+                column_end: a.cols.1 + 1,
+            })
+            .collect(),
+        row_count: a.rows,
+        column_count: a.cols,
+    })
 }
 
 fn placement(p: Option<GridPlacement>) -> Line<taffy::style::GridPlacement> {
@@ -77,6 +144,31 @@ fn placement(p: Option<GridPlacement>) -> Line<taffy::style::GridPlacement> {
             end: e.map_or(G::Auto, |e| l(e.0)),
         },
     }
+}
+
+fn align_items(a: AlignItems) -> TAlignItems {
+    match a {
+        AlignItems::FlexStart => TAlignItems::FLEX_START,
+        AlignItems::FlexEnd => TAlignItems::FLEX_END,
+        AlignItems::Center => TAlignItems::CENTER,
+        AlignItems::Baseline => TAlignItems::BASELINE,
+        AlignItems::Stretch => TAlignItems::STRETCH,
+        AlignItems::Start => TAlignItems::START,
+        AlignItems::End => TAlignItems::END,
+    }
+}
+
+fn align_self(a: AlignSelf) -> Option<TAlignSelf> {
+    Some(match a {
+        AlignSelf::Auto => return None,
+        AlignSelf::FlexStart => TAlignSelf::FLEX_START,
+        AlignSelf::FlexEnd => TAlignSelf::FLEX_END,
+        AlignSelf::Center => TAlignSelf::CENTER,
+        AlignSelf::Baseline => TAlignSelf::BASELINE,
+        AlignSelf::Stretch => TAlignSelf::STRETCH,
+        AlignSelf::Start => TAlignSelf::START,
+        AlignSelf::End => TAlignSelf::END,
+    })
 }
 
 /// Converts a node style. `flexDirection` defaults to `column` (ADR-006).
@@ -109,27 +201,8 @@ pub(crate) fn to_taffy(s: &S) -> Style {
             JustifyContent::End => TJustifyContent::END,
             JustifyContent::Stretch => TJustifyContent::STRETCH,
         }),
-        align_items: s.align_items.map(|a| match a {
-            AlignItems::FlexStart => TAlignItems::FLEX_START,
-            AlignItems::FlexEnd => TAlignItems::FLEX_END,
-            AlignItems::Center => TAlignItems::CENTER,
-            AlignItems::Baseline => TAlignItems::BASELINE,
-            AlignItems::Stretch => TAlignItems::STRETCH,
-            AlignItems::Start => TAlignItems::START,
-            AlignItems::End => TAlignItems::END,
-        }),
-        align_self: s.align_self.and_then(|a| {
-            Some(match a {
-                AlignSelf::Auto => return None,
-                AlignSelf::FlexStart => TAlignSelf::FLEX_START,
-                AlignSelf::FlexEnd => TAlignSelf::FLEX_END,
-                AlignSelf::Center => TAlignSelf::CENTER,
-                AlignSelf::Baseline => TAlignSelf::BASELINE,
-                AlignSelf::Stretch => TAlignSelf::STRETCH,
-                AlignSelf::Start => TAlignSelf::START,
-                AlignSelf::End => TAlignSelf::END,
-            })
-        }),
+        align_items: s.align_items.map(align_items),
+        align_self: s.align_self.and_then(align_self),
         align_content: s.align_content.map(|a| match a {
             AlignContent::FlexStart => TAlignContent::FLEX_START,
             AlignContent::FlexEnd => TAlignContent::FLEX_END,
@@ -173,6 +246,8 @@ pub(crate) fn to_taffy(s: &S) -> Style {
         },
         grid_row: placement(s.grid_row),
         grid_column: placement(s.grid_column),
+        justify_items: s.justify_items.map(align_items),
+        justify_self: s.justify_self.and_then(align_self),
         scrollbar_width: 0.0,
         ..Default::default()
     };
@@ -212,16 +287,29 @@ pub(crate) fn to_taffy(s: &S) -> Style {
         };
     }
     if let Some(cols) = &s.grid_template_columns {
-        t.grid_template_columns = cols
-            .iter()
-            .map(|&c| GridTemplateComponent::Single(track(c)))
-            .collect();
+        t.grid_template_columns = template(cols);
     }
     if let Some(rows) = &s.grid_template_rows {
-        t.grid_template_rows = rows
-            .iter()
-            .map(|&r| GridTemplateComponent::Single(track(r)))
-            .collect();
+        t.grid_template_rows = template(rows);
+    }
+    if let Some(cols) = &s.grid_auto_columns {
+        t.grid_auto_columns = cols.iter().map(|&c| track(c)).collect();
+    }
+    if let Some(rows) = &s.grid_auto_rows {
+        t.grid_auto_rows = rows.iter().map(|&r| track(r)).collect();
+    }
+    if let Some(rows) = &s.grid_template_areas {
+        t.grid_template_areas = areas(rows);
+    }
+    if let Some(name) = &s.grid_area {
+        // `<name>` resolves to the implicit `<name>-start` / `<name>-end`
+        // lines that the parent's area template defines.
+        let line = || Line {
+            start: taffy::style::GridPlacement::NamedLine(name.to_string(), 1),
+            end: taffy::style::GridPlacement::NamedLine(name.to_string(), 1),
+        };
+        t.grid_row = line();
+        t.grid_column = line();
     }
     if s.overflow == Some(Overflow::Hidden) {
         t.overflow = taffy::geometry::Point {

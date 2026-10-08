@@ -1,0 +1,895 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Grid parity",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 419.53,
+    "height": 595.28
+   },
+   "margin": {
+    "top": 30,
+    "right": 30,
+    "bottom": 30,
+    "left": 30
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Grid: areas, repeat, minmax, fit-content",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 8
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "display": "grid",
+      "gap": 6,
+      "gridTemplateAreas": [
+       "head head head",
+       "side main main",
+       "side main main",
+       "foot foot ..."
+      ],
+      "gridTemplateColumns": [
+       {
+        "min": 80,
+        "max": "1fr"
+       },
+       "2fr",
+       "1fr"
+      ],
+      "gridTemplateRows": [
+       "auto",
+       {
+        "min": 40,
+        "max": "auto"
+       },
+       "auto",
+       {
+        "fitContent": 30
+       }
+      ]
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.88,
+         0.97,
+         0.88,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "gridArea": "main"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "main — spans two rows and two columns of the template",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.86,
+         0.91,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "gridArea": "head"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "head",
+           "font": "Inter-Bold",
+           "size": 11
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "The header area spans all three columns.",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.96,
+         0.8,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "gridArea": "side"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "side: a narrow column with min 80 pt",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "gridArea": "foot"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "foot (the last cell is unnamed)",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 12
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "repeat(auto-fill, minmax(90pt, 1fr)) with gridAutoRows",
+       "font": "Inter-Bold",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 4
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "display": "grid",
+      "columnGap": 6,
+      "rowGap": 4,
+      "gridTemplateColumns": [
+       {
+        "repeat": "auto-fill",
+        "tracks": [
+         {
+          "min": 90,
+          "max": "1fr"
+         }
+        ]
+       }
+      ],
+      "gridAutoRows": [
+       28,
+       {
+        "min": 18,
+        "max": "auto"
+       }
+      ]
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.9,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 1",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.86,
+         0.91,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 2",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.88,
+         0.97,
+         0.88,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 3",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.96,
+         0.8,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 4 with a longer label that wraps",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.9,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 5",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.86,
+         0.91,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 6",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.88,
+         0.97,
+         0.88,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 7",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.96,
+         0.8,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 8",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.9,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 9 with a longer label that wraps",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.86,
+         0.91,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 10",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.88,
+         0.97,
+         0.88,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 11",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.96,
+         0.8,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 12",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.9,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 13",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.86,
+         0.91,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Card 14 with a longer label that wraps",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 12
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "repeat(3, …), fit-content tracks and justifyItems / justifySelf",
+       "font": "Inter-Bold",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 4
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "display": "grid",
+      "gap": 4,
+      "justifyItems": "center",
+      "gridTemplateColumns": [
+       {
+        "fitContent": 120
+       },
+       {
+        "repeat": 3,
+        "tracks": [
+         "1fr"
+        ]
+       }
+      ],
+      "gridAutoColumns": [
+       40
+      ],
+      "backgroundColor": [
+       0.97,
+       0.97,
+       0.97,
+       1
+      ]
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.96,
+         0.8,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "fit-content(120): a long label wraps at its limit",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.86,
+         0.91,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "center",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.88,
+         0.97,
+         0.88,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "justifySelf": "end"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "end",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         1,
+         0.9,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "justifySelf": "stretch"
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "stretch",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.93,
+         1
+        ],
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "borderRadius": 4,
+        "gridColumn": {
+         "start": 5
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "auto col",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

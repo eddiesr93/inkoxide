@@ -5,11 +5,14 @@
 //! express (unknown fields, types, enums) are enforced here; semantic rules
 //! (ranges, references, applicability) live in `validate`.
 
+mod areas;
 mod de;
+
+pub use areas::{is_area_name, parse_areas};
 
 use serde::Deserialize;
 
-pub use de::{GridLine, Length, LengthPercent, TrackSize};
+pub use de::{GridLine, GridTrack, Length, LengthPercent, RepeatCount, TrackBreadth, TrackSize};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -422,11 +425,17 @@ pub struct Style {
     pub margin: Option<OptEdges<Length>>,
     pub position: Option<Position>,
     pub inset: Option<OptEdges<Length>>,
-    pub grid_template_columns: Option<Vec<TrackSize>>,
-    pub grid_template_rows: Option<Vec<TrackSize>>,
+    pub grid_template_columns: Option<Vec<GridTrack>>,
+    pub grid_template_rows: Option<Vec<GridTrack>>,
+    pub grid_template_areas: Option<Box<[String]>>,
+    pub grid_auto_columns: Option<Box<[TrackSize]>>,
+    pub grid_auto_rows: Option<Box<[TrackSize]>>,
     pub grid_auto_flow: Option<GridAutoFlow>,
     pub grid_column: Option<GridPlacement>,
     pub grid_row: Option<GridPlacement>,
+    pub grid_area: Option<Box<str>>,
+    pub justify_items: Option<AlignItems>,
+    pub justify_self: Option<AlignSelf>,
     pub overflow: Option<Overflow>,
 
     // Visual

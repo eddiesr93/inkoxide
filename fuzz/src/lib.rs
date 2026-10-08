@@ -201,7 +201,7 @@ fn edges(s: &mut Src, f: fn(&mut Src) -> Value) -> Value {
     Value::Object(m)
 }
 
-fn track(s: &mut Src) -> Value {
+fn breadth(s: &mut Src) -> Value {
     match s.below(6) {
         0 => json!(format!("{}fr", s.below(4))),
         1 => json!("auto"),
@@ -211,6 +211,62 @@ fn track(s: &mut Src) -> Value {
         _ => json!(s.below(300)),
     }
 }
+
+/// A fixed breadth, as auto-repeat requires.
+fn fixed(s: &mut Src) -> Value {
+    if s.chance(60) {
+        json!(format!("{}%", 1 + s.below(60)))
+    } else {
+        json!(4 + s.below(200))
+    }
+}
+
+fn track(s: &mut Src) -> Value {
+    match s.below(10) {
+        0 | 1 => {
+            let min = if s.chaos { breadth(s) } else { fixed(s) };
+            json!({"min": min, "max": breadth(s)})
+        }
+        2 => json!({"fitContent": length_pct(s)}),
+        _ => breadth(s),
+    }
+}
+
+/// `gridTemplateColumns` / `gridTemplateRows`: tracks and `repeat()`s.
+fn template(s: &mut Src) -> Value {
+    if s.chance(50) {
+        // An auto repeat: everything must have a fixed size.
+        let n = s.pick(&["auto-fill", "auto-fit"]);
+        let mut v: Vec<Value> = (0..s.below(2)).map(|_| fixed(s)).collect();
+        let tracks: Vec<Value> = (0..1 + s.below(2)).map(|_| fixed(s)).collect();
+        v.insert(s.below(v.len() + 1), json!({"repeat": n, "tracks": tracks}));
+        return Value::Array(v);
+    }
+    let v = (0..s.below(6))
+        .map(|_| {
+            if s.chance(40) {
+                let count = if s.chaos {
+                    json!(s.below(1200))
+                } else {
+                    json!(1 + s.below(6))
+                };
+                let tracks: Vec<Value> = (0..1 + s.below(3)).map(|_| track(s)).collect();
+                json!({"repeat": count, "tracks": tracks})
+            } else {
+                track(s)
+            }
+        })
+        .collect();
+    Value::Array(v)
+}
+
+/// Area templates; every one names `a` and `b`.
+const AREAS: &[&[&str]] = &[
+    &["a b"],
+    &["a a", "b c"],
+    &["head head head", "a b b", "a b b", ". . c"],
+    &["a", "b", "a"],
+];
 
 fn placement(s: &mut Src) -> Value {
     let mut m = Map::new();
@@ -266,6 +322,12 @@ const PROPS: &[&str] = &[
     "gridAutoFlow",
     "gridColumn",
     "gridRow",
+    "gridAutoColumns",
+    "gridAutoRows",
+    "gridTemplateAreas",
+    "gridArea",
+    "justifyItems",
+    "justifySelf",
     "overflow",
     "backgroundColor",
     "opacity",
@@ -304,7 +366,7 @@ fn prop(s: &mut Src, name: &str) -> Value {
                 "end",
             ],
         ),
-        "alignSelf" => e(
+        "alignSelf" | "justifySelf" => e(
             s,
             &[
                 "auto",
@@ -317,7 +379,7 @@ fn prop(s: &mut Src, name: &str) -> Value {
                 "end",
             ],
         ),
-        "alignItems" => e(
+        "alignItems" | "justifyItems" => e(
             s,
             &[
                 "flex-start",
@@ -338,9 +400,17 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "padding" => edges(s, length_pct),
         "margin" | "inset" => edges(s, length),
         "position" => e(s, &["relative", "absolute"]),
-        "gridTemplateColumns" | "gridTemplateRows" => {
-            Value::Array((0..s.below(6)).map(|_| track(s)).collect())
+        "gridTemplateColumns" | "gridTemplateRows" => template(s),
+        "gridAutoColumns" | "gridAutoRows" => {
+            Value::Array((0..s.below(3)).map(|_| track(s)).collect())
         }
+        "gridTemplateAreas" if s.chaos => e(s, &["a b", "a\tb", "1 2", "a . a"])
+            .as_str()
+            .map_or(Value::Null, |r| json!([r, r])),
+        "gridTemplateAreas" => json!(s.pick(AREAS)),
+        // Placed by `node` under a parent with areas; random names in chaos.
+        "gridArea" if s.chaos => e(s, &["a", "b", "zz", "9"]),
+        "gridArea" => Value::Null,
         "gridAutoFlow" => e(s, &["row", "column", "row dense", "column dense"]),
         "gridColumn" | "gridRow" => placement(s),
         "overflow" => e(s, &["visible", "hidden"]),
@@ -610,7 +680,26 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             } else {
                 s.below(5)
             };
-            let kids: Vec<Value> = (0..n).map(|_| node(s, depth + 1, budget)).collect();
+            let mut kids: Vec<Value> = (0..n).map(|_| node(s, depth + 1, budget)).collect();
+            let areas = m
+                .get("style")
+                .is_some_and(|st| st.get("gridTemplateAreas").is_some());
+            if areas {
+                for k in &mut kids {
+                    if !s.chance(160) {
+                        continue;
+                    }
+                    if let Some(Value::Object(st)) = k.get_mut("style") {
+                        st.remove("gridRow");
+                        st.remove("gridColumn");
+                        st.insert("gridArea".into(), json!(s.pick(&["a", "b"])));
+                    } else if let Value::Object(k) = k {
+                        if k.get("type").and_then(Value::as_str) != Some("pageBreak") {
+                            k.insert("style".into(), json!({"gridArea": s.pick(&["a", "b"])}));
+                        }
+                    }
+                }
+            }
             m.insert("children".into(), Value::Array(kids));
         }
         "text" => {

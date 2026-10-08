@@ -13,8 +13,9 @@ use serde::Deserialize;
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
-    Bookmark, BorderCollapse, Color, Display, Document, Length, LengthPercent, Node, NodeKind,
-    OptEdges, PageSpec, Style, Table, TextRun, TrackSize, SCHEMA_VERSION,
+    is_area_name, parse_areas, Bookmark, BorderCollapse, Color, Display, Document, GridTrack,
+    Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, RepeatCount, Style, Table, TextRun,
+    TrackBreadth, TrackSize, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -457,13 +458,34 @@ impl<'a> Checker<'a> {
             self.at("footer", false, |c| c.node(f, Ctx::Fixed));
         }
         self.in_fixed = false;
-        self.children(&page.children, Ctx::Flow);
+        self.children(None, &page.children, Ctx::Flow);
     }
 
-    fn children(&mut self, children: &[Node], ctx: Ctx) {
+    fn children(&mut self, parent: Option<&Style>, children: &[Node], ctx: Ctx) {
+        // Names `gridArea` may use: the parent's valid area template.
+        let areas = parent
+            .and_then(|p| p.grid_template_areas.as_deref())
+            .and_then(|rows| parse_areas(rows).ok());
         self.at("children", false, |c| {
             for (i, n) in children.iter().enumerate() {
-                c.at(i, true, |c| c.node(n, ctx));
+                c.at(i, true, |c| {
+                    c.node(n, ctx);
+                    let Some(name) = &n.style.grid_area else {
+                        return;
+                    };
+                    let st = &n.style;
+                    let reported =
+                        !is_area_name(name) || st.grid_row.is_some() || st.grid_column.is_some();
+                    if !reported && !areas.as_ref().is_some_and(|a| a.has(name)) {
+                        c.at("style", false, |c| {
+                            c.err(
+                                Code::InvalidValue,
+                                Some("gridArea"),
+                                format!("the parent's `gridTemplateAreas` has no area `{name}`"),
+                            )
+                        });
+                    }
+                });
             }
         });
     }
@@ -524,7 +546,7 @@ impl<'a> Checker<'a> {
         }
 
         match &node.kind {
-            NodeKind::Box { children } => self.children(children, ctx),
+            NodeKind::Box { children } => self.children(Some(&node.style), children, ctx),
             NodeKind::Text { runs } => {
                 self.at("runs", false, |c| {
                     for (i, r) in runs.iter().enumerate() {
@@ -787,7 +809,7 @@ impl<'a> Checker<'a> {
                                         }
                                     }
                                 });
-                                c.children(&cell.children, Ctx::Cell);
+                                c.children(Some(&cell.style), &cell.children, Ctx::Cell);
                             })
                         });
                     }
@@ -927,16 +949,94 @@ impl<'a> Checker<'a> {
             ("gridTemplateRows", &s.grid_template_rows),
         ] {
             if let Some(tracks) = tracks {
-                if tracks
-                    .iter()
-                    .any(|t| matches!(t, TrackSize::Points(v) | TrackSize::Percent(v) if *v < 0.0))
-                {
+                self.at(name, false, |c| c.template(tracks));
+            }
+        }
+        for (name, tracks) in [
+            ("gridAutoColumns", &s.grid_auto_columns),
+            ("gridAutoRows", &s.grid_auto_rows),
+        ] {
+            for (i, t) in tracks.iter().flat_map(|t| t.iter()).enumerate() {
+                if !track_non_neg(t) {
+                    let f = format!("{name}[{i}]");
                     self.err(
                         Code::OutOfRange,
-                        Some(name),
+                        Some(&f),
                         "track sizes must be non-negative",
                     );
                 }
+            }
+        }
+        if let Some(rows) = &s.grid_template_areas {
+            if let Err((code, msg)) = parse_areas(rows) {
+                self.err(code, Some("gridTemplateAreas"), msg);
+            }
+        }
+        if let Some(name) = &s.grid_area {
+            if !is_area_name(name) {
+                self.err(
+                    Code::InvalidValue,
+                    Some("gridArea"),
+                    format!("`{name}` is not a valid area name"),
+                );
+            } else if s.grid_row.is_some() || s.grid_column.is_some() {
+                self.err(
+                    Code::InvalidValue,
+                    Some("gridArea"),
+                    "`gridArea` cannot be combined with `gridRow` or `gridColumn`",
+                );
+            }
+        }
+    }
+
+    /// `gridTemplateColumns` / `gridTemplateRows`. Auto-repeat follows CSS:
+    /// at most one per list, and only with tracks of a fixed size.
+    fn template(&mut self, tracks: &[GridTrack]) {
+        let mut auto_repeats = 0;
+        for (i, t) in tracks.iter().enumerate() {
+            let (sizes, auto) = match t {
+                GridTrack::Single(t) => (std::slice::from_ref(t), false),
+                GridTrack::Repeat(n, t) => (&t[..], !matches!(n, RepeatCount::Count(_))),
+            };
+            if sizes.iter().any(|t| !track_non_neg(t)) {
+                self.at(i, true, |c| {
+                    c.err(Code::OutOfRange, None, "track sizes must be non-negative")
+                });
+            }
+            if auto {
+                auto_repeats += 1;
+                if auto_repeats > 1 {
+                    self.at(i, true, |c| {
+                        c.err(
+                            Code::InvalidValue,
+                            Some("repeat"),
+                            "only one auto-fill / auto-fit repeat is allowed per track list",
+                        )
+                    });
+                } else if sizes.iter().all(|t| fixed_size(t).is_some())
+                    && !sizes.iter().any(|t| fixed_size(t).is_some_and(|v| v > 0.0))
+                {
+                    self.at(i, true, |c| {
+                        c.err(
+                            Code::InvalidValue,
+                            Some("tracks"),
+                            "an auto-fill / auto-fit repeat needs a track with a positive fixed size",
+                        )
+                    });
+                }
+            }
+        }
+        if auto_repeats > 0 {
+            let all_fixed = tracks.iter().all(|t| match t {
+                GridTrack::Single(t) => fixed_size(t).is_some(),
+                GridTrack::Repeat(_, t) => t.iter().all(|t| fixed_size(t).is_some()),
+            });
+            if !all_fixed {
+                self.err(
+                    Code::InvalidValue,
+                    None,
+                    "with an auto-fill / auto-fit repeat, every track needs a fixed size (points or a percentage) as its minimum or maximum",
+                );
             }
         }
     }
@@ -949,6 +1049,32 @@ impl<'a> Checker<'a> {
                 self.err(Code::OutOfRange, Some(&f), "must be non-negative");
             }
         }
+    }
+}
+
+fn breadth_non_neg(b: TrackBreadth) -> bool {
+    !matches!(b, TrackBreadth::Points(v) | TrackBreadth::Percent(v) if v < 0.0)
+}
+
+fn track_non_neg(t: &TrackSize) -> bool {
+    match *t {
+        TrackSize::Breadth(b) => breadth_non_neg(b),
+        TrackSize::MinMax(a, b) => breadth_non_neg(a) && breadth_non_neg(b),
+        TrackSize::FitContent(LengthPercent::Points(v) | LengthPercent::Percent(v)) => v >= 0.0,
+    }
+}
+
+/// The fixed (points or percentage) part of a track, as Taffy uses it to
+/// count auto repetitions; percentages count as their raw fraction.
+fn fixed_size(t: &TrackSize) -> Option<f32> {
+    let fixed = |b: TrackBreadth| match b {
+        TrackBreadth::Points(v) | TrackBreadth::Percent(v) => Some(v),
+        _ => None,
+    };
+    match *t {
+        TrackSize::Breadth(b) => fixed(b),
+        TrackSize::MinMax(a, b) => fixed(b).or(fixed(a)),
+        TrackSize::FitContent(_) => None,
     }
 }
 
