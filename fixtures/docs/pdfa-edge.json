@@ -1,0 +1,56 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "PDF/A edge cases: Factură & <test> \"x\"",
+  "author": "Ion Ștefan",
+  "subject": "Sub\tject",
+  "keywords": "a, b",
+  "creator": "Tests",
+  "lang": "ro",
+  "creationDate": "2026-05-06T07:08:09-03:30"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 300,
+    "height": 200
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Missing 漢字 glyphs ✓ here",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "src": "photo-cmyk",
+     "style": {
+      "width": 120
+     }
+    },
+    {
+     "type": "text",
+     "link": "https://example.com",
+     "runs": [
+      {
+       "text": "link",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

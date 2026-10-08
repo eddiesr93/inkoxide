@@ -41,6 +41,14 @@ test('fonts are subset unless subsetFonts is false', () => {
   assert.match(Buffer.from(sub).toString('latin1'), /\/BaseFont \/[A-Z]{6}\+Inter-Regular/);
 });
 
+test('pdfA writes PDF/A-2b metadata and an output intent', () => {
+  const pdf = Buffer.from(ink.renderSync(fixture('docs/invoice.json'), { pdfA: true })).toString('latin1');
+  assert.match(pdf, /<pdfaid:part>2<\/pdfaid:part>/);
+  assert.match(pdf, /\/S \/GTS_PDFA1/);
+  const plain = Buffer.from(ink.renderSync(fixture('docs/invoice.json'))).toString('latin1');
+  assert.doesNotMatch(plain, /GTS_PDFA1/);
+});
+
 test('images are passed per render', async () => {
   const pdf = await ink.render(fixture('docs/images-jpeg-png.json'), { images });
   assert.ok(pdf.length > 10000);

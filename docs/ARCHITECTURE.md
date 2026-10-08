@@ -24,13 +24,13 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 |---|---|---|
 | Parse | `schema` (+ `schema/de.rs`); JSON or MessagePack (`validate::parse`) | M0 ✅, MessagePack M7 ✅ |
 | Validate | `validate` | M0 ✅ |
-| Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding, subsetting, ToUnicode) | M2 ✅, subsetting M7 ✅ |
+| Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode) | M2 ✅, subsetting and CFF M7 ✅ |
 | Text | `text` (rustybuzz shaping, UAX #14 breaking, hyphenation, fallback, justify, ellipsis) | M2 ✅ |
 | Layout | `layout` (arena tree + Taffy) | M1 ✅ |
 | Tables | `layout/table.rs` (columns, rows, spans, collapsed borders) + table splitting and header repeat | M4 ✅ |
 | Pagination | `paginate` (shift accumulation, head rule, atomic nodes, forced breaks) + `pipeline` | M3 ✅ |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
-| PDF | `pdf` | M0 ✅: pages, page tree, content streams (encoded in parallel), Info; links and outline M7 ✅ |
+| PDF | `pdf` | M0 ✅: pages, page tree, content streams (encoded in parallel), Info; links and outline M7 ✅; PDF/A-2b option (`pdf/pdfa.rs`: XMP, sRGB output intent, file ID) M7 ✅ |
 | Images | `images` (JPEG passthrough, PNG + SMask, SVG as vector Form XObjects via `usvg`, fit modes, process-wide decode cache) | M5 ✅, SVG M7 ✅ |
 
 ## Public API (core)

@@ -22,6 +22,11 @@ if [[ $quick == 0 ]]; then
 fi
 
 step "tests"
+# PDF/A outputs are checked with veraPDF when it is installed.
+if [[ -z "${VERAPDF:-}" ]] && command -v verapdf >/dev/null; then
+  export VERAPDF=verapdf
+fi
+[[ -n "${VERAPDF:-}" ]] || echo "verapdf not installed; PDF/A outputs not validated"
 cargo test --workspace
 
 step "node binding (npm/)"

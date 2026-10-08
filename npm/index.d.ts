@@ -12,6 +12,11 @@ export interface RenderOptions {
   threads?: number;
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
   subsetFonts?: boolean;
+  /**
+   * Write PDF/A-2b (archival): XMP metadata, an sRGB output intent and a
+   * file identifier. CMYK JPEGs are converted to RGB. Default `false`.
+   */
+  pdfA?: boolean;
   /** Image bytes (JPEG, PNG or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
 }

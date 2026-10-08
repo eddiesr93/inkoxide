@@ -88,6 +88,8 @@ pub struct RenderOptions {
     pub threads: Option<u32>,
     /// Embed only the glyphs used (default `true`).
     pub subset_fonts: Option<bool>,
+    /// Write PDF/A-2b (default `false`).
+    pub pdf_a: Option<bool>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,
 }
@@ -133,6 +135,9 @@ impl RenderJob {
             }
             if let Some(s) = o.subset_fonts {
                 core.subset_fonts = s;
+            }
+            if let Some(a) = o.pdf_a {
+                core.pdf_a = a;
             }
             if let Some(map) = o.images {
                 for (id, bytes) in map {

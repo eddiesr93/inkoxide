@@ -41,6 +41,7 @@ pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut dyn FnMut() -> Ref,
     tree: &usvg::Tree,
+    pdf_a: bool,
 ) -> Result<Ref, InkoxideError> {
     let size = tree.size();
     let (w, h) = (size.width(), size.height());
@@ -49,6 +50,7 @@ pub(crate) fn write_svg(
         alloc,
         alphas: HashMap::new(),
         segments: 0,
+        pdf_a,
     };
     let mut cv = Canvas::new();
     s.group(&mut cv, tree.root(), Transform::identity(), 0, false)?;
@@ -198,6 +200,8 @@ struct Svg<'a> {
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
     segments: usize,
+    /// Passed on to embedded raster images.
+    pdf_a: bool,
 }
 
 type Res = Result<(), InkoxideError>;
@@ -739,7 +743,7 @@ impl Svg<'_> {
                 let Ok(decoded) = crate::images::decode_embedded(data) else {
                     return Ok(());
                 };
-                let r = super::image::write_image(self.pdf, self.alloc, &decoded)?;
+                let r = super::image::write_image(self.pdf, self.alloc, &decoded, self.pdf_a)?;
                 cv.c.save_state();
                 cv.c.transform([w, 0.0, 0.0, -h, 0.0, h]);
                 cv.draw_xobject(r);

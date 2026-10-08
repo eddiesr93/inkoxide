@@ -98,6 +98,61 @@ fn all_fixtures_render() {
     }
 }
 
+/// Every fixture also renders as PDF/A-2b, deterministically. With
+/// `VERAPDF` set to a veraPDF command, each output must pass its `2b`
+/// profile.
+#[test]
+fn pdf_a_fixtures() {
+    let (fonts, images) = stores();
+    let out_dir = root().join("target/fixtures-pdfa");
+    fs::create_dir_all(&out_dir).unwrap();
+    let mut outputs = Vec::new();
+    for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
+        let name = doc.file_stem().unwrap().to_str().unwrap();
+        let input = fs::read(&doc).unwrap();
+        let opts = RenderOptions {
+            creation_date: Some("2026-10-08T12:30:00+03:00".into()),
+            pdf_a: true,
+            ..Default::default()
+        };
+        let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let single = RenderOptions {
+            threads: Some(1),
+            ..opts.clone()
+        };
+        let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
+        assert!(a == b, "{name}: PDF/A output is not deterministic");
+        let has = |needle: &[u8]| a.windows(needle.len()).any(|w| w == needle);
+        for needle in [
+            &b"/GTS_PDFA1"[..],
+            b"<pdfaid:part>2</pdfaid:part>",
+            b"<xmp:CreateDate>2026-10-08T12:30:00+03:00</xmp:CreateDate>",
+            b"/ID [",
+        ] {
+            assert!(
+                has(needle),
+                "{name}: no {}",
+                String::from_utf8_lossy(needle)
+            );
+        }
+        assert!(!has(b"/DeviceCMYK"), "{name}: DeviceCMYK in PDF/A output");
+        let out = out_dir.join(format!("{name}.pdf"));
+        fs::write(&out, &a).unwrap();
+        outputs.push(out);
+    }
+    if let Ok(vera) = std::env::var("VERAPDF") {
+        let o = Command::new(vera)
+            .args(["--flavour", "2b", "--format", "text"])
+            .args(&outputs)
+            .output()
+            .unwrap();
+        let report = String::from_utf8_lossy(&o.stdout);
+        let passed = report.lines().filter(|l| l.starts_with("PASS ")).count();
+        assert_eq!(passed, outputs.len(), "veraPDF:\n{report}");
+    }
+}
+
 /// Enough paragraphs for shaping and painting to be split across threads:
 /// the output must not depend on the thread count.
 #[test]

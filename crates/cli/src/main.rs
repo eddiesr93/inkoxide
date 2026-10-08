@@ -58,6 +58,9 @@ enum Cmd {
         /// RFC 3339 creation date to embed.
         #[arg(long)]
         creation_date: Option<String>,
+        /// Write PDF/A-2b.
+        #[arg(long)]
+        pdf_a: bool,
         /// Also rasterise every page to PNG with `pdftoppm` (if installed).
         #[arg(long)]
         png_dir: Option<PathBuf>,
@@ -182,6 +185,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             output,
             no_compress,
             creation_date,
+            pdf_a,
             png_dir,
             dpi,
             threads,
@@ -193,6 +197,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 creation_date,
                 threads,
                 subset_fonts: !res.full_fonts,
+                pdf_a,
                 ..Default::default()
             };
             let start = Instant::now();

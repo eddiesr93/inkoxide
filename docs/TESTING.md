@@ -12,7 +12,10 @@ scripts/ci.sh --quick  # fmt + tests + schema
 - Unit tests next to each module (`validate/tests.rs`, `lru.rs`, …).
 - `crates/core/tests/fixtures.rs`: every `fixtures/docs/*.json`
   validates, renders byte-identically twice (and with one thread), renders
-  identically from MessagePack, and passes `qpdf --check`.
+  identically from MessagePack, and passes `qpdf --check`. Each also
+  renders as PDF/A-2b; with `VERAPDF` pointing at a veraPDF command
+  (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
+  output must pass veraPDF's `2b` profile.
 - `crates/core/tests/limits.rs`: memory guards (page limit, deepest
   accepted nesting on a small stack).
 - `crates/core/tests/schema_parity.rs`: serde structs accept exactly the

@@ -64,6 +64,10 @@ pub struct RenderOptions {
     /// Embed only the glyphs a document uses (default `true`). Off embeds
     /// whole font programs, as before M7.
     pub subset_fonts: bool,
+    /// Write PDF/A-2b (default `false`): XMP metadata, an sRGB output
+    /// intent and a file identifier; CMYK JPEGs are converted to RGB and
+    /// `.notdef` glyphs are left out (ADR-039).
+    pub pdf_a: bool,
 }
 
 impl Default for RenderOptions {
@@ -74,6 +78,7 @@ impl Default for RenderOptions {
             creation_date: None,
             threads: None,
             subset_fonts: true,
+            pdf_a: false,
         }
     }
 }
@@ -148,6 +153,7 @@ fn render_inner(
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
+        pdf_a: options.pdf_a,
     };
     let (pages, marks) = pipeline::run(&document, &font_set, &mut text, &image_set, |page| {
         sink.encode_page(&page, &font_set)

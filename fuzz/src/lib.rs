@@ -61,7 +61,9 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 /// or when `validate` and `render` disagree. A JSON document that renders
 /// must render to the same bytes as MessagePack.
 pub fn check(doc: &[u8]) {
-    let json = render(doc, InputFormat::Json);
+    // Half the inputs also go through the PDF/A writer.
+    let pdf_a = doc.len() % 2 == 1;
+    let json = render(doc, InputFormat::Json, pdf_a);
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(doc) else {
         return;
     };
@@ -70,7 +72,7 @@ pub fn check(doc: &[u8]) {
     };
     // Only a document JSON accepts has to round-trip: the `Value` detour
     // drops duplicate keys, which JSON parsing rejects.
-    let msgpack = render(&packed, InputFormat::MessagePack);
+    let msgpack = render(&packed, InputFormat::MessagePack, pdf_a);
     if let Ok(a) = &json {
         match &msgpack {
             Ok(b) => assert!(a == b, "MessagePack output differs from JSON"),
@@ -88,22 +90,24 @@ pub fn check_image(bytes: &[u8]) -> bool {
     let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
         {"type":"image","src":"fz"},
         {"type":"image","src":"fz","fit":"cover","style":{"width":40,"height":90}}]}]}"#;
-    render_with(doc, InputFormat::Json, &images).is_ok()
+    render_with(doc, InputFormat::Json, &images, bytes.len() % 2 == 1).is_ok()
 }
 
-fn render(doc: &[u8], format: InputFormat) -> Result<Vec<u8>, InkoxideError> {
-    render_with(doc, format, &IMAGES)
+fn render(doc: &[u8], format: InputFormat, pdf_a: bool) -> Result<Vec<u8>, InkoxideError> {
+    render_with(doc, format, &IMAGES, pdf_a)
 }
 
 fn render_with(
     doc: &[u8],
     format: InputFormat,
     images: &ImageStore,
+    pdf_a: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
     let errors = inkoxide::validate(doc, format, &FONTS, images);
     let options = RenderOptions {
         compress: false,
         threads: Some(1),
+        pdf_a,
         ..Default::default()
     };
     let result = inkoxide::render(doc, format, &options, &FONTS, images);

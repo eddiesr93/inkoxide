@@ -790,3 +790,48 @@ would lose sharpness and inflate the file. The brief allows
   path with the validate/render consistency oracle (ADR-031).
 - Text in SVG can be supported later by passing registered fonts to
   `usvg` (feature `text`) and embedding the glyphs as outlines.
+
+## ADR-039 — PDF/A-2b as a render option (M7)
+
+**Context.** Invoices and other records often have to be archived as
+PDF/A. Our regular output is close to PDF/A-2b already: every font is
+embedded and there is no encryption, JavaScript or external content.
+
+**Decision.**
+- PDF/A is a render option, not a document field: `RenderOptions::pdf_a`,
+  `pdfA` in Node and `--pdf-a` in the CLI. The default output is
+  unchanged.
+- With it on, the writer adds:
+  - an uncompressed XMP packet (`pdfaid` part 2, conformance B) that
+    mirrors the information dictionary (title, author, subject,
+    keywords, creator tool, producer, creation date in the same instant
+    and offset);
+  - a `GTS_PDFA1` output intent whose destination profile is an sRGB ICC
+    v2 display profile;
+  - a file `/ID`, the xxh3-128 of the page streams and the XMP, so output
+    stays deterministic.
+- The ICC profile is built in code (`pdf/pdfa.rs`): D50-adapted sRGB
+  primaries and the sRGB curve sampled at 1024 points, about 2.5 KB
+  before compression. There is no binary blob and no licence question.
+- Metadata control characters become spaces in both the information
+  dictionary and XMP, so the two stay equal after XML normalisation.
+- Link annotations get the Print flag.
+- `.notdef` glyphs (characters no registered font covers) are left out
+  of text-showing operators, as PDF/A forbids them. The next glyph keeps
+  its position.
+- CMYK JPEGs cannot be passed through, since the output intent is RGB.
+  They are decoded with `image` (feature `jpeg`, which is on the
+  allowlist) and written as Flate RGB samples. The conversion is naive,
+  like most viewers' DeviceCMYK conversion. Convert CMYK images
+  upstream when colour accuracy matters.
+- Transparency (opacity, SVG groups and soft masks) is allowed in
+  PDF/A-2. The output intent provides the blending colour space.
+
+**Consequences.**
+- Every fixture also renders as PDF/A. `tests/fixtures.rs` checks the
+  markers and determinism, and runs veraPDF's 2b profile when `VERAPDF`
+  is set. All fixtures pass veraPDF 1.30. The fixture `pdfa-edge` covers
+  `.notdef`, CMYK and escaped metadata.
+- PDF/A-2u (Unicode mapping) is likely met already, since every font has
+  a ToUnicode CMap, but it is not claimed or tested. PDF/A-2a and PDF/UA
+  need tagging, which remains a non-goal.

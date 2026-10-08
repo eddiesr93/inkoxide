@@ -3,6 +3,7 @@
 pub(crate) mod cff;
 mod font;
 mod image;
+mod pdfa;
 mod svg;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -10,7 +11,9 @@ use std::io::Write as _;
 
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use pdf_writer::types::{ActionType, AnnotationType, LineCapStyle, PageMode};
+use pdf_writer::types::{
+    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageMode,
+};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
 use rayon::prelude::*;
 
@@ -70,6 +73,8 @@ pub(crate) struct PdfWriterSink {
     pub compression: Option<u32>,
     /// Embed only the glyphs used (ADR-032).
     pub subset_fonts: bool,
+    /// Write PDF/A-2b (ADR-039).
+    pub pdf_a: bool,
 }
 
 /// Rounds to 1/1000 pt so output has at most three decimals.
@@ -115,7 +120,7 @@ impl PdfSink for PdfWriterSink {
                 _ => {}
             }
         }
-        let raw = content_stream(page, fonts);
+        let raw = content_stream(page, fonts, self.pdf_a);
         let stream = match self.compression {
             Some(level) => deflate(&raw, level)?,
             None => raw,
@@ -197,23 +202,28 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in image_refs.iter_mut() {
-            *r = image::write_image(&mut pdf, &mut || alloc.next(), doc.images.get(*key))?;
+            *r = image::write_image(
+                &mut pdf,
+                &mut || alloc.next(),
+                doc.images.get(*key),
+                self.pdf_a,
+            )?;
         }
 
         // Link annotations, numbered in page order.
         let mut annots: Vec<Vec<Ref>> = Vec::with_capacity(doc.pages.len());
         for page in doc.pages {
             let mut refs = Vec::new();
-            for (rect, target) in &page.links {
+            for link in &page.links {
                 let r = alloc.next();
                 if write_link(
                     &mut pdf,
                     r,
                     page.height,
-                    rect,
-                    target,
+                    link,
                     doc.marks,
                     &page_refs,
+                    self.pdf_a,
                 ) {
                     refs.push(r);
                 }
@@ -268,26 +278,64 @@ impl PdfSink for PdfWriterSink {
         if let Some(lang) = &doc.meta.lang {
             cat.lang(TextStr(lang));
         }
-        cat.finish();
+        let producer = concat!("Inkoxide ", env!("CARGO_PKG_VERSION"));
+        if self.pdf_a {
+            let metadata = alloc.next();
+            let profile = alloc.next();
+            cat.metadata(metadata);
+            cat.output_intents()
+                .push()
+                .subtype(OutputIntentSubtype::PDFA)
+                .output_condition_identifier(TextStr("sRGB"))
+                .info(TextStr("sRGB IEC61966-2.1"))
+                .dest_output_profile(profile);
+            cat.finish();
+            // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
+            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date);
+            pdf.metadata(metadata, &xmp);
+            let icc = deflate(&pdfa::srgb_icc(), 9)?;
+            pdf.icc_profile(profile, &icc)
+                .n(3)
+                .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+                .filter(Filter::FlateDecode);
+            // Deterministic: a hash of everything that makes the document.
+            let mut h = xxhash_rust::xxh3::Xxh3::new();
+            for page in doc.pages {
+                h.update(&page.stream);
+            }
+            h.update(&xmp);
+            let id = h.digest128().to_be_bytes().to_vec();
+            pdf.set_file_id((id.clone(), id));
+        } else {
+            cat.finish();
+        }
 
+        // PDF/A: the same cleaned values as the XMP packet.
+        let text = |v: &str| {
+            if self.pdf_a {
+                pdfa::clean(v)
+            } else {
+                v.to_string()
+            }
+        };
         let mut inf = pdf.document_info(info);
         let m = doc.meta;
         if let Some(v) = &m.title {
-            inf.title(TextStr(v));
+            inf.title(TextStr(&text(v)));
         }
         if let Some(v) = &m.author {
-            inf.author(TextStr(v));
+            inf.author(TextStr(&text(v)));
         }
         if let Some(v) = &m.subject {
-            inf.subject(TextStr(v));
+            inf.subject(TextStr(&text(v)));
         }
         if let Some(v) = &m.keywords {
-            inf.keywords(TextStr(v));
+            inf.keywords(TextStr(&text(v)));
         }
         if let Some(v) = &m.creator {
-            inf.creator(TextStr(v));
+            inf.creator(TextStr(&text(v)));
         }
-        inf.producer(TextStr(concat!("Inkoxide ", env!("CARGO_PKG_VERSION"))));
+        inf.producer(TextStr(producer));
         if let Some(t) = doc.creation_date {
             inf.creation_date(pdf_date(t));
         }
@@ -303,10 +351,10 @@ fn write_link(
     pdf: &mut Pdf,
     r: Ref,
     page_h: f32,
-    rect: &Rect,
-    target: &str,
+    (rect, target): &(Rect, Box<str>),
     marks: &Marks<'_>,
     pages: &[(Ref, Ref)],
+    pdf_a: bool,
 ) -> bool {
     let dest = match target.strip_prefix('#') {
         Some(id) => match marks.anchors.get(id) {
@@ -324,6 +372,9 @@ fn write_link(
             q(page_h - rect.y),
         ))
         .border(0.0, 0.0, 0.0, None);
+    if pdf_a {
+        a.flags(AnnotationFlags::PRINT);
+    }
     let mut action = a.action();
     match dest {
         Some(d) => {
@@ -534,7 +585,9 @@ fn font_name(key: FontKey) -> String {
 
 /// Text ops: one `TJ` per stretch of glyphs on the baseline, with kerning
 /// adjustments wherever our positions differ from the font's advances.
-fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>) {
+/// With `skip_notdef` (PDF/A), `.notdef` glyphs are left out and the next
+/// glyph keeps its position.
+fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool) {
     let font = fonts.get(t.font);
     let scale = font.scale(t.size);
     let size = q(t.size);
@@ -545,6 +598,10 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>) {
     let mut i = 0;
     while i < glyphs.len() {
         let g0 = glyphs[i];
+        if skip_notdef && g0.id == 0 {
+            i += 1;
+            continue;
+        }
         // Text space is y-up; the page is flipped, so flip back.
         c.set_text_matrix([1.0, 0.0, 0.0, -1.0, q(t.x + g0.x), q(t.y - g0.y_offset)]);
         if g0.y_offset != 0.0 {
@@ -558,6 +615,10 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>) {
         let mut pen = g0.x;
         while i < glyphs.len() && glyphs[i].y_offset == 0.0 {
             let g = glyphs[i];
+            if skip_notdef && g.id == 0 {
+                i += 1;
+                continue;
+            }
             let delta = g.x - pen;
             if delta.abs() > 1e-3 {
                 if !buf.is_empty() {
@@ -603,7 +664,7 @@ fn path(c: &mut Content, segs: &[PathSeg]) {
 
 /// Serialises one page's display list. Pure function of the page: safe to
 /// run per page in parallel.
-pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>) -> Vec<u8> {
+pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: bool) -> Vec<u8> {
     let mut c = Content::new();
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(page.height)]);
@@ -671,7 +732,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>) -> Vec<u8>
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            Op::Text(t) => show_text(&mut c, t, fonts),
+            Op::Text(t) => show_text(&mut c, t, fonts, pdf_a),
             Op::Image { key, matrix } => {
                 c.save_state();
                 c.transform(matrix.map(q));
