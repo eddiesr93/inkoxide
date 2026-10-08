@@ -1,0 +1,20 @@
+[package]
+name = "inkoxide-node"
+description = "Node.js binding (napi-rs) for the Inkoxide PDF engine; published to npm as `inkoxide`."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+inkoxide.workspace = true
+napi.workspace = true
+napi-derive.workspace = true
+
+[build-dependencies]
+napi-build.workspace = true

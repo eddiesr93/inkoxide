@@ -53,6 +53,9 @@ pub struct RenderOptions {
     /// RFC 3339 timestamp; overrides `meta.creationDate`. With neither set
     /// no date is written, so output is byte-for-byte deterministic.
     pub creation_date: Option<String>,
+    /// Worker threads for page painting and compression; `None` uses the
+    /// shared pool (all cores), `Some(1)` renders on the calling thread.
+    pub threads: Option<usize>,
 }
 
 impl Default for RenderOptions {
@@ -61,6 +64,7 @@ impl Default for RenderOptions {
             compress: true,
             compression_level: 6,
             creation_date: None,
+            threads: None,
         }
     }
 }

@@ -388,3 +388,23 @@ or f64 in M6.
 - **Limits.** Images over 50 megapixels are a validation error
   (`INVALID_IMAGE`), as are unreadable headers. Validation probes headers
   only; decoding happens at render.
+
+## ADR-026 — Node binding: errors as JSON, local builds only (M5)
+
+**Context.** §7 wants JS errors carrying `code`, `path` and `message`. An
+`AsyncTask` can only reject with a napi `Error` (status + reason). The
+user asked that nothing be published and no hosted CI run.
+
+**Decision.** Native errors carry a JSON reason `{code, path, message}`;
+`npm/index.js` (hand-written, like `index.d.ts`) turns it into an
+`InkoxideError` with those properties. Engine panics are caught at the
+boundary (`catch_unwind`) and become `INTERNAL_ERROR`. Fonts live in a
+process-wide `RwLock<FontStore>`; each render takes a snapshot (cloning
+`Arc`s), so `registerFont` never waits for a running render. Renders
+return a `Buffer` built from the engine's `Vec<u8>` without copying,
+exposed as a plain `Uint8Array` view. The loader prefers a locally built
+`npm/inkoxide.<platform>.node` (`scripts/build-node.sh`) and falls back to
+the `@inkoxide/<platform>` package names of §7. The release matrix and
+`npm publish` are deferred; `package.json` lists the six targets for
+`@napi-rs/cli` when that time comes. `validate` ignores `UNKNOWN_IMAGE`
+unless images are passed, since images are per-render options.

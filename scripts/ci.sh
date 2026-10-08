@@ -23,6 +23,14 @@ fi
 step "tests"
 cargo test --workspace
 
+step "node binding (npm/)"
+if command -v node >/dev/null; then
+  scripts/build-node.sh --debug >/dev/null
+  (cd npm && node --test test/*.test.js test/*.test.mjs) | grep -E '^# (pass|fail)'
+else
+  echo "node not installed; skipped"
+fi
+
 step "schema docs up to date"
 python3 scripts/gen-schema-doc.py --check
 
