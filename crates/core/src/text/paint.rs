@@ -163,9 +163,19 @@ fn paint_line(
             TextAlign::Right => free,
         };
     let baseline = cy + line.top + line.ascent;
+    // Link areas of the line, adjacent pieces of one target merged.
+    let mut links: Vec<(f32, f32, &str)> = Vec::new();
 
     for piece in pieces {
         let run = &runs[piece.run as usize];
+        if let Some(target) = run.link.as_deref() {
+            match links.last_mut() {
+                Some((_, x1, t)) if *t == target && (*x1 - x).abs() < 0.01 => {
+                    *x1 = x + piece.width;
+                }
+                _ => links.push((x, x + piece.width, target)),
+            }
+        }
         let color = run.color.unwrap_or(BLACK);
         let alpha = color[3] * opacity;
         let piece_width = piece.width;
@@ -202,6 +212,14 @@ fn paint_line(
             ops.push(Op::Restore);
         }
         x += piece_width;
+    }
+    for (x0, x1, target) in links {
+        if x1 > x0 {
+            ops.push(Op::Link {
+                rect: Rect::new(x0, cy + line.top, x1 - x0, line.height),
+                target: target.into(),
+            });
+        }
     }
 }
 

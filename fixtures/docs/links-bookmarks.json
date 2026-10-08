@@ -1,0 +1,536 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Links and bookmarks",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 419.53,
+    "height": 595.28
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Links and bookmarks",
+       "font": "Inter-Bold",
+       "size": 20
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "gap": 4,
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "link": "#sec-1",
+       "runs": [
+        {
+         "text": "1. Section 1",
+         "font": "Inter-Regular",
+         "size": 11,
+         "color": [
+          0.1,
+          0.3,
+          0.8,
+          1
+         ],
+         "decoration": "underline"
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "link": "#sec-2",
+       "runs": [
+        {
+         "text": "2. Section 2",
+         "font": "Inter-Regular",
+         "size": 11,
+         "color": [
+          0.1,
+          0.3,
+          0.8,
+          1
+         ],
+         "decoration": "underline"
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "link": "#sec-3",
+       "runs": [
+        {
+         "text": "3. Section 3",
+         "font": "Inter-Regular",
+         "size": 11,
+         "color": [
+          0.1,
+          0.3,
+          0.8,
+          1
+         ],
+         "decoration": "underline"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify",
+      "margin": {
+       "bottom": 10
+      }
+     },
+     "runs": [
+      {
+       "text": "External links work on runs, even when they wrap: see ",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "text": "the Inkoxide documentation on links, outlines and destinations",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline",
+       "link": "https://example.com/inkoxide/docs?topic=links&lang=ro#outline"
+      },
+      {
+       "text": " for details, or write to ",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "text": "support@example.com",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "link": "mailto:support@example.com"
+      },
+      {
+       "text": ".",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "link": "https://example.com/",
+     "style": {
+      "backgroundColor": [
+       0.1,
+       0.3,
+       0.8,
+       1
+      ],
+      "padding": {
+       "top": 6,
+       "right": 12,
+       "bottom": 6,
+       "left": 12
+      },
+      "borderRadius": 4,
+      "alignSelf": "flex-start",
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "A box link",
+         "font": "Inter-Bold",
+         "size": 10,
+         "color": [
+          1,
+          1,
+          1,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "id": "sec-1",
+     "bookmark": {
+      "title": "Section 1"
+     },
+     "runs": [
+      {
+       "text": "Section 1",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "bookmark": {
+      "title": "Section 1.1",
+      "level": 2
+     },
+     "runs": [
+      {
+       "text": "1.1 Subsection",
+       "font": "Inter-Bold",
+       "size": 12
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 6,
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify"
+     },
+     "runs": [
+      {
+       "text": "Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. ",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "bookmark": {
+      "title": "Section 1.2",
+      "level": 2
+     },
+     "runs": [
+      {
+       "text": "1.2 Subsection",
+       "font": "Inter-Bold",
+       "size": 12
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 6,
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify"
+     },
+     "runs": [
+      {
+       "text": "Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. ",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "link": "#sec-1",
+     "style": {
+      "margin": {
+       "top": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Back to section 1",
+       "font": "Inter-Regular",
+       "size": 9,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline"
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "id": "sec-2",
+     "bookmark": {
+      "title": "Section 2"
+     },
+     "break": {
+      "before": "page"
+     },
+     "runs": [
+      {
+       "text": "Section 2",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "bookmark": {
+      "title": "Section 2.1",
+      "level": 2
+     },
+     "runs": [
+      {
+       "text": "2.1 Subsection",
+       "font": "Inter-Bold",
+       "size": 12
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 6,
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify"
+     },
+     "runs": [
+      {
+       "text": "Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. ",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "bookmark": {
+      "title": "Section 2.2",
+      "level": 2
+     },
+     "runs": [
+      {
+       "text": "2.2 Subsection",
+       "font": "Inter-Bold",
+       "size": 12
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 6,
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify"
+     },
+     "runs": [
+      {
+       "text": "Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. ",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "link": "#sec-1",
+     "style": {
+      "margin": {
+       "top": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Back to section 1",
+       "font": "Inter-Regular",
+       "size": 9,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline"
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "id": "sec-3",
+     "bookmark": {
+      "title": "Section 3"
+     },
+     "break": {
+      "before": "page"
+     },
+     "runs": [
+      {
+       "text": "Section 3",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "bookmark": {
+      "title": "Section 3.1",
+      "level": 2
+     },
+     "runs": [
+      {
+       "text": "3.1 Subsection",
+       "font": "Inter-Bold",
+       "size": 12
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 6,
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify"
+     },
+     "runs": [
+      {
+       "text": "Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. ",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "bookmark": {
+      "title": "Section 3.2",
+      "level": 2
+     },
+     "runs": [
+      {
+       "text": "3.2 Subsection",
+       "font": "Inter-Bold",
+       "size": 12
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 6,
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify"
+     },
+     "runs": [
+      {
+       "text": "Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. Pagination moves this paragraph across page boundaries; the outline and the links must still point at the top of the node they name, on the page where that node starts. ",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "link": "#sec-1",
+     "style": {
+      "margin": {
+       "top": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Back to section 1",
+       "font": "Inter-Regular",
+       "size": 9,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

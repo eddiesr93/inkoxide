@@ -444,6 +444,17 @@ fn text(s: &mut Src) -> String {
     t
 }
 
+fn link(s: &mut Src) -> Value {
+    if s.chaos && s.chance(60) {
+        return json!(s.pick(&["", "javascript:x", "nope", "#", "#missing"]));
+    }
+    match s.below(4) {
+        0 => json!("https://example.com/ä b?q=1#f"),
+        1 => json!("mailto:x@example.com"),
+        _ => json!(format!("#n{}", s.below(4))),
+    }
+}
+
 fn run(s: &mut Src) -> Value {
     let mut m = Map::new();
     if s.chance(20) {
@@ -482,6 +493,9 @@ fn run(s: &mut Src) -> Value {
             "decoration".into(),
             json!(s.pick(&["none", "underline", "lineThrough"])),
         );
+    }
+    if s.chance(20) {
+        m.insert("link".into(), link(s));
     }
     Value::Object(m)
 }
@@ -579,6 +593,16 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(50) {
         m.insert("break".into(), brk(s));
     }
+    if kind != "pageBreak" && s.chance(20) {
+        m.insert("link".into(), link(s));
+    }
+    if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(20) {
+        let level = if s.chaos { s.below(40) } else { 1 + s.below(4) };
+        m.insert(
+            "bookmark".into(),
+            json!({"title": format!("B{}", text(s)), "level": level}),
+        );
+    }
     match kind {
         "box" => {
             let n = if s.chance(15) {
@@ -616,7 +640,19 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
                 );
             }
         }
-        "table" => m.extend(table(s, depth, budget)),
+        "table" => {
+            m.extend(table(s, depth, budget));
+            if s.chance(60) {
+                let st = m.entry("style").or_insert_with(|| json!({}));
+                if let Value::Object(st) = st {
+                    st.insert("borderCollapse".into(), json!("separate"));
+                    if s.chance(160) {
+                        let sp = if s.chaos { num(s) } else { nonneg(s) };
+                        st.insert("borderSpacing".into(), sp);
+                    }
+                }
+            }
+        }
         _ => {}
     }
     Value::Object(m)

@@ -149,7 +149,7 @@ fn render_inner(
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
     };
-    let pages = pipeline::run(&document, &font_set, &mut text, &image_set, |page| {
+    let (pages, marks) = pipeline::run(&document, &font_set, &mut text, &image_set, |page| {
         sink.encode_page(&page, &font_set)
     })?;
     let unicode: UnicodeMap = text.shaper.unicode;
@@ -161,6 +161,7 @@ fn render_inner(
         fonts: &font_set,
         unicode: &unicode,
         images: &image_set,
+        marks: &marks,
     })
 }
 

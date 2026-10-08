@@ -44,6 +44,33 @@
       "minLength": 1,
       "maxLength": 256
     },
+    "Link": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected."
+    },
+    "Bookmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ],
+      "description": "Document outline entry pointing at the top of its node. Entries appear in document order; an entry nests under the nearest earlier entry with a lower `level`. Flowing content only (not headers or footers).",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 1
+        }
+      }
+    },
     "Meta": {
       "type": "object",
       "additionalProperties": false,
@@ -591,6 +618,18 @@
             "bottom"
           ],
           "description": "table cells only"
+        },
+        "borderCollapse": {
+          "enum": [
+            "collapse",
+            "separate"
+          ],
+          "default": "collapse",
+          "description": "Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart."
+        },
+        "borderSpacing": {
+          "$ref": "#/$defs/NonNegative",
+          "description": "Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0."
         }
       }
     },
@@ -632,6 +671,10 @@
             "pageNumber",
             "totalPages"
           ]
+        },
+        "link": {
+          "$ref": "#/$defs/Link",
+          "description": "Makes the run a link; the clickable area covers the run's glyphs on each line."
         }
       },
       "oneOf": [
@@ -790,6 +833,12 @@
         "break": {
           "$ref": "#/$defs/Break"
         },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
         "children": {
           "type": "array",
           "items": {
@@ -818,6 +867,12 @@
         "break": {
           "$ref": "#/$defs/Break"
         },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
         "runs": {
           "type": "array",
           "items": {
@@ -844,6 +899,12 @@
         },
         "break": {
           "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
         },
         "src": {
           "$ref": "#/$defs/Id",
@@ -908,6 +969,12 @@
         "break": {
           "$ref": "#/$defs/Break"
         },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
+        },
         "columns": {
           "type": "array",
           "minItems": 1,
@@ -961,6 +1028,12 @@
         },
         "break": {
           "$ref": "#/$defs/Break"
+        },
+        "link": {
+          "$ref": "#/$defs/Link"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/Bookmark"
         }
       }
     }

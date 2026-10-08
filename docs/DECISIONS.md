@@ -603,3 +603,72 @@ data or want to skip JSON escaping.
 test suite and must produce identical bytes; the fuzz oracle does the
 same for every JSON input that renders. Maps must use string keys, as
 JSON objects do.
+
+## ADR-034 — Links and bookmarks (M7)
+
+**Context.** §6.8 leaves the document outline and links to M7. The input
+is resolved and declarative, so both must be plain properties of nodes,
+added without breaking v1.
+
+**Decision.**
+- `link` (a string) on every node that has a box, and on text runs.
+  `#id` targets the first displayed node with that `id` in flowing
+  content, in document order; anything else must be an absolute URI with
+  an RFC 3986 scheme. `javascript:` is rejected. An unknown anchor is
+  `UNKNOWN_ANCHOR`. Ids stay non-unique (they were never checked); the
+  first one wins.
+- `bookmark: { title, level = 1 }` on the same nodes. Entries keep
+  document order. Each one nests under the nearest earlier entry with a
+  lower level, like HTML headings, so skipped levels need no placeholder
+  entries. Bookmarks are rejected in headers and footers, because those
+  repeat on every page.
+- Destinations are computed after pagination from the layout tree: the
+  page where the node starts and its top-left corner, written as
+  `[page /XYZ left top 0]` so viewers keep the zoom. No named
+  destinations are used.
+- Clickable areas are display-list ops (`Op::Link`) that draw nothing.
+  This keeps them in paint order and lets each page collect them while it
+  is encoded in parallel. A node link covers the part of the border box
+  on the page. A run link covers the run's glyphs on each line, with
+  adjacent pieces merged, at line height. Annotations have no border.
+  URIs are percent-encoded to 7-bit ASCII.
+- The outline opens fully expanded (positive `Count`). The catalog sets
+  `PageMode /UseOutlines` so viewers show it.
+
+**Consequences.**
+- Link areas ignore `rotate`: a rotated box keeps its unrotated
+  rectangle.
+- Links inside `overflow: hidden` are not clipped.
+- Table rows and cells cannot be targets; their `id`s are only labels.
+  Put the id on a node inside the cell instead.
+
+## ADR-035 — Separate table borders (M7)
+
+**Context.** Tables use collapsed borders: the grid resolves each shared
+edge once, and the stronger border wins. Some designs need the CSS
+`border-collapse: separate` model instead: spaced cards, rounded cells,
+cells with their own background.
+
+**Decision.**
+- `borderCollapse: "collapse" | "separate"` (default `collapse`) and
+  `borderSpacing` (default 0) on table nodes only. `borderSpacing` is
+  only valid with `separate`. On any other node, cells included, both
+  give `STYLE_NOT_APPLICABLE`.
+- In separate mode the grid resolves no edges. Each cell's insets are
+  its own border widths. The cell paints its background, rounded with
+  its `borderRadius`, and then its own borders through the same code
+  path as boxes, so dashed styles and radii behave as they do on boxes.
+- Spacing is a single value: around the outer edge and between columns
+  and rows. Columns are sized from the width left after
+  `borderSpacing × (columns + 1)`. Spanning cells include the spacing
+  they cover. Each row's band carries its spacing, so a page break
+  between rows needs no special case. The header that repeats on a page
+  starts with its own top spacing.
+- Row backgrounds paint under each cell of the row, not across the
+  gaps, as CSS does.
+
+**Consequences.**
+- One spacing value only. CSS's two-value form (horizontal, vertical) is
+  left for later; it is additive.
+- The table's own background shows through the gaps. Like any split
+  node, its fragment on a page runs to the bottom of the content area.

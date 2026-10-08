@@ -136,7 +136,26 @@ pub struct Node {
     pub id: Option<String>,
     pub style: Style,
     pub brk: Break,
+    /// Link target: a URI, or `#id` of a node (boxed: rare, and nodes are
+    /// numerous).
+    pub link: Option<Box<str>>,
+    pub bookmark: Option<Box<Bookmark>>,
     pub kind: NodeKind,
+}
+
+/// An outline entry pointing at the top of its node.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bookmark {
+    pub title: String,
+    /// Nesting level, 1 = top; an entry nests under the nearest earlier
+    /// entry of a lower level.
+    #[serde(default = "one_u8")]
+    pub level: u8,
+}
+
+fn one_u8() -> u8 {
+    1
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +224,8 @@ pub struct TextRun {
     pub letter_spacing: Option<f32>,
     pub decoration: Option<Decoration>,
     pub placeholder: Option<Placeholder>,
+    /// Link target of this run (as `Node::link`).
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -330,6 +351,7 @@ kebab_enum!(Overflow { Visible = "visible", Hidden = "hidden" });
 kebab_enum!(BorderStyle { Solid = "solid", Dashed = "dashed", Dotted = "dotted" });
 kebab_enum!(TextAlign { Left = "left", Center = "center", Right = "right", Justify = "justify" });
 kebab_enum!(WhiteSpace { Normal = "normal", Pre = "pre", NoWrap = "nowrap" });
+kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
@@ -427,6 +449,10 @@ pub struct Style {
 
     // Table cells only
     pub vertical_align: Option<VerticalAlign>,
+
+    // Tables only
+    pub border_collapse: Option<BorderCollapse>,
+    pub border_spacing: Option<f32>,
 }
 
 impl Style {

@@ -8,14 +8,15 @@ use std::io::Write as _;
 
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use pdf_writer::types::LineCapStyle;
+use pdf_writer::types::{ActionType, AnnotationType, LineCapStyle, PageMode};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
 use rayon::prelude::*;
 
 use crate::date::Timestamp;
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet};
-use crate::paint::{FillRule, Op, PageContent, PathSeg, TextOp};
+use crate::paint::{FillRule, Op, PageContent, PathSeg, Rect, TextOp};
+use crate::pipeline::{Dest, Marks};
 use crate::schema::{Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
@@ -37,6 +38,8 @@ pub(crate) struct EncodedPage {
     /// Opacity keys (see `alpha_key`).
     pub opacities: BTreeSet<u16>,
     pub images: BTreeSet<ImageKey>,
+    /// Link areas (page coordinates, top-left origin) and their targets.
+    pub links: Vec<(Rect, Box<str>)>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -46,6 +49,7 @@ pub(crate) struct DocumentOut<'a> {
     pub fonts: &'a FontSet<'a>,
     pub unicode: &'a UnicodeMap,
     pub images: &'a ImageSet,
+    pub marks: &'a Marks<'a>,
 }
 
 /// Dependency firewall around the PDF writer (§5.1).
@@ -90,6 +94,7 @@ impl PdfSink for PdfWriterSink {
         let mut glyphs: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
         let mut opacities = BTreeSet::new();
         let mut images = BTreeSet::new();
+        let mut links = Vec::new();
         for op in &page.ops {
             match op {
                 Op::Text(t) => {
@@ -104,6 +109,7 @@ impl PdfSink for PdfWriterSink {
                 Op::Image { key, .. } => {
                     images.insert(*key);
                 }
+                Op::Link { rect, target } => links.push((*rect, target.clone())),
                 _ => {}
             }
         }
@@ -120,6 +126,7 @@ impl PdfSink for PdfWriterSink {
             glyphs,
             opacities,
             images,
+            links,
         })
     }
 
@@ -191,6 +198,28 @@ impl PdfSink for PdfWriterSink {
             *r = image::write_image(&mut pdf, &mut || alloc.next(), doc.images.get(*key));
         }
 
+        // Link annotations, numbered in page order.
+        let mut annots: Vec<Vec<Ref>> = Vec::with_capacity(doc.pages.len());
+        for page in doc.pages {
+            let mut refs = Vec::new();
+            for (rect, target) in &page.links {
+                let r = alloc.next();
+                if write_link(
+                    &mut pdf,
+                    r,
+                    page.height,
+                    rect,
+                    target,
+                    doc.marks,
+                    &page_refs,
+                ) {
+                    refs.push(r);
+                }
+            }
+            annots.push(refs);
+        }
+        let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
+
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
             let parent = tree_root.leaf_parents[i / PAGE_TREE_FANOUT];
             let mut p = pdf.page(*page_ref);
@@ -217,6 +246,9 @@ impl PdfSink for PdfWriterSink {
                 }
             }
             res.finish();
+            if !annots[i].is_empty() {
+                p.annotations(annots[i].iter().copied());
+            }
             p.finish();
 
             let mut stream = pdf.stream(*content_ref, &page.stream);
@@ -227,6 +259,10 @@ impl PdfSink for PdfWriterSink {
 
         let mut cat = pdf.catalog(catalog);
         cat.pages(tree_root.root);
+        if let Some(root) = outline {
+            cat.outlines(root);
+            cat.page_mode(PageMode::UseOutlines);
+        }
         if let Some(lang) = &doc.meta.lang {
             cat.lang(TextStr(lang));
         }
@@ -257,6 +293,136 @@ impl PdfSink for PdfWriterSink {
 
         Ok(pdf.finish())
     }
+}
+
+/// Writes one link annotation as object `r`; `false` (nothing written)
+/// when an anchor has no destination.
+fn write_link(
+    pdf: &mut Pdf,
+    r: Ref,
+    page_h: f32,
+    rect: &Rect,
+    target: &str,
+    marks: &Marks<'_>,
+    pages: &[(Ref, Ref)],
+) -> bool {
+    let dest = match target.strip_prefix('#') {
+        Some(id) => match marks.anchors.get(id) {
+            Some(d) => Some(*d),
+            None => return false,
+        },
+        None => None,
+    };
+    let mut a = pdf.annotation(r);
+    a.subtype(AnnotationType::Link)
+        .rect(PdfRect::new(
+            q(rect.x),
+            q(page_h - rect.y - rect.h),
+            q(rect.x + rect.w),
+            q(page_h - rect.y),
+        ))
+        .border(0.0, 0.0, 0.0, None);
+    let mut action = a.action();
+    match dest {
+        Some(d) => {
+            action.action_type(ActionType::GoTo);
+            xyz(action.destination(), d, pages);
+        }
+        None => {
+            action
+                .action_type(ActionType::Uri)
+                .uri(Str(uri_bytes(target).as_slice()));
+        }
+    }
+    true
+}
+
+/// `[page /XYZ left top 0]`: keeps the viewer's zoom.
+fn xyz(d: pdf_writer::writers::Destination<'_>, dest: Dest, pages: &[(Ref, Ref)]) {
+    let (page_ref, _) = pages[dest.page as usize];
+    d.page(page_ref).xyz(q(dest.x), q(dest.y), None);
+}
+
+/// PDF URIs are 7-bit ASCII: percent-encode everything else (and spaces).
+fn uri_bytes(uri: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(uri.len());
+    for &b in uri.as_bytes() {
+        if b.is_ascii_graphic() {
+            out.push(b);
+        } else {
+            out.extend_from_slice(format!("%{b:02X}").as_bytes());
+        }
+    }
+    out
+}
+
+/// Writes the document outline; returns its root. Each entry nests under
+/// the nearest earlier entry of a lower level; all entries start open.
+fn write_outline(
+    pdf: &mut Pdf,
+    alloc: &mut RefAlloc,
+    entries: &[crate::pipeline::OutlineEntry<'_>],
+    page_refs: &[(Ref, Ref)],
+) -> Option<Ref> {
+    if entries.is_empty() {
+        return None;
+    }
+    let root = alloc.next();
+    let refs: Vec<Ref> = entries.iter().map(|_| alloc.next()).collect();
+    // parent[i]: index of the parent entry (None: the outline root).
+    let n = entries.len();
+    let mut parent: Vec<Option<usize>> = vec![None; n];
+    let mut stack: Vec<usize> = Vec::new();
+    for (i, e) in entries.iter().enumerate() {
+        while stack.last().is_some_and(|&j| entries[j].level >= e.level) {
+            stack.pop();
+        }
+        parent[i] = stack.last().copied();
+        stack.push(i);
+    }
+    let mut kids: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut top = Vec::new();
+    for (i, p) in parent.iter().enumerate() {
+        match p {
+            Some(p) => kids[*p].push(i),
+            None => top.push(i),
+        }
+    }
+    // Descendants of each entry (entries are in pre-order).
+    let mut count = vec![0i32; n];
+    for i in (0..n).rev() {
+        if let Some(p) = parent[i] {
+            count[p] += count[i] + 1;
+        }
+    }
+    let (mut prev, mut next) = (vec![None; n], vec![None; n]);
+    for sib in kids.iter().chain([&top]) {
+        for w in sib.windows(2) {
+            next[w[0]] = Some(w[1]);
+            prev[w[1]] = Some(w[0]);
+        }
+    }
+    for (i, e) in entries.iter().enumerate() {
+        let mut item = pdf.outline_item(refs[i]);
+        item.title(TextStr(e.title))
+            .parent(parent[i].map_or(root, |p| refs[p]));
+        if let Some(p) = prev[i] {
+            item.prev(refs[p]);
+        }
+        if let Some(x) = next[i] {
+            item.next(refs[x]);
+        }
+        if let (Some(&f), Some(&l)) = (kids[i].first(), kids[i].last()) {
+            item.first(refs[f]).last(refs[l]).count(count[i]);
+        }
+        xyz(item.dest(), e.dest, page_refs);
+    }
+    let mut o = pdf.outline(root);
+    if let (Some(&f), Some(&l)) = (top.first(), top.last()) {
+        o.first(refs[f]).last(refs[l]);
+    }
+    o.count(n as i32);
+    Some(root)
 }
 
 fn pdf_date(t: Timestamp) -> pdf_writer::Date {
@@ -499,6 +665,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>) -> Vec<u8>
                 c.stroke();
                 c.restore_state();
             }
+            Op::Link { .. } => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }

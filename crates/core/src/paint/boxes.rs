@@ -6,7 +6,7 @@ use super::{Dash, FillRule, Op, Path};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, NodeIdx, Part, Tree};
 use crate::paginate::Placement;
-use crate::schema::{BorderStyle, Color, Display, Node, Overflow};
+use crate::schema::{BorderStyle, Color, Display, Node, Overflow, Style};
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
@@ -144,6 +144,19 @@ impl BoxPainter<'_, '_, '_, '_> {
             (None, None) => (0.0, 0.0),
         };
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
+        if let Some(target) = &node.link {
+            // Only the part of the box shown on this page.
+            let (top, bottom) = match window {
+                Some((w0, w1)) => (y.max(w0 + self.dy), (y + h).min(w1 + self.dy)),
+                None => (y, y + h),
+            };
+            if bottom > top && w > 0.0 {
+                self.ops.push(Op::Link {
+                    rect: super::Rect::new(x, top, w, bottom - top),
+                    target: target.clone(),
+                });
+            }
+        }
 
         let opacity = s.opacity.unwrap_or(1.0);
         if opacity <= 0.0 {
@@ -182,7 +195,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
             self.fill(rounded_rect(x, y, w, h, &radii), bg);
         }
-        self.borders(node, &g, x, y, h, &radii);
+        self.borders(s, g.border, w, x, y, h, &radii);
 
         if clip {
             let b = g.border;
@@ -272,6 +285,16 @@ impl BoxPainter<'_, '_, '_, '_> {
         let (ox, oy) = (cx + self.dx, cy + self.dy);
 
         let mut fills = Vec::new();
+        let first_cell = t.cells.partition_point(|c| c.row < lo);
+        if t.separate {
+            let cells: Vec<(usize, f32)> = (first_cell..t.cells.len())
+                .take_while(|&k| t.cells[k].row < hi)
+                .filter(|&k| visible(t.cells[k].row))
+                .map(|k| (k, shift(t.cells[k].row)))
+                .collect();
+            self.separate_cells(t, &rows, &cells, ox, oy);
+            return;
+        }
         for (r, &row_idx) in rows.iter().enumerate().take(hi).skip(lo) {
             if !visible(r) {
                 continue;
@@ -282,7 +305,6 @@ impl BoxPainter<'_, '_, '_, '_> {
                 }
             }
         }
-        let first_cell = t.cells.partition_point(|c| c.row < lo);
         for cell in t.cells[first_cell..].iter().take_while(|c| c.row < hi) {
             if !visible(cell.row) {
                 continue;
@@ -376,6 +398,38 @@ impl BoxPainter<'_, '_, '_, '_> {
         }
     }
 
+    /// Separate borders: each visible cell paints the row background, its
+    /// own background and its own borders, with its `borderRadius`.
+    /// `cells`: (index into `t.cells`, row shift) of the visible cells.
+    fn separate_cells(
+        &mut self,
+        t: &TableLayout,
+        rows: &[NodeIdx],
+        cells: &[(usize, f32)],
+        ox: f32,
+        oy: f32,
+    ) {
+        for &(k, shift) in cells {
+            let cell = &t.cells[k];
+            let style = self.tree.nodes[cell.idx as usize].style();
+            let (x, y, w, h) = (ox + cell.x, oy + cell.y + shift, cell.w, cell.h);
+            let radii = match style.border_radius {
+                Some(r) if r > 0.0 => uniform_radii(r, w, h),
+                _ => NO_RADII,
+            };
+            let row_bg = match self.tree.nodes[rows[cell.row] as usize].part {
+                Part::Row(row, _) => row.background_color,
+                _ => None,
+            };
+            for bg in [row_bg, style.background_color].into_iter().flatten() {
+                if bg[3] > 0.0 {
+                    self.fill(rounded_rect(x, y, w, h, &radii), bg);
+                }
+            }
+            self.borders(style, cell.insets, w, x, y, h, &radii);
+        }
+    }
+
     /// On continuation pages, repaints the header rows at the top of the
     /// page, above the first body row (which pagination pushed down).
     fn repeat_header(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
@@ -430,14 +484,21 @@ impl BoxPainter<'_, '_, '_, '_> {
 
     /// `h` is the painted (paged) height, which can exceed the laid-out
     /// height when the box is split across pages.
-    fn borders(&mut self, node: &Node, g: &Geometry, x: f32, y: f32, h: f32, radii: &Radii) {
-        let s = &node.style;
-        let widths = g.border;
+    #[allow(clippy::too_many_arguments)]
+    fn borders(
+        &mut self,
+        s: &Style,
+        widths: [f32; 4],
+        w: f32,
+        x: f32,
+        y: f32,
+        h: f32,
+        radii: &Radii,
+    ) {
         if widths.iter().all(|w| *w <= 0.0) {
             return;
         }
         let colors: [Color; 4] = s.border_color.map_or([BLACK; 4], |c| c.get(BLACK));
-        let w = g.w;
         let [bt, br, bb, bl] = widths;
         let inner_radii = inset_radii(radii, widths);
         let ix = x + bl;

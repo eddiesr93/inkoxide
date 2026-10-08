@@ -30,7 +30,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Tables | `layout/table.rs` (columns, rows, spans, collapsed borders) + table splitting and header repeat | M4 ✅ |
 | Pagination | `paginate` (shift accumulation, head rule, atomic nodes, forced breaks) + `pipeline` | M3 ✅ |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
-| PDF | `pdf` | M0 ✅: pages, page tree, content streams (encoded in parallel), Info |
+| PDF | `pdf` | M0 ✅: pages, page tree, content streams (encoded in parallel), Info; links and outline M7 ✅ |
 | Images | `images` (JPEG passthrough, PNG + SMask, fit modes, process-wide decode cache) | M5 ✅ |
 
 ## Public API (core)

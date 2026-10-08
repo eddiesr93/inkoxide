@@ -165,7 +165,7 @@ impl<'a> Tree<'a> {
         Self::build(std::slice::from_ref(node))
     }
 
-    pub fn children(&self, i: NodeIdx) -> impl Iterator<Item = NodeIdx> {
+    pub fn children(&self, i: NodeIdx) -> impl DoubleEndedIterator<Item = NodeIdx> {
         self.nodes[i as usize].children.clone()
     }
 }

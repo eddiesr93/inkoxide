@@ -10,6 +10,10 @@
 //! - Collapsed borders: every grid edge takes the wider of the two cell
 //!   borders that meet there (later cell wins ties). Each cell reserves the
 //!   full width of outer edges and half the width of inner edges.
+//! - Separate borders (`borderCollapse: separate`): each cell keeps its
+//!   own borders, `borderSpacing` apart and from the table edge. A row's
+//!   band (`row_y`/`row_h`) includes the spacing below it, and above it
+//!   for the first row; cells sit inside the bands.
 
 // Grid code walks parallel arrays by index; iterators would obscure it.
 #![allow(clippy::needless_range_loop)]
@@ -17,7 +21,7 @@
 use taffy::prelude::AvailableSpace;
 
 use super::{LayoutCtx, NodeIdx, Part, Tree};
-use crate::schema::{Color, ColumnWidth, NodeKind, Table};
+use crate::schema::{BorderCollapse, Color, ColumnWidth, NodeKind, Table};
 use crate::InkoxideError;
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
@@ -73,6 +77,8 @@ pub(crate) struct TableLayout {
     pub header_rows: usize,
     /// Atomic row groups (rows tied together by row spans), in order.
     pub groups: Vec<std::ops::Range<usize>>,
+    /// `borderCollapse: separate`: cells paint their own borders.
+    pub separate: bool,
 }
 
 impl TableLayout {
@@ -97,7 +103,7 @@ struct Grid {
     v_w: Vec<f32>,
 }
 
-fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table) -> Grid {
+fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
     let cols = table.columns.len();
     let rows = table.rows.len();
     let mut cells = Vec::new();
@@ -157,7 +163,10 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table) -> Grid {
     const BOTTOM: usize = 2;
     const LEFT: usize = 3;
     let mut h_edges = Vec::new();
-    for line in 0..=rows {
+    // Separate borders belong to their cells: no shared edges.
+    let edge_rows = if separate { 0 } else { rows + 1 };
+    let edge_cols = if separate { 0 } else { cols + 1 };
+    for line in 0..edge_rows {
         for c in 0..cols {
             let above = if line > 0 { owner[line - 1][c] } else { None };
             let below = if line < rows { owner[line][c] } else { None };
@@ -177,7 +186,7 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table) -> Grid {
         }
     }
     let mut v_edges = Vec::new();
-    for line in 0..=cols {
+    for line in 0..edge_cols {
         let mut r = 0;
         while r < rows {
             let left = if line > 0 { owner[r][line - 1] } else { None };
@@ -269,18 +278,35 @@ pub(crate) fn compute(
             "table layout on a non-table node".into(),
         ));
     };
-    let g = grid(tree, idx, table);
+    let style = tree.nodes[idx as usize].style();
+    let separate = style.border_collapse == Some(BorderCollapse::Separate);
+    // Spacing between cells and around them (separate borders only).
+    let sp = if separate {
+        style.border_spacing.unwrap_or(0.0)
+    } else {
+        0.0
+    };
+    let g = grid(tree, idx, table, separate);
     let cell_insets: Vec<[f32; 4]> = g
         .cells
         .iter()
-        .map(|&(_, r, c, rs, cs)| insets(&g, r, c, rs, cs))
+        .map(|&(cidx, r, c, rs, cs)| {
+            if separate {
+                let s = tree.nodes[cidx as usize].style();
+                s.border_width.map_or([0.0; 4], |b| b.get(0.0))
+            } else {
+                insets(&g, r, c, rs, cs)
+            }
+        })
         .collect();
 
     // --- Column widths ------------------------------------------------
     let ncols = g.cols;
     let mut col_w = vec![0.0f32; ncols];
+    // Width taken by spacing; columns share the rest.
+    let gaps_w = sp * (ncols + 1) as f32;
     let available = match space {
-        AvailableSpace::Definite(w) => Some(w),
+        AvailableSpace::Definite(w) => Some((w - gaps_w).max(0.0)),
         _ => None,
     };
     let needs_content = table.columns.iter().any(|c| {
@@ -372,10 +398,10 @@ pub(crate) fn compute(
         }
     }
     let mut col_x = Vec::with_capacity(ncols);
-    let mut x = 0.0;
+    let mut x = sp;
     for w in &col_w {
         col_x.push(x);
-        x += w;
+        x += w + sp;
     }
     let width = x;
 
@@ -386,7 +412,8 @@ pub(crate) fn compute(
         .iter()
         .map(|r| r.min_height.unwrap_or(0.0))
         .collect();
-    let span_w = |c: usize, cs: usize| col_w[c..c + cs].iter().sum::<f32>();
+    // A spanning cell also covers the spacing between its columns/rows.
+    let span_w = |c: usize, cs: usize| col_w[c..c + cs].iter().sum::<f32>() + sp * (cs - 1) as f32;
     let mut cell_h = Vec::with_capacity(g.cells.len());
     for (k, &(cidx, r, c, rs, cs)) in g.cells.iter().enumerate() {
         let h = ctx
@@ -404,10 +431,20 @@ pub(crate) fn compute(
     }
     for (k, &(_, r, _, rs, _)) in g.cells.iter().enumerate() {
         if rs > 1 {
-            let have: f32 = row_h[r..r + rs].iter().sum();
+            let have = row_h[r..r + rs].iter().sum::<f32>() + sp * (rs - 1) as f32;
             if cell_h[k] > have {
                 row_h[r + rs - 1] += cell_h[k] - have;
             }
+        }
+    }
+    // Cell heights per row; `row_h` becomes the row's band, which also
+    // holds the spacing below it (and above it, for the first row), so
+    // pagination can treat rows as contiguous.
+    let content_h = row_h.clone();
+    let top_gap = |r: usize| if r == 0 { sp } else { 0.0 };
+    if sp > 0.0 {
+        for (r, h) in row_h.iter_mut().enumerate() {
+            *h += top_gap(r) + sp;
         }
     }
     let mut row_y = Vec::with_capacity(nrows);
@@ -430,9 +467,9 @@ pub(crate) fn compute(
             row_span: rs,
             col_span: cs,
             x: col_x[c],
-            y: row_y[r],
+            y: row_y[r] + top_gap(r),
             w: span_w(c, cs),
-            h: row_h[r..r + rs].iter().sum(),
+            h: content_h[r..r + rs].iter().sum::<f32>() + sp * (rs - 1) as f32,
             insets: cell_insets[k],
         })
         .collect();
@@ -466,5 +503,6 @@ pub(crate) fn compute(
         v_edges: g.v_edges,
         header_rows: (table.header_rows as usize).min(nrows),
         groups,
+        separate,
     })
 }

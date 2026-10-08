@@ -5,7 +5,7 @@
 // non-JSON inputs (MessagePack) can carry.
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Write as _;
 
 use serde::Deserialize;
@@ -13,8 +13,8 @@ use serde::Deserialize;
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
-    Color, Document, Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, Style, Table,
-    TextRun, TrackSize, SCHEMA_VERSION,
+    Bookmark, BorderCollapse, Color, Display, Document, Length, LengthPercent, Node, NodeKind,
+    OptEdges, PageSpec, Style, Table, TextRun, TrackSize, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -263,6 +263,9 @@ pub(crate) fn check(
         declared: BTreeSet::new(),
         fonts,
         images,
+        doc,
+        anchors: None,
+        in_fixed: false,
     };
     c.document(doc);
     c.errors
@@ -274,6 +277,38 @@ struct Checker<'a> {
     declared: BTreeSet<&'a str>,
     fonts: &'a FontStore,
     images: &'a ImageStore,
+    doc: &'a Document,
+    /// Ids that `#id` links can reach, collected on the first such link.
+    anchors: Option<HashSet<&'a str>>,
+    /// Inside a header or footer (at any depth).
+    in_fixed: bool,
+}
+
+/// Longest link target accepted.
+const MAX_LINK: usize = 2048;
+
+/// Ids of the nodes that get a destination: flowing content that is
+/// displayed (not headers or footers, not under `display: none`).
+fn collect_anchors<'a>(nodes: &'a [Node], out: &mut HashSet<&'a str>) {
+    for n in nodes {
+        if n.style.display == Some(Display::None) {
+            continue;
+        }
+        if let Some(id) = &n.id {
+            out.insert(id);
+        }
+        match &n.kind {
+            NodeKind::Box { children } => collect_anchors(children, out),
+            NodeKind::Table(t) => {
+                for c in t.rows.iter().flat_map(|r| &r.cells) {
+                    if c.style.display != Some(Display::None) {
+                        collect_anchors(&c.children, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Where a node sits; some node types are only valid in the flow.
@@ -414,12 +449,14 @@ impl<'a> Checker<'a> {
         if let Some(bg) = &page.background {
             self.color(Some("background"), bg);
         }
+        self.in_fixed = true;
         if let Some(h) = &page.header {
             self.at("header", false, |c| c.node(h, Ctx::Fixed));
         }
         if let Some(f) = &page.footer {
             self.at("footer", false, |c| c.node(f, Ctx::Fixed));
         }
+        self.in_fixed = false;
         self.children(&page.children, Ctx::Flow);
     }
 
@@ -437,6 +474,34 @@ impl<'a> Checker<'a> {
         }
         let is_text = matches!(node.kind, NodeKind::Text { .. });
         self.at("style", false, |c| c.style(&node.style, is_text, false));
+        let table_style = [
+            ("borderCollapse", node.style.border_collapse.is_some()),
+            ("borderSpacing", node.style.border_spacing.is_some()),
+        ];
+        let is_table = matches!(node.kind, NodeKind::Table(_));
+        for (p, set) in table_style {
+            if set && !is_table {
+                self.at("style", false, |c| {
+                    c.err(
+                        Code::StyleNotApplicable,
+                        Some(p),
+                        format!("`{p}` only applies to tables"),
+                    )
+                });
+            }
+        }
+        if is_table
+            && node.style.border_spacing.is_some()
+            && node.style.border_collapse != Some(BorderCollapse::Separate)
+        {
+            self.at("style", false, |c| {
+                c.err(
+                    Code::InvalidValue,
+                    Some("borderSpacing"),
+                    "`borderSpacing` requires `borderCollapse: \"separate\"`",
+                )
+            });
+        }
         if let Some(v) = node.brk.min_presence_ahead {
             if !(v >= 0.0) {
                 self.at("break", false, |c| {
@@ -450,6 +515,12 @@ impl<'a> Checker<'a> {
         }
         if ctx != Ctx::Flow && node.brk != Default::default() {
             self.err(Code::InvalidValue, Some("break"), "pagination controls only apply to flowing content, not inside headers, footers or table cells");
+        }
+        if let Some(link) = &node.link {
+            self.link(link);
+        }
+        if let Some(b) = &node.bookmark {
+            self.bookmark(b);
         }
 
         match &node.kind {
@@ -512,7 +583,80 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn link(&mut self, link: &str) {
+        if link.is_empty() || link.chars().count() > MAX_LINK {
+            self.err(
+                Code::OutOfRange,
+                Some("link"),
+                format!("a link must be 1 to {MAX_LINK} characters long"),
+            );
+            return;
+        }
+        if let Some(id) = link.strip_prefix('#') {
+            let doc = self.doc;
+            let anchors = self.anchors.get_or_insert_with(|| {
+                let mut out = HashSet::new();
+                for p in &doc.pages {
+                    collect_anchors(&p.children, &mut out);
+                }
+                out
+            });
+            if !anchors.contains(id) {
+                self.err(
+                    Code::UnknownAnchor,
+                    Some("link"),
+                    format!("no displayed node in the flowing content has id `{id}`"),
+                );
+            }
+            return;
+        }
+        // RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":"
+        let scheme = link.split_once(':').map(|(s, _)| s).filter(|s| {
+            let mut c = s.chars();
+            c.next().is_some_and(|c| c.is_ascii_alphabetic())
+                && c.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        });
+        match scheme {
+            None => self.err(
+                Code::InvalidValue,
+                Some("link"),
+                "a link must be `#id` or an absolute URI with a scheme (e.g. `https:`)",
+            ),
+            Some(s) if s.eq_ignore_ascii_case("javascript") => self.err(
+                Code::InvalidValue,
+                Some("link"),
+                "`javascript:` links are not allowed",
+            ),
+            Some(_) => {}
+        }
+    }
+
+    fn bookmark(&mut self, b: &Bookmark) {
+        self.at("bookmark", false, |c| {
+            if c.in_fixed {
+                c.err(
+                    Code::InvalidValue,
+                    None,
+                    "bookmarks only apply to flowing content, not inside headers or footers",
+                );
+            }
+            if b.title.is_empty() || b.title.chars().count() > 1024 {
+                c.err(
+                    Code::OutOfRange,
+                    Some("title"),
+                    "a bookmark title must be 1 to 1024 characters long",
+                );
+            }
+            if !(1..=32).contains(&b.level) {
+                c.err(Code::OutOfRange, Some("level"), "must be within 1..=32");
+            }
+        });
+    }
+
     fn run(&mut self, r: &TextRun) {
+        if let Some(link) = &r.link {
+            self.link(link);
+        }
         match (&r.text, &r.placeholder) {
             (Some(_), Some(_)) => self.err(
                 Code::InvalidValue,
@@ -628,7 +772,21 @@ impl<'a> Checker<'a> {
                                     carry[col..col + span].fill(cell.row_span);
                                 }
                                 col += span;
-                                c.at("style", false, |c| c.style(&cell.style, false, true));
+                                c.at("style", false, |c| {
+                                    c.style(&cell.style, false, true);
+                                    for (p, set) in [
+                                        ("borderCollapse", cell.style.border_collapse.is_some()),
+                                        ("borderSpacing", cell.style.border_spacing.is_some()),
+                                    ] {
+                                        if set {
+                                            c.err(
+                                                Code::StyleNotApplicable,
+                                                Some(p),
+                                                format!("`{p}` only applies to tables"),
+                                            );
+                                        }
+                                    }
+                                });
                                 c.children(&cell.children, Ctx::Cell);
                             })
                         });
@@ -699,6 +857,7 @@ impl<'a> Checker<'a> {
         self.non_neg("flexGrow", s.flex_grow);
         self.non_neg("flexShrink", s.flex_shrink);
         self.non_neg("borderRadius", s.border_radius);
+        self.non_neg("borderSpacing", s.border_spacing);
         self.length("flexBasis", s.flex_basis, false);
         for (name, v) in [
             ("width", s.width),

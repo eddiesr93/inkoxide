@@ -370,6 +370,7 @@ mod tests {
             letter_spacing: None,
             decoration: None,
             placeholder: None,
+            link: None,
         }
     }
 

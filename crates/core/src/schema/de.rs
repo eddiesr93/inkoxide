@@ -10,8 +10,8 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::Deserialize;
 
 use super::{
-    Break, ColumnSpec, ColumnWidth, ImageFit, ImageSource, Node, NodeKind, Style, Table, TableRow,
-    TextRun,
+    Bookmark, Break, ColumnSpec, ColumnWidth, ImageFit, ImageSource, Node, NodeKind, Style, Table,
+    TableRow, TextRun,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -199,6 +199,8 @@ pub struct RawNode {
     style: Option<Style>,
     #[serde(rename = "break")]
     brk: Option<Break>,
+    link: Option<Box<str>>,
+    bookmark: Option<Box<Bookmark>>,
     children: Option<Vec<Node>>,
     runs: Option<Vec<TextRun>>,
     src: Option<String>,
@@ -241,6 +243,8 @@ impl TryFrom<RawNode> for Node {
         let present = [
             ("style", r.style.is_some()),
             ("break", r.brk.is_some()),
+            ("link", r.link.is_some()),
+            ("bookmark", r.bookmark.is_some()),
             ("children", r.children.is_some()),
             ("runs", r.runs.is_some()),
             ("src", r.src.is_some()),
@@ -251,12 +255,20 @@ impl TryFrom<RawNode> for Node {
             ("rows", r.rows.is_some()),
         ];
         let allowed: &[&str] = match r.ty {
-            NodeType::Box => &["style", "break", "children"],
-            NodeType::Text => &["style", "break", "runs"],
-            NodeType::Image => &["style", "break", "src", "data", "fit"],
-            NodeType::Table => &["style", "break", "columns", "headerRows", "rows"],
+            NodeType::Box => &["style", "break", "link", "bookmark", "children"],
+            NodeType::Text => &["style", "break", "link", "bookmark", "runs"],
+            NodeType::Image => &["style", "break", "link", "bookmark", "src", "data", "fit"],
+            NodeType::Table => &[
+                "style",
+                "break",
+                "link",
+                "bookmark",
+                "columns",
+                "headerRows",
+                "rows",
+            ],
             NodeType::PageBreak => &[],
-            NodeType::Spacer => &["style", "break"],
+            NodeType::Spacer => &["style", "break", "link", "bookmark"],
         };
         if let Some((field, _)) = present.iter().find(|(f, set)| *set && !allowed.contains(f)) {
             return Err(format!(
@@ -301,6 +313,8 @@ impl TryFrom<RawNode> for Node {
             id: r.id,
             style: r.style.unwrap_or_default(),
             brk: r.brk.unwrap_or_default(),
+            link: r.link,
+            bookmark: r.bookmark,
             kind,
         })
     }

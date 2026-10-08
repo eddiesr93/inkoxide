@@ -281,3 +281,124 @@ fn rejects_corrupt_and_unknown_images() {
         ]
     );
 }
+
+#[test]
+fn links_and_bookmarks() {
+    let ok = doc(
+        r##"{"type":"text","id":"a","bookmark":{"title":"A"},"runs":[{"text":"x","font":"Inter-Regular","size":9}]},
+            {"type":"box","link":"#a","bookmark":{"title":"B","level":3}},
+            {"type":"text","runs":[{"text":"y","font":"Inter-Regular","size":9,"link":"mailto:x@example.com"}]},
+            {"type":"image","src":"logo","link":"https://example.com/ä b"}"##,
+    );
+    assert_eq!(run(&ok), vec![]);
+
+    let t = r#"{"type":"text","id":"t","runs":[{"text":"x","font":"Inter-Regular","size":9}]}"#;
+    for (child, code, path) in [
+        (
+            r##"{"type":"box","link":"#nope"}"##,
+            C::UnknownAnchor,
+            "pages[0].children[1].link",
+        ),
+        (
+            r#"{"type":"box","link":"example.com"}"#,
+            C::InvalidValue,
+            "pages[0].children[1].link",
+        ),
+        (
+            r#"{"type":"box","link":"JavaScript:alert(1)"}"#,
+            C::InvalidValue,
+            "pages[0].children[1].link",
+        ),
+        (
+            r#"{"type":"box","link":""}"#,
+            C::OutOfRange,
+            "pages[0].children[1].link",
+        ),
+        (
+            r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9,"link":"1http:x"}]}"#,
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].link",
+        ),
+        (
+            r#"{"type":"box","bookmark":{"title":""}}"#,
+            C::OutOfRange,
+            "pages[0].children[1].bookmark.title",
+        ),
+        (
+            r#"{"type":"box","bookmark":{"title":"x","level":0}}"#,
+            C::OutOfRange,
+            "pages[0].children[1].bookmark.level",
+        ),
+        (
+            r#"{"type":"box","bookmark":{"level":1}}"#,
+            C::MissingField,
+            "pages[0].children[1].bookmark.title",
+        ),
+        (
+            r#"{"type":"pageBreak","link":"https://x"}"#,
+            C::UnknownField,
+            "pages[0].children[1].link",
+        ),
+        // An id under `display: none` is not a destination.
+        (
+            r##"{"type":"box","style":{"display":"none"},"children":[{"type":"box","id":"h"}]},{"type":"box","link":"#h"}"##,
+            C::UnknownAnchor,
+            "pages[0].children[2].link",
+        ),
+    ] {
+        let d = doc(&format!("{t},{child}"));
+        assert_eq!(one(&d), (code, path.to_string()), "{child}");
+    }
+
+    // Ids in headers are not destinations; bookmarks are not allowed there.
+    let d = r##"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
+        "header":{"type":"box","id":"h","bookmark":{"title":"H"}},
+        "children":[{"type":"box","link":"#h"}]}]}"##;
+    let errs: Vec<_> = run(d).into_iter().map(|e| (e.code, e.path)).collect();
+    assert_eq!(
+        errs,
+        vec![
+            (C::InvalidValue, "pages[0].header.bookmark".to_string()),
+            (C::UnknownAnchor, "pages[0].children[0].link".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn border_collapse() {
+    let cell = r#"{"children":[]}"#;
+    let ok = doc(&format!(
+        r#"{{"type":"table","style":{{"borderCollapse":"separate","borderSpacing":3}},"columns":[{{"width":"1fr"}}],"rows":[{{"cells":[{cell}]}}]}}"#
+    ));
+    assert_eq!(run(&ok), vec![]);
+
+    for (child, code, path) in [
+        (
+            r#"{"type":"box","style":{"borderCollapse":"separate"}}"#,
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.borderCollapse",
+        ),
+        (
+            r#"{"type":"box","style":{"borderSpacing":2}}"#,
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.borderSpacing",
+        ),
+        (
+            r#"{"type":"table","style":{"borderSpacing":2},"columns":[{"width":"1fr"}],"rows":[{"cells":[{"children":[]}]}]}"#,
+            C::InvalidValue,
+            "pages[0].children[0].style.borderSpacing",
+        ),
+        (
+            r#"{"type":"table","style":{"borderCollapse":"separate","borderSpacing":-1},"columns":[{"width":"1fr"}],"rows":[{"cells":[{"children":[]}]}]}"#,
+            C::OutOfRange,
+            "pages[0].children[0].style.borderSpacing",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":"1fr"}],"rows":[{"cells":[{"style":{"borderCollapse":"separate"},"children":[]}]}]}"#,
+            C::StyleNotApplicable,
+            "pages[0].children[0].rows[0].cells[0].style.borderCollapse",
+        ),
+    ] {
+        assert_eq!(one(&doc(child)), (code, path.to_string()), "{child}");
+    }
+}

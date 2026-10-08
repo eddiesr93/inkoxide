@@ -49,6 +49,7 @@
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
+| `UNKNOWN_ANCHOR` | A `#id` link names no node `id` in the document |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`.
@@ -70,6 +71,21 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 ### Id
 
 Type: `string`
+
+### Link
+
+Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+
+Type: `string`
+
+### Bookmark
+
+Document outline entry pointing at the top of its node. Entries appear in document order; an entry nests under the nearest earlier entry with a lower `level`. Flowing content only (not headers or footers).
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `title` | `string` | yes |  |
+| `level` | `integer` |  | ≥ 1, ≤ 32, default `1` |
 
 ### Meta
 
@@ -249,6 +265,8 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
 | `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` |  | text nodes only |
 | `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only |
+| `borderCollapse` | `"collapse"` \| `"separate"` |  | default `"collapse"`; Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart. |
+| `borderSpacing` | [`NonNegative`](#nonnegative) |  | Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0. |
 
 ### TextRun
 
@@ -261,6 +279,7 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `letterSpacing` | `number` |  |  |
 | `decoration` | `"none"` \| `"underline"` \| `"lineThrough"` |  |  |
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  |  |
+| `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 
 ### ColumnSpec
 
@@ -301,6 +320,8 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `id` | [`Id`](#id) |  |  |
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
+| `link` | [`Link`](#link) |  |  |
+| `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
 
 ### TextNode
@@ -311,6 +332,8 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `id` | [`Id`](#id) |  |  |
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
+| `link` | [`Link`](#link) |  |  |
+| `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `runs` | array of [`TextRun`](#textrun) | yes |  |
 
 ### ImageNode
@@ -321,6 +344,8 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `id` | [`Id`](#id) |  |  |
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
+| `link` | [`Link`](#link) |  |  |
+| `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
 | `data` | `string` |  | Inline image bytes (JPEG or PNG), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
@@ -333,6 +358,8 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `id` | [`Id`](#id) |  |  |
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
+| `link` | [`Link`](#link) |  |  |
+| `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
 | `headerRows` | `integer` |  | ≥ 0, default `0` |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
@@ -352,3 +379,5 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 | `id` | [`Id`](#id) |  |  |
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
+| `link` | [`Link`](#link) |  |  |
+| `bookmark` | [`Bookmark`](#bookmark) |  |  |

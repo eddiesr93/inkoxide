@@ -28,6 +28,8 @@ pub enum ValidationCode {
     InvalidTable,
     /// A node type is not allowed where it appears.
     InvalidNode,
+    /// A `#id` link names no node in the document.
+    UnknownAnchor,
 }
 
 impl ValidationCode {
@@ -49,6 +51,7 @@ impl ValidationCode {
             Self::StyleNotApplicable => "STYLE_NOT_APPLICABLE",
             Self::InvalidTable => "INVALID_TABLE",
             Self::InvalidNode => "INVALID_NODE",
+            Self::UnknownAnchor => "UNKNOWN_ANCHOR",
         }
     }
 
@@ -70,6 +73,7 @@ impl ValidationCode {
             "STYLE_NOT_APPLICABLE" => Self::StyleNotApplicable,
             "INVALID_TABLE" => Self::InvalidTable,
             "INVALID_NODE" => Self::InvalidNode,
+            "UNKNOWN_ANCHOR" => Self::UnknownAnchor,
             _ => return None,
         })
     }

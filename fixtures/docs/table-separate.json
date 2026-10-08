@@ -1,0 +1,9325 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Separate table borders",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 419.53,
+    "height": 595.28
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "borderCollapse: separate",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "table",
+     "style": {
+      "borderCollapse": "separate",
+      "borderSpacing": 4,
+      "backgroundColor": [
+       0.97,
+       0.97,
+       0.97,
+       1
+      ]
+     },
+     "columns": [
+      {
+       "width": 28
+      },
+      {
+       "width": "2fr"
+      },
+      {
+       "width": "auto"
+      },
+      {
+       "width": "3fr"
+      }
+     ],
+     "headerRows": 1,
+     "rows": [
+      {
+       "cells": [
+        {
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           0.2,
+           0.35,
+           0.7,
+           1
+          ]
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "#",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           0.2,
+           0.35,
+           0.7,
+           1
+          ]
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           0.2,
+           0.35,
+           0.7,
+           1
+          ]
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Qty",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           0.2,
+           0.35,
+           0.7,
+           1
+          ]
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Note",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 1",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "3",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Spans two rows: row groups stay together when the table splits.",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           1,
+           0.95,
+           0.8,
+           1
+          ]
+         },
+         "rowSpan": 2
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "2",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 2",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "6",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "3",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 3",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "9",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "4",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 4",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "12",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "5",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 5",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "15",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "6",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 6",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "18",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "7",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 7",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "21",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "8",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 8",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "24",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "9",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 9",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "27",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "10",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 10",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "30",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "11",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 11",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "33",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Spans two rows: row groups stay together when the table splits.",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           1,
+           0.95,
+           0.8,
+           1
+          ]
+         },
+         "rowSpan": 2
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "12",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 12",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "36",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "13",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 13",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "39",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "14",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 14",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "42",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "15",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 15",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "45",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "16",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 16",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "48",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "17",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 17",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "51",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "18",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 18",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "54",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "19",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 19",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "57",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "20",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 20",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "60",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "21",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 21",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "63",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Spans two rows: row groups stay together when the table splits.",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed",
+          "backgroundColor": [
+           1,
+           0.95,
+           0.8,
+           1
+          ]
+         },
+         "rowSpan": 2
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "22",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 22",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "66",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "23",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 23",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "69",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "24",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 24",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "72",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "25",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 25",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "75",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "26",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 26",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "78",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "27",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 27",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "81",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "28",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 28",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "84",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "29",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 29",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "87",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "30",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 30",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "90",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "31",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 31",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "93",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Spans two rows: row groups stay together when the table splits.",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           1,
+           0.95,
+           0.8,
+           1
+          ]
+         },
+         "rowSpan": 2
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "32",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 32",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "96",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "33",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 33",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "99",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "34",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 34",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "102",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "35",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 35",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "105",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "borderStyle": "dashed"
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "36",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 36",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "108",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "37",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 37",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "111",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "38",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 38",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "114",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "39",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 39",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "117",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "40",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item number 40",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "120",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "—",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          }
+         }
+        }
+       ],
+       "backgroundColor": [
+        0.93,
+        0.95,
+        1,
+        1
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "A cell spanning all four columns, with the spacing between them included in its width.",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ],
+         "style": {
+          "borderWidth": {
+           "top": 1,
+           "right": 1,
+           "bottom": 1,
+           "left": 1
+          },
+          "borderColor": {
+           "top": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "right": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "bottom": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ],
+           "left": [
+            0.2,
+            0.35,
+            0.7,
+            1
+           ]
+          },
+          "borderRadius": 4,
+          "padding": {
+           "top": 4,
+           "right": 6,
+           "bottom": 4,
+           "left": 6
+          },
+          "backgroundColor": [
+           0.9,
+           1,
+           0.9,
+           1
+          ]
+         },
+         "colSpan": 4
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

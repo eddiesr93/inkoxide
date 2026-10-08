@@ -86,6 +86,12 @@ pub(crate) enum Op {
     /// Sets the absolute fill and stroke alpha (cumulative opacity is
     /// computed by the painter; PDF `gs` does not multiply).
     SetOpacity(f32),
+    /// A clickable area (draws nothing). `rect` is in page coordinates;
+    /// transforms (rotation) do not apply to it.
+    Link {
+        rect: Rect,
+        target: Box<str>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
