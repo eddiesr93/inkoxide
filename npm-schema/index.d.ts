@@ -83,12 +83,85 @@ export type TrackSize =
  */
 export type TrackBreadth = number | Percent | string | ('auto' | 'min-content' | 'max-content');
 /**
+ * One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "BorderRadius".
+ */
+export type BorderRadius =
+  | NonNegative
+  | {
+      topLeft?: NonNegative;
+      topRight?: NonNegative;
+      bottomRight?: NonNegative;
+      bottomLeft?: NonNegative;
+    };
+/**
+ * One style for every side, or one per side (an unset side is solid).
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "BorderStyles".
+ */
+export type BorderStyles =
+  | ('solid' | 'dashed' | 'dotted')
+  | {
+      top?: 'solid' | 'dashed' | 'dotted';
+      right?: 'solid' | 'dashed' | 'dotted';
+      bottom?: 'solid' | 'dashed' | 'dotted';
+      left?: 'solid' | 'dashed' | 'dotted';
+    };
+/**
+ * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "TransformOp".
+ */
+export type TransformOp =
+  | {
+      /**
+       * @minItems 2
+       */
+      translate: never[];
+    }
+  | {
+      /**
+       * @minItems 2
+       * @maxItems 2
+       */
+      scale: [number, number];
+    }
+  | {
+      rotate: number;
+    }
+  | {
+      /**
+       * @minItems 2
+       * @maxItems 2
+       */
+      skew: [number, number];
+    }
+  | {
+      /**
+       * @minItems 6
+       * @maxItems 6
+       */
+      matrix: [number, number, number, number, number, number];
+    };
+/**
  * Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Link".
  */
 export type Link = string;
+/**
+ * Pages that show the node, by physical page number (as the `pageNumber` placeholder). The node keeps its place in the layout on every page; it is only painted on the matching ones.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "PageFilter".
+ */
+export type PageFilter =
+  ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
 
 /**
  * A fully resolved, declarative document tree rendered to PDF by the Inkoxide engine. All lengths are PDF points (1/72 in); all colours are RGBA floats in [0, 1]. Unknown properties are errors.
@@ -187,6 +260,7 @@ export interface BoxNode {
   break?: Break;
   link?: Link;
   bookmark?: Bookmark;
+  pages?: PageFilter;
   children?: Node[];
 }
 /**
@@ -274,16 +348,33 @@ export interface Style {
   opacity?: number;
   borderWidth?: EdgesNumber;
   borderColor?: EdgesColor;
-  borderRadius?: NonNegative;
-  borderStyle?: 'solid' | 'dashed' | 'dotted';
+  borderRadius?: BorderRadius;
+  /**
+   * default `"solid"`
+   */
+  borderStyle?: BorderStyles;
   /**
    * Degrees, clockwise, around the box centre.
    */
   rotate?: number;
   /**
-   * text nodes only
+   * Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole.
    */
-  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  transform?: TransformOp[];
+  /**
+   * x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`.
+   *
+   * @minItems 2
+   */
+  transformOrigin?: never[];
+  /**
+   * Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells.
+   */
+  zIndex?: number;
+  /**
+   * text nodes only; `start`/`end` follow the paragraph direction. Default `start`.
+   */
+  textAlign?: 'left' | 'center' | 'right' | 'justify' | 'start' | 'end';
   /**
    * text nodes only; multiplier of the largest run size on the line
    */
@@ -305,9 +396,25 @@ export interface Style {
    */
   lang?: string;
   /**
-   * text nodes only
+   * text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps.
    */
-  whiteSpace?: 'normal' | 'pre' | 'nowrap';
+  whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
+  /**
+   * text nodes only; indent of the first line in points (negative: hanging indent)
+   */
+  textIndent?: number;
+  /**
+   * text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction.
+   */
+  direction?: 'ltr' | 'rtl' | 'auto';
+  /**
+   * text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks
+   */
+  orphans?: number;
+  /**
+   * text nodes only; minimum number of lines carried to the top of the next page when the paragraph breaks
+   */
+  widows?: number;
   /**
    * table cells only
    */
@@ -394,6 +501,7 @@ export interface TextNode {
   break?: Break;
   link?: Link;
   bookmark?: Bookmark;
+  pages?: PageFilter;
   runs: TextRun[];
 }
 /**
@@ -410,6 +518,15 @@ export interface TextRun {
   color?: Color;
   letterSpacing?: number;
   decoration?: 'none' | 'underline' | 'lineThrough';
+  /**
+   * Default: the run colour.
+   */
+  decorationColor?: Color;
+  /**
+   * Points. Default: from the font.
+   */
+  decorationThickness?: number;
+  decorationStyle?: 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
   placeholder?: 'pageNumber' | 'totalPages';
   /**
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
@@ -427,6 +544,7 @@ export interface ImageNode {
   break?: Break;
   link?: Link;
   bookmark?: Bookmark;
+  pages?: PageFilter;
   /**
    * Key into the render option `images`.
    */
@@ -448,6 +566,7 @@ export interface TableNode {
   break?: Break;
   link?: Link;
   bookmark?: Bookmark;
+  pages?: PageFilter;
   /**
    * @minItems 1
    */
@@ -502,6 +621,7 @@ export interface SpacerNode {
   break?: Break;
   link?: Link;
   bookmark?: Bookmark;
+  pages?: PageFilter;
 }
 
 /** The document `version` this schema describes. */

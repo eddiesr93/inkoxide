@@ -38,3 +38,9 @@ first npm release (M5); after that, breaking changes bump `version`.
   in left-to-right paragraphs, as before); text runs take
   `decorationColor`, `decorationThickness` and `decorationStyle`
   (`solid`, `double`, `dotted`, `dashed`, `wavy`).
+- v1.1 pagination: `orphans` and `widows` on text nodes (default 1);
+  `pages` on `box`, `text`, `image`, `table` and `spacer` nodes
+  (`first`, `last`, `notFirst`, `notLast`, `odd`, `even`, or a list of
+  page numbers, negative from the end) paints a node on some pages only.
+  Table rows taller than a page now split between lines inside their
+  cells instead of being sliced (behaviour only).

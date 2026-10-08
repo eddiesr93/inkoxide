@@ -539,6 +539,15 @@ impl<'a> Checker<'a> {
         if ctx != Ctx::Flow && node.brk != Break::default() {
             self.err(Code::InvalidValue, Some("break"), "pagination controls only apply to flowing content, not inside headers, footers or table cells");
         }
+        if let Some(crate::schema::PageFilter::List(list)) = node.pages.as_deref() {
+            if list.is_empty() || list.contains(&0) {
+                self.err(
+                    Code::OutOfRange,
+                    Some("pages"),
+                    "page numbers are 1-based (negative: from the end) and the list is non-empty",
+                );
+            }
+        }
         if let Some(link) = &node.link {
             self.link(link);
         }
@@ -992,6 +1001,11 @@ impl<'a> Checker<'a> {
         }
         if s.max_lines == Some(0) {
             self.err(Code::OutOfRange, Some("maxLines"), "must be at least 1");
+        }
+        for (name, v) in [("orphans", s.orphans), ("widows", s.widows)] {
+            if v.is_some_and(|v| !(1..=100).contains(&v)) {
+                self.err(Code::OutOfRange, Some(name), "must be within [1, 100]");
+            }
         }
         for (name, tracks) in [
             ("gridTemplateColumns", &s.grid_template_columns),

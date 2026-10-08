@@ -422,17 +422,15 @@ impl<'m> LayoutCtx<'m> {
         &mut self,
         tree: &Tree<'_>,
         idx: NodeIdx,
-        known: TSize<Option<f32>>,
+        _known: TSize<Option<f32>>,
         available: TSize<AvailableSpace>,
     ) -> TSize<f32> {
-        let space = match known.width {
-            Some(w) => AvailableSpace::Definite(w),
-            None => available.width,
-        };
-        match self.table(tree, idx, space) {
+        // `known` is the border box; `available` is already the content
+        // box (Taffy subtracts padding and border from a known width).
+        match self.table(tree, idx, available.width) {
             Ok(t) => TSize {
-                width: known.width.unwrap_or(t.width),
-                height: known.height.unwrap_or(t.height),
+                width: t.width,
+                height: t.height,
             },
             Err(e) => {
                 tracing::warn!("table layout failed: {e}");

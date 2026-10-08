@@ -152,7 +152,54 @@ pub struct Node {
     /// numerous).
     pub link: Option<Box<str>>,
     pub bookmark: Option<Box<Bookmark>>,
+    /// Pages the node is painted on (boxed: rare). It takes its space in
+    /// the layout on every page.
+    pub pages: Option<Box<PageFilter>>,
     pub kind: NodeKind,
+}
+
+/// Which pages show a node, by physical page number (as `pageNumber`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PageFilter {
+    Pattern(PagePattern),
+    /// 1-based page numbers; negative numbers count from the end (-1 is
+    /// the last page).
+    List(Box<[i32]>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PagePattern {
+    First,
+    Last,
+    NotFirst,
+    NotLast,
+    Odd,
+    Even,
+}
+
+impl PageFilter {
+    /// Whether page `n` of `total` (1-based) shows the node.
+    pub fn shows(&self, n: u32, total: u32) -> bool {
+        match self {
+            Self::Pattern(p) => match p {
+                PagePattern::First => n == 1,
+                PagePattern::Last => n == total,
+                PagePattern::NotFirst => n != 1,
+                PagePattern::NotLast => n != total,
+                PagePattern::Odd => !n.is_multiple_of(2),
+                PagePattern::Even => n.is_multiple_of(2),
+            },
+            Self::List(list) => list.iter().any(|&k| {
+                let k = if k < 0 {
+                    i64::from(total) + 1 + i64::from(k)
+                } else {
+                    i64::from(k)
+                };
+                k == i64::from(n)
+            }),
+        }
+    }
 }
 
 /// An outline entry pointing at the top of its node.
@@ -598,6 +645,10 @@ pub struct Style {
     /// Indent of the first line, points (negative: hanging).
     pub text_indent: Option<f32>,
     pub direction: Option<Direction>,
+    /// Minimum lines left before a page break inside the paragraph.
+    pub orphans: Option<u32>,
+    /// Minimum lines carried after a page break inside the paragraph.
+    pub widows: Option<u32>,
 
     // Table cells only
     pub vertical_align: Option<VerticalAlign>,
@@ -620,6 +671,8 @@ impl Style {
             ("whiteSpace", self.white_space.is_some()),
             ("textIndent", self.text_indent.is_some()),
             ("direction", self.direction.is_some()),
+            ("orphans", self.orphans.is_some()),
+            ("widows", self.widows.is_some()),
         ]
         .into_iter()
         .filter_map(|(k, set)| set.then_some(k))

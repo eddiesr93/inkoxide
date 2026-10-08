@@ -536,3 +536,34 @@ fn transforms_radii_border_styles_and_z_index() {
         "{code:?}"
     );
 }
+
+#[test]
+fn widows_orphans_and_page_filters() {
+    let ok = doc(
+        r#"{"type":"text","pages":"notFirst","style":{"widows":2,"orphans":3},"runs":[{"text":"x","font":"Inter-Regular","size":10}]},
+           {"type":"box","pages":[1,-1]}"#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    let cases = [
+        (
+            r#"{"type":"text","style":{"widows":0},"runs":[{"text":"x","font":"Inter-Regular","size":10}]}"#,
+            C::OutOfRange,
+            "pages[0].children[0].style.widows",
+        ),
+        (
+            r#"{"type":"box","style":{"orphans":2}}"#,
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.orphans",
+        ),
+        (
+            r#"{"type":"box","pages":[0]}"#,
+            C::OutOfRange,
+            "pages[0].children[0].pages",
+        ),
+    ];
+    for (node, code, path) in cases {
+        assert_eq!(one(&doc(node)), (code, path.to_string()), "{node}");
+    }
+    let (code, _) = one(&doc(r#"{"type":"box","pages":"sometimes"}"#));
+    assert_eq!(code, C::InvalidValue);
+}

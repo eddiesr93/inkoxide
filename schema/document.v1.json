@@ -878,6 +878,20 @@
           "default": "ltr",
           "description": "text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction."
         },
+        "orphans": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 1,
+          "description": "text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks"
+        },
+        "widows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 1,
+          "description": "text nodes only; minimum number of lines carried to the top of the next page when the paragraph breaks"
+        },
         "verticalAlign": {
           "enum": [
             "top",
@@ -1129,6 +1143,9 @@
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
         },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
+        },
         "children": {
           "type": "array",
           "items": {
@@ -1163,6 +1180,9 @@
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
         },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
+        },
         "runs": {
           "type": "array",
           "items": {
@@ -1195,6 +1215,9 @@
         },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
+        },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
         },
         "src": {
           "$ref": "#/$defs/Id",
@@ -1265,6 +1288,9 @@
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
         },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
+        },
         "columns": {
           "type": "array",
           "minItems": 1,
@@ -1324,6 +1350,9 @@
         },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
+        },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
         }
       }
     },
@@ -1387,6 +1416,32 @@
               }
             }
           }
+        }
+      ]
+    },
+    "PageFilter": {
+      "description": "Pages that show the node, by physical page number (as the `pageNumber` placeholder). The node keeps its place in the layout on every page; it is only painted on the matching ones.",
+      "oneOf": [
+        {
+          "enum": [
+            "first",
+            "last",
+            "notFirst",
+            "notLast",
+            "odd",
+            "even"
+          ]
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "not": {
+              "const": 0
+            }
+          },
+          "description": "1-based page numbers; negative numbers count from the end (-1 is the last page)"
         }
       ]
     }

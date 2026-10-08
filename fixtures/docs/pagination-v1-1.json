@@ -1,0 +1,1019 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Pagination v1.1",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 420
+   },
+   "margin": {
+    "top": 30,
+    "right": 30,
+    "bottom": 30,
+    "left": 30
+   },
+   "header": {
+    "type": "box",
+    "style": {
+     "padding": {
+      "top": 12,
+      "right": 30,
+      "bottom": 0,
+      "left": 30
+     },
+     "display": "grid",
+     "gridTemplateColumns": [
+      "1fr"
+     ],
+     "gridTemplateAreas": [
+      "h"
+     ]
+    },
+    "children": [
+     {
+      "type": "text",
+      "pages": "first",
+      "style": {
+       "gridArea": "h"
+      },
+      "runs": [
+       {
+        "text": "First page header (pages: first)",
+        "font": "Inter-Regular",
+        "size": 8,
+        "color": [
+         0.5,
+         0.5,
+         0.55,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "pages": "notFirst",
+      "style": {
+       "gridArea": "h",
+       "textAlign": "right"
+      },
+      "runs": [
+       {
+        "text": "Continued: ",
+        "font": "Inter-Regular",
+        "size": 8,
+        "color": [
+         0.5,
+         0.5,
+         0.55,
+         1
+        ]
+       },
+       {
+        "placeholder": "pageNumber",
+        "font": "Inter-Bold",
+        "size": 8,
+        "color": [
+         0.5,
+         0.5,
+         0.55,
+         1
+        ]
+       },
+       {
+        "text": " (pages: notFirst)",
+        "font": "Inter-Regular",
+        "size": 8,
+        "color": [
+         0.5,
+         0.5,
+         0.55,
+         1
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "footer": {
+    "type": "box",
+    "style": {
+     "padding": {
+      "bottom": 12,
+      "left": 30
+     }
+    },
+    "children": [
+     {
+      "type": "text",
+      "pages": [
+       -1
+      ],
+      "runs": [
+       {
+        "text": "End of document (pages: [-1])",
+        "font": "Inter-Regular",
+        "size": 8,
+        "color": [
+         0.5,
+         0.5,
+         0.55,
+         1
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Pagination in schema v1.1",
+       "font": "Inter-Bold",
+       "size": 14,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "widows: 3, orphans: 2: the paragraph below breaks earlier so three lines reach the next page.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "height": 250,
+      "backgroundColor": [
+       0.93,
+       0.94,
+       0.96,
+       1
+      ]
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. ",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "widows": 3,
+      "orphans": 2,
+      "margin": {
+       "bottom": 10
+      },
+      "textAlign": "justify"
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "A row taller than a page splits between lines, inside every cell; the header repeats above the continuation.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "table",
+     "columns": [
+      {
+       "width": 24
+      },
+      {
+       "width": "1fr"
+      },
+      {
+       "width": 110
+      }
+     ],
+     "headerRows": 1,
+     "style": {
+      "borderWidth": {
+       "top": 0.75,
+       "right": 0.75,
+       "bottom": 0.75,
+       "left": 0.75
+      },
+      "borderColor": {
+       "top": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "right": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "bottom": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "left": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ]
+      }
+     },
+     "rows": [
+      {
+       "backgroundColor": [
+        0.16,
+        0.36,
+        0.86,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "#",
+             "font": "Inter-Bold",
+             "size": 10,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Clause",
+             "font": "Inter-Bold",
+             "size": 10,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Notes",
+             "font": "Inter-Bold",
+             "size": 10,
+             "color": [
+              1,
+              1,
+              1,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Short row 1",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "ok",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "2",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Short row 2",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "ok",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "3",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Short row 3",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "ok",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          },
+          "backgroundColor": [
+           0.95,
+           0.96,
+           0.99,
+           1
+          ]
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "4",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. ",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          },
+          "backgroundColor": [
+           1,
+           0.97,
+           0.9,
+           1
+          ]
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates in one pass, keeps blocks together, repeats table headers and now splits tall table rows between lines.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "5",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Short row 5",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "ok",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "6",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Short row 6",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "ok",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "7",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Short row 7",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 5,
+           "right": 6,
+           "bottom": 5,
+           "left": 6
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "ok",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.1,
+              0.12,
+              1
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

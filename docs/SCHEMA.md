@@ -293,6 +293,8 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. |
 | `textIndent` | `number` |  | text nodes only; indent of the first line in points (negative: hanging indent) |
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
+| `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |
+| `widows` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines carried to the top of the next page when the paragraph breaks |
 | `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only |
 | `borderCollapse` | `"collapse"` \| `"separate"` |  | default `"collapse"`; Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart. |
 | `borderSpacing` | [`NonNegative`](#nonnegative) |  | Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0. |
@@ -354,6 +356,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
 
 ### TextNode
@@ -366,6 +369,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `runs` | array of [`TextRun`](#textrun) | yes |  |
 
 ### ImageNode
@@ -378,6 +382,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
 | `data` | `string` |  | Inline image bytes (JPEG, PNG or SVG), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
@@ -392,6 +397,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
 | `headerRows` | `integer` |  | ≥ 0, default `0` |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
@@ -413,6 +419,7 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
 
 ### TrackBreadth
 
@@ -425,3 +432,9 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
 
 Type: [`TrackSize`](#tracksize) or `{repeat: …}` (`integer` or `"auto-fill"` \| `"auto-fit"`)
+
+### PageFilter
+
+Pages that show the node, by physical page number (as the `pageNumber` placeholder). The node keeps its place in the layout on every page; it is only painted on the matching ones.
+
+Type: `"first"` \| `"last"` \| `"notFirst"` \| `"notLast"` \| `"odd"` \| `"even"` or array of `integer`

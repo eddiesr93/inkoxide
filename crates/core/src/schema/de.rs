@@ -11,7 +11,8 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    ImageFit, ImageSource, Node, NodeKind, OptEdges, Style, Table, TableRow, TextRun,
+    ImageFit, ImageSource, Node, NodeKind, OptEdges, PageFilter, PagePattern, Style, Table,
+    TableRow, TextRun,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -189,6 +190,27 @@ impl<'de> Deserialize<'de> for BorderStyles {
             fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<BorderStyles, A::Error> {
                 OptEdges::<BorderStyle>::deserialize(de::value::MapAccessDeserializer::new(map))
                     .map(BorderStyles::Sides)
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for PageFilter {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = PageFilter;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("\"first\", \"last\", \"notFirst\", \"notLast\", \"odd\", \"even\" or an array of page numbers")
+            }
+            fn visit_str<E: de::Error>(self, s: &str) -> Result<PageFilter, E> {
+                PagePattern::deserialize(de::value::StrDeserializer::<E>::new(s))
+                    .map(PageFilter::Pattern)
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<PageFilter, A::Error> {
+                Vec::<i32>::deserialize(de::value::SeqAccessDeserializer::new(seq))
+                    .map(|v| PageFilter::List(v.into_boxed_slice()))
             }
         }
         d.deserialize_any(V)
@@ -406,6 +428,7 @@ pub struct RawNode {
     brk: Option<Break>,
     link: Option<Box<str>>,
     bookmark: Option<Box<Bookmark>>,
+    pages: Option<Box<PageFilter>>,
     children: Option<Vec<Node>>,
     runs: Option<Vec<TextRun>>,
     src: Option<String>,
@@ -450,6 +473,7 @@ impl TryFrom<RawNode> for Node {
             ("break", r.brk.is_some()),
             ("link", r.link.is_some()),
             ("bookmark", r.bookmark.is_some()),
+            ("pages", r.pages.is_some()),
             ("children", r.children.is_some()),
             ("runs", r.runs.is_some()),
             ("src", r.src.is_some()),
@@ -460,20 +484,23 @@ impl TryFrom<RawNode> for Node {
             ("rows", r.rows.is_some()),
         ];
         let allowed: &[&str] = match r.ty {
-            NodeType::Box => &["style", "break", "link", "bookmark", "children"],
-            NodeType::Text => &["style", "break", "link", "bookmark", "runs"],
-            NodeType::Image => &["style", "break", "link", "bookmark", "src", "data", "fit"],
+            NodeType::Box => &["style", "break", "link", "bookmark", "pages", "children"],
+            NodeType::Text => &["style", "break", "link", "bookmark", "pages", "runs"],
+            NodeType::Image => &[
+                "style", "break", "link", "bookmark", "pages", "src", "data", "fit",
+            ],
             NodeType::Table => &[
                 "style",
                 "break",
                 "link",
                 "bookmark",
+                "pages",
                 "columns",
                 "headerRows",
                 "rows",
             ],
             NodeType::PageBreak => &[],
-            NodeType::Spacer => &["style", "break", "link", "bookmark"],
+            NodeType::Spacer => &["style", "break", "link", "bookmark", "pages"],
         };
         if let Some((field, _)) = present.iter().find(|(f, set)| *set && !allowed.contains(f)) {
             return Err(format!(
@@ -520,6 +547,7 @@ impl TryFrom<RawNode> for Node {
             brk: r.brk.unwrap_or_default(),
             link: r.link,
             bookmark: r.bookmark,
+            pages: r.pages,
             kind,
         })
     }

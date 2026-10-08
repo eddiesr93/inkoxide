@@ -76,6 +76,9 @@ struct Paginator<'t, 'a, 'l> {
     lines: &'l mut dyn LineSource,
     h: f32,
     shift: f32,
+    /// Space kept free at the top of each new page (repeated table header
+    /// rows while a tall row splits).
+    reserve: f32,
     out: Placement,
 }
 
@@ -86,6 +89,7 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
         lines,
         h: page_h,
         shift: 0.0,
+        reserve: 0.0,
         out: Placement {
             page_h,
             pages: 1,
@@ -163,7 +167,7 @@ impl Paginator<'_, '_, '_> {
     /// Moves everything from paged `y` on to the next page.
     fn push(&mut self, y: f32) {
         if !self.at_page_top(y) {
-            self.shift += self.page_end(y) - y;
+            self.shift += self.page_end(y) - y + self.reserve;
         }
     }
 
@@ -219,10 +223,13 @@ impl Paginator<'_, '_, '_> {
         match &node.kind {
             NodeKind::Text { .. } => {
                 let (_, cy, cw, _) = g.content_box();
+                let (orphans, widows) = Self::orphans_widows(node);
                 match self.lines.lines(node, cw) {
-                    Some(l) if !l.lines.is_empty() => {
-                        let first = &l.lines[0];
-                        (cy - g.y) + first.top + first.height
+                    // Too short to leave `orphans` and carry `widows` lines:
+                    // it moves whole.
+                    Some(l) if l.lines.len() >= orphans + widows => {
+                        let last = &l.lines[orphans - 1];
+                        (cy - g.y) + last.top + last.height
                     }
                     _ => g.h,
                 }
@@ -353,8 +360,14 @@ impl Paginator<'_, '_, '_> {
             let g_h: f32 = t.row_h[group.clone()].iter().sum();
             let top = g_top + self.shift;
             let is_header = group.end <= t.header_rows;
+            // A single row taller than a page splits inside its cells.
+            let splits = !is_header && group.len() == 1 && g_h + header_h > self.h + EPS;
             if !is_header && (top - fresh_start).abs() > EPS {
-                let overflows = top + g_h > self.page_end(top) + EPS && !self.at_page_top(top);
+                let mut overflows = top + g_h > self.page_end(top) + EPS && !self.at_page_top(top);
+                if splits && top + self.row_head(first) <= self.page_end(top) + EPS {
+                    // It starts here if the first line of every cell fits.
+                    overflows = false;
+                }
                 // A group that lands exactly at the top of a later page
                 // (without being pushed) also needs room for the header.
                 let at_new_page =
@@ -367,10 +380,17 @@ impl Paginator<'_, '_, '_> {
                     };
                     self.shift += to_next + header_h;
                     fresh_start = g_top + self.shift;
-                    if g_h + header_h > self.h + EPS {
-                        tracing::warn!(height = g_h, "table row taller than a page is sliced");
-                    }
                 }
+            }
+            if splits {
+                self.split_row(first, header_h);
+                continue;
+            }
+            if !is_header && g_h + header_h > self.h + EPS {
+                tracing::warn!(
+                    height = g_h,
+                    "rows tied by a row span taller than a page are sliced"
+                );
             }
             for r in group.clone() {
                 self.set_subtree(rows[r]);
@@ -378,19 +398,98 @@ impl Paginator<'_, '_, '_> {
         }
     }
 
+    /// Height from a row's top to the end of the first unbreakable piece
+    /// of its tallest cell start.
+    fn row_head(&mut self, row: NodeIdx) -> f32 {
+        let row_y = self.tree.nodes[row as usize].geo.y;
+        let cells: Vec<NodeIdx> = self.tree.children(row).collect();
+        let mut need = 0.0f32;
+        for cell in cells {
+            if let Some(c) = self.tree.children(cell).find(|&c| self.in_flow(c)) {
+                let cy = self.tree.nodes[c as usize].geo.y;
+                need = need.max(cy - row_y + self.head(c));
+            }
+        }
+        need
+    }
+
+    /// Splits a row taller than a page inside its cells: each cell's
+    /// content paginates like a column from the row top, keeping room for
+    /// the repeated header rows; the row ends below the longest cell.
+    fn split_row(&mut self, row: NodeIdx, header_h: f32) {
+        let start = self.shift;
+        let mut end = start;
+        let reserve = std::mem::replace(&mut self.reserve, header_h);
+        let cells: Vec<NodeIdx> = self.tree.children(row).collect();
+        for &cell in &cells {
+            self.shift = start;
+            self.out.shift_top[cell as usize] = start;
+            let kids: Vec<NodeIdx> = self.tree.children(cell).collect();
+            for c in kids {
+                if self.in_flow(c) {
+                    self.place(c);
+                } else {
+                    let s = self.shift;
+                    self.shift = start;
+                    self.set_subtree(c);
+                    self.shift = s;
+                }
+            }
+            end = end.max(self.shift);
+        }
+        self.reserve = reserve;
+        for &cell in &cells {
+            self.out.shift_bottom[cell as usize] = end;
+        }
+        self.out.shift_top[row as usize] = start;
+        self.out.shift_bottom[row as usize] = end;
+        self.shift = end;
+    }
+
+    /// `(orphans, widows)` of a text node, at least 1 each.
+    fn orphans_widows(node: &Node) -> (usize, usize) {
+        let get = |v: Option<u32>| v.unwrap_or(1).max(1) as usize;
+        (get(node.style.orphans), get(node.style.widows))
+    }
+
+    /// Places a paragraph line by line. A break before line `k` moves up
+    /// when fewer than `widows` lines would follow it, as long as the page
+    /// keeps `orphans` lines (CSS Fragmentation §4.4).
     fn split_text(&mut self, i: NodeIdx, node: &Node) {
         let g = self.tree.nodes[i as usize].geo;
         let (_, cy, cw, _) = g.content_box();
         let Some(layout) = self.lines.lines(node, cw) else {
             return;
         };
-        let mut shifts = Vec::with_capacity(layout.lines.len());
-        for line in &layout.lines {
-            let top = cy + line.top + self.shift;
-            if top + line.height > self.page_end(top) + EPS && !self.at_page_top(top) {
-                self.push(top);
+        let (orphans, widows) = Self::orphans_widows(node);
+        let lines = &layout.lines;
+        let n = lines.len();
+        let mut shifts: Vec<f32> = Vec::with_capacity(n);
+        // First line on the current page.
+        let mut chunk = 0usize;
+        let mut k = 0usize;
+        while k < n {
+            let top = cy + lines[k].top + self.shift;
+            let overflows =
+                top + lines[k].height > self.page_end(top) + EPS && !self.at_page_top(top);
+            // A line that lands exactly on a later page top breaks too.
+            let new_page = k > chunk
+                && self.page_of(top) > self.page_of(cy + lines[k - 1].top + shifts[k - 1]);
+            if overflows || new_page {
+                let wanted = n.saturating_sub(widows);
+                if wanted < k && wanted >= chunk + orphans {
+                    // Carry more lines over: replay from the earlier break.
+                    self.shift = shifts[wanted];
+                    shifts.truncate(wanted);
+                    k = wanted;
+                    self.push(cy + lines[k].top + self.shift);
+                } else if overflows {
+                    self.push(top);
+                }
+                chunk = k;
             }
             shifts.push(self.shift);
+            k += 1;
         }
         self.out.line_shifts[i as usize] = shifts;
     }

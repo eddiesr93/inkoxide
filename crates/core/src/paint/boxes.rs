@@ -48,12 +48,14 @@ pub(crate) enum FlowPart<'p> {
 }
 
 /// Paints part of `tree`. `dx`/`dy` translate flow (or paged) coordinates
-/// to page coordinates.
+/// to page coordinates; `numbers` is the physical page number and the
+/// page count, for nodes shown on some pages only.
 pub(crate) fn paint_flow(
     tree: &Tree<'_>,
     part: FlowPart<'_>,
     dx: f32,
     dy: f32,
+    numbers: (u32, u32),
     content: &mut dyn ContentPainter,
     ops: &mut Vec<Op>,
 ) {
@@ -69,6 +71,7 @@ pub(crate) fn paint_flow(
         dx,
         dy,
         override_shift: None,
+        numbers,
         opacity: 1.0,
         content,
         ops,
@@ -101,6 +104,8 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
     /// Paints a subtree at a fixed shift, ignoring pagination (repeated
     /// table header rows).
     override_shift: Option<f32>,
+    /// Physical page number and page count.
+    numbers: (u32, u32),
     /// Cumulative opacity of the ancestors.
     opacity: f32,
     content: &'c mut dyn ContentPainter,
@@ -125,6 +130,11 @@ impl BoxPainter<'_, '_, '_, '_> {
         let s = &node.style;
         if s.display == Some(Display::None) {
             return;
+        }
+        if let Some(f) = &node.pages {
+            if !f.shows(self.numbers.0, self.numbers.1) {
+                return;
+            }
         }
         let window = match self.placement {
             Some(_) if self.override_shift.is_some() => None,
@@ -263,6 +273,17 @@ impl BoxPainter<'_, '_, '_, '_> {
         }
     }
 
+    /// Growth of table row `r` from splitting it across pages.
+    fn row_extra(&self, rows: &[NodeIdx], r: usize) -> f32 {
+        match (self.override_shift, self.placement) {
+            (None, Some(pl)) => {
+                let i = rows[r] as usize;
+                pl.shift_bottom[i] - pl.shift_top[i]
+            }
+            _ => 0.0,
+        }
+    }
+
     fn row_visible(&self, rows: &[NodeIdx], r: usize) -> bool {
         match (self.override_shift, self.placement) {
             (None, Some(pl)) => pl.on_page(rows[r], self.page),
@@ -291,16 +312,19 @@ impl BoxPainter<'_, '_, '_, '_> {
             .map_or(lo, |r| r + 1);
         let visible = |r: usize| r >= lo && r < hi && in_page(r);
         let shift = |r: usize| self.row_shift(&rows, r);
+        let extra = |r: usize| self.row_extra(&rows, r);
+        // Shift of the bottom of row `r`.
+        let bshift = |r: usize| shift(r) + extra(r);
         let (cx, cy, _, _) = g.content_box();
         let (ox, oy) = (cx + self.dx, cy + self.dy);
 
         let mut fills = Vec::new();
         let first_cell = t.cells.partition_point(|c| c.row < lo);
         if t.separate {
-            let cells: Vec<(usize, f32)> = (first_cell..t.cells.len())
+            let cells: Vec<(usize, f32, f32)> = (first_cell..t.cells.len())
                 .take_while(|&k| t.cells[k].row < hi)
                 .filter(|&k| visible(t.cells[k].row))
-                .map(|k| (k, shift(t.cells[k].row)))
+                .map(|k| (k, shift(t.cells[k].row), extra(t.cells[k].row)))
                 .collect();
             self.separate_cells(t, &rows, &cells, ox, oy);
             return;
@@ -311,7 +335,13 @@ impl BoxPainter<'_, '_, '_, '_> {
             }
             if let Part::Row(row) = self.tree.nodes[row_idx as usize].part {
                 if let Some(bg) = row.background_color.filter(|c| c[3] > 0.0) {
-                    fills.push((ox, oy + t.row_y[r] + shift(r), t.width, t.row_h[r], bg));
+                    fills.push((
+                        ox,
+                        oy + t.row_y[r] + shift(r),
+                        t.width,
+                        t.row_h[r] + extra(r),
+                        bg,
+                    ));
                 }
             }
         }
@@ -325,7 +355,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                     ox + cell.x,
                     oy + cell.y + shift(cell.row),
                     cell.w,
-                    cell.h,
+                    cell.h + extra(cell.row),
                     bg,
                 ));
             }
@@ -344,13 +374,13 @@ impl BoxPainter<'_, '_, '_, '_> {
                 if visible(n - 1) {
                     fills.push((
                         x,
-                        oy + t.row_y[n - 1] + t.row_h[n - 1] - e.width + shift(n - 1),
+                        oy + t.row_y[n - 1] + t.row_h[n - 1] - e.width + bshift(n - 1),
                         w,
                         e.width,
                         e.color,
                     ));
                 }
-            } else if (shift(l - 1) - shift(l)).abs() < 1e-3 {
+            } else if (bshift(l - 1) - shift(l)).abs() < 1e-3 {
                 if visible(l - 1) || visible(l) {
                     fills.push((
                         x,
@@ -366,7 +396,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 if visible(l - 1) {
                     fills.push((
                         x,
-                        oy + t.row_y[l] - e.width + shift(l - 1),
+                        oy + t.row_y[l] - e.width + bshift(l - 1),
                         w,
                         e.width,
                         e.color,
@@ -394,7 +424,8 @@ impl BoxPainter<'_, '_, '_, '_> {
             } else {
                 lx - e.width / 2.0
             };
-            let h: f32 = t.row_h[e.row..e.row + e.rows].iter().sum();
+            let h: f32 = t.row_h[e.row..e.row + e.rows].iter().sum::<f32>()
+                + (e.row..e.row + e.rows).map(extra).sum::<f32>();
             fills.push((
                 ox + x,
                 oy + t.row_y[e.row] + shift(e.row),
@@ -410,19 +441,20 @@ impl BoxPainter<'_, '_, '_, '_> {
 
     /// Separate borders: each visible cell paints the row background, its
     /// own background and its own borders, with its `borderRadius`.
-    /// `cells`: (index into `t.cells`, row shift) of the visible cells.
+    /// `cells`: (index into `t.cells`, row shift, row growth) of the
+    /// visible cells.
     fn separate_cells(
         &mut self,
         t: &TableLayout,
         rows: &[NodeIdx],
-        cells: &[(usize, f32)],
+        cells: &[(usize, f32, f32)],
         ox: f32,
         oy: f32,
     ) {
-        for &(k, shift) in cells {
+        for &(k, shift, extra) in cells {
             let cell = &t.cells[k];
             let style = self.tree.nodes[cell.idx as usize].style();
-            let (x, y, w, h) = (ox + cell.x, oy + cell.y + shift, cell.w, cell.h);
+            let (x, y, w, h) = (ox + cell.x, oy + cell.y + shift, cell.w, cell.h + extra);
             let radii = radii(style, w, h);
             let row_bg = match self.tree.nodes[rows[cell.row] as usize].part {
                 Part::Row(row) => row.background_color,
@@ -454,8 +486,11 @@ impl BoxPainter<'_, '_, '_, '_> {
             return;
         };
         let (_, cy, _, _) = g.content_box();
-        let first_top = cy + t.row_y[first] + pl.shift_top[rows[first] as usize];
-        if (first_top - (page_top + t.header_height())).abs() > crate::paginate::EPS {
+        let fr = rows[first] as usize;
+        let first_top = cy + t.row_y[first] + pl.shift_top[fr];
+        // A row split across pages continues below a repeated header.
+        let continued = pl.page_range[fr].0 < self.page && pl.shift_bottom[fr] > pl.shift_top[fr];
+        if !continued && (first_top - (page_top + t.header_height())).abs() > crate::paginate::EPS {
             return;
         }
         let shift = page_top - (cy + t.row_y[0]);

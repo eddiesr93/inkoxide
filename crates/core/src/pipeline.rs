@@ -264,6 +264,7 @@ fn paint_page(
             color: bg,
         });
     }
+    let nums = (numbers.current, numbers.total);
     let mut painter = Content {
         text: TextPainter {
             cache: text,
@@ -287,6 +288,7 @@ fn paint_page(
         },
         m.left,
         dy,
+        nums,
         &mut painter,
         &mut page.ops,
     );
@@ -300,12 +302,21 @@ fn paint_page(
             },
             m.left,
             dy,
+            nums,
             &mut painter,
             &mut page.ops,
         );
     }
     if let Some(header) = &l.header {
-        paint::paint_flow(header, FlowPart::All, 0.0, 0.0, &mut painter, &mut page.ops);
+        paint::paint_flow(
+            header,
+            FlowPart::All,
+            0.0,
+            0.0,
+            nums,
+            &mut painter,
+            &mut page.ops,
+        );
     }
     if let Some(footer) = &l.footer {
         let fh = footer.nodes[0].geo.h;
@@ -314,6 +325,7 @@ fn paint_page(
             FlowPart::All,
             0.0,
             ph - fh,
+            nums,
             &mut painter,
             &mut page.ops,
         );

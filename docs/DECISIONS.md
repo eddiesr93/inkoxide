@@ -1085,3 +1085,36 @@ asked for CSS text features React PDF users rely on.
 - Limitations: no explicit isolates in the schema (use Unicode controls
   in the text); no vertical text; justification spreads spaces only (no
   kashida).
+
+## ADR-047 — Widows and orphans, splitting tall table rows, page filters (v1.1)
+
+**Context.** Paragraphs could leave single lines at a page edge, a table
+row taller than a page was sliced through its text, and templates had no
+way to show different content on the first or last page (React PDF's
+`render` prop and `fixed` variants).
+**Decision.**
+- `orphans`/`widows` (text only, default 1, so existing documents
+  paginate as before). The head of a paragraph is its first `orphans`
+  lines; a paragraph shorter than `orphans + widows` lines moves whole.
+  When a break would leave fewer than `widows` lines after it, the break
+  moves up if the page keeps at least `orphans` lines, replaying the
+  per-line shifts from there (still one pass, bounded by `widows`).
+- A table row group of one row that is taller than a page splits: each
+  cell's content paginates like a column from the row top, with the
+  repeated header height reserved at the top of every continuation page;
+  the row ends below its longest cell. Row and cell backgrounds and
+  vertical borders grow with the row and are sliced by the page clip
+  (`box-decoration-break: slice`). The row starts where it is when the
+  first line of every cell fits. Groups tied by row spans are still
+  sliced (with a warning).
+- `pages` on nodes is a paint-only filter on physical page numbers
+  (patterns or a list, negative from the end). The node keeps its layout
+  space on every page, so overlapping variants (a grid cell with one
+  child per variant) cost nothing. A client can evaluate per-page
+  content in two passes: render, read the page count, then emit one
+  variant per page.
+- Fixed a measurement bug found on the way: Taffy passes leaf measures
+  the *border-box* known width, and text and tables wrapped at it,
+  ignoring horizontal padding and borders, so their boxes were too short
+  and content overflowed. Measures now use the content-box available
+  width. No existing fixture changed.

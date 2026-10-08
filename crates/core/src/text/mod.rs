@@ -472,10 +472,12 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         let NodeKind::Text { runs } = &node.kind else {
             return TSize::ZERO;
         };
-        let width = match (known.width, available.width) {
-            (Some(w), _) | (None, AvailableSpace::Definite(w)) => w,
-            (None, AvailableSpace::MaxContent) => f32::INFINITY,
-            (None, AvailableSpace::MinContent) => {
+        // Taffy's `known` is the border box; `available` is already the
+        // content box (the known width minus padding and border).
+        let width = match available.width {
+            AvailableSpace::Definite(w) => w,
+            AvailableSpace::MaxContent => f32::INFINITY,
+            AvailableSpace::MinContent => {
                 let e = self.entry(node, runs);
                 if e.style.ellipsis {
                     // Truncating text can shrink to (almost) nothing.

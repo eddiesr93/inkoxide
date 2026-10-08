@@ -273,6 +273,73 @@ fn text_splits_between_lines() {
     check_invariants(&tree, &p);
 }
 
+/// Page of each line of a paragraph placed after a box `before` tall.
+fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
+    use crate::fonts::FontSet;
+    use crate::text::{RustybuzzShaper, TextCache};
+    let mut store = crate::FontStore::new();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/Inter-Regular.ttf"
+    ))
+    .unwrap();
+    store.register("Inter-Regular", bytes).unwrap();
+    let para = "lorem ".repeat(words);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[
+            {{"type":"box","style":{{"height":{before}}}}},
+            {{"type":"text","style":{{"lineHeight":1.5{text_style}}},"runs":[{{"text":"{para}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 200.0, H, &mut cache)
+        .unwrap();
+    let p = paginate(&tree, H, &mut cache);
+    let node = tree.nodes[2].node.unwrap();
+    let (_, cy, cw, _) = tree.nodes[2].geo.content_box();
+    let layout = cache.layout(node, cw).unwrap();
+    let shifts = &p.line_shifts[2];
+    if shifts.is_empty() {
+        let pg = page(rect(&tree, &p, 2).0);
+        return vec![pg; layout.lines.len()];
+    }
+    layout
+        .lines
+        .iter()
+        .zip(shifts)
+        .map(|(l, s)| page(cy + l.top + s))
+        .collect()
+}
+
+fn count(pages: &[u32], pg: u32) -> usize {
+    pages.iter().filter(|&&p| p == pg).count()
+}
+
+#[test]
+fn widows_and_orphans_move_the_break() {
+    // 15 pt lines; 70 pt box leaves room for two lines on page 0.
+    // ~15 words of "lorem " make three lines at 200 pt.
+    let base = line_pages(70.0, "", 15);
+    assert_eq!(base.len(), 3, "fixture text is three lines");
+    assert_eq!((count(&base, 0), count(&base, 1)), (2, 1));
+
+    let w = line_pages(70.0, r#","widows":2"#, 15);
+    assert_eq!((count(&w, 0), count(&w, 1)), (1, 2));
+
+    // Three lines cannot keep two on each side: the paragraph moves.
+    let ow = line_pages(70.0, r#","widows":2,"orphans":2"#, 15);
+    assert_eq!((count(&ow, 0), count(&ow, 1)), (0, 3));
+
+    // Orphans alone: one line fits at the bottom (85 pt box), so it moves.
+    let o = line_pages(85.0, r#","orphans":2"#, 15);
+    assert_eq!(count(&o, 0), 0);
+    let o1 = line_pages(85.0, "", 15);
+    assert_eq!(count(&o1, 0), 1);
+}
+
 #[test]
 fn tables_split_between_rows_and_reserve_header_space() {
     let rows: Vec<String> = (0..40)
@@ -300,4 +367,39 @@ fn tables_split_between_rows_and_reserve_header_space() {
         }
     }
     check_invariants(&t, &p);
+}
+
+#[test]
+fn horizontal_padding_narrows_measured_text() {
+    // Regression: Taffy hands leaf measures the border-box width; text
+    // must wrap at the content width, or it overflows its box.
+    use crate::fonts::FontSet;
+    use crate::text::{RustybuzzShaper, TextCache};
+    let mut store = crate::FontStore::new();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/Inter-Regular.ttf"
+    ))
+    .unwrap();
+    store.register("Inter-Regular", bytes).unwrap();
+    let para = "lorem ".repeat(60);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[
+            {{"type":"text","style":{{"padding":{{"left":100}},"borderWidth":{{"right":4}}}},"runs":[{{"text":"{para}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 200.0, H, &mut cache)
+        .unwrap();
+    let (_, _, cw, ch) = tree.nodes[1].geo.content_box();
+    assert!((cw - 96.0).abs() < 0.01);
+    let layout = cache.layout(tree.nodes[1].node.unwrap(), cw).unwrap();
+    assert!(
+        (ch - layout.height).abs() < 0.01,
+        "box {ch} vs lines {}",
+        layout.height
+    );
 }
