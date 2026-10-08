@@ -12,7 +12,6 @@ const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
 /// What a leaf painter needs to know about the node it paints.
 pub(crate) struct ContentCtx<'p> {
-    pub idx: NodeIdx,
     /// Translation from flow coordinates to page coordinates, horizontally.
     pub dx: f32,
     /// Translation from paged coordinates to page coordinates, vertically.
@@ -219,7 +218,6 @@ impl BoxPainter<'_, '_, '_, '_> {
         }
 
         let ctx = ContentCtx {
-            idx: i,
             dx: self.dx,
             dy: self.dy,
             shift,
@@ -299,7 +297,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             if !visible(r) {
                 continue;
             }
-            if let Part::Row(row, _) = self.tree.nodes[row_idx as usize].part {
+            if let Part::Row(row) = self.tree.nodes[row_idx as usize].part {
                 if let Some(bg) = row.background_color.filter(|c| c[3] > 0.0) {
                     fills.push((ox, oy + t.row_y[r] + shift(r), t.width, t.row_h[r], bg));
                 }
@@ -418,7 +416,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 _ => NO_RADII,
             };
             let row_bg = match self.tree.nodes[rows[cell.row] as usize].part {
-                Part::Row(row, _) => row.background_color,
+                Part::Row(row) => row.background_color,
                 _ => None,
             };
             for bg in [row_bg, style.background_color].into_iter().flatten() {
@@ -466,7 +464,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 path,
                 color,
                 rule: FillRule::NonZero,
-            })
+            });
         });
     }
 
@@ -533,7 +531,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                     path: ring,
                     color,
                     rule: FillRule::EvenOdd,
-                })
+                });
             });
             return;
         }
@@ -548,7 +546,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                         path,
                         color,
                         rule: FillRule::NonZero,
-                    })
+                    });
                 });
             }
             return;
@@ -569,7 +567,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                         path,
                         color,
                         rule: FillRule::NonZero,
-                    })
+                    });
                 });
             }
         } else {
@@ -614,7 +612,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 color,
                 width,
                 dash,
-            })
+            });
         });
     }
 }

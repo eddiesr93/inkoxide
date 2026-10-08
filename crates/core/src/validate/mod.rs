@@ -13,9 +13,9 @@ use serde::Deserialize;
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
-    is_area_name, parse_areas, Bookmark, BorderCollapse, Color, Display, Document, GridTrack,
-    Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, RepeatCount, Style, Table, TextRun,
-    TrackBreadth, TrackSize, SCHEMA_VERSION,
+    is_area_name, parse_areas, Bookmark, BorderCollapse, Break, Color, Display, Document,
+    GridTrack, Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, RepeatCount, Style,
+    Table, TextRun, TrackBreadth, TrackSize, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -58,28 +58,29 @@ fn trailing_bytes() -> ValidationError {
 }
 
 fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
+    use rmp_serde::decode::Error as E;
+
     let mut de = msgpack_de(doc);
     if let Ok(d) = Document::deserialize(&mut de) {
-        return match de.position() as usize == doc.len() {
-            true => Ok(d),
-            false => Err(trailing_bytes()),
+        return if de.position() as usize == doc.len() {
+            Ok(d)
+        } else {
+            Err(trailing_bytes())
         };
     }
     let mut de = msgpack_de(doc);
-    let err = match serde_path_to_error::deserialize::<_, Document>(&mut de) {
-        Ok(_) => return Err(trailing_bytes()),
-        Err(e) => e,
+    let Err(err) = serde_path_to_error::deserialize::<_, Document>(&mut de) else {
+        return Err(trailing_bytes());
     };
     if let Some(v) = probe_version_msgpack(doc) {
-        if v != SCHEMA_VERSION as i64 {
+        if v != i64::from(SCHEMA_VERSION) {
             return Err(unsupported_version(&v.to_string()));
         }
     }
     let path = format_path(err.path());
-    use rmp_serde::decode::Error as E;
     match err.into_inner() {
         // Messages from serde itself and from our deserialisers.
-        E::Syntax(msg) => Err(classify(path, msg)),
+        E::Syntax(msg) => Err(classify(path, &msg)),
         // A reserved marker (0xc1) is malformed input, not a type error.
         E::TypeMismatch(marker) if !path.is_empty() && format!("{marker:?}") != "Reserved" => {
             Err(ValidationError {
@@ -114,7 +115,7 @@ fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
     let result: Result<Document, _> = serde_path_to_error::deserialize(&mut de);
     let err = match result {
         Ok(d) => {
-            return de.end().map(|_| d).map_err(|e| ValidationError {
+            return de.end().map(|()| d).map_err(|e| ValidationError {
                 code: Code::ParseError,
                 path: String::new(),
                 message: e.to_string(),
@@ -145,7 +146,7 @@ fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
             message: msg,
         });
     }
-    Err(classify(path, msg))
+    Err(classify(path, &msg))
 }
 
 fn probe_version(doc: &[u8]) -> Option<serde_json::Value> {
@@ -169,7 +170,7 @@ fn unsupported_version(found: &str) -> ValidationError {
 fn format_path(path: &serde_path_to_error::Path) -> String {
     use serde_path_to_error::Segment;
     let mut out = String::new();
-    for seg in path.iter() {
+    for seg in path {
         match seg {
             Segment::Seq { index } => {
                 let _ = write!(out, "[{index}]");
@@ -197,7 +198,7 @@ fn backticked(msg: &str) -> Option<&str> {
 
 /// Maps a serde message to a structured error. Our own deserialisers prefix
 /// messages with `[CODE]` or `[CODE@field]`.
-fn classify(mut path: String, msg: String) -> ValidationError {
+fn classify(mut path: String, msg: &str) -> ValidationError {
     if let Some(rest) = msg.strip_prefix('[') {
         if let Some(end) = rest.find(']') {
             let (tag, message) = (&rest[..end], rest[end + 1..].trim_start());
@@ -218,9 +219,9 @@ fn classify(mut path: String, msg: String) -> ValidationError {
         }
     }
     let (code, field) = if msg.starts_with("unknown field") {
-        (Code::UnknownField, backticked(&msg))
+        (Code::UnknownField, backticked(msg))
     } else if msg.starts_with("missing field") {
-        (Code::MissingField, backticked(&msg))
+        (Code::MissingField, backticked(msg))
     } else if msg.starts_with("unknown variant")
         || msg.starts_with("invalid value")
         || msg.starts_with("invalid length")
@@ -236,7 +237,7 @@ fn classify(mut path: String, msg: String) -> ValidationError {
         // list is misleading, so keep the message short.
         (Code::UnknownField, Some(f)) => format!("unknown field `{f}`"),
         (Code::MissingField, Some(f)) => format!("missing required field `{f}`"),
-        _ => msg.clone(),
+        _ => msg.to_string(),
     };
     // serde_path_to_error already ends the path at an unknown key.
     if let (Code::MissingField, Some(f)) = (code, field) {
@@ -370,7 +371,7 @@ impl<'a> Checker<'a> {
                         Code::InvalidValue,
                         Some("creationDate"),
                         format!("`{date}` is not an RFC 3339 timestamp"),
-                    )
+                    );
                 });
             }
         }
@@ -392,7 +393,7 @@ impl<'a> Checker<'a> {
                             format!("font `{}` is declared but no font data was registered under that id", f.id),
                         );
                     }
-                })
+                });
             });
             self.declared.insert(&f.id);
         }
@@ -404,8 +405,8 @@ impl<'a> Checker<'a> {
                             Code::UnknownFont,
                             None,
                             format!("fallback font `{id}` is not declared in `fonts`"),
-                        )
-                    })
+                        );
+                    });
                 });
             }
         }
@@ -423,7 +424,7 @@ impl<'a> Checker<'a> {
                         Code::OutOfRange,
                         Some(name),
                         format!("page {name} must be within (0, {MAX_PAGE_EDGE}] points"),
-                    )
+                    );
                 });
             }
         }
@@ -436,7 +437,7 @@ impl<'a> Checker<'a> {
         ] {
             if !(v >= 0.0) {
                 self.at("margin", false, |c| {
-                    c.err(Code::OutOfRange, Some(name), "margin must be non-negative")
+                    c.err(Code::OutOfRange, Some(name), "margin must be non-negative");
                 });
             }
         }
@@ -482,7 +483,7 @@ impl<'a> Checker<'a> {
                                 Code::InvalidValue,
                                 Some("gridArea"),
                                 format!("the parent's `gridTemplateAreas` has no area `{name}`"),
-                            )
+                            );
                         });
                     }
                 });
@@ -508,7 +509,7 @@ impl<'a> Checker<'a> {
                         Code::StyleNotApplicable,
                         Some(p),
                         format!("`{p}` only applies to tables"),
-                    )
+                    );
                 });
             }
         }
@@ -521,7 +522,7 @@ impl<'a> Checker<'a> {
                     Code::InvalidValue,
                     Some("borderSpacing"),
                     "`borderSpacing` requires `borderCollapse: \"separate\"`",
-                )
+                );
             });
         }
         if let Some(v) = node.brk.min_presence_ahead {
@@ -531,11 +532,11 @@ impl<'a> Checker<'a> {
                         Code::OutOfRange,
                         Some("minPresenceAhead"),
                         "must be non-negative",
-                    )
+                    );
                 });
             }
         }
-        if ctx != Ctx::Flow && node.brk != Default::default() {
+        if ctx != Ctx::Flow && node.brk != Break::default() {
             self.err(Code::InvalidValue, Some("break"), "pagination controls only apply to flowing content, not inside headers, footers or table cells");
         }
         if let Some(link) = &node.link {
@@ -559,7 +560,7 @@ impl<'a> Checker<'a> {
                             Code::InvalidValue,
                             Some("ellipsis"),
                             "`ellipsis` requires `maxLines`",
-                        )
+                        );
                     });
                 }
             }
@@ -810,7 +811,7 @@ impl<'a> Checker<'a> {
                                     }
                                 });
                                 c.children(Some(&cell.style), &cell.children, Ctx::Cell);
-                            })
+                            });
                         });
                     }
                     while col < ncols && carry[col] > 0 {
@@ -823,10 +824,10 @@ impl<'a> Checker<'a> {
                             format!("row covers {col} of {ncols} columns"),
                         );
                     }
-                    for v in carry.iter_mut() {
+                    for v in &mut carry {
                         *v = v.saturating_sub(1);
                     }
-                })
+                });
             }
         });
     }
@@ -852,7 +853,7 @@ impl<'a> Checker<'a> {
     fn length(&mut self, field: &str, v: Option<Length>, allow_negative: bool) {
         match v {
             Some(Length::Points(p) | Length::Percent(p)) if !allow_negative && p < 0.0 => {
-                self.err(Code::OutOfRange, Some(field), "must be non-negative")
+                self.err(Code::OutOfRange, Some(field), "must be non-negative");
             }
             _ => {}
         }
@@ -1000,7 +1001,7 @@ impl<'a> Checker<'a> {
             };
             if sizes.iter().any(|t| !track_non_neg(t)) {
                 self.at(i, true, |c| {
-                    c.err(Code::OutOfRange, None, "track sizes must be non-negative")
+                    c.err(Code::OutOfRange, None, "track sizes must be non-negative");
                 });
             }
             if auto {
@@ -1011,7 +1012,7 @@ impl<'a> Checker<'a> {
                             Code::InvalidValue,
                             Some("repeat"),
                             "only one auto-fill / auto-fit repeat is allowed per track list",
-                        )
+                        );
                     });
                 } else if sizes.iter().all(|t| fixed_size(t).is_some())
                     && !sizes.iter().any(|t| fixed_size(t).is_some_and(|v| v > 0.0))
@@ -1021,7 +1022,7 @@ impl<'a> Checker<'a> {
                             Code::InvalidValue,
                             Some("tracks"),
                             "an auto-fill / auto-fit repeat needs a track with a positive fixed size",
-                        )
+                        );
                     });
                 }
             }

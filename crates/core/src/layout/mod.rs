@@ -43,10 +43,6 @@ pub(crate) struct Geometry {
 }
 
 impl Geometry {
-    pub fn bottom(&self) -> f32 {
-        self.y + self.h
-    }
-
     /// Content box `(x, y, w, h)`.
     pub fn content_box(&self) -> (f32, f32, f32, f32) {
         let [t, r, b, l] = self.border;
@@ -72,8 +68,8 @@ pub(crate) enum Part<'a> {
     /// The synthetic root (the page content box, or a header/footer band).
     Root,
     Node(&'a Node),
-    /// A table row (its index within the table).
-    Row(&'a TableRow, u32),
+    /// A table row.
+    Row(&'a TableRow),
     Cell(&'a TableCell),
 }
 
@@ -138,17 +134,14 @@ impl<'a> Tree<'a> {
                 Part::Root => nodes.extend(root_children.iter().map(|k| new(Part::Node(k), i))),
                 Part::Node(n) => match &n.kind {
                     NodeKind::Box { children } => {
-                        nodes.extend(children.iter().map(|k| new(Part::Node(k), i)))
+                        nodes.extend(children.iter().map(|k| new(Part::Node(k), i)));
                     }
-                    NodeKind::Table(t) => nodes.extend(
-                        t.rows
-                            .iter()
-                            .enumerate()
-                            .map(|(ri, r)| new(Part::Row(r, ri as u32), i)),
-                    ),
+                    NodeKind::Table(t) => {
+                        nodes.extend(t.rows.iter().map(|r| new(Part::Row(r), i)));
+                    }
                     _ => {}
                 },
-                Part::Row(r, _) => nodes.extend(r.cells.iter().map(|c| new(Part::Cell(c), i))),
+                Part::Row(r) => nodes.extend(r.cells.iter().map(|c| new(Part::Cell(c), i))),
                 Part::Cell(c) => nodes.extend(c.children.iter().map(|k| new(Part::Node(k), i))),
             }
             nodes[i].children = start..nodes.len() as NodeIdx;
@@ -182,8 +175,10 @@ pub(crate) trait LeafMeasure {
 }
 
 /// Leaves with no intrinsic content (empty boxes, spacers, page breaks).
+#[cfg(test)]
 pub(crate) struct NoContent;
 
+#[cfg(test)]
 impl LeafMeasure for NoContent {
     fn measure(&mut self, _: &Node, _: TSize<Option<f32>>, _: TSize<AvailableSpace>) -> TSize<f32> {
         TSize::ZERO
@@ -206,6 +201,7 @@ pub(crate) trait LayoutEngine {
 
 pub(crate) struct TaffyLayout;
 
+#[expect(clippy::needless_pass_by_value, reason = "a `map_err` adapter")]
 fn layout_err(e: taffy::TaffyError) -> InkoxideError {
     InkoxideError::Layout(e.to_string())
 }

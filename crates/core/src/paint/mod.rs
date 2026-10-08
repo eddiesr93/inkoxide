@@ -78,7 +78,7 @@ pub(crate) enum Op {
         dash: Option<Dash>,
     },
     Text(TextOp),
-    /// Draws an image XObject with its unit square mapped by `matrix`.
+    /// Draws an image `XObject` with its unit square mapped by `matrix`.
     Image {
         key: crate::images::ImageKey,
         matrix: [f32; 6],

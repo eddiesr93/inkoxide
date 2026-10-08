@@ -211,7 +211,7 @@ fn apply_ellipsis(
             None => return,
         },
     };
-    let ell_w = font.advance(gid) * font.scale(size) * count as f32;
+    let ell_w = font.advance(gid) * font.scale(size) * f32::from(count);
     let mut e = line.end as usize;
     while e > s
         && (prefix[e] - prefix[s] + ell_w > max_width + EPS
@@ -231,7 +231,7 @@ fn apply_ellipsis(
         run: seg.run,
         glyph: gid,
         count,
-        advance: ell_w / count as f32,
+        advance: ell_w / f32::from(count),
     });
 }
 
@@ -252,15 +252,12 @@ fn metrics(
         let scale = run.size / m.units_per_em;
         let asc = m.ascender * scale;
         let desc = -m.descender * scale;
-        let (a, b) = match style.line_height {
-            Some(lh) => {
-                let half_leading = (lh * run.size - (asc + desc)) / 2.0;
-                (asc + half_leading, desc + half_leading)
-            }
-            None => {
-                let gap = m.line_gap * scale / 2.0;
-                (asc + gap, desc + gap)
-            }
+        let (a, b) = if let Some(lh) = style.line_height {
+            let half_leading = (lh * run.size - (asc + desc)) / 2.0;
+            (asc + half_leading, desc + half_leading)
+        } else {
+            let gap = m.line_gap * scale / 2.0;
+            (asc + gap, desc + gap)
         };
         above = above.max(a);
         below = below.max(b);

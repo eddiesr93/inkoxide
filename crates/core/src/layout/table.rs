@@ -26,14 +26,18 @@ use crate::InkoxideError;
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
+// Indices into `[top, right, bottom, left]` arrays.
+const TOP: usize = 0;
+const RIGHT: usize = 1;
+const BOTTOM: usize = 2;
+const LEFT: usize = 3;
+
 /// A cell's box, relative to the table's content box.
 #[derive(Debug, Clone)]
 pub(crate) struct CellBox {
     pub idx: NodeIdx,
     pub row: usize,
-    pub col: usize,
     pub row_span: usize,
-    pub col_span: usize,
     pub x: f32,
     pub y: f32,
     pub w: f32,
@@ -94,7 +98,7 @@ impl TableLayout {
 struct Grid {
     cols: usize,
     rows: usize,
-    /// (arena idx, row, col, row_span, col_span) in document order.
+    /// (arena idx, row, col, `row_span`, `col_span`) in document order.
     cells: Vec<(NodeIdx, usize, usize, usize, usize)>,
     h_edges: Vec<HEdge>,
     v_edges: Vec<VEdge>,
@@ -158,10 +162,6 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
         (best.1 .0 > 0.0).then_some(best.1)
     };
 
-    const TOP: usize = 0;
-    const RIGHT: usize = 1;
-    const BOTTOM: usize = 2;
-    const LEFT: usize = 3;
     let mut h_edges = Vec::new();
     // Separate borders belong to their cells: no shared edges.
     let edge_rows = if separate { 0 } else { rows + 1 };
@@ -463,9 +463,7 @@ pub(crate) fn compute(
         .map(|(k, &(cidx, r, c, rs, cs))| CellBox {
             idx: cidx,
             row: r,
-            col: c,
             row_span: rs,
-            col_span: cs,
             x: col_x[c],
             y: row_y[r] + top_gap(r),
             w: span_w(c, cs),

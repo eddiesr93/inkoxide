@@ -153,7 +153,10 @@ fn falls_back_for_missing_glyphs() {
     let crate::schema::NodeKind::Text { runs } = &d.pages[0].children[0].kind else {
         panic!()
     };
-    let p = shaper.prepare(runs, &ParaStyle::from_style(&Default::default(), None));
+    let p = shaper.prepare(
+        runs,
+        &ParaStyle::from_style(&crate::schema::Style::default(), None),
+    );
     let fonts_used: Vec<_> = p.segments.iter().map(|s| s.font).collect();
     if fonts.get(inter).glyph('\u{20BF}').is_none() {
         assert_eq!(fonts_used, vec![inter, noto, inter]);

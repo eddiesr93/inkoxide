@@ -32,7 +32,7 @@ pub(crate) enum ImageBody {
         samples: Vec<u8>,
         alpha: Option<Vec<u8>>,
     },
-    /// A parsed SVG, written as a Form XObject with vector content.
+    /// A parsed SVG, written as a Form `XObject` with vector content.
     Svg(Arc<usvg::Tree>),
 }
 

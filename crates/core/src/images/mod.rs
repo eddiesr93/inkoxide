@@ -69,27 +69,38 @@ pub struct ImageStore {
 }
 
 impl ImageStore {
+    /// An empty store.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Adds (or replaces) image `id`. Bytes are checked when a document
+    /// uses them: [`crate::validate`] reports undecodable images.
     pub fn insert(&mut self, id: impl Into<String>, bytes: impl Into<Arc<[u8]>>) {
         self.images
             .insert(id.into(), Arc::new(ImageData::new(bytes.into())));
     }
 
-    pub fn remove(&mut self, id: &str) {
-        self.images.remove(id);
+    /// Removes image `id`; returns whether it was present.
+    pub fn remove(&mut self, id: &str) -> bool {
+        self.images.remove(id).is_some()
     }
 
+    /// Whether image `id` is present.
+    #[must_use]
     pub fn contains(&self, id: &str) -> bool {
         self.images.contains_key(id)
     }
 
+    /// Number of images.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.images.len()
     }
 
+    /// Whether the store holds no image.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.images.is_empty()
     }
@@ -111,17 +122,10 @@ pub(crate) struct ImageSet {
 }
 
 fn node_key(n: &Node) -> usize {
-    n as *const Node as usize
+    std::ptr::from_ref::<Node>(n) as usize
 }
 
 impl ImageSet {
-    pub fn empty() -> Self {
-        Self {
-            images: Vec::new(),
-            by_node: HashMap::new(),
-        }
-    }
-
     /// Resolves and decodes every image of the document. Assumes the
     /// document validated (sources exist, headers are sane).
     pub fn load(
@@ -174,7 +178,7 @@ impl ImageSet {
         for (i, (hash, d)) in unique.iter().enumerate() {
             let img = d
                 .decoded(decoder)
-                .map_err(|e| InkoxideError::Image(e.to_string()))?;
+                .map_err(|e| InkoxideError::Image(e.clone()))?;
             images.push(img);
             key_of.insert(*hash, i as ImageKey);
         }

@@ -37,7 +37,7 @@ struct Resources {
     /// Embed whole font programs instead of subsets.
     #[arg(long)]
     full_fonts: bool,
-    /// Read the document as MessagePack (implied by a .msgpack/.mpk extension).
+    /// Read the document as `MessagePack` (implied by a .msgpack/.mpk extension).
     #[arg(long)]
     msgpack: bool,
 }
@@ -268,7 +268,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
     }
 }
 
-/// MessagePack with `--msgpack` or a `.msgpack` / `.mpk` extension;
+/// `MessagePack` with `--msgpack` or a `.msgpack` / `.mpk` extension;
 /// JSON otherwise.
 fn format_of(doc: &Path, res: &Resources) -> InputFormat {
     match doc.extension().and_then(|e| e.to_str()) {

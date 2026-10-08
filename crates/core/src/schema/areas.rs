@@ -114,7 +114,7 @@ mod tests {
     use super::*;
 
     fn rows(r: &[&str]) -> Vec<String> {
-        r.iter().map(|s| s.to_string()).collect()
+        r.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]

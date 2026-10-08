@@ -162,7 +162,7 @@ impl PdfSink for PdfWriterSink {
                 opacities.entry(key).or_insert(Ref::new(1));
             }
         }
-        for (key, r) in opacities.iter_mut() {
+        for (key, r) in &mut opacities {
             *r = alloc.next();
             let a = f32::from(*key) / 1000.0;
             pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
@@ -190,7 +190,7 @@ impl PdfSink for PdfWriterSink {
                 program,
                 glyphs,
                 doc.unicode.fonts.get(key),
-            )?;
+            );
             font_refs.insert(*key, r);
         }
 
@@ -201,7 +201,7 @@ impl PdfSink for PdfWriterSink {
                 image_refs.entry(key).or_insert(Ref::new(1));
             }
         }
-        for (key, r) in image_refs.iter_mut() {
+        for (key, r) in &mut image_refs {
             *r = image::write_image(
                 &mut pdf,
                 &mut || alloc.next(),
@@ -500,7 +500,7 @@ pub(crate) fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError>
         Compression::new(level),
     );
     enc.write_all(data)
-        .and_then(|_| enc.finish())
+        .and_then(|()| enc.finish())
         .map_err(|e| InkoxideError::Pdf(format!("compression failed: {e}")))
 }
 
@@ -531,7 +531,7 @@ fn write_page_tree(pdf: &mut Pdf, alloc: &mut RefAlloc, pages: &[Ref]) -> PageTr
         .map(|c| (alloc.next(), c.to_vec(), c.len()))
         .collect();
     let leaf_parents: Vec<Ref> = level.iter().map(|n| n.0).collect();
-    let mut parent_of: std::collections::HashMap<Ref, Ref> = Default::default();
+    let mut parent_of = std::collections::HashMap::<Ref, Ref>::new();
     let mut nodes: Vec<(Ref, Vec<Ref>, usize)> = Vec::new();
     while level.len() > PAGE_TREE_FANOUT {
         let next: Vec<(Ref, Vec<Ref>, usize)> = level

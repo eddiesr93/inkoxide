@@ -249,7 +249,7 @@ fn render_refuses_invalid_documents() {
     let err = crate::render(
         doc(r#"{"type":"box","style":{"lineHeight":1}}"#).as_bytes(),
         InputFormat::Json,
-        &Default::default(),
+        &crate::RenderOptions::default(),
         &fonts(),
         &ImageStore::new(),
     )

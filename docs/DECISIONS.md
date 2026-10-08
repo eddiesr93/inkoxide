@@ -860,3 +860,30 @@ nearly every node sets one.
   byte-identical output.
 - Styles are read-only after parsing. Code that needs to change a style
   builds a new one.
+
+## ADR-041 — Lint policy: clippy pedantic, documented public API
+
+**Context.** Before the first release the code should follow the Rust
+API guidelines and the usual idioms, and keep following them without a
+reviewer having to notice regressions.
+
+**Decision.**
+- `[workspace.lints]` turns on `clippy::pedantic` and
+  `missing_debug_implementations` for every workspace crate;
+  `scripts/ci.sh` runs clippy with `-D warnings`.
+- Allowed, with the reason in `Cargo.toml`: the numeric cast lints and
+  `float_cmp`, because geometry is `f32` with casts bounded by validation
+  and exact comparisons are deliberate. Also allowed: lints that only
+  measure size or naming (`too_many_lines`, `many_single_char_names`,
+  `similar_names`, …) and `must_use_candidate`, since `#[must_use]` is
+  added by hand on the public API.
+- `inkoxide` (core) warns on `missing_docs`; every public item is
+  documented, and fallible functions have an `# Errors` section.
+- `ValidationCode` and `InkoxideError` are `#[non_exhaustive]`, so new
+  codes are not breaking changes. `RenderOptions` stays exhaustive so
+  callers can use struct-update syntax.
+- The crate-wide `allow(dead_code)` from M1 is gone. Schema fields that
+  are accepted but unused carry an `#[expect(dead_code, reason = …)]`.
+- The Node crate allows `needless_pass_by_value`, `missing_errors_doc`
+  and `missing_debug_implementations`: napi exports take owned JS values,
+  and their errors are documented in `npm/index.d.ts`.

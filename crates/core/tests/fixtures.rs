@@ -24,7 +24,7 @@ fn sorted_files(dir: &Path, ext: &[&str]) -> Vec<PathBuf> {
     v
 }
 
-pub fn stores() -> (FontStore, ImageStore) {
+fn stores() -> (FontStore, ImageStore) {
     let mut fonts = FontStore::new();
     for p in sorted_files(&root().join("fixtures/fonts"), &["ttf", "otf"]) {
         let stem = p.file_stem().unwrap().to_str().unwrap().to_string();
@@ -202,7 +202,7 @@ fn output_is_independent_of_thread_count() {
     assert!(one == render(8), "8 threads differ from 1");
 }
 
-/// MessagePack errors carry the same codes and paths as JSON ones.
+/// `MessagePack` errors carry the same codes and paths as JSON ones.
 #[test]
 fn msgpack_errors_match_json() {
     let (fonts, images) = stores();

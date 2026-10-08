@@ -77,6 +77,9 @@ pub(crate) struct BreakPoint {
 /// A shaped paragraph, independent of the available width.
 #[derive(Debug, Default)]
 pub(crate) struct Prepared {
+    /// The paragraph text that glyph clusters index into (tests map lines
+    /// back to text with it).
+    #[cfg(test)]
     pub text: String,
     pub segments: Vec<Segment>,
     pub glyphs: Vec<Glyph>,
@@ -169,7 +172,7 @@ impl ParaStyle {
     }
 }
 
-/// Glyph → text mappings per font, for the PDF ToUnicode CMaps.
+/// Glyph → text mappings per font, for the PDF `ToUnicode` `CMaps`.
 #[derive(Debug, Default)]
 pub(crate) struct UnicodeMap {
     pub fonts: BTreeMap<FontKey, BTreeMap<u16, String>>,
@@ -323,10 +326,10 @@ pub(crate) struct TextCache<'s, S: TextShaper> {
 }
 
 fn node_key(n: &Node) -> usize {
-    n as *const Node as usize
+    std::ptr::from_ref::<Node>(n) as usize
 }
 
-impl<'s, 'f, 'a> TextCache<'s, RustybuzzShaper<'f, 'a>> {
+impl TextCache<'_, RustybuzzShaper<'_, '_>> {
     /// Shapes `nodes` (text nodes in document order) ahead of layout, in
     /// parallel. Each worker has its own shaper; glyph-to-Unicode maps are
     /// merged in document order, keeping the first mapping of each glyph,
@@ -453,8 +456,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             return TSize::ZERO;
         };
         let width = match (known.width, available.width) {
-            (Some(w), _) => w,
-            (None, AvailableSpace::Definite(w)) => w,
+            (Some(w), _) | (None, AvailableSpace::Definite(w)) => w,
             (None, AvailableSpace::MaxContent) => f32::INFINITY,
             (None, AvailableSpace::MinContent) => {
                 let e = self.entry(node, runs);

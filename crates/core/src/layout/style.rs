@@ -1,4 +1,4 @@
-//! schema::Style → taffy::Style.
+//! `schema::Style` → `taffy::Style`.
 
 use taffy::prelude::*;
 use taffy::style::{

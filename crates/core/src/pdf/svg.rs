@@ -1,4 +1,4 @@
-//! SVG → PDF: a `usvg` tree becomes a Form XObject with vector content
+//! SVG → PDF: a `usvg` tree becomes a Form `XObject` with vector content
 //! (ADR-038).
 //!
 //! - Paths keep their geometry; quadratic segments become cubics.
@@ -35,8 +35,8 @@ const MAX_SEGMENTS: usize = 5_000_000;
 const MAX_DEPTH: u32 = 256;
 const FLATE_LEVEL: u32 = 6;
 
-/// Writes `tree` as a Form XObject mapping the SVG viewport onto the unit
-/// square (y up), like an image XObject.
+/// Writes `tree` as a Form `XObject` mapping the SVG viewport onto the unit
+/// square (y up), like an image `XObject`.
 pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut dyn FnMut() -> Ref,
@@ -75,12 +75,11 @@ struct Canvas {
 }
 
 fn slot(list: &mut Vec<Ref>, r: Ref) -> usize {
-    match list.iter().position(|&x| x == r) {
-        Some(i) => i,
-        None => {
-            list.push(r);
-            list.len() - 1
-        }
+    if let Some(i) = list.iter().position(|&x| x == r) {
+        i
+    } else {
+        list.push(r);
+        list.len() - 1
     }
 }
 
@@ -391,21 +390,18 @@ impl Svg<'_> {
         depth: u32,
         clip: bool,
     ) -> Res {
-        let form = match masks.split_first() {
-            Some((&m, rest)) => {
-                cv.set_gs(m);
-                self.sub_form(bbox, |s, inner| {
-                    s.layered(inner, rest, last, bbox, g, depth, clip)
-                })?
+        let form = if let Some((&m, rest)) = masks.split_first() {
+            cv.set_gs(m);
+            self.sub_form(bbox, |s, inner| {
+                s.layered(inner, rest, last, bbox, g, depth, clip)
+            })?
+        } else {
+            if let Some(l) = last {
+                cv.set_gs(l);
             }
-            None => {
-                if let Some(l) = last {
-                    cv.set_gs(l);
-                }
-                self.sub_form(bbox, |s, inner| {
-                    s.children(inner, g, Transform::identity(), depth, clip)
-                })?
-            }
+            self.sub_form(bbox, |s, inner| {
+                s.children(inner, g, Transform::identity(), depth, clip)
+            })?
         };
         cv.draw_xobject(form);
         Ok(())
@@ -594,7 +590,7 @@ impl Svg<'_> {
                     ),
                     _ => unreachable!(),
                 };
-                let shading = self.shading(stops, &kind, false)?;
+                let shading = self.shading(stops, &kind, false);
                 let pattern = self.next();
                 self.pdf
                     .shading_pattern(pattern)
@@ -602,7 +598,7 @@ impl Svg<'_> {
                     .matrix(matrix(ts.pre_concat(gt)));
                 cv.set_pattern(pattern, stroke);
                 if stops.iter().any(|s| s.opacity().get() < 1.0) {
-                    let alpha = self.shading(stops, &kind, true)?;
+                    let alpha = self.shading(stops, &kind, true);
                     let form = self.sub_form(bbox, |_, inner| {
                         inner.c.transform(matrix(gt));
                         inner.paint_shading(alpha);
@@ -641,7 +637,7 @@ impl Svg<'_> {
         stops: &[usvg::Stop],
         (kind, coords): &(FunctionShadingType, Vec<f32>),
         alpha: bool,
-    ) -> Result<Ref, InkoxideError> {
+    ) -> Ref {
         let value = |s: &usvg::Stop| -> Vec<f32> {
             if alpha {
                 vec![s.opacity().get()]
@@ -699,7 +695,7 @@ impl Svg<'_> {
             .coords(coords.iter().copied())
             .extend([true, true]);
         sh.finish();
-        Ok(id)
+        id
     }
 
     fn tiling(

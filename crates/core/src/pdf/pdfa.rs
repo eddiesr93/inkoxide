@@ -1,6 +1,8 @@
 //! PDF/A-2b support (ADR-039): an sRGB output intent, XMP metadata that
 //! mirrors the document information dictionary, and a file identifier.
 
+use std::fmt::Write as _;
+
 use crate::date::Timestamp;
 use crate::schema::Meta;
 
@@ -97,7 +99,7 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
 pub(crate) fn xmp(meta: &Meta, producer: &str, created: Option<Timestamp>) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
-        d.push_str(&format!("<{name}>{}</{name}>\n", escape(value)));
+        let _ = writeln!(d, "<{name}>{}</{name}>", escape(value));
     };
     prop("pdfaid:part", "2");
     prop("pdfaid:conformance", "B");
@@ -119,16 +121,17 @@ pub(crate) fn xmp(meta: &Meta, producer: &str, created: Option<Timestamp>) -> Ve
         )
     };
     if let Some(v) = &meta.title {
-        d.push_str(&format!("<dc:title>{}</dc:title>\n", alt(v)));
+        let _ = writeln!(d, "<dc:title>{}</dc:title>", alt(v));
     }
     if let Some(v) = &meta.subject {
-        d.push_str(&format!("<dc:description>{}</dc:description>\n", alt(v)));
+        let _ = writeln!(d, "<dc:description>{}</dc:description>", alt(v));
     }
     if let Some(v) = &meta.author {
-        d.push_str(&format!(
-            "<dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>\n",
+        let _ = writeln!(
+            d,
+            "<dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>",
             escape(v)
-        ));
+        );
     }
     format!(
         "<?xpacket begin=\"\u{FEFF}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\

@@ -11,6 +11,9 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
+[lints]
+workspace = true
+
 [dependencies]
 inkoxide.workspace = true
 napi.workspace = true

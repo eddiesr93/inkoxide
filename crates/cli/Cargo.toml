@@ -11,6 +11,9 @@ repository.workspace = true
 name = "inkoxide"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 inkoxide.workspace = true
 clap.workspace = true

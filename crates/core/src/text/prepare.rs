@@ -272,7 +272,7 @@ fn words(s: &str) -> impl Iterator<Item = (usize, &str)> {
 }
 
 /// Shapes the paragraph. `unicode` receives glyph → text mappings for the
-/// PDF ToUnicode CMaps.
+/// PDF `ToUnicode` `CMaps`.
 pub(crate) fn prepare(
     opts: &ParagraphOptions<'_>,
     fonts: &FontSet<'_>,
@@ -349,6 +349,7 @@ pub(crate) fn prepare(
     }
 
     Prepared {
+        #[cfg(test)]
         text,
         segments,
         glyphs,

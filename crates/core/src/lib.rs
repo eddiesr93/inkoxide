@@ -9,8 +9,7 @@
 //! React. This crate does no I/O: bytes in, bytes out.
 
 #![forbid(unsafe_code)]
-// TODO(M5): remove once the pipeline consumes the whole schema.
-#![allow(dead_code)]
+#![warn(missing_docs)]
 
 mod date;
 mod error;
@@ -42,13 +41,15 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Serialisation of the document tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InputFormat {
+    /// JSON text (UTF-8).
     #[default]
     Json,
-    /// MessagePack with the same structure as the JSON (maps keyed by the
+    /// `MessagePack` with the same structure as the JSON (maps keyed by the
     /// JSON field names).
     MessagePack,
 }
 
+/// Output settings for [`render`]; the document describes content only.
 #[derive(Debug, Clone)]
 pub struct RenderOptions {
     /// Flate-compress content streams (default `true`).
@@ -85,6 +86,7 @@ impl Default for RenderOptions {
 
 /// Validates a document against the schema and the registered resources.
 /// Returns every problem found (capped at 100); empty means renderable.
+#[must_use]
 pub fn validate(
     doc: &[u8],
     format: InputFormat,
@@ -99,6 +101,12 @@ pub fn validate(
 
 /// Validates and renders a document to PDF bytes. Never renders a partial
 /// document: any validation problem is returned as an error.
+///
+/// # Errors
+///
+/// [`InkoxideError::Validation`] with the first problem [`validate`] would
+/// report, or another variant when a resource fails to load or the worker
+/// pool cannot be built.
 pub fn render(
     doc: &[u8],
     format: InputFormat,

@@ -178,7 +178,7 @@ impl Paginator<'_, '_, '_> {
     }
 
     /// Whether a node must move as one piece.
-    fn atomic(&self, node: &Node) -> bool {
+    fn atomic(node: &Node) -> bool {
         let s = &node.style;
         if node.brk.inside == InsideMode::Avoid
             || node.brk.fixed
@@ -212,7 +212,7 @@ impl Paginator<'_, '_, '_> {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else { return 0.0 };
         let g = ln.geo;
-        if self.atomic(node) {
+        if Self::atomic(node) {
             return g.h;
         }
         match &node.kind {
@@ -291,7 +291,7 @@ impl Paginator<'_, '_, '_> {
         }
         let top = g.y + self.shift;
         let fits = top + g.h <= self.page_end(top) + EPS;
-        let atomic = self.atomic(node);
+        let atomic = Self::atomic(node);
 
         if fits || atomic {
             if !fits {

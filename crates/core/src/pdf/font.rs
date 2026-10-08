@@ -1,7 +1,7 @@
-//! Font embedding: Type0 / Identity-H with a CIDFontType2 descendant and a
-//! TrueType program (`FontFile2`), or a CIDFontType0 descendant and a
+//! Font embedding: Type0 / Identity-H with a `CIDFontType2` descendant and a
+//! TrueType program (`FontFile2`), or a `CIDFontType0` descendant and a
 //! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`, ADR-037); `W`
-//! widths for used glyphs and a ToUnicode CMap (§6.1).
+//! widths for used glyphs and a `ToUnicode` `CMap` (§6.1).
 //!
 //! Programs are subset to the glyphs used (ADR-032). CIDs stay the
 //! original glyph ids, so content streams are encoded before the glyph set
@@ -144,7 +144,7 @@ pub(crate) fn write_font(
     program: &Program,
     used: &BTreeSet<u16>,
     unicode: Option<&BTreeMap<u16, String>>,
-) -> Result<Ref, InkoxideError> {
+) -> Ref {
     let type0 = next_ref();
     let cid = next_ref();
     let descriptor = next_ref();
@@ -262,5 +262,5 @@ pub(crate) fn write_font(
         .name(Name(b"Custom"))
         .system_info(IDENTITY);
 
-    Ok(type0)
+    type0
 }

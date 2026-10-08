@@ -3,14 +3,14 @@
 //! padding and a `data:<mime>;base64,` prefix.
 
 fn value(c: u8) -> Option<u32> {
-    Some(match c {
+    Some(u32::from(match c {
         b'A'..=b'Z' => c - b'A',
         b'a'..=b'z' => c - b'a' + 26,
         b'0'..=b'9' => c - b'0' + 52,
         b'+' => 62,
         b'/' => 63,
         _ => return None,
-    } as u32)
+    }))
 }
 
 pub(crate) fn decode(input: &str) -> Result<Vec<u8>, String> {

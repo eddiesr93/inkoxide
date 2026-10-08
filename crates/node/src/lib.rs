@@ -6,7 +6,16 @@
 //! `{ code, path, message }`; `npm/index.js` unpacks it into an
 //! `InkoxideError` with those three properties.
 
+// napi exports take owned JS values and document their errors in
+// `npm/index.d.ts`; napi objects hold JS handles that have no `Debug`.
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::missing_errors_doc,
+    missing_debug_implementations
+)]
+
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{LazyLock, RwLock};
 
@@ -35,7 +44,9 @@ fn json_string(s: &str) -> String {
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
             c => out.push(c),
         }
     }
@@ -194,10 +205,7 @@ pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
 /// Removes a registered font; returns whether it existed.
 #[napi]
 pub fn unregister_font(id: String) -> bool {
-    FONTS
-        .write()
-        .map(|mut f| f.unregister(&id))
-        .unwrap_or(false)
+    FONTS.write().is_ok_and(|mut f| f.unregister(&id))
 }
 
 /// Validates a document against the schema and the registered fonts.

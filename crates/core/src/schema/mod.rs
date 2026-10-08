@@ -14,6 +14,7 @@ use serde::Deserialize;
 
 pub use de::{GridLine, GridTrack, Length, LengthPercent, RepeatCount, TrackBreadth, TrackSize};
 
+/// The document `version` this engine reads.
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// RGBA, each component in [0, 1].
@@ -56,10 +57,18 @@ pub enum FontStyle {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct FontDecl {
     pub id: String,
+    #[expect(
+        dead_code,
+        reason = "descriptive only; the engine selects fonts by `id`"
+    )]
     pub family: String,
     #[serde(default = "default_weight")]
     pub weight: u16,
     #[serde(default)]
+    #[expect(
+        dead_code,
+        reason = "descriptive only; the engine selects fonts by `id`"
+    )]
     pub style: FontStyle,
 }
 
@@ -171,19 +180,6 @@ pub enum NodeKind {
     Spacer,
 }
 
-impl NodeKind {
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            NodeKind::Box { .. } => "box",
-            NodeKind::Text { .. } => "text",
-            NodeKind::Image { .. } => "image",
-            NodeKind::Table(_) => "table",
-            NodeKind::PageBreak => "pageBreak",
-            NodeKind::Spacer => "spacer",
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum ImageSource {
     /// Key into the render-time image map.
@@ -248,6 +244,7 @@ pub struct ColumnSpec {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct TableCell {
+    #[expect(dead_code, reason = "part of the schema; cells are not link targets")]
     pub id: Option<String>,
     #[serde(default = "one")]
     pub col_span: u32,
@@ -266,6 +263,7 @@ fn one() -> u32 {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct TableRow {
+    #[expect(dead_code, reason = "part of the schema; rows are not link targets")]
     pub id: Option<String>,
     pub min_height: Option<f32>,
     pub background_color: Option<Color>,

@@ -30,7 +30,6 @@ pub(crate) struct FontMetrics {
     pub underline_thickness: f32,
     pub strikeout_position: f32,
     pub strikeout_thickness: f32,
-    pub num_glyphs: u16,
     /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
     pub cff: bool,
 }
@@ -113,7 +112,6 @@ impl FontData {
             underline_thickness: underline.map_or(upem * 0.05, |m| f32::from(m.thickness)),
             strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
             strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
-            num_glyphs: face.number_of_glyphs(),
             cff,
         };
         Ok(Self {
@@ -162,12 +160,18 @@ pub struct FontStore {
 }
 
 impl FontStore {
+    /// An empty store.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Registers (or replaces) font `id` from TrueType or CFF OpenType bytes.
-    /// Fails with a clear error for unsupported fonts (variable fonts).
+    ///
+    /// # Errors
+    ///
+    /// Fails for bytes that are not a font and for unsupported fonts
+    /// (variable fonts).
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -184,14 +188,20 @@ impl FontStore {
         self.fonts.remove(id).is_some()
     }
 
+    /// Whether font `id` is registered.
+    #[must_use]
     pub fn contains(&self, id: &str) -> bool {
         self.fonts.contains_key(id)
     }
 
+    /// Number of registered fonts.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.fonts.len()
     }
 
+    /// Whether no font is registered.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.fonts.is_empty()
     }

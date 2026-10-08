@@ -219,6 +219,8 @@ impl<'d> Walk<'d, '_> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use super::*;
 
     fn svg(body: &str) -> String {
@@ -249,9 +251,9 @@ mod tests {
         // Ten levels of ten `use`s: 10^10 elements once expanded.
         let mut body = String::from(r#"<defs><rect id="l0" width="1" height="1"/>"#);
         for i in 1..=10 {
-            body.push_str(&format!(r#"<g id="l{i}">"#));
+            let _ = write!(body, r#"<g id="l{i}">"#);
             for _ in 0..10 {
-                body.push_str(&format!(r##"<use href="#l{}"/>"##, i - 1));
+                let _ = write!(body, r##"<use href="#l{}"/>"##, i - 1);
             }
             body.push_str("</g>");
         }

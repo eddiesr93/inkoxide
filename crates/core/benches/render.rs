@@ -49,7 +49,7 @@ fn bench(c: &mut Criterion) {
         let input = fs::read(&path).unwrap();
         let name = path.file_stem().unwrap().to_str().unwrap().to_string();
         c.bench_function(&format!("render/{name}"), |b| {
-            b.iter(|| inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images).unwrap())
+            b.iter(|| inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images).unwrap());
         });
     }
 }

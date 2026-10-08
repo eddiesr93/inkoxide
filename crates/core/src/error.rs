@@ -3,16 +3,24 @@ use std::fmt;
 /// Machine-readable validation error codes. The string form (e.g.
 /// `UNKNOWN_FONT`) is part of the public contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ValidationCode {
-    /// The input is not well-formed JSON / MessagePack.
+    /// The input is not well-formed JSON / `MessagePack`.
     ParseError,
     /// `version` is missing or not supported by this engine.
     UnsupportedVersion,
+    /// A property the schema does not define.
     UnknownField,
+    /// A required property is absent.
     MissingField,
+    /// A value has the wrong JSON type.
     InvalidType,
+    /// A value has the right type but is not accepted (an unknown enum
+    /// string, a malformed colour, a misplaced pagination control).
     InvalidValue,
+    /// A number is outside its allowed range.
     OutOfRange,
+    /// A font id is declared twice.
     DuplicateId,
     /// A run or `fallbackFonts` references a font id not declared in `fonts`.
     UnknownFont,
@@ -20,7 +28,9 @@ pub enum ValidationCode {
     FontNotRegistered,
     /// An image `src` is not present in the render-time image map.
     UnknownImage,
+    /// Image bytes are not a supported JPEG, PNG or SVG.
     InvalidImage,
+    /// A decoded image exceeds the size guard.
     ImageTooLarge,
     /// A style property was set on a node type it does not apply to.
     StyleNotApplicable,
@@ -33,6 +43,8 @@ pub enum ValidationCode {
 }
 
 impl ValidationCode {
+    /// The stable string form, e.g. `UNKNOWN_FONT`.
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ParseError => "PARSE_ERROR",
@@ -89,10 +101,12 @@ impl fmt::Display for ValidationCode {
 /// `{ code: UNKNOWN_FONT, path: "pages[0].children[3].runs[1].font", … }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationError {
+    /// What kind of problem this is.
     pub code: ValidationCode,
     /// JSON-path-like location (`pages[0].children[2].style.width`); empty
     /// for document-level problems.
     pub path: String,
+    /// Human-readable description.
     pub message: String,
 }
 
@@ -106,26 +120,35 @@ impl fmt::Display for ValidationError {
     }
 }
 
+/// Why a render failed.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum InkoxideError {
     /// The document failed validation; carries the first problem found.
     /// Use [`crate::validate`] to obtain the full list.
     #[error("{}", .0)]
     Validation(ValidationError),
+    /// Font bytes could not be parsed, shaped or embedded.
     #[error("font error: {0}")]
     Font(String),
+    /// An image could not be decoded or embedded.
     #[error("image error: {0}")]
     Image(String),
+    /// The layout engine failed.
     #[error("layout error: {0}")]
     Layout(String),
+    /// Writing the PDF failed.
     #[error("pdf error: {0}")]
     Pdf(String),
+    /// A bug or resource failure inside the engine (e.g. the worker pool
+    /// could not be built).
     #[error("internal error: {0}")]
     Internal(String),
 }
 
 impl InkoxideError {
     /// Stable machine-readable code (`UNKNOWN_FONT`, `FONT_ERROR`, …).
+    #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
             Self::Validation(e) => e.code.as_str(),

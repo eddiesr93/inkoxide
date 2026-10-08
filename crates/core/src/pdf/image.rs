@@ -1,5 +1,5 @@
-//! Image XObjects: JPEG passthrough (`DCTDecode`) or Flate samples with an
-//! optional soft mask for alpha. SVG becomes a Form XObject (`svg.rs`).
+//! Image `XObjects`: JPEG passthrough (`DCTDecode`) or Flate samples with an
+//! optional soft mask for alpha. SVG becomes a Form `XObject` (`svg.rs`).
 //! PDF/A output has an sRGB output intent only, so CMYK JPEGs are
 //! converted to RGB samples there (ADR-039).
 
@@ -75,7 +75,7 @@ pub(crate) fn write_image(
             match color {
                 RawColor::Gray => x.color_space().device_gray(),
                 RawColor::Rgb => x.color_space().device_rgb(),
-            };
+            }
             if let Some(m) = mask {
                 x.s_mask(m);
             }
