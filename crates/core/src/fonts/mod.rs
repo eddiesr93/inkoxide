@@ -31,6 +31,8 @@ pub(crate) struct FontMetrics {
     pub strikeout_position: f32,
     pub strikeout_thickness: f32,
     pub num_glyphs: u16,
+    /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
+    pub cff: bool,
 }
 
 /// A registered font face.
@@ -40,7 +42,8 @@ pub struct FontData {
     /// xxh3 of `bytes`: the font's identity in process-wide caches.
     pub(crate) hash: u64,
     pub(crate) metrics: FontMetrics,
-    /// Flate-compressed bytes for `FontFile2`, computed on first use and
+    /// Flate-compressed font program (`FontFile2`, or the CID-keyed CFF
+    /// for `FontFile3`), computed on first use and
     /// shared by every later render.
     compressed: OnceLock<Arc<[u8]>>,
 }
@@ -51,14 +54,15 @@ impl FontData {
         let face = ttf_parser::Face::parse(&bytes, 0)
             .map_err(|e| err(&format!("not a valid TrueType/OpenType font ({e})")))?;
         let tables = face.tables();
-        if tables.glyf.is_none() {
-            return Err(err(
-                "CFF-based OpenType fonts are not supported in v1; use a TrueType-outline (glyf) build of the font",
-            ));
-        }
-        if face.is_variable() {
+        if face.is_variable() || tables.cff2.is_some() {
             return Err(err(
                 "variable fonts are not supported; register a static instance",
+            ));
+        }
+        let cff = tables.glyf.is_none();
+        if cff && (tables.cff.is_none() || crate::pdf::cff::full_program(&bytes).is_none()) {
+            return Err(err(
+                "font has neither TrueType (glyf) nor embeddable CFF outlines",
             ));
         }
         if tables
@@ -110,6 +114,7 @@ impl FontData {
             strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
             strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
             num_glyphs: face.number_of_glyphs(),
+            cff,
         };
         Ok(Self {
             hash: xxhash_rust::xxh3::xxh3_64(&bytes),
@@ -123,7 +128,14 @@ impl FontData {
         if let Some(c) = self.compressed.get() {
             return Ok(c.clone());
         }
-        let data: Arc<[u8]> = crate::pdf::deflate(&self.bytes, 6)?.into();
+        let data: Arc<[u8]> = if self.metrics.cff {
+            // Checked at registration.
+            let program = crate::pdf::cff::full_program(&self.bytes)
+                .ok_or_else(|| InkoxideError::Internal("CFF conversion failed".into()))?;
+            crate::pdf::deflate(&program, 6)?.into()
+        } else {
+            crate::pdf::deflate(&self.bytes, 6)?.into()
+        };
         Ok(self.compressed.get_or_init(|| data).clone())
     }
 }
@@ -154,8 +166,8 @@ impl FontStore {
         Self::default()
     }
 
-    /// Registers (or replaces) font `id` from TrueType bytes. Fails with a
-    /// clear error for unsupported fonts (CFF outlines, variable fonts).
+    /// Registers (or replaces) font `id` from TrueType or CFF OpenType bytes.
+    /// Fails with a clear error for unsupported fonts (variable fonts).
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -282,6 +294,17 @@ mod tests {
         assert!(m.ascender > 0.0 && m.descender < 0.0);
         assert_eq!(m.post_script_name, "Inter-Regular");
         assert_eq!(m.weight, 400);
+    }
+
+    #[test]
+    fn registers_cff() {
+        let mut s = FontStore::new();
+        s.register("Bold", fixture("InterDisplay-Bold.otf"))
+            .unwrap();
+        let m = &s.get("Bold").unwrap().metrics;
+        assert!(m.cff);
+        assert_eq!(m.weight, 700);
+        assert!(!s.get("Bold").unwrap().compressed().unwrap().is_empty());
     }
 
     #[test]

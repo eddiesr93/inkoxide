@@ -1,6 +1,7 @@
-//! Font embedding: Type0 / Identity-H with a CIDFontType2 descendant, a
-//! TrueType program (`FontFile2`), `W` widths for used glyphs and a
-//! ToUnicode CMap (§6.1).
+//! Font embedding: Type0 / Identity-H with a CIDFontType2 descendant and a
+//! TrueType program (`FontFile2`), or a CIDFontType0 descendant and a
+//! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`, ADR-037); `W`
+//! widths for used glyphs and a ToUnicode CMap (§6.1).
 //!
 //! Programs are subset to the glyphs used (ADR-032). CIDs stay the
 //! original glyph ids, so content streams are encoded before the glyph set
@@ -28,7 +29,7 @@ const IDENTITY: SystemInfo<'static> = SystemInfo {
 /// The embedded font program of one font in one document.
 #[derive(Clone)]
 pub(crate) struct Program {
-    /// Flate-compressed `FontFile2` data.
+    /// Flate-compressed `FontFile2` / `FontFile3` data.
     data: Arc<[u8]>,
     /// Uncompressed length (`Length1`).
     length: usize,
@@ -87,6 +88,18 @@ pub(crate) fn program(
 
 /// `None` when the subsetter rejects the font.
 fn make_subset(font: &LoadedFont<'_>, glyphs: &[u16]) -> Result<Option<Program>, InkoxideError> {
+    if font.data.metrics.cff {
+        // CIDs stay the original glyph ids through the CFF charset.
+        let Some(cff) = super::cff::subset_program(&font.data.bytes, glyphs) else {
+            return Ok(None);
+        };
+        return Ok(Some(Program {
+            data: deflate(&cff, 6)?.into(),
+            length: cff.len(),
+            cid_to_gid: None,
+            tag: subset_tag(font, glyphs).into(),
+        }));
+    }
     let remapper = GlyphRemapper::new_from_glyphs_sorted(glyphs);
     let Ok(sub) = subsetter::subset(&font.data.bytes, 0, &remapper) else {
         return Ok(None);
@@ -150,19 +163,26 @@ pub(crate) fn write_font(
         .descendant_font(cid)
         .to_unicode(cmap_ref);
 
+    let cff = m.cff;
     let mut c = pdf.cid_font(cid);
-    c.subtype(CidFontType::Type2)
-        .base_font(Name(name))
-        .system_info(IDENTITY)
-        .font_descriptor(descriptor)
-        .default_width(0.0);
+    c.subtype(if cff {
+        CidFontType::Type0
+    } else {
+        CidFontType::Type2
+    })
+    .base_font(Name(name))
+    .system_info(IDENTITY)
+    .font_descriptor(descriptor)
+    .default_width(0.0);
     match map_ref {
         Some(r) => {
             c.pair(Name(b"CIDToGIDMap"), r);
         }
-        None => {
+        // Only TrueType CIDFonts take a CIDToGIDMap.
+        None if !cff => {
             c.cid_to_gid_map_predefined(Name(b"Identity"));
         }
+        None => {}
     }
     {
         // Runs of consecutive glyph ids share one `consecutive` entry.
@@ -196,8 +216,8 @@ pub(crate) fn write_font(
         flags |= FontFlags::SERIF;
     }
     let s = |v: f32| (v * to_1000).round();
-    pdf.font_descriptor(descriptor)
-        .name(Name(name))
+    let mut d = pdf.font_descriptor(descriptor);
+    d.name(Name(name))
         .flags(flags)
         .bbox(Rect::new(
             s(m.bbox[0]),
@@ -210,12 +230,21 @@ pub(crate) fn write_font(
         .descent(s(m.descender))
         .cap_height(s(m.cap_height))
         // No reliable source in TrueType; the usual weight-based estimate.
-        .stem_v((10.0 + 0.244 * (f32::from(m.weight) - 50.0)).round())
-        .font_file2(file);
+        .stem_v((10.0 + 0.244 * (f32::from(m.weight) - 50.0)).round());
+    if cff {
+        d.font_file3(file);
+    } else {
+        d.font_file2(file);
+    }
+    d.finish();
 
     let mut stream = pdf.stream(file, &program.data);
     stream.filter(Filter::FlateDecode);
-    stream.pair(Name(b"Length1"), program.length as i32);
+    if cff {
+        stream.pair(Name(b"Subtype"), Name(b"CIDFontType0C"));
+    } else {
+        stream.pair(Name(b"Length1"), program.length as i32);
+    }
     stream.finish();
     if let (Some(r), Some(map)) = (map_ref, &program.cid_to_gid) {
         pdf.stream(r, map).filter(Filter::FlateDecode);

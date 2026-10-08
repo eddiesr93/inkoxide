@@ -1,0 +1,211 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "CFF fonts",
+  "lang": "ro"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "InterDisplay-Bold",
+   "family": "Inter Display",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 419.53,
+    "height": 595.28
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "CFF outlines: Inter Display Bold (.otf)",
+       "font": "InterDisplay-Bold",
+       "size": 20
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 10
+     }
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify",
+      "hyphenate": true,
+      "lineHeight": 1.4
+     },
+     "runs": [
+      {
+       "text": "Fonturile OpenType cu contururi CFF ",
+       "font": "InterDisplay-Bold",
+       "size": 11
+      },
+      {
+       "text": "se încorporează ca ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "text": "CIDFontType0C",
+       "font": "InterDisplay-Bold",
+       "size": 11,
+       "color": [
+        0.15,
+        0.3,
+        0.7,
+        1
+       ]
+      },
+      {
+       "text": ", alături de fonturile TrueType din același paragraf. Diacriticele românești (ș, ț, ă, î, â; Ș, Ț, Ă, Î, Â) trebuie să apară corect, iar textul rămâne selectabil și căutabil. ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "text": "Ligaturile și kerning-ul vin din GPOS/GSUB: AVATAR, Wave, Tokyo, financiar, office.",
+       "font": "InterDisplay-Bold",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 10
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 8
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1,
+        "backgroundColor": [
+         0.93,
+         0.95,
+         1,
+         1
+        ],
+        "padding": {
+         "top": 8,
+         "right": 8,
+         "bottom": 8,
+         "left": 8
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "0123456789",
+           "font": "InterDisplay-Bold",
+           "size": 28
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Cifre tabelare și proporționale",
+           "font": "Inter-Regular",
+           "size": 9
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1,
+        "backgroundColor": [
+         1,
+         0.95,
+         0.9,
+         1
+        ],
+        "padding": {
+         "top": 8,
+         "right": 8,
+         "bottom": 8,
+         "left": 8
+        },
+        "borderRadius": 4
+       },
+       "children": [
+        {
+         "type": "text",
+         "style": {
+          "maxLines": 2,
+          "ellipsis": true
+         },
+         "runs": [
+          {
+           "text": "Un titlu foarte lung care nu încape în două rânduri și este trunchiat cu elipsă la sfârșit",
+           "font": "InterDisplay-Bold",
+           "size": 14
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 10
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Subliniat ",
+       "font": "InterDisplay-Bold",
+       "size": 13,
+       "decoration": "underline"
+      },
+      {
+       "text": "tăiat",
+       "font": "InterDisplay-Bold",
+       "size": 13,
+       "decoration": "lineThrough"
+      },
+      {
+       "text": "  •  spațiere între litere",
+       "font": "InterDisplay-Bold",
+       "size": 13,
+       "letterSpacing": 1.5
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

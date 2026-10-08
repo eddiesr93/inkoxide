@@ -189,7 +189,9 @@ Nov 2024; if that matters, `harfrust` can replace it inside
 (CFF-based OpenType) and variable fonts, with a clear `FONT_ERROR`.
 Embedding is `Type0`/`Identity-H` with a `CIDFontType2` descendant and the
 full font program as `FontFile2` (Flate). **Consequences.** CFF support
-(`FontFile3`) is M7. Most web fonts ship TrueType builds.
+(`FontFile3`) is M7. Most web fonts ship TrueType builds. *Amended by
+ADR-037:* static CFF fonts are accepted; variable fonts and CFF2 are
+still rejected.
 
 ## ADR-015 — Hyphenation: soft hyphens + our own hyphen glyph; no Romanian patterns yet (M2)
 
@@ -705,3 +707,34 @@ sizes. Taffy implements all of it.
 **Consequences.**
 - All additions are optional fields; v1 documents are unchanged.
 - New `Style` fields are boxed slices and strings to keep `Node` small.
+
+## ADR-037 — CFF OpenType fonts as CIDFontType0C (M7)
+
+**Context.** Many fonts, Adobe's included, ship only as `.otf` files with
+CFF outlines. ADR-014 rejected them.
+
+**Decision.**
+- A static font without a `glyf` table is accepted when it has a `CFF `
+  table that `subsetter` can convert. Variable fonts and CFF2 are still
+  rejected with `FONT_ERROR`.
+- Embedding is `Type0`/`Identity-H` over a `CIDFontType0` descendant.
+  The program is a bare CFF stream in `FontFile3` with
+  `/Subtype /CIDFontType0C`. There is no `CIDToGIDMap`, since PDF does
+  not allow one for CFF.
+- `subsetter` turns every CFF font into a CID-keyed font whose charset is
+  the identity (CID = new glyph id). Content streams keep the original
+  glyph ids as CIDs (ADR-032), so after subsetting we patch the Top DICT
+  `charset` offset (written as a fixed 5-byte integer) and append a
+  format 0 charset that maps each new glyph id back to its original id.
+  This needs no CFF writer of our own. The full-font path (`fullFonts`)
+  runs `subsetter` over every glyph, so the identity charset is already
+  correct there. Registration checks that the layout is patchable, so
+  failures surface when the font is registered, not at render time.
+
+**Consequences.**
+- Shaping, metrics, ToUnicode and the rest of the text pipeline are
+  unchanged. Only the program and the descendant font dictionary differ.
+- The fixture `fonts-cff` mixes a TrueType and a CFF face in one
+  paragraph. poppler, qpdf and pdftotext accept the output.
+- If a future `subsetter` writes the charset operand in a shorter form,
+  registration of CFF fonts fails loudly. The version is pinned.

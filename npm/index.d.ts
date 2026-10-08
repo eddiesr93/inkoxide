@@ -32,7 +32,7 @@ export class InkoxideError extends Error {
   readonly path: string;
 }
 
-/** Registers (or replaces) a TrueType font in the process-wide cache. */
+/** Registers (or replaces) a TrueType or CFF OpenType font in the process-wide cache. */
 export function registerFont(id: string, data: Uint8Array): void;
 /** Removes a registered font; returns whether it existed. */
 export function unregisterFont(id: string): boolean;
