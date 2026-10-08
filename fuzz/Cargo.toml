@@ -30,6 +30,13 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "render_svg"
+path = "fuzz_targets/render_svg.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
 members = ["."]
 

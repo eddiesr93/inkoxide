@@ -1,0 +1,126 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "SVG"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter",
+   "weight": 400,
+   "style": "normal"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "SVG as vector content: gradients, pattern, clips, mask, opacity, blend, nested images",
+       "font": "Inter-Regular",
+       "size": 13,
+       "color": [
+        0,
+        0,
+        0,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "src": "chart",
+     "style": {
+      "width": 400,
+      "margin": {
+       "top": 12,
+       "bottom": 16
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12,
+      "alignItems": "flex-end"
+     },
+     "children": [
+      {
+       "type": "image",
+       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTEyIDJsMyA3aDdsLTUuNSA0LjUgMiA3LjVMMTIgMTYuNSA1LjUgMjFsMi03LjVMMiA5aDd6IiBmaWxsPSIjZjViMzAxIiBzdHJva2U9IiM4YTY0MDAiIHN0cm9rZS13aWR0aD0iMSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==",
+       "style": {
+        "width": 16
+       }
+      },
+      {
+       "type": "image",
+       "data": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTEyIDJsMyA3aDdsLTUuNSA0LjUgMiA3LjVMMTIgMTYuNSA1LjUgMjFsMi03LjVMMiA5aDd6IiBmaWxsPSIjZjViMzAxIiBzdHJva2U9IiM4YTY0MDAiIHN0cm9rZS13aWR0aD0iMSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==",
+       "style": {
+        "width": 48
+       }
+      },
+      {
+       "type": "image",
+       "src": "chart",
+       "fit": "contain",
+       "style": {
+        "width": 120,
+        "height": 120,
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.93,
+         1
+        ]
+       }
+      },
+      {
+       "type": "image",
+       "src": "chart",
+       "fit": "cover",
+       "style": {
+        "width": 120,
+        "height": 120,
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.93,
+         1
+        ]
+       }
+      },
+      {
+       "type": "image",
+       "src": "chart",
+       "fit": "none",
+       "style": {
+        "width": 120,
+        "height": 120,
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.93,
+         1
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

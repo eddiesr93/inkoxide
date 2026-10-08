@@ -12,7 +12,7 @@ export interface RenderOptions {
   threads?: number;
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
   subsetFonts?: boolean;
-  /** Image bytes (JPEG or PNG) by id, for this document only. */
+  /** Image bytes (JPEG, PNG or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
 }
 

@@ -1,17 +1,22 @@
 //! Reproduces a fuzz finding: `repro tree <input>` regenerates the
 //! document a `render_tree` input encodes; `repro json <input>` uses the
 //! bytes as is. Prints the document to stdout, then runs the oracle.
+//! `repro image <input>` runs the `render_svg` oracle on an image.
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let [_, mode, path] = &args[..] else {
-        eprintln!("usage: repro tree|json <input>");
+        eprintln!("usage: repro tree|json|image <input>");
         std::process::exit(2);
     };
     if mode == "stats" {
         return stats(path);
     }
     let bytes = std::fs::read(path).expect("read input");
+    if mode == "image" {
+        let rendered = inkoxide_fuzz::check_image(&bytes);
+        return eprintln!("ok ({})", if rendered { "rendered" } else { "rejected" });
+    }
     let doc = match mode.as_str() {
         "tree" => inkoxide_fuzz::document(&bytes),
         _ => bytes,

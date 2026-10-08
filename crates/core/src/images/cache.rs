@@ -19,10 +19,16 @@ type Entry = (Arc<[u8]>, Arc<DecodedImage>);
 
 static CACHE: Mutex<Option<Lru<u64, Entry>>> = Mutex::new(None);
 
-fn size_of(image: &DecodedImage) -> usize {
+/// Approximate memory held by an entry whose encoded form is `encoded`
+/// bytes long.
+fn size_of(image: &DecodedImage, encoded: usize) -> usize {
     match &image.body {
-        ImageBody::Jpeg { bytes, .. } => bytes.len(),
-        ImageBody::Raw { samples, alpha, .. } => samples.len() + alpha.as_ref().map_or(0, Vec::len),
+        ImageBody::Jpeg { bytes, .. } => bytes.len() + encoded,
+        ImageBody::Raw { samples, alpha, .. } => {
+            samples.len() + alpha.as_ref().map_or(0, Vec::len) + encoded
+        }
+        // A parsed tree is several times larger than its source.
+        ImageBody::Svg(_) => encoded * 8,
     }
 }
 
@@ -44,7 +50,7 @@ pub(crate) fn decode(
     // Decode outside the lock: other renders keep going meanwhile.
     let image = Arc::new(decoder.decode(bytes)?);
     if let Ok(mut guard) = CACHE.lock() {
-        let size = size_of(&image) + bytes.len();
+        let size = size_of(&image, bytes.len());
         guard.get_or_insert_with(|| Lru::new(BUDGET)).insert(
             hash,
             (bytes.clone(), image.clone()),

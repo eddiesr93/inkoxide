@@ -261,7 +261,8 @@ fn render_refuses_invalid_documents() {
 fn rejects_corrupt_and_unknown_images() {
     let doc = r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
       "children":[{"type":"image","src":"nope"},{"type":"image","data":"!!"},
-      {"type":"image","data":"R0lGODlh"}]}]}"#;
+      {"type":"image","data":"R0lGODlh"},
+      {"type":"image","data":"PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc5JyBoZWlnaHQ9JzknPjx0ZXh0Png8L3RleHQ+PC9zdmc+"}]}]}"#;
     let e = validate(
         doc.as_bytes(),
         InputFormat::Json,
@@ -278,8 +279,10 @@ fn rejects_corrupt_and_unknown_images() {
             ("UNKNOWN_IMAGE", "pages[0].children[0].src"),
             ("INVALID_IMAGE", "pages[0].children[1].data"),
             ("INVALID_IMAGE", "pages[0].children[2].data"),
+            ("INVALID_IMAGE", "pages[0].children[3].data"),
         ]
     );
+    assert!(e[3].message.contains("<text>"), "{}", e[3].message);
 }
 
 #[test]

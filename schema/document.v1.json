@@ -976,7 +976,7 @@
         "data": {
           "type": "string",
           "contentEncoding": "base64",
-          "description": "Inline image bytes (JPEG or PNG), base64-encoded; a `data:<mime>;base64,` URL is also accepted."
+          "description": "Inline image bytes (JPEG, PNG or SVG), base64-encoded; a `data:<mime>;base64,` URL is also accepted."
         },
         "fit": {
           "enum": [

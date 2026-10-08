@@ -1,5 +1,5 @@
 //! Image XObjects: JPEG passthrough (`DCTDecode`) or Flate samples with an
-//! optional soft mask for alpha.
+//! optional soft mask for alpha. SVG becomes a Form XObject (`svg.rs`).
 
 use pdf_writer::{Filter, Pdf, Ref};
 
@@ -9,7 +9,10 @@ pub(crate) fn write_image(
     pdf: &mut Pdf,
     alloc: &mut dyn FnMut() -> Ref,
     img: &DecodedImage,
-) -> Ref {
+) -> Result<Ref, crate::InkoxideError> {
+    if let ImageBody::Svg(tree) = &img.body {
+        return super::svg::write_svg(pdf, alloc, tree);
+    }
     let id = alloc();
     let (w, h) = (img.width as i32, img.height as i32);
     match &img.body {
@@ -56,6 +59,7 @@ pub(crate) fn write_image(
                 x.s_mask(m);
             }
         }
+        ImageBody::Svg(_) => unreachable!("handled above"),
     }
-    id
+    Ok(id)
 }

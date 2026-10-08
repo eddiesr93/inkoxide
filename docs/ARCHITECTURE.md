@@ -31,7 +31,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Pagination | `paginate` (shift accumulation, head rule, atomic nodes, forced breaks) + `pipeline` | M3 ✅ |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
 | PDF | `pdf` | M0 ✅: pages, page tree, content streams (encoded in parallel), Info; links and outline M7 ✅ |
-| Images | `images` (JPEG passthrough, PNG + SMask, fit modes, process-wide decode cache) | M5 ✅ |
+| Images | `images` (JPEG passthrough, PNG + SMask, SVG as vector Form XObjects via `usvg`, fit modes, process-wide decode cache) | M5 ✅, SVG M7 ✅ |
 
 ## Public API (core)
 

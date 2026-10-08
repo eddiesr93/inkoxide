@@ -3,6 +3,7 @@
 pub(crate) mod cff;
 mod font;
 mod image;
+mod svg;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
@@ -196,7 +197,7 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in image_refs.iter_mut() {
-            *r = image::write_image(&mut pdf, &mut || alloc.next(), doc.images.get(*key));
+            *r = image::write_image(&mut pdf, &mut || alloc.next(), doc.images.get(*key))?;
         }
 
         // Link annotations, numbered in page order.

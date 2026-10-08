@@ -738,3 +738,55 @@ CFF outlines. ADR-014 rejected them.
   paragraph. poppler, qpdf and pdftotext accept the output.
 - If a future `subsetter` writes the charset operand in a shorter form,
   registration of CFF fonts fails loudly. The version is pinned.
+
+## ADR-038 — SVG images as vector Form XObjects via usvg (M7)
+
+**Context.** Logos, icons and charts usually come as SVG. Rasterising them
+would lose sharpness and inflate the file. The brief allows
+`resvg`/`usvg`.
+
+**Decision.**
+- `src`/`data` images whose bytes start with `<` (after an optional BOM
+  and whitespace) are parsed as SVG with `usvg` 0.48.1, using
+  `default-features = false`: no `text`, `fontdb`, `system-fonts` or
+  `svgz`. The parse runs once per image and is cached with the decoded
+  rasters (ADR-032), weighted at 8× the encoded size.
+- The tree becomes one Form XObject whose BBox is the SVG's intrinsic
+  size, and whose Matrix maps it onto the unit square. Fit modes,
+  clipping and placement are the same as for raster images. Paths stay
+  vectors, and the details are in `pdf/svg.rs`:
+  - gradients become shading patterns;
+  - patterns become tiling patterns;
+  - opacity, blend modes, masks and complex clips become transparency
+    groups and soft masks;
+  - embedded JPEG/PNG reuse the raster writer.
+- **No I/O.** `core` reads no files. File `href`s are ignored and only
+  `data:` URLs are resolved: JPEG, PNG and nested SVG (which are checked
+  again). GIF and WebP are dropped.
+- **Limits for untrusted input.** These checks run on the XML before
+  `usvg` expands it, because `use` and `url(#…)` references copy
+  subtrees:
+  - at most 1M XML nodes;
+  - at most 250k elements once references are expanded, with cycles
+    skipped as `usvg` does;
+  - nesting at most 100 levels deep;
+  - at most 100 000 px per side;
+  - at most 5M path segments while writing.
+
+  Violations are `INVALID_IMAGE` with a message.
+- **Unsupported, by design for now:**
+  - `<text>` with content is rejected with "convert the text to outlines".
+    Silently dropping it (which `usvg` does without fonts) would lose
+    content.
+  - Filters: filtered elements are left out.
+  - Gradient `spreadMethod` `repeat`/`reflect` is drawn as `pad`.
+
+**Consequences.**
+- The fixture `svg` covers gradients, a hatch pattern, clips (single and
+  compound), a mask, group opacity, multiply blend, an embedded PNG, a
+  nested SVG, dashes, even-odd fills, and the four fit modes. poppler and
+  `qpdf --check` accept it.
+- The `render_svg` fuzz target feeds arbitrary bytes through the image
+  path with the validate/render consistency oracle (ADR-031).
+- Text in SVG can be supported later by passing registered fonts to
+  `usvg` (feature `text`) and embedding the glyphs as outlines.

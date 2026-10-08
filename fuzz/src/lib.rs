@@ -45,7 +45,15 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
         "photo",
         include_bytes!("../../fixtures/images/photo-gray.jpg").to_vec(),
     );
+    s.insert(
+        "chart",
+        include_bytes!("../../fixtures/images/chart.svg").to_vec(),
+    );
     s.insert("bad", b"\x89PNG\r\n\x1a\nnot really".to_vec());
+    s.insert(
+        "badsvg",
+        b"<svg xmlns='http://www.w3.org/2000/svg'><text>hi</text></svg>".to_vec(),
+    );
     s
 });
 
@@ -71,14 +79,34 @@ pub fn check(doc: &[u8]) {
     }
 }
 
+/// Renders arbitrary bytes registered as an image (SVG or raster), drawn
+/// twice at different sizes; same oracle as [`check`]. Returns whether
+/// it rendered.
+pub fn check_image(bytes: &[u8]) -> bool {
+    let mut images = ImageStore::new();
+    images.insert("fz", bytes.to_vec());
+    let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
+        {"type":"image","src":"fz"},
+        {"type":"image","src":"fz","fit":"cover","style":{"width":40,"height":90}}]}]}"#;
+    render_with(doc, InputFormat::Json, &images).is_ok()
+}
+
 fn render(doc: &[u8], format: InputFormat) -> Result<Vec<u8>, InkoxideError> {
-    let errors = inkoxide::validate(doc, format, &FONTS, &IMAGES);
+    render_with(doc, format, &IMAGES)
+}
+
+fn render_with(
+    doc: &[u8],
+    format: InputFormat,
+    images: &ImageStore,
+) -> Result<Vec<u8>, InkoxideError> {
+    let errors = inkoxide::validate(doc, format, &FONTS, images);
     let options = RenderOptions {
         compress: false,
         threads: Some(1),
         ..Default::default()
     };
-    let result = inkoxide::render(doc, format, &options, &FONTS, &IMAGES);
+    let result = inkoxide::render(doc, format, &options, &FONTS, images);
     match &result {
         Ok(pdf) => {
             assert!(
@@ -710,15 +738,22 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             if s.chaos && s.chance(30) {
                 m.insert(
                     "data".into(),
-                    json!(s.pick(&["", "iVBORw0KGgo=", "data:image/png;base64,AAAA", "!!"])),
+                    json!(s.pick(&[
+                        "",
+                        "iVBORw0KGgo=",
+                        "data:image/png;base64,AAAA",
+                        "!!",
+                        "data:image/svg+xml;base64,PHN2Zy8+",
+                        "PHN2ZyB3aWR0aD0iMCIvPg==",
+                    ])),
                 );
             } else {
                 m.insert(
                     "src".into(),
                     json!(if s.chaos {
-                        s.pick(&["bad", "missing"])
+                        s.pick(&["bad", "badsvg", "missing"])
                     } else {
-                        s.pick(&["logo", "palette", "photo"])
+                        s.pick(&["logo", "palette", "photo", "chart"])
                     }),
                 );
             }

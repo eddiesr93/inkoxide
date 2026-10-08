@@ -41,11 +41,13 @@ Targets (in `fuzz/`, outside the workspace):
   of schema keys (`fuzz/render_json.dict`).
 - `render_tree`: a structure-aware generator of schema-shaped documents
   (edge values, long words, mixed scripts, big tables, deep nesting).
+- `render_svg`: raw bytes registered as an image and drawn twice; seeded
+  with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
 
-Both share one oracle: no panic; `render` succeeds only when `validate`
+All share one oracle: no panic; `render` succeeds only when `validate`
 is clean and vice versa for validation errors; the output is a complete
 PDF; a document that renders from JSON renders the same bytes from
-MessagePack.
+MessagePack (`render_json` and `render_tree`).
 
 Findings land in `fuzz/artifacts/`. To inspect one:
 
@@ -53,6 +55,7 @@ Findings land in `fuzz/artifacts/`. To inspect one:
 cd fuzz
 cargo run --release --bin repro -- tree artifacts/render_tree/crash-…   # prints the document, runs the oracle
 cargo run --release --bin repro -- json artifacts/render_json/crash-…
+cargo run --release --bin repro -- image artifacts/render_svg/crash-…
 cargo run --release --bin repro -- stats corpus/render_tree             # generator validity rate
 ```
 

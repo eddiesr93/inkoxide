@@ -31,7 +31,10 @@ pub fn stores() -> (FontStore, ImageStore) {
         fonts.register(stem, fs::read(&p).unwrap()).unwrap();
     }
     let mut images = ImageStore::new();
-    for p in sorted_files(&root().join("fixtures/images"), &["png", "jpg", "jpeg"]) {
+    for p in sorted_files(
+        &root().join("fixtures/images"),
+        &["png", "jpg", "jpeg", "svg"],
+    ) {
         let stem = p.file_stem().unwrap().to_str().unwrap().to_string();
         images.insert(stem, fs::read(&p).unwrap());
     }

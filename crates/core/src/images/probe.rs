@@ -1,4 +1,4 @@
-//! Header-only inspection of JPEG and PNG files: format, pixel size,
+//! Header-only inspection of JPEG and PNG files (SVG is parsed): format, pixel size,
 //! components and EXIF orientation. Used by validation (cheap, no decode)
 //! and by the JPEG passthrough path.
 
@@ -6,6 +6,7 @@
 pub(crate) enum ImageFormat {
     Jpeg,
     Png,
+    Svg,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,8 +29,19 @@ pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, String> {
         probe_png(bytes)?
     } else if bytes.starts_with(&[0xFF, 0xD8]) {
         probe_jpeg(bytes)?
+    } else if super::svg::is_svg(bytes) {
+        // No header to read: parsing is the only real check.
+        let size = super::svg::parse(bytes)?.size();
+        return Ok(ImageInfo {
+            format: ImageFormat::Svg,
+            width: size.width().ceil() as u32,
+            height: size.height().ceil() as u32,
+            components: 0,
+            adobe: false,
+            orientation: 1,
+        });
     } else {
-        return Err("unsupported image format (expected JPEG or PNG)".into());
+        return Err("unsupported image format (expected JPEG, PNG or SVG)".into());
     };
     if info.width == 0 || info.height == 0 {
         return Err("image has zero width or height".into());

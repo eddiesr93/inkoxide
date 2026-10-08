@@ -9,6 +9,7 @@ mod base64;
 mod cache;
 mod decode;
 mod probe;
+mod svg;
 
 #[cfg(test)]
 mod tests;
@@ -59,7 +60,7 @@ impl ImageData {
     }
 }
 
-/// Encoded image bytes (JPEG or PNG) available to a render, keyed by the id
+/// Encoded image bytes (JPEG, PNG or SVG) available to a render, keyed by the id
 /// that `image` nodes reference in `src`. Cloning is cheap and clones share
 /// decoded data.
 #[derive(Debug, Clone, Default)]
@@ -196,7 +197,7 @@ impl ImageSet {
     pub fn intrinsic(&self, node: &Node) -> Option<(f32, f32)> {
         let img = self.get(self.key(node)?);
         let (w, h) = img.display_size();
-        Some((w as f32 * PT_PER_PX, h as f32 * PT_PER_PX))
+        Some((w * PT_PER_PX, h * PT_PER_PX))
     }
 
     /// Size of an image leaf: an explicit dimension wins and the other
@@ -318,6 +319,12 @@ pub(crate) fn image_matrix(orientation: u8, (x, y, w, h): (f32, f32, f32, f32)) 
         x + w * (sb + s0),
         y + h * (tb + t0),
     ]
+}
+
+/// Decodes a JPEG or PNG embedded in an SVG, through the process-wide
+/// cache.
+pub(crate) fn decode_embedded(bytes: &[u8]) -> Result<Arc<DecodedImage>, String> {
+    ImageData::new(bytes.into()).decoded(&ImageCrateDecoder)
 }
 
 /// Decodes inline base64 image data (an optional `data:…;base64,` prefix

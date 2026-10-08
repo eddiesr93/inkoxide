@@ -32,6 +32,8 @@ pub(crate) enum ImageBody {
         samples: Vec<u8>,
         alpha: Option<Vec<u8>>,
     },
+    /// A parsed SVG, written as a Form XObject with vector content.
+    Svg(Arc<usvg::Tree>),
 }
 
 #[derive(Debug)]
@@ -45,12 +47,17 @@ pub(crate) struct DecodedImage {
 }
 
 impl DecodedImage {
-    /// Pixel size as displayed (orientations 5–8 swap the axes).
-    pub fn display_size(&self) -> (u32, u32) {
+    /// Size as displayed in CSS pixels (orientations 5–8 swap the axes;
+    /// SVG keeps its fractional size).
+    pub fn display_size(&self) -> (f32, f32) {
+        if let ImageBody::Svg(tree) = &self.body {
+            let s = tree.size();
+            return (s.width(), s.height());
+        }
         if self.orientation >= 5 {
-            (self.height, self.width)
+            (self.height as f32, self.width as f32)
         } else {
-            (self.width, self.height)
+            (self.width as f32, self.height as f32)
         }
     }
 }
@@ -67,6 +74,16 @@ const IMAGE_FLATE_LEVEL: u32 = 6;
 
 impl ImageDecoder for ImageCrateDecoder {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String> {
+        if super::svg::is_svg(bytes) {
+            let tree = super::svg::parse(bytes)?;
+            let s = tree.size();
+            return Ok(DecodedImage {
+                width: s.width().ceil() as u32,
+                height: s.height().ceil() as u32,
+                orientation: 1,
+                body: ImageBody::Svg(Arc::new(tree)),
+            });
+        }
         let info = probe(bytes)?;
         match info.format {
             ImageFormat::Jpeg => Ok(DecodedImage {
@@ -85,6 +102,7 @@ impl ImageDecoder for ImageCrateDecoder {
                 },
             }),
             ImageFormat::Png => decode_png(bytes),
+            ImageFormat::Svg => Err("SVG was not recognised".into()),
         }
     }
 }

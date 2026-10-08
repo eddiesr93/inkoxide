@@ -42,7 +42,7 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
     let d = ImageCrateDecoder
         .decode(&fixture("photo-rot6.jpg"))
         .unwrap();
-    assert_eq!(d.display_size(), (200, 320));
+    assert_eq!(d.display_size(), (200.0, 320.0));
 }
 
 #[test]

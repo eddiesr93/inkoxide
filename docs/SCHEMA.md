@@ -353,7 +353,7 @@ Type: [`TrackBreadth`](#trackbreadth) or `object` or `object`
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
-| `data` | `string` |  | Inline image bytes (JPEG or PNG), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
+| `data` | `string` |  | Inline image bytes (JPEG, PNG or SVG), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
 
 ### TableNode
