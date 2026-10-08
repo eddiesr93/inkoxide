@@ -23,7 +23,7 @@ pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::LeafMeasure;
-use crate::schema::{Node, NodeKind, Style, TextAlign, TextRun, WhiteSpace};
+use crate::schema::{Direction, Node, NodeKind, Style, TextAlign, TextRun, WhiteSpace};
 
 pub(crate) const GLYPH_SPACE: u8 = 1;
 pub(crate) const GLYPH_INVISIBLE: u8 = 2;
@@ -46,15 +46,18 @@ pub(crate) struct Glyph {
 pub(crate) struct Segment {
     pub run: u16,
     pub font: FontKey,
+    /// Bidi embedding level of the whole segment.
+    pub level: u8,
     pub text: Range<u32>,
     pub glyphs: Range<u32>,
 }
 
 impl Segment {
-    fn new(run: usize, font: FontKey, _r: &TextRun, text: Range<usize>) -> Self {
+    fn new(run: usize, font: FontKey, level: u8, text: Range<usize>) -> Self {
         Self {
             run: run as u16,
             font,
+            level,
             text: text.start as u32..text.end as u32,
             glyphs: 0..0,
         }
@@ -86,6 +89,10 @@ pub(crate) struct Prepared {
     pub segments: Vec<Segment>,
     pub glyphs: Vec<Glyph>,
     pub breaks: Vec<BreakPoint>,
+    /// Resolved base direction is right to left.
+    pub rtl: bool,
+    /// Some glyph has an odd bidi level (lines need reordering).
+    pub bidi: bool,
 }
 
 impl Prepared {
@@ -120,6 +127,8 @@ pub(crate) struct Line {
     pub ellipsis: Option<Ellipsis>,
     /// Ends at a forced break or the end of the paragraph (not justified).
     pub forced: bool,
+    /// `textIndent` of the first line (0 on the others).
+    pub indent: f32,
     /// Offset of the line box from the top of the paragraph.
     pub top: f32,
     /// Baseline offset from the top of the line box.
@@ -143,6 +152,8 @@ pub(crate) struct ParaStyle {
     pub max_lines: Option<u32>,
     pub ellipsis: bool,
     pub white_space: WhiteSpace,
+    pub indent: f32,
+    pub direction: Direction,
     /// ISO 639-1 code when hyphenation is requested (patterns may still be
     /// missing; the hyphenator decides).
     pub hyphenate: Option<String>,
@@ -151,17 +162,19 @@ pub(crate) struct ParaStyle {
 impl ParaStyle {
     /// Whether lines wrap at soft break opportunities.
     pub fn wrap(&self) -> bool {
-        self.white_space == WhiteSpace::Normal
+        !matches!(self.white_space, WhiteSpace::NoWrap | WhiteSpace::Pre)
     }
 
     pub fn from_style(s: &Style, doc_lang: Option<&str>) -> Self {
         let white_space = s.white_space.unwrap_or(WhiteSpace::Normal);
         Self {
-            align: s.text_align.unwrap_or(TextAlign::Left),
+            align: s.text_align.unwrap_or(TextAlign::Start),
             line_height: s.line_height,
             max_lines: s.max_lines,
             ellipsis: s.ellipsis.unwrap_or(false),
             white_space,
+            indent: s.text_indent.unwrap_or(0.0),
+            direction: s.direction.unwrap_or(Direction::Ltr),
             hyphenate: if s.hyphenate == Some(true) {
                 s.lang
                     .as_deref()
@@ -250,6 +263,7 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
             .filter(|l| self.hyphenator.supports(l));
         let opts = prepare::ParagraphOptions {
             white_space: style.white_space,
+            direction: style.direction,
             hyphenate: lang,
             hyphenator: self.hyphenator,
             runs,
@@ -311,6 +325,7 @@ fn new_entry<S: TextShaper>(
         min_content = min_content.max(w);
         start = end;
     }
+    min_content += style.indent.max(0.0);
     Entry {
         style,
         prepared,

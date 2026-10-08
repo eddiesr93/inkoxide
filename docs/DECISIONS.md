@@ -1058,3 +1058,30 @@ pattern file with an unclear licence enters the repository.
 - Mixed border styles paint inside the border ring clip: solid sides as
   mitred trapezoids, dashed and dotted sides as strokes along the side's
   middle line. Corners of a dashed side are therefore not curved.
+
+## ADR-046 — Bidirectional text, indents, white-space modes, decoration styles (v1.1)
+
+**Context.** Arabic and Hebrew text came out in logical order, and authors
+asked for CSS text features React PDF users rely on.
+**Decision.**
+- New dependency `unicode-bidi =0.3.18` (MIT/Apache-2.0, no dependencies
+  with `default-features = false`): the reference UAX #9 implementation.
+  Paragraphs without characters at or above U+0590 skip it entirely, so
+  left-to-right documents shape and lay out exactly as before.
+- Levels split font segments; each word is shaped with the direction of
+  its level and its glyphs are stored in logical order, so line breaking
+  is unchanged. Painting applies rule L2 per line to the segment slices
+  and reverses the glyphs of odd-level slices. `direction` sets the base
+  level (`auto`: first strong character); `textAlign: start` (the
+  default) and `end` follow it, and a hyphen or ellipsis goes on the
+  line's visual end.
+- `textIndent` narrows (or, negative, widens) the first line's box on its
+  start side; min-content includes a positive indent.
+- `pre-wrap` keeps spaces and tabs and allows breaks; `pre-line` is the
+  `normal` behaviour (newlines were already forced breaks) under its CSS
+  name.
+- Decoration styles: double (two strokes of the thickness, one thickness
+  apart), dotted and dashed strokes, and wavy (cubic half-waves).
+- Limitations: no explicit isolates in the schema (use Unicode controls
+  in the text); no vertical text; justification spreads spaces only (no
+  kashida).

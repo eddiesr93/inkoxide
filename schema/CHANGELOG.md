@@ -32,3 +32,9 @@ first npm release (M5); after that, breaking changes bump `version`.
   `skew`, `matrix`) and `transformOrigin`; `zIndex` (paint order among
   siblings); `borderRadius` also takes a per-corner object;
   `borderStyle` also takes a per-side object.
+- v1.1 text: `whiteSpace` also `pre-wrap` and `pre-line`; `textIndent`;
+  `direction` (`ltr`, `rtl`, `auto`) with Unicode bidi reordering;
+  `textAlign` also `start` and `end` (now the default, `start`, is `left`
+  in left-to-right paragraphs, as before); text runs take
+  `decorationColor`, `decorationThickness` and `decorationStyle`
+  (`solid`, `double`, `dotted`, `dashed`, `wavy`).

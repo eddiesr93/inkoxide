@@ -4,8 +4,10 @@
 use super::{Ellipsis, Line, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE};
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
-use crate::paint::{ContentCtx, ContentPainter, Op, Rect, TextGlyph, TextOp};
-use crate::schema::{Color, Decoration, Node, NodeKind, Placeholder, TextAlign, TextRun};
+use crate::paint::{ContentCtx, ContentPainter, Dash, Op, Path, PathSeg, Rect, TextGlyph, TextOp};
+use crate::schema::{
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextRun,
+};
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
@@ -84,6 +86,20 @@ fn paint_line(
     ops: &mut Vec<Op>,
 ) {
     let (s, e) = (line.start as usize, line.end as usize);
+    let rtl = p.rtl;
+    // The indent narrows the line box on its start side.
+    let (cx, cw) = match (line.indent, rtl) {
+        (0.0, _) => (cx, cw),
+        (i, false) => (cx + i, cw - i),
+        (i, true) => (cx, cw - i),
+    };
+    let align = match align {
+        TextAlign::Start if rtl => TextAlign::Right,
+        TextAlign::Start => TextAlign::Left,
+        TextAlign::End if rtl => TextAlign::Left,
+        TextAlign::End => TextAlign::Right,
+        a => a,
+    };
 
     // Justification: spread the free space over the spaces of the line.
     let spaces = p.glyphs[s..e]
@@ -97,15 +113,24 @@ fn paint_line(
             0.0
         };
 
+    // Segment slices of the line, in visual order.
+    let mut items: Vec<(&super::Segment, usize, usize)> = p
+        .segments
+        .iter()
+        .filter_map(|seg| {
+            let (gs, ge) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
+            let (a, b) = (gs.max(s), ge.min(e));
+            (a < b).then_some((seg, a, b))
+        })
+        .collect();
+    if p.bidi {
+        reorder(&mut items, |it| it.0.level);
+    }
+
     // Collect pieces per segment slice, substituting placeholders.
     let mut pieces: Vec<Piece> = Vec::new();
     let mut width = 0.0f32;
-    for seg in &p.segments {
-        let (gs, ge) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
-        let (a, b) = (gs.max(s), ge.min(e));
-        if a >= b {
-            continue;
-        }
+    for (seg, a, b) in items {
         let run = &runs[seg.run as usize];
         let mut piece = Piece {
             run: seg.run,
@@ -131,7 +156,13 @@ fn paint_line(
                 piece.width += font.advance(gid) * scale + ls;
             }
         } else {
-            for g in &p.glyphs[a..b] {
+            let slice = &p.glyphs[a..b];
+            let visual: Box<dyn Iterator<Item = &super::Glyph>> = if seg.level % 2 == 1 {
+                Box::new(slice.iter().rev())
+            } else {
+                Box::new(slice.iter())
+            };
+            for g in visual {
                 if g.flags & GLYPH_INVISIBLE == 0 {
                     piece.glyphs.push(TextGlyph {
                         id: g.id,
@@ -151,14 +182,19 @@ fn paint_line(
     for extra in [line.hyphen, line.ellipsis].into_iter().flatten() {
         let piece = extra_piece(&extra);
         width += piece.width;
-        pieces.push(piece);
+        if rtl {
+            pieces.insert(0, piece);
+        } else {
+            pieces.push(piece);
+        }
     }
 
     // Placeholders may change the width: align with the painted width.
     let free = cw - width;
     let mut x = cx
         + match align {
-            TextAlign::Left | TextAlign::Justify => 0.0,
+            TextAlign::Justify if rtl => free.max(0.0),
+            TextAlign::Left | TextAlign::Justify | TextAlign::Start | TextAlign::End => 0.0,
             TextAlign::Center => free / 2.0,
             TextAlign::Right => free,
         };
@@ -200,13 +236,14 @@ fn paint_line(
                 Decoration::Underline => (m.underline_position, m.underline_thickness),
                 _ => (m.strikeout_position, m.strikeout_thickness),
             };
-            let thick = (thick * scale).max(0.25);
+            let thick = run
+                .decoration_thickness
+                .unwrap_or((thick * scale).max(0.25));
             // OpenType gives the top of the stroke, y up from the baseline.
             let y = baseline - pos * scale;
-            ops.push(Op::FillRect {
-                rect: Rect::new(x, y, piece_width, thick),
-                color,
-            });
+            let dcolor = run.decoration_color.unwrap_or(color);
+            let style = run.decoration_style.unwrap_or(DecorationStyle::Solid);
+            decoration(ops, style, x, y, piece_width, thick, dcolor, opacity, alpha);
         }
         if alpha < 1.0 {
             ops.push(Op::Restore);
@@ -236,5 +273,140 @@ fn extra_piece(e: &Ellipsis) -> Piece {
         font: e.font,
         glyphs,
         width: e.advance * f32::from(e.count),
+    }
+}
+
+/// UAX #9 rule L2: from the highest level down to the lowest odd one,
+/// reverses every maximal run of items at that level or higher.
+fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
+    let Some(max) = items.iter().map(&level).max() else {
+        return;
+    };
+    let Some(min_odd) = items.iter().map(&level).filter(|l| l % 2 == 1).min() else {
+        return;
+    };
+    for lvl in (min_odd..=max).rev() {
+        let mut i = 0;
+        while i < items.len() {
+            if level(&items[i]) >= lvl {
+                let mut j = i + 1;
+                while j < items.len() && level(&items[j]) >= lvl {
+                    j += 1;
+                }
+                items[i..j].reverse();
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+    }
+}
+
+/// Draws a text decoration whose top edge is at `y`. `alpha` is the
+/// opacity in effect for the run's colour; the decoration colour's own
+/// alpha replaces the run's.
+#[allow(clippy::too_many_arguments)]
+fn decoration(
+    ops: &mut Vec<Op>,
+    style: DecorationStyle,
+    x: f32,
+    y: f32,
+    w: f32,
+    thick: f32,
+    color: Color,
+    opacity: f32,
+    alpha: f32,
+) {
+    let own = color[3] * opacity;
+    let swap = (own - alpha).abs() > f32::EPSILON;
+    if swap {
+        ops.push(Op::Save);
+        ops.push(Op::SetOpacity(own));
+    }
+    let mid = y + thick / 2.0;
+    let stroke = |ops: &mut Vec<Op>, path: Path, dash: Option<Dash>| {
+        ops.push(Op::StrokePath {
+            path,
+            color,
+            width: thick,
+            dash,
+        });
+    };
+    let line = |y: f32| Path {
+        segs: vec![PathSeg::MoveTo(x, y), PathSeg::LineTo(x + w, y)],
+    };
+    match style {
+        DecorationStyle::Solid => ops.push(Op::FillRect {
+            rect: Rect::new(x, y, w, thick),
+            color,
+        }),
+        DecorationStyle::Double => {
+            // Two strokes of the thickness, one thickness apart.
+            ops.push(Op::FillRect {
+                rect: Rect::new(x, y, w, thick),
+                color,
+            });
+            ops.push(Op::FillRect {
+                rect: Rect::new(x, y + 2.0 * thick, w, thick),
+                color,
+            });
+        }
+        DecorationStyle::Dotted => stroke(
+            ops,
+            line(mid),
+            Some(Dash {
+                pattern: [0.0, 2.0 * thick],
+                round_cap: true,
+            }),
+        ),
+        DecorationStyle::Dashed => stroke(
+            ops,
+            line(mid),
+            Some(Dash {
+                pattern: [3.0 * thick, 2.0 * thick],
+                round_cap: false,
+            }),
+        ),
+        DecorationStyle::Wavy => {
+            // Half waves of width 2·amplitude, as cubic arcs.
+            let amp = (thick * 1.5).max(0.75);
+            let half = 2.0 * amp;
+            let mut segs = vec![PathSeg::MoveTo(x, mid)];
+            let mut cx = x;
+            let mut up = true;
+            while cx < x + w - 1e-3 {
+                let nx = (cx + half).min(x + w);
+                let k = (nx - cx) / half;
+                let dy = if up { -amp } else { amp } * k;
+                segs.push(PathSeg::CubicTo(
+                    cx + (nx - cx) / 3.0,
+                    mid + dy * 1.33,
+                    cx + 2.0 * (nx - cx) / 3.0,
+                    mid + dy * 1.33,
+                    nx,
+                    mid,
+                ));
+                cx = nx;
+                up = !up;
+            }
+            stroke(ops, Path { segs }, None);
+        }
+    }
+    if swap {
+        ops.push(Op::Restore);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reorder;
+
+    #[test]
+    fn reorder_reverses_rtl_runs() {
+        // "abc ARABIC 12" in an LTR paragraph: levels 0 0 1 1 2.
+        let mut items = vec![(0, 'a'), (0, 'b'), (1, 'X'), (1, 'Y'), (2, '1')];
+        reorder(&mut items, |i| i.0);
+        let order: String = items.iter().map(|i| i.1).collect();
+        assert_eq!(order, "ab1YX");
     }
 }

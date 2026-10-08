@@ -1,0 +1,585 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Text v1.1",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "NotoSansArabic-Regular",
+   "family": "Noto Sans Arabic"
+  },
+  {
+   "id": "NotoSansHebrew-Regular",
+   "family": "Noto Sans Hebrew"
+  }
+ ],
+ "fallbackFonts": [
+  "NotoSansArabic-Regular",
+  "NotoSansHebrew-Regular"
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "background": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Text features of schema v1.1",
+       "font": "Inter-Bold",
+       "size": 14,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "whiteSpace: pre-wrap (spaces kept, lines wrap)",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Name:      Ion Popescu      Code:   RO-123\n\tIndented with a tab, and a long line that has to wrap because the box is narrow enough to force it.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "whiteSpace": "pre-wrap",
+      "width": 300
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "whiteSpace: pre-line",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Spaces    collapse,\nbut newlines    break.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "whiteSpace": "pre-line"
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "textIndent: 24 (first line)",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Inkoxide lays out declarative document trees and writes PDF bytes. It paginates properly, keeps blocks together and repeats headers.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "textIndent": 24,
+      "textAlign": "justify",
+      "width": 360
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "textIndent: -18 with padding (hanging)",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "1. Inkoxide lays out declarative document trees and writes PDF bytes. It paginates properly, keeps blocks together and repeats headers.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "textIndent": -18,
+      "padding": {
+       "left": 18
+      },
+      "width": 360
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "decorations",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "wavy red underline",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ],
+       "decoration": "underline",
+       "decorationStyle": "wavy",
+       "decorationColor": [
+        0.86,
+        0.24,
+        0.2,
+        1
+       ]
+      },
+      {
+       "text": "  ·  ",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      },
+      {
+       "text": "dotted",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ],
+       "decoration": "underline",
+       "decorationStyle": "dotted"
+      },
+      {
+       "text": "  ·  ",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      },
+      {
+       "text": "dashed blue",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ],
+       "decoration": "underline",
+       "decorationStyle": "dashed",
+       "decorationColor": [
+        0.12,
+        0.29,
+        0.6,
+        1
+       ]
+      },
+      {
+       "text": "  ·  ",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      },
+      {
+       "text": "double",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ],
+       "decoration": "underline",
+       "decorationStyle": "double"
+      },
+      {
+       "text": "  ·  ",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      },
+      {
+       "text": "thick 2 pt",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ],
+       "decoration": "underline",
+       "decorationThickness": 2
+      },
+      {
+       "text": "  ·  ",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      },
+      {
+       "text": "struck in red",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ],
+       "decoration": "lineThrough",
+       "decorationColor": [
+        0.86,
+        0.24,
+        0.2,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "direction: rtl (Hebrew with numbers and Latin)",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "שלום עולם! המסמך נוצר ב-2026 עם Inkoxide, גרסה 1.1, ומכיל 95 עמודים.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "direction": "rtl",
+      "width": 360
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "direction: rtl, textAlign: end",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "טקסט מיושר לסוף השורה.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "direction": "rtl",
+      "textAlign": "end",
+      "width": 360
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "direction: auto, justified Arabic",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "مرحبا بالعالم. هذا نص عربي طويل بما يكفي ليلتف على عدة أسطر داخل الصندوق، مع رقم 2026 وكلمة PDF في وسطه، لاختبار الضبط والتفاف الأسطر.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "direction": "auto",
+      "textAlign": "justify",
+      "width": 360
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "LTR paragraph with an embedded Arabic word",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.5,
+        0.5,
+        0.55,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 10,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "The word for peace is سلام and in Hebrew שלום, written right to left.",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.1,
+        0.12,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "width": 360
+     }
+    }
+   ]
+  }
+ ]
+}

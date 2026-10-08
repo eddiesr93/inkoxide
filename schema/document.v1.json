@@ -827,9 +827,11 @@
             "left",
             "center",
             "right",
-            "justify"
+            "justify",
+            "start",
+            "end"
           ],
-          "description": "text nodes only"
+          "description": "text nodes only; `start`/`end` follow the paragraph direction. Default `start`."
         },
         "lineHeight": {
           "type": "number",
@@ -857,9 +859,24 @@
           "enum": [
             "normal",
             "pre",
-            "nowrap"
+            "nowrap",
+            "pre-wrap",
+            "pre-line"
           ],
-          "description": "text nodes only"
+          "description": "text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps."
+        },
+        "textIndent": {
+          "type": "number",
+          "description": "text nodes only; indent of the first line in points (negative: hanging indent)"
+        },
+        "direction": {
+          "enum": [
+            "ltr",
+            "rtl",
+            "auto"
+          ],
+          "default": "ltr",
+          "description": "text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction."
         },
         "verticalAlign": {
           "enum": [
@@ -915,6 +932,26 @@
             "underline",
             "lineThrough"
           ]
+        },
+        "decorationColor": {
+          "$ref": "#/$defs/Color",
+          "description": "Default: the run colour."
+        },
+        "decorationThickness": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Points. Default: from the font."
+        },
+        "decorationStyle": {
+          "enum": [
+            "solid",
+            "double",
+            "dotted",
+            "dashed",
+            "wavy"
+          ],
+          "default": "solid"
         },
         "placeholder": {
           "enum": [

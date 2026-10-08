@@ -284,13 +284,15 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
 | `transformOrigin` | `[` [`LengthPercent`](#lengthpercent), [`LengthPercent`](#lengthpercent) `]` |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
 | `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
-| `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` |  | text nodes only |
+| `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0; text nodes only; multiplier of the largest run size on the line |
 | `maxLines` | `integer` |  | ≥ 1; text nodes only |
 | `ellipsis` | `boolean` |  | text nodes only; requires maxLines |
 | `hyphenate` | `boolean` |  | text nodes only |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
-| `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` |  | text nodes only |
+| `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. |
+| `textIndent` | `number` |  | text nodes only; indent of the first line in points (negative: hanging indent) |
+| `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only |
 | `borderCollapse` | `"collapse"` \| `"separate"` |  | default `"collapse"`; Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart. |
 | `borderSpacing` | [`NonNegative`](#nonnegative) |  | Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0. |
@@ -305,6 +307,9 @@ Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent
 | `color` | [`Color`](#color) |  |  |
 | `letterSpacing` | `number` |  |  |
 | `decoration` | `"none"` \| `"underline"` \| `"lineThrough"` |  |  |
+| `decorationColor` | [`Color`](#color) |  | Default: the run colour. |
+| `decorationThickness` | `number` |  | > 0, ≤ 100; Points. Default: from the font. |
+| `decorationStyle` | `"solid"` \| `"double"` \| `"dotted"` \| `"dashed"` \| `"wavy"` |  | default `"solid"` |
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  |  |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 

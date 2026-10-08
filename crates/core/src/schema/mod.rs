@@ -222,6 +222,11 @@ pub struct TextRun {
     pub color: Option<Color>,
     pub letter_spacing: Option<f32>,
     pub decoration: Option<Decoration>,
+    /// Decoration colour; default the run colour.
+    pub decoration_color: Option<Color>,
+    /// Decoration thickness in points; default from the font.
+    pub decoration_thickness: Option<f32>,
+    pub decoration_style: Option<DecorationStyle>,
     pub placeholder: Option<Placeholder>,
     /// Link target of this run (as `Node::link`).
     pub link: Option<String>,
@@ -350,8 +355,29 @@ kebab_enum!(GridAutoFlow {
 });
 kebab_enum!(Overflow { Visible = "visible", Hidden = "hidden" });
 kebab_enum!(BorderStyle { Solid = "solid", Dashed = "dashed", Dotted = "dotted" });
-kebab_enum!(TextAlign { Left = "left", Center = "center", Right = "right", Justify = "justify" });
-kebab_enum!(WhiteSpace { Normal = "normal", Pre = "pre", NoWrap = "nowrap" });
+kebab_enum!(TextAlign {
+    Left = "left",
+    Center = "center",
+    Right = "right",
+    Justify = "justify",
+    Start = "start",
+    End = "end",
+});
+kebab_enum!(Direction { Ltr = "ltr", Rtl = "rtl", Auto = "auto" });
+kebab_enum!(DecorationStyle {
+    Solid = "solid",
+    Double = "double",
+    Dotted = "dotted",
+    Dashed = "dashed",
+    Wavy = "wavy",
+});
+kebab_enum!(WhiteSpace {
+    Normal = "normal",
+    Pre = "pre",
+    NoWrap = "nowrap",
+    PreWrap = "pre-wrap",
+    PreLine = "pre-line",
+});
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
@@ -569,6 +595,9 @@ pub struct Style {
     pub hyphenate: Option<bool>,
     pub lang: Option<String>,
     pub white_space: Option<WhiteSpace>,
+    /// Indent of the first line, points (negative: hanging).
+    pub text_indent: Option<f32>,
+    pub direction: Option<Direction>,
 
     // Table cells only
     pub vertical_align: Option<VerticalAlign>,
@@ -589,6 +618,8 @@ impl Style {
             ("hyphenate", self.hyphenate.is_some()),
             ("lang", self.lang.is_some()),
             ("whiteSpace", self.white_space.is_some()),
+            ("textIndent", self.text_indent.is_some()),
+            ("direction", self.direction.is_some()),
         ]
         .into_iter()
         .filter_map(|(k, set)| set.then_some(k))

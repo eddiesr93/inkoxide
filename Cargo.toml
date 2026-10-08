@@ -23,6 +23,7 @@ taffy = { version = "=0.14.0", default-features = false, features = ["std", "fle
 rustybuzz = "=0.20.1"
 ttf-parser = "=0.25.1"
 unicode-linebreak = "=0.1.5"
+unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data", "std"] }
 hypher = "=0.1.8"
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
 xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }

@@ -9,7 +9,7 @@ use unicode_linebreak::{linebreaks, BreakOpportunity};
 use super::hyphen::Hyphenator;
 use super::{BreakKind, BreakPoint, Glyph, Prepared, Segment, GLYPH_INVISIBLE, GLYPH_SPACE};
 use crate::fonts::{FontKey, FontSet};
-use crate::schema::{TextRun, WhiteSpace};
+use crate::schema::{Direction, TextRun, WhiteSpace};
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
 pub(crate) const SHY: char = '\u{00AD}';
@@ -20,6 +20,7 @@ pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 
 pub(crate) struct ParagraphOptions<'a> {
     pub white_space: WhiteSpace,
+    pub direction: Direction,
     /// Language code to hyphenate in (only set when patterns exist).
     pub hyphenate: Option<&'a str>,
     pub hyphenator: &'a dyn Hyphenator,
@@ -46,7 +47,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
             None => run.text.as_deref().unwrap_or(""),
         };
         match opts.white_space {
-            WhiteSpace::Pre => {
+            WhiteSpace::Pre | WhiteSpace::PreWrap => {
                 for c in src.chars() {
                     match c {
                         '\r' => {}
@@ -55,7 +56,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
                     }
                 }
             }
-            WhiteSpace::Normal | WhiteSpace::NoWrap => {
+            WhiteSpace::Normal | WhiteSpace::NoWrap | WhiteSpace::PreLine => {
                 for c in src.chars() {
                     if c == '\n' {
                         // Forced break (like CSS `pre-line`; react-pdf
@@ -80,7 +81,9 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
             }
         }
         if let Some(lang) = opts.hyphenate {
-            if opts.white_space == WhiteSpace::Normal && run.placeholder.is_none() {
+            if !matches!(opts.white_space, WhiteSpace::Pre | WhiteSpace::NoWrap)
+                && run.placeholder.is_none()
+            {
                 let hyphenated = insert_soft_hyphens(&text[start..], opts.hyphenator, lang);
                 text.truncate(start);
                 text.push_str(&hyphenated);
@@ -131,16 +134,27 @@ fn itemize(
     run_ranges: &[(usize, usize)],
     runs: &[TextRun],
     fonts: &FontSet<'_>,
+    levels: Option<&[u8]>,
 ) -> Vec<Segment> {
+    let level_at = |i: usize| levels.map_or(0, |l| l[i]);
     let mut segs: Vec<Segment> = Vec::new();
     for (ri, (&(start, end), run)) in run_ranges.iter().zip(runs).enumerate() {
         let Some(primary) = fonts.key(&run.font) else {
             continue;
         };
         let mut current: Option<(FontKey, usize)> = None;
+        let mut level = 0u8;
         for (off, c) in text[start..end].char_indices() {
             let i = start + off;
             let neutral = c.is_whitespace() || c == SHY || c.is_control() || is_mark(c);
+            let lvl = level_at(i);
+            if let Some((f, s)) = current {
+                if lvl != level {
+                    segs.push(Segment::new(ri, f, level, s..i));
+                    current = None;
+                }
+            }
+            level = lvl;
             let font = match current {
                 Some((f, _)) if neutral => f,
                 _ if fonts.get(primary).glyph(c).is_some() || neutral => primary,
@@ -154,14 +168,14 @@ fn itemize(
             match current {
                 Some((f, _)) if f == font => {}
                 Some((f, s)) => {
-                    segs.push(Segment::new(ri, f, run, s..i));
+                    segs.push(Segment::new(ri, f, level, s..i));
                     current = Some((font, i));
                 }
                 None => current = Some((font, i)),
             }
         }
         if let Some((f, s)) = current {
-            segs.push(Segment::new(ri, f, run, s..end));
+            segs.push(Segment::new(ri, f, level, s..end));
         }
     }
     segs
@@ -178,6 +192,9 @@ struct UnitGlyph {
     cluster: u32,
 }
 
+/// Font, direction and text of a shaped word.
+type WordKey = (FontKey, Option<bool>, Box<str>);
+
 /// Per-render shaping cache: shape plans per (font, direction, script) and
 /// shaped words per (font, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
@@ -186,26 +203,39 @@ struct UnitGlyph {
 pub(crate) struct ShapeCache {
     plans:
         HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
-    words: HashMap<(FontKey, Box<str>), Arc<[UnitGlyph]>>,
+    /// Keyed by font, direction (`Some(true)`: right to left; `None`:
+    /// guessed from the text) and text.
+    words: HashMap<WordKey, Arc<[UnitGlyph]>>,
 }
 
 impl ShapeCache {
     /// Shapes `word` in `font`, recording glyph → text mappings the first
     /// time a word is seen.
+    /// Glyphs come back in logical order (clusters ascending) whatever
+    /// the direction; painting reverses right-to-left runs.
     fn word(
         &mut self,
         key: FontKey,
         fonts: &FontSet<'_>,
         word: &str,
+        rtl: Option<bool>,
         unicode: &mut super::UnicodeMap,
     ) -> Arc<[UnitGlyph]> {
-        if let Some(g) = self.words.get(&(key, Box::from(word))) {
+        if let Some(g) = self.words.get(&(key, rtl, Box::from(word))) {
             return g.clone();
         }
         let face = &fonts.get(key).face;
         let mut buf = rustybuzz::UnicodeBuffer::new();
         buf.push_str(word);
         buf.guess_segment_properties();
+        if let Some(rtl) = rtl {
+            buf.set_direction(if rtl {
+                rustybuzz::Direction::RightToLeft
+            } else {
+                rustybuzz::Direction::LeftToRight
+            });
+        }
+        let reversed = buf.direction() == rustybuzz::Direction::RightToLeft && rtl.is_some();
         let plan = self
             .plans
             .entry((key, buf.direction(), Some(buf.script())))
@@ -214,7 +244,7 @@ impl ShapeCache {
             });
         let shaped = rustybuzz::shape_with_plan(face, plan, buf);
         let infos = shaped.glyph_infos();
-        let glyphs: Arc<[UnitGlyph]> = infos
+        let mut glyphs: Vec<UnitGlyph> = infos
             .iter()
             .zip(shaped.glyph_positions())
             .map(|(i, p)| UnitGlyph {
@@ -225,6 +255,10 @@ impl ShapeCache {
                 cluster: i.cluster,
             })
             .collect();
+        if reversed {
+            glyphs.reverse();
+        }
+        let glyphs: Arc<[UnitGlyph]> = glyphs.into();
         // The first glyph of a cluster carries the cluster's text.
         for (k, g) in glyphs.iter().enumerate() {
             let cluster = g.cluster as usize;
@@ -245,7 +279,8 @@ impl ShapeCache {
             let end = next.max(cluster + c.len_utf8()).min(word.len());
             unicode.record(key, g.id, &word[cluster..end]);
         }
-        self.words.insert((key, Box::from(word)), glyphs.clone());
+        self.words
+            .insert((key, rtl, Box::from(word)), glyphs.clone());
         glyphs
     }
 }
@@ -280,7 +315,11 @@ pub(crate) fn prepare(
     unicode: &mut super::UnicodeMap,
 ) -> Prepared {
     let (text, run_ranges) = build_text(opts);
-    let mut segments = itemize(&text, &run_ranges, opts.runs, fonts);
+    let (levels, rtl) = bidi_levels(&text, opts.direction);
+    let bidi = levels
+        .as_ref()
+        .is_some_and(|l| l.iter().any(|v| v % 2 == 1));
+    let mut segments = itemize(&text, &run_ranges, opts.runs, fonts, levels.as_deref());
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(text.len());
 
     for seg in &mut segments {
@@ -290,8 +329,9 @@ pub(crate) fn prepare(
         let seg_text = &text[seg.text.start as usize..seg.text.end as usize];
 
         let first = glyphs.len() as u32;
+        let dir = levels.is_some().then_some(seg.level % 2 == 1);
         for (off, word) in words(seg_text) {
-            let shaped = cache.word(seg.font, fonts, word, unicode);
+            let shaped = cache.word(seg.font, fonts, word, dir, unicode);
             for (k, g) in shaped.iter().enumerate() {
                 let c = word[g.cluster as usize..].chars().next().unwrap_or(' ');
                 let mut flags = 0;
@@ -354,7 +394,38 @@ pub(crate) fn prepare(
         segments,
         glyphs,
         breaks,
+        rtl,
+        bidi,
     }
+}
+
+/// Bidi embedding levels per byte of `text`, or `None` when the text is
+/// left to right throughout (the common case, skipped cheaply). Also the
+/// resolved base direction.
+fn bidi_levels(text: &str, direction: Direction) -> (Option<Vec<u8>>, bool) {
+    // Hebrew (U+0590) and later blocks hold every strong right-to-left
+    // character; explicit marks and embeddings start at U+200E.
+    let maybe_rtl = text.chars().any(|c| c >= '\u{0590}');
+    if direction == Direction::Ltr && !maybe_rtl {
+        return (None, false);
+    }
+    let level = match direction {
+        Direction::Ltr => Some(unicode_bidi::Level::ltr()),
+        Direction::Rtl => Some(unicode_bidi::Level::rtl()),
+        Direction::Auto => None,
+    };
+    let info = unicode_bidi::BidiInfo::new(text, level);
+    let rtl = info.paragraphs.first().is_some_and(|p| p.level.is_rtl())
+        || (text.is_empty() && direction == Direction::Rtl);
+    let levels: Vec<u8> = info
+        .levels
+        .iter()
+        .map(unicode_bidi::Level::number)
+        .collect();
+    if !rtl && levels.iter().all(|l| *l == 0) {
+        return (None, false);
+    }
+    (Some(levels), rtl)
 }
 
 #[cfg(test)]
@@ -370,6 +441,9 @@ mod tests {
             color: None,
             letter_spacing: None,
             decoration: None,
+            decoration_color: None,
+            decoration_thickness: None,
+            decoration_style: None,
             placeholder: None,
             link: None,
         }
@@ -378,6 +452,7 @@ mod tests {
     fn text_of(runs: &[TextRun], ws: WhiteSpace) -> String {
         build_text(&ParagraphOptions {
             white_space: ws,
+            direction: Direction::Ltr,
             hyphenate: None,
             hyphenator: &NoHyphenation,
             runs,
@@ -392,6 +467,7 @@ mod tests {
         // The collapsed space stays in the run where it occurs.
         let (text, ranges) = build_text(&ParagraphOptions {
             white_space: WhiteSpace::Normal,
+            direction: Direction::Ltr,
             hyphenate: None,
             hyphenator: &NoHyphenation,
             runs: &[run("a "), run(" b")],
@@ -410,6 +486,26 @@ mod tests {
     fn pre_keeps_spaces() {
         let runs = [run(" a\tb\r\n")];
         assert_eq!(text_of(&runs, WhiteSpace::Pre), " a    b\n");
+    }
+
+    #[test]
+    fn pre_wrap_keeps_spaces_and_pre_line_collapses() {
+        let runs = [run("a  b\tc\n d")];
+        assert_eq!(text_of(&runs, WhiteSpace::PreWrap), "a  b    c\n d");
+        assert_eq!(text_of(&runs, WhiteSpace::PreLine), "a b c\nd");
+    }
+
+    #[test]
+    fn bidi_levels_only_when_needed() {
+        assert_eq!(bidi_levels("plain text", Direction::Ltr), (None, false));
+        let (levels, rtl) = bidi_levels("ab \u{05E9}\u{05DC}", Direction::Ltr);
+        assert!(!rtl);
+        assert_eq!(levels.unwrap().last(), Some(&1));
+        let (_, rtl) = bidi_levels("\u{05E9}\u{05DC} ab", Direction::Auto);
+        assert!(rtl);
+        let (levels, rtl) = bidi_levels("ab", Direction::Rtl);
+        assert!(rtl);
+        assert_eq!(levels.unwrap(), vec![2, 2]);
     }
 
     #[test]

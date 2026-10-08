@@ -57,12 +57,18 @@ pub(crate) fn break_lines(
             bi += 1;
             continue;
         }
+        // The first line is shortened (or, hanging, lengthened) by the indent.
+        let limit = if raw.is_empty() {
+            max_width - style.indent
+        } else {
+            max_width
+        };
         let extra = if kind == BreakKind::Hyphen {
             hyphen_width(pos)
         } else {
             0.0
         };
-        let fits = width(start, pos) + extra <= max_width + EPS;
+        let fits = width(start, pos) + extra <= limit + EPS;
         if fits {
             if kind == BreakKind::Mandatory {
                 raw.push((start, pos, kind));
@@ -98,7 +104,7 @@ pub(crate) fn break_lines(
                 let mut end = start + 1;
                 while end < pos
                     && (p.glyphs[end].cluster == p.glyphs[end - 1].cluster
-                        || width(start, end + 1) <= max_width + EPS)
+                        || width(start, end + 1) <= limit + EPS)
                 {
                     end += 1;
                 }
@@ -137,6 +143,7 @@ pub(crate) fn break_lines(
                 hyphen,
                 ellipsis: None,
                 forced: kind == BreakKind::Mandatory,
+                indent: if s == 0 { style.indent } else { 0.0 },
                 top: 0.0,
                 ascent: 0.0,
                 height: 0.0,
@@ -152,8 +159,9 @@ pub(crate) fn break_lines(
         lines.truncate(max);
         if style.ellipsis {
             if let Some(last) = lines.last_mut() {
-                if truncated || last.width > max_width + EPS {
-                    apply_ellipsis(last, p, runs, fonts, max_width, &prefix);
+                let limit = max_width - last.indent;
+                if truncated || last.width > limit + EPS {
+                    apply_ellipsis(last, p, runs, fonts, limit, &prefix);
                 }
             }
         }
@@ -164,7 +172,7 @@ pub(crate) fn break_lines(
     for l in &mut lines {
         l.top = top;
         top += l.height;
-        max_w = max_w.max(l.width);
+        max_w = max_w.max(l.width + l.indent);
     }
     LineLayout {
         lines,
