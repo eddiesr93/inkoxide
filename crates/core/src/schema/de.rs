@@ -469,7 +469,7 @@ impl TryFrom<RawNode> for Node {
         };
         Ok(Node {
             id: r.id,
-            style: r.style.unwrap_or_default(),
+            style: r.style.map(super::NodeStyle::new).unwrap_or_default(),
             brk: r.brk.unwrap_or_default(),
             link: r.link,
             bookmark: r.bookmark,

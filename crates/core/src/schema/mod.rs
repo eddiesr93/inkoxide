@@ -137,7 +137,7 @@ pub struct Break {
 #[serde(try_from = "de::RawNode")]
 pub struct Node {
     pub id: Option<String>,
-    pub style: Style,
+    pub style: NodeStyle,
     pub brk: Break,
     /// Link target: a URI, or `#id` of a node (boxed: rare, and nodes are
     /// numerous).
@@ -254,7 +254,7 @@ pub struct TableCell {
     #[serde(default = "one")]
     pub row_span: u32,
     #[serde(default)]
-    pub style: Style,
+    pub style: NodeStyle,
     #[serde(default, deserialize_with = "de::shrunk")]
     pub children: Vec<Node>,
 }
@@ -393,6 +393,56 @@ impl<T: Copy> OptEdges<T> {
         ]
         .into_iter()
         .filter_map(|(k, v)| v.map(|v| (k, v)))
+    }
+}
+
+/// The style of a node or cell, shared between nodes whose styles are
+/// equal (ADR-040). Reads as a [`Style`].
+#[derive(Debug, Clone)]
+pub struct NodeStyle(std::sync::Arc<Style>);
+
+/// Distinct styles remembered while parsing. Templates repeat a handful
+/// of styles (one per table column, say), so a short list catches them.
+const RECENT_STYLES: usize = 16;
+
+thread_local! {
+    static RECENT: std::cell::RefCell<Vec<std::sync::Arc<Style>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl NodeStyle {
+    /// Shares `style` with an equal one seen recently on this thread.
+    pub fn new(style: Style) -> Self {
+        RECENT.with_borrow_mut(|recent| {
+            if let Some(i) = recent.iter().position(|s| **s == style) {
+                return Self(recent[i].clone());
+            }
+            let s = std::sync::Arc::new(style);
+            if recent.len() == RECENT_STYLES {
+                recent.remove(0);
+            }
+            recent.push(s.clone());
+            Self(s)
+        })
+    }
+}
+
+impl Default for NodeStyle {
+    fn default() -> Self {
+        Self::new(Style::default())
+    }
+}
+
+impl std::ops::Deref for NodeStyle {
+    type Target = Style;
+    fn deref(&self) -> &Style {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeStyle {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Style::deserialize(d).map(Self::new)
     }
 }
 

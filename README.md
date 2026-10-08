@@ -9,14 +9,17 @@ keep-together blocks, headers and footers, page numbers.
 render(document_tree, options) -> pdf_bytes
 ```
 
-> Status: **M5 (images & Node binding)**. Schema, validation, flex/grid
-> layout, box painting, text (shaping, wrapping, justification,
-> hyphenation, fallback, selectable output), pagination (splitting,
-> keep-together, forced breaks, headers/footers, page numbers), tables
-> (spans, collapsed borders, row splitting with repeated headers), images
-> (JPEG passthrough, PNG with alpha, fit modes) and the napi-rs binding
-> work. Nothing is published to npm or crates.io yet. See
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> Status: **M7 (feature-complete for v1, unpublished)**. Schema,
+> validation (JSON and MessagePack), flex/grid layout, box painting, text
+> (shaping, wrapping, justification, hyphenation, fallback, selectable
+> output), pagination (splitting, keep-together, forced breaks,
+> headers/footers, page numbers), tables (spans, collapsed borders, row
+> splitting with repeated headers), images (JPEG passthrough, PNG with
+> alpha, SVG as vector graphics, fit modes), font subsetting (TrueType and
+> CFF), links and bookmarks, PDF/A-2b output, parallel rendering, fuzzing,
+> and the napi-rs binding all work. Nothing is published to npm or
+> crates.io yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
+> [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Quick start
 

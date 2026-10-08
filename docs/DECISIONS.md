@@ -835,3 +835,28 @@ embedded and there is no encryption, JavaScript or external content.
 - PDF/A-2u (Unicode mapping) is likely met already, since every font has
   a ToUnicode CMap, but it is not claimed or tested. PDF/A-2a and PDF/UA
   need tagging, which remains a non-goal.
+
+## ADR-040 — Interned node styles (M7)
+
+**Context.** `Style` is 560 bytes and every `Node` and `TableCell` held
+one inline. Generated documents repeat a handful of styles across
+thousands of nodes: the 500-page table dump (20k rows × 5 cells) reached
+306 MB peak RSS after the grid fields landed, above the §9 target of
+300 MB. Boxing the style (`Option<Box<Style>>`) made it worse, since
+nearly every node sets one.
+
+**Decision.**
+- `Node.style` and `TableCell.style` are a `NodeStyle`, an
+  `Arc<Style>` that derefs to `Style`.
+- Deserialisation interns styles against a thread-local list of the 16
+  most recently seen ones; an equal style shares the existing `Arc`.
+  The list is bounded, so a document with many distinct styles costs
+  one comparison pass per node and nothing more.
+- The public shape of the schema (JSON, MessagePack, JSON Schema) is
+  unchanged; this is an in-memory representation only.
+
+**Consequences.**
+- Table dump peak RSS: 306 MB → ~210 MB, with no change in time and
+  byte-identical output.
+- Styles are read-only after parsing. Code that needs to change a style
+  builds a new one.
