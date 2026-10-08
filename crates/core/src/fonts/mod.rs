@@ -37,6 +37,8 @@ pub(crate) struct FontMetrics {
 #[derive(Debug)]
 pub struct FontData {
     pub(crate) bytes: Arc<[u8]>,
+    /// xxh3 of `bytes`: the font's identity in process-wide caches.
+    pub(crate) hash: u64,
     pub(crate) metrics: FontMetrics,
     /// Flate-compressed bytes for `FontFile2`, computed on first use and
     /// shared by every later render.
@@ -110,6 +112,7 @@ impl FontData {
             num_glyphs: face.number_of_glyphs(),
         };
         Ok(Self {
+            hash: xxhash_rust::xxh3::xxh3_64(&bytes),
             bytes,
             metrics,
             compressed: OnceLock::new(),

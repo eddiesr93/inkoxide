@@ -10,6 +10,8 @@ export interface RenderOptions {
   creationDate?: string;
   /** Worker threads for this render. Default: all cores. `1` renders on one thread. */
   threads?: number;
+  /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
+  subsetFonts?: boolean;
   /** Image bytes (JPEG or PNG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
 }

@@ -31,7 +31,76 @@ const MAX_PAGE_EDGE: f32 = 14_400.0;
 pub(crate) fn parse(doc: &[u8], format: InputFormat) -> Result<Document, ValidationError> {
     match format {
         InputFormat::Json => parse_json(doc),
+        InputFormat::MessagePack => parse_msgpack(doc),
     }
+}
+
+/// Same nesting limit as `serde_json` (rmp-serde allows 1024, enough to
+/// overflow the stack of a worker thread).
+const MAX_DEPTH: usize = 128;
+
+type MsgpackDe<'a> =
+    rmp_serde::Deserializer<rmp_serde::decode::ReadReader<std::io::Cursor<&'a [u8]>>>;
+
+fn msgpack_de(doc: &[u8]) -> MsgpackDe<'_> {
+    let mut de = rmp_serde::Deserializer::new(std::io::Cursor::new(doc));
+    de.set_max_depth(MAX_DEPTH);
+    de
+}
+
+fn trailing_bytes() -> ValidationError {
+    ValidationError {
+        code: Code::ParseError,
+        path: String::new(),
+        message: "trailing bytes after the MessagePack document".into(),
+    }
+}
+
+fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
+    let mut de = msgpack_de(doc);
+    if let Ok(d) = Document::deserialize(&mut de) {
+        return match de.position() as usize == doc.len() {
+            true => Ok(d),
+            false => Err(trailing_bytes()),
+        };
+    }
+    let mut de = msgpack_de(doc);
+    let err = match serde_path_to_error::deserialize::<_, Document>(&mut de) {
+        Ok(_) => return Err(trailing_bytes()),
+        Err(e) => e,
+    };
+    if let Some(v) = probe_version_msgpack(doc) {
+        if v != SCHEMA_VERSION as i64 {
+            return Err(unsupported_version(&v.to_string()));
+        }
+    }
+    let path = format_path(err.path());
+    use rmp_serde::decode::Error as E;
+    match err.into_inner() {
+        // Messages from serde itself and from our deserialisers.
+        E::Syntax(msg) => Err(classify(path, msg)),
+        // A reserved marker (0xc1) is malformed input, not a type error.
+        E::TypeMismatch(marker) if !path.is_empty() && format!("{marker:?}") != "Reserved" => {
+            Err(ValidationError {
+                code: Code::InvalidType,
+                path,
+                message: format!("invalid type: unexpected MessagePack {marker:?}"),
+            })
+        }
+        other => Err(ValidationError {
+            code: Code::ParseError,
+            path: String::new(),
+            message: format!("not valid MessagePack: {other}"),
+        }),
+    }
+}
+
+fn probe_version_msgpack(doc: &[u8]) -> Option<i64> {
+    #[derive(Deserialize)]
+    struct Probe {
+        version: Option<i64>,
+    }
+    rmp_serde::from_slice::<Probe>(doc).ok()?.version
 }
 
 fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {

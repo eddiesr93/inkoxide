@@ -70,6 +70,13 @@ fn all_fixtures_render() {
         let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
         assert!(a == b, "{name}: output is not deterministic");
 
+        // The same document as MessagePack renders the same bytes.
+        let value: serde_json::Value = serde_json::from_slice(&input).unwrap();
+        let packed = rmp_serde::to_vec(&value).unwrap();
+        let c = inkoxide::render(&packed, InputFormat::MessagePack, &opts, &fonts, &images)
+            .unwrap_or_else(|e| panic!("{name} (msgpack): {e}"));
+        assert!(a == c, "{name}: MessagePack output differs from JSON");
+
         let out = out_dir.join(format!("{name}.pdf"));
         fs::write(&out, &a).unwrap();
         if qpdf {
@@ -135,4 +142,43 @@ fn output_is_independent_of_thread_count() {
     let one = render(1);
     assert!(one == render(3), "3 threads differ from 1");
     assert!(one == render(8), "8 threads differ from 1");
+}
+
+/// MessagePack errors carry the same codes and paths as JSON ones.
+#[test]
+fn msgpack_errors_match_json() {
+    let (fonts, images) = stores();
+    let cases = [
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","colour":1}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100},"children":[]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","style":{"flexDirection":"diagonal"}}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"spacer","style":{"width":"wide"}}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":-5,"height":100},"children":[]}]}"#,
+        r#"{"version":2,"fonts":[],"pages":[]}"#,
+    ];
+    for json in cases {
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        let packed = rmp_serde::to_vec(&value).unwrap();
+        let a = inkoxide::validate(json.as_bytes(), InputFormat::Json, &fonts, &images);
+        let b = inkoxide::validate(&packed, InputFormat::MessagePack, &fonts, &images);
+        let key = |v: &[inkoxide::ValidationError]| {
+            v.iter()
+                .map(|e| (e.code.as_str(), e.path.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert!(!a.is_empty(), "{json}");
+        assert_eq!(key(&a), key(&b), "{json}\n{b:#?}");
+    }
+    // Garbage and trailing bytes are parse errors.
+    let ok: serde_json::Value = serde_json::from_str(
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[]}]}"#,
+    )
+    .unwrap();
+    let mut trailing = rmp_serde::to_vec(&ok).unwrap();
+    assert!(inkoxide::validate(&trailing, InputFormat::MessagePack, &fonts, &images).is_empty());
+    trailing.push(0);
+    for bad in [&b"\xc1"[..], &trailing[..]] {
+        let e = inkoxide::validate(bad, InputFormat::MessagePack, &fonts, &images);
+        assert_eq!(e[0].code.as_str(), "PARSE_ERROR", "{e:?}");
+    }
 }

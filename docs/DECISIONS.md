@@ -502,3 +502,104 @@ paragraphs with 1, 3 and 8 threads and compares the bytes. Small documents
 threads. Workers do not share their word caches, so repeated words are
 shaped once per worker instead of once per document; that costs a little
 total CPU for a much shorter wall-clock time.
+
+## ADR-031 — Fuzzing and memory guards (M6)
+
+**Context.** The engine must never panic or blow up on any input (§8.6).
+Hand-written tests only cover the cases someone thought of.
+
+**Decision.**
+- `fuzz/` is a cargo-fuzz crate (libFuzzer, nightly). It is not a workspace
+  member, so the stable build never sees sanitizer flags. It has two
+  targets that share one oracle. The oracle says: no panic; `render`
+  succeeds only if `validate` is clean; a validation error from `render`
+  implies `validate` reports one too; output is a complete PDF.
+  - `render_json` feeds raw bytes. It is seeded with `fixtures/docs` and
+    uses a dictionary of schema keys and enum values.
+  - `render_tree` is structure-aware. The bytes drive a generator of
+    schema-shaped documents with edge values (0, negatives, 10⁹, 10⁻⁶,
+    `f32::MAX`), long words, mixed scripts, large tables and deep nesting.
+    About 80 % of them validate, so most runs reach layout, pagination and
+    paint. One input in eight breaks the schema on purpose.
+- `scripts/fuzz.sh SECONDS` runs both targets. `scripts/ci.sh` runs a
+  30-second smoke when nightly and cargo-fuzz are installed. `repro` (in
+  the fuzz crate) prints the document behind a finding.
+- Memory guards:
+  - **Page count.** A render may produce at most `MAX_PAGES` = 100 000
+    pages, checked after pagination and before anything is painted.
+    Otherwise it returns `LAYOUT_ERROR`. This was the one class of finding:
+    a box 10¹¹ pt tall, or `aspectRatio: 1e-6`, asked for 10⁸ pages and
+    tens of GB.
+  - **Nesting depth.** The JSON parser's recursion limit (128) bounds it. A
+    test renders the deepest accepted document on a 2 MiB stack, with one
+    and two threads.
+  - **Images.** The existing 50-megapixel limit still applies.
+
+**Consequences.** Fuzzing needs nightly, which only the developer machine
+has; CI stays local (no hosted workflows). The page limit is far above
+any real document (the 500-page dump uses 0.5 %). Callers who need more
+can split the document.
+
+## ADR-032 — Font subsetting and process-wide caches (M6/M7)
+
+**Context.** v1 embedded whole font programs (ADR-017): 414 KB for a
+one-page invoice with two Inter faces. The first render of a process
+spent ~45 ms compressing them, missing the 50 ms cold-start target once
+registration was counted. The Node binding also builds a new image store
+per call, so images were decoded again on every render.
+
+**Decision.**
+- Fonts are subset with `subsetter` (Typst; named for M7 in §3, no
+  default features) to the glyphs the document uses. Content streams
+  keep the original glyph ids as CIDs, because pages are encoded in
+  parallel before the document's glyph set is known (ADR-029). A
+  Flate-compressed `CIDToGIDMap` stream maps them to the renumbered
+  subset. `W` and ToUnicode stay keyed by original id.
+- The subset tag (`ABCDEF+`) is derived from the font name and glyph set
+  with xxh3, so output stays deterministic.
+- If the subsetter rejects a font, the whole font is embedded with an
+  Identity map and a warning is logged.
+  `RenderOptions.subset_fonts = false` (CLI `--full-fonts`) forces this.
+- Compressed subsets are cached process-wide, keyed by font hash and the
+  exact glyph set, in a 32 MB LRU. Compression is most of the cost
+  (miniz state setup plus ~15 KB per face), and documents from one
+  template repeat their glyph sets.
+- Decoded images are cached process-wide, keyed by xxh3 of the encoded
+  bytes and checked for collisions, in a 64 MB LRU. Every `ImageStore`
+  shares it.
+
+**Consequences.**
+- The invoice is now 29 KB instead of 414 KB.
+- Cold start (registering two fonts plus the first render) takes ~8 ms
+  instead of ~55 ms.
+- The warm invoice render is 2.6 ms when the cache hits. A miss adds
+  ~1.3 ms (subset plus compression).
+- Both caches hold memory for the life of the process, bounded by their
+  budgets.
+
+## ADR-033 — MessagePack input (M7)
+
+**Context.** §5 names MessagePack as an optional second encoding of the
+same tree (`format: "msgpack"`), for callers that already hold binary
+data or want to skip JSON escaping.
+
+**Decision.**
+- `rmp-serde` drives the same serde structs as JSON, so the two formats
+  cannot drift. It is a normal dependency, not a cargo feature: it is
+  small (rmp, rustc-hash) and a feature would double the test matrix.
+- The parse mirrors the JSON one: a fast path without path tracking; on
+  failure, a second pass through `serde_path_to_error` for the path and
+  a version probe, so `UNSUPPORTED_VERSION` still wins over field errors.
+- Errors map onto the JSON codes: semantic messages go through the same
+  classifier (`MISSING_FIELD`, `UNKNOWN_FIELD`, `INVALID_VALUE`, …); a
+  type mismatch at a path is `INVALID_TYPE`; malformed bytes (reserved
+  marker, truncation) and trailing bytes are `PARSE_ERROR`.
+- Nesting is capped at 128 (`set_max_depth`), the same as serde_json's
+  recursion limit (ADR-031).
+- Entry points: `InputFormat::MessagePack`; Node `format: "msgpack"`;
+  CLI `--msgpack` or a `.msgpack` / `.mpk` extension.
+
+**Consequences.** Every fixture is also rendered from MessagePack in the
+test suite and must produce identical bytes; the fuzz oracle does the
+same for every JSON input that renders. Maps must use string keys, as
+JSON objects do.

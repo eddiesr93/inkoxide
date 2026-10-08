@@ -84,3 +84,14 @@ fn orientation_matrices_move_the_top_left_pixel() {
     // Rotation 6: the stored top-right pixel lands bottom-right.
     assert_eq!(corner(image_matrix(6, r), 1.0, 0.0), (110.0, 70.0));
 }
+
+#[test]
+fn separate_stores_share_one_decode() {
+    let bytes: Arc<[u8]> = fixture("palette.png").into();
+    let a = ImageData::new(bytes.clone());
+    let b = ImageData::new(bytes.to_vec().into());
+    let da = a.decoded(&ImageCrateDecoder).unwrap();
+    assert!(cache::contains(a.hash));
+    let db = b.decoded(&ImageCrateDecoder).unwrap();
+    assert!(Arc::ptr_eq(&da, &db));
+}

@@ -1,7 +1,7 @@
 //! `inkoxide` — development and CI front end for the engine.
 //!
 //! ```text
-//! inkoxide render doc.json --fonts fixtures/fonts -o out.pdf [--png-dir out/]
+//! inkoxide render doc.json --fonts fixtures/fonts -o out.pdf [--msgpack] [--png-dir out/]
 //! inkoxide validate doc.json --fonts fixtures/fonts
 //! inkoxide bench doc.json --fonts fixtures/fonts --iterations 30
 //! ```
@@ -34,6 +34,12 @@ struct Resources {
     /// Directory of images; each is available to `src` under its file stem.
     #[arg(long)]
     images: Vec<PathBuf>,
+    /// Embed whole font programs instead of subsets.
+    #[arg(long)]
+    full_fonts: bool,
+    /// Read the document as MessagePack (implied by a .msgpack/.mpk extension).
+    #[arg(long)]
+    msgpack: bool,
 }
 
 #[derive(Subcommand)]
@@ -159,7 +165,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
     match cli.command {
         Cmd::Validate { doc, res, json } => {
             let (fonts, images) = load_resources(&res)?;
-            let errors = inkoxide::validate(&read(&doc)?, InputFormat::Json, &fonts, &images);
+            let errors = inkoxide::validate(&read(&doc)?, format_of(&doc, &res), &fonts, &images);
             print_errors(&errors, json);
             if errors.is_empty() {
                 if !json {
@@ -186,10 +192,12 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 compress: !no_compress,
                 creation_date,
                 threads,
+                subset_fonts: !res.full_fonts,
                 ..Default::default()
             };
             let start = Instant::now();
-            let pdf = match inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images) {
+            let pdf = match inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
+            {
                 Ok(pdf) => pdf,
                 Err(e) => {
                     eprintln!("{} {e}", e.code());
@@ -216,17 +224,24 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             iterations,
             threads,
         } => {
-            let (fonts, images) = load_resources(&res)?;
             let input = read(&doc)?;
             let opts = RenderOptions {
                 threads,
+                subset_fonts: !res.full_fonts,
                 ..Default::default()
             };
+            // Cold start: font registration plus the first render, which
+            // also fills the process-wide caches.
+            let cold = Instant::now();
+            let (fonts, images) = load_resources(&res)?;
+            inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
+                .map_err(|e| format!("{} {e}", e.code()))?;
+            let cold = cold.elapsed();
             let mut times = Vec::with_capacity(iterations as usize);
             let mut size = 0;
             for _ in 0..iterations.max(1) {
                 let start = Instant::now();
-                let pdf = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
+                let pdf = inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
                     .map_err(|e| format!("{} {e}", e.code()))?;
                 times.push(start.elapsed());
                 size = pdf.len();
@@ -234,8 +249,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             times.sort();
             let median = times[times.len() / 2];
             println!(
-                "{}: {} iterations, min {:.3} ms, median {:.3} ms, max {:.3} ms, {} bytes",
+                "{}: cold {:.3} ms; {} iterations, min {:.3} ms, median {:.3} ms, max {:.3} ms, {} bytes",
                 doc.display(),
+                ms(cold),
                 times.len(),
                 ms(times[0]),
                 ms(median),
@@ -244,6 +260,16 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             );
             Ok(ExitCode::SUCCESS)
         }
+    }
+}
+
+/// MessagePack with `--msgpack` or a `.msgpack` / `.mpk` extension;
+/// JSON otherwise.
+fn format_of(doc: &Path, res: &Resources) -> InputFormat {
+    match doc.extension().and_then(|e| e.to_str()) {
+        _ if res.msgpack => InputFormat::MessagePack,
+        Some("msgpack" | "mpk") => InputFormat::MessagePack,
+        _ => InputFormat::Json,
     }
 }
 

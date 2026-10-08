@@ -14,6 +14,7 @@ step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 step "rustfmt"
 cargo fmt --all -- --check
+cargo fmt --manifest-path fuzz/Cargo.toml -- --check
 
 if [[ $quick == 0 ]]; then
   step "clippy"
@@ -53,6 +54,13 @@ if [[ $quick == 0 ]]; then
     cargo deny check
   else
     echo "cargo-deny not installed; skipped (cargo install cargo-deny)"
+  fi
+
+  step "fuzz smoke (30 s per target)"
+  if command -v cargo-fuzz >/dev/null && rustup toolchain list | grep -q nightly; then
+    scripts/fuzz.sh 30
+  else
+    echo "nightly or cargo-fuzz missing; skipped (see docs/TESTING.md)"
   fi
 
   if [[ -x scripts/visual-diff.sh ]]; then

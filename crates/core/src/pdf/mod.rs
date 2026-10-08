@@ -10,6 +10,7 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use pdf_writer::types::LineCapStyle;
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
+use rayon::prelude::*;
 
 use crate::date::Timestamp;
 use crate::fonts::{FontKey, FontSet};
@@ -61,6 +62,8 @@ pub(crate) trait PdfSink {
 pub(crate) struct PdfWriterSink {
     /// Flate level for content streams; `None` writes them uncompressed.
     pub compression: Option<u32>,
+    /// Embed only the glyphs used (ADR-032).
+    pub subset_fonts: bool,
 }
 
 /// Rounds to 1/1000 pt so output has at most three decimals.
@@ -159,12 +162,18 @@ impl PdfSink for PdfWriterSink {
                 used.entry(*key).or_default().extend(glyphs);
             }
         }
+        // Subsetting and compression are independent per font.
+        let programs: Vec<font::Program> = used
+            .par_iter()
+            .map(|(key, glyphs)| font::program(doc.fonts.get(*key), glyphs, self.subset_fonts))
+            .collect::<Result<_, _>>()?;
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
-        for (key, glyphs) in &used {
+        for ((key, glyphs), program) in used.iter().zip(&programs) {
             let r = font::write_font(
                 &mut pdf,
                 &mut || alloc.next(),
                 doc.fonts.get(*key),
+                program,
                 glyphs,
                 doc.unicode.fonts.get(key),
             )?;

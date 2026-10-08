@@ -17,6 +17,7 @@ mod error;
 mod fonts;
 mod images;
 mod layout;
+mod lru;
 mod paginate;
 mod paint;
 mod pdf;
@@ -43,6 +44,9 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub enum InputFormat {
     #[default]
     Json,
+    /// MessagePack with the same structure as the JSON (maps keyed by the
+    /// JSON field names).
+    MessagePack,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +61,9 @@ pub struct RenderOptions {
     /// Worker threads for page painting and compression; `None` uses the
     /// shared pool (all cores), `Some(1)` renders on the calling thread.
     pub threads: Option<usize>,
+    /// Embed only the glyphs a document uses (default `true`). Off embeds
+    /// whole font programs, as before M7.
+    pub subset_fonts: bool,
 }
 
 impl Default for RenderOptions {
@@ -66,6 +73,7 @@ impl Default for RenderOptions {
             compression_level: 6,
             creation_date: None,
             threads: None,
+            subset_fonts: true,
         }
     }
 }
@@ -139,6 +147,7 @@ fn render_inner(
     let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
+        subset_fonts: options.subset_fonts,
     };
     let pages = pipeline::run(&document, &font_set, &mut text, &image_set, |page| {
         sink.encode_page(&page, &font_set)

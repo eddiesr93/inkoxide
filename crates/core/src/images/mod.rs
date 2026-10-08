@@ -6,6 +6,7 @@
 //! written as Flate-compressed samples plus an optional alpha `SMask`.
 
 mod base64;
+mod cache;
 mod decode;
 mod probe;
 
@@ -49,10 +50,11 @@ impl ImageData {
         }
     }
 
-    /// Decodes once; later renders reuse the result.
+    /// Decodes once; later renders reuse the result, as do other stores
+    /// holding the same bytes (the process-wide cache).
     pub fn decoded(&self, decoder: &dyn ImageDecoder) -> Result<Arc<DecodedImage>, String> {
         self.decoded
-            .get_or_init(|| decoder.decode(&self.bytes).map(Arc::new))
+            .get_or_init(|| cache::decode(&self.bytes, self.hash, decoder))
             .clone()
     }
 }

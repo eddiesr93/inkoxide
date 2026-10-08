@@ -11,6 +11,7 @@ brief, and individual decisions are in [DECISIONS.md](DECISIONS.md).
 | `inkoxide` | `crates/core` | The engine. `#![forbid(unsafe_code)]`, no I/O, no napi. |
 | `inkoxide-cli` | `crates/cli` | `inkoxide render / validate / bench` — dev and CI tool; does the file I/O. |
 | `inkoxide-node` | `crates/node` | napi-rs binding → npm `inkoxide` (M5). |
+| `inkoxide-fuzz` | `fuzz` | cargo-fuzz targets (nightly, outside the workspace). |
 
 ## Pipeline
 
@@ -21,16 +22,16 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 
 | Stage | Module | Status |
 |---|---|---|
-| Parse | `schema` (+ `schema/de.rs`) | M0 ✅ |
+| Parse | `schema` (+ `schema/de.rs`); JSON or MessagePack (`validate::parse`) | M0 ✅, MessagePack M7 ✅ |
 | Validate | `validate` | M0 ✅ |
-| Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding, ToUnicode) | M2 ✅ |
+| Fonts | `fonts` (registry, metrics, `FontSet`) + `pdf/font.rs` (Type0/CID embedding, subsetting, ToUnicode) | M2 ✅, subsetting M7 ✅ |
 | Text | `text` (rustybuzz shaping, UAX #14 breaking, hyphenation, fallback, justify, ellipsis) | M2 ✅ |
 | Layout | `layout` (arena tree + Taffy) | M1 ✅ |
 | Tables | `layout/table.rs` (columns, rows, spans, collapsed borders) + table splitting and header repeat | M4 ✅ |
 | Pagination | `paginate` (shift accumulation, head rule, atomic nodes, forced breaks) + `pipeline` | M3 ✅ |
 | Paint | `paint` (boxes: background, borders, radius, opacity, rotate, clip) | M1 ✅ |
-| PDF | `pdf` | M0 ✅: pages, page tree, content streams, Info |
-| Images | `images` | registry only (M5) |
+| PDF | `pdf` | M0 ✅: pages, page tree, content streams (encoded in parallel), Info |
+| Images | `images` (JPEG passthrough, PNG + SMask, fit modes, process-wide decode cache) | M5 ✅ |
 
 ## Public API (core)
 
@@ -75,14 +76,6 @@ shifts and the page window. See ADR-021/022.
 
 ## Testing
 
-- Unit tests next to each module (`validate/tests.rs`, `date.rs`, …).
-- `crates/core/tests/fixtures.rs`: every `fixtures/docs/*.json` validates,
-  renders, renders byte-identically twice and passes `qpdf --check`.
-- `crates/core/tests/schema_parity.rs`: serde structs accept exactly the
-  properties the JSON Schema declares.
-- `scripts/check-schema.py`: fixtures conform to the JSON Schema.
-- `scripts/visual-diff.py`: rasterises fixture PDFs (`pdftoppm -r 72`) and
-  compares them with `fixtures/expected/*.png` (≤ 0.1 % differing pixels);
-  `scripts/update-expected.sh` regenerates the references for review.
-- `cargo bench -p inkoxide`: criterion benchmark of every fixture.
-- `scripts/ci.sh`: runs all of the above plus fmt, clippy and cargo-deny.
+See [TESTING.md](TESTING.md): unit and fixture tests (byte-determinism,
+JSON/MessagePack parity, `qpdf --check`), schema parity, visual
+regression, the Node suite, benchmarks and fuzzing.

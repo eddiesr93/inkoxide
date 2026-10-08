@@ -33,6 +33,14 @@ test('render resolves to a deterministic PDF', async () => {
   assert.deepStrictEqual(a, b);
 });
 
+test('fonts are subset unless subsetFonts is false', () => {
+  const doc = fixture('docs/invoice.json');
+  const sub = ink.renderSync(doc);
+  const full = ink.renderSync(doc, { subsetFonts: false });
+  assert.ok(sub.length * 5 < full.length, `${sub.length} vs ${full.length}`);
+  assert.match(Buffer.from(sub).toString('latin1'), /\/BaseFont \/[A-Z]{6}\+Inter-Regular/);
+});
+
 test('images are passed per render', async () => {
   const pdf = await ink.render(fixture('docs/images-jpeg-png.json'), { images });
   assert.ok(pdf.length > 10000);

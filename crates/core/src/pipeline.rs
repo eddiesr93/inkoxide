@@ -12,6 +12,11 @@ use crate::schema::{Document, Node, NodeKind, PageSpec};
 use crate::text::{PageNumbers, RustybuzzShaper, TextCache, TextPainter};
 use crate::InkoxideError;
 
+/// Most pages one render may produce: a memory guard against runaway
+/// sizes (a 10¹¹ pt box), checked before anything is painted. Far above
+/// any real document; ~2 GB of output at typical page sizes.
+pub(crate) const MAX_PAGES: u32 = 100_000;
+
 type Cache<'s, 'f, 'a> = TextCache<'s, RustybuzzShaper<'f, 'a>>;
 
 /// Leaf measurement: text through the text cache, images by intrinsic size.
@@ -119,7 +124,13 @@ pub(crate) fn run<T: Send>(
     }
 
     // Page numbers are known only now; placeholders are filled at paint.
-    let total: u32 = laid.iter().map(|l| l.placement.pages).sum();
+    let total: u64 = laid.iter().map(|l| u64::from(l.placement.pages)).sum();
+    if total > u64::from(MAX_PAGES) {
+        return Err(InkoxideError::Layout(format!(
+            "the document needs {total} pages; the limit is {MAX_PAGES}"
+        )));
+    }
+    let total = total as u32;
     let jobs: Vec<(&Laid<'_>, u32)> = laid
         .iter()
         .flat_map(|l| (0..l.placement.pages).map(move |k| (l, k)))

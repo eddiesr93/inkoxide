@@ -68,16 +68,17 @@ fn doc_bytes(doc: Either<Uint8Array, String>) -> Vec<u8> {
 fn input_format(format: Option<&str>) -> Result<InputFormat> {
     match format {
         None | Some("json") => Ok(InputFormat::Json),
+        Some("msgpack") => Ok(InputFormat::MessagePack),
         Some(other) => Err(invalid_arg(
             "options.format",
-            &format!("unsupported format `{other}` (expected \"json\")"),
+            &format!("unsupported format `{other}` (expected \"json\" or \"msgpack\")"),
         )),
     }
 }
 
 #[napi(object)]
 pub struct RenderOptions {
-    /// `"json"` (default).
+    /// `"json"` (default) or `"msgpack"`.
     pub format: Option<String>,
     /// Flate-compress content streams (default `true`).
     pub compress: Option<bool>,
@@ -85,6 +86,8 @@ pub struct RenderOptions {
     pub creation_date: Option<String>,
     /// Worker threads for this render (default: all cores).
     pub threads: Option<u32>,
+    /// Embed only the glyphs used (default `true`).
+    pub subset_fonts: Option<bool>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,
 }
@@ -127,6 +130,9 @@ impl RenderJob {
                     return Err(invalid_arg("options.threads", "must be at least 1"));
                 }
                 core.threads = Some(t as usize);
+            }
+            if let Some(s) = o.subset_fonts {
+                core.subset_fonts = s;
             }
             if let Some(map) = o.images {
                 for (id, bytes) in map {
