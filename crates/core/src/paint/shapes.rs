@@ -16,6 +16,25 @@ pub(crate) fn uniform_radii(r: f32, w: f32, h: f32) -> Radii {
     [(r, r); 4]
 }
 
+/// Per-corner radii (top-left, top-right, bottom-right, bottom-left),
+/// scaled down together when two on one side would overlap (CSS
+/// Backgrounds §5.5).
+pub(crate) fn corner_radii(c: [f32; 4], w: f32, h: f32) -> Radii {
+    let c = c.map(|r| r.max(0.0));
+    let mut f: f32 = 1.0;
+    for (sum, side) in [
+        (c[0] + c[1], w),
+        (c[3] + c[2], w),
+        (c[0] + c[3], h),
+        (c[1] + c[2], h),
+    ] {
+        if sum > side {
+            f = f.min(side.max(0.0) / sum);
+        }
+    }
+    c.map(|r| (r * f, r * f))
+}
+
 pub(crate) fn is_square(radii: &Radii) -> bool {
     radii.iter().all(|&(rx, ry)| rx <= 0.0 || ry <= 0.0)
 }
@@ -144,6 +163,18 @@ mod tests {
     #[test]
     fn radii_are_clamped_to_half_the_box() {
         assert_eq!(uniform_radii(50.0, 10.0, 20.0)[0], (5.0, 5.0));
+    }
+
+    #[test]
+    fn corner_radii_scale_together() {
+        let r = corner_radii([20.0, 20.0, 0.0, 5.0], 20.0, 100.0);
+        assert_eq!(r[0], (10.0, 10.0));
+        assert_eq!(r[1], (10.0, 10.0));
+        assert_eq!(r[3], (2.5, 2.5));
+        assert_eq!(
+            corner_radii([4.0, 0.0, 0.0, 0.0], 100.0, 100.0)[0],
+            (4.0, 4.0)
+        );
     }
 
     #[test]

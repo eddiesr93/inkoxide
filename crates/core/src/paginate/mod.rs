@@ -184,6 +184,7 @@ impl Paginator<'_, '_, '_> {
             || node.brk.fixed
             || s.position == Some(Position::Absolute)
             || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
+            || s.transform.as_ref().is_some_and(|t| !t.is_empty())
         {
             return true;
         }

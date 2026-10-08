@@ -1,12 +1,17 @@
 //! Box painting: background, borders, clipping, opacity, rotation, then
 //! content and children, in document order.
 
-use super::shapes::{inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII};
+use super::shapes::{
+    corner_radii, inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII,
+};
 use super::{Dash, FillRule, Op, Path};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, NodeIdx, Part, Tree};
 use crate::paginate::Placement;
-use crate::schema::{BorderStyle, Color, Display, Node, Overflow, Style};
+use crate::schema::{
+    BorderRadius, BorderStyle, BorderStyles, Color, Display, LengthPercent, Node, Overflow, Style,
+    TransformOp,
+};
 
 const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
@@ -80,7 +85,7 @@ pub(crate) fn paint_flow(
             }
         }
         _ => {
-            for c in tree.children(0) {
+            for c in paint_order(tree, 0) {
                 p.node(c, false);
             }
         }
@@ -162,8 +167,9 @@ impl BoxPainter<'_, '_, '_, '_> {
             return;
         }
         let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
+        let transform = s.transform.as_deref().filter(|t| !t.is_empty());
         let clip = s.overflow == Some(Overflow::Hidden);
-        let saved = opacity < 1.0 || rotate.is_some() || clip;
+        let saved = opacity < 1.0 || rotate.is_some() || transform.is_some() || clip;
         let outer_opacity = self.opacity;
         if saved {
             self.ops.push(Op::Save);
@@ -172,7 +178,9 @@ impl BoxPainter<'_, '_, '_, '_> {
             self.opacity *= opacity;
             self.ops.push(Op::SetOpacity(self.opacity));
         }
-        if let Some(deg) = rotate {
+        if transform.is_some() || (rotate.is_some() && s.transform_origin.is_some()) {
+            self.ops.push(Op::Transform(box_transform(s, x, y, w, h)));
+        } else if let Some(deg) = rotate {
             let (sin, cos) = deg.to_radians().sin_cos();
             let (cx, cy) = (x + w / 2.0, y + h / 2.0);
             // translate(c) · rotate · translate(-c); y-down, so positive
@@ -187,10 +195,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             ]));
         }
 
-        let radii = match s.border_radius {
-            Some(r) if r > 0.0 => uniform_radii(r, w, h),
-            _ => NO_RADII,
-        };
+        let radii = radii(s, w, h);
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
             self.fill(rounded_rect(x, y, w, h, &radii), bg);
         }
@@ -229,8 +234,15 @@ impl BoxPainter<'_, '_, '_, '_> {
             opacity: self.opacity,
         };
         self.content.paint(node, &g, &ctx, self.ops);
-        for c in self.tree.children(i) {
-            self.node(c, as_fixed);
+        let tree = self.tree;
+        if has_z(tree, i) {
+            for c in paint_order(tree, i) {
+                self.node(c, as_fixed);
+            }
+        } else {
+            for c in tree.children(i) {
+                self.node(c, as_fixed);
+            }
         }
         if let Some(t) = &table {
             self.repeat_header(i, &g, t);
@@ -411,10 +423,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             let cell = &t.cells[k];
             let style = self.tree.nodes[cell.idx as usize].style();
             let (x, y, w, h) = (ox + cell.x, oy + cell.y + shift, cell.w, cell.h);
-            let radii = match style.border_radius {
-                Some(r) if r > 0.0 => uniform_radii(r, w, h),
-                _ => NO_RADII,
-            };
+            let radii = radii(style, w, h);
             let row_bg = match self.tree.nodes[rows[cell.row] as usize].part {
                 Part::Row(row) => row.background_color,
                 _ => None,
@@ -511,7 +520,11 @@ impl BoxPainter<'_, '_, '_, '_> {
 
         let active: Vec<usize> = (0..4).filter(|&k| widths[k] > 0.0).collect();
         let same_color = active.windows(2).all(|p| colors[p[0]] == colors[p[1]]);
-        let style = s.border_style.unwrap_or(BorderStyle::Solid);
+        let styles = s
+            .border_style
+            .map_or([BorderStyle::Solid; 4], BorderStyles::sides);
+        let mixed = active.windows(2).any(|p| styles[p[0]] != styles[p[1]]);
+        let style = styles[active[0]];
 
         let (r, b) = (x + w, y + h);
         let (ir, ib) = (ix + iw, iy + ih);
@@ -524,6 +537,36 @@ impl BoxPainter<'_, '_, '_, '_> {
         ];
         let square = crate::paint::shapes::is_square(radii);
 
+        if mixed {
+            let mid = [
+                line(x, y + bt / 2.0, r, y + bt / 2.0),
+                line(r - br / 2.0, y, r - br / 2.0, b),
+                line(r, b - bb / 2.0, x, b - bb / 2.0),
+                line(x + bl / 2.0, b, x + bl / 2.0, y),
+            ];
+            self.ops.push(Op::Save);
+            self.ops.push(Op::ClipPath {
+                path: ring,
+                rule: FillRule::EvenOdd,
+            });
+            for &k in &active {
+                if styles[k] == BorderStyle::Solid {
+                    let color = colors[k];
+                    let path = polygon(&sides[k]);
+                    self.with_alpha(color[3], |ops| {
+                        ops.push(Op::FillPath {
+                            path,
+                            color,
+                            rule: FillRule::NonZero,
+                        });
+                    });
+                } else {
+                    self.stroke(mid[k].clone(), colors[k], widths[k], styles[k]);
+                }
+            }
+            self.ops.push(Op::Restore);
+            return;
+        }
         if style == BorderStyle::Solid && same_color && (active.len() == 4 || !square) {
             let color = colors[active[0]];
             self.with_alpha(color[3], |ops| {
@@ -614,5 +657,157 @@ impl BoxPainter<'_, '_, '_, '_> {
                 dash,
             });
         });
+    }
+}
+
+fn z_index(tree: &Tree<'_>, j: NodeIdx) -> i32 {
+    tree.nodes[j as usize]
+        .node
+        .and_then(|n| n.style.z_index)
+        .unwrap_or(0)
+}
+
+/// Whether a child of `i` sets a non-zero `zIndex`.
+fn has_z(tree: &Tree<'_>, i: NodeIdx) -> bool {
+    tree.children(i).any(|j| z_index(tree, j) != 0)
+}
+
+/// The children of `i` in paint order: by `zIndex`, then document order.
+fn paint_order(tree: &Tree<'_>, i: NodeIdx) -> Vec<NodeIdx> {
+    let mut c: Vec<NodeIdx> = tree.children(i).collect();
+    c.sort_by_key(|&j| z_index(tree, j));
+    c
+}
+
+/// Corner radii of a box from its `borderRadius`.
+fn radii(s: &Style, w: f32, h: f32) -> Radii {
+    match s.border_radius {
+        Some(BorderRadius::Uniform(r)) if r > 0.0 => uniform_radii(r, w, h),
+        Some(BorderRadius::Corners(c)) => corner_radii(c.get(), w, h),
+        _ => NO_RADII,
+    }
+}
+
+/// `a · b`: applies `b` first, then `a` (PDF matrix order `[a b c d e f]`).
+fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
+    [
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        a[0] * b[4] + a[2] * b[5] + a[4],
+        a[1] * b[4] + a[3] * b[5] + a[5],
+    ]
+}
+
+fn resolve(v: LengthPercent, of: f32) -> f32 {
+    match v {
+        LengthPercent::Points(p) => p,
+        LengthPercent::Percent(p) => p * of,
+    }
+}
+
+fn rotation(deg: f32) -> [f32; 6] {
+    // y-down space: positive angles turn clockwise, as in CSS.
+    let (sin, cos) = deg.to_radians().sin_cos();
+    [cos, sin, -sin, cos, 0.0, 0.0]
+}
+
+/// The matrix of `rotate`, `transform` and `transformOrigin` for a border
+/// box at `(x, y)` of size `w × h`, in page coordinates.
+pub(crate) fn box_transform(s: &Style, x: f32, y: f32, w: f32, h: f32) -> [f32; 6] {
+    let [ox, oy] = s
+        .transform_origin
+        .unwrap_or([LengthPercent::Percent(0.5); 2]);
+    let (ox, oy) = (x + resolve(ox, w), y + resolve(oy, h));
+    let mut m = [1.0, 0.0, 0.0, 1.0, ox, oy];
+    if let Some(deg) = s.rotate {
+        m = mul(m, rotation(deg));
+    }
+    for op in s.transform.iter().flat_map(|t| t.iter()) {
+        let t = match *op {
+            TransformOp::Translate([tx, ty]) => {
+                [1.0, 0.0, 0.0, 1.0, resolve(tx, w), resolve(ty, h)]
+            }
+            TransformOp::Scale([sx, sy]) => [sx, 0.0, 0.0, sy, 0.0, 0.0],
+            TransformOp::Rotate(deg) => rotation(deg),
+            TransformOp::Skew([ax, ay]) => [
+                1.0,
+                ay.to_radians().tan(),
+                ax.to_radians().tan(),
+                1.0,
+                0.0,
+                0.0,
+            ],
+            TransformOp::Matrix(m) => m,
+        };
+        m = mul(m, t);
+    }
+    mul(m, [1.0, 0.0, 0.0, 1.0, -ox, -oy])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
+        (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+    }
+
+    fn style(json: &str) -> Style {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn scale_keeps_the_centre_fixed() {
+        let m = box_transform(
+            &style(r#"{"transform":[{"scale":[2,2]}]}"#),
+            10.0,
+            10.0,
+            20.0,
+            20.0,
+        );
+        assert_eq!(apply(m, (20.0, 20.0)), (20.0, 20.0));
+        assert_eq!(apply(m, (10.0, 10.0)), (0.0, 0.0));
+    }
+
+    #[test]
+    fn translate_percent_is_of_the_own_box() {
+        let m = box_transform(
+            &style(r#"{"transform":[{"translate":["50%",4]}]}"#),
+            0.0,
+            0.0,
+            20.0,
+            10.0,
+        );
+        assert_eq!(apply(m, (0.0, 0.0)), (10.0, 4.0));
+    }
+
+    #[test]
+    fn functions_apply_right_to_left_like_css() {
+        // translate then scale (CSS order): the scale happens first.
+        let m = box_transform(
+            &style(
+                r#"{"transform":[{"translate":[10,0]},{"scale":[2,1]}],"transformOrigin":[0,0]}"#,
+            ),
+            0.0,
+            0.0,
+            10.0,
+            10.0,
+        );
+        assert_eq!(apply(m, (1.0, 0.0)), (12.0, 0.0));
+    }
+
+    #[test]
+    fn rotate_around_top_left_origin() {
+        let m = box_transform(
+            &style(r#"{"rotate":90,"transformOrigin":[0,0]}"#),
+            0.0,
+            0.0,
+            10.0,
+            10.0,
+        );
+        let (x, y) = apply(m, (10.0, 0.0));
+        assert!(x.abs() < 1e-5 && (y - 10.0).abs() < 1e-5);
     }
 }

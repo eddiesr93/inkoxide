@@ -498,3 +498,41 @@ fn grid_parity() {
         assert_eq!(one(&d), (code, format!("{p}.{path}")), "{style}");
     }
 }
+
+#[test]
+fn transforms_radii_border_styles_and_z_index() {
+    let ok = doc(
+        r#"{"type":"box","style":{"borderRadius":{"topLeft":4,"bottomRight":8},
+             "borderStyle":{"top":"dashed","left":"dotted"},"zIndex":-3,
+             "transform":[{"translate":["50%",4]},{"scale":[2,1]},{"rotate":10},{"skew":[10,0]},{"matrix":[1,0,0,1,0,0]}],
+             "transformOrigin":[0,"100%"]}}"#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    let cases = [
+        (
+            r#"{"type":"box","style":{"borderRadius":{"topLeft":-1}}}"#,
+            C::OutOfRange,
+            "pages[0].children[0].style.borderRadius.topLeft",
+        ),
+        (
+            r#"{"type":"box","style":{"transform":[{"skew":[90,0]}]}}"#,
+            C::OutOfRange,
+            "pages[0].children[0].style.transform[0]",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"style":{"zIndex":1}}]}]}"#,
+            C::StyleNotApplicable,
+            "pages[0].children[0].rows[0].cells[0].style.zIndex",
+        ),
+    ];
+    for (node, code, path) in cases {
+        assert_eq!(one(&doc(node)), (code, path.to_string()), "{node}");
+    }
+    let (code, _) = one(&doc(r#"{"type":"box","style":{"borderStyle":"wavy"}}"#));
+    assert_eq!(code, C::InvalidValue);
+    let (code, _) = one(&doc(r#"{"type":"box","style":{"transform":[{"spin":1}]}}"#));
+    assert!(
+        matches!(code, C::InvalidValue | C::UnknownField),
+        "{code:?}"
+    );
+}

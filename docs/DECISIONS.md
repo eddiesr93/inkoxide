@@ -1040,3 +1040,21 @@ pattern file with an unclear licence enters the repository.
 - The pattern set a client registers decides hyphenation quality, and
   the engine neither ships nor endorses a Romanian set.
 
+
+## ADR-045 — Transforms, z-index, per-corner radii, per-side border styles (v1.1)
+
+**Context.** Parity with what React PDF authors expect from CSS: more than
+`rotate`, paint order control, asymmetric corners and mixed border styles.
+**Decision.**
+- `transform` is a list of single-key objects applied as in CSS (the matrix
+  is `origin · rotate · t₁ · t₂ … · origin⁻¹`); `translate` percentages
+  refer to the node's own border box. Like rotation, a transformed node is
+  atomic for pagination and its link rectangle is not transformed.
+- `zIndex` orders the painting of siblings only (no stacking contexts
+  across parents); equal values keep document order, so documents without
+  it paint exactly as before. Layout is unaffected.
+- Per-corner radii are scaled down together when adjacent radii exceed a
+  side (CSS Backgrounds §5.5).
+- Mixed border styles paint inside the border ring clip: solid sides as
+  mitred trapezoids, dashed and dotted sides as strokes along the side's
+  middle line. Corners of a dashed side are therefore not curved.

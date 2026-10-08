@@ -214,7 +214,25 @@ A page template. Its content flows across as many physical pages as needed.
 
 Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
 
-Type: [`TrackBreadth`](#trackbreadth) or `object` or `object`
+Type: [`TrackBreadth`](#trackbreadth) or `{min: …}` ([`TrackBreadth`](#trackbreadth)) or `{fitContent: …}` ([`LengthPercent`](#lengthpercent))
+
+### BorderRadius
+
+One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.
+
+Type: [`NonNegative`](#nonnegative) or object with `topLeft`, `topRight`, `bottomRight`, `bottomLeft`
+
+### BorderStyles
+
+One style for every side, or one per side (an unset side is solid).
+
+Type: `"solid"` \| `"dashed"` \| `"dotted"` or object with `top`, `right`, `bottom`, `left`
+
+### TransformOp
+
+One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.
+
+Type: `{translate: …}` (`[` [`LengthPercent`](#lengthpercent), [`LengthPercent`](#lengthpercent) `]`) or `{scale: …}` (array of `number`) or `{rotate: …}` (`number`) or `{skew: …}` (array of `number`) or `{matrix: …}` (array of `number`)
 
 ### Style
 
@@ -260,9 +278,12 @@ Type: [`TrackBreadth`](#trackbreadth) or `object` or `object`
 | `opacity` | `number` |  | ≥ 0, ≤ 1 |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |
 | `borderColor` | [`EdgesColor`](#edgescolor) |  |  |
-| `borderRadius` | [`NonNegative`](#nonnegative) |  |  |
-| `borderStyle` | `"solid"` \| `"dashed"` \| `"dotted"` |  | default `"solid"` |
+| `borderRadius` | [`BorderRadius`](#borderradius) |  |  |
+| `borderStyle` | [`BorderStyles`](#borderstyles) |  | default `"solid"` |
 | `rotate` | `number` |  | Degrees, clockwise, around the box centre. |
+| `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
+| `transformOrigin` | `[` [`LengthPercent`](#lengthpercent), [`LengthPercent`](#lengthpercent) `]` |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
+| `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` |  | text nodes only |
 | `lineHeight` | `number` |  | > 0; text nodes only; multiplier of the largest run size on the line |
 | `maxLines` | `integer` |  | ≥ 1; text nodes only |
@@ -398,4 +419,4 @@ Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?
 
 Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
 
-Type: [`TrackSize`](#tracksize) or `object`
+Type: [`TrackSize`](#tracksize) or `{repeat: …}` (`integer` or `"auto-fill"` \| `"auto-fit"`)

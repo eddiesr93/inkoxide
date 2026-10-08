@@ -28,3 +28,7 @@ first npm release (M5); after that, breaking changes bump `version`.
   annotation only (draft 2020-12 ignores it); ajv with
   `discriminator: true` uses it to report errors for the matching node
   type only, with the same paths as the engine.
+- v1.1 paint: `transform` (list of `translate`, `scale`, `rotate`,
+  `skew`, `matrix`) and `transformOrigin`; `zIndex` (paint order among
+  siblings); `borderRadius` also takes a per-corner object;
+  `borderStyle` also takes a per-side object.

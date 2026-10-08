@@ -81,6 +81,14 @@ def type_of(p):
     if "oneOf" in p:
         return " or ".join(type_of(o) for o in p["oneOf"])
     t = p.get("type", "")
+    if t == "array" and "prefixItems" in p:
+        return "`[` " + ", ".join(type_of(i) for i in p["prefixItems"]) + " `]`"
+    if t == "object" and "properties" in p:
+        keys = ", ".join(f"`{k}`" for k in p["properties"])
+        if p.get("required"):
+            inner = p["properties"][p["required"][0]]
+            return f"`{{{p['required'][0]}: …}}` ({type_of(inner)})"
+        return f"object with {keys}"
     if t == "array":
         return f"array of {type_of(p.get('items', {}))}"
     out = f"`{t}`" if t else ""

@@ -10,8 +10,8 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::Deserialize;
 
 use super::{
-    Bookmark, Break, ColumnSpec, ColumnWidth, ImageFit, ImageSource, Node, NodeKind, Style, Table,
-    TableRow, TextRun,
+    Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
+    ImageFit, ImageSource, Node, NodeKind, OptEdges, Style, Table, TableRow, TextRun,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -147,6 +147,53 @@ num_or_str_visitor!(
     |v| finite(v).map(LengthPercent::Points),
     |s| parse_suffixed(s, "%").map(|p| LengthPercent::Percent(p / 100.0))
 );
+
+impl<'de> Deserialize<'de> for BorderRadius {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = BorderRadius;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a radius in points or a per-corner object")
+            }
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<BorderRadius, E> {
+                finite(v).map(BorderRadius::Uniform)
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<BorderRadius, E> {
+                self.visit_f64(v as f64)
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<BorderRadius, E> {
+                self.visit_f64(v as f64)
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<BorderRadius, A::Error> {
+                Corners::deserialize(de::value::MapAccessDeserializer::new(map))
+                    .map(BorderRadius::Corners)
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for BorderStyles {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = BorderStyles;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("\"solid\", \"dashed\", \"dotted\" or a per-side object")
+            }
+            fn visit_str<E: de::Error>(self, s: &str) -> Result<BorderStyles, E> {
+                BorderStyle::deserialize(de::value::StrDeserializer::<E>::new(s))
+                    .map(BorderStyles::Uniform)
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<BorderStyles, A::Error> {
+                OptEdges::<BorderStyle>::deserialize(de::value::MapAccessDeserializer::new(map))
+                    .map(BorderStyles::Sides)
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
 
 const BREADTH: &str =
     "a number of points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\"";

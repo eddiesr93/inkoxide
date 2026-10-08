@@ -13,9 +13,9 @@ use serde::Deserialize;
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
-    is_area_name, parse_areas, Bookmark, BorderCollapse, Break, Color, Display, Document,
-    GridTrack, Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, RepeatCount, Style,
-    Table, TextRun, TrackBreadth, TrackSize, SCHEMA_VERSION,
+    is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, Display,
+    Document, GridTrack, Length, LengthPercent, Node, NodeKind, OptEdges, PageSpec, RepeatCount,
+    Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -879,7 +879,55 @@ impl<'a> Checker<'a> {
         }
         self.non_neg("flexGrow", s.flex_grow);
         self.non_neg("flexShrink", s.flex_shrink);
-        self.non_neg("borderRadius", s.border_radius);
+        match s.border_radius {
+            Some(BorderRadius::Uniform(r)) => self.non_neg("borderRadius", Some(r)),
+            Some(BorderRadius::Corners(c)) => {
+                for (k, v) in [
+                    ("topLeft", c.top_left),
+                    ("topRight", c.top_right),
+                    ("bottomRight", c.bottom_right),
+                    ("bottomLeft", c.bottom_left),
+                ] {
+                    self.non_neg(&format!("borderRadius.{k}"), v);
+                }
+            }
+            None => {}
+        }
+        if is_cell {
+            for (name, set) in [
+                ("transform", s.transform.is_some()),
+                ("transformOrigin", s.transform_origin.is_some()),
+                ("zIndex", s.z_index.is_some()),
+            ] {
+                if set {
+                    self.err(
+                        Code::StyleNotApplicable,
+                        Some(name),
+                        format!("`{name}` does not apply to table cells"),
+                    );
+                }
+            }
+        }
+        for (k, op) in s.transform.iter().flat_map(|t| t.iter()).enumerate() {
+            let field = format!("transform[{k}]");
+            let finite = match op {
+                TransformOp::Translate(_) => true,
+                TransformOp::Scale(v) | TransformOp::Skew(v) => v.iter().all(|x| x.is_finite()),
+                TransformOp::Rotate(v) => v.is_finite(),
+                TransformOp::Matrix(m) => m.iter().all(|x| x.is_finite()),
+            };
+            if !finite {
+                self.err(Code::OutOfRange, Some(&field), "must be finite");
+            } else if let TransformOp::Skew(v) = op {
+                if v.iter().any(|a| a.abs() >= 90.0) {
+                    self.err(
+                        Code::OutOfRange,
+                        Some(&field),
+                        "skew angles must be within (-90, 90) degrees",
+                    );
+                }
+            }
+        }
         self.non_neg("borderSpacing", s.border_spacing);
         self.length("flexBasis", s.flex_basis, false);
         for (name, v) in [

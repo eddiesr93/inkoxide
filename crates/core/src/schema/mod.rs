@@ -355,6 +355,64 @@ kebab_enum!(WhiteSpace { Normal = "normal", Pre = "pre", NoWrap = "nowrap" });
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
+/// `borderRadius`: one radius for every corner, or one per corner.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BorderRadius {
+    Uniform(f32),
+    Corners(Corners),
+}
+
+/// Per-corner radii; a missing corner is square.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Corners {
+    pub top_left: Option<f32>,
+    pub top_right: Option<f32>,
+    pub bottom_right: Option<f32>,
+    pub bottom_left: Option<f32>,
+}
+
+impl Corners {
+    /// Top-left, top-right, bottom-right, bottom-left.
+    pub fn get(&self) -> [f32; 4] {
+        [
+            self.top_left.unwrap_or(0.0),
+            self.top_right.unwrap_or(0.0),
+            self.bottom_right.unwrap_or(0.0),
+            self.bottom_left.unwrap_or(0.0),
+        ]
+    }
+}
+
+/// `borderStyle`: one style for every side, or one per side.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BorderStyles {
+    Uniform(BorderStyle),
+    Sides(OptEdges<BorderStyle>),
+}
+
+impl BorderStyles {
+    /// Top, right, bottom, left; unset sides are solid.
+    pub fn sides(self) -> [BorderStyle; 4] {
+        match self {
+            BorderStyles::Uniform(s) => [s; 4],
+            BorderStyles::Sides(e) => e.get(BorderStyle::Solid),
+        }
+    }
+}
+
+/// One transform function. Lengths are points or percentages of the
+/// node's own border box; angles are degrees.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum TransformOp {
+    Translate([LengthPercent; 2]),
+    Scale([f32; 2]),
+    Rotate(f32),
+    Skew([f32; 2]),
+    Matrix([f32; 6]),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GridPlacement {
@@ -491,9 +549,17 @@ pub struct Style {
     pub opacity: Option<f32>,
     pub border_width: Option<OptEdges<f32>>,
     pub border_color: Option<OptEdges<Color>>,
-    pub border_radius: Option<f32>,
-    pub border_style: Option<BorderStyle>,
+    pub border_radius: Option<BorderRadius>,
+    pub border_style: Option<BorderStyles>,
     pub rotate: Option<f32>,
+    /// CSS-style transform functions, applied left to right as in CSS
+    /// (the leftmost is outermost), after `rotate`.
+    pub transform: Option<Box<[TransformOp]>>,
+    /// Origin of `rotate` and `transform` within the border box; default
+    /// the centre.
+    pub transform_origin: Option<[LengthPercent; 2]>,
+    /// Paint order among siblings (stable; default 0).
+    pub z_index: Option<i32>,
 
     // Text (text nodes only)
     pub text_align: Option<TextAlign>,

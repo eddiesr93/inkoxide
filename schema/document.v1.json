@@ -387,6 +387,170 @@
         }
       ]
     },
+    "BorderRadius": {
+      "description": "One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/NonNegative"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "topLeft": {
+              "$ref": "#/$defs/NonNegative"
+            },
+            "topRight": {
+              "$ref": "#/$defs/NonNegative"
+            },
+            "bottomRight": {
+              "$ref": "#/$defs/NonNegative"
+            },
+            "bottomLeft": {
+              "$ref": "#/$defs/NonNegative"
+            }
+          }
+        }
+      ]
+    },
+    "BorderStyles": {
+      "description": "One style for every side, or one per side (an unset side is solid).",
+      "oneOf": [
+        {
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": {
+              "enum": [
+                "solid",
+                "dashed",
+                "dotted"
+              ]
+            },
+            "right": {
+              "enum": [
+                "solid",
+                "dashed",
+                "dotted"
+              ]
+            },
+            "bottom": {
+              "enum": [
+                "solid",
+                "dashed",
+                "dotted"
+              ]
+            },
+            "left": {
+              "enum": [
+                "solid",
+                "dashed",
+                "dotted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TransformOp": {
+      "description": "One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "translate"
+          ],
+          "properties": {
+            "translate": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/LengthPercent"
+                },
+                {
+                  "$ref": "#/$defs/LengthPercent"
+                }
+              ],
+              "items": false,
+              "minItems": 2
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scale"
+          ],
+          "properties": {
+            "scale": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rotate"
+          ],
+          "properties": {
+            "rotate": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "skew"
+          ],
+          "properties": {
+            "skew": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": -90,
+                "exclusiveMaximum": 90
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "matrix"
+          ],
+          "properties": {
+            "matrix": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 6,
+              "maxItems": 6
+            }
+          }
+        }
+      ]
+    },
     "Style": {
       "type": "object",
       "additionalProperties": false,
@@ -621,19 +785,42 @@
           "$ref": "#/$defs/EdgesColor"
         },
         "borderRadius": {
-          "$ref": "#/$defs/NonNegative"
+          "$ref": "#/$defs/BorderRadius"
         },
         "borderStyle": {
-          "enum": [
-            "solid",
-            "dashed",
-            "dotted"
-          ],
-          "default": "solid"
+          "$ref": "#/$defs/BorderStyles",
+          "description": "default `\"solid\"`"
         },
         "rotate": {
           "type": "number",
           "description": "Degrees, clockwise, around the box centre."
+        },
+        "transform": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TransformOp"
+          },
+          "description": "Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole."
+        },
+        "transformOrigin": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/LengthPercent"
+            },
+            {
+              "$ref": "#/$defs/LengthPercent"
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "description": "x and y of the origin of `rotate` and `transform` within the border box. Default `[\"50%\", \"50%\"]`."
+        },
+        "zIndex": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647,
+          "description": "Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells."
         },
         "textAlign": {
           "enum": [
