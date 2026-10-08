@@ -191,3 +191,77 @@ fn empty_text_has_no_height() {
     let (_, l) = lines(&doc(&para("   ", "")), &s, 100.0);
     assert_eq!(l.height, 0.0);
 }
+
+/// The closed-form cell layout (layout/fast.rs) must match Taffy exactly.
+#[test]
+fn simple_cell_fast_path_matches_taffy() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/");
+    let mut store = FontStore::new();
+    for name in [
+        "Inter-Regular",
+        "Inter-Bold",
+        "Inter-Italic",
+        "NotoSans-Regular",
+        "RobotoMono-Regular",
+    ] {
+        let bytes = std::fs::read(format!("{dir}fonts/{name}.ttf")).unwrap();
+        store.register(name, bytes).unwrap();
+    }
+    let cell = |style: &str, text: &str| {
+        format!(
+            r#"{{"style":{{{style}}},"children":[{{"type":"text","style":{{"maxLines":2,"ellipsis":true}},"runs":[{{"text":"{text}","font":"Inter-Regular","size":9}}]}}]}}"#
+        )
+    };
+    let synthetic = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":400,"height":800}},"children":[
+            {{"type":"table","columns":[{{"width":"auto"}},{{"width":"1fr"}},{{"width":60}}],"rows":[
+              {{"minHeight":40,"cells":[{a},{b},{c}]}},
+              {{"cells":[{d},{e},{f}]}}]}}]}}]}}"#,
+        a = cell(
+            r#""padding":{"top":2,"left":4},"verticalAlign":"middle","borderWidth":{"bottom":2}"#,
+            "Short"
+        ),
+        b = cell(
+            r#""verticalAlign":"bottom","padding":{"right":6}"#,
+            "A longer cell that wraps over more than two lines so that the ellipsis cuts it"
+        ),
+        c = cell("", "Fixed-width column"),
+        d = cell(
+            r#""padding":{"top":1,"right":1,"bottom":1,"left":1},"borderWidth":{"top":1,"right":3,"bottom":1,"left":1}"#,
+            "x"
+        ),
+        e = cell(
+            r#""backgroundColor":[1,0,0,1]"#,
+            "Hyphenation-less wordsthatareverylongindeed"
+        ),
+        f = cell(r#""verticalAlign":"middle""#, ""),
+    );
+    let mut docs = vec![synthetic.into_bytes()];
+    for f in ["table-basic", "table-split-header-repeat", "invoice"] {
+        docs.push(std::fs::read(format!("{dir}docs/{f}.json")).unwrap());
+    }
+    for json in docs {
+        let d = crate::validate::parse(&json, InputFormat::Json).unwrap();
+        let fonts = FontSet::load(&d, &store).unwrap();
+        let spec = &d.pages[0];
+        let w = spec.size.width - spec.margin.left - spec.margin.right;
+        let run = |fast: bool| {
+            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+            let mut tree = crate::layout::Tree::build(&spec.children);
+            crate::layout::compute_tree(&mut tree, w, 0.0, &mut cache, fast).unwrap();
+            tree.nodes.iter().map(|n| n.geo).collect::<Vec<_>>()
+        };
+        let (fast, slow) = (run(true), run(false));
+        assert_eq!(fast.len(), slow.len());
+        for (i, (a, b)) in fast.iter().zip(&slow).enumerate() {
+            let close = |x: f32, y: f32| (x - y).abs() < 1e-3;
+            let same = close(a.x, b.x)
+                && close(a.y, b.y)
+                && close(a.w, b.w)
+                && close(a.h, b.h)
+                && a.border.iter().zip(&b.border).all(|(x, y)| close(*x, *y))
+                && a.padding.iter().zip(&b.padding).all(|(x, y)| close(*x, *y));
+            assert!(same, "node {i}: fast {a:?} vs taffy {b:?}");
+        }
+    }
+}

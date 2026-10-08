@@ -17,7 +17,7 @@ pub(crate) struct PageNumbers {
 }
 
 pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
-    pub cache: &'c mut TextCache<'s, S>,
+    pub cache: &'c TextCache<'s, S>,
     pub fonts: &'f FontSet<'a>,
     pub numbers: PageNumbers,
 }
@@ -28,7 +28,7 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
             return;
         };
         let (cx, cy, cw, _) = geo.content_box();
-        let Some(layout) = self.cache.layout(node, cw) else {
+        let Some(layout) = self.cache.layout_at(node, cw) else {
             return;
         };
         let Some((prepared, style)) = self.cache.prepared(node) else {

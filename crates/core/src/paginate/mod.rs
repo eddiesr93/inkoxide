@@ -62,11 +62,11 @@ impl Placement {
 
 /// Supplies line layouts of text nodes at their laid-out width.
 pub(crate) trait LineSource {
-    fn lines(&mut self, node: &Node, width: f32) -> Option<std::rc::Rc<LineLayout>>;
+    fn lines(&mut self, node: &Node, width: f32) -> Option<std::sync::Arc<LineLayout>>;
 }
 
 impl<S: TextShaper> LineSource for TextCache<'_, S> {
-    fn lines(&mut self, node: &Node, width: f32) -> Option<std::rc::Rc<LineLayout>> {
+    fn lines(&mut self, node: &Node, width: f32) -> Option<std::sync::Arc<LineLayout>> {
         self.layout(node, width)
     }
 }

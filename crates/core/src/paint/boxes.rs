@@ -257,101 +257,97 @@ impl BoxPainter<'_, '_, '_, '_> {
         } else {
             0..n
         };
-        let visible: Vec<bool> = (0..n)
-            .map(|r| range.contains(&r) && self.row_visible(&rows, r))
-            .collect();
-        let shift: Vec<f32> = (0..n).map(|r| self.row_shift(&rows, r)).collect();
+        // Rows on this page. Only `lo..hi` is scanned below, so painting a
+        // long table costs O(rows on the page), not O(rows) per page.
+        let in_page = |r: usize| range.contains(&r) && self.row_visible(&rows, r);
+        let lo = range.clone().find(|&r| in_page(r)).unwrap_or(n);
+        let hi = range
+            .clone()
+            .rev()
+            .find(|&r| in_page(r))
+            .map_or(lo, |r| r + 1);
+        let visible = |r: usize| r >= lo && r < hi && in_page(r);
+        let shift = |r: usize| self.row_shift(&rows, r);
         let (cx, cy, _, _) = g.content_box();
         let (ox, oy) = (cx + self.dx, cy + self.dy);
 
-        for r in 0..n {
-            if !visible[r] {
+        let mut fills = Vec::new();
+        for (r, &row_idx) in rows.iter().enumerate().take(hi).skip(lo) {
+            if !visible(r) {
                 continue;
             }
-            if let Part::Row(row, _) = self.tree.nodes[rows[r] as usize].part {
+            if let Part::Row(row, _) = self.tree.nodes[row_idx as usize].part {
                 if let Some(bg) = row.background_color.filter(|c| c[3] > 0.0) {
-                    let path = rounded_rect(
-                        ox,
-                        oy + t.row_y[r] + shift[r],
-                        t.width,
-                        t.row_h[r],
-                        &NO_RADII,
-                    );
-                    self.fill(path, bg);
+                    fills.push((ox, oy + t.row_y[r] + shift(r), t.width, t.row_h[r], bg));
                 }
             }
         }
-        for cell in &t.cells {
-            if !visible[cell.row] {
+        let first_cell = t.cells.partition_point(|c| c.row < lo);
+        for cell in t.cells[first_cell..].iter().take_while(|c| c.row < hi) {
+            if !visible(cell.row) {
                 continue;
             }
             let style = self.tree.nodes[cell.idx as usize].style();
             if let Some(bg) = style.background_color.filter(|c| c[3] > 0.0) {
-                let path = rounded_rect(
+                fills.push((
                     ox + cell.x,
-                    oy + cell.y + shift[cell.row],
+                    oy + cell.y + shift(cell.row),
                     cell.w,
                     cell.h,
-                    &NO_RADII,
-                );
-                self.fill(path, bg);
+                    bg,
+                ));
             }
         }
 
-        let rect = |painter: &mut Self, x: f32, y: f32, w: f32, h: f32, color: Color| {
-            let path = rounded_rect(x, y, w, h, &NO_RADII);
-            painter.fill(path, color);
-        };
         let repeating_header = t.header_rows > 0 && self.override_shift.is_none();
-        for e in &t.h_edges {
+        let first_h = t.h_edges.partition_point(|e| e.line < lo);
+        for e in t.h_edges[first_h..].iter().take_while(|e| e.line <= hi) {
             let (x, w) = (ox + t.col_x[e.col], t.col_w[e.col]);
             let l = e.line;
             if l == 0 {
-                if visible[0] {
-                    rect(self, x, oy + shift[0], w, e.width, e.color);
+                if visible(0) {
+                    fills.push((x, oy + shift(0), w, e.width, e.color));
                 }
             } else if l == n {
-                if visible[n - 1] {
-                    rect(
-                        self,
+                if visible(n - 1) {
+                    fills.push((
                         x,
-                        oy + t.row_y[n - 1] + t.row_h[n - 1] - e.width + shift[n - 1],
+                        oy + t.row_y[n - 1] + t.row_h[n - 1] - e.width + shift(n - 1),
                         w,
                         e.width,
                         e.color,
-                    );
+                    ));
                 }
-            } else if (shift[l - 1] - shift[l]).abs() < 1e-3 {
-                if visible[l - 1] || visible[l] {
-                    rect(
-                        self,
+            } else if (shift(l - 1) - shift(l)).abs() < 1e-3 {
+                if visible(l - 1) || visible(l) {
+                    fills.push((
                         x,
-                        oy + t.row_y[l] - e.width / 2.0 + shift[l],
+                        oy + t.row_y[l] - e.width / 2.0 + shift(l),
                         w,
                         e.width,
                         e.color,
-                    );
+                    ));
                 }
             } else {
                 // The line falls on a page break: close the fragment above,
                 // and open the one below unless a repeated header does.
-                if visible[l - 1] {
-                    rect(
-                        self,
+                if visible(l - 1) {
+                    fills.push((
                         x,
-                        oy + t.row_y[l] - e.width + shift[l - 1],
+                        oy + t.row_y[l] - e.width + shift(l - 1),
                         w,
                         e.width,
                         e.color,
-                    );
+                    ));
                 }
-                if visible[l] && !(repeating_header && l > t.header_rows) {
-                    rect(self, x, oy + t.row_y[l] + shift[l], w, e.width, e.color);
+                if visible(l) && !(repeating_header && l > t.header_rows) {
+                    fills.push((x, oy + t.row_y[l] + shift(l), w, e.width, e.color));
                 }
             }
         }
-        for e in &t.v_edges {
-            if !visible[e.row] {
+        let first_v = t.v_edges.partition_point(|e| e.row < lo);
+        for e in t.v_edges[first_v..].iter().take_while(|e| e.row < hi) {
+            if !visible(e.row) {
                 continue;
             }
             let lx = if e.line < t.col_x.len() {
@@ -367,14 +363,16 @@ impl BoxPainter<'_, '_, '_, '_> {
                 lx - e.width / 2.0
             };
             let h: f32 = t.row_h[e.row..e.row + e.rows].iter().sum();
-            rect(
-                self,
+            fills.push((
                 ox + x,
-                oy + t.row_y[e.row] + shift[e.row],
+                oy + t.row_y[e.row] + shift(e.row),
                 e.width,
                 h,
                 e.color,
-            );
+            ));
+        }
+        for (x, y, w, h, color) in fills {
+            self.fill(rounded_rect(x, y, w, h, &NO_RADII), color);
         }
     }
 

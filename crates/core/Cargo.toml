@@ -22,6 +22,7 @@ hypher.workspace = true
 flate2.workspace = true
 image.workspace = true
 xxhash-rust.workspace = true
+rayon.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

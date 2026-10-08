@@ -206,6 +206,8 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table) -> Grid {
             r += span_rows;
         }
     }
+    // Row order lets painting find a page's edges by binary search.
+    v_edges.sort_by_key(|e| (e.row, e.line));
     let mut h_w = vec![0.0f32; (rows + 1) * cols];
     for e in &h_edges {
         h_w[e.line * cols + e.col] = e.width;

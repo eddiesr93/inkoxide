@@ -2,7 +2,7 @@
 //! without touching line layout.
 
 /// Finds hyphenation points in a word.
-pub(crate) trait Hyphenator {
+pub(crate) trait Hyphenator: Send + Sync {
     /// Whether patterns exist for `lang` (an ISO 639-1 code, lowercase).
     fn supports(&self, lang: &str) -> bool;
     /// Byte offsets inside `word` where a hyphen may be inserted.

@@ -58,6 +58,9 @@ enum Cmd {
         /// Resolution for --png-dir.
         #[arg(long, default_value_t = 72)]
         dpi: u32,
+        /// Worker threads (default: all cores).
+        #[arg(long)]
+        threads: Option<usize>,
     },
     /// Validate a document; prints every problem found.
     Validate {
@@ -75,6 +78,9 @@ enum Cmd {
         res: Resources,
         #[arg(long, default_value_t = 30)]
         iterations: u32,
+        /// Worker threads (default: all cores).
+        #[arg(long)]
+        threads: Option<usize>,
     },
 }
 
@@ -172,12 +178,14 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             creation_date,
             png_dir,
             dpi,
+            threads,
         } => {
             let (fonts, images) = load_resources(&res)?;
             let input = read(&doc)?;
             let opts = RenderOptions {
                 compress: !no_compress,
                 creation_date,
+                threads,
                 ..Default::default()
             };
             let start = Instant::now();
@@ -206,10 +214,14 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             doc,
             res,
             iterations,
+            threads,
         } => {
             let (fonts, images) = load_resources(&res)?;
             let input = read(&doc)?;
-            let opts = RenderOptions::default();
+            let opts = RenderOptions {
+                threads,
+                ..Default::default()
+            };
             let mut times = Vec::with_capacity(iterations as usize);
             let mut size = 0;
             for _ in 0..iterations.max(1) {

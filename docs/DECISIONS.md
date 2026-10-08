@@ -428,3 +428,57 @@ renders moved by under 0.4% of pixels, mostly around headings. Ligatures
 and kerning inside words are unchanged. The report goes from about 900 ms
 to about 390 ms (see BENCHMARKS.md). Scripts without spaces (CJK, Thai)
 form long "words" and gain nothing, but stay correct.
+
+## ADR-028 — Closed-form layout for simple table cells (M6)
+
+**Context.** Each table cell was laid out as its own Taffy tree, three or
+four times per cell (min-content, max-content, height at the column width,
+final placement). In the 20 000-row table dump that was most of the
+layout time.
+
+**Decision.** A cell that is a default column flexbox (point padding
+only; no sizes, min/max, aspect ratio or position) and whose only child is
+a text node with no box of its own is laid out in closed form
+(`layout/fast.rs`). The text stretches to the content width, so it is
+measured at that width; the cell height is the text height plus padding
+and the collapsed-border insets; `verticalAlign` shifts the text within a
+taller row. Every other cell still goes through Taffy. A test lays out
+the table fixtures and a synthetic table with valign, padding, borders
+and ellipsis both ways and requires identical geometry.
+
+**Consequences.** Layout of the table dump dropped from about 1.0 s to
+about 0.3 s. Two code paths now have to agree; the equivalence test is the
+guard, and any new layout-affecting style property must be excluded in
+`simple_cell` until the fast path handles it.
+
+## ADR-029 — Parallel paint, encoded pages, leaner parse (M6)
+
+**Context.** §9 sets multi-thread targets and a 300 MB peak RSS for 500
+pages. Display lists for every page were kept until the PDF was written,
+and parsing kept serde's spare `Vec` capacity (four 584-byte nodes per
+one-child cell).
+
+**Decision.**
+- Layout and pagination stay sequential. Pages are then painted in
+  parallel (rayon), and each one is immediately encoded and
+  Flate-compressed into an `EncodedPage`: the stream plus the fonts and
+  glyphs, opacities and images it uses. The writer only assembles them.
+  Object numbering does not depend on scheduling, so output is
+  byte-identical whatever the thread count (checked on the table dump).
+- Painting reads the text cache through `&TextCache::layout_at`. Layouts
+  are `Arc`s, and the cache, shaper and hyphenator are `Sync`. A width
+  missed during layout is broken on the fly without being cached.
+- `RenderOptions.threads`: `None` uses rayon's global pool. `Some(n)` uses a
+  dedicated pool of n threads, built once per size and kept for the
+  process (`pool.rs`, capped at 256).
+- Parsing first tries plain `serde_json`, and re-parses with
+  `serde_path_to_error` only on failure, for the error path. Node, cell,
+  row and run vectors are shrunk to fit as they are deserialized.
+- Painting a table on a page scans only the rows on that page (cells and
+  edges are ordered by row and found by binary search), not every row on
+  every page.
+
+**Consequences.** On the 4-vCPU dev container the table dump went from
+4.4 s to 2.4 s single-threaded and 1.7 s with 4 threads, and peak RSS
+from 543 MB to 290 MB. Layout (shaping) and parse are now the sequential
+floor.

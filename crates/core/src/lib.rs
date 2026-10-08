@@ -21,6 +21,7 @@ mod paginate;
 mod paint;
 mod pdf;
 mod pipeline;
+mod pool;
 mod schema;
 mod text;
 mod validate;
@@ -93,6 +94,22 @@ pub fn render(
     images: &ImageStore,
 ) -> Result<Vec<u8>, InkoxideError> {
     let _span = tracing::debug_span!("render", bytes = doc.len()).entered();
+    match options.threads {
+        None => render_inner(doc, format, options, fonts, images),
+        Some(n) => {
+            let pool = pool::get(n)?;
+            pool.install(|| render_inner(doc, format, options, fonts, images))
+        }
+    }
+}
+
+fn render_inner(
+    doc: &[u8],
+    format: InputFormat,
+    options: &RenderOptions,
+    fonts: &FontStore,
+    images: &ImageStore,
+) -> Result<Vec<u8>, InkoxideError> {
     let document = validate::parse(doc, format)?;
     if let Some(first) = validate::check(&document, fonts, images).into_iter().next() {
         return Err(first.into());
@@ -120,12 +137,14 @@ pub fn render(
         document.meta.lang.as_deref(),
     );
     let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
-    let pages = pipeline::run(&document, &font_set, &mut text, &image_set)?;
-    let unicode: UnicodeMap = text.shaper.unicode;
-
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
     };
+    let pages = pipeline::run(&document, &font_set, &mut text, &image_set, |page| {
+        sink.encode_page(&page, &font_set)
+    })?;
+    let unicode: UnicodeMap = text.shaper.unicode;
+
     sink.write(&DocumentOut {
         pages: &pages,
         meta: &document.meta,

@@ -209,6 +209,23 @@ pub struct RawNode {
     rows: Option<Vec<TableRow>>,
 }
 
+/// Drops the spare capacity serde leaves when growing a `Vec` of unknown
+/// length. Node vectors are short and numerous (one per table cell), so the
+/// slack would otherwise be most of a large document's memory.
+fn shrink<T>(mut v: Vec<T>) -> Vec<T> {
+    v.shrink_to_fit();
+    v
+}
+
+/// `deserialize_with` form of [`shrink`].
+pub(crate) fn shrunk<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Vec::<T>::deserialize(d).map(shrink)
+}
+
 impl TryFrom<RawNode> for Node {
     type Error = String;
 
@@ -251,10 +268,10 @@ impl TryFrom<RawNode> for Node {
 
         let kind = match r.ty {
             NodeType::Box => NodeKind::Box {
-                children: r.children.unwrap_or_default(),
+                children: shrink(r.children.unwrap_or_default()),
             },
             NodeType::Text => NodeKind::Text {
-                runs: r.runs.ok_or_else(|| missing("runs"))?,
+                runs: shrink(r.runs.ok_or_else(|| missing("runs"))?),
             },
             NodeType::Image => {
                 let source = match (r.src, r.data) {
@@ -275,7 +292,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::Table => NodeKind::Table(Table {
                 columns: r.columns.ok_or_else(|| missing("columns"))?,
                 header_rows: r.header_rows.unwrap_or(0),
-                rows: r.rows.ok_or_else(|| missing("rows"))?,
+                rows: shrink(r.rows.ok_or_else(|| missing("rows"))?),
             }),
             NodeType::PageBreak => NodeKind::PageBreak,
             NodeType::Spacer => NodeKind::Spacer,

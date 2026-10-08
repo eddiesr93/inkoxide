@@ -10,12 +10,13 @@
 // Grid code walks parallel arrays by index; iterators would obscure it.
 #![allow(clippy::needless_range_loop)]
 
+mod fast;
 mod style;
 pub(crate) mod table;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use taffy::prelude::{AvailableSpace, NodeId as TaffyId, Size as TSize, TaffyTree};
 use taffy::{LayoutInput, LayoutOutput};
@@ -106,7 +107,7 @@ impl<'a> LNode<'a> {
 pub(crate) struct Tree<'a> {
     pub nodes: Vec<LNode<'a>>,
     /// Final layouts of the tables in this tree, by table node.
-    pub tables: BTreeMap<NodeIdx, Rc<TableLayout>>,
+    pub tables: BTreeMap<NodeIdx, Arc<TableLayout>>,
 }
 
 impl<'a> Tree<'a> {
@@ -228,9 +229,11 @@ pub(crate) enum RootMode {
 pub(crate) struct LayoutCtx<'m> {
     pub leaves: &'m mut dyn LeafMeasure,
     /// Table layouts by (table node, width key).
-    tables: HashMap<(NodeIdx, u32), Rc<TableLayout>>,
+    tables: HashMap<(NodeIdx, u32), Arc<TableLayout>>,
     /// Cell sizes by (cell node, width key, height key).
     cells: HashMap<(NodeIdx, u32), TSize<f32>>,
+    /// Closed-form layout of simple cells (`fast.rs`); off only in tests.
+    pub fast_cells: bool,
 }
 
 fn space_key(a: AvailableSpace) -> u32 {
@@ -254,6 +257,7 @@ impl<'m> LayoutCtx<'m> {
             leaves,
             tables: HashMap::new(),
             cells: HashMap::new(),
+            fast_cells: true,
         }
     }
 
@@ -265,6 +269,31 @@ impl<'m> LayoutCtx<'m> {
         mode: RootMode,
         collect: bool,
     ) -> Result<SubLayout, InkoxideError> {
+        if let (
+            true,
+            RootMode::Cell {
+                width,
+                height,
+                insets,
+            },
+        ) = (self.fast_cells, mode)
+        {
+            if let Some((child, pad)) = fast::simple_cell(tree, root) {
+                if let Some(sub) = fast::cell(
+                    tree,
+                    root,
+                    child,
+                    pad,
+                    self.leaves,
+                    width,
+                    height,
+                    insets,
+                    collect,
+                ) {
+                    return Ok(sub);
+                }
+            }
+        }
         // Subtree nodes in BFS order; children of each entry are contiguous.
         // Table internals are excluded: tables are leaves here.
         let mut list: Vec<(NodeIdx, usize, usize)> = vec![(root, 0, 0)];
@@ -422,12 +451,12 @@ impl<'m> LayoutCtx<'m> {
         tree: &Tree<'_>,
         idx: NodeIdx,
         space: AvailableSpace,
-    ) -> Result<Rc<TableLayout>, InkoxideError> {
+    ) -> Result<Arc<TableLayout>, InkoxideError> {
         let key = (idx, space_key(space));
         if let Some(t) = self.tables.get(&key) {
             return Ok(t.clone());
         }
-        let t = Rc::new(table::compute(self, tree, idx, space)?);
+        let t = Arc::new(table::compute(self, tree, idx, space)?);
         self.tables.insert(key, t.clone());
         Ok(t)
     }
@@ -520,52 +549,65 @@ impl LayoutEngine for TaffyLayout {
         min_height: f32,
         measure: &mut dyn LeafMeasure,
     ) -> Result<(), InkoxideError> {
-        let mut ctx = LayoutCtx::new(measure);
-        let sub = ctx.layout_subtree(tree, 0, RootMode::Flow { width, min_height }, true)?;
-        for (idx, g) in sub.geos {
-            tree.nodes[idx as usize].geo = g;
-        }
-
-        // Tables, outer before nested (BFS order): lay out rows and cells at
-        // the final width and write their absolute geometry.
-        let mut i = 0usize;
-        while i < tree.nodes.len() {
-            if tree.nodes[i].is_table() {
-                let idx = i as NodeIdx;
-                let (cx, cy, cw, _) = tree.nodes[i].geo.content_box();
-                let layout = ctx.table(tree, idx, AvailableSpace::Definite(cw))?;
-                let rows: Vec<NodeIdx> = tree.children(idx).collect();
-                for (ri, &row) in rows.iter().enumerate() {
-                    tree.nodes[row as usize].geo = Geometry {
-                        x: cx,
-                        y: cy + layout.row_y[ri],
-                        w: layout.width,
-                        h: layout.row_h[ri],
-                        ..Default::default()
-                    };
-                }
-                for cell in &layout.cells {
-                    let sub = ctx.layout_subtree(
-                        tree,
-                        cell.idx,
-                        RootMode::Cell {
-                            width: AvailableSpace::Definite(cell.w),
-                            height: Some(cell.h),
-                            insets: cell.insets,
-                        },
-                        true,
-                    )?;
-                    let (ox, oy) = (cx + cell.x, cy + cell.y);
-                    for (n, g) in sub.geos {
-                        tree.nodes[n as usize].geo = g.offset(ox, oy);
-                    }
-                }
-                tree.tables.insert(idx, layout);
-            }
-            i += 1;
-        }
-        Ok(())
+        compute_tree(tree, width, min_height, measure, true)
     }
+}
+
+/// [`TaffyLayout::compute`], with the simple-cell fast path switchable so
+/// tests can check it against Taffy.
+pub(crate) fn compute_tree(
+    tree: &mut Tree<'_>,
+    width: f32,
+    min_height: f32,
+    measure: &mut dyn LeafMeasure,
+    fast_cells: bool,
+) -> Result<(), InkoxideError> {
+    let mut ctx = LayoutCtx::new(measure);
+    ctx.fast_cells = fast_cells;
+    let sub = ctx.layout_subtree(tree, 0, RootMode::Flow { width, min_height }, true)?;
+    for (idx, g) in sub.geos {
+        tree.nodes[idx as usize].geo = g;
+    }
+
+    // Tables, outer before nested (BFS order): lay out rows and cells at
+    // the final width and write their absolute geometry.
+    let mut i = 0usize;
+    while i < tree.nodes.len() {
+        if tree.nodes[i].is_table() {
+            let idx = i as NodeIdx;
+            let (cx, cy, cw, _) = tree.nodes[i].geo.content_box();
+            let layout = ctx.table(tree, idx, AvailableSpace::Definite(cw))?;
+            let rows: Vec<NodeIdx> = tree.children(idx).collect();
+            for (ri, &row) in rows.iter().enumerate() {
+                tree.nodes[row as usize].geo = Geometry {
+                    x: cx,
+                    y: cy + layout.row_y[ri],
+                    w: layout.width,
+                    h: layout.row_h[ri],
+                    ..Default::default()
+                };
+            }
+            for cell in &layout.cells {
+                let sub = ctx.layout_subtree(
+                    tree,
+                    cell.idx,
+                    RootMode::Cell {
+                        width: AvailableSpace::Definite(cell.w),
+                        height: Some(cell.h),
+                        insets: cell.insets,
+                    },
+                    true,
+                )?;
+                let (ox, oy) = (cx + cell.x, cy + cell.y);
+                for (n, g) in sub.geos {
+                    tree.nodes[n as usize].geo = g.offset(ox, oy);
+                }
+            }
+            tree.tables.insert(idx, layout);
+        }
+        i += 1;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

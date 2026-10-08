@@ -11,7 +11,7 @@ mod prepare;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use taffy::prelude::{AvailableSpace, Size as TSize};
 
@@ -276,7 +276,7 @@ struct Entry {
     prepared: Prepared,
     /// Widest unbreakable piece (min-content width).
     min_content: f32,
-    layouts: Vec<(u32, Rc<LineLayout>)>,
+    layouts: Vec<(u32, Arc<LineLayout>)>,
 }
 
 /// Per-render cache of shaped paragraphs, keyed by node identity. Also
@@ -334,7 +334,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
     }
 
     /// Line layout of text `node` at `width` (cached per 0.5 pt bucket).
-    pub fn layout(&mut self, node: &Node, width: f32) -> Option<Rc<LineLayout>> {
+    pub fn layout(&mut self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
@@ -346,12 +346,33 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             return Some(l.clone());
         }
         let layout =
-            Rc::new(
+            Arc::new(
                 self.shaper
                     .break_lines(&entry.prepared, runs, &entry.style, width.max(0.0)),
             );
         entry.layouts.push((key, layout.clone()));
         Some(layout)
+    }
+
+    /// Read-only [`layout`](Self::layout) for painting (which runs in
+    /// parallel): the cached layout at `width`, or one computed without
+    /// caching. Layout has already measured every painted text at its final
+    /// width, so the fallback is rare.
+    pub fn layout_at(&self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return None;
+        };
+        let entry = self.entries.get(&node_key(node))?;
+        let key = width_key(width);
+        if let Some((_, l)) = entry.layouts.iter().find(|(k, _)| *k == key) {
+            return Some(l.clone());
+        }
+        Some(Arc::new(self.shaper.break_lines(
+            &entry.prepared,
+            runs,
+            &entry.style,
+            width.max(0.0),
+        )))
     }
 
     pub fn prepared(&self, node: &Node) -> Option<(&Prepared, &ParaStyle)> {

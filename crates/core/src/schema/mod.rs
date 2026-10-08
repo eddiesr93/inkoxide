@@ -93,7 +93,7 @@ pub struct PageSpec {
     pub background: Option<Color>,
     pub header: Option<Box<Node>>,
     pub footer: Option<Box<Node>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de::shrunk")]
     pub children: Vec<Node>,
 }
 
@@ -231,7 +231,7 @@ pub struct TableCell {
     pub row_span: u32,
     #[serde(default)]
     pub style: Style,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de::shrunk")]
     pub children: Vec<Node>,
 }
 
@@ -245,6 +245,7 @@ pub struct TableRow {
     pub id: Option<String>,
     pub min_height: Option<f32>,
     pub background_color: Option<Color>,
+    #[serde(deserialize_with = "de::shrunk")]
     pub cells: Vec<TableCell>,
 }
 

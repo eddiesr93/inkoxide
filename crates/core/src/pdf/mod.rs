@@ -22,8 +22,24 @@ use crate::InkoxideError;
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 const PAGE_TREE_FANOUT: usize = 50;
 
+/// A painted page reduced to what the writer needs: its compressed
+/// content stream and the resources it names. Pages are encoded as soon as
+/// they are painted (in parallel), so the display lists never pile up.
+pub(crate) struct EncodedPage {
+    pub width: f32,
+    pub height: f32,
+    /// Content stream, Flate-compressed when `compressed`.
+    pub stream: Vec<u8>,
+    pub compressed: bool,
+    /// Glyphs used per font.
+    pub glyphs: BTreeMap<FontKey, BTreeSet<u16>>,
+    /// Opacity keys (see `alpha_key`).
+    pub opacities: BTreeSet<u16>,
+    pub images: BTreeSet<ImageKey>,
+}
+
 pub(crate) struct DocumentOut<'a> {
-    pub pages: &'a [PageContent],
+    pub pages: &'a [EncodedPage],
     pub meta: &'a Meta,
     pub creation_date: Option<Timestamp>,
     pub fonts: &'a FontSet<'a>,
@@ -33,6 +49,12 @@ pub(crate) struct DocumentOut<'a> {
 
 /// Dependency firewall around the PDF writer (§5.1).
 pub(crate) trait PdfSink {
+    /// Encodes one page; called from worker threads.
+    fn encode_page(
+        &self,
+        page: &PageContent,
+        fonts: &FontSet<'_>,
+    ) -> Result<EncodedPage, InkoxideError>;
     fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError>;
 }
 
@@ -57,14 +79,54 @@ impl RefAlloc {
 }
 
 impl PdfSink for PdfWriterSink {
+    fn encode_page(
+        &self,
+        page: &PageContent,
+        fonts: &FontSet<'_>,
+    ) -> Result<EncodedPage, InkoxideError> {
+        let mut glyphs: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
+        let mut opacities = BTreeSet::new();
+        let mut images = BTreeSet::new();
+        for op in &page.ops {
+            match op {
+                Op::Text(t) => {
+                    glyphs
+                        .entry(t.font)
+                        .or_default()
+                        .extend(t.glyphs.iter().map(|g| g.id));
+                }
+                Op::SetOpacity(a) => {
+                    opacities.insert(alpha_key(*a));
+                }
+                Op::Image { key, .. } => {
+                    images.insert(*key);
+                }
+                _ => {}
+            }
+        }
+        let raw = content_stream(page, fonts);
+        let stream = match self.compression {
+            Some(level) => deflate(&raw, level)?,
+            None => raw,
+        };
+        Ok(EncodedPage {
+            width: page.width,
+            height: page.height,
+            stream,
+            compressed: self.compression.is_some(),
+            glyphs,
+            opacities,
+            images,
+        })
+    }
+
     fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {
         let mut pdf = Pdf::new();
         let mut alloc = RefAlloc(0);
         let catalog = alloc.next();
         let info = alloc.next();
 
-        // Pre-allocate page refs in document order: numbering stays
-        // deterministic even once content streams are built in parallel.
+        // Page refs first, in document order, so numbering is stable.
         let page_refs: Vec<(Ref, Ref)> = doc
             .pages
             .iter()
@@ -79,10 +141,8 @@ impl PdfSink for PdfWriterSink {
         // Shared graphics states, one per distinct opacity, in value order.
         let mut opacities: BTreeMap<u16, Ref> = BTreeMap::new();
         for page in doc.pages {
-            for op in &page.ops {
-                if let Op::SetOpacity(a) = op {
-                    opacities.entry(alpha_key(*a)).or_insert(Ref::new(1));
-                }
+            for &key in &page.opacities {
+                opacities.entry(key).or_insert(Ref::new(1));
             }
         }
         for (key, r) in opacities.iter_mut() {
@@ -95,12 +155,8 @@ impl PdfSink for PdfWriterSink {
         // used across the whole document.
         let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
         for page in doc.pages {
-            for op in &page.ops {
-                if let Op::Text(t) = op {
-                    used.entry(t.font)
-                        .or_default()
-                        .extend(t.glyphs.iter().map(|g| g.id));
-                }
+            for (key, glyphs) in &page.glyphs {
+                used.entry(*key).or_default().extend(glyphs);
             }
         }
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
@@ -118,10 +174,8 @@ impl PdfSink for PdfWriterSink {
         // Images: one XObject per unique image actually painted.
         let mut image_refs: BTreeMap<ImageKey, Ref> = BTreeMap::new();
         for page in doc.pages {
-            for op in &page.ops {
-                if let Op::Image { key, .. } = op {
-                    image_refs.entry(*key).or_insert(Ref::new(1));
-                }
+            for &key in &page.images {
+                image_refs.entry(key).or_insert(Ref::new(1));
             }
         }
         for (key, r) in image_refs.iter_mut() {
@@ -135,53 +189,30 @@ impl PdfSink for PdfWriterSink {
                 .media_box(PdfRect::new(0.0, 0.0, q(page.width), q(page.height)))
                 .contents(*content_ref);
             let mut res = p.resources();
-            let used = page_opacities(page);
-            if !used.is_empty() {
+            if !page.opacities.is_empty() {
                 let mut gs = res.ext_g_states();
-                for key in used {
-                    gs.pair(Name(gs_name(key).as_bytes()), opacities[&key]);
+                for key in &page.opacities {
+                    gs.pair(Name(gs_name(*key).as_bytes()), opacities[key]);
                 }
             }
-            let page_fonts: BTreeSet<FontKey> = page
-                .ops
-                .iter()
-                .filter_map(|op| match op {
-                    Op::Text(t) => Some(t.font),
-                    _ => None,
-                })
-                .collect();
-            if !page_fonts.is_empty() {
+            if !page.glyphs.is_empty() {
                 let mut f = res.fonts();
-                for key in page_fonts {
-                    f.pair(Name(font_name(key).as_bytes()), font_refs[&key]);
+                for key in page.glyphs.keys() {
+                    f.pair(Name(font_name(*key).as_bytes()), font_refs[key]);
                 }
             }
-            let page_images: BTreeSet<ImageKey> = page
-                .ops
-                .iter()
-                .filter_map(|op| match op {
-                    Op::Image { key, .. } => Some(*key),
-                    _ => None,
-                })
-                .collect();
-            if !page_images.is_empty() {
+            if !page.images.is_empty() {
                 let mut x = res.x_objects();
-                for key in page_images {
-                    x.pair(Name(image_name(key).as_bytes()), image_refs[&key]);
+                for key in &page.images {
+                    x.pair(Name(image_name(*key).as_bytes()), image_refs[key]);
                 }
             }
             res.finish();
             p.finish();
 
-            let raw = content_stream(page, doc.fonts);
-            match self.compression {
-                Some(level) => {
-                    let data = deflate(&raw, level)?;
-                    pdf.stream(*content_ref, &data).filter(Filter::FlateDecode);
-                }
-                None => {
-                    pdf.stream(*content_ref, &raw);
-                }
+            let mut stream = pdf.stream(*content_ref, &page.stream);
+            if page.compressed {
+                stream.filter(Filter::FlateDecode);
             }
         }
 
@@ -314,16 +345,6 @@ fn alpha_key(a: f32) -> u16 {
 
 fn gs_name(key: u16) -> String {
     format!("A{key}")
-}
-
-fn page_opacities(page: &PageContent) -> std::collections::BTreeSet<u16> {
-    page.ops
-        .iter()
-        .filter_map(|op| match op {
-            Op::SetOpacity(a) => Some(alpha_key(*a)),
-            _ => None,
-        })
-        .collect()
 }
 
 fn image_name(key: ImageKey) -> String {

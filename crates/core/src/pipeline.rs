@@ -1,5 +1,6 @@
 //! The render pipeline after validation: layout → pagination → paint.
 
+use rayon::prelude::*;
 use taffy::{AvailableSpace, Size as TSize};
 
 use crate::fonts::FontSet;
@@ -67,12 +68,15 @@ fn layout_fixed<'a>(
     Ok(tree)
 }
 
-pub(crate) fn run(
+/// Lays out and paginates every page template, then paints the pages in
+/// parallel, handing each to `encode` as soon as it is painted.
+pub(crate) fn run<T: Send>(
     doc: &Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
     images: &ImageSet,
-) -> Result<Vec<PageContent>, InkoxideError> {
+    encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
+) -> Result<Vec<T>, InkoxideError> {
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
         let _span = tracing::debug_span!("layout+paginate").entered();
@@ -104,19 +108,21 @@ pub(crate) fn run(
 
     // Page numbers are known only now; placeholders are filled at paint.
     let total: u32 = laid.iter().map(|l| l.placement.pages).sum();
-    let mut pages = Vec::with_capacity(total as usize);
-    let mut number = 0u32;
-    for l in &laid {
-        for k in 0..l.placement.pages {
-            number += 1;
+    let jobs: Vec<(&Laid<'_>, u32)> = laid
+        .iter()
+        .flat_map(|l| (0..l.placement.pages).map(move |k| (l, k)))
+        .collect();
+    let text: &Cache<'_, '_, '_> = text;
+    jobs.par_iter()
+        .enumerate()
+        .map(|(i, &(l, k))| {
             let numbers = PageNumbers {
-                current: number,
+                current: i as u32 + 1,
                 total,
             };
-            pages.push(paint_page(l, k, numbers, fonts, text, images));
-        }
-    }
-    Ok(pages)
+            encode(paint_page(l, k, numbers, fonts, text, images))
+        })
+        .collect()
 }
 
 fn paint_page(
@@ -124,7 +130,7 @@ fn paint_page(
     k: u32,
     numbers: PageNumbers,
     fonts: &FontSet<'_>,
-    text: &mut Cache<'_, '_, '_>,
+    text: &Cache<'_, '_, '_>,
     images: &ImageSet,
 ) -> PageContent {
     let spec = l.spec;

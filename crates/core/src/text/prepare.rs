@@ -2,7 +2,7 @@
 //! points, font itemisation and shaping.
 
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use unicode_linebreak::{linebreaks, BreakOpportunity};
 
@@ -186,7 +186,7 @@ struct UnitGlyph {
 pub(crate) struct ShapeCache {
     plans:
         HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
-    words: HashMap<(FontKey, Box<str>), Rc<[UnitGlyph]>>,
+    words: HashMap<(FontKey, Box<str>), Arc<[UnitGlyph]>>,
 }
 
 impl ShapeCache {
@@ -198,7 +198,7 @@ impl ShapeCache {
         fonts: &FontSet<'_>,
         word: &str,
         unicode: &mut super::UnicodeMap,
-    ) -> Rc<[UnitGlyph]> {
+    ) -> Arc<[UnitGlyph]> {
         if let Some(g) = self.words.get(&(key, Box::from(word))) {
             return g.clone();
         }
@@ -214,7 +214,7 @@ impl ShapeCache {
             });
         let shaped = rustybuzz::shape_with_plan(face, plan, buf);
         let infos = shaped.glyph_infos();
-        let glyphs: Rc<[UnitGlyph]> = infos
+        let glyphs: Arc<[UnitGlyph]> = infos
             .iter()
             .zip(shaped.glyph_positions())
             .map(|(i, p)| UnitGlyph {

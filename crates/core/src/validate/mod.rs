@@ -35,6 +35,11 @@ pub(crate) fn parse(doc: &[u8], format: InputFormat) -> Result<Document, Validat
 }
 
 fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
+    // Fast path: path tracking costs about a third of the parse, and is
+    // only needed to report an error. Parse again with it on failure.
+    if let Ok(d) = serde_json::from_slice::<Document>(doc) {
+        return Ok(d);
+    }
     let mut de = serde_json::Deserializer::from_slice(doc);
     let result: Result<Document, _> = serde_path_to_error::deserialize(&mut de);
     let err = match result {
