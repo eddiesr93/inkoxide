@@ -1,0 +1,34 @@
+% Small hand-written English hyphenation patterns for the fixture
+% text-hyphenate-en-patterns.json (MIT, like the rest of this repository).
+% They are NOT a complete English pattern set: they only demonstrate
+% runtime pattern registration (ADR-044), and they deliberately differ
+% from the built-in (hypher) English patterns so the fixture shows which
+% set was used. For real documents keep the built-in patterns or register
+% hyph-en-us.tex from hyph-utf8 (see docs/API.md).
+%
+% Rules, in Liang's notation (odd = may break, even = may not, max wins):
+%   1. A hyphen may go before any consonant (V-CV):           1b 1c 1d ...
+%   2. Between two consonants, break between them (VC-CV):    2nt 2rs ...
+%   3. Consonant + l/r and the digraphs ch/ph/sh/th stay
+%      together:                                              c2h t2r ...
+%   4. No break before a final silent e or plural -es/-s:     2se. 2res. 2ts.
+%   5. -tion stays whole; a vowel after it may start a new
+%      syllable:                                              tio2n ion1a
+% Exception words (\hyphenation) win over the patterns.
+\patterns{
+  1b 1c 1d 1f 1g 1h 1j 1k 1l 1m 1n 1p 1q 1r 1s 1t 1v 1w 1x 1z
+  2nt 2nd 2ns 2nc 2ng 2nf 2nv 2mp 2mb 2mm 2rt 2rs 2rm 2rn 2rd 2rg 2rc 2rv
+  2rp 2rw 2st 2sc 2sp 2ct 2pt 2pm 2lt 2lm 2lc 2ld 2ll 2bs 2dm 2dl 2gn 2ss
+  2tt 2pp 2ff 2tm
+  c2h g2h p2h s2h t2h w2h b2l b2r c2l c2r d2r f2l f2r g2l g2r p2l p2r t2r
+  t2w c2k 2x1 q2u 2chn
+  tio2n ion1a ion1i
+  2be. 2ce. 2de. 2ge. 2ke. 2le. 2me. 2ne. 2pe. 2re. 2se. 2te. 2ve. 2ze.
+  2bes. 2des. 2kes. 2res. 2ves. 2ts. 2cks.
+}
+\hyphenation{
+  re-cord-ed
+  con-sid-ers
+  pro-duc-tiv-i-ty
+  in-dis-pens-able
+}

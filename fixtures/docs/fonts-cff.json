@@ -2,7 +2,7 @@
  "version": 1,
  "meta": {
   "title": "CFF fonts",
-  "lang": "ro"
+  "lang": "en"
  },
  "fonts": [
   {
@@ -53,12 +53,12 @@
      },
      "runs": [
       {
-       "text": "Fonturile OpenType cu contururi CFF ",
+       "text": "OpenType fonts with CFF outlines ",
        "font": "InterDisplay-Bold",
        "size": 11
       },
       {
-       "text": "se încorporează ca ",
+       "text": "are embedded as ",
        "font": "Inter-Regular",
        "size": 11
       },
@@ -74,12 +74,12 @@
        ]
       },
       {
-       "text": ", alături de fonturile TrueType din același paragraf. Diacriticele românești (ș, ț, ă, î, â; Ș, Ț, Ă, Î, Â) trebuie să apară corect, iar textul rămâne selectabil și căutabil. ",
+       "text": ", next to the TrueType fonts of the same paragraph. Accented letters (é, ü, ç, ñ, ø; É, Ü, Ç, Ñ, Ø) must render correctly, and the text stays selectable and searchable. ",
        "font": "Inter-Regular",
        "size": 11
       },
       {
-       "text": "Ligaturile și kerning-ul vin din GPOS/GSUB: AVATAR, Wave, Tokyo, financiar, office.",
+       "text": "Ligatures and kerning come from GPOS/GSUB: AVATAR, Wave, Tokyo, financial, office.",
        "font": "InterDisplay-Bold",
        "size": 11
       }
@@ -131,7 +131,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Cifre tabelare și proporționale",
+           "text": "Tabular and proportional figures",
            "font": "Inter-Regular",
            "size": 9
           }
@@ -166,7 +166,7 @@
          },
          "runs": [
           {
-           "text": "Un titlu foarte lung care nu încape în două rânduri și este trunchiat cu elipsă la sfârșit",
+           "text": "A very long title that does not fit on two lines and is truncated with an ellipsis at the end",
            "font": "InterDisplay-Bold",
            "size": 14
           }
@@ -186,19 +186,19 @@
      "type": "text",
      "runs": [
       {
-       "text": "Subliniat ",
+       "text": "Underlined ",
        "font": "InterDisplay-Bold",
        "size": 13,
        "decoration": "underline"
       },
       {
-       "text": "tăiat",
+       "text": "struck",
        "font": "InterDisplay-Bold",
        "size": 13,
        "decoration": "lineThrough"
       },
       {
-       "text": "  •  spațiere între litere",
+       "text": "  •  letter spacing",
        "font": "InterDisplay-Bold",
        "size": 13,
        "letterSpacing": 1.5

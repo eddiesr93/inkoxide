@@ -193,12 +193,12 @@ full font program as `FontFile2` (Flate). **Consequences.** CFF support
 ADR-037:* static CFF fonts are accepted; variable fonts and CFF2 are
 still rejected.
 
-## ADR-015 — Hyphenation: soft hyphens + our own hyphen glyph; no Romanian patterns yet (M2)
+## ADR-015 — Hyphenation: soft hyphens + our own hyphen glyph; built-in patterns only (M2)
 
-**Context.** The brief assumed `hypher` includes Romanian. hypher 0.1.8
-supports ~50 languages but **not Romanian**. The standard TeX patterns
-(`hyph-ro.tex`, hyph-utf8) state no licence ("licence: [None]"), which is
-presumably why hypher omits them.
+**Context.** The brief assumed `hypher` covers every language documents
+might use. hypher 0.1.8 supports ~50 languages (English among them) but
+not all; some standard TeX pattern files in hyph-utf8 state no licence
+("licence: [None]"), which is presumably why hypher omits them.
 
 **Decision.** When `hyphenate: true`, words longer than five letters get
 U+00AD at hypher's break points before shaping. SHY glyphs are invisible
@@ -206,13 +206,13 @@ and zero-width. When a line breaks at a SHY, the line layout appends
 U+2010 (or `-`) from the font of the preceding glyph and counts its width
 when fitting. This settles the "visible hyphen at SHY" spike from the
 brief: we never depend on the shaper to draw it. For languages hypher
-lacks (including `ro`), `hyphenate` is a no-op.
+lacks, `hyphenate` is a no-op.
 
-**Open question (needs the project owner).** For Romanian, either
-(a) vendor `hyph-ro.tex` after clarifying its licence, (b) let clients
-register TeX patterns at runtime (new public API), or (c) accept no
-Romanian hyphenation. The `Hyphenator` boundary makes (a) or (b) a small,
-local change.
+**Open question (needs the project owner).** For languages hypher lacks,
+either (a) vendor pattern files after clarifying their licences, (b) let
+clients register TeX patterns at runtime (new public API), or (c) accept
+no hyphenation for them. The `Hyphenator` boundary makes (a) or (b) a
+small, local change.
 
 **Resolved (post-M7).** The owner chose (b); see ADR-044.
 
@@ -987,7 +987,9 @@ should come from it, not be written a second time.
 
 ## ADR-044 — Hyphenation patterns registered at runtime (post-M7)
 
-**Context.** ADR-015 left Romanian hyphenation open. The owner chose
+**Context.** ADR-015 left hyphenation for languages hypher lacks open,
+and clients may want a different pattern set even where hypher has one.
+The owner chose
 option (b): clients register TeX patterns at runtime. That way no
 pattern file with an unclear licence enters the repository.
 
@@ -1012,12 +1014,12 @@ pattern file with an unclear licence enters the repository.
   - Words are matched in lowercase, and offsets are byte offsets in the
     original word.
   - `\lefthyphenmin` and `\righthyphenmin` are fixed at 2/2, the
-    hyph-utf8 value for Romanian and most other languages. The existing
+    hyph-utf8 value for English and most other languages. The existing
     "words longer than five letters" rule (ADR-015) still applies.
 - **Resolution order.** Registered patterns for the paragraph's language
   come first, then hypher's built-in patterns, then nothing. Soft
   hyphens in the text are always honoured. Patterns are keyed by the
-  two-letter language subtag, so `ro-RO` and `ro` share them.
+  two-letter language subtag, so `en-US` and `en` share them.
 - **Errors.** A malformed pattern file is `HYPHENATION_ERROR`, a new
   `InkoxideError::Hyphenation` variant. Adding it is not a breaking
   change, because the enum is `#[non_exhaustive]`.
@@ -1026,19 +1028,21 @@ pattern file with an unclear licence enters the repository.
     `unregisterHyphenationPatterns(lang)`, process-wide like fonts.
     Each render takes a snapshot.
   - CLI: `--hyphenation LANG=PATH`, repeatable.
-- **Test data.** The fixture `text-hyphenate-ro-patterns` registers about
-  60 hand-written patterns (`fixtures/hyphenation/`, MIT). The fixture
-  test registers a pattern file only for the fixture whose name
-  prefixes it, so every other fixture still renders without them.
-  `hyph-ro.tex` is not in the repository. It parses and renders with
-  this code (checked locally), and `docs/API.md` explains how to use
-  it.
+- **Test data.** The fixture `text-hyphenate-en-patterns` registers
+  about 100 hand-written English patterns and four exception words
+  (`fixtures/hyphenation/`, MIT). They differ on purpose from hypher's
+  built-in English patterns, so the fixture shows that registered
+  patterns win. The fixture test registers a pattern file only for the
+  fixture whose name prefixes it, so every other fixture still renders
+  without them. No hyph-utf8 file is in the repository; the standard
+  files parse and render with this code (checked locally), and
+  `docs/API.md` explains how to register one.
 
 **Consequences.**
 - Output stays deterministic for fixed inputs. Patterns are part of the
   inputs, like fonts.
 - The pattern set a client registers decides hyphenation quality, and
-  the engine neither ships nor endorses a Romanian set.
+  the engine ships no pattern files beyond hypher's built-in ones.
 
 
 ## ADR-045 — Transforms, z-index, per-corner radii, per-side border styles (v1.1)
@@ -1136,7 +1140,7 @@ way to show different content on the first or last page (React PDF's
 - `/DA` and the form's `/DR` use the embedded document font. A subset
   font cannot show characters it lacks, so editable text fields also
   embed the common Latin range (ASCII, Latin-1, Latin Extended-A,
-  Romanian comma-below letters, typographic punctuation, `€`).
+  the comma-below letters U+0218–U+021B, typographic punctuation, `€`).
 - Fields sharing a name become one parent field with kid widgets (radio
   groups; repeated text fields share their value). A lone non-radio
   field is merged with its widget. Names must not contain `.` (PDF
@@ -1158,3 +1162,21 @@ New transitive dependencies, all MIT or MIT/Apache-2.0: `gif`,
 `weezl`, `color_quant`, `image-webp`, `quick-error`; all within the
 existing `deny.toml` licence allowlist (checked with `cargo metadata`;
 `cargo deny` was not installed in the build environment).
+
+## ADR-050 — English-only content (v1.1)
+
+**Context.** Fixtures, tests, examples and docs had grown sample content
+in another language (forms, addresses, hyphenation demos). The project
+owner ruled that the repository uses one language.
+**Decision.** All content — code, tests, fixtures, examples and generated
+documents — is English. The engine stays language-agnostic; fixtures
+exercise English hyphenation. Tests that exist to cover non-ASCII Latin
+text use accented letters from English loanwords, French or German
+(`naïve`, `façade`, `Größe`); deliberate non-Latin shaping and bidi
+fixtures (Arabic, Hebrew, CJK) stay.
+**Consequences.** Renamed fixtures: `enrollment-request`,
+`text-hyphenate-en-patterns` (patterns in
+`fixtures/hyphenation/text-hyphenate-en-patterns.en-us.tex`) and
+`text-justify-hyphenate-en`. Their reference images were regenerated;
+the engine is unchanged (the form-field edit range still embeds
+U+0218–U+021B, as Unicode coverage, not content).

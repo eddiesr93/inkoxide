@@ -2,7 +2,7 @@
  "version": 1,
  "meta": {
   "title": "Justified text with hyphenation",
-  "lang": "ro"
+  "lang": "en-US"
  },
  "fonts": [
   {
@@ -37,7 +37,7 @@
      },
      "runs": [
       {
-       "text": "Aliniere stânga-dreapta și despărțire în silabe",
+       "text": "Justified text and hyphenation",
        "font": "Inter-Bold",
        "size": 16,
        "color": [
@@ -326,7 +326,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "RO · JUSTIFY + HYPHENATE (no patterns yet)",
+           "text": "EN-US · JUSTIFY + HYPHENATE",
            "font": "Inter-Bold",
            "size": 8,
            "color": [
@@ -344,11 +344,11 @@
           "textAlign": "justify",
           "lineHeight": 1.45,
           "hyphenate": true,
-          "lang": "ro"
+          "lang": "en-US"
          },
          "runs": [
           {
-           "text": "Documentația tehnică a motorului de paginare descrie, în detaliu, comportamentul tabelelor care se împart pe mai multe pagini, repetarea antetelor și gestionarea blocurilor care trebuie păstrate împreună.",
+           "text": "The technical documentation of the pagination engine describes, in detail, the behaviour of tables that split across several pages, the repetition of headers and the handling of blocks that must be kept together.",
            "font": "Inter-Regular",
            "size": 10,
            "color": [
@@ -425,7 +425,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "RO · ȘI, ȚĂ, ÎN, ÂN",
+           "text": "EN-US · DOCUMENTATION",
            "font": "Inter-Bold",
            "size": 8,
            "color": [
@@ -443,11 +443,11 @@
           "textAlign": "justify",
           "lineHeight": 1.45,
           "hyphenate": true,
-          "lang": "ro"
+          "lang": "en-US"
          },
          "runs": [
           {
-           "text": "Documentația tehnică a motorului de paginare descrie, în detaliu, comportamentul tabelelor care se împart pe mai multe pagini, repetarea antetelor și gestionarea blocurilor care trebuie păstrate împreună.",
+           "text": "The technical documentation of the pagination engine describes, in detail, the behaviour of tables that split across several pages, the repetition of headers and the handling of blocks that must be kept together.",
            "font": "Inter-Regular",
            "size": 10,
            "color": [
@@ -512,7 +512,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "RO · ȘI, ȚĂ, ÎN, ÂN",
+           "text": "EN-US · SPECIFICATIONS",
            "font": "Inter-Bold",
            "size": 8,
            "color": [
@@ -530,11 +530,11 @@
           "textAlign": "justify",
           "lineHeight": 1.45,
           "hyphenate": true,
-          "lang": "ro"
+          "lang": "en-US"
          },
          "runs": [
           {
-           "text": "Specificațiile internaționale recomandă despărțirea automată în silabe pentru textele aliniate stânga-dreapta, deoarece altfel spațiile dintre cuvinte devin inegale și disproporționate.",
+           "text": "International specifications recommend automatic hyphenation for text justified on both sides, because otherwise the spaces between words become uneven and disproportionate.",
            "font": "Inter-Regular",
            "size": 10,
            "color": [
@@ -599,7 +599,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "RO · ȘI, ȚĂ, ÎN, ÂN",
+           "text": "EN-US · PROCEDURES",
            "font": "Inter-Bold",
            "size": 8,
            "color": [
@@ -617,11 +617,11 @@
           "textAlign": "justify",
           "lineHeight": 1.45,
           "hyphenate": true,
-          "lang": "ro"
+          "lang": "en-US"
          },
          "runs": [
           {
-           "text": "Reprezentanții comisiei au considerat că implementarea și standardizarea procedurilor administrative sunt indispensabile pentru funcționarea instituțiilor.",
+           "text": "The representatives of the commission considered that the implementation and standardization of administrative procedures are indispensable for the functioning of institutions.",
            "font": "Inter-Regular",
            "size": 10,
            "color": [

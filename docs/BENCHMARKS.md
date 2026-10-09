@@ -24,7 +24,7 @@ absolute numbers as upper bounds.
 | M1 | `boxes-nested` | 1 | 0.60 ms | ~60 boxes, borders, radii; includes Flate level 6 |
 | M2 | `invoice` | 1 | 2.4 ms | 2 fonts embedded in full (414 KB); target < 3 ms |
 | M2 | `text-wrapping` | 1 | 3.7 ms | 5 fonts embedded, ~20 paragraphs |
-| M2 | `text-justify-hyphenate-ro` | 1 | 2.5 ms | |
+| M2 | `text-justify-hyphenate-en` | 1 | 2.5 ms | |
 
 | M4 | `table-dump-500p` (generated, `scripts/fixtures/table_dump.py`) | 435 | 4.4 s | 20k rows × 5 cells; target < 2.5 s, see below |
 

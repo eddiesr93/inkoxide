@@ -195,7 +195,7 @@ export interface Meta {
   keywords?: string;
   creator?: string;
   /**
-   * BCP-47 language tag of the document, e.g. "ro" or "en-GB".
+   * BCP-47 language tag of the document, e.g. "en" or "en-GB".
    */
   lang?: string;
   /**

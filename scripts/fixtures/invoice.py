@@ -99,7 +99,7 @@ def party(label, lines):
 
 doc = {
     "version": 1,
-    "meta": {"title": "Invoice INV-2026-0142", "author": "Inkoxide SRL", "lang": "en"},
+    "meta": {"title": "Invoice INV-2026-0142", "author": "Inkoxide Ltd", "lang": "en"},
     "fonts": [
         {"id": "Inter-Regular", "family": "Inter"},
         {"id": "Inter-Bold", "family": "Inter", "weight": 700},
@@ -123,8 +123,8 @@ doc = {
                 margin={"bottom": 28},
             ),
             box(
-                party("Billed to", ["Studio Nord SRL", "Str. Ion Câmpineanu 11", "010031 București, România", "CUI RO12345678"]),
-                party("From", ["Inkoxide SRL", "Bd. Eroilor 25", "400129 Cluj-Napoca, România", "CUI RO87654321"]),
+                party("Billed to", ["Studio North Ltd", "11 Harbour Street", "Dublin D02 X285, Ireland", "Company No. 512345"]),
+                party("From", ["Inkoxide Ltd", "25 Riverside Avenue", "Cork T12 K8AF, Ireland", "Company No. 654321"]),
                 box(
                     text(run("ISSUED", "Inter-Bold", 7.5, MUTED, letterSpacing=0.6), margin={"bottom": 4}),
                     text(run("8 October 2026", size=9)),
@@ -149,7 +149,7 @@ doc = {
             box(flexGrow=1),
             box(
                 text(run("Payment details", "Inter-Bold", 9), margin={"bottom": 3}),
-                text(run("IBAN RO49 AAAA 1B31 0075 9384 0000 · BIC AAAARO2X · Reference INV-2026-0142", size=8.5, color=MUTED)),
+                text(run("IBAN IE64 AAAA 9311 5212 3456 78 · BIC AAAAIE2D · Reference INV-2026-0142", size=8.5, color=MUTED)),
                 text(run("Thank you for your business. Late payments accrue interest of 0.02% per day as per the agreement.",
                          size=8.5, color=MUTED), margin={"top": 6}, lineHeight=1.4),
                 borderWidth={"top": 1}, borderColor={"top": LINE}, padding={"top": 12},

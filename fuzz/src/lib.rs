@@ -452,7 +452,7 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "textAlign" => e(s, &["left", "center", "right", "justify"]),
         "maxLines" => json!(s.below(5)),
         "ellipsis" | "hyphenate" => json!(s.chance(128)),
-        "lang" => e(s, &["ro", "en", "en-US", "de", "xx", ""]),
+        "lang" => e(s, &["fr", "en", "en-US", "de", "xx", ""]),
         "whiteSpace" if s.chaos => e(s, &["pre-wrap", "pre-line"]),
         "whiteSpace" => e(s, &["normal", "nowrap", "pre"]),
         "verticalAlign" => e(s, &["top", "middle", "bottom"]),
@@ -507,8 +507,8 @@ const WORDS: &[&str] = &[
     "Lorem",
     "ipsum",
     "dolor",
-    "șțăîâ",
-    "internaționalizare",
+    "éèçàœ",
+    "Größenordnung",
     "Ünïcödé",
     "VAT",
     "1 234,56",
@@ -825,7 +825,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
     }
     let mut meta = Map::new();
     if s.chance(60) {
-        meta.insert("lang".into(), json!(s.pick(&["ro", "en", "de", "zz-ZZ"])));
+        meta.insert("lang".into(), json!(s.pick(&["fr", "en", "de", "zz-ZZ"])));
     }
     if s.chance(30) {
         meta.insert(

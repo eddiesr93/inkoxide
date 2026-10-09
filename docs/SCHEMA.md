@@ -96,7 +96,7 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 | `subject` | `string` |  |  |
 | `keywords` | `string` |  |  |
 | `creator` | `string` |  |  |
-| `lang` | `string` |  | BCP-47 language tag of the document, e.g. "ro" or "en-GB". |
+| `lang` | `string` |  | BCP-47 language tag of the document, e.g. "en" or "en-GB". |
 | `creationDate` | `string` |  | RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
 
 ### FontDecl

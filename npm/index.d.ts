@@ -90,9 +90,9 @@ export function registerFont(id: string, data: Uint8Array): void;
 export function unregisterFont(id: string): boolean;
 /**
  * Registers (or replaces), for all later renders, TeX hyphenation patterns
- * for a language: a hyph-utf8 file such as `hyph-ro.tex` with
+ * for a language: a hyph-utf8 file such as `hyph-en-us.tex` with
  * `\patterns{…}` and optional `\hyphenation{…}` groups, in UTF-8.
- * `lang` is a BCP-47 tag (`"ro"`, `"en-GB"`); patterns apply to its
+ * `lang` is a BCP-47 tag (`"en"`, `"en-GB"`); patterns apply to its
  * language. Registered patterns win over the built-in ones. Throws
  * `HYPHENATION_ERROR` for malformed patterns.
  */

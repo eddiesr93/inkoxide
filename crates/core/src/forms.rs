@@ -16,8 +16,8 @@ const DEFAULT_WIDTH: f32 = 150.0;
 const MULTILINE_ROWS: f32 = 3.0;
 
 /// Characters whose glyphs are embedded for every font a text field uses,
-/// so a viewer can show edits made in the common Latin range (Romanian
-/// included) with the subset font.
+/// so a viewer can show edits made in the common Latin range (including
+/// S and T with comma below, U+0218–U+021B) with the subset font.
 const EDIT_RANGES: &[(char, char)] = &[
     (' ', '~'),
     ('\u{A0}', '\u{17F}'),

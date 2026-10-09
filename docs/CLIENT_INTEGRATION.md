@@ -170,12 +170,13 @@ PDFs by hash.
 
 A text node hyphenates when its style has `hyphenate: true`. The language
 is the node's `lang`, or else `meta.lang`. The engine includes patterns
-for about 50 languages. **Romanian is not among them:** load the
-standard TeX patterns yourself, once, at startup:
+for about 50 languages, English included. For a language without
+built-in patterns, or to replace the built-in ones, load standard TeX
+patterns yourself, once, at startup:
 
 ```js
 import { registerHyphenationPatterns } from 'inkoxide';
-registerHyphenationPatterns('ro', readFileSync('hyph-ro.tex')); // from hyph-utf8; check its licence
+registerHyphenationPatterns('en-US', readFileSync('hyph-en-us.tex')); // from hyph-utf8; check its licence
 ```
 
 - **Lookup order.** Registered patterns take precedence over the
@@ -186,7 +187,7 @@ registerHyphenationPatterns('ro', readFileSync('hyph-ro.tex')); // from hyph-utf
   honoured, with or without patterns.
 
 [API.md](API.md#hyphenation-patterns) says where to download
-`hyph-ro.tex`.
+pattern files such as `hyph-en-us.tex`.
 
 ## Checklist
 
@@ -201,4 +202,4 @@ registerHyphenationPatterns('ro', readFileSync('hyph-ro.tex')); // from hyph-utf
       many small documents, or the default for a few large ones.
 - [ ] `creationDate` is fixed wherever outputs are compared or hashed.
 - [ ] Hyphenation patterns are registered for every language that has
-      `hyphenate: true` but no built-in patterns (Romanian).
+      `hyphenate: true` but no built-in patterns.

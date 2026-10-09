@@ -16,8 +16,7 @@ pub(crate) trait Hyphenator: Send + Sync {
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize>;
 }
 
-/// `hypher`: embedded TeX patterns for ~50 languages (no Romanian, see
-/// ADR-015).
+/// `hypher`: embedded TeX patterns for ~50 languages (ADR-015).
 pub(crate) struct HypherHyphenator;
 
 fn lang_of(code: &str) -> Option<hypher::Lang> {
@@ -64,7 +63,7 @@ impl Hyphenator for NoHyphenation {
     }
 }
 
-/// Normalises a BCP-47 tag (`ro`, `en-GB`) to its lowercase ISO 639-1
+/// Normalises a BCP-47 tag (`en`, `en-GB`) to its lowercase ISO 639-1
 /// language code.
 pub(crate) fn language_code(tag: &str) -> Option<String> {
     let b = tag.as_bytes();
@@ -76,7 +75,7 @@ pub(crate) fn language_code(tag: &str) -> Option<String> {
 
 /// Hyphenation patterns registered at runtime, by language.
 ///
-/// Patterns are TeX files as distributed by hyph-utf8 (`hyph-ro.tex`):
+/// Patterns are TeX files as distributed by hyph-utf8 (`hyph-en-us.tex`):
 /// one or more `\patterns{…}` groups of Liang patterns and optional
 /// `\hyphenation{…}` groups of exception words (`ta-ble`), in UTF-8. When a
 /// paragraph asks for hyphenation, registered patterns for its language
@@ -87,9 +86,9 @@ pub(crate) fn language_code(tag: &str) -> Option<String> {
 ///
 /// ```
 /// let mut store = inkoxide::HyphenationStore::new();
-/// let tex = r"\patterns{ 1ba 1ca 2n1t } \hyphenation{ în-tre-prin-de-re }";
-/// store.register("ro", tex.as_bytes())?;
-/// assert!(store.contains("ro"));
+/// let tex = r"\patterns{ 1ba 1ca 2n1t } \hyphenation{ en-ter-prise }";
+/// store.register("en-US", tex.as_bytes())?;
+/// assert!(store.contains("en"));
 /// let options = inkoxide::RenderOptions::default().with_hyphenation(store);
 /// # Ok::<(), inkoxide::InkoxideError>(())
 /// ```
@@ -117,7 +116,7 @@ impl HyphenationStore {
 
     /// Parses TeX hyphenation patterns and registers (or replaces) them
     /// for `lang`, a BCP-47 tag whose language subtag has two letters
-    /// (`ro`, `en-GB`); patterns apply to the language, whatever the
+    /// (`en`, `en-GB`); patterns apply to the language, whatever the
     /// region.
     ///
     /// # Errors
@@ -181,7 +180,7 @@ impl Hyphenator for ResolvedHyphenator<'_> {
 
 /// Minimum letters before the first and after the last hyphen (TeX's
 /// `\lefthyphenmin` / `\righthyphenmin`; hyph-utf8 uses 2/2 for most
-/// languages, including Romanian).
+/// languages).
 const LEFT_MIN: usize = 2;
 const RIGHT_MIN: usize = 2;
 
@@ -394,10 +393,10 @@ mod tests {
 
     #[test]
     fn multibyte_letters_and_minimums() {
-        let p = patterns("% comment \\patterns{ignored}\n\\patterns{ 1ș 1t 1n 1c }");
+        let p = patterns("% comment \\patterns{ignored}\n\\patterns{ 1ç 1d 1n 1c }");
         // Offsets are byte offsets; no hyphen within 2 letters of either end.
-        assert_eq!(split("aștea", &p.hyphenate("aștea")), "aș-tea");
-        assert_eq!(split("ancă", &p.hyphenate("ancă")), "an-că");
+        assert_eq!(split("façade", &p.hyphenate("façade")), "fa-ça-de");
+        assert_eq!(split("garçon", &p.hyphenate("garçon")), "gar-çon");
         assert!(p.hyphenate("ac").is_empty());
     }
 
@@ -412,13 +411,13 @@ mod tests {
     fn malformed_input_is_an_error() {
         let mut store = HyphenationStore::new();
         for (lang, tex) in [
-            ("ro", &b"1ba 1ca"[..]),
-            ("ro", br"\patterns{ a12b }"),
-            ("ro", br"\patterns{ 1ba "),
-            ("ro", br"\patterns{ ^^e3 }"),
-            ("ro", br"\hyphenation{ -ab }"),
-            ("ro", b"\\patterns{ \xff }"),
-            ("rom", br"\patterns{ 1ba }"),
+            ("en", &b"1ba 1ca"[..]),
+            ("en", br"\patterns{ a12b }"),
+            ("en", br"\patterns{ 1ba "),
+            ("en", br"\patterns{ ^^e3 }"),
+            ("en", br"\hyphenation{ -ab }"),
+            ("en", b"\\patterns{ \xff }"),
+            ("eng", br"\patterns{ 1ba }"),
         ] {
             let err = store.register(lang, tex).unwrap_err();
             assert_eq!(err.code(), "HYPHENATION_ERROR", "{err}");
@@ -430,26 +429,26 @@ mod tests {
     fn registered_patterns_come_first() {
         let mut store = HyphenationStore::new();
         let h = ResolvedHyphenator { store: &store };
-        // Built in (hypher), and no built-in Romanian (ADR-015).
+        // Built in (hypher), and none for Japanese (ADR-015).
         assert_eq!(
             h.hyphenate("documentation", "en"),
             HypherHyphenator.hyphenate("documentation", "en")
         );
-        assert!(!h.supports("ro"));
+        assert!(!h.supports("ja"));
 
-        store.register("ro-RO", br"\patterns{ 1m 1n }").unwrap();
+        store.register("ja-JP", br"\patterns{ 1m 1n }").unwrap();
         store
             .register("EN", br"\hyphenation{ documentati-on }")
             .unwrap();
-        assert!(store.contains("ro") && store.contains("en-GB"));
+        assert!(store.contains("ja") && store.contains("en-GB"));
         let h = ResolvedHyphenator { store: &store };
-        assert!(h.supports("ro"));
-        assert_eq!(split("romana", &h.hyphenate("romana", "ro")), "ro-ma-na");
+        assert!(h.supports("ja"));
+        assert_eq!(split("banana", &h.hyphenate("banana", "ja")), "ba-na-na");
         assert_eq!(
             split("documentation", &h.hyphenate("documentation", "en")),
             "documentati-on"
         );
-        assert!(store.unregister("ro"));
-        assert!(!store.unregister("ro"));
+        assert!(store.unregister("ja"));
+        assert!(!store.unregister("ja"));
     }
 }

@@ -97,7 +97,7 @@ const party = (title: string, [first, ...rest]: string[]) =>
 
 export const invoice: Document = {
   version: 1,
-  meta: { title: 'Invoice INV-2026-0142', author: 'Inkoxide SRL', lang: 'en' },
+  meta: { title: 'Invoice INV-2026-0142', author: 'Inkoxide Ltd', lang: 'en' },
   fonts: [
     { id: 'Inter-Regular', family: 'Inter' },
     { id: 'Inter-Bold', family: 'Inter', weight: 700 },
@@ -122,8 +122,8 @@ export const invoice: Document = {
         ),
         box(
           { flexDirection: 'row', gap: 20, margin: { bottom: 28 } },
-          party('Billed to', ['Studio Nord SRL', 'Str. Ion Câmpineanu 11', '010031 București, România', 'CUI RO12345678']),
-          party('From', ['Inkoxide SRL', 'Bd. Eroilor 25', '400129 Cluj-Napoca, România', 'CUI RO87654321']),
+          party('Billed to', ['Studio North Ltd', '11 Harbour Street', 'Dublin D02 X285, Ireland', 'Company No. 512345']),
+          party('From', ['Inkoxide Ltd', '25 Riverside Avenue', 'Cork T12 K8AF, Ireland', 'Company No. 654321']),
           box(
             { width: 110 },
             label('ISSUED', { bottom: 4 }),
@@ -151,7 +151,7 @@ export const invoice: Document = {
         box(
           { borderWidth: { top: 1 }, borderColor: { top: LINE }, padding: { top: 12 } },
           text(run('Payment details', 'Inter-Bold', 9), { margin: { bottom: 3 } }),
-          text(run('IBAN RO49 AAAA 1B31 0075 9384 0000 · BIC AAAARO2X · Reference INV-2026-0142', 'Inter-Regular', 8.5, MUTED)),
+          text(run('IBAN IE64 AAAA 9311 5212 3456 78 · BIC AAAAIE2D · Reference INV-2026-0142', 'Inter-Regular', 8.5, MUTED)),
           text(
             run(
               'Thank you for your business. Late payments accrue interest of 0.02% per day as per the agreement.',

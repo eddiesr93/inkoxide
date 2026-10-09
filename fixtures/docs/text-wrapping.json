@@ -938,7 +938,7 @@
        "type": "text",
        "runs": [
         {
-         "text": "ROMANIAN",
+         "text": "ACCENTED LETTERS",
          "font": "Inter-Bold",
          "size": 7,
          "color": [
@@ -960,7 +960,7 @@
        "type": "text",
        "runs": [
         {
-         "text": "Această documentație explică motorul de paginare: tabelele se împart pe mai multe pagini, antetele se repetă, iar diacriticele românești — ș, ț, ă, î, â — se afișează corect cu fonturile înregistrate.",
+         "text": "This documentation explains the pagination engine: tables split across several pages, headers repeat, and accented letters — é, ü, ç, ñ, ø — render correctly with the registered fonts.",
          "font": "Inter-Regular",
          "size": 11,
          "color": [
@@ -973,7 +973,7 @@
        ],
        "style": {
         "lineHeight": 1.4,
-        "lang": "ro"
+        "lang": "en"
        }
       }
      ]

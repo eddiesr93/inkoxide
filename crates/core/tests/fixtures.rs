@@ -167,10 +167,10 @@ fn pdf_a_fixtures() {
 #[test]
 fn registered_hyphenation_patterns() {
     let (fonts, images) = stores();
-    let name = "text-hyphenate-ro-patterns";
+    let name = "text-hyphenate-en-patterns";
     let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
     let store = hyphenation_for(name);
-    assert!(store.contains("ro"));
+    assert!(store.contains("en-US"));
     let render = |store: HyphenationStore| {
         let opts = RenderOptions::default()
             .with_compress(false)
@@ -203,7 +203,7 @@ fn output_is_independent_of_thread_count() {
         "dolor",
         "sit",
         "amet,",
-        "conșectetur",
+        "façade",
         "ﬁnancial",
         "AVATAR",
         "Wave",
@@ -226,7 +226,7 @@ fn output_is_independent_of_thread_count() {
         ));
     }
     let doc = format!(
-        r#"{{"version":1,"meta":{{"lang":"ro"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"Inter-Bold","family":"Inter","weight":700}},{{"id":"NotoSans-Regular","family":"Noto Sans"}},{{"id":"RobotoMono-Regular","family":"Roboto Mono"}}],"pages":[{{"size":{{"width":420,"height":595}},"margin":{{"top":30,"right":30,"bottom":30,"left":30}},"children":[{}]}}]}}"#,
+        r#"{{"version":1,"meta":{{"lang":"en-US"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"Inter-Bold","family":"Inter","weight":700}},{{"id":"NotoSans-Regular","family":"Noto Sans"}},{{"id":"RobotoMono-Regular","family":"Roboto Mono"}}],"pages":[{{"size":{{"width":420,"height":595}},"margin":{{"top":30,"right":30,"bottom":30,"left":30}},"children":[{}]}}]}}"#,
         paras.join(",")
     );
     let render = |threads| {

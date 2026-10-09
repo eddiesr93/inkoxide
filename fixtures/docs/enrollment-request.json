@@ -1,9 +1,9 @@
 {
  "version": 1,
  "meta": {
-  "title": "Cerere de înscriere",
-  "author": "Școala Gimnazială nr. 7",
-  "lang": "ro"
+  "title": "Enrollment request",
+  "author": "Riverside Elementary School No. 7",
+  "lang": "en-US"
  },
  "fonts": [
   {
@@ -64,7 +64,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "ȘCOALA GIMNAZIALĂ NR. 7 „ȘTEFAN CEL MARE”",
+           "text": "RIVERSIDE ELEMENTARY SCHOOL NO. 7 “OAK HILL CAMPUS”",
            "font": "Inter-Bold",
            "size": 10,
            "color": [
@@ -80,7 +80,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Str. Înălțării nr. 4, 700259 Iași · Tel. 0232 210 000",
+           "text": "4 Ascension Street, Springfield, IL 62704 · Tel. (217) 555-0100",
            "font": "Inter-Regular",
            "size": 8,
            "color": [
@@ -105,7 +105,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Nr. înregistrare: 1482",
+           "text": "Registration no.: 1482",
            "font": "Inter-Regular",
            "size": 8.5,
            "color": [
@@ -124,7 +124,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Data: 08.10.2026",
+           "text": "Date: 10/08/2026",
            "font": "Inter-Regular",
            "size": 8.5,
            "color": [
@@ -147,7 +147,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "CERERE DE ÎNSCRIERE",
+       "text": "ENROLLMENT REQUEST",
        "font": "Inter-Bold",
        "size": 17,
        "color": [
@@ -166,7 +166,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "în clasa pregătitoare, anul școlar 2026–2027",
+       "text": "for kindergarten, school year 2026–2027",
        "font": "Inter-Regular",
        "size": 10,
        "color": [
@@ -189,7 +189,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "Domnule Director,",
+       "text": "Dear Principal,",
        "font": "Inter-Bold",
        "size": 10.5,
        "color": [
@@ -210,7 +210,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "1. Date privind copilul și reprezentantul legal",
+       "text": "1. Child and legal guardian details",
        "font": "Inter-Bold",
        "size": 10.5,
        "color": [
@@ -253,7 +253,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Numele",
+           "text": "Last name",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -321,7 +321,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Popescu-Rădulescu",
+             "text": "Harrington-Wells",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -347,7 +347,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Prenumele",
+           "text": "First name",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -415,7 +415,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Ștefania Ioana",
+             "text": "Stephanie Joan",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -441,7 +441,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Cod numeric personal (CNP)",
+           "text": "Student ID number",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -509,7 +509,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "6150314226785",
+             "text": "4172093856104",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -535,7 +535,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Data nașterii",
+           "text": "Date of birth",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -603,7 +603,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "14.03.2015",
+             "text": "03/14/2021",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -629,7 +629,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Locul nașterii",
+           "text": "Place of birth",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -697,7 +697,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Iași, județul Iași",
+             "text": "Springfield, Sangamon County",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -723,7 +723,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Cetățenia",
+           "text": "Citizenship",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -791,7 +791,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "română",
+             "text": "United States",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -820,7 +820,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Domiciliul (stradă, număr, bloc, scară, apartament)",
+           "text": "Home address (street, number, building, entrance, apartment)",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -888,7 +888,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Str. Țepeș Vodă nr. 18, bl. Î2, sc. A, ap. 7",
+             "text": "18 Elm Street, Bldg. B2, Entr. A, Apt. 7",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -914,7 +914,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Localitatea",
+           "text": "City",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -982,7 +982,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Iași",
+             "text": "Springfield",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -1008,7 +1008,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Județul",
+           "text": "State",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -1076,7 +1076,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Iași",
+             "text": "Illinois",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -1102,7 +1102,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Numele părintelui / tutorelui legal",
+           "text": "Name of parent / legal guardian",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -1170,7 +1170,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "Rădulescu Mihăiță-Ștefan",
+             "text": "Michael Stephen Wells",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -1196,7 +1196,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Telefon",
+           "text": "Phone",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -1264,7 +1264,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "0744 123 456",
+             "text": "(217) 555-0123",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -1293,7 +1293,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Adresa de e-mail",
+           "text": "Email address",
            "font": "Inter-Regular",
            "size": 7.5,
            "color": [
@@ -1361,7 +1361,7 @@
            "type": "text",
            "runs": [
             {
-             "text": "mihaita.radulescu@exemplu.ro",
+             "text": "michael.wells@example.com",
              "font": "Inter-Regular",
              "size": 10,
              "color": [
@@ -1383,7 +1383,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "2. Opțiuni",
+       "text": "2. Options",
        "font": "Inter-Bold",
        "size": 10.5,
        "color": [
@@ -1481,7 +1481,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Program prelungit (After School)",
+           "text": "Extended day (after-school program)",
            "font": "Inter-Regular",
            "size": 9.5,
            "color": [
@@ -1563,7 +1563,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Religie ortodoxă",
+           "text": "Music program",
            "font": "Inter-Regular",
            "size": 9.5,
            "color": [
@@ -1645,7 +1645,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Limba modernă: engleză",
+           "text": "Foreign language: Spanish or French",
            "font": "Inter-Regular",
            "size": 9.5,
            "color": [
@@ -1713,7 +1713,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Transport școlar",
+           "text": "School bus transportation",
            "font": "Inter-Regular",
            "size": 9.5,
            "color": [
@@ -1733,7 +1733,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "3. Declarație",
+       "text": "3. Declaration",
        "font": "Inter-Bold",
        "size": 10.5,
        "color": [
@@ -1758,7 +1758,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "Subsemnatul, în calitate de părinte al elevei menționate mai sus, solicit înscrierea acesteia în clasa pregătitoare pentru anul școlar 2026–2027. Declar pe propria răspundere că datele înscrise în prezenta cerere sunt corecte și complete și că am luat la cunoștință prevederile regulamentului de organizare și funcționare a unității de învățământ. Îmi exprim acordul ca datele cu caracter personal să fie prelucrate exclusiv în scopul înscrierii, potrivit Regulamentului (UE) 2016/679. Mă oblig să anunț în scris, în cel mult cincisprezece zile, orice modificare intervenită în situația declarată.",
+       "text": "I, the undersigned, as the parent of the pupil named above, request her enrollment in kindergarten for the 2026–2027 school year. I declare on my own responsibility that the information given in this request is correct and complete and that I have read the rules of organization and operation of the school. I consent to my personal data being processed solely for the purpose of enrollment, in accordance with the applicable data protection law. I undertake to notify the school in writing, within fifteen days at most, of any change in the situation declared.",
        "font": "Inter-Regular",
        "size": 10,
        "color": [
@@ -1778,7 +1778,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "Anexez: copie certificat de naștere, copie act de identitate părinte, adeverință medicală.",
+       "text": "Attached: copy of the birth certificate, copy of the parent’s ID, medical certificate.",
        "font": "Inter-Regular",
        "size": 9,
        "color": [
@@ -1819,7 +1819,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Data",
+           "text": "Date",
            "font": "Inter-Regular",
            "size": 8,
            "color": [
@@ -1835,7 +1835,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "08 octombrie 2026",
+           "text": "October 8, 2026",
            "font": "Inter-Regular",
            "size": 10,
            "color": [
@@ -1879,7 +1879,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Semnătura părintelui / tutorelui",
+           "text": "Signature of parent / guardian",
            "font": "Inter-Regular",
            "size": 8,
            "color": [

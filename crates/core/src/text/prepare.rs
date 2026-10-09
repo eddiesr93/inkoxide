@@ -532,7 +532,7 @@ mod tests {
         assert_eq!(language_code("eng"), None);
         assert_eq!(language_code("x"), None);
         assert!(HypherHyphenator.supports("de"));
-        // hypher ships no Romanian patterns (ADR-015).
-        assert!(!HypherHyphenator.supports("ro"));
+        // Languages without built-in patterns (ADR-015).
+        assert!(!HypherHyphenator.supports("ja"));
     }
 }

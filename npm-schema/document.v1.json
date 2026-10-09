@@ -92,7 +92,7 @@
         },
         "lang": {
           "type": "string",
-          "description": "BCP-47 language tag of the document, e.g. \"ro\" or \"en-GB\"."
+          "description": "BCP-47 language tag of the document, e.g. \"en\" or \"en-GB\"."
         },
         "creationDate": {
           "type": "string",

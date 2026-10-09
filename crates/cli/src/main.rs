@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! inkoxide render doc.json --fonts fixtures/fonts -o out.pdf [--msgpack] [--png-dir out/]
-//!   [--hyphenation ro=hyph-ro.tex]
+//!   [--hyphenation en-US=hyph-en-us.tex]
 //! inkoxide validate doc.json --fonts fixtures/fonts
 //! inkoxide bench doc.json --fonts fixtures/fonts --iterations 30
 //! ```
@@ -44,7 +44,7 @@ struct Resources {
     #[arg(long)]
     msgpack: bool,
     /// TeX hyphenation patterns for a language, as LANG=PATH
-    /// (`--hyphenation ro=hyph-ro.tex`); repeatable. They win over the
+    /// (`--hyphenation en-US=hyph-en-us.tex`); repeatable. They win over the
     /// built-in patterns.
     #[arg(long, value_name = "LANG=PATH")]
     hyphenation: Vec<String>,

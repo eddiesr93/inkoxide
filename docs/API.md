@@ -68,32 +68,33 @@ A text node with `hyphenate: true` is hyphenated in its `lang` (or
 `meta.lang`). The patterns are chosen in this order:
 
 1. patterns registered for the language;
-2. hypher's built-in patterns (about 50 languages, but not Romanian);
+2. hypher's built-in patterns (about 50 languages, English included);
 3. none.
 
 Soft hyphens (U+00AD) in the text are always honoured.
 
 Patterns are TeX files in the hyph-utf8 format: `\patterns{…}`, with
-an optional `\hyphenation{…}` exception list, in UTF-8. To hyphenate
-Romanian with the standard patterns:
+an optional `\hyphenation{…}` exception list, in UTF-8. English is
+built in; to hyphenate it with another pattern set (or to add a
+language hypher lacks), register a file:
 
-1. Download `hyph-ro.tex` from hyph-utf8, for example from
-   `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-ro.tex`.
-2. Check that its licence suits you. It is not shipped with Inkoxide
-   (ADR-015).
+1. Download a pattern file from hyph-utf8, for example `hyph-en-us.tex` from
+   `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`.
+2. Check that its licence suits you. Pattern files are not shipped with
+   Inkoxide (ADR-015).
 3. Register it:
 
 ```js
-registerHyphenationPatterns('ro', fs.readFileSync('hyph-ro.tex')); // once, at startup
+registerHyphenationPatterns('en-US', fs.readFileSync('hyph-en-us.tex')); // once, at startup
 ```
 
 ```sh
-inkoxide render doc.json --fonts fonts/ --hyphenation ro=hyph-ro.tex
+inkoxide render doc.json --fonts fonts/ --hyphenation en-US=hyph-en-us.tex
 ```
 
 ```rust
 let mut patterns = inkoxide::HyphenationStore::new();
-patterns.register("ro", &std::fs::read("hyph-ro.tex")?)?;
+patterns.register("en-US", &std::fs::read("hyph-en-us.tex")?)?;
 let options = RenderOptions::default().with_hyphenation(patterns);
 ```
 

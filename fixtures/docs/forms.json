@@ -1,8 +1,8 @@
 {
  "version": 1,
  "meta": {
-  "title": "Formular",
-  "lang": "ro"
+  "title": "Form",
+  "lang": "en"
  },
  "fonts": [
   {
@@ -32,7 +32,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "Cerere de înscriere",
+       "text": "Enrollment request",
        "font": "Inter-Bold",
        "size": 16,
        "color": [
@@ -48,7 +48,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "Formular PDF completabil: câmpurile pot fi editate în orice cititor.",
+       "text": "Fillable PDF form: the fields can be edited in any viewer.",
        "font": "Inter-Regular",
        "size": 10,
        "color": [
@@ -69,7 +69,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "NUME ȘI PRENUME",
+       "text": "FULL NAME",
        "font": "Inter-Bold",
        "size": 8,
        "color": [
@@ -137,9 +137,9 @@
       ]
      },
      "field": {
-      "name": "nume",
+      "name": "full_name",
       "kind": "text",
-      "value": "Ștefănescu Țicu-Ioana",
+      "value": "Chloë Dubois-Müller",
       "font": "Inter-Regular",
       "size": 11,
       "required": true
@@ -162,7 +162,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "CNP",
+           "text": "STUDENT ID",
            "font": "Inter-Bold",
            "size": 8,
            "color": [
@@ -230,7 +230,7 @@
           ]
          },
          "field": {
-          "name": "cnp",
+          "name": "student_id",
           "kind": "text",
           "maxLength": 13,
           "font": "Inter-Regular",
@@ -249,7 +249,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "JUDEȚ",
+           "text": "STATE",
            "font": "Inter-Bold",
            "size": 8,
            "color": [
@@ -317,16 +317,16 @@
           ]
          },
          "field": {
-          "name": "judet",
+          "name": "state",
           "kind": "select",
           "options": [
-           "Alba",
-           "Brașov",
-           "Cluj",
-           "Iași",
-           "Timiș"
+           "California",
+           "Colorado",
+           "New York",
+           "Oregon",
+           "Texas"
           ],
-          "value": "Brașov",
+          "value": "Colorado",
           "font": "Inter-Regular",
           "size": 11
          }
@@ -339,7 +339,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "OBSERVAȚII",
+       "text": "NOTES",
        "font": "Inter-Bold",
        "size": 8,
        "color": [
@@ -407,10 +407,10 @@
       ]
      },
      "field": {
-      "name": "observatii",
+      "name": "notes",
       "kind": "text",
       "multiline": true,
-      "value": "Solicit înscrierea la cursul de vară.\nDisponibil în săptămânile 2–4.",
+      "value": "I would like to join the summer course.\nAvailable in weeks 2–4.",
       "font": "Inter-Regular",
       "size": 10
      }
@@ -419,7 +419,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "TIP CERERE",
+       "text": "REQUEST TYPE",
        "font": "Inter-Bold",
        "size": 8,
        "color": [
@@ -504,9 +504,9 @@
           ]
          },
          "field": {
-          "name": "tip",
+          "name": "request_type",
           "kind": "radio",
-          "value": "noua",
+          "value": "new",
           "checked": true
          }
         },
@@ -514,7 +514,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Înscriere nouă",
+           "text": "New enrollment",
            "font": "Inter-Regular",
            "size": 10,
            "color": [
@@ -589,9 +589,9 @@
           ]
          },
          "field": {
-          "name": "tip",
+          "name": "request_type",
           "kind": "radio",
-          "value": "reinscriere",
+          "value": "reenrollment",
           "checked": false
          }
         },
@@ -599,7 +599,7 @@
          "type": "text",
          "runs": [
           {
-           "text": "Reînscriere",
+           "text": "Re-enrollment",
            "font": "Inter-Regular",
            "size": 10,
            "color": [
@@ -674,7 +674,7 @@
           ]
          },
          "field": {
-          "name": "tip",
+          "name": "request_type",
           "kind": "radio",
           "value": "transfer",
           "checked": false
@@ -704,7 +704,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "ACORDURI",
+       "text": "CONSENTS",
        "font": "Inter-Bold",
        "size": 8,
        "color": [
@@ -783,7 +783,7 @@
         ]
        },
        "field": {
-        "name": "gdpr",
+        "name": "privacy",
         "kind": "checkbox",
         "checked": true
        }
@@ -792,7 +792,7 @@
        "type": "text",
        "runs": [
         {
-         "text": "Sunt de acord cu prelucrarea datelor personale",
+         "text": "I agree to the processing of my personal data",
          "font": "Inter-Regular",
          "size": 10,
          "color": [
@@ -881,7 +881,7 @@
        "type": "text",
        "runs": [
         {
-         "text": "Doresc să primesc noutăți pe e-mail",
+         "text": "Send me news by email",
          "font": "Inter-Regular",
          "size": 10,
          "color": [
@@ -899,7 +899,7 @@
      "type": "text",
      "runs": [
       {
-       "text": "CÂMP DOAR PENTRU CITIRE",
+       "text": "READ-ONLY FIELD",
        "font": "Inter-Bold",
        "size": 8,
        "color": [
@@ -968,9 +968,9 @@
       "width": 160
      },
      "field": {
-      "name": "numar",
+      "name": "number",
       "kind": "text",
-      "value": "Nr. 2026/0815",
+      "value": "No. 2026/0815",
       "readOnly": true,
       "font": "Inter-Bold",
       "size": 10,

@@ -50,7 +50,7 @@ One A4 page with a 1-inch margin and one line of text. `version`,
   "version": 1,
   "meta": {
     "title": "Invoice INV-0001",
-    "author": "Example SRL",
+    "author": "Example Ltd",
     "lang": "en",
     "creationDate": "2026-10-08T00:00:00Z"
   },
@@ -72,7 +72,7 @@ One A4 page with a 1-inch margin and one line of text. `version`,
         "children": [
           {
             "type": "text",
-            "runs": [{"text": "Example SRL", "font": "Inter-Bold", "size": 14}]
+            "runs": [{"text": "Example Ltd", "font": "Inter-Bold", "size": 14}]
           },
           {
             "type": "text",
@@ -96,7 +96,7 @@ One A4 page with a 1-inch margin and one line of text. `version`,
             "style": {"textAlign": "center"},
             "runs": [
               {
-                "text": "Example SRL · Bd. Eroilor 25, Cluj-Napoca · CUI RO87654321",
+                "text": "Example Ltd · 25 Riverside Avenue, Cork · Company No. 654321",
                 "font": "Inter-Regular",
                 "size": 8,
                 "color": [0.42, 0.45, 0.52, 1]
@@ -111,7 +111,7 @@ One A4 page with a 1-inch margin and one line of text. `version`,
           "style": {"margin": {"bottom": 16}},
           "runs": [
             {"text": "Billed to: ", "font": "Inter-Bold", "size": 10},
-            {"text": "Studio Nord SRL, București", "font": "Inter-Regular", "size": 10}
+            {"text": "Studio North Ltd, Dublin", "font": "Inter-Regular", "size": 10}
           ]
         },
         {
