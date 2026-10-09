@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Native PDF layout and rendering engine: declarative document tree in, PDF bytes out.",
   "license": "MIT",
-  "repository": "github:eddiesr93/inkoxide",
+  "repository": { "type": "git", "url": "git+https://github.com/eddiesr93/inkoxide.git" },
   "main": "index.js",
   "types": "index.d.ts",
   "files": ["index.js", "index.d.ts", "*.node"],

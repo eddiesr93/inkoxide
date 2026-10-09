@@ -2,9 +2,9 @@
 
 TypeScript types and the JSON Schema for Inkoxide documents, schema
 version 1. The types are generated from `schema/document.v1.json` by
-`scripts/schema/gen-ts.sh`; do not edit `index.d.ts` by hand. This
-package is not published. Install it from the repository with
-`pnpm add file:../inkoxide/npm-schema`.
+`scripts/schema/gen-ts.sh`; do not edit `index.d.ts` by hand. Releases
+publish it to npm together with `inkoxide` (`npm install @inkoxide/schema`);
+from a checkout, install it with `pnpm add file:../inkoxide/npm-schema`.
 
 ## Types
 

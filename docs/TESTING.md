@@ -1,6 +1,8 @@
 # Testing
 
-Everything runs locally; there are no hosted CI workflows.
+Everything runs locally. The only hosted workflow,
+`.github/workflows/release.yml`, builds and publishes the npm packages
+and never runs tests (ADR-051): run `scripts/ci.sh` before dispatching it.
 
 ```sh
 scripts/ci.sh          # fmt, clippy, tests, schema, qpdf, visual diff, cargo-deny, node, fuzz smoke

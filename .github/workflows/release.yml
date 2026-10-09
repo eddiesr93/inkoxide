@@ -1,0 +1,176 @@
+# Builds the native Node bindings and publishes the npm packages.
+# Manual dispatch only, and it never runs tests: the repositories are
+# private and Actions minutes are billed (macOS 10x, Windows 2x). Run
+# scripts/ci.sh locally before dispatching. See ADR-051.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Pass --dry-run to npm publish (nothing is uploaded)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  linux:
+    name: build linux (x64 gnu, x64 musl, arm64 gnu)
+    # Older glibc (2.35) than the latest image, for wider compatibility.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      # musl: a cdylib needs a dynamic C runtime. musl-gcc links against
+      # musl's libc; its specs hide the host library directory, so
+      # libgcc_s (for unwinding) is exposed from a directory of its own.
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      # arm64: linker and C compiler from gcc-aarch64-linux-gnu. No crate in
+      # the inkoxide-node graph compiles C today; CC_* covers a future one.
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install cross toolchains
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends musl-tools gcc-aarch64-linux-gnu
+          mkdir -p "$RUNNER_TEMP/musl-libgcc"
+          ln -sf "$(gcc -print-file-name=libgcc_s.so.1)" "$RUNNER_TEMP/musl-libgcc/libgcc_s.so.1"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=-C target-feature=-crt-static -C link-arg=-L$RUNNER_TEMP/musl-libgcc" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain and targets
+        # Version and components come from rust-toolchain.toml (rustup would
+        # add the listed components anyway; they are not run). rustup is
+        # preinstalled on the runners.
+        run: |
+          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
+            --profile minimal --component rustfmt,clippy --no-self-update
+          rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu
+      - name: Build
+        run: |
+          mkdir -p out
+          build() {
+            cargo build -p inkoxide-node --release --locked --target "$1"
+            cp "target/$1/release/libinkoxide_node.so" "out/inkoxide.$2.node"
+          }
+          build x86_64-unknown-linux-gnu linux-x64-gnu
+          build x86_64-unknown-linux-musl linux-x64-musl
+          build aarch64-unknown-linux-gnu linux-arm64-gnu
+          # The musl binary must not depend on glibc.
+          if readelf -d out/inkoxide.linux-x64-musl.node | grep -q 'libc\.so\.6'; then
+            echo "musl binary links glibc" >&2; exit 1
+          fi
+          file out/*.node
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bindings-linux
+          path: out/*.node
+          if-no-files-found: error
+          retention-days: 3
+
+  macos:
+    name: build macos (arm64, x64)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain and targets
+        # Version and components come from rust-toolchain.toml (rustup would
+        # add the listed components anyway; they are not run). rustup is
+        # preinstalled on the runners.
+        run: |
+          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
+            --profile minimal --component rustfmt,clippy --no-self-update
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Build
+        run: |
+          mkdir -p out
+          build() {
+            cargo build -p inkoxide-node --release --locked --target "$1"
+            cp "target/$1/release/libinkoxide_node.dylib" "out/inkoxide.$2.node"
+          }
+          build aarch64-apple-darwin darwin-arm64
+          build x86_64-apple-darwin darwin-x64
+          file out/*.node
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bindings-macos
+          path: out/*.node
+          if-no-files-found: error
+          retention-days: 3
+
+  windows:
+    name: build windows (x64 msvc)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain and target
+        # Version and components come from rust-toolchain.toml (rustup would
+        # add the listed components anyway; they are not run). rustup is
+        # preinstalled on the runners.
+        run: |
+          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
+            --profile minimal --component rustfmt,clippy --no-self-update
+          rustup target add x86_64-pc-windows-msvc
+      - name: Build
+        run: |
+          mkdir -p out
+          cargo build -p inkoxide-node --release --locked --target x86_64-pc-windows-msvc
+          cp target/x86_64-pc-windows-msvc/release/inkoxide_node.dll out/inkoxide.win32-x64-msvc.node
+          ls -l out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bindings-windows
+          path: out/*.node
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: publish to npm
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.22.0"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bindings-*
+          path: bindings
+          merge-multiple: true
+      - name: Stage and publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ls -l bindings
+          flags=(--publish)
+          [[ "$DRY_RUN" == "true" ]] && flags+=(--dry-run)
+          node scripts/npm-release.mjs bindings "$RUNNER_TEMP/npm-staging" "${flags[@]}"

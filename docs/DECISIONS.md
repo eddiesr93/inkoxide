@@ -1180,3 +1180,53 @@ fixtures (Arabic, Hebrew, CJK) stay.
 `text-justify-hyphenate-en`. Their reference images were regenerated;
 the engine is unchanged (the form-field edit range still embeds
 U+0218–U+021B, as Unicode coverage, not content).
+
+## ADR-051 — npm releases from a manual-dispatch workflow (v1.1)
+
+Amends ADR-001: hosted CI is still not used for checks.
+
+**Context.** `inkoxide` needs prebuilt binaries for six platforms, and the
+local machine builds only linux-x64-gnu (no cross linkers). The
+repositories are private, so GitHub Actions minutes are billed (macOS
+10x, Windows 2x) and the owner has few left. The owner allowed Actions
+for building and publishing only, never for tests.
+**Decision.**
+- `.github/workflows/release.yml` runs on `workflow_dispatch` only, with
+  a `dry_run` input (default `true`). It never runs tests, clippy or fmt.
+  Three build jobs: `ubuntu-22.04` (glibc 2.35) builds
+  `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl` (`musl-gcc`,
+  `-C target-feature=-crt-static`, `libgcc_s` exposed for unwinding) and
+  `aarch64-unknown-linux-gnu` (`gcc-aarch64-linux-gnu`) in sequence;
+  `macos-14` builds `aarch64-apple-darwin` and cross-builds
+  `x86_64-apple-darwin`; `windows-2022` builds `x86_64-pc-windows-msvc`.
+  A `publish` job stages and publishes. Every job has a timeout, runs
+  never overlap (`concurrency`), and the token is `contents: read`.
+  No crate in the `inkoxide-node` graph compiles C (`cc` only comes in
+  through `criterion`, a dev-dependency); the arm64 job still sets
+  `CC_aarch64_unknown_linux_gnu` so a future C dependency cross-compiles.
+- Tests stay local: run `scripts/ci.sh` before dispatching. The workflow
+  builds whatever commit it is dispatched on.
+- Packaging: one package per platform, `@inkoxide/<triple>`, with `os`,
+  `cpu` and (Linux) `libc`, holding only `inkoxide.<triple>.node`. The
+  `inkoxide` package ships the loader and types without a binary and
+  pins every platform package to its exact version in
+  `optionalDependencies`, so npm installs only the matching one; the
+  loader already falls back to `require('@inkoxide/<triple>')`.
+  `scripts/npm-release.mjs` (plain Node, no dependencies) writes all
+  packages from a directory of binaries, refuses to stage unless all six
+  are present, and with `--publish` publishes the platform packages,
+  then `inkoxide`, then `@inkoxide/schema`, skipping any `name@version`
+  already on the registry so a rerun after a partial failure is safe.
+  `npm/package.json` keeps `optionalDependencies: {}` for local builds.
+- New dependencies (CI only, nothing shipped): the first-party actions
+  `actions/checkout` v7.0.1, `actions/upload-artifact` v7.0.2,
+  `actions/download-artifact` v8.0.2 and `actions/setup-node` v7.1.0,
+  each pinned to its full commit SHA (resolved with `git ls-remote`). No
+  third-party actions; Rust comes from the runners' preinstalled
+  `rustup` and `rust-toolchain.toml`.
+**Consequences.** A run costs roughly 100 to 130 billed minutes, most of
+it the macOS job (fat LTO, two targets). Publishing needs the
+`inkoxide` npm organisation and an `NPM_TOKEN` repository secret.
+Provenance (`--provenance`) is not used: npm supports it only for public
+source repositories. Only the linux-x64-gnu binary is exercised before
+publishing; the others are checked for file type only.

@@ -15,8 +15,10 @@ A 98-page report with 40 tables renders in about 130 ms on 4 cores
 
 ## Status
 
-**v1 is feature-complete and ready for integration. Nothing is published**
-to npm or crates.io; clients install the packages from a local checkout.
+**v1 is feature-complete and ready for integration.** npm releases
+(`inkoxide`, its per-platform binaries and `@inkoxide/schema`) are built by
+the manually dispatched `.github/workflows/release.yml` (ADR-051); nothing
+goes to crates.io. Clients can also install the packages from a local checkout.
 The public API is frozen (ADR-042), so changes from now on are additive.
 
 What works:
