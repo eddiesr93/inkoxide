@@ -115,7 +115,7 @@ describe('paint styles', () => {
       transform: [{ rotate: 10 }, { translate: [0, 2] }],
       transformOrigin: ['100%', '100%'],
     });
-    expect(thrown(() => tree(<View style={{ width: '3em' as never }} />)).message).toContain('not a length');
+    expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain('not a length');
   });
 
   it('accepts the wrap, break and minPresenceAhead aliases and weight names, and explains fixed', () => {
@@ -156,6 +156,49 @@ describe('paint styles', () => {
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
     expect(thrown(() => tree(<View style={{ objectPosition: 'top' } as never} />)).message).toContain(
       'unknown style property "objectPosition"',
+    );
+  });
+});
+
+describe('relative units in the style prop', () => {
+  it('converts pc and rem (Tailwind’s 12pt root size)', () => {
+    const r = tree(<View style={{ width: '2pc', height: '1.5rem', borderTop: '0.1rem solid' }} />);
+    expect(first<BoxNode>(r).style).toMatchObject({ width: 24, height: 18, borderWidth: { top: 1.2 } });
+  });
+
+  it('resolves em against the element’s font size, and fontSize against the parent’s', () => {
+    const r = tree(
+      <>
+        <View style={{ padding: '1em' }} />
+        <View className="text-[20pt]" style={{ marginTop: '0.5em' }} />
+        <Text style={{ fontSize: '2em', paddingLeft: '1em', letterSpacing: '0.1em' }}>a</Text>
+        <View style={[{ paddingTop: '1em' }, { fontSize: 15 }]} />
+        <View style={{ fontSize: '1.5em' }}>
+          <Text style={{ fontSize: '2em' }}>
+            b <Text style={{ fontSize: '0.5em' }}>c</Text>
+          </Text>
+        </View>
+      </>,
+    );
+    const [a, b, c, d, e] = body(r) as BoxNode[];
+    expect(a?.style?.padding).toEqual({ top: 10, right: 10, bottom: 10, left: 10 });
+    expect(b?.style?.margin).toEqual({ top: 10 });
+    const text = c as unknown as TextNode;
+    expect(text.style?.padding).toEqual({ left: 20 });
+    expect(text.runs[0]).toMatchObject({ size: 20, letterSpacing: 2 });
+    expect(d?.style?.padding).toEqual({ top: 15 });
+    const runs = ((e?.children ?? []) as TextNode[])[0]?.runs;
+    expect(runs?.map((x) => x.size)).toEqual([30, 15]);
+  });
+
+  it('resolves vw and vh against the page size', () => {
+    const r = tree(<View style={{ width: '50vw', height: '10vh' }} />, {
+      page: { size: 'A4-landscape', margin: { top: '5vh', left: '1em' } },
+    });
+    expect(first<BoxNode>(r).style).toEqual({ width: 420.945, height: 59.528 });
+    expect(r.document.pages[0].margin).toEqual({ top: 29.764, left: 10 });
+    expect(thrown(() => tree(null, { page: { size: { width: '50vw', height: 100 } } })).message).toContain(
+      '"50vw" depends on the font or page size',
     );
   });
 });

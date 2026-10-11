@@ -48,8 +48,13 @@ export const HOST_NAME: Record<string, string> = Object.fromEntries(
 
 type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
 
-/** A length: points as a number, or a string with a unit (`'20mm'`, `'1.5cm'`, `'1in'`, `'12pt'`, `'16px'`). */
-export type Length = number | `${number}${'pt' | 'mm' | 'cm' | 'in' | 'px'}`;
+/**
+ * A length that needs no context: points as a number, or a string with a unit (`'20mm'`,
+ * `'1.5cm'`, `'1in'`, `'12pt'`, `'16px'`, `'1pc'` = 12pt, `'1rem'` = 12pt as in Tailwind).
+ */
+export type AbsoluteLength = number | `${number}${'pt' | 'mm' | 'cm' | 'in' | 'px' | 'pc' | 'rem'}`;
+/** A length, or one relative to the font size (`'1.5em'`) or the page width or height (`'50vw'`, `'10vh'`). */
+export type Length = AbsoluteLength | `${number}${'em' | 'vw' | 'vh'}`;
 /** A length or a percentage of the containing block. */
 export type LengthPercent = Length | `${number}%`;
 export type LengthAuto = LengthPercent | 'auto';
@@ -286,8 +291,8 @@ export type PageSize =
   | PagePreset
   | `${PagePreset}-landscape`
   | {
-      width: Length;
-      height: Length;
+      width: AbsoluteLength;
+      height: AbsoluteLength;
     };
 
 export interface PageProps {

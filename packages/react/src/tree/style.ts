@@ -8,13 +8,15 @@ import {
   parseColor,
   parseOrigin,
   parseTransform,
+  PT_PER_PX,
+  PT_PER_REM,
   TEXT_INHERITED,
   TEXT_ONLY,
   type TextDecoration,
   type TwStyle,
 } from '@inkoxide/tailwind';
 
-import type { StyleProp } from '../components/index.ts';
+import type { StyleProp, Style as StyleInput } from '../components/index.ts';
 
 /** The text properties in effect at a point of the tree, after inheritance. */
 export interface TextCtx {
@@ -433,16 +435,44 @@ function spread<T>(
   }
 }
 
-const PT_PER: Record<string, number> = { pt: 1, mm: 72 / 25.4, cm: 720 / 25.4, in: 72, px: 0.75 };
+/** Points per unit. `rem` is the root font size Tailwind uses. */
+const PT_PER: Record<string, number> = {
+  pt: 1,
+  mm: 72 / 25.4,
+  cm: 720 / 25.4,
+  in: 72,
+  px: PT_PER_PX,
+  pc: 12,
+  rem: PT_PER_REM,
+};
 
-/** Points from a length: a number, or a string with a unit (`'20mm'`). Percentages and `auto` pass through. */
-export function toPt<T>(v: number | string | T): number | T | string {
+/** What relative units resolve against, in points. */
+export interface Units {
+  /** The font size, for `em`. */
+  em: number;
+  /** The page size, for `vw` and `vh` (1% of the width and height). */
+  page: { width: number; height: number };
+}
+
+/**
+ * Points from a length: a number, or a string with a unit (`'20mm'`). Percentages and `auto`
+ * pass through. `em`, `vw` and `vh` need `units`.
+ */
+export function toPt<T>(v: number | string | T, units?: Units): number | T | string {
   if (typeof v !== 'string') return v;
   if (v === 'auto' || /^-?(\d+\.?\d*|\.\d+)%$/.test(v)) return v;
-  const m = /^(-?(?:\d+\.?\d*|\.\d+))\s*(pt|mm|cm|in|px)$/.exec(v.trim());
+  const m = /^(-?(?:\d+\.?\d*|\.\d+))\s*(pt|mm|cm|in|px|pc|rem|em|vw|vh)$/.exec(v.trim());
   if (!m?.[1] || !m[2])
-    throw new Error(`"${v}" is not a length (use a number of points or a unit: pt, mm, cm, in, px)`);
-  return round(Number(m[1]) * (PT_PER[m[2]] ?? 1));
+    throw new Error(
+      `"${v}" is not a length (use a number of points or a unit: pt, mm, cm, in, px, pc, rem, em, vw, vh)`,
+    );
+  const unit = m[2];
+  let per = PT_PER[unit];
+  if (per === undefined) {
+    if (!units) throw new Error(`"${v}" depends on the font or page size, which is not known here`);
+    per = unit === 'em' ? units.em : (unit === 'vw' ? units.page.width : units.page.height) / 100;
+  }
+  return round(Number(m[1]) * per);
 }
 
 const LENGTH_KEYS = [
@@ -461,15 +491,15 @@ const LENGTH_KEYS = [
   'decorationThickness',
 ] as const;
 
-/** Converts the friendly `style` prop to the flat style the builder uses. */
 function sides(
   out: Record<string, unknown>,
   prop: 'padding' | 'margin' | 'inset',
   axis: { x?: string | number; y?: string | number },
   each: Record<'Top' | 'Right' | 'Bottom' | 'Left', string | number | undefined>,
+  units: Units | undefined,
 ): void {
   const set = (side: string, v: string | number | undefined) => {
-    if (v !== undefined) out[`${prop}${side}`] = v === 'auto' ? 'auto' : toPt(v);
+    if (v !== undefined) out[`${prop}${side}`] = v === 'auto' ? 'auto' : toPt(v, units);
   };
   set('Left', axis.x);
   set('Right', axis.x);
@@ -478,7 +508,37 @@ function sides(
   for (const [side, v] of Object.entries(each)) set(side, v);
 }
 
-export function fromStyleProp(p: StyleProp): TwStyle {
+/**
+ * Applies an element's `style` prop to its className style. `em` is the element's font size
+ * (the inherited `parentSize` in `fontSize` itself), and `vw` and `vh` are 1% of the page's
+ * width and height.
+ */
+export function withStyleProp(
+  base: TwStyle,
+  style: StyleInput,
+  parentSize: number,
+  page: Units['page'],
+): TwStyle {
+  const list = (Array.isArray(style) ? style : [style]).filter((p): p is StyleProp => !!p);
+  const outer: Units = { em: parentSize, page };
+  // The font size comes first: `em` in every other length depends on it.
+  let em = base.fontSize ?? parentSize;
+  for (const p of list) {
+    const size = toPt(p.fontSize, outer);
+    if (typeof size === 'number') em = size;
+  }
+  const units: Units = { em, page };
+  let s = base;
+  for (const p of list) s = { ...s, ...fromStyleProp(p, units, outer) };
+  return s;
+}
+
+/**
+ * Converts one style object to the flat style the builder uses. `fontUnits` resolve `fontSize`
+ * (the parent's font size is its `em`); `units` resolve everything else.
+ */
+export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): TwStyle {
+  const len = (v: number | string) => toPt(v, units);
   const {
     color,
     backgroundColor,
@@ -531,7 +591,7 @@ export function fromStyleProp(p: StyleProp): TwStyle {
   const out: Record<string, unknown> = { ...rest };
   if (fontWeight !== undefined) out.fontWeight = weightOf(fontWeight);
   if (flex !== undefined) {
-    const [grow, shrink, basis] = flexShorthand(flex);
+    const [grow, shrink, basis] = flexShorthand(flex, units);
     out.flexGrow ??= grow;
     out.flexShrink ??= shrink;
     out.flexBasis ??= basis;
@@ -541,8 +601,9 @@ export function fromStyleProp(p: StyleProp): TwStyle {
   out.decorationThickness ??= textDecorationThickness;
   if (textOverflow !== undefined) out.ellipsis ??= overflowEllipsis(textOverflow);
   if (objectFit !== undefined) out.objectFit = fitOf(objectFit);
-  for (const k of LENGTH_KEYS) if (out[k] !== undefined) out[k] = toPt(out[k] as string);
-  if (gap !== undefined) out.rowGap = out.columnGap = toPt(gap);
+  for (const k of LENGTH_KEYS)
+    if (out[k] !== undefined) out[k] = toPt(out[k] as string, k === 'fontSize' ? fontUnits : units);
+  if (gap !== undefined) out.rowGap = out.columnGap = len(gap);
   if (color !== undefined) {
     const c = toColor(color);
     if (c !== 'currentColor') out.color = c;
@@ -554,10 +615,10 @@ export function fromStyleProp(p: StyleProp): TwStyle {
     if (c !== 'currentColor') out.decorationColor = c;
   }
   if (lineHeight !== undefined) out.lineHeight = { mult: lineHeight };
-  if (letterSpacing !== undefined) out.letterSpacing = { pt: toPt(letterSpacing) };
+  if (letterSpacing !== undefined) out.letterSpacing = { pt: len(letterSpacing) };
   if (fontFamily !== undefined) out.fontFamily = typeof fontFamily === 'string' ? [fontFamily] : fontFamily;
-  spread(out, 'padding', '', padding, toPt);
-  spread(out, 'margin', '', margin, toPt);
+  spread(out, 'padding', '', padding, len);
+  spread(out, 'margin', '', margin, len);
   // Axis and per-side keys are more specific than the shorthand: applied after it, in that order.
   sides(
     out,
@@ -569,6 +630,7 @@ export function fromStyleProp(p: StyleProp): TwStyle {
       Bottom: paddingBottom,
       Left: paddingLeft,
     },
+    units,
   );
   sides(
     out,
@@ -580,15 +642,16 @@ export function fromStyleProp(p: StyleProp): TwStyle {
       Bottom: marginBottom,
       Left: marginLeft,
     },
+    units,
   );
-  spread(out, 'inset', '', inset, toPt);
-  sides(out, 'inset', {}, { Top: top, Right: right, Bottom: bottom, Left: left });
-  spread(out, 'border', 'Width', borderWidth, toPt);
+  spread(out, 'inset', '', inset, len);
+  sides(out, 'inset', {}, { Top: top, Right: right, Bottom: bottom, Left: left }, units);
+  spread(out, 'border', 'Width', borderWidth, len);
   spread<string | Color>(out, 'border', 'Color', borderColor, toColor);
   // Per-side keys (`borderBottomWidth`, …) arrive in `rest`; convert their units and colours here.
   for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
     const w = out[`border${side}Width`];
-    if (w !== undefined) out[`border${side}Width`] = toPt(w as string | number);
+    if (w !== undefined) out[`border${side}Width`] = len(w as string | number);
     const c = out[`border${side}Color`];
     if (c !== undefined) out[`border${side}Color`] = toColor(c as string | Color);
   }
@@ -598,14 +661,14 @@ export function fromStyleProp(p: StyleProp): TwStyle {
   const sideBorders = { Top: borderTop, Right: borderRight, Bottom: borderBottom, Left: borderLeft };
   for (const [side, v] of Object.entries(sideBorders)) {
     if (v === undefined) continue;
-    const b = borderShorthand(`border${side}`, v);
+    const b = borderShorthand(`border${side}`, v, units);
     out[`border${side}Width`] ??= b.width;
     if (b.color !== undefined) out[`border${side}Color`] ??= b.color;
     // A string `borderStyle` is a longhand for every side.
     if (b.style !== undefined && out.borderStyle === undefined) out[`border${side}Style`] ??= b.style;
   }
   if (border !== undefined) {
-    const b = borderShorthand('border', border);
+    const b = borderShorthand('border', border, units);
     for (const [, side] of EDGES) {
       out[`border${side}Width`] ??= b.width;
       if (b.color !== undefined) out[`border${side}Color`] ??= b.color;
@@ -614,20 +677,20 @@ export function fromStyleProp(p: StyleProp): TwStyle {
   }
   if (typeof borderRadius === 'object') {
     const r = borderRadius;
-    if (r.topLeft !== undefined) out.borderTopLeftRadius = toPt(r.topLeft);
-    if (r.topRight !== undefined) out.borderTopRightRadius = toPt(r.topRight);
-    if (r.bottomRight !== undefined) out.borderBottomRightRadius = toPt(r.bottomRight);
-    if (r.bottomLeft !== undefined) out.borderBottomLeftRadius = toPt(r.bottomLeft);
+    if (r.topLeft !== undefined) out.borderTopLeftRadius = len(r.topLeft);
+    if (r.topRight !== undefined) out.borderTopRightRadius = len(r.topRight);
+    if (r.bottomRight !== undefined) out.borderBottomRightRadius = len(r.bottomRight);
+    if (r.bottomLeft !== undefined) out.borderBottomLeftRadius = len(r.bottomLeft);
     if (Object.keys(r).length < 4) out.borderRadius = 0;
   } else if (borderRadius !== undefined) {
-    out.borderRadius = toPt(borderRadius);
+    out.borderRadius = len(borderRadius);
   }
-  if (translate !== undefined) out.translate = translate.map((x) => toPt(x));
+  if (translate !== undefined) out.translate = translate.map(len);
   if (typeof transform === 'string') out.transform = parseTransform('transform', transform);
   else if (transform !== undefined) out.transform = transform;
   if (typeof transformOrigin === 'string')
     out.transformOrigin = parseOrigin('transformOrigin', transformOrigin);
-  else if (transformOrigin !== undefined) out.transformOrigin = transformOrigin.map((x) => toPt(x));
+  else if (transformOrigin !== undefined) out.transformOrigin = transformOrigin.map(len);
   for (const k of Object.keys(out)) {
     if (out[k] === undefined) delete out[k];
     else if (!KNOWN_KEYS.has(k)) throw new Error(`unknown style property "${k}"`);
@@ -720,6 +783,7 @@ function words(v: string): string[] {
 function borderShorthand(
   key: string,
   v: string | number,
+  units: Units | undefined,
 ): { width: number; style?: BorderStyle; color?: ColorValue } {
   const fail = (): never => {
     throw new Error(
@@ -735,7 +799,7 @@ function borderShorthand(
       if (style !== undefined) fail();
       style = w;
     } else if (w in BORDER_WIDTHS || /^[-+]?\.?\d/.test(w)) {
-      const pt = w in BORDER_WIDTHS ? BORDER_WIDTHS[w as keyof typeof BORDER_WIDTHS] : toPt(w);
+      const pt = w in BORDER_WIDTHS ? BORDER_WIDTHS[w as keyof typeof BORDER_WIDTHS] : toPt(w, units);
       if (width !== undefined || typeof pt !== 'number' || pt < 0) fail();
       width = pt as number;
     } else {
@@ -756,7 +820,7 @@ function borderShorthand(
 }
 
 /** CSS `flex`: a number is `n 1 0%`; strings are `none`, `auto`, `initial` or `grow [shrink] [basis]`. */
-function flexShorthand(v: number | string): [number, number, number | string] {
+function flexShorthand(v: number | string, units: Units | undefined): [number, number, number | string] {
   if (typeof v === 'number') return [v, 1, '0%'];
   const named = { none: [0, 0, 'auto'], auto: [1, 1, 'auto'], initial: [0, 1, 'auto'] } as const;
   if (v in named) return [...named[v as keyof typeof named]];
@@ -766,6 +830,6 @@ function flexShorthand(v: number | string): [number, number, number | string] {
   if (!Number.isFinite(grow) || !Number.isFinite(shrink)) {
     throw new Error(`flex "${v}" is not a number or "grow shrink basis"`);
   }
-  const basis = b === undefined ? '0%' : toPt(b);
+  const basis = b === undefined ? '0%' : toPt(b, units);
   return [grow, shrink, basis];
 }

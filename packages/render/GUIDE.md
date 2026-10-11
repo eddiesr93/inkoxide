@@ -50,8 +50,10 @@ All components take `className`, `style` and `id`.
 <Text style={{ fontSize: '9pt', marginTop: '2mm' }} />
 ```
 
-- **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px` or
-  `pc`, or a percentage.
+- **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px`
+  (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
+  `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
+  percentage. A page's `size` takes the units that do not depend on the font or the page.
 - **Arrays.** Falsy entries are skipped and later entries win.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
   `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,
