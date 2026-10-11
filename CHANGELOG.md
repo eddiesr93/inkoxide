@@ -15,6 +15,8 @@ All notable changes to the packages in this repository. The format follows
   table lists `INTERNAL`, and gives `TEMPLATE_ERROR` as the code of an invalid prop.
 - `Font.register` reads a `file:` URL given as a string (`'file:///fonts/Lora.ttf'`), not only
   as a `URL`.
+- A font from `Font.register` that cannot be loaded no longer keeps the fonts registered with
+  it from loading. The render still fails with `INVALID_FONT`, and the next one can use them.
 
 ## 0.3.0 - 2026-10-12
 

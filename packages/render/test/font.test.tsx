@@ -128,6 +128,18 @@ describe('Font.register', () => {
     await expect(renderToBuffer(<Doc family="Missing" />)).resolves.toBeInstanceOf(Uint8Array);
   });
 
+  it('loads the other faces of a family when one cannot be loaded', async () => {
+    Font.register({
+      family: 'Half',
+      fonts: [{ src: '/nowhere/Half.ttf' }, { src: file('Inter-Bold.ttf'), fontWeight: 'bold' }],
+    });
+    await expect(renderToBuffer(<Doc family="Brand" />)).rejects.toMatchObject({ code: 'INVALID_FONT' });
+    expect(fonts.has('Half-400')).toBe(false);
+    expect(fonts.has('Half-700')).toBe(true);
+    await expect(renderToBuffer(<Doc family="Half" weight={700} />)).resolves.toBeInstanceOf(Uint8Array);
+    expect(treeFonts(<Doc family="Half" weight={700} />).warnings).toEqual([]);
+  });
+
   it('rejects a file that is not a font, and a 404', async () => {
     Font.register({ family: 'Garbage', src: new Uint8Array([1, 2, 3, 4]) });
     await expect(renderToBuffer(<Doc family="Brand" />)).rejects.toMatchObject({ code: 'INVALID_FONT' });

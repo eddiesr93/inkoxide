@@ -121,12 +121,14 @@ export const Font = {
 
 /**
  * Reads the fonts registered since the last render and hands them to the engine. Runs after
- * `initEngine` (which registers the bundled fonts first), one load at a time.
+ * `initEngine` (which registers the bundled fonts first), one load at a time. A face that cannot
+ * be loaded is dropped and fails this load, after the rest of the batch has loaded.
  */
 export function loadRegisteredFonts(): Promise<void> {
   if (pending.length === 0) return loading;
   const batch = pending.splice(0);
   loading = loading.then(async () => {
+    let failed: RenderError | undefined;
     for (const f of batch) {
       let bytes: Uint8Array;
       try {
@@ -134,14 +136,16 @@ export function loadRegisteredFonts(): Promise<void> {
         registerEngineFont(f.id, bytes);
       } catch (e) {
         known.delete(f.id);
-        throw new RenderError(
+        failed ??= new RenderError(
           'INVALID_FONT',
           `Font "${f.family}" ${f.weight}${f.style === 'italic' ? ' italic' : ''} (${describe(f.src)}) could not be loaded: ${(e as Error).message}`,
           { cause: e },
         );
+        continue;
       }
       fonts.register({ id: f.id, family: f.family, weight: f.weight, style: f.style }, bytes);
     }
+    if (failed) throw failed;
   });
   // A failed batch does not block later ones; the caller of this load sees the error.
   const result = loading;

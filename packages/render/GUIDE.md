@@ -124,7 +124,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   `ArrayBuffer`). Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
   (`.woff2`). Variable fonts are not supported: register the static instances.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
-  render, and a font that cannot be loaded fails that render with `INVALID_FONT`.
+  render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
+  registered with it still load, and later renders can use them.
 - **Weights.** Weights are numbers (100–900) or names (`'light'`, `'medium'`, `'bold'`).
   Missing weights and styles fall back to the nearest one, as in CSS.
 
