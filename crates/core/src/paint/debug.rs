@@ -7,6 +7,8 @@
 //! Labels are drawn with lines, not text: they need no font and add
 //! nothing to the document's text (copy, search, extraction).
 
+use std::collections::HashMap;
+
 use super::{FillRule, Op, Path, PathSeg, Rect};
 use crate::schema::Color;
 
@@ -65,9 +67,82 @@ impl DebugBoxes {
     }
 }
 
+/// Side of a [`Labels`] grid cell, points: about a label's width, so a
+/// label touches a few cells.
+const CELL: f32 = 32.0;
+/// Labels a cell holds. A cell given more counts as taken everywhere:
+/// only labels piled on each other (dozens of elements within a few
+/// points) get there, and it bounds the work per label.
+const CELL_CAP: usize = 64;
+/// Cells a label may touch: a guard, as a label is at most a few hundred
+/// points wide (rounding far from the page at most doubles that), and
+/// coordinates out of `i32` cells land in the last cell. A label over more
+/// stays at its first corner and blocks no other.
+const MAX_CELLS: i64 = 64;
+
+/// The labels already drawn on a page, in a uniform grid of [`CELL`]
+/// points: whether a corner is free is answered from the labels in the
+/// cells it touches, not from every label on the page.
+#[derive(Debug, Default)]
+pub(crate) struct Labels {
+    cells: HashMap<(i32, i32), Vec<Rect>>,
+}
+
+impl Labels {
+    /// The cells `r` touches, or `None` when there are more than
+    /// [`MAX_CELLS`]. Overlapping rectangles share a cell: the cell of a
+    /// coordinate is monotonic in it, and two overlapping rectangles
+    /// share the point at the larger of their left and top edges.
+    fn cells(r: Rect) -> Option<impl Iterator<Item = (i32, i32)>> {
+        let cell = |v: f32| (v / CELL).floor() as i32;
+        let (x0, x1) = (cell(r.x), cell(r.x + r.w));
+        let (y0, y1) = (cell(r.y), cell(r.y + r.h));
+        let n = (i64::from(x1) - i64::from(x0) + 1) * (i64::from(y1) - i64::from(y0) + 1);
+        (n <= MAX_CELLS).then(|| (y0..=y1).flat_map(move |y| (x0..=x1).map(move |x| (x, y))))
+    }
+
+    /// Whether `r` covers no label.
+    fn free(&self, r: Rect) -> bool {
+        let Some(mut cells) = Self::cells(r) else {
+            return false;
+        };
+        cells.all(|c| {
+            self.cells.get(&c).is_none_or(|labels| {
+                labels.len() <= CELL_CAP && !labels.iter().any(|l| overlap(*l, r))
+            })
+        })
+    }
+
+    fn insert(&mut self, r: Rect) {
+        let Some(cells) = Self::cells(r) else {
+            return;
+        };
+        for c in cells {
+            let labels = self.cells.entry(c).or_default();
+            // One past the cap marks the cell full.
+            if labels.len() <= CELL_CAP {
+                labels.push(r);
+            }
+        }
+    }
+
+    /// Where a label of `size` goes, and records it: the first of
+    /// `corners` (top-left positions) where it covers no other label, or
+    /// the first corner.
+    fn place(&mut self, corners: [(f32, f32); 4], (w, h): (f32, f32)) -> (f32, f32) {
+        let at = |(x, y): (f32, f32)| Rect::new(x, y, w, h);
+        let c = corners
+            .into_iter()
+            .find(|&c| self.free(at(c)))
+            .unwrap_or(corners[0]);
+        self.insert(at(c));
+        c
+    }
+}
+
 /// Draws the outlines of `boxes`. `labels` are the labels already on the
 /// page: a label moves to another corner of its box rather than cover one.
-pub(crate) fn draw(boxes: &[DebugBox], ops: &mut Vec<Op>, labels: &mut Vec<Rect>) {
+pub(crate) fn draw(boxes: &[DebugBox], ops: &mut Vec<Op>, labels: &mut Labels) {
     for b in boxes {
         if let Some(m) = b.ctm {
             ops.push(Op::Save);
@@ -140,7 +215,7 @@ fn with_alpha(alpha: f32, ops: &mut Vec<Op>, f: impl FnOnce(&mut Vec<Op>)) {
     ops.push(Op::Restore);
 }
 
-fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Vec<Rect>) {
+fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Labels) {
     let border = b.rect;
     let padding = outset(border, b.border.map(|v| -v));
     let content = outset(padding, b.padding.map(|v| -v));
@@ -172,18 +247,11 @@ fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Vec<Rect>) {
         (left, bottom - lh),
         (right, bottom - lh),
     ];
-    let at = |(x, y): (f32, f32)| Rect::new(x, y, lw, lh);
     let place = if b.ctm.is_some() {
         // Rotated or transformed: its own corner, wherever that lands.
         corners[0]
     } else {
-        let free = |r: Rect| !labels.iter().any(|l| overlap(*l, r));
-        let c = corners
-            .into_iter()
-            .find(|&c| free(at(c)))
-            .unwrap_or(corners[0]);
-        labels.push(at(c));
-        c
+        labels.place(corners, (lw, lh))
     };
     label(place.0, place.1, &text, ops);
 }
@@ -358,7 +426,7 @@ mod tests {
                 ctm: None,
             }],
             &mut ops,
-            &mut Vec::new(),
+            &mut Labels::default(),
         );
         let fills: Vec<Color> = ops
             .iter()
@@ -383,5 +451,118 @@ mod tests {
         );
         // No text: labels are drawn with lines.
         assert!(!ops.iter().any(|op| matches!(op, Op::Text(_))));
+    }
+
+    /// xorshift64: deterministic pseudo-random numbers in `[0, 1)`.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> f32 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            (self.0 >> 40) as f32 / (1u64 << 24) as f32
+        }
+    }
+
+    /// The corners of a label of `size` on the border box `r`, as
+    /// `draw_box` tries them.
+    fn corners(r: Rect, (lw, lh): (f32, f32)) -> [(f32, f32); 4] {
+        let (left, right) = (r.x, r.x + r.w - lw);
+        let (top, bottom) = (r.y, r.y + r.h);
+        [
+            (left, top),
+            (right, top),
+            (left, bottom - lh),
+            (right, bottom - lh),
+        ]
+    }
+
+    #[test]
+    fn the_grid_places_labels_like_a_scan_of_every_label() {
+        // The placement before the grid: check every label on the page.
+        fn scan(
+            labels: &mut Vec<Rect>,
+            corners: [(f32, f32); 4],
+            (w, h): (f32, f32),
+        ) -> (f32, f32) {
+            let at = |(x, y): (f32, f32)| Rect::new(x, y, w, h);
+            let free = |r: Rect| !labels.iter().any(|l| overlap(*l, r));
+            let c = corners
+                .into_iter()
+                .find(|&c| free(at(c)))
+                .unwrap_or(corners[0]);
+            labels.push(at(c));
+            c
+        }
+        for seed in 1..=8u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            let (mut grid, mut all) = (Labels::default(), Vec::new());
+            let mut moved = 0;
+            for _ in 0..1500 {
+                // Boxes on and around a page, snapped to half points so
+                // that edges land on cell boundaries too.
+                let snap = |v: f32| (v * 2.0).round() / 2.0;
+                let r = Rect::new(
+                    snap(rng.next() * 700.0 - 50.0),
+                    snap(rng.next() * 900.0 - 50.0),
+                    snap(rng.next() * rng.next() * 200.0),
+                    snap(rng.next() * rng.next() * 120.0),
+                );
+                let size = label_size(&size_text([r.w, r.h]));
+                let cs = corners(r, size);
+                let c = scan(&mut all, cs, size);
+                assert_eq!(grid.place(cs, size), c, "seed {seed}, box {r:?}");
+                moved += usize::from(c != cs[0]);
+            }
+            // Labels did move away from each other.
+            assert!(moved > 100, "seed {seed}: {moved}");
+        }
+    }
+
+    #[test]
+    fn placing_many_labels_takes_linear_time() {
+        let size = label_size(&size_text([3.0, 3.0]));
+        let start = std::time::Instant::now();
+        let mut labels = Labels::default();
+        // 100 000 labels spread over a large page, and 100 000 piled on a
+        // few points: scanning every label would take minutes.
+        for k in 0..100_000 {
+            let r = Rect::new((k % 316) as f32 * 45.0, (k / 316) as f32 * 45.0, 3.0, 3.0);
+            labels.place(corners(r, size), size);
+        }
+        for k in 0..100_000 {
+            let r = Rect::new(100.0 + (k % 7) as f32 * 0.01, 100.0, 3.0, 3.0);
+            labels.place(corners(r, size), size);
+        }
+        assert!(
+            labels.cells.values().all(|c| c.len() <= CELL_CAP + 1),
+            "cells stay bounded"
+        );
+        let took = start.elapsed();
+        assert!(took.as_secs_f32() < 5.0, "{took:?}");
+    }
+
+    #[test]
+    fn labels_at_extreme_coordinates_are_placed() {
+        let mut labels = Labels::default();
+        let size = (20.0, 6.8);
+        for x in [1.0e12, -1.0e30, f32::INFINITY, f32::NEG_INFINITY] {
+            let far = Rect::new(x, 0.0, 3.0, 3.0);
+            for _ in 0..3 {
+                assert_eq!(labels.place(corners(far, size), size), (x, 0.0));
+            }
+        }
+        let nan = Rect::new(f32::NAN, 0.0, 3.0, 3.0);
+        let c = labels.place(corners(nan, size), size);
+        assert!(c.0.is_nan() && c.1 == 0.0);
+        // None of them blocks a label on the page.
+        let near = Rect::new(0.0, 0.0, 30.0, 30.0);
+        assert_eq!(labels.place(corners(near, size), size), (0.0, 0.0));
+        // A label over more cells than the guard allows blocks nothing.
+        let wide = Rect::new(0.0, 100.0, 4000.0, 10.0);
+        assert!(Labels::cells(wide).is_none());
+        labels.insert(wide);
+        assert!(labels.free(Rect::new(10.0, 100.0, 20.0, 6.8)));
     }
 }

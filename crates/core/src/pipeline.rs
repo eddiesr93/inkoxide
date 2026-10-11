@@ -473,7 +473,7 @@ fn paint_page(
         );
     }
 
-    let mut labels = Vec::new();
+    let mut labels = paint::DebugLabels::default();
     if spec.debug {
         let page_box = paint::debug_page_box(pw, ph, [m.top, m.right, m.bottom, m.left]);
         paint::draw_debug(std::slice::from_ref(&page_box), &mut page.ops, &mut labels);
