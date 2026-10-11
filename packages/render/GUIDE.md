@@ -234,7 +234,7 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
 
 Use `Header` and `Footer` for page chrome: titles and page numbers in the margins, with room
 kept for them. For a watermark, a page border or a stamp, mark an element `fixed`. It is painted
-over the content on every page of its `Page`:
+on every page of its `Page`, over the content or, with a negative `zIndex`, under it:
 
 ```tsx
 <Page size="A4" style={{ padding: 48 }}>
@@ -265,6 +265,10 @@ over the content on every page of its `Page`:
   the page's content box, the area inside the margin, on every page. Negative values reach into
   the margin: with `padding: 48`, `bottom: -36` is 12pt above the edge of the paper. On a
   one-page document, adding `fixed` moves nothing.
+- **Stacking.** A fixed element is painted over the content, and under the `Header` and
+  `Footer`. With a negative `zIndex` (`-z-10`) it is painted under the content instead, over the
+  page background: a watermark that text and filled boxes cover. Fixed elements stack among
+  themselves by `zIndex`, then in the order they are written.
 - **Space.** It takes none: the content flows under it. Content that needs room on every page
   belongs in a `Header` or `Footer`, with a margin sized for it.
 - **Page numbers.** `render`, `<PageNumber />` and `<TotalPages />` show each page its own

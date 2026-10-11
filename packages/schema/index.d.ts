@@ -494,7 +494,7 @@ export interface Break {
   inside?: 'auto' | 'avoid';
   minPresenceAhead?: NonNegative;
   /**
-   * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page.
+   * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page.
    */
   fixed?: boolean;
 }

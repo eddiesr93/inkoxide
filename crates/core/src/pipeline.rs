@@ -396,6 +396,36 @@ fn paint_page(
     // `debug` outlines, drawn over everything once the page is painted.
     let mut debug = DebugBoxes::new(spec.debug);
 
+    // Overlays: placed in the content box, like the flow, but not clipped.
+    // In paint order, by `zIndex` then document order: those with a
+    // negative `zIndex` under the flow, the others over it.
+    let mut overlays: Vec<usize> = (0..l.overlays.len()).collect();
+    let z = |i: usize| l.overlays[i].1.node.style.z_index.unwrap_or(0);
+    overlays.sort_by_key(|&i| z(i));
+    let (under, over) = overlays.split_at(overlays.partition_point(|&i| z(i) < 0));
+    let paint_overlays = |which: &[usize],
+                          painter: &mut dyn ContentPainter,
+                          ops: &mut Vec<Op>,
+                          debug: &mut DebugBoxes| {
+        for &i in which {
+            let tree = overlays_here[i].as_ref().unwrap_or(&l.overlays[i].1.tree);
+            paint::paint_flow(
+                tree,
+                FlowPart::All,
+                m.left,
+                m.top,
+                nums,
+                painter,
+                ops,
+                debug,
+            );
+        }
+    };
+    painter.text.page = Some(&page_text);
+    paint_overlays(under, &mut painter, &mut page.ops, &mut debug);
+    painter.text.page = None;
+    let under_boxes = std::mem::take(&mut debug.boxes);
+
     // Flow: paged space [k·H, (k+1)·H) mapped onto the content band,
     // clipped vertically (split boxes are sliced, like CSS
     // `box-decoration-break: slice`).
@@ -434,19 +464,7 @@ fn paint_page(
         );
     }
     painter.text.page = Some(&page_text);
-    // Overlays: placed in the content box, like the flow, but not clipped.
-    for ((_, o), here) in l.overlays.iter().zip(&overlays_here) {
-        paint::paint_flow(
-            here.as_ref().unwrap_or(&o.tree),
-            FlowPart::All,
-            m.left,
-            m.top,
-            nums,
-            &mut painter,
-            &mut page.ops,
-            &mut debug,
-        );
-    }
+    paint_overlays(over, &mut painter, &mut page.ops, &mut debug);
     if let Some(header) = header {
         paint::paint_flow(
             header,
@@ -478,6 +496,7 @@ fn paint_page(
         let page_box = paint::debug_page_box(pw, ph, [m.top, m.right, m.bottom, m.left]);
         paint::draw_debug(std::slice::from_ref(&page_box), &mut page.ops, &mut labels);
     }
+    paint::draw_debug(&under_boxes, &mut page.ops, &mut labels);
     if !flow_boxes.is_empty() {
         // Sliced like the flow they outline.
         page.ops.push(Op::Save);

@@ -232,6 +232,35 @@ fn a_fixed_element_is_outlined_on_every_page() {
 }
 
 #[test]
+fn an_overlay_under_the_flow_is_outlined_unclipped() {
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},
+            "margin":{{"top":10,"left":10}},
+            "children":[
+                {{"type":"box","debug":true,"style":{{"height":20}}}},
+                {{"type":"box","debug":true,"break":{{"fixed":true}},
+                  "style":{{"position":"absolute","inset":{{"top":-5,"left":5}},
+                            "width":30,"height":20,"zIndex":-1}}}}]}}]}}"#
+    );
+    let pages = pages(&json);
+    // Outlined in paint order, the overlay first; reaching into the
+    // margin, it is not clipped to the flow's band.
+    assert_eq!(
+        outlines(&pages[0]),
+        [
+            Outline {
+                content: Rect::new(15.0, 5.0, 30.0, 20.0),
+                clipped: false
+            },
+            Outline {
+                content: Rect::new(10.0, 10.0, W - 10.0, 20.0),
+                clipped: true
+            },
+        ]
+    );
+}
+
+#[test]
 fn debug_on_the_page_outlines_every_element() {
     let json = doc(
         r#","margin":{"top":20,"right":10,"bottom":20,"left":10},"debug":true,

@@ -96,10 +96,12 @@ ToUnicode CMaps, so text is selectable and searchable.
 
 `pipeline::run` lays out every page template (flow, header, footer,
 overlays), paginates each flow, then paints page by page: background →
-flow (clipped to the content band, only nodes and lines on the page) →
-fixed nodes → overlays → header → footer. An overlay is a page child that
-is fixed and absolutely positioned: it is laid out on its own against the
-page content box, like a band, instead of in the flow. `FlowPart` tells
+overlays with a negative `zIndex` → flow (clipped to the content band,
+only nodes and lines on the page) → fixed nodes → the other overlays →
+header → footer. An overlay is a page child that is fixed and absolutely
+positioned: it is laid out on its own against the page content box, like
+a band, instead of in the flow. Overlays are painted by `zIndex`, then in
+document order. `FlowPart` tells
 the box painter which part of a flow to paint; leaf painters get a
 `ContentCtx` with the node's shift, per-line shifts and the page window.
 Elements with `debug` have their boxes recorded as they are painted

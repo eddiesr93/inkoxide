@@ -516,6 +516,69 @@ fn fixed_nodes_in_the_flow_repeat_where_they_are() {
     on_every_page(&with_fixed(3, &fixed), 4, (M, M, W - 2.0 * M, 10.0));
 }
 
+/// The colours of the shapes filled on each page, in paint order.
+fn fills(json: &str) -> Vec<Vec<f32>> {
+    render_doc(json, |pages, _| {
+        pages
+            .iter()
+            .map(|page| {
+                page.ops
+                    .iter()
+                    .filter_map(|op| match op {
+                        Op::FillPath { color, .. } => Some(color[0]),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .collect()
+    })
+}
+
+#[test]
+fn overlays_with_a_negative_z_index_are_painted_under_the_flow() {
+    // Boxes told apart by their red component.
+    let shade = |red: f32, extra: &str, style: &str| {
+        format!(r#"{{"type":"box"{extra},"style":{{"backgroundColor":[{red},0,0,1],{style}}}}}"#)
+    };
+    let overlay = |red: f32, z: &str| {
+        shade(
+            red,
+            FIXED,
+            &format!(r#""position":"absolute","width":20,"height":10{z}"#),
+        )
+    };
+    let children = [
+        overlay(0.1, r#","zIndex":-1"#),
+        overlay(0.2, r#","zIndex":2"#),
+        shade(0.5, "", r#""height":10"#),
+        overlay(0.3, ""),
+        overlay(0.4, r#","zIndex":-2"#),
+        overlay(0.6, r#","zIndex":-1"#),
+    ];
+    let pages = fills(&with_fixed(1, &children.join(",")));
+    // By `zIndex` then document order: the negative ones before the flow
+    // (0.5, on the first page), the others after it.
+    assert_eq!(
+        pages,
+        [
+            vec![0.4, 0.1, 0.6, 0.5, 0.3, 0.2],
+            vec![0.4, 0.1, 0.6, 0.3, 0.2]
+        ]
+    );
+    // Under the flow, an overlay still shows the page it is on.
+    let numbers = n_of_m(
+        r#""position":"absolute","inset":{"bottom":0,"right":0},"zIndex":-1"#,
+        "Inter-Regular",
+        "",
+        ["Page ", " of "],
+        None,
+    );
+    let overlay = numbers.replacen(r#""type":"text""#, &format!(r#""type":"text"{FIXED}"#), 1);
+    for (k, numbers) in painted_numbers(&with_fixed(3, &overlay)).iter().enumerate() {
+        assert_eq!(numbers, &[(k + 1).to_string(), "3".to_owned()]);
+    }
+}
+
 #[test]
 fn ids_and_bookmarks_in_overlays_point_at_the_first_page() {
     let overlay = red_box(
