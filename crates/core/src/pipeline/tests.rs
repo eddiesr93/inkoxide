@@ -13,12 +13,13 @@ const PAD: f32 = 10.0;
 
 fn store() -> FontStore {
     let mut s = FontStore::new();
-    let bytes = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/fonts/Inter-Regular.ttf"
-    ))
-    .unwrap();
-    s.register("Inter-Regular", bytes).unwrap();
+    for name in ["Inter-Regular", "NotoSansHebrew-Regular"] {
+        let path = format!(
+            "{}/../../fixtures/fonts/{name}.ttf",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        s.register(name, std::fs::read(path).unwrap()).unwrap();
+    }
     s
 }
 
@@ -27,7 +28,9 @@ fn doc(pages: u32, footer: &str) -> String {
     // A box a little shorter than `pages` pages takes exactly `pages`.
     let flow = f32::from(u16::try_from(pages).unwrap()) * H - 1.0;
     format!(
-        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"NotoSansHebrew-Regular","family":"Noto Sans Hebrew"}}],
+            "fallbackFonts":["Inter-Regular"],
             "pages":[{{"size":{{"width":{W},"height":{H}}},"footer":{footer},
             "children":[{{"type":"box","style":{{"height":{flow}}}}}]}}]}}"#
     )
@@ -35,13 +38,29 @@ fn doc(pages: u32, footer: &str) -> String {
 
 /// "Page N of M" in a text node with `style`.
 fn page_n_of_m(style: &str) -> String {
-    let run = |r: &str| format!(r#"{{{r},"font":"Inter-Regular","size":10}}"#);
+    n_of_m(style, "Inter-Regular", "", ["Page ", " of "], None)
+}
+
+/// `words[0]` N `words[1]` M in a text node with `style`, in `font` with
+/// the run properties `extra`: placeholders, or the `written` numbers.
+fn n_of_m(
+    style: &str,
+    font: &str,
+    extra: &str,
+    words: [&str; 2],
+    written: Option<(u32, u32)>,
+) -> String {
+    let run = |r: &str| format!(r#"{{{r},"font":"{font}","size":10{extra}}}"#);
+    let number = |placeholder: &str, n: Option<u32>| match n {
+        Some(n) => run(&format!(r#""text":"{n}""#)),
+        None => run(&format!(r#""placeholder":"{placeholder}""#)),
+    };
     format!(
         r#"{{"type":"text","style":{{{style}}},"runs":[{},{},{},{}]}}"#,
-        run(r#""text":"Page ""#),
-        run(r#""placeholder":"pageNumber""#),
-        run(r#""text":" of ""#),
-        run(r#""placeholder":"totalPages""#),
+        run(&format!(r#""text":"{}""#, words[0])),
+        number("pageNumber", written.map(|w| w.0)),
+        run(&format!(r#""text":"{}""#, words[1])),
+        number("totalPages", written.map(|w| w.1)),
     )
 }
 
@@ -53,9 +72,17 @@ fn footer(style: &str, child: &str) -> String {
     )
 }
 
-/// The painted lines of every page: baseline and horizontal extent of the
-/// glyphs on it, top to bottom.
-fn painted_lines(json: &str) -> Vec<Vec<(f32, f32, f32)>> {
+/// A glyph painted on a page: baseline, horizontal extent, and the digit
+/// it shows, if any.
+struct Painted {
+    y: f32,
+    x0: f32,
+    x1: f32,
+    digit: Option<char>,
+}
+
+/// The glyphs painted on every page.
+fn painted(json: &str) -> Vec<Vec<Painted>> {
     let store = store();
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
@@ -65,22 +92,61 @@ fn painted_lines(json: &str) -> Vec<Vec<(f32, f32, f32)>> {
     pages
         .iter()
         .map(|page| {
-            let mut lines: Vec<(f32, f32, f32)> = Vec::new();
+            let mut out = Vec::new();
             for op in &page.ops {
                 let Op::Text(t) = op else { continue };
-                let (Some(first), Some(last)) = (t.glyphs.first(), t.glyphs.last()) else {
-                    continue;
-                };
                 let font = fonts.get(t.font);
-                let x0 = t.x + first.x;
-                let x1 = t.x + last.x + font.advance(last.id) * font.scale(t.size);
-                match lines.iter_mut().find(|l| (l.0 - t.y).abs() < 0.01) {
-                    Some(l) => *l = (l.0, l.1.min(x0), l.2.max(x1)),
-                    None => lines.push((t.y, x0, x1)),
+                for g in &t.glyphs {
+                    let x0 = t.x + g.x;
+                    out.push(Painted {
+                        y: t.y,
+                        x0,
+                        x1: x0 + font.advance(g.id) * font.scale(t.size),
+                        digit: ('0'..='9').find(|&c| font.glyph(c) == Some(g.id)),
+                    });
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// The painted lines of every page: baseline and horizontal extent of the
+/// glyphs on it, top to bottom.
+fn painted_lines(json: &str) -> Vec<Vec<(f32, f32, f32)>> {
+    painted(json)
+        .iter()
+        .map(|glyphs| {
+            let mut lines: Vec<(f32, f32, f32)> = Vec::new();
+            for g in glyphs {
+                match lines.iter_mut().find(|l| (l.0 - g.y).abs() < 0.01) {
+                    Some(l) => *l = (l.0, l.1.min(g.x0), l.2.max(g.x1)),
+                    None => lines.push((g.y, g.x0, g.x1)),
                 }
             }
             lines.sort_by(|a, b| a.0.total_cmp(&b.0));
             lines
+        })
+        .collect()
+}
+
+/// The numbers painted on every page, as they read from left to right.
+fn painted_numbers(json: &str) -> Vec<Vec<String>> {
+    painted(json)
+        .into_iter()
+        .map(|mut glyphs| {
+            glyphs.sort_by(|a, b| a.x0.total_cmp(&b.x0));
+            let mut numbers: Vec<String> = Vec::new();
+            let mut in_number = false;
+            for g in glyphs {
+                match (g.digit, in_number) {
+                    (Some(d), true) => numbers.last_mut().unwrap().push(d),
+                    (Some(d), false) => numbers.push(d.to_string()),
+                    (None, _) => {}
+                }
+                in_number = g.digit.is_some();
+            }
+            numbers
         })
         .collect()
 }
@@ -165,4 +231,100 @@ fn page_numbers_wrap_at_their_own_width() {
             assert!(x0 >= right - width - 0.01, "page {n} overflows: {lines:?}");
         }
     });
+}
+
+/// The extent of the one line of `footer` on its first page.
+fn extent(footer: &str) -> (f32, f32) {
+    let lines = &painted_lines(&doc(1, footer))[0];
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    (lines[0].1, lines[0].2)
+}
+
+/// Asserts that `footer(None)` with page numbers lays out on each of
+/// `pages` pages like `footer(Some((n, pages)))` with them written out.
+fn like_written(pages: u32, footer: &dyn Fn(Option<(u32, u32)>) -> String) {
+    each_line(&doc(pages, &footer(None)), pages, |n, lines| {
+        assert_eq!(lines.len(), 1, "page {n} of {pages}: {lines:?}");
+        let (x0, x1) = extent(&footer(Some((n, pages))));
+        assert!(
+            close(lines[0].1, x0) && close(lines[0].2, x1),
+            "page {n} of {pages}: {lines:?}, written out {x0}..{x1}"
+        );
+    });
+}
+
+/// "עמוד N מתוך M" ("page N of M") in a right-to-left paragraph, on pages
+/// whose numbers take one and two digits.
+#[test]
+fn right_to_left_page_numbers_read_left_to_right() {
+    let pages = 12;
+    let right = W - PAD;
+    let hebrew = |style: &str, written| {
+        n_of_m(
+            &format!(r#""direction":"rtl"{style}"#),
+            "NotoSansHebrew-Regular",
+            "",
+            [
+                "\u{05e2}\u{05de}\u{05d5}\u{05d3} ",
+                " \u{05de}\u{05ea}\u{05d5}\u{05da} ",
+            ],
+            written,
+        )
+    };
+    // At the start of the line, which is its right end; pushed right by
+    // the footer, in a box as wide as the text; and centred.
+    let aligned = |w| footer("", &hebrew("", w));
+    let pushed = |w| {
+        footer(
+            r#""flexDirection":"row","justifyContent":"flex-end","#,
+            &hebrew("", w),
+        )
+    };
+    let centred = |w| footer("", &hebrew(r#","textAlign":"center""#, w));
+    like_written(pages, &aligned);
+    like_written(pages, &pushed);
+    like_written(pages, &centred);
+    for f in [aligned(None), pushed(None)] {
+        each_line(&doc(pages, &f), pages, |n, lines| {
+            assert!(close(lines[0].2, right), "page {n}: {lines:?}");
+        });
+        // The total is on the left, and each number reads left to right
+        // ("10", not "01").
+        for (k, numbers) in painted_numbers(&doc(pages, &f)).iter().enumerate() {
+            assert_eq!(numbers, &["12".to_string(), (k + 1).to_string()]);
+        }
+    }
+}
+
+#[test]
+fn letter_spaced_page_numbers_take_their_own_width() {
+    let pages = 12;
+    let spaced = |style: &str, written| {
+        n_of_m(
+            style,
+            "Inter-Regular",
+            r#","letterSpacing":3"#,
+            ["Page ", " of "],
+            written,
+        )
+    };
+    let aligned = |w| footer("", &spaced(r#""textAlign":"right""#, w));
+    let pushed = |w| {
+        footer(
+            r#""flexDirection":"row","justifyContent":"flex-end","#,
+            &spaced("", w),
+        )
+    };
+    like_written(pages, &aligned);
+    like_written(pages, &pushed);
+    for f in [aligned(None), pushed(None)] {
+        let ends: Vec<f32> = painted_lines(&doc(pages, &f))
+            .iter()
+            .map(|lines| lines[0].2)
+            .collect();
+        assert!(ends.iter().all(|&x| close(x, ends[0])), "{ends:?}");
+        for (k, numbers) in painted_numbers(&doc(pages, &f)).iter().enumerate() {
+            assert_eq!(numbers, &[(k + 1).to_string(), pages.to_string()]);
+        }
+    }
 }
