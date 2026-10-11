@@ -611,7 +611,7 @@ describe('image sources', () => {
       <Document>
         <Page>{children}</Page>
       </Document>,
-      { fonts, imageIds, remoteImages: { allow: ['cdn.example.com'] } },
+      { fonts, imageIds, remoteImages: { allow: ['cdn.example.com'] }, localImages: true },
     );
   const srcs = (r: ReturnType<typeof images>) =>
     (r.document.pages[0].children ?? []).map((n) => (n as ImageNode).src);
@@ -652,6 +652,20 @@ describe('image sources', () => {
       'file-1': { kind: 'file', path: '/srv/img/photo.jpg' },
       'file-2': { kind: 'file', path: 'file:///srv/img/a.png' },
     });
+  });
+
+  it('keeps paths as image ids unless local images are allowed', () => {
+    const r = renderTemplate(
+      <Document>
+        <Page>
+          <Image src="./logo.png" />
+          <Image src="/srv/img/photo.jpg" />
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(srcs(r)).toEqual(['./logo.png', '/srv/img/photo.jpg']);
+    expect(r.pending).toEqual({});
   });
 
   it('keeps a string that names a passed-in image as that id, path or URL alike', () => {
@@ -702,6 +716,52 @@ describe('image sources', () => {
     expect(r.pending['deferred-0']).toEqual({ kind: 'deferred', src: fn });
     const p = r.pending['deferred-1'];
     expect(p?.kind === 'deferred' && (await p.src)).toEqual(new Uint8Array([1]));
+  });
+
+  it('takes an ArrayBuffer as bytes, one id per buffer', () => {
+    const buffer = new Uint8Array([1, 2, 3]).buffer;
+    const r = images(
+      <>
+        <Image src={buffer} />
+        <Image src={buffer} />
+      </>,
+    );
+    expect(srcs(r)).toEqual(['image-0', 'image-0']);
+    expect(r.images).toEqual({ 'image-0': new Uint8Array([1, 2, 3]) });
+    expect(r.rebuild(2).images['image-0']).toBe(r.images['image-0']);
+  });
+
+  it('never generates an id the caller passes in', () => {
+    const r = images(
+      <>
+        <Image src="./a.png" />
+        <Image src="./b.png" />
+        <Image src="file-0" />
+      </>,
+      ['file-0', 'file-2'],
+    );
+    expect(srcs(r)).toEqual(['file-1', 'file-3', 'file-0']);
+  });
+
+  it('keeps image ids across rebuilds; images a rebuild adds get new ones', () => {
+    const fn = () => 'logo';
+    const r = images(
+      <>
+        <View render={({ pageNumber }) => <Image src={pageNumber === 1 ? './a.png' : './b.png'} />} />
+        <Image src="./c.png" />
+        <Image src={fn} />
+        <View render={() => <Image src={{ uri: 'https://cdn.example.com/a.png', headers: { A: 'b' } }} />} />
+      </>,
+    );
+    expect(Object.keys(r.pending)).toEqual(['file-0', 'file-1', 'deferred-0', 'request-0']);
+    const again = r.rebuild(2);
+    expect(again.pending).toEqual({
+      'file-0': { kind: 'file', path: './a.png' },
+      'file-2': { kind: 'file', path: './b.png' },
+      'file-1': { kind: 'file', path: './c.png' },
+      'deferred-0': { kind: 'deferred', src: fn },
+      'request-0': r.pending['request-0'],
+    });
   });
 
   it('does not leave a rejected promise unhandled when the tree is never rendered', async () => {

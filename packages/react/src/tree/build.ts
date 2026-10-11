@@ -151,9 +151,10 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
 }
 
 /**
- * True when an image `src` string is a file path: absolute (`/img/logo.png`, `C:\img\logo.png`),
- * relative to the working directory with `./` or `../`, or a `file:` URL. Other strings are image
- * ids, so a template never reads a file by accident.
+ * True when an image `src` string is written as a file path: absolute (`/img/logo.png`,
+ * `C:\img\logo.png`), relative with `./` or `../`, or a `file:` URL. Other strings are image ids,
+ * so a template never reads a file by accident. Paths are files only when the caller allows them
+ * (`localImages`); otherwise they are ids too.
  */
 export function isImagePath(src: string): boolean {
   return /^(?:\.{0,2}[\\/]|[a-z]:[\\/]|file:)/i.test(src);
@@ -168,6 +169,60 @@ export type PendingImage =
   | { kind: 'request'; request: ImageRequest }
   | { kind: 'deferred'; src: Promise<ImageSrcValue> | (() => ImageSrcValue | Promise<ImageSrcValue>) };
 
+/**
+ * The ids a tree gives the images it cannot refer to by the caller's id: one per bytes, file path,
+ * URL, request, function or promise. A tree and its rebuilds share one table, so an image keeps
+ * its id on every pass and an id never names two images. The caller's ids are skipped, so a
+ * generated id never names one of their images.
+ */
+export class ImageIds {
+  private readonly ids = new Map<unknown, string>();
+  private readonly counts = new Map<string, number>();
+
+  constructor(private readonly taken: ReadonlySet<string> = new Set()) {}
+
+  /** The id of `key` (a string, or an object by identity); a new one is `${prefix}-${n}`. */
+  of(key: unknown, prefix: string): string {
+    let id = this.ids.get(key);
+    if (id === undefined) {
+      let n = this.counts.get(prefix) ?? 0;
+      while (this.taken.has(`${prefix}-${n}`)) n++;
+      this.counts.set(prefix, n + 1);
+      id = `${prefix}-${n}`;
+      this.ids.set(key, id);
+    }
+    return id;
+  }
+}
+
+/**
+ * What a request sends, as a string: requests that send the same thing share an id however often
+ * a template creates them. Undefined for a body that is neither a string nor bytes.
+ */
+function requestKey(r: ImageRequest): string | undefined {
+  const { body } = r;
+  const bytes = body instanceof Uint8Array;
+  if (body !== undefined && typeof body !== 'string' && !bytes) return undefined;
+  const sent = bytes ? Array.from(body, (b) => b.toString(16).padStart(2, '0')).join('') : body;
+  const headers = Object.entries(r.headers ?? {})
+    .map(([k, v]) => [k.toLowerCase(), String(v)])
+    .sort(([a = ''], [b = '']) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify([r.uri, (r.method ?? 'GET').toUpperCase(), headers, bytes, sent ?? null]);
+}
+
+/** One view per `ArrayBuffer`, so every build passes the same bytes object for it. */
+const views = new WeakMap<ArrayBuffer, Uint8Array>();
+
+function bytesOf(src: Uint8Array | ArrayBuffer): Uint8Array {
+  if (src instanceof Uint8Array) return src;
+  let view = views.get(src);
+  if (!view) {
+    view = new Uint8Array(src);
+    views.set(src, view);
+  }
+  return view;
+}
+
 export interface BuildOptions {
   fonts: FontRegistry;
   /** Default font stack (Tailwind's `--font-sans`). */
@@ -177,10 +232,14 @@ export interface BuildOptions {
   /** Page count from a previous render, for `render` props (1 when unknown). */
   pageCount?: number;
   remoteImages?: RemoteImagePolicy;
+  /** File paths in `src` are images to load (the caller reads them); otherwise they are ids. */
+  localImages?: boolean;
   /** Splits words into syllables for every `Text` without its own `hyphenationCallback`. */
   hyphenationCallback?: HyphenationCallback | undefined;
   /** Ids of the images the caller passes in: a `src` string naming one is that image, path or not. */
   imageIds?: readonly string[];
+  /** The id table of the tree this build rebuilds; a new one when omitted. */
+  generatedIds?: ImageIds;
 }
 
 export interface BuildResult {
@@ -249,16 +308,13 @@ function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
 
 class Builder {
   readonly images: Record<string, Uint8Array> = {};
-  private readonly imageIds = new Map<Uint8Array, string>();
+  private readonly generated: ImageIds;
   private readonly used = new Set<string>();
   readonly warnings: string[] = [];
   private readonly warned = new Set<string>();
   readonly origin: Map<object, Instance> | undefined;
   readonly remote: Record<string, string> = {};
-  private readonly remoteIds = new Map<string, string>();
   readonly pending: Record<string, PendingImage> = {};
-  private readonly pendingIds = new Map<unknown, string>();
-  private readonly pendingCount = new Map<string, number>();
   private readonly registered: ReadonlySet<string>;
   dynamic = false;
   private docLang: string | undefined;
@@ -270,6 +326,7 @@ class Builder {
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
     this.registered = new Set(opts.imageIds);
+    this.generated = opts.generatedIds ?? new ImageIds(this.registered);
   }
 
   private fail(
@@ -895,29 +952,19 @@ class Builder {
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
     const src = inst.props.src as ImageSrc | undefined;
-    if (src instanceof Uint8Array) {
-      let id = this.imageIds.get(src);
-      if (!id) {
-        id = `image-${this.imageIds.size}`;
-        this.imageIds.set(src, id);
-        this.images[id] = src;
-      }
-      node.src = id;
+    if (src instanceof Uint8Array || src instanceof ArrayBuffer) {
+      node.src = this.generated.of(src, 'image');
+      this.images[node.src] = bytesOf(src);
     } else if (typeof src === 'string' && this.registered.has(src)) {
       node.src = src;
     } else if (typeof src === 'string' && src.startsWith('data:')) {
       node.data = src;
-    } else if (typeof src === 'string' && isImagePath(src)) {
-      node.src = this.pendingId(src, 'file', () => ({ kind: 'file', path: src }));
+    } else if (typeof src === 'string' && this.opts.localImages && isImagePath(src)) {
+      node.src = this.pendingId(`file\0${src}`, 'file', () => ({ kind: 'file', path: src }));
     } else if (typeof src === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(src)) {
       this.allowRemote(inst, src, `src="${src}"`);
-      let id = this.remoteIds.get(src);
-      if (!id) {
-        id = `remote-${this.remoteIds.size}`;
-        this.remoteIds.set(src, id);
-        this.remote[id] = src;
-      }
-      node.src = id;
+      node.src = this.generated.of(`remote\0${src}`, 'remote');
+      this.remote[node.src] = src;
     } else if (typeof src === 'string' && src.length > 0) {
       node.src = src;
     } else if (typeof src === 'function') {
@@ -934,7 +981,11 @@ class Builder {
         this.fail(inst, '<Image src={{ uri }}>: a request needs a uri.', { kind: 'props' });
       }
       this.allowRemote(inst, src.uri, `src={{ uri: "${src.uri}" }}`);
-      node.src = this.pendingId(src, 'request', () => ({ kind: 'request', request: src }));
+      const key = requestKey(src);
+      node.src = this.pendingId(key === undefined ? src : `request\0${key}`, 'request', () => ({
+        kind: 'request',
+        request: src,
+      }));
     } else {
       this.fail(
         inst,
@@ -959,14 +1010,8 @@ class Builder {
 
   /** One id per file path, request, function or promise, however many images use it. */
   private pendingId(key: unknown, prefix: string, image: () => PendingImage): string {
-    let id = this.pendingIds.get(key);
-    if (!id) {
-      const n = this.pendingCount.get(prefix) ?? 0;
-      this.pendingCount.set(prefix, n + 1);
-      id = `${prefix}-${n}`;
-      this.pendingIds.set(key, id);
-      this.pending[id] = image();
-    }
+    const id = this.generated.of(key, prefix);
+    this.pending[id] ??= image();
     return id;
   }
 

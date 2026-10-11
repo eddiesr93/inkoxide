@@ -16,23 +16,6 @@ export function remotePolicy(opts: RemoteImageOptions | undefined): RemoteImageO
 }
 
 /**
- * Fetches the remote images a tree lists (already checked against the allowlist), in parallel.
- * Redirects are refused, so an allowed URL cannot lead to a host that is not.
- */
-export async function fetchRemote(
-  remote: Record<string, string>,
-  opts: RemoteImageOptions,
-): Promise<Record<string, Uint8Array>> {
-  const entries = await Promise.all(
-    Object.entries(remote).map(async ([id, url]): Promise<[string, Uint8Array]> => [
-      id,
-      await fetchImage(url, opts),
-    ]),
-  );
-  return Object.fromEntries(entries);
-}
-
-/**
  * Fetches one image from a URL or a request (already checked against the allowlist), within the
  * policy's timeout and size limit. Redirects are refused.
  */

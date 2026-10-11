@@ -1,7 +1,13 @@
 import { writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 
-import { assertValidTree, renderTemplate, TemplateError, type TreeResult } from '@inkoxide/react';
+import {
+  assertValidTree,
+  renderTemplate,
+  TemplateError,
+  type TreeOptions,
+  type TreeResult,
+} from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 import { initTailwind } from '@inkoxide/tailwind';
 import { type ComponentType, createElement, type ReactElement } from 'react';
@@ -9,7 +15,8 @@ import type { z } from 'zod';
 
 import { countPages, type EngineStatus, initEngine, renderPdf, version } from './engine.ts';
 import { loadRegisteredFonts } from './font.ts';
-import { loadImages } from './images.ts';
+import { type ImagePolicies, loadImages } from './images.ts';
+import { localPolicy } from './local.ts';
 import { remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
@@ -111,7 +118,7 @@ function buildTree<S extends z.ZodType>(
 ): TreeResult {
   try {
     return renderTemplate(createElement(t.Template, { data }), {
-      remoteImages: remotePolicy(opts.remoteImages),
+      ...treeImageOptions(opts),
       imageIds: Object.keys({ ...t.images, ...opts.images }),
     });
   } catch (e) {
@@ -119,12 +126,34 @@ function buildTree<S extends z.ZodType>(
   }
 }
 
+/** The image policies of a render: its options, else the environment variables and defaults. */
+function imagePolicies(opts: RenderOpts): ImagePolicies {
+  return {
+    remote: remotePolicy(opts.remoteImages),
+    local: localPolicy(opts.localImages),
+    timeoutMs: opts.imageTimeoutMs ?? 10_000,
+  };
+}
+
+/** What tree building needs to know of the image policies. */
+function treeImageOptions(opts: RenderOpts): Pick<TreeOptions, 'remoteImages' | 'localImages'> {
+  const { remote, local } = imagePolicies(opts);
+  return { remoteImages: remote, localImages: local !== undefined };
+}
+
 /** Most passes for `render` props: each one renders with the page count of the previous. */
 const MAX_PASSES = 4;
 
-/** Template + data → tree, without the engine (for tree snapshots and previews). */
-export function renderTree<S extends z.ZodType>(t: TemplateLike<S>, data: unknown): TreeResult {
-  const tree = buildTree(t, parseData(t, data));
+/**
+ * Template + data → tree, without the engine (for tree snapshots and previews). `renderSettled`
+ * renders it; pass both the same `opts`.
+ */
+export function renderTree<S extends z.ZodType>(
+  t: TemplateLike<S>,
+  data: unknown,
+  opts: RenderOpts = {},
+): TreeResult {
+  const tree = buildTree(t, parseData(t, data), opts);
   return withTemplateImages(t, tree);
 }
 
@@ -163,16 +192,11 @@ export async function generate<S extends z.ZodType>(
     validateMs = performance.now() - v0;
   }
 
-  const f0 = performance.now();
-  const registered = { ...t.images, ...opts.images };
-  const loaded = await loadImages(tree, registered, remotePolicy(opts.remoteImages));
-  const fetchMs = performance.now() - f0;
-  const images = { ...t.images, ...tree.images, ...loaded, ...opts.images };
   const e0 = performance.now();
   const first = tree;
-  const settled = await renderSettled(tree, images, opts);
+  const settled = await renderSettled(tree, { ...t.images }, opts);
   tree = settled.tree;
-  const { pdf, passes } = settled;
+  const { pdf, passes, fetchMs } = settled;
   const e1 = performance.now();
   const v = version();
   return {
@@ -182,7 +206,7 @@ export async function generate<S extends z.ZodType>(
       reactMs: first.timings.reactMs,
       treeMs: first.timings.treeMs + (tree === first ? 0 : tree.timings.treeMs),
       validateMs,
-      engineMs: e1 - e0,
+      engineMs: e1 - e0 - fetchMs,
       fetchMs,
       totalMs: e1 - t0,
     },
@@ -199,16 +223,29 @@ export async function generate<S extends z.ZodType>(
 
 /**
  * Renders a tree; when it uses `render` props, renders again with the page count until the count
- * stops changing (at most MAX_PASSES renders). Returns the tree that produced the PDF.
+ * stops changing (at most MAX_PASSES renders). Before each render, loads the images of the tree it
+ * does not have yet (a rebuild can add some) under the policies of `opts`. `images` are images by
+ * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, and the
+ * time spent loading images.
  */
 export async function renderSettled(
   first: TreeResult,
   images: Record<string, Uint8Array>,
   opts: RenderOpts = {},
-): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number }> {
+): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number; fetchMs: number }> {
+  const registered = { ...images, ...opts.images };
+  const policies = imagePolicies(opts);
+  const all: Record<string, Uint8Array> = { ...registered };
+  let fetchMs = 0;
   const render = async (tr: TreeResult): Promise<Uint8Array> => {
+    checkIds(tr, registered);
+    Object.assign(all, tr.images);
+    const missing = { remote: notIn(tr.remote, all), pending: notIn(tr.pending, all) };
+    const f0 = performance.now();
+    Object.assign(all, await loadImages(missing, registered, policies));
+    fetchMs += performance.now() - f0;
     try {
-      return await renderPdf(tr.document, opts, images);
+      return await renderPdf(tr.document, opts, all);
     } catch (e) {
       throw locateEngineError(e, tr);
     }
@@ -229,7 +266,30 @@ export async function renderSettled(
       `render props did not settle on a page count after ${MAX_PASSES} passes; page numbers they show may be off.`,
     );
   }
-  return { tree, pdf, pages, passes };
+  return { tree, pdf, pages, passes, fetchMs };
+}
+
+/**
+ * An image passed in under an id the tree gave another image would take its place. A tree built
+ * with the caller's ids never does; one built without them (`renderTree` without the `images`
+ * option) can.
+ */
+function checkIds(tree: TreeResult, registered: Record<string, Uint8Array>): void {
+  const clash =
+    [...Object.keys(tree.remote), ...Object.keys(tree.pending)].find((id) => Object.hasOwn(registered, id)) ??
+    Object.keys(tree.images).find(
+      (id) => Object.hasOwn(registered, id) && registered[id] !== tree.images[id],
+    );
+  if (clash === undefined) return;
+  throw new RenderError(
+    'TEMPLATE_ERROR',
+    `The image id "${clash}" is passed in, but the tree gave it to another image. Build the tree with the same images option (renderTree(template, data, options)), or rename the image.`,
+  );
+}
+
+/** The entries of `from` whose id `have` lacks. */
+function notIn<T>(from: Record<string, T>, have: Record<string, unknown>): Record<string, T> {
+  return Object.fromEntries(Object.entries(from).filter(([id]) => !Object.hasOwn(have, id)));
 }
 
 /** Adds the component that produced the node at the engine's error path. */
@@ -271,15 +331,14 @@ export async function renderToBuffer(
   let tree: TreeResult;
   try {
     tree = renderTemplate(element, {
-      remoteImages: remotePolicy(opts.remoteImages),
+      ...treeImageOptions(opts),
       imageIds: Object.keys(opts.images ?? {}),
     });
     if (opts.validate ?? !isProduction()) assertValidTree(tree);
   } catch (e) {
     fromTemplateError(e, name);
   }
-  const loaded = await loadImages(tree, opts.images ?? {}, remotePolicy(opts.remoteImages));
-  const { pdf } = await renderSettled(tree, { ...tree.images, ...loaded, ...opts.images }, opts);
+  const { pdf } = await renderSettled(tree, {}, opts);
   return pdf;
 }
 

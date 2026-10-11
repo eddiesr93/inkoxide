@@ -22,6 +22,24 @@ export interface RenderOpts {
    * are rejected.
    */
   remoteImages?: RemoteImageOptions;
+  /**
+   * Folders `<Image src="./logo.png">` may read files from. Defaults to the
+   * `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, or `;` on Windows);
+   * without either, no file is read and a path in `src` is an image id like any other string.
+   */
+  localImages?: LocalImageOptions;
+  /** How long a function or promise `<Image src>` may take to settle (default 10 000 ms). */
+  imageTimeoutMs?: number;
+}
+
+export interface LocalImageOptions {
+  /**
+   * The folders image files may come from. A relative path (`./logo.png`) is resolved against
+   * the first; any path must lead, symbolic links followed, to a file inside one of them.
+   */
+  root: string | readonly string[];
+  /** Largest accepted file in bytes (default 20 MiB). */
+  maxBytes?: number;
 }
 
 export interface RemoteImageOptions {
@@ -29,7 +47,7 @@ export interface RemoteImageOptions {
   allow: readonly string[];
   /** Per-image timeout (default 10 000 ms). */
   timeoutMs?: number;
-  /** Largest accepted image (default 20 MB). */
+  /** Largest accepted image in bytes (default 20 MiB). */
   maxBytes?: number;
 }
 
