@@ -718,6 +718,18 @@ describe('image sources', () => {
     expect(p?.kind === 'deferred' && (await p.src)).toEqual(new Uint8Array([1]));
   });
 
+  it('never generates an id the caller passes in', () => {
+    const r = images(
+      <>
+        <Image src="./a.png" />
+        <Image src="./b.png" />
+        <Image src="file-0" />
+      </>,
+      ['file-0', 'file-2'],
+    );
+    expect(srcs(r)).toEqual(['file-1', 'file-3', 'file-0']);
+  });
+
   it('keeps image ids across rebuilds; images a rebuild adds get new ones', () => {
     const fn = () => 'logo';
     const r = images(

@@ -172,17 +172,21 @@ export type PendingImage =
 /**
  * The ids a tree gives the images it cannot refer to by the caller's id: one per bytes, file path,
  * URL, request, function or promise. A tree and its rebuilds share one table, so an image keeps
- * its id on every pass and an id never names two images.
+ * its id on every pass and an id never names two images. The caller's ids are skipped, so a
+ * generated id never names one of their images.
  */
 export class ImageIds {
   private readonly ids = new Map<unknown, string>();
   private readonly counts = new Map<string, number>();
 
+  constructor(private readonly taken: ReadonlySet<string> = new Set()) {}
+
   /** The id of `key` (a string, or an object by identity); a new one is `${prefix}-${n}`. */
   of(key: unknown, prefix: string): string {
     let id = this.ids.get(key);
     if (id === undefined) {
-      const n = this.counts.get(prefix) ?? 0;
+      let n = this.counts.get(prefix) ?? 0;
+      while (this.taken.has(`${prefix}-${n}`)) n++;
       this.counts.set(prefix, n + 1);
       id = `${prefix}-${n}`;
       this.ids.set(key, id);
@@ -309,7 +313,7 @@ class Builder {
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
     this.registered = new Set(opts.imageIds);
-    this.generated = opts.generatedIds ?? new ImageIds();
+    this.generated = opts.generatedIds ?? new ImageIds(this.registered);
   }
 
   private fail(

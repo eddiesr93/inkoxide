@@ -74,7 +74,7 @@ export interface TreeResult extends Omit<BuildResult, 'origin'> {
 export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): TreeResult {
   const t0 = performance.now();
   const container = renderToInstances(element);
-  return fromContainer(container, opts, performance.now() - t0, new ImageIds());
+  return fromContainer(container, opts, performance.now() - t0, new ImageIds(new Set(opts.imageIds)));
 }
 
 function fromContainer(
@@ -99,7 +99,7 @@ function fromContainer(
   let tracked: { doc: Document; origin: Map<object, Instance> } | undefined;
   const locateFn = (path: string): Located | undefined => {
     // Tracking runs `render` props again; the functions they create need not stay in the table.
-    tracked ??= track(container, { ...build, generatedIds: new ImageIds() });
+    tracked ??= track(container, { ...build, generatedIds: new ImageIds(new Set(opts.imageIds)) });
     const inst = locate(tracked.doc, path, tracked.origin);
     if (!inst) return undefined;
     const stack = componentStack(inst);

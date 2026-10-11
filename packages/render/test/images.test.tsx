@@ -418,3 +418,38 @@ describe('images in render props', () => {
     expect(pageImages(r.pdf)).toEqual([[LOGO, PHOTO], [PALETTE]]);
   });
 });
+
+describe('generated image ids', () => {
+  const Both = ({ first }: { first: ImageSrc }) => (
+    <Document>
+      <Page>
+        <Image src={first} className="h-4 w-4" />
+        <Image src="image-0" className="h-4 w-4" />
+        <Image src="file-0" className="h-4 w-4" />
+      </Page>
+    </Document>
+  );
+  const images = { 'image-0': palette, 'file-0': photo };
+
+  it('do not take the place of images passed in under the same id', async () => {
+    const opts = { images, localImages: { root: fixtures }, compress: false };
+    for (const first of [logo, './logo.png']) {
+      const pdf = await renderToBuffer(<Both first={first} />, opts);
+      expect(pageImages(pdf)).toEqual([[LOGO, PALETTE, PHOTO]]);
+    }
+  });
+
+  it('fail the render when a tree built without the passed-in ids clashes with one', async () => {
+    const template = { meta: { id: 'both' }, schema: z.object({}), Template: () => <Both first={logo} /> };
+    const first = renderTree(template, {});
+    const err = await renderSettled(first, first.images, { images }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(RenderError);
+    expect((err as RenderError).message).toContain('The image id "image-0" is passed in');
+    const built = renderTree(template, {}, { images });
+    const settled = await renderSettled(built, built.images, { images, compress: false });
+    expect(pageImages(settled.pdf)).toEqual([[LOGO, PALETTE, PHOTO]]);
+  });
+});

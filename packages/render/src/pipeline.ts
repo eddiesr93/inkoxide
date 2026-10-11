@@ -234,6 +234,7 @@ export async function renderSettled(
   const all: Record<string, Uint8Array> = { ...registered };
   let fetchMs = 0;
   const render = async (tr: TreeResult): Promise<Uint8Array> => {
+    checkIds(tr, registered);
     Object.assign(all, tr.images);
     const missing = { remote: notIn(tr.remote, all), pending: notIn(tr.pending, all) };
     const f0 = performance.now();
@@ -262,6 +263,24 @@ export async function renderSettled(
     );
   }
   return { tree, pdf, pages, passes, fetchMs };
+}
+
+/**
+ * An image passed in under an id the tree gave another image would take its place. A tree built
+ * with the caller's ids never does; one built without them (`renderTree` without the `images`
+ * option) can.
+ */
+function checkIds(tree: TreeResult, registered: Record<string, Uint8Array>): void {
+  const clash =
+    [...Object.keys(tree.remote), ...Object.keys(tree.pending)].find((id) => Object.hasOwn(registered, id)) ??
+    Object.keys(tree.images).find(
+      (id) => Object.hasOwn(registered, id) && registered[id] !== tree.images[id],
+    );
+  if (clash === undefined) return;
+  throw new RenderError(
+    'TEMPLATE_ERROR',
+    `The image id "${clash}" is passed in, but the tree gave it to another image. Build the tree with the same images option (renderTree(template, data, options)), or rename the image.`,
+  );
 }
 
 /** The entries of `from` whose id `have` lacks. */
