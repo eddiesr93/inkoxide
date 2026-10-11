@@ -1,4 +1,5 @@
 import type { BoxNode, FieldNode, ImageNode, TextNode } from '@inkoxide/schema';
+import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -153,9 +154,118 @@ describe('paint styles', () => {
     expect(a?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '0%' });
     expect(b?.style).toEqual({ flexGrow: 2, flexShrink: 3, flexBasis: 28.346457 });
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
-    expect(thrown(() => tree(<View style={{ objectFit: 'cover' } as never} />)).message).toContain(
-      'unknown style property "objectFit"',
+    expect(thrown(() => tree(<View style={{ objectPosition: 'top' } as never} />)).message).toContain(
+      'unknown style property "objectPosition"',
     );
+  });
+});
+
+describe('CSS names and shorthands in the style prop', () => {
+  const black = [0, 0, 0, 1];
+  const red = parseColor('red');
+
+  it('reads border shorthand strings; sides win over border, and longhands over both', () => {
+    const r = tree(
+      <>
+        <View style={{ border: '1px solid #e5e7eb' }} />
+        <View
+          style={{
+            border: '1pt dotted',
+            borderTop: '2pt dashed red',
+            borderBottom: 'thin solid rgb(0 0 255)',
+          }}
+        />
+        <View style={{ border: '1px solid red', borderBottomWidth: 3, borderStyle: 'dashed' }} />
+        <View className="border border-dashed" style={{ border: 'none' }} />
+      </>,
+    );
+    const [a, b, c, d] = body(r) as BoxNode[];
+    const all = <T,>(v: T) => ({ top: v, right: v, bottom: v, left: v });
+    expect(a?.style).toEqual({ borderWidth: all(0.75), borderColor: all(parseColor('#e5e7eb')) });
+    expect(b?.style).toEqual({
+      borderWidth: { top: 2, right: 1, bottom: 0.75, left: 1 },
+      borderColor: { top: red, right: black, bottom: [0, 0, 1, 1], left: black },
+      borderStyle: { top: 'dashed', right: 'dotted', bottom: 'solid', left: 'dotted' },
+    });
+    expect(c?.style).toEqual({
+      borderWidth: { top: 0.75, right: 0.75, bottom: 3, left: 0.75 },
+      borderColor: all(red),
+      borderStyle: 'dashed',
+    });
+    expect(d?.style?.borderWidth).toEqual(all(0));
+    for (const bad of ['1px wavy red', '1px 2px solid', 'solid dashed', '10% solid']) {
+      expect(thrown(() => tree(<View style={{ borderTop: bad }} />)).message).toContain(
+        `borderTop "${bad}" is not a border`,
+      );
+    }
+  });
+
+  it('reads line-through, both lines, and the textDecoration* names', () => {
+    const r = tree(
+      <>
+        <Text
+          style={{
+            textDecoration: 'line-through',
+            textDecorationColor: 'red',
+            textDecorationStyle: 'dotted',
+            textDecorationThickness: '1pt',
+          }}
+        >
+          a
+        </Text>
+        <Text style={{ textDecoration: 'underline line-through' }}>b</Text>
+        <Text className="underline" style={{ textDecoration: 'none' }}>
+          c
+        </Text>
+      </>,
+    );
+    const [a, b, c] = (body(r) as TextNode[]).map((t) => t.runs[0]);
+    expect(a).toMatchObject({
+      decoration: 'lineThrough',
+      decorationColor: red,
+      decorationStyle: 'dotted',
+      decorationThickness: 1,
+    });
+    expect(b?.decoration).toBe('lineThrough');
+    expect(c).not.toHaveProperty('decoration');
+    expect(
+      thrown(() => tree(<Text style={{ textDecoration: 'overline' as never }}>x</Text>)).message,
+    ).toContain('textDecoration "overline" is not');
+  });
+
+  it('maps textOverflow to ellipsis', () => {
+    const r = tree(
+      <>
+        <Text style={{ maxLines: 2, textOverflow: 'ellipsis' }}>a</Text>
+        <Text className="truncate" style={{ textOverflow: 'clip' }}>
+          b
+        </Text>
+      </>,
+    );
+    const [a, b] = body(r) as TextNode[];
+    expect(a?.style).toEqual({ maxLines: 2, ellipsis: true });
+    expect(b?.style).toEqual({ maxLines: 1 });
+    expect(thrown(() => tree(<Text style={{ textOverflow: 'fade' as never }}>x</Text>)).message).toContain(
+      'textOverflow "fade" is not ellipsis or clip',
+    );
+  });
+
+  it('maps objectFit to the image fit; the fit prop wins', () => {
+    const r = tree(
+      <>
+        <Image src="logo" style={{ objectFit: 'cover' }} />
+        <Image src="logo" fit="contain" style={{ objectFit: 'cover' }} />
+      </>,
+    );
+    const [a, b] = body(r) as ImageNode[];
+    expect(a?.fit).toBe('cover');
+    expect(b?.fit).toBe('contain');
+    expect(thrown(() => tree(<View style={{ objectFit: 'cover' }} />)).message).toContain(
+      'objectFit applies to <Image>, not <View>',
+    );
+    expect(
+      thrown(() => tree(<Image src="logo" style={{ objectFit: 'scale-down' as never }} />)).message,
+    ).toContain('objectFit "scale-down" is not fill, contain, cover or none');
   });
 });
 

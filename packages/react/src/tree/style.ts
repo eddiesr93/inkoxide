@@ -1,13 +1,16 @@
 import type { Color, Style, TransformOp } from '@inkoxide/schema';
 import {
+  type BorderStyle,
   type ColorValue,
   type LetterSpacing,
   type LineHeight,
+  type ObjectFit,
   parseColor,
   parseOrigin,
   parseTransform,
   TEXT_INHERITED,
   TEXT_ONLY,
+  type TextDecoration,
   type TwStyle,
 } from '@inkoxide/tailwind';
 
@@ -500,9 +503,20 @@ export function fromStyleProp(p: StyleProp): TwStyle {
     borderColor,
     borderStyle,
     borderRadius,
+    border,
+    borderTop,
+    borderRight,
+    borderBottom,
+    borderLeft,
     fontFamily,
     gap,
+    textDecoration,
     decorationColor,
+    textDecorationColor,
+    textDecorationStyle,
+    textDecorationThickness,
+    textOverflow,
+    objectFit,
     translate,
     transform,
     transformOrigin,
@@ -522,6 +536,11 @@ export function fromStyleProp(p: StyleProp): TwStyle {
     out.flexShrink ??= shrink;
     out.flexBasis ??= basis;
   }
+  if (textDecoration !== undefined) out.textDecoration = decorationLine(textDecoration);
+  out.decorationStyle ??= textDecorationStyle;
+  out.decorationThickness ??= textDecorationThickness;
+  if (textOverflow !== undefined) out.ellipsis ??= overflowEllipsis(textOverflow);
+  if (objectFit !== undefined) out.objectFit = fitOf(objectFit);
   for (const k of LENGTH_KEYS) if (out[k] !== undefined) out[k] = toPt(out[k] as string);
   if (gap !== undefined) out.rowGap = out.columnGap = toPt(gap);
   if (color !== undefined) {
@@ -529,8 +548,9 @@ export function fromStyleProp(p: StyleProp): TwStyle {
     if (c !== 'currentColor') out.color = c;
   }
   if (backgroundColor !== undefined) out.backgroundColor = toColor(backgroundColor);
-  if (decorationColor !== undefined) {
-    const c = toColor(decorationColor);
+  const decoColor = decorationColor ?? textDecorationColor;
+  if (decoColor !== undefined) {
+    const c = toColor(decoColor);
     if (c !== 'currentColor') out.decorationColor = c;
   }
   if (lineHeight !== undefined) out.lineHeight = { mult: lineHeight };
@@ -574,6 +594,24 @@ export function fromStyleProp(p: StyleProp): TwStyle {
   }
   if (typeof borderStyle === 'string') out.borderStyle = borderStyle;
   else spread(out, 'border', 'Style', borderStyle);
+  // The shorthand strings fill what the keys above leave unset: a side first, then `border`.
+  const sideBorders = { Top: borderTop, Right: borderRight, Bottom: borderBottom, Left: borderLeft };
+  for (const [side, v] of Object.entries(sideBorders)) {
+    if (v === undefined) continue;
+    const b = borderShorthand(`border${side}`, v);
+    out[`border${side}Width`] ??= b.width;
+    if (b.color !== undefined) out[`border${side}Color`] ??= b.color;
+    // A string `borderStyle` is a longhand for every side.
+    if (b.style !== undefined && out.borderStyle === undefined) out[`border${side}Style`] ??= b.style;
+  }
+  if (border !== undefined) {
+    const b = borderShorthand('border', border);
+    for (const [, side] of EDGES) {
+      out[`border${side}Width`] ??= b.width;
+      if (b.color !== undefined) out[`border${side}Color`] ??= b.color;
+    }
+    if (b.style !== undefined) out.borderStyle ??= b.style;
+  }
   if (typeof borderRadius === 'object') {
     const r = borderRadius;
     if (r.topLeft !== undefined) out.borderTopLeftRadius = toPt(r.topLeft);
@@ -623,7 +661,99 @@ export function weightOf(w: number | string): number {
   return n;
 }
 
-const KNOWN_KEYS: ReadonlySet<string> = new Set([...BOX_KEYS, ...TEXT_INHERITED, ...TEXT_ONLY]);
+const KNOWN_KEYS: ReadonlySet<string> = new Set([...BOX_KEYS, ...TEXT_INHERITED, ...TEXT_ONLY, 'objectFit']);
+
+/** CSS `text-decoration-line`. A run has one line, so both lines draw the line-through. */
+function decorationLine(v: string): TextDecoration {
+  const lines = new Set(
+    v
+      .trim()
+      .split(/\s+/)
+      .map((l) => (l === 'lineThrough' ? 'line-through' : l)),
+  );
+  const known = ['none', 'underline', 'line-through'];
+  if ([...lines].some((l) => !known.includes(l)) || (lines.has('none') && lines.size > 1)) {
+    throw new Error(`textDecoration "${v}" is not none, underline, line-through or "underline line-through"`);
+  }
+  return lines.has('line-through') ? 'lineThrough' : lines.has('underline') ? 'underline' : 'none';
+}
+
+function overflowEllipsis(v: string): boolean {
+  if (v !== 'ellipsis' && v !== 'clip') throw new Error(`textOverflow "${v}" is not ellipsis or clip`);
+  return v === 'ellipsis';
+}
+
+const FITS: ReadonlySet<string> = new Set(['fill', 'contain', 'cover', 'none']);
+
+function fitOf(v: string): ObjectFit {
+  if (!FITS.has(v)) throw new Error(`objectFit "${v}" is not fill, contain, cover or none`);
+  return v as ObjectFit;
+}
+
+const BORDER_STYLES: ReadonlySet<string> = new Set(['solid', 'dashed', 'dotted']);
+/** CSS `thin`, `medium` and `thick`: 1px, 3px and 5px. */
+const BORDER_WIDTHS = { thin: 0.75, medium: 2.25, thick: 3.75 } as const;
+
+/** Splits a CSS value at spaces outside parentheses (`1px solid rgb(0 0 0)`). */
+function words(v: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let word = '';
+  for (const ch of v.trim()) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (word) out.push(word);
+      word = '';
+    } else {
+      word += ch;
+    }
+  }
+  if (word) out.push(word);
+  return out;
+}
+
+/**
+ * CSS `border`: a width, a style and a colour in any order. A missing width is `medium`, a
+ * missing style solid and a missing colour the text colour; `none` is no border.
+ */
+function borderShorthand(
+  key: string,
+  v: string | number,
+): { width: number; style?: BorderStyle; color?: ColorValue } {
+  const fail = (): never => {
+    throw new Error(
+      `${key} "${v}" is not a border: use a width, a style (solid, dashed, dotted) and a colour, as in "1px solid #e5e7eb"`,
+    );
+  };
+  if (typeof v === 'number') return v < 0 ? fail() : { width: v, style: 'solid', color: 'currentColor' };
+  let width: number | undefined;
+  let style: string | undefined;
+  let color: ColorValue | undefined;
+  for (const w of words(v)) {
+    if (w === 'none' || w === 'hidden' || BORDER_STYLES.has(w)) {
+      if (style !== undefined) fail();
+      style = w;
+    } else if (w in BORDER_WIDTHS || /^[-+]?\.?\d/.test(w)) {
+      const pt = w in BORDER_WIDTHS ? BORDER_WIDTHS[w as keyof typeof BORDER_WIDTHS] : toPt(w);
+      if (width !== undefined || typeof pt !== 'number' || pt < 0) fail();
+      width = pt as number;
+    } else {
+      if (color !== undefined) fail();
+      try {
+        color = parseColor(w);
+      } catch {
+        fail();
+      }
+    }
+  }
+  if (style === 'none' || style === 'hidden') return { width: 0 };
+  return {
+    width: width ?? BORDER_WIDTHS.medium,
+    style: (style ?? 'solid') as BorderStyle,
+    color: color ?? 'currentColor',
+  };
+}
 
 /** CSS `flex`: a number is `n 1 0%`; strings are `none`, `auto`, `initial` or `grow [shrink] [basis]`. */
 function flexShorthand(v: number | string): [number, number, number | string] {

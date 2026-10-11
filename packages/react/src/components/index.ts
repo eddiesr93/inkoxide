@@ -56,6 +56,15 @@ export type LengthAuto = LengthPercent | 'auto';
 
 type BorderLineStyle = 'solid' | 'dashed' | 'dotted';
 
+/** CSS `text-decoration-line` values. `lineThrough` is the Tailwind builder's spelling. */
+type TextDecorationLine =
+  | 'none'
+  | 'underline'
+  | 'line-through'
+  | 'lineThrough'
+  | 'underline line-through'
+  | 'line-through underline';
+
 /**
  * Inline styles: the same properties as Tailwind produces, applied after `className`. Colours
  * may be CSS strings (`'#1e4a99'`, `'oklch(…)'`) or RGBA float tuples; lengths are points or
@@ -87,6 +96,7 @@ export interface StyleProp extends Omit<
   | 'columnGap'
   | 'borderSpacing'
   | 'textIndent'
+  | 'textDecoration'
   | 'decorationColor'
   | 'decorationThickness'
   | 'translate'
@@ -135,6 +145,16 @@ export interface StyleProp extends Omit<
   left?: LengthAuto;
   /** `flex: 1` grows, shrinks and starts from 0; strings are CSS's `'1 0 auto'`, `'none'`, `'auto'`. */
   flex?: number | string;
+  /**
+   * CSS border shorthands: width, style and colour in any order (`'1px solid #e5e7eb'`,
+   * `'2pt dashed red'`, `'none'`). A missing style is solid, a missing colour the text colour.
+   * The keys below win over them, and a side (`borderTop`) wins over `border`.
+   */
+  border?: string | number;
+  borderTop?: string | number;
+  borderRight?: string | number;
+  borderBottom?: string | number;
+  borderLeft?: string | number;
   borderWidth?: Edges<Length>;
   borderColor?: Edges<string | Color>;
   /** One side at a time (`borderBottomWidth: 0.5, borderBottomColor: '#ddd'`). */
@@ -157,8 +177,16 @@ export interface StyleProp extends Omit<
   borderSpacing?: Length;
   /** First-line indent; negative for a hanging indent. */
   textIndent?: Length;
+  /** Both lines (`'underline line-through'`) draw a line-through: a run has one decoration line. */
+  textDecoration?: TextDecorationLine;
   decorationColor?: string | Color;
   decorationThickness?: Length;
+  /** CSS names for `decorationColor`, `decorationStyle` and `decorationThickness`. */
+  textDecorationColor?: string | Color;
+  textDecorationStyle?: TwStyle['decorationStyle'];
+  textDecorationThickness?: Length;
+  /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
+  textOverflow?: 'ellipsis' | 'clip';
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;

@@ -28,7 +28,7 @@ All components take `className`, `style` and `id`.
 | `Page` | One page layout; content flows over as many sheets as it needs. `size` (`A3`–`A6`, `B4`, `B5`, `Letter`, `Legal`, `Tabloid`, `Executive`, `"A4-landscape"`, or `{ width, height }`), `orientation`, `margin`. Padding on a page is its margin. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
-| `Image` | JPEG, PNG, GIF, WebP or SVG. `fit`: `fill`, `contain`, `cover`, `none`. |
+| `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`. |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
@@ -54,7 +54,16 @@ All components take `className`, `style` and `id`.
   `pc`, or a percentage.
 - **Arrays.** Falsy entries are skipped and later entries win.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
-  `flex: 1` (meaning `1 1 0%`) all work.
+  `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,
+  `borderBottom`, `borderLeft` take CSS strings (`'1px solid #e5e7eb'`, `'2pt dashed red'`,
+  `'none'`); a missing style is solid and a missing colour is the text colour. A side wins over
+  `border`, and `borderWidth`, `borderColor`, `borderStyle` and the per-side keys win over both.
+- **CSS names.** `textDecoration` takes `'underline'`, `'line-through'` or both; a run has one
+  line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
+  `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
+  `decorationStyle` and `decorationThickness`. `textOverflow: 'ellipsis'` is `ellipsis: true`
+  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set;
+  fitted images are centred (`objectPosition` is not supported yet).
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.

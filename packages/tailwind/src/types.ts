@@ -23,6 +23,7 @@ export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export type WhiteSpace = NonNullable<Style['whiteSpace']>;
 export type BorderStyle = 'solid' | 'dashed' | 'dotted';
 export type DecorationStyle = 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
+export type ObjectFit = 'fill' | 'contain' | 'cover' | 'none';
 export type Direction = 'ltr' | 'rtl' | 'auto';
 export type { TransformOp };
 
@@ -111,6 +112,8 @@ export interface TwStyle {
   borderCollapse?: Style['borderCollapse'];
   borderSpacing?: number;
   verticalAlign?: Style['verticalAlign'];
+  /** How an `Image` fills its box: the image node's `fit`. */
+  objectFit?: ObjectFit;
 
   // Text, inherited.
   fontFamily?: string[];

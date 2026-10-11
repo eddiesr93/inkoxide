@@ -216,6 +216,9 @@ class Builder {
         });
       }
     }
+    if (s.objectFit !== undefined && inst.type !== HOST.Image) {
+      this.fail(inst, `objectFit applies to <Image>, not <${HOST_NAME[inst.type]}>.`, { kind: 'props' });
+    }
     return s;
   }
 
@@ -728,7 +731,7 @@ class Builder {
     } else {
       this.fail(inst, '<Image> needs a src: bytes, a data: URL, or an image id.', { kind: 'props' });
     }
-    const fit = inst.props.fit as ImageNode['fit'];
+    const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
     if (fit) node.fit = fit;
     this.flowProps(node, inst);
     return this.mark(node, inst);
