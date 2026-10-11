@@ -75,13 +75,13 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 
 ### Id
 
-Type: `string`
+Type: `string` (min length 1, max length 256)
 
 ### Link
 
 Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
 
-Type: `string`
+Type: `string` (min length 1, max length 2048)
 
 ### Bookmark
 
@@ -89,7 +89,7 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `title` | `string` | yes |  |
+| `title` | `string` | yes | min length 1, max length 1024 |
 | `level` | `integer` |  | ≥ 1, ≤ 32, default `1` |
 
 ### Debug
@@ -115,7 +115,7 @@ Type: `boolean` (default `false`)
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) | yes |  |
-| `family` | `string` | yes |  |
+| `family` | `string` | yes | min length 1 |
 | `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400` |
 | `style` | `"normal"` \| `"italic"` |  | default `"normal"` |
 
@@ -224,13 +224,13 @@ A page template. Its content flows across as many physical pages as needed.
 
 ### GridPlacement
 
-1-based CSS grid line placement. Negative lines count from the end. Use `span` alone or with `start`.
+1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone or with `start`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `start` | `integer` |  |  |
-| `end` | `integer` |  |  |
-| `span` | `integer` |  | ≥ 1 |
+| `start` | `integer` |  | ≥ -32767, ≤ 32767, ≠ 0 |
+| `end` | `integer` |  | ≥ -32767, ≤ 32767, ≠ 0 |
+| `span` | `integer` |  | ≥ 1, ≤ 65535 |
 
 ### TrackSize
 
@@ -292,7 +292,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `gridAutoFlow` | `"row"` \| `"column"` \| `"row dense"` \| `"column dense"` |  |  |
 | `gridColumn` | [`GridPlacement`](#gridplacement) |  |  |
 | `gridRow` | [`GridPlacement`](#gridplacement) |  |  |
-| `gridArea` | `string` |  | Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`. |
+| `gridArea` | `string` |  | min length 1; Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`. |
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
@@ -481,7 +481,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `string` matching `^[^.]+$` | yes | Field name (no `.`); unique in the document except for the buttons of one radio group. |
+| `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
 | `value` | `string` |  | text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |

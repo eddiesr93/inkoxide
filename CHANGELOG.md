@@ -13,6 +13,11 @@ All notable changes to the packages in this repository. The format follows
   It was reported as `INVALID_IMAGE`.
 - A document with `pages: []` fails validation with `INVALID_VALUE` at `pages`, as the schema
   requires at least one page. It rendered a PDF with no pages, which viewers reject.
+- Validation enforces the remaining bounds of the schema: an id (of a node, row, cell, font or
+  image, or a font named by a run, a field or `fallbackFonts`) is 1 to 256 characters and a
+  font `family` is not empty (`INVALID_VALUE`), and a grid `span` is at least 1
+  (`OUT_OF_RANGE`; `span: 0` was laid out as 1). The schema states the engine's bounds of grid
+  lines: within ±32767 and not 0, and a `span` of at most 65535.
 
 ## 0.3.0 - 2026-10-12
 

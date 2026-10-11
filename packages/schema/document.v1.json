@@ -357,19 +357,30 @@
       }
     },
     "GridPlacement": {
-      "description": "1-based CSS grid line placement. Negative lines count from the end. Use `span` alone or with `start`.",
+      "description": "1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone or with `start`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "start": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": -32767,
+          "maximum": 32767,
+          "not": {
+            "const": 0
+          }
         },
         "end": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": -32767,
+          "maximum": 32767,
+          "not": {
+            "const": 0
+          }
         },
         "span": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 65535
         }
       }
     },

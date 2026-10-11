@@ -109,9 +109,18 @@ def number(v):
 
 def constraints(p):
     parts = []
-    for key, label in [("minimum", "≥"), ("exclusiveMinimum", ">"), ("maximum", "≤"), ("minItems", "min items")]:
+    for key, label in [
+        ("minimum", "≥"),
+        ("exclusiveMinimum", ">"),
+        ("maximum", "≤"),
+        ("minItems", "min items"),
+        ("minLength", "min length"),
+        ("maxLength", "max length"),
+    ]:
         if key in p:
             parts.append(f"{label} {number(p[key])}")
+    if "const" in p.get("not", {}):
+        parts.append(f"≠ {json.dumps(p['not']['const'])}")
     if "default" in p:
         parts.append(f"default `{json.dumps(p['default'])}`")
     return ", ".join(parts)

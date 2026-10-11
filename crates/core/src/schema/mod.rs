@@ -57,10 +57,8 @@ pub enum FontStyle {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct FontDecl {
     pub id: String,
-    #[expect(
-        dead_code,
-        reason = "descriptive only; the engine selects fonts by `id`"
-    )]
+    /// Descriptive only (checked to be non-empty); the engine selects fonts
+    /// by `id`.
     pub family: String,
     #[serde(default = "default_weight")]
     pub weight: u16,
@@ -386,7 +384,7 @@ pub struct ColumnSpec {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct TableCell {
-    #[expect(dead_code, reason = "part of the schema; cells are not link targets")]
+    /// Part of the schema (checked like any id); cells are not link targets.
     pub id: Option<String>,
     /// Draws the cell's boxes over the page.
     #[serde(default)]
@@ -408,7 +406,7 @@ fn one() -> u32 {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct TableRow {
-    #[expect(dead_code, reason = "part of the schema; rows are not link targets")]
+    /// Part of the schema (checked like any id); rows are not link targets.
     pub id: Option<String>,
     /// Draws the row's box over the page.
     #[serde(default)]
@@ -587,6 +585,7 @@ pub enum TransformOp {
 pub struct GridPlacement {
     pub start: Option<GridLine>,
     pub end: Option<GridLine>,
+    #[serde(default, deserialize_with = "de::grid_span")]
     pub span: Option<u16>,
 }
 
