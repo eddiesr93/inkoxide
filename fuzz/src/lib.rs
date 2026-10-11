@@ -738,6 +738,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             json!({"title": format!("B{}", text(s)), "level": level}),
         );
     }
+    if kind != "pageBreak" && s.chance(8) {
+        m.insert("debug".into(), json!(true));
+    }
     match kind {
         "box" => {
             let n = if s.chance(15) {
@@ -845,6 +848,9 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         }
         if s.chance(30) {
             p.insert("background".into(), color(s));
+        }
+        if s.chance(10) {
+            p.insert("debug".into(), json!(true));
         }
         s.flow = false;
         if s.chance(60) {

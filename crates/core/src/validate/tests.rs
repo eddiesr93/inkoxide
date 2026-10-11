@@ -661,3 +661,25 @@ fn decoration_thickness_and_colour_are_checked() {
         )
     );
 }
+
+#[test]
+fn debug_is_a_boolean_on_nodes_with_a_box() {
+    let ok = doc(r#"{"type":"box","debug":true,"children":[
+            {"type":"text","debug":true,"runs":[{"text":"x","font":"Inter-Regular","size":10}]},
+            {"type":"image","debug":false,"src":"logo"},
+            {"type":"spacer","debug":true},
+            {"type":"field","debug":true,"field":{"name":"a","kind":"checkbox"}},
+            {"type":"table","debug":true,"columns":[{"width":10}],
+             "rows":[{"debug":true,"cells":[{"debug":true}]}]}]}"#);
+    assert_eq!(run(&ok), []);
+    let (code, path) = one(&doc(r#"{"type":"pageBreak","debug":true}"#));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::UnknownField, "pages[0].children[0].debug")
+    );
+    let (code, path) = one(&doc(r#"{"type":"box","debug":"yes"}"#));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidType, "pages[0].children[0].debug")
+    );
+}

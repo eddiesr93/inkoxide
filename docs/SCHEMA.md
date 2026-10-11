@@ -90,6 +90,12 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 | `title` | `string` | yes |  |
 | `level` | `integer` |  | ≥ 1, ≤ 32, default `1` |
 
+### Debug
+
+A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
+
+Type: `boolean` (default `false`)
+
 ### Meta
 
 | Property | Type | Required | Notes |
@@ -189,6 +195,7 @@ A page template. Its content flows across as many physical pages as needed.
 | `size` | [`Size`](#size) | yes |  |
 | `margin` | [`EdgesNumber`](#edgesnumber) |  |  |
 | `background` | [`Color`](#color) |  |  |
+| `debug` | [`Debug`](#debug) |  | Draws the boxes of the page (its margins and content area) and of every element on it, the header and footer included. |
 | `header` | [`Node`](#node) |  | Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. |
 | `footer` | [`Node`](#node) |  | Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. |
 | `children` | array of [`Node`](#node) |  |  |
@@ -330,6 +337,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `colSpan` | `integer` |  | ≥ 1, default `1` |
 | `rowSpan` | `integer` |  | ≥ 1, default `1` |
 | `style` | [`Style`](#style) |  |  |
@@ -340,6 +348,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `minHeight` | [`NonNegative`](#nonnegative) |  |  |
 | `backgroundColor` | [`Color`](#color) |  |  |
 | `cells` | array of [`TableCell`](#tablecell) | yes |  |
@@ -361,6 +370,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
 
 ### TextNode
@@ -374,6 +384,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `runs` | array of [`TextRun`](#textrun) | yes |  |
 
 ### ImageNode
@@ -387,6 +398,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
 | `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
@@ -402,6 +414,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
 | `headerRows` | `integer` |  | ≥ 0, default `0` |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
@@ -424,6 +437,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `link` | [`Link`](#link) |  |  |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 
 ### FieldNode
 
@@ -436,6 +450,7 @@ An interactive AcroForm field. `style` sizes and decorates its box (background, 
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
 | `field` | [`Field`](#field) | yes |  |
 
 ### Field

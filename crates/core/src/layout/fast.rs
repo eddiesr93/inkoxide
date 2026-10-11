@@ -150,6 +150,7 @@ pub(super) fn cell(
                 h,
                 border: insets,
                 padding: pad,
+                margin: [0.0; 4],
             },
         ));
         geos.push((

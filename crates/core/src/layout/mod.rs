@@ -40,6 +40,9 @@ pub(crate) struct Geometry {
     pub border: [f32; 4],
     /// Padding `[top, right, bottom, left]` as resolved by layout.
     pub padding: [f32; 4],
+    /// Margins `[top, right, bottom, left]` as resolved by layout (`auto`
+    /// included). Only `debug` outlines read them.
+    pub margin: [f32; 4],
 }
 
 impl Geometry {
@@ -410,6 +413,7 @@ impl<'m> LayoutCtx<'m> {
                             l.padding.bottom,
                             l.padding.left,
                         ],
+                        margin: [l.margin.top, l.margin.right, l.margin.bottom, l.margin.left],
                     },
                 ));
             }

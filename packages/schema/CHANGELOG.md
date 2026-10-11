@@ -6,6 +6,9 @@ schema version 2.
 
 ## Unreleased
 
+- **Debugging:** `debug` on nodes (all but `pageBreak`), table rows and cells, and pages draws
+  the element's margin, border, padding and content boxes and its size over the page; on a
+  page, for the page and every element on it. It changes the output and is off by default.
 - **Text runs:** `hyphenate` on a run overrides the text node's `hyphenate` for the run's
   words, in the node's language.
 
