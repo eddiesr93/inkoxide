@@ -21,8 +21,11 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 
 ## Components
 
-All components take `className`, `style` and `id`; those with a box also take `debug`
-([Debugging layout](#debugging-layout)).
+Components take `className`, `style` and `id`, and those with a box also take `debug`
+([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
+`Page` and `Canvas` have no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
+take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
+`transform`, `id`) instead of `className` and `style`.
 
 | Component | What it is |
 |---|---|
