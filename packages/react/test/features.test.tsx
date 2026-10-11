@@ -208,6 +208,40 @@ describe('relative units in the style prop', () => {
       '"50vw" depends on the font or page size',
     );
   });
+
+  it('rejects lengths and style numbers that are not finite, which JSON would drop', () => {
+    const huge = '9'.repeat(400);
+    for (const unit of ['mm', 'vw', 'em'] as const) {
+      const width = `${huge}${unit}` as `${number}${typeof unit}`;
+      expect(thrown(() => tree(<View style={{ width }} />)).message).toContain(
+        `"${huge}${unit}" is too large a length`,
+      );
+    }
+    expect(thrown(() => tree(<View style={{ width: 100 / 0 }} />)).message).toBe(
+      'Invalid style prop on <View>: width: Infinity is not a finite number',
+    );
+    expect(thrown(() => tree(<View style={{ marginTop: Number.NaN }} />)).message).toContain(
+      'marginTop: NaN is not a finite number',
+    );
+    expect(thrown(() => tree(<View style={{ transform: `rotate(${huge}deg)` }} />)).message).toContain(
+      'transform: Infinity is not a finite number',
+    );
+  });
+
+  it('reports the bound a length is past, not a oneOf branch that does not apply', () => {
+    const problems = (style: Record<string, unknown>) =>
+      tree(<View style={style} />)
+        .validate()
+        .map((p) => `${p.path}: ${p.message}`);
+    expect(problems({ width: '20000%' })[0]).toBe(
+      'pages[0].children[0].style.width: must be a percentage within ±10000%, like "50%"',
+    );
+    expect(problems({ width: 2e6 })[0]).toBe('pages[0].children[0].style.width: must be <= 1000000');
+    expect(problems({ transform: 'scale(2000000)' })[0]).toBe(
+      'pages[0].children[0].style.transform[0].scale[0]: must be <= 1000000',
+    );
+    expect(problems({ width: '100%', transform: 'translate(-50%, 1pt)' })).toEqual([]);
+  });
 });
 
 describe('CSS names and shorthands in the style prop', () => {

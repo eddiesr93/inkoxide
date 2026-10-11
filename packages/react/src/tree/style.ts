@@ -499,7 +499,9 @@ export function toPt<T>(v: number | string | T, units?: Units): number | T | str
     if (!units) throw new Error(`"${v}" depends on the font or page size, which is not known here`);
     per = unit === 'em' ? units.em : (unit === 'vw' ? units.page.width : units.page.height) / 100;
   }
-  return round(Number(m[1]) * per);
+  const pt = round(Number(m[1]) * per);
+  if (!Number.isFinite(pt)) throw new Error(`"${v}" is too large a length`);
+  return pt;
 }
 
 const LENGTH_KEYS = [
@@ -557,7 +559,25 @@ export function withStyleProp(
   const units: Units = { em, page };
   let s = base;
   for (const p of list) s = { ...s, ...fromStyleProp(p, units, outer) };
+  for (const [key, v] of Object.entries(s)) {
+    const bad = nonFinite(v);
+    if (bad !== undefined) throw new Error(`${key}: ${bad} is not a finite number`);
+  }
   return s;
+}
+
+/**
+ * The first number in a style value that is not finite (`Infinity` from `100 / 0`, `NaN`). JSON
+ * would turn it into `null`, which drops the property without a word.
+ */
+function nonFinite(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? undefined : v;
+  if (typeof v !== 'object' || v === null) return undefined;
+  for (const x of Object.values(v)) {
+    const bad = nonFinite(x);
+    if (bad !== undefined) return bad;
+  }
+  return undefined;
 }
 
 /**
