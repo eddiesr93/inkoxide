@@ -1,6 +1,10 @@
-# Builds the native Node bindings and publishes `inkoxide`, its platform
-# packages and `@inkoxide/schema` to npm. Manual dispatch only; it runs no
-# tests, so dispatch it from a commit that passed the ci workflow.
+# Builds the native Node bindings on every platform and publishes every npm
+# package: the platform binaries, `inkoxide` and `@inkoxide/schema`, then
+# `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
+# already on the registry are skipped. npm trusts this workflow (trusted
+# publishing), so no token is stored and every package gets provenance.
+# Manual dispatch only; it runs no tests, so dispatch it from a commit that
+# passed the ci workflow.
 name: release
 
 on:
@@ -8,10 +12,6 @@ on:
     inputs:
       dry_run:
         description: Pass --dry-run to npm publish (nothing is uploaded)
-        type: boolean
-        default: true
-      build_macos:
-        description: Build the macOS bindings (10x billed minutes). Off, the run builds Linux and Windows only and publishes nothing
         type: boolean
         default: true
 
@@ -92,7 +92,6 @@ jobs:
 
   macos:
     name: build macos (arm64, x64)
-    if: inputs.build_macos
     runs-on: macos-14
     timeout-minutes: 30
     steps:
@@ -156,30 +155,43 @@ jobs:
   publish:
     name: publish to npm
     needs: [linux, macos, windows]
-    # Skipped too when macos is skipped; explicit for the reader.
-    if: inputs.build_macos
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing and provenance
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22.22.0'
-          registry-url: https://registry.npmjs.org
+          node-version: '24.14.1'
           package-manager-cache: false
+      - name: Install npm and pnpm
+        # Trusted publishing needs npm 11.5.1 or later; pnpm's version comes from package.json.
+        run: |
+          npm install --global npm@11.18.0
+          corepack enable
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: bindings-*
           path: bindings
           merge-multiple: true
-      - name: Stage and publish
+      - name: Publish the engine packages
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           ls -l bindings
           flags=(--publish)
           [[ "$DRY_RUN" == "true" ]] && flags+=(--dry-run)
           node scripts/npm-release.mjs bindings "$RUNNER_TEMP/npm-staging" "${flags[@]}"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Publish the React packages
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          flags=()
+          [[ "$DRY_RUN" == "true" ]] && flags+=(--dry-run)
+          scripts/release/publish.sh ${flags[@]+"${flags[@]}"}

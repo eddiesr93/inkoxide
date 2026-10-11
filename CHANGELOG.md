@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-11
+
+`inkoxide` 0.2.0, `@inkoxide/schema` 2.0.0, `@inkoxide/tailwind` 0.1.1, `@inkoxide/react` 0.1.1
+and `@inkoxide/render` 0.1.2.
+
 ### Breaking: ES modules only
 
 `inkoxide` 0.2.0 and `@inkoxide/schema` 2.0.0 are ES modules and need Node.js 22 or later, like
@@ -23,6 +28,7 @@ releases above. The `@inkoxide/render` README now shows the project setup the qu
 - `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render` are developed in this
   repository, under `packages/`, with the examples and the benchmarks.
 - Continuous integration on every pull request.
+- Every package is published by the `release` workflow, with npm provenance.
 
 ## @inkoxide/render 0.1.1 - 2026-10-11
 

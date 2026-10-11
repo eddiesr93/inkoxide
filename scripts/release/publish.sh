@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Stages and publishes the three library packages to npm, from a local machine.
-#   scripts/release/publish.sh                           # publish as the user `npm login` set up
-#   NPM_TOKEN=... scripts/release/publish.sh             # publish with a token instead
-#   scripts/release/publish.sh --dry-run                 # stage and run npm publish --dry-run
+# Stages and publishes @inkoxide/tailwind, @inkoxide/react and @inkoxide/render to npm. The
+# release workflow runs it after publishing the engine packages.
+#   scripts/release/publish.sh            # publish
+#   scripts/release/publish.sh --dry-run  # stage and run npm publish --dry-run
 #
 # Order: tailwind, react, render (each depends only on the ones before it).
 # A name@version already on the registry is skipped, so a failed run can simply be repeated.
-# Auth: without NPM_TOKEN, npm uses your login and asks for 2FA in the browser for each package.
-# With NPM_TOKEN, it is referenced from a temporary npmrc as ${NPM_TOKEN} (npm expands it), so
-# the token is never written to disk or printed.
+# Auth: in GitHub Actions, npm trusted publishing (OIDC, with provenance); locally, the user
+# `npm login` set up, with 2FA in the browser.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -17,7 +16,7 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run) dry_run=1 ;;
     -h | --help)
-      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -30,29 +29,14 @@ done
 registry="https://registry.npmjs.org/"
 packages=(tailwind react render)
 
-if [[ -z "${NPM_TOKEN:-}" ]]; then
-  if [[ $dry_run == 0 ]]; then
-    who="$(npm whoami --registry "$registry" 2>/dev/null)" || {
-      echo "publish: not logged in to npm. Run: npm login   (or set NPM_TOKEN)" >&2
-      exit 1
-    }
-    echo "publish: logged in as $who; npm will ask for 2FA in the browser"
-  fi
-else
-  npmrc="$(mktemp)"
-  trap 'rm -f "$npmrc"' EXIT
-  chmod 600 "$npmrc"
-  # Single quotes: the file holds the literal ${NPM_TOKEN}, which npm expands at run time.
-  # shellcheck disable=SC2016
-  printf '%s\n' "registry=${registry}" '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' >"$npmrc"
-  export NPM_CONFIG_USERCONFIG="$npmrc"
-  if [[ $dry_run == 0 ]]; then
-    who="$(npm whoami --registry "$registry" 2>/dev/null)" || {
-      echo "publish: npm rejected NPM_TOKEN (npm whoami failed)." >&2
-      exit 1
-    }
-    echo "publish: authenticated as $who"
-  fi
+if [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+  echo "publish: GitHub Actions; npm uses trusted publishing"
+elif [[ $dry_run == 0 ]]; then
+  who="$(npm whoami --registry "$registry" 2>/dev/null)" || {
+    echo "publish: not logged in to npm. Run: npm login" >&2
+    exit 1
+  }
+  echo "publish: logged in as $who; npm will ask for 2FA in the browser"
 fi
 
 node scripts/release/stage.mjs
@@ -90,8 +74,15 @@ done < <(node -e '
 for dep in ${deps[@]+"${deps[@]}"}; do
   [[ $dep == @inkoxide/schema@* || $dep == inkoxide@* ]] || continue
   state="$(published "$dep")"
+  # Just published by the engine release: npm takes a few minutes to list a new version.
+  for _ in $(seq 1 30); do
+    [[ $state == yes || $dry_run == 1 ]] && break
+    echo "publish: waiting for $dep to appear on the registry"
+    sleep 20
+    state="$(published "$dep")"
+  done
   if [[ $state == no ]]; then
-    echo "publish: dependency $dep is not on the registry; publish it from the engine repo first." >&2
+    echo "publish: dependency $dep is not on the registry; publish the engine packages first." >&2
     missing_deps=1
   fi
 done
