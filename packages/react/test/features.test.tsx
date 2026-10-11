@@ -718,6 +718,27 @@ describe('image sources', () => {
     expect(p?.kind === 'deferred' && (await p.src)).toEqual(new Uint8Array([1]));
   });
 
+  it('keeps image ids across rebuilds; images a rebuild adds get new ones', () => {
+    const fn = () => 'logo';
+    const r = images(
+      <>
+        <View render={({ pageNumber }) => <Image src={pageNumber === 1 ? './a.png' : './b.png'} />} />
+        <Image src="./c.png" />
+        <Image src={fn} />
+        <View render={() => <Image src={{ uri: 'https://cdn.example.com/a.png', headers: { A: 'b' } }} />} />
+      </>,
+    );
+    expect(Object.keys(r.pending)).toEqual(['file-0', 'file-1', 'deferred-0', 'request-0']);
+    const again = r.rebuild(2);
+    expect(again.pending).toEqual({
+      'file-0': { kind: 'file', path: './a.png' },
+      'file-2': { kind: 'file', path: './b.png' },
+      'file-1': { kind: 'file', path: './c.png' },
+      'deferred-0': { kind: 'deferred', src: fn },
+      'request-0': r.pending['request-0'],
+    });
+  });
+
   it('does not leave a rejected promise unhandled when the tree is never rendered', async () => {
     const unhandled: unknown[] = [];
     const onUnhandled = (e: unknown) => unhandled.push(e);

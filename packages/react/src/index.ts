@@ -5,7 +5,7 @@ import { TemplateError } from './errors.ts';
 import { fonts as defaultFonts, type FontRegistry } from './fonts/index.ts';
 import { type Container, componentStack, type Instance } from './reconciler/instance.ts';
 import { renderToInstances } from './reconciler/render.ts';
-import { type BuildResult, buildTree, type RemoteImagePolicy } from './tree/build.ts';
+import { type BuildResult, buildTree, ImageIds, type RemoteImagePolicy } from './tree/build.ts';
 import { locate } from './tree/locate.ts';
 import { type SchemaProblem, validateTree } from './tree/validate.ts';
 
@@ -59,7 +59,11 @@ export interface TreeResult extends Omit<BuildResult, 'origin'> {
   validate(): Array<SchemaProblem & Partial<Located>>;
   /** The page count the tree was built for (`render` props). */
   pageCount: number;
-  /** The same template built for another page count, without rendering React again. */
+  /**
+   * The same template built for another page count, without rendering React again. An image
+   * keeps its id in every rebuild; images that only a rebuild uses (from `render` props) get new
+   * ids, listed in its `images`, `remote` and `pending`.
+   */
   rebuild(pageCount: number): TreeResult;
 }
 
@@ -70,10 +74,15 @@ export interface TreeResult extends Omit<BuildResult, 'origin'> {
 export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): TreeResult {
   const t0 = performance.now();
   const container = renderToInstances(element);
-  return fromContainer(container, opts, performance.now() - t0);
+  return fromContainer(container, opts, performance.now() - t0, new ImageIds());
 }
 
-function fromContainer(container: Container, opts: TreeOptions, reactMs: number): TreeResult {
+function fromContainer(
+  container: Container,
+  opts: TreeOptions,
+  reactMs: number,
+  generatedIds: ImageIds,
+): TreeResult {
   const registry = opts.fonts ?? defaultFonts;
   const t1 = performance.now();
   const build = {
@@ -83,12 +92,14 @@ function fromContainer(container: Container, opts: TreeOptions, reactMs: number)
     localImages: opts.localImages,
     hyphenationCallback: registry.hyphenationCallback,
     imageIds: opts.imageIds,
+    generatedIds,
   };
   const built = buildTree(container, build);
   const t2 = performance.now();
   let tracked: { doc: Document; origin: Map<object, Instance> } | undefined;
   const locateFn = (path: string): Located | undefined => {
-    tracked ??= track(container, build);
+    // Tracking runs `render` props again; the functions they create need not stay in the table.
+    tracked ??= track(container, { ...build, generatedIds: new ImageIds() });
     const inst = locate(tracked.doc, path, tracked.origin);
     if (!inst) return undefined;
     const stack = componentStack(inst);
@@ -109,7 +120,7 @@ function fromContainer(container: Container, opts: TreeOptions, reactMs: number)
     timings: { reactMs, treeMs: t2 - t1 },
     locate: locateFn,
     validate: () => validateTree(built.document).map((p) => ({ ...p, ...locateFn(p.path) })),
-    rebuild: (pageCount) => fromContainer(container, { ...opts, pageCount }, 0),
+    rebuild: (pageCount) => fromContainer(container, { ...opts, pageCount }, 0, generatedIds),
   };
 }
 

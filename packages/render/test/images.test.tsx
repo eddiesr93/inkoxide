@@ -14,17 +14,47 @@ import {
   countPages,
   Document,
   generate,
+  Header,
   type ImageSrc,
   Image,
   type LocalImageOptions,
   Page,
+  PageBreak,
   RenderError,
+  renderSettled,
   type RenderToBufferOptions,
   renderToBuffer,
+  renderTree,
+  Text,
+  View,
 } from '../src/index.ts';
 
-const logoPath = resolve(import.meta.dirname, '../../../fixtures/images/logo.png');
+const fixtures = resolve(import.meta.dirname, '../../../fixtures/images');
+const logoPath = join(fixtures, 'logo.png');
 const logo = readFileSync(logoPath);
+const palette = readFileSync(join(fixtures, 'palette.png'));
+const photo = readFileSync(join(fixtures, 'photo.jpg'));
+// Their sizes, as the PDF lists them.
+const LOGO = '160x160';
+const PALETTE = '48x32';
+const PHOTO = '320x200';
+
+/** The sizes of the images each page of an uncompressed PDF draws, page by page. */
+function pageImages(pdf: Uint8Array): string[][] {
+  const text = Buffer.from(pdf).toString('latin1');
+  const objects = new Map<string, string>();
+  for (const m of text.matchAll(/(\d+) 0 obj([\s\S]*?)(?:stream|endobj)/g))
+    objects.set(m[1] ?? '', m[2] ?? '');
+  const pages = [...objects.values()].find((o) => /\/Type \/Pages\b/.test(o)) ?? '';
+  const kids = /\/Kids \[([^\]]*)\]/.exec(pages)?.[1] ?? '';
+  return [...kids.matchAll(/(\d+) 0 R/g)].map(([, page]) => {
+    const xobjects = /\/XObject <<([^>]*)>>/.exec(objects.get(page ?? '') ?? '')?.[1] ?? '';
+    return [...xobjects.matchAll(/(\d+) 0 R/g)].map(([, id]) => {
+      const o = objects.get(id ?? '') ?? '';
+      return `${/\/Width (\d+)/.exec(o)?.[1]}x${/\/Height (\d+)/.exec(o)?.[1]}`;
+    });
+  });
+}
 
 const Doc = ({ src }: { src: ImageSrc }) => (
   <Document>
@@ -59,7 +89,11 @@ const bodyOf = async (req: IncomingMessage): Promise<string> => {
 beforeAll(async () => {
   server = createServer(async (req, res) => {
     seen.push({ method: req.method, header: req.headers['x-token'], body: await bodyOf(req) });
+    const body = seen[seen.length - 1]?.body;
     if (req.url === '/logo.png') res.end(logo);
+    else if (req.url === '/palette.png') res.end(palette);
+    else if (req.url === '/photo.jpg') res.end(photo);
+    else if (req.url === '/image' && req.method === 'POST') res.end(body === 'palette' ? palette : logo);
     else if (req.url === '/moved') res.writeHead(302, { location: '/logo.png' }).end();
     else res.writeHead(404).end();
   });
@@ -72,7 +106,7 @@ afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
 const allowed = (): RenderToBufferOptions => ({ remoteImages: { allow: [`${base}/`] } });
 
 describe('image files', () => {
-  // root/logo.png, root/sub/logo.png, root/big.png, root/fifo, root/out.png -> outside/secret.png
+  // root/{logo.png, sub/logo.png, fifo, out.png -> outside/secret.png}, other/logo.png
   let dir: string;
   let root: string;
   let other: string;
@@ -307,5 +341,80 @@ describe('generate', () => {
     };
     const r = await generate(template, {}, { localImages: { root: dirname(logoPath) } });
     expect(r.pages).toBe(1);
+  });
+});
+
+describe('images in render props', () => {
+  // A header image chosen per page, a static image on page 1; the page count is known on pass 2.
+  const TwoPages = ({ header, body }: { header: (page: number) => ImageSrc; body?: ImageSrc }) => (
+    <Document>
+      <Page>
+        <Header>
+          <View render={({ pageNumber }) => <Image src={header(pageNumber)} className="h-4 w-4" />} />
+        </Header>
+        {body === undefined ? null : <Image src={body} className="h-4 w-4" />}
+        <Text>one</Text>
+        <PageBreak />
+        <Text>two</Text>
+      </Page>
+    </Document>
+  );
+  const files = { localImages: { root: fixtures } };
+  const pick = <T,>(page: number, first: T, second: T) => (page === 1 ? first : second);
+  const pages = async (
+    header: (page: number) => ImageSrc,
+    body: ImageSrc | undefined,
+    opts: RenderToBufferOptions = {},
+  ) =>
+    pageImages(await renderToBuffer(<TwoPages header={header} body={body} />, { ...opts, compress: false }));
+
+  it('puts each page its own bytes', async () => {
+    expect(await pages((n) => pick(n, logo, palette), photo)).toEqual([[LOGO, PHOTO], [PALETTE]]);
+  });
+
+  it('puts each page its own file', async () => {
+    const header = (n: number) => pick(n, './logo.png', './palette.png');
+    expect(await pages(header, './photo.jpg', files)).toEqual([[LOGO, PHOTO], [PALETTE]]);
+  });
+
+  it('puts each page its own URL and request', async () => {
+    const opts = allowed();
+    const url = (n: number) => `${base}/${pick(n, 'logo.png', 'palette.png')}`;
+    expect(await pages(url, `${base}/photo.jpg`, opts)).toEqual([[LOGO, PHOTO], [PALETTE]]);
+    const request = (n: number) => ({
+      uri: `${base}/image`,
+      method: 'POST',
+      body: pick(n, 'logo', 'palette'),
+    });
+    expect(await pages(request, `${base}/photo.jpg`, opts)).toEqual([[LOGO, PHOTO], [PALETTE]]);
+  });
+
+  it('calls the functions a rebuild adds, and a static one once', async () => {
+    let calls = 0;
+    const body = () => {
+      calls++;
+      return photo;
+    };
+    expect(await pages((n) => () => pick(n, logo, palette), body)).toEqual([[LOGO, PHOTO], [PALETTE]]);
+    expect(calls).toBe(1);
+    const header = (n: number) => async () => pick(n, './logo.png', './palette.png');
+    expect(await pages(header, undefined, files)).toEqual([[LOGO], [PALETTE]]);
+  });
+
+  it('loads them through renderTree and renderSettled too', async () => {
+    const template = {
+      meta: { id: 'two-pages' },
+      schema: z.object({}),
+      Template: () => (
+        <TwoPages header={(n) => () => pick(n, './logo.png', './palette.png')} body="./photo.jpg" />
+      ),
+    };
+    const opts = { ...files, compress: false };
+    const first = renderTree(template, {}, opts);
+    const settled = await renderSettled(first, first.images, opts);
+    expect(settled.passes).toBe(2);
+    expect(pageImages(settled.pdf)).toEqual([[LOGO, PHOTO], [PALETTE]]);
+    const r = await generate(template, {}, opts);
+    expect(pageImages(r.pdf)).toEqual([[LOGO, PHOTO], [PALETTE]]);
   });
 });

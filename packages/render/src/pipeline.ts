@@ -140,9 +140,16 @@ function treeImageOptions(opts: RenderOpts): Pick<TreeOptions, 'remoteImages' | 
 /** Most passes for `render` props: each one renders with the page count of the previous. */
 const MAX_PASSES = 4;
 
-/** Template + data → tree, without the engine (for tree snapshots and previews). */
-export function renderTree<S extends z.ZodType>(t: TemplateLike<S>, data: unknown): TreeResult {
-  const tree = buildTree(t, parseData(t, data));
+/**
+ * Template + data → tree, without the engine (for tree snapshots and previews). `renderSettled`
+ * renders it; pass both the same `opts`.
+ */
+export function renderTree<S extends z.ZodType>(
+  t: TemplateLike<S>,
+  data: unknown,
+  opts: RenderOpts = {},
+): TreeResult {
+  const tree = buildTree(t, parseData(t, data), opts);
   return withTemplateImages(t, tree);
 }
 
@@ -181,16 +188,11 @@ export async function generate<S extends z.ZodType>(
     validateMs = performance.now() - v0;
   }
 
-  const f0 = performance.now();
-  const registered = { ...t.images, ...opts.images };
-  const loaded = await loadImages(tree, registered, imagePolicies(opts));
-  const fetchMs = performance.now() - f0;
-  const images = { ...t.images, ...tree.images, ...loaded, ...opts.images };
   const e0 = performance.now();
   const first = tree;
-  const settled = await renderSettled(tree, images, opts);
+  const settled = await renderSettled(tree, { ...t.images }, opts);
   tree = settled.tree;
-  const { pdf, passes } = settled;
+  const { pdf, passes, fetchMs } = settled;
   const e1 = performance.now();
   const v = version();
   return {
@@ -200,7 +202,7 @@ export async function generate<S extends z.ZodType>(
       reactMs: first.timings.reactMs,
       treeMs: first.timings.treeMs + (tree === first ? 0 : tree.timings.treeMs),
       validateMs,
-      engineMs: e1 - e0,
+      engineMs: e1 - e0 - fetchMs,
       fetchMs,
       totalMs: e1 - t0,
     },
@@ -217,16 +219,28 @@ export async function generate<S extends z.ZodType>(
 
 /**
  * Renders a tree; when it uses `render` props, renders again with the page count until the count
- * stops changing (at most MAX_PASSES renders). Returns the tree that produced the PDF.
+ * stops changing (at most MAX_PASSES renders). Before each render, loads the images of the tree it
+ * does not have yet (a rebuild can add some) under the policies of `opts`. `images` are images by
+ * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, and the
+ * time spent loading images.
  */
 export async function renderSettled(
   first: TreeResult,
   images: Record<string, Uint8Array>,
   opts: RenderOpts = {},
-): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number }> {
+): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number; fetchMs: number }> {
+  const registered = { ...images, ...opts.images };
+  const policies = imagePolicies(opts);
+  const all: Record<string, Uint8Array> = { ...registered };
+  let fetchMs = 0;
   const render = async (tr: TreeResult): Promise<Uint8Array> => {
+    Object.assign(all, tr.images);
+    const missing = { remote: notIn(tr.remote, all), pending: notIn(tr.pending, all) };
+    const f0 = performance.now();
+    Object.assign(all, await loadImages(missing, registered, policies));
+    fetchMs += performance.now() - f0;
     try {
-      return await renderPdf(tr.document, opts, images);
+      return await renderPdf(tr.document, opts, all);
     } catch (e) {
       throw locateEngineError(e, tr);
     }
@@ -247,7 +261,12 @@ export async function renderSettled(
       `render props did not settle on a page count after ${MAX_PASSES} passes; page numbers they show may be off.`,
     );
   }
-  return { tree, pdf, pages, passes };
+  return { tree, pdf, pages, passes, fetchMs };
+}
+
+/** The entries of `from` whose id `have` lacks. */
+function notIn<T>(from: Record<string, T>, have: Record<string, unknown>): Record<string, T> {
+  return Object.fromEntries(Object.entries(from).filter(([id]) => !Object.hasOwn(have, id)));
 }
 
 /** Adds the component that produced the node at the engine's error path. */
@@ -296,8 +315,7 @@ export async function renderToBuffer(
   } catch (e) {
     fromTemplateError(e, name);
   }
-  const loaded = await loadImages(tree, opts.images ?? {}, imagePolicies(opts));
-  const { pdf } = await renderSettled(tree, { ...tree.images, ...loaded, ...opts.images }, opts);
+  const { pdf } = await renderSettled(tree, {}, opts);
   return pdf;
 }
 

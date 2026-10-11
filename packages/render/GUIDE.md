@@ -166,7 +166,8 @@ const logo = readFileSync('logo.png');
   body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
 - **Functions and promises.** A function is called once per render, after the tree is built and
   before the engine runs, with the other images loading in parallel; a promise is awaited
-  then. Either resolves to bytes, a string or a request, read as if written in `src`. If it
+  then. A `render` prop that creates a new function or promise each time loads it again when it
+  renders again for the page count. Either resolves to bytes, a string or a request, read as if written in `src`. If it
   throws or rejects, the render fails with `TEMPLATE_ERROR`. Prefer a function to a promise made
   before the render starts: a promise that rejects while nothing awaits it yet is an unhandled
   rejection.
