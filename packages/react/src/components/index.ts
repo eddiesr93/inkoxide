@@ -253,6 +253,8 @@ interface Common {
   /**
    * Draws the element's boxes over the page: margin (orange), border (yellow), padding (green),
    * content box (blue outline) and its size in points. A development aid; it changes the output.
+   * Not on a `<Text>` or `<Link>` inside a `<Text>`: a run of the paragraph has no box of its own,
+   * so put it on the outer `<Text>`.
    */
   debug?: boolean;
   children?: ReactNode;

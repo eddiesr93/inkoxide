@@ -437,6 +437,10 @@ outline, and the element's width and height in points as a small label. It works
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
 
+It outlines elements with a box of their own. A `Text` or `Link` inside a `Text` is a run of that
+paragraph's lines, not a box, so `debug` on it draws nothing: put it on the outer `Text`, which
+outlines the whole paragraph.
+
 The outlines are drawn last, on top of the content, and the labels are drawn with lines, so
 text selection, search, links, bookmarks and form fields are unchanged. It changes the output,
 so remove it before you ship.
