@@ -13,6 +13,8 @@ All notable changes to the packages in this repository. The format follows
   `RenderError`. An engine that cannot start and a PDF that `renderToFile` cannot write are
   `INTERNAL`; a `render` prop that throws on a later pass is `TEMPLATE_ERROR`. The guide's error
   table lists `INTERNAL`, and gives `TEMPLATE_ERROR` as the code of an invalid prop.
+- `Font.register` reads a `file:` URL given as a string (`'file:///fonts/Lora.ttf'`), not only
+  as a `URL`.
 
 ## 0.3.0 - 2026-10-12
 

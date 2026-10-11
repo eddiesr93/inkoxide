@@ -91,6 +91,15 @@ describe('Font.register', () => {
     });
   });
 
+  it('reads a file: URL as a string and as a URL', async () => {
+    const url = pathToFileURL(file('Inter-Bold.ttf'));
+    Font.register({ family: 'File String', src: url.href });
+    Font.register({ family: 'File Object', src: url });
+    await renderToBuffer(<Doc family="File String" />);
+    expect(fonts.has('File-String-400')).toBe(true);
+    expect(fonts.has('File-Object-400')).toBe(true);
+  });
+
   it('fetches a font from a URL', async () => {
     Font.register({ family: 'Remote', src: `${base}/Inter-Regular.ttf` });
     await renderToBuffer(<Doc family="Remote" />);

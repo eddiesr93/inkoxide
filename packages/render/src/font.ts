@@ -64,7 +64,7 @@ const describe = (src: FontSrc): string =>
 async function bytesOf(src: FontSrc): Promise<Uint8Array> {
   if (src instanceof Uint8Array) return src;
   if (src instanceof ArrayBuffer) return new Uint8Array(src);
-  const url = src instanceof URL ? src : /^https?:\/\//i.test(src) ? new URL(src) : undefined;
+  const url = src instanceof URL ? src : /^(?:https?|file):/i.test(src) ? new URL(src) : undefined;
   if (url && (url.protocol === 'http:' || url.protocol === 'https:')) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
