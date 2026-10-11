@@ -2,10 +2,13 @@ import type { Color, Style, TransformOp } from '@inkoxide/schema';
 import {
   type BorderStyle,
   type ColorValue,
+  type ImagePosition,
+  type LenPercent,
   type LetterSpacing,
   type LineHeight,
   type ObjectFit,
   parseColor,
+  parseObjectPosition,
   parseOrigin,
   parseTransform,
   PT_PER_PX,
@@ -601,6 +604,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
     textDecorationThickness,
     textOverflow,
     objectFit,
+    objectPosition,
     translate,
     transform,
     transformOrigin,
@@ -625,6 +629,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
   out.decorationThickness ??= textDecorationThickness;
   if (textOverflow !== undefined) out.ellipsis ??= overflowEllipsis(textOverflow);
   if (objectFit !== undefined) out.objectFit = fitOf(objectFit);
+  if (objectPosition !== undefined) out.objectPosition = positionOf(objectPosition, units);
   for (const k of LENGTH_KEYS)
     if (out[k] !== undefined) out[k] = toPt(out[k] as string, k === 'fontSize' ? fontUnits : units);
   if (gap !== undefined) out.rowGap = out.columnGap = len(gap);
@@ -748,7 +753,13 @@ export function weightOf(w: number | string): number {
   return n;
 }
 
-const KNOWN_KEYS: ReadonlySet<string> = new Set([...BOX_KEYS, ...TEXT_INHERITED, ...TEXT_ONLY, 'objectFit']);
+const KNOWN_KEYS: ReadonlySet<string> = new Set([
+  ...BOX_KEYS,
+  ...TEXT_INHERITED,
+  ...TEXT_ONLY,
+  'objectFit',
+  'objectPosition',
+]);
 
 /** CSS `text-decoration-line`. A run has one line, so both lines draw the line-through. */
 function decorationLine(v: string): TextDecoration {
@@ -775,6 +786,23 @@ const FITS: ReadonlySet<string> = new Set(['fill', 'contain', 'cover', 'none']);
 function fitOf(v: string): ObjectFit {
   if (!FITS.has(v)) throw new Error(`objectFit "${v}" is not fill, contain, cover or none`);
   return v as ObjectFit;
+}
+
+/** CSS `object-position`: one or two keywords, lengths (in the style units) or percentages. */
+function positionOf(v: unknown, units: Units | undefined): ImagePosition {
+  if (typeof v !== 'string') {
+    throw new Error(`objectPosition must be a CSS string such as 'left top' or '25% 75%', not ${typeof v}`);
+  }
+  return parseObjectPosition('objectPosition', v, (part) => {
+    if (part === '0') return 0;
+    try {
+      const pt = toPt(part, units);
+      if (pt !== 'auto') return pt as LenPercent;
+    } catch (e) {
+      throw new Error(`objectPosition: ${v} (${(e as Error).message})`);
+    }
+    throw new Error(`objectPosition: ${v} (auto is not a position)`);
+  });
 }
 
 const BORDER_STYLES: ReadonlySet<string> = new Set(['solid', 'dashed', 'dotted']);

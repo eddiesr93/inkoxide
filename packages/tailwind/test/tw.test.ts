@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   initTailwind,
   parseColor,
+  parseObjectPosition,
   SUPPORTED,
   setTailwindStrict,
   tw,
@@ -114,5 +115,55 @@ describe('resolution rules', () => {
     expect(parseColor('white')).toEqual([1, 1, 1, 1]);
     expect((parseColor('oklch(100% 0.4 30)') as number[]).every((x) => x >= 0 && x <= 1)).toBe(true);
     expect(parseColor('currentColor')).toBe('currentColor');
+  });
+});
+
+describe('parseObjectPosition', () => {
+  const p = (v: string) => parseObjectPosition('objectPosition', v);
+
+  it('reads one value as x, or as y for top and bottom; the other axis is centred', () => {
+    expect(p('left')).toEqual({ x: 'left', y: 'center' });
+    expect(p('right')).toEqual({ x: 'right', y: 'center' });
+    expect(p('top')).toEqual({ x: 'center', y: 'top' });
+    expect(p('bottom')).toEqual({ x: 'center', y: 'bottom' });
+    expect(p('center')).toEqual({ x: 'center', y: 'center' });
+    expect(p('30%')).toEqual({ x: '30%', y: 'center' });
+    expect(p('6pt')).toEqual({ x: 6, y: 'center' });
+  });
+
+  it('takes two keywords in either order', () => {
+    expect(p('left top')).toEqual({ x: 'left', y: 'top' });
+    expect(p('top left')).toEqual({ x: 'left', y: 'top' });
+    expect(p('bottom right')).toEqual({ x: 'right', y: 'bottom' });
+    expect(p('center left')).toEqual({ x: 'left', y: 'center' });
+    expect(p('top center')).toEqual({ x: 'center', y: 'top' });
+    expect(p('center bottom')).toEqual({ x: 'center', y: 'bottom' });
+  });
+
+  it('reads lengths and percentages as x then y, mixed with keywords', () => {
+    expect(p('25% 75%')).toEqual({ x: '25%', y: '75%' });
+    expect(p('10pt 20px')).toEqual({ x: 10, y: 15 });
+    expect(p('0 -2pt')).toEqual({ x: 0, y: -2 });
+    expect(p('left 40%')).toEqual({ x: 'left', y: '40%' });
+    expect(p('1rem bottom')).toEqual({ x: 12, y: 'bottom' });
+    expect(p('-10% center')).toEqual({ x: '-10%', y: 'center' });
+  });
+
+  it('rejects swapped axes, edge offsets and non-lengths', () => {
+    for (const bad of [
+      'top 25%',
+      '25% left',
+      'left right',
+      'top bottom',
+      'right 10px top',
+      'left top 0 0',
+      '',
+      'middle',
+      'auto',
+      '10',
+      '2em',
+    ]) {
+      expect(() => p(bad), bad).toThrow(/objectPosition/);
+    }
   });
 });

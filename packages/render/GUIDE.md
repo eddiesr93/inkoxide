@@ -29,7 +29,7 @@ All components take `className`, `style` and `id`.
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
-| `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`. |
+| `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`; `objectPosition` in its style places the fitted image. |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
@@ -65,8 +65,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
   `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
   `decorationStyle` and `decorationThickness`. `textOverflow: 'ellipsis'` is `ellipsis: true`
-  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set;
-  fitted images are centred (`objectPosition` is not supported yet).
+  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set.
+  `objectPosition` on an `Image` places it in its box (see [Images](#images)). Both throw on
+  other elements.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
@@ -140,6 +141,22 @@ const logo = readFileSync('logo.png');
 <Image src={{ uri: 'https://cdn.example.com/chart', method: 'POST', headers, body }} />
 <Image src={() => loadLogo()} />                                // a function or a promise
 ```
+
+- **Fit and position.** `fit` (or `objectFit`, or `object-contain`, `object-cover`,
+  `object-fill`, `object-none`) sizes the image in its box: `fill` (the default) stretches it,
+  `contain` shows all of it, `cover` fills the box, `none` keeps its own size (96 dpi). With
+  `contain`, `cover` and `none`, the image is centred unless `objectPosition` places it, as CSS
+  `object-position` does: one or two values, each a keyword (`left`, `center`, `right`, `top`,
+  `bottom`, in either order when both are keywords), a length or a percentage (`'25% 75%'`
+  lines up that point of the image with that point of the box). A single value leaves the other
+  axis centred. The Tailwind classes `object-left-top`, `object-right`, `object-bottom` and so on,
+  and `object-[25%_75%]`, do the same. What falls outside the box is clipped. Edge offsets
+  (`'right 10pt bottom 5pt'`) are not supported.
+
+  ```tsx
+  <Image src={photo} className="h-40 w-full" fit="cover" style={{ objectPosition: 'center top' }} />
+  <Image src={logo} className="h-10 w-32 object-contain object-left" />
+  ```
 
 - **Files.** Image files are off by default. Allow the folders they come from with the
   `localImages` option, or the `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated
