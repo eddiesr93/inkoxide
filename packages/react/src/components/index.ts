@@ -49,13 +49,27 @@ export const HOST_NAME: Record<string, string> = Object.fromEntries(
 
 type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
 
-/** A length: points as a number, or a string with a unit (`'20mm'`, `'1.5cm'`, `'1in'`, `'12pt'`, `'16px'`). */
-export type Length = number | `${number}${'pt' | 'mm' | 'cm' | 'in' | 'px'}`;
+/**
+ * A length that needs no context: points as a number, or a string with a unit (`'20mm'`,
+ * `'1.5cm'`, `'1in'`, `'12pt'`, `'16px'`, `'1pc'` = 12pt, `'1rem'` = 12pt as in Tailwind).
+ */
+export type AbsoluteLength = number | `${number}${'pt' | 'mm' | 'cm' | 'in' | 'px' | 'pc' | 'rem'}`;
+/** A length, or one relative to the font size (`'1.5em'`) or the page width or height (`'50vw'`, `'10vh'`). */
+export type Length = AbsoluteLength | `${number}${'em' | 'vw' | 'vh'}`;
 /** A length or a percentage of the containing block. */
 export type LengthPercent = Length | `${number}%`;
 export type LengthAuto = LengthPercent | 'auto';
 
 type BorderLineStyle = 'solid' | 'dashed' | 'dotted';
+
+/** CSS `text-decoration-line` values. `lineThrough` is the Tailwind builder's spelling. */
+type TextDecorationLine =
+  | 'none'
+  | 'underline'
+  | 'line-through'
+  | 'lineThrough'
+  | 'underline line-through'
+  | 'line-through underline';
 
 /**
  * Inline styles: the same properties as Tailwind produces, applied after `className`. Colours
@@ -88,6 +102,7 @@ export interface StyleProp extends Omit<
   | 'columnGap'
   | 'borderSpacing'
   | 'textIndent'
+  | 'textDecoration'
   | 'decorationColor'
   | 'decorationThickness'
   | 'translate'
@@ -136,6 +151,16 @@ export interface StyleProp extends Omit<
   left?: LengthAuto;
   /** `flex: 1` grows, shrinks and starts from 0; strings are CSS's `'1 0 auto'`, `'none'`, `'auto'`. */
   flex?: number | string;
+  /**
+   * CSS border shorthands: width, style and colour in any order (`'1px solid #e5e7eb'`,
+   * `'2pt dashed red'`, `'none'`). A missing style is solid, a missing colour the text colour.
+   * The keys below win over them, and a side (`borderTop`) wins over `border`.
+   */
+  border?: string | number;
+  borderTop?: string | number;
+  borderRight?: string | number;
+  borderBottom?: string | number;
+  borderLeft?: string | number;
   borderWidth?: Edges<Length>;
   borderColor?: Edges<string | Color>;
   /** One side at a time (`borderBottomWidth: 0.5, borderBottomColor: '#ddd'`). */
@@ -158,8 +183,16 @@ export interface StyleProp extends Omit<
   borderSpacing?: Length;
   /** First-line indent; negative for a hanging indent. */
   textIndent?: Length;
+  /** Both lines (`'underline line-through'`) draw a line-through: a run has one decoration line. */
+  textDecoration?: TextDecorationLine;
   decorationColor?: string | Color;
   decorationThickness?: Length;
+  /** CSS names for `decorationColor`, `decorationStyle` and `decorationThickness`. */
+  textDecorationColor?: string | Color;
+  textDecorationStyle?: TwStyle['decorationStyle'];
+  textDecorationThickness?: Length;
+  /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
+  textOverflow?: 'ellipsis' | 'clip';
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;
@@ -273,8 +306,8 @@ export type PageSize =
   | [width: Length, height: Length]
   | [side: Length]
   | {
-      width: Length;
-      height: Length;
+      width: AbsoluteLength;
+      height: AbsoluteLength;
     };
 
 export interface PageProps {

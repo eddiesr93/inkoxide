@@ -44,13 +44,14 @@ import { renderToInstances } from '../reconciler/render.ts';
 import {
   boxKeys,
   boxStyle,
-  fromStyleProp,
   hasInherited,
   inherit,
   type TextCtx,
   textNodeStyle,
   textOnlyKeys,
   toPt,
+  type Units,
+  withStyleProp,
 } from './style.ts';
 import { svgDataUrl, svgMarkup } from './svg.ts';
 
@@ -263,6 +264,8 @@ class Builder {
   private docLang: string | undefined;
   /** Hyphenated words by callback, so each distinct word calls it once per build. */
   private readonly hyphenatedWords = new Map<HyphenationCallback, Map<string, string>>();
+  /** The size of the page being built: what `vw` and `vh` are relative to. */
+  private pageBox = { width: 0, height: 0 };
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
@@ -282,8 +285,8 @@ class Builder {
     return out;
   }
 
-  /** The element's own style: its classes, then its `style` prop. */
-  private styleOf(inst: Instance): TwStyle {
+  /** The element's own style: its classes, then its `style` prop. `parent` is the inherited context. */
+  private styleOf(inst: Instance, parent: TextCtx): TwStyle {
     const className = inst.props.className as string | undefined;
     let s: TwStyle;
     try {
@@ -301,14 +304,16 @@ class Builder {
     const style = inst.props.style as StyleInput | undefined;
     if (style) {
       try {
-        for (const one of Array.isArray(style) ? style : [style])
-          if (one) s = { ...s, ...fromStyleProp(one) };
+        s = withStyleProp(s, style, parent.fontSize, this.pageBox);
       } catch (e) {
         this.fail(inst, `Invalid style prop on <${HOST_NAME[inst.type]}>: ${(e as Error).message}`, {
           kind: 'props',
           cause: e,
         });
       }
+    }
+    if (s.objectFit !== undefined && inst.type !== HOST.Image) {
+      this.fail(inst, `objectFit applies to <Image>, not <${HOST_NAME[inst.type]}>.`, { kind: 'props' });
     }
     return s;
   }
@@ -414,15 +419,6 @@ class Builder {
   }
 
   private page(inst: Instance, parent: TextCtx): PageSpec {
-    const own = this.styleOf(inst);
-    // Padding on a Page is its margin (`<Page style={{ padding: 48 }}>`).
-    this.onlyKeys(
-      inst,
-      own,
-      new Set(['backgroundColor', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']),
-      'A Page takes text styles, a background and padding (its margin).',
-    );
-    const ctx = inherit(parent, own);
     let size = this.pageSize(inst, (inst.props.size as PageSize | undefined) ?? 'A4');
     const orientation = inst.props.orientation as 'portrait' | 'landscape' | undefined;
     if (
@@ -431,19 +427,30 @@ class Builder {
     ) {
       size = { width: size.height, height: size.width };
     }
+    this.pageBox = size;
+    const own = this.styleOf(inst, parent);
+    // Padding on a Page is its margin (`<Page style={{ padding: 48 }}>`).
+    this.onlyKeys(
+      inst,
+      own,
+      new Set(['backgroundColor', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']),
+      'A Page takes text styles, a background and padding (its margin).',
+    );
+    const ctx = inherit(parent, own);
+    const units = this.units(own, parent);
     const spec: PageSpec = { size };
     const m = inst.props.margin as
       | Length
       | Partial<Record<'top' | 'right' | 'bottom' | 'left', Length>>
       | undefined;
     if (typeof m === 'number' || typeof m === 'string') {
-      const v = this.length(inst, m);
+      const v = this.length(inst, m, units);
       spec.margin = { top: v, right: v, bottom: v, left: v };
     } else if (m) {
       spec.margin = {};
       for (const k of ['top', 'right', 'bottom', 'left'] as const) {
         const v = m[k];
-        if (v !== undefined) spec.margin[k] = this.length(inst, v);
+        if (v !== undefined) spec.margin[k] = this.length(inst, v, units);
       }
     }
     // Padding fills the sides the margin prop leaves unset.
@@ -465,7 +472,12 @@ class Builder {
       if (isEl(child, HOST.Header) || isEl(child, HOST.Footer)) {
         const key = child.type === HOST.Header ? 'header' : 'footer';
         if (spec[key]) this.fail(child, `A <Page> can have only one <${HOST_NAME[child.type]}>.`);
-        spec[key] = this.box(child, ctx, child.children, bandDefaults(spec.margin, key, this.styleOf(child)));
+        spec[key] = this.box(
+          child,
+          ctx,
+          child.children,
+          bandDefaults(spec.margin, key, this.styleOf(child, ctx)),
+        );
       } else {
         flow.push(child);
       }
@@ -544,11 +556,16 @@ class Builder {
     return out;
   }
 
-  /** Points from a length prop (`12`, `'20mm'`). */
-  private length(inst: Instance, v: Length): number {
+  /** What `em`, `vw` and `vh` in an element's length props are relative to. */
+  private units(own: TwStyle, parent: TextCtx): Units {
+    return { em: own.fontSize ?? parent.fontSize, page: this.pageBox };
+  }
+
+  /** Points from a length prop (`12`, `'20mm'`); `em`, `vw` and `vh` need `units`. */
+  private length(inst: Instance, v: Length, units?: Units): number {
     let out: unknown;
     try {
-      out = toPt(v);
+      out = toPt(v, units);
     } catch (e) {
       this.fail(inst, `<${HOST_NAME[inst.type]}>: ${(e as Error).message}.`, { kind: 'props' });
     }
@@ -620,10 +637,11 @@ class Builder {
         return this.mark(n, inst);
       }
       case HOST.Spacer: {
-        const own = this.styleOf(inst);
+        const own = this.styleOf(inst, ctx);
         const s: Style = { ...boxStyle(own, ctx.color) };
-        if (inst.props.h !== undefined) s.height = this.length(inst, inst.props.h as Length);
-        if (inst.props.w !== undefined) s.width = this.length(inst, inst.props.w as Length);
+        const units = this.units(own, ctx);
+        if (inst.props.h !== undefined) s.height = this.length(inst, inst.props.h as Length, units);
+        if (inst.props.w !== undefined) s.width = this.length(inst, inst.props.w as Length, units);
         const n: SchemaNode = { type: 'spacer' };
         if (Object.keys(s).length > 0) n.style = s;
         this.flowProps(n, inst);
@@ -640,7 +658,7 @@ class Builder {
     content: Node[] = inst.children,
     defaults: TwStyle = {},
   ): SchemaNode {
-    const own = { ...defaults, ...this.styleOf(inst) };
+    const own = { ...defaults, ...this.styleOf(inst, parent) };
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
     const node: SchemaNode = { type: 'box' };
@@ -654,7 +672,7 @@ class Builder {
   }
 
   private text(inst: Instance, parent: TextCtx, content: readonly Inline[] = inst.children): TextNode {
-    const own = this.styleOf(inst);
+    const own = this.styleOf(inst, parent);
     const p = inst.props;
     const ctx = inherit(parent, own, {
       lang: p.lang as string | undefined,
@@ -686,7 +704,7 @@ class Builder {
       switch (n.type) {
         case HOST.Text:
         case HOST.Link: {
-          const own = this.styleOf(n);
+          const own = this.styleOf(n, ctx);
           const box = boxKeys(own);
           if (box.length > 0 || textOnlyKeys(own).length > 0) {
             const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
@@ -809,7 +827,7 @@ class Builder {
   }
 
   private table(inst: Instance, parent: TextCtx): TableNode {
-    const own = this.styleOf(inst);
+    const own = this.styleOf(inst, parent);
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
     const cols = inst.props.columns as Array<number | string> | undefined;
@@ -826,7 +844,7 @@ class Builder {
     const rowAllowed = new Set(['backgroundColor', 'minHeight']);
     for (const r of inst.children) {
       if (r.kind !== 'element') continue;
-      const rOwn = this.styleOf(r);
+      const rOwn = this.styleOf(r, ctx);
       this.onlyKeys(
         r,
         rOwn,
@@ -853,7 +871,7 @@ class Builder {
   }
 
   private cell(inst: Instance, parent: TextCtx): TableCell {
-    const own = this.styleOf(inst);
+    const own = this.styleOf(inst, parent);
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
     const cell: TableCell = {};
@@ -871,7 +889,7 @@ class Builder {
   }
 
   private image(inst: Instance, ctx: TextCtx): ImageNode {
-    const own = this.styleOf(inst);
+    const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
     const node: ImageNode = { type: 'image' };
     const style = boxStyle(own, ctx.color);
@@ -924,7 +942,7 @@ class Builder {
         { kind: 'props' },
       );
     }
-    const fit = inst.props.fit as ImageNode['fit'];
+    const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
     if (fit) node.fit = fit;
     this.flowProps(node, inst);
     return this.mark(node, inst);
@@ -953,7 +971,7 @@ class Builder {
   }
 
   private field(inst: Instance, parent: TextCtx): FieldNode {
-    const own = this.styleOf(inst);
+    const own = this.styleOf(inst, parent);
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
     const p = inst.props as unknown as FieldProps;
@@ -1003,15 +1021,16 @@ class Builder {
 
   /** `<Svg>` and `<Canvas>`: an SVG image of the drawing, sized by `width` and `height`. */
   private drawing(inst: Instance, ctx: TextCtx): ImageNode {
-    const own = this.styleOf(inst);
+    const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
     const p = inst.props;
     const name = HOST_NAME[inst.type];
     if (p.width === undefined || p.height === undefined) {
       this.fail(inst, `<${name}> needs width and height.`, { kind: 'props' });
     }
-    const w = this.length(inst, p.width as Length);
-    const h = this.length(inst, p.height as Length);
+    const units = this.units(own, ctx);
+    const w = this.length(inst, p.width as Length, units);
+    const h = this.length(inst, p.height as Length, units);
     let markup: string;
     if (inst.type === HOST.Canvas) {
       const paint = p.paint as ((painter: Painter, w: number, h: number) => void) | undefined;

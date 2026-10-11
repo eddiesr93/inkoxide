@@ -29,7 +29,7 @@ All components take `className`, `style` and `id`.
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
-| `Image` | JPEG, PNG, GIF, WebP or SVG. `fit`: `fill`, `contain`, `cover`, `none`. |
+| `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`. |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
@@ -51,11 +51,22 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
 <Text style={{ fontSize: '9pt', marginTop: '2mm' }} />
 ```
 
-- **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px` or
-  `pc`, or a percentage.
+- **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px`
+  (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
+  `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
+  percentage. A page's `size` takes the units that do not depend on the font or the page.
 - **Arrays.** Falsy entries are skipped and later entries win.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
-  `flex: 1` (meaning `1 1 0%`) all work.
+  `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,
+  `borderBottom`, `borderLeft` take CSS strings (`'1px solid #e5e7eb'`, `'2pt dashed red'`,
+  `'none'`); a missing style is solid and a missing colour is the text colour. A side wins over
+  `border`, and `borderWidth`, `borderColor`, `borderStyle` and the per-side keys win over both.
+- **CSS names.** `textDecoration` takes `'underline'`, `'line-through'` or both; a run has one
+  line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
+  `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
+  `decorationStyle` and `decorationThickness`. `textOverflow: 'ellipsis'` is `ellipsis: true`
+  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set;
+  fitted images are centred (`objectPosition` is not supported yet).
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
