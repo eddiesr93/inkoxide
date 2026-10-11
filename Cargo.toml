@@ -31,6 +31,7 @@ rayon = "=1.12.0"
 subsetter = { version = "=0.2.6", default-features = false }
 usvg = { version = "=0.48.1", default-features = false }
 flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+wuff = { version = "=0.2.9", default-features = false, features = ["brotli"] }
 napi = { version = "=3.14.2", default-features = false, features = ["napi6"] }
 napi-derive = "=3.6.12"
 napi-build = "=2.6.0"

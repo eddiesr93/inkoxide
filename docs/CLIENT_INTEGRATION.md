@@ -32,7 +32,7 @@ import { readFileSync } from 'node:fs';
 import { registerFont } from 'inkoxide';
 
 for (const id of ['Inter-Regular', 'Inter-Bold']) {
-  registerFont(id, readFileSync(`fonts/${id}.ttf`)); // TrueType or CFF OpenType
+  registerFont(id, readFileSync(`fonts/${id}.ttf`)); // TrueType, CFF OpenType, WOFF or WOFF2
 }
 ```
 

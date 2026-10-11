@@ -11,7 +11,10 @@ import { type FontWeightName, fonts, fontWeightValue, type HyphenationCallback }
 import { registerEngineFont } from './engine.ts';
 import { RenderError } from './types.ts';
 
-/** A TrueType or CFF OpenType font: a file path, a `file:` or `https://` URL, or its bytes. */
+/**
+ * A TrueType, CFF OpenType, WOFF or WOFF2 font: a file path, a `file:` or `https://` URL, or its
+ * bytes.
+ */
 export type FontSrc = string | URL | Uint8Array | ArrayBuffer;
 
 export type FontWeight = number | FontWeightName;

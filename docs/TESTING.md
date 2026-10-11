@@ -37,6 +37,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   `scripts/bench-headline.sh`.
 - `fixtures/hyphenation/<fixture>.<lang>.tex`: hyphenation patterns
   registered only while rendering `<fixture>`.
+- `fixtures/fonts/woff/`: Roboto Mono converted to WOFF and WOFF2 with
+  fontTools (OFL, `fixtures/fonts/RobotoMono-OFL.txt`). The font tests
+  check that each decodes to the same metrics and outlines as the `.ttf`.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): Tailwind class mapping, the

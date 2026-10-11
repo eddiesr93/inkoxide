@@ -14,7 +14,7 @@ versions; removing or renaming any of them is a major version.
 
 | Concept | Rust (`inkoxide`) | Node (`inkoxide`) |
 |---|---|---|
-| Register a font | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
+| Register a font (TrueType, CFF OpenType, WOFF or WOFF2) | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
 | Remove a font | `FontStore::unregister(id) -> bool` | `unregisterFont(id): boolean` |
 | Images | `ImageStore::insert(id, bytes)`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |

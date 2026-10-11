@@ -96,6 +96,16 @@ describe('Font.register', () => {
     expect(fonts.has('Remote-400')).toBe(true);
   });
 
+  it('registers WOFF and WOFF2 fonts', async () => {
+    Font.register({ family: 'Web Mono', src: file('woff/RobotoMono-Regular.woff2') });
+    Font.register({ family: 'Web Mono One', src: file('woff/RobotoMono-Regular.woff') });
+    for (const family of ['Web Mono', 'Web Mono One']) {
+      const pdf = await renderToBuffer(<Doc family={family} />);
+      expect(pdf.byteLength).toBeGreaterThan(0);
+      expect(treeFonts(<Doc family={family} />).warnings).toEqual([]);
+    }
+  });
+
   it('fails the render with the family and source when a font cannot be loaded, once', async () => {
     Font.register({ family: 'Missing', src: '/nowhere/Missing.ttf' });
     const err = await renderToBuffer(<Doc family="Brand" />).catch((e) => e);

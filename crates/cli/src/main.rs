@@ -30,8 +30,8 @@ struct Cli {
 
 #[derive(Args)]
 struct Resources {
-    /// Directory of .ttf/.otf files; each is registered under its file stem
-    /// (`Inter-Regular.ttf` → `Inter-Regular`).
+    /// Directory of .ttf/.otf/.woff/.woff2 files; each is registered under
+    /// its file stem (`Inter-Regular.ttf` → `Inter-Regular`).
     #[arg(long)]
     fonts: Vec<PathBuf>,
     /// Directory of images; each is available to `src` under its file stem.
@@ -120,7 +120,7 @@ fn load_resources(res: &Resources) -> Result<(FontStore, ImageStore), String> {
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            if !matches!(ext.as_str(), "ttf" | "otf") {
+            if !matches!(ext.as_str(), "ttf" | "otf" | "woff" | "woff2") {
                 continue;
             }
             let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
