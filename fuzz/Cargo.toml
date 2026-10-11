@@ -37,6 +37,13 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "register_font"
+path = "fuzz_targets/register_font.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
 members = ["."]
 

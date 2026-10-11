@@ -90,25 +90,57 @@ pub fn check_image(bytes: &[u8]) -> bool {
     let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
         {"type":"image","src":"fz"},
         {"type":"image","src":"fz","fit":"cover","style":{"width":40,"height":90}}]}]}"#;
-    render_with(doc, InputFormat::Json, &images, bytes.len() % 2 == 1).is_ok()
+    render_with(
+        doc,
+        InputFormat::Json,
+        &FONTS,
+        &images,
+        bytes.len() % 2 == 1,
+    )
+    .is_ok()
+}
+
+/// Registers arbitrary bytes as a font, as they are and with the WOFF and
+/// WOFF2 signatures in place of their first four bytes, so the decoders
+/// are reached from any input. Each font that registers sets a line of
+/// text; same oracle as [`check`]. Returns how many registered.
+pub fn check_font(bytes: &[u8]) -> usize {
+    let mut variants = vec![bytes.to_vec()];
+    if let Some(rest) = bytes.get(4..) {
+        for signature in [b"wOFF", b"wOF2"] {
+            variants.push([&signature[..], rest].concat());
+        }
+    }
+    let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"}],"pages":[{"size":{"width":300,"height":200},"children":[
+        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi­😀","font":"fz","size":12}]}]}]}"#;
+    let mut registered = 0;
+    for v in variants {
+        let mut fonts = FontStore::new();
+        if fonts.register("fz", v).is_ok() {
+            registered += 1;
+            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, false);
+        }
+    }
+    registered
 }
 
 fn render(doc: &[u8], format: InputFormat, pdf_a: bool) -> Result<Vec<u8>, InkoxideError> {
-    render_with(doc, format, &IMAGES, pdf_a)
+    render_with(doc, format, &FONTS, &IMAGES, pdf_a)
 }
 
 fn render_with(
     doc: &[u8],
     format: InputFormat,
+    fonts: &FontStore,
     images: &ImageStore,
     pdf_a: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
-    let errors = inkoxide::validate(doc, format, &FONTS, images);
+    let errors = inkoxide::validate(doc, format, fonts, images);
     let options = RenderOptions::default()
         .with_compress(false)
         .with_threads(1)
         .with_pdf_a(pdf_a);
-    let result = inkoxide::render(doc, format, &options, &FONTS, images);
+    let result = inkoxide::render(doc, format, &options, fonts, images);
     match &result {
         Ok(pdf) => {
             assert!(
@@ -596,6 +628,9 @@ fn run(s: &mut Src) -> Value {
     }
     if s.chance(20) {
         m.insert("link".into(), link(s));
+    }
+    if s.chance(10) {
+        m.insert("hyphenate".into(), json!(s.chance(50)));
     }
     Value::Object(m)
 }
