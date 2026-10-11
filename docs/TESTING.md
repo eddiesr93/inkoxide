@@ -1,8 +1,11 @@
 # Testing
 
-Everything runs locally. The only hosted workflow,
-`.github/workflows/release.yml`, builds and publishes the npm packages
-and never runs tests (ADR-051): run `scripts/ci.sh` before dispatching it.
+Everything runs locally. The hosted workflows are
+`.github/workflows/release.yml`, which builds and publishes the npm
+packages and never runs tests (ADR-051): run `scripts/ci.sh` before
+dispatching it; and `.github/workflows/test-windows.yml`, which runs the
+Node binding tests against a release run's Windows binary, the one
+platform a Mac cannot run (ADR-053).
 
 ```sh
 scripts/ci.sh          # fmt, clippy, tests, schema, qpdf, visual diff, cargo-deny, node, fuzz smoke

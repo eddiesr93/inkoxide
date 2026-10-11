@@ -1256,3 +1256,19 @@ locally (2026-10-11), and the Mac builds both macOS targets natively.
 **Consequences.** A run without macOS costs roughly 35 billed minutes.
 More binaries are exercised before publishing than in ADR-051; Windows
 is still checked for file type only.
+
+## ADR-053 — Windows binding tested on Actions (v1.1)
+
+Amends ADR-051 ("never for tests") for one platform.
+
+**Context.** Every binding but Windows can be run before publishing: the
+macOS ones on the Mac (x64 under Rosetta), the Linux ones in Docker
+(ADR-052). A Mac cannot run a Windows DLL; Wine would test Wine.
+**Decision.** `.github/workflows/test-windows.yml`, manual dispatch with
+the release run's id. On `windows-2022` it downloads that run's
+`bindings-windows` artifact into `npm/` and runs the Node binding tests
+(`node --test`, Node 22.22.0). It builds nothing. Same pinned first-party
+actions as `release.yml`; `actions: read` is the only extra permission.
+**Consequences.** All six bindings are exercised before publishing. A
+test run costs a few billed minutes. The artifact must still exist
+(three-day retention).
