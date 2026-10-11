@@ -2,22 +2,17 @@
 
 # Inkoxide
 
-**Fast PDFs from React components, or from JSON.**
+**A PDF layout engine for Node.js, written in Rust.**
 
-A native PDF layout engine written in Rust, for Node.js. Write `Document`, `Page`, `View` and
-`Text` with Tailwind classes or react-pdf style objects, and render them **14–50× faster than
-react-pdf**, even on a single thread.
+Typeset documents from React components, or from a JSON document tree.
 
 [![@inkoxide/render on npm](https://img.shields.io/npm/v/@inkoxide/render?color=4f46e5&label=%40inkoxide%2Frender)](https://www.npmjs.com/package/@inkoxide/render)
 [![inkoxide on npm](https://img.shields.io/npm/v/inkoxide?color=0f766e&label=inkoxide)](https://www.npmjs.com/package/inkoxide)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-0ea5e9)](#licence)
-[![Node.js 22 or later](https://img.shields.io/badge/node-%E2%89%A522-339933)](#quick-start)
 
-[Quick start](#quick-start) · [Examples](#examples) · [From react-pdf](#coming-from-react-pdf) · [Performance](#performance) · [The engine](#the-engine) · [Development](#development)
+[Getting started](#getting-started) · [Documentation](#documentation) · [Performance](#performance) · [Platforms](#platforms)
 
 </div>
-
-<a id="examples"></a>
 
 <table>
 <tr>
@@ -32,51 +27,39 @@ react-pdf**, even on a single thread.
 </tr>
 </table>
 
-<p align="center"><sub>Each picture is the first page of a PDF rendered by Inkoxide from a single React file, unedited. The code of all six is in the <a href="https://www.npmjs.com/package/@inkoxide/render">@inkoxide/render README</a>.</sub></p>
+Inkoxide does the typesetting of a PDF: text shaping, line breaking, layout, pagination and PDF
+output, in native code. Documents are written as React components with
+[`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render), styled with Tailwind
+classes or style objects, or built as JSON by any program and rendered with
+[`inkoxide`](https://www.npmjs.com/package/inkoxide). A one-page invoice renders in about a
+millisecond; a 98-page report with 40 tables in about 130 ms.
 
-## Why
+## Features
 
-- **Fast.** A one-page invoice renders in about 1.3 ms and a 43-page report in about 33 ms:
-  14–50× faster than react-pdf on one CPU thread, up to 68× with all cores.
-  [How it was measured](#performance).
-- **Familiar.** `Document`, `Page`, `View`, `Text`, `Image`, `StyleSheet.create`, `Font.register`
-  and style objects in points work as in react-pdf, and Tailwind classes work as on the web.
-- **Made for print.** Real tables whose header repeats on every page, headers and footers that
-  line up with the page, page numbers, blocks kept together, hyphenation, fillable forms and
-  PDF/A.
-- **Errors that point at your code.** A `View` inside a `Text`, an unknown class or an unknown
-  style key fails with the component that caused it, instead of a blank page.
+- **Typesetting.** OpenType shaping, justification, hyphenation with TeX patterns, orphans and
+  widows, font fallback and right-to-left text.
+- **Layout.** Flexbox and CSS grid, absolute positioning, transforms, borders and radii.
+- **Pagination.** Tables that split across pages with repeating header rows, headers and
+  footers, page numbers, keep-together blocks and page breaks.
+- **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks and
+  fillable form fields.
+- **Output.** Font subsetting (TrueType and CFF), PDF/A-2b, parallel rendering across pages,
+  and byte-identical output for identical input.
+- **Validation.** Every document is checked against a JSON Schema, with the path of each error.
+  In React, errors carry the component stack.
 
-## Two ways to use it
+## Getting started
 
-| | Package | You write | Start here |
-|---|---|---|---|
-| **React** | [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render) | Components, styled with Tailwind classes or style objects | [Quick start](#quick-start) |
-| **Engine** | [`inkoxide`](https://www.npmjs.com/package/inkoxide) | A JSON document tree, from any language that can call Node | [The engine](#the-engine) |
-
-`@inkoxide/render` is built on `inkoxide`: it turns your components into the engine's JSON and
-ships the fonts, so most people want it.
-
-## Quick start
-
-**1. Install** the package and React (plus `tsx`, to run TypeScript directly):
+### With React
 
 ```sh
 npm install @inkoxide/render react
-npm install -D tsx @types/react
 ```
-
-**2. Save** this as `receipt.tsx`:
 
 ```tsx
 import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
 
-interface Line {
-  name: string;
-  amount: number;
-}
-
-export default function Receipt({ customer, lines }: { customer: string; lines: Line[] }) {
+function Receipt({ customer, lines }: { customer: string; lines: { name: string; amount: number }[] }) {
   const total = lines.reduce((sum, l) => sum + l.amount, 0);
   return (
     <Document title={`Receipt for ${customer}`}>
@@ -111,70 +94,13 @@ await renderToFile(
 );
 ```
 
-**3. Run it:**
+<img src="docs/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="280">
 
-```sh
-npx tsx receipt.tsx
-```
+Run it with `npx tsx receipt.tsx`. The fonts (Inter, Noto Sans, Roboto Mono) and the Tailwind
+compiler ship with the package. The [@inkoxide/render README](https://www.npmjs.com/package/@inkoxide/render)
+has the six documents above with their code.
 
-<img src="docs/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="300">
-
-A PDF is a React component and its data are props: there is nothing to register and no build
-step. In TypeScript, set `"jsx": "react-jsx"` in `tsconfig.json`. In a server, call
-`renderToBuffer(<Receipt … />)` and send the bytes.
-
-The [@inkoxide/render README](https://www.npmjs.com/package/@inkoxide/render) has the six
-examples above with their code, the API, the error codes and an FAQ. Its guide covers the
-components, styling, fonts, images, pagination, tables and forms.
-
-## Coming from react-pdf
-
-Change the import. `Document`, `Page`, `View`, `Text`, `Image`, `StyleSheet.create`,
-`Font.register`, style objects, `wrap={false}`, `break`, `minPresenceAhead` and
-`render={({ pageNumber, totalPages }) => …}` work as they are. The differences:
-
-- **Repeating content.** A footer is `<Footer>` (or `<Header>`), not a `View` with `fixed`, which
-  throws and points you there.
-- **Links.** `<Link src>` becomes `href` on `Text` or `View`.
-- **Tables.** They can be a real `<Table>`, whose header repeats on every page.
-- **Not available:** browser rendering (`<PDFViewer>`, `usePDF`), `renderToStream`, colour emoji
-  and `<Note>`.
-
-The [migration table](https://www.npmjs.com/package/@inkoxide/render) in the package README
-goes row by row.
-
-## Performance
-
-The same documents rendered by both libraries, with the same font, page size and page count:
-
-| Document | Pages | @inkoxide/render | On 1 thread | @react-pdf/renderer 4.9 | Faster |
-|---|---:|---:|---:|---:|---:|
-| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.3 ms | 1.0 ms | 19.2 ms | 19× |
-| Invoice (react-pdf with `StyleSheet`) | 1 | 1.2 ms | 1.3 ms | 17.6 ms | 14× |
-| Report: 40 sections, 1,000 table rows | 43 | 33 ms | 44 ms | 2,214 ms | 50× (68× on all cores) |
-
-<sub>Apple M4 Pro (14 cores), 24 GB, Node 24.14, macOS. Median of 20 renders after a warm-up (10
-for the report), in one process. "Faster" compares react-pdf with Inkoxide on one thread, since
-react-pdf renders on one.</sub>
-
-The first render in a new process includes loading the library: 164 ms for the invoice against
-231 ms for react-pdf, and 191 ms against 2,407 ms for the report.
-
-The engine on its own renders a 98-page report with 40 tables in about 130 ms on 4 cores
-([docs/BENCHMARKS.md](docs/BENCHMARKS.md)).
-
-## The engine
-
-`inkoxide` takes a declarative, fully resolved document tree (boxes, text, images, tables) as
-JSON or MessagePack and returns PDF bytes:
-
-```
-render(document_tree, options) -> pdf_bytes
-```
-
-It paginates properly: tables split with repeated headers, blocks stay together, headers and
-footers repeat, and page numbers are filled in. Use it directly when you generate documents
-from another language, or want full control of the tree:
+### With JSON
 
 ```js
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -197,96 +123,73 @@ const doc = {
 writeFileSync('hello.pdf', await render(JSON.stringify(doc)));
 ```
 
-`@inkoxide/schema` has the TypeScript types and the JSON Schema of the tree.
-[docs/CLIENT_INTEGRATION.md](docs/CLIENT_INTEGRATION.md) covers fonts, images, errors,
-threading, determinism and hyphenation.
+The document tree is a fully resolved description of boxes, text, images and tables, as JSON or
+MessagePack. `@inkoxide/schema` has its TypeScript types and JSON Schema.
 
-### Status
+## Documentation
 
-**v1 is feature-complete and ready for integration.** The public API is frozen (ADR-042), so
-changes from now on are additive. npm releases (`inkoxide`, its per-platform binaries and
-`@inkoxide/schema`) are built by the manually dispatched `.github/workflows/release.yml`
-(ADR-051), with the macOS bindings optionally built on a Mac (ADR-052); nothing goes to
-crates.io.
-
-What works:
-
-- **Input:** schema validation of JSON and MessagePack, with error paths.
-- **Layout:** flex and grid layout.
-- **Text:** shaping, wrapping, justification, hyphenation (including runtime TeX patterns), font
-  fallback, and selectable text.
-- **Pagination:** splitting, keep-together, forced breaks, headers and footers, page numbers.
-- **Tables:** spans, collapsed or separate borders, and repeated header rows.
-- **Images:** JPEG passthrough, PNG with alpha, GIF and WebP, SVG as vectors.
-- **Output:** font subsetting (TrueType and CFF), links and bookmarks, form fields, PDF/A-2b, and
-  parallel rendering.
-
-The output is deterministic for a fixed creation date.
-
-### Platforms
-
-| Platform | Status |
+| Topic | Document |
 |---|---|
-| Linux x86_64 (glibc) | ✅ `scripts/ci.sh` green |
-| macOS arm64 | ✅ `scripts/ci.sh` green, visual diff at the default threshold ([docs/TESTING.md](docs/TESTING.md#macos-apple-silicon)) |
-| Linux x86_64 (musl), Linux arm64 (glibc) | ✅ Node binding tests pass in Docker before each release (ADR-052) |
-| macOS x86_64 | ✅ Node binding tests pass under Rosetta before each release (ADR-052) |
-| Windows x86_64 | ✅ Node binding tests pass on GitHub Actions before each release (ADR-053) |
+| Writing documents in React | [Guide](docs/react/GUIDE.md): components, styling, fonts, images, pagination, tables, forms, API, errors |
+| Moving from react-pdf | [Migration guide](docs/react/MIGRATING.md) |
+| Using the engine from Node | [Client integration](docs/CLIENT_INTEGRATION.md): fonts, images, errors, threading, determinism, hyphenation |
+| The engine API | [API](docs/API.md): the Rust and Node APIs, options and error codes |
+| The document tree | [Schema reference](docs/SCHEMA.md) and [example documents](schema/EXAMPLES.md) |
+| How it works | [Architecture](docs/ARCHITECTURE.md) and the [decision log](docs/DECISIONS.md) |
+| Testing and benchmarks | [Testing](docs/TESTING.md) and [benchmarks](docs/BENCHMARKS.md) |
+
+## Performance
+
+Median render times after warm-up:
+
+| Document | Pages | All cores | One thread | Machine |
+|---|---:|---:|---:|---|
+| Invoice, from React | 1 | 1.3 ms | 1.0 ms | Apple M4 Pro, Node 24 |
+| Report, from React: 40 sections, 1,000 table rows | 43 | 33 ms | 44 ms | Apple M4 Pro, Node 24 |
+| Report, from JSON: 40 tables, header, footer | 98 | 130 ms | 277 ms | 4-vCPU Xeon container |
+
+Layout and PDF writing run in parallel across pages, and fonts are parsed once per process.
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the methodology, per-stage profiles and comparisons
+with other libraries.
+
+## Platforms
+
+Prebuilt binaries for Node.js 22 or later; npm installs the one for the current platform:
+
+| OS | Architectures |
+|---|---|
+| macOS | arm64, x64 |
+| Linux | x64 (glibc and musl), arm64 (glibc) |
+| Windows | x64 |
 
 ## Development
 
-You need Rust (rustup picks up 1.97.0 from `rust-toolchain.toml`), Node.js 22 or later, pnpm,
-Python 3 with `jsonschema`, `numpy` and `Pillow`, and poppler (`pdftoppm`) for the visual diff.
-Optionally, install `qpdf`, `cargo-deny`, and nightly Rust with `cargo-fuzz`; `ci.sh` skips
-those checks when the tools are missing.
-
 ```sh
 git clone https://github.com/eddiesr93/inkoxide && cd inkoxide
-scripts/ci.sh                                          # build and test everything
-scripts/build-node.sh                                  # build the Node package in npm/
-(cd examples/node-smoke && pnpm install && pnpm test)  # use it like a client app
+scripts/ci.sh            # build and test everything
+scripts/ci.sh --quick    # format, tests and schema
+scripts/build-node.sh    # build the Node package in npm/
 ```
 
-`examples/node-smoke` installs `inkoxide` and `@inkoxide/schema` with `file:` dependencies,
-exactly as a client would.
+You need Rust (rustup picks 1.97.0 from `rust-toolchain.toml`), Node.js 22 or later, pnpm,
+Python 3 with `jsonschema`, `numpy` and `Pillow`, and poppler for the visual tests; `qpdf`,
+`cargo-deny` and `cargo-fuzz` are optional. [docs/TESTING.md](docs/TESTING.md) describes the
+test suites. The command-line tool renders a JSON document directly:
 
 ```sh
-scripts/ci.sh --quick      # fmt + tests + schema
-scripts/bench-headline.sh  # headline benchmark (median of 10)
+cargo run --release -p inkoxide-cli -- \
+  render fixtures/docs/invoice.json --fonts fixtures/fonts -o invoice.pdf
 ```
 
-### Command line
-
-```sh
-cargo run --release -p inkoxide-cli -- validate fixtures/docs/invoice.json --fonts fixtures/fonts
-cargo run --release -p inkoxide-cli -- render fixtures/docs/invoice.json --fonts fixtures/fonts -o invoice.pdf
-```
-
-### Repository layout
-
-- `schema/document.v1.json`: the input contract (JSON Schema 2020-12).
-- `crates/core`: the engine (crate `inkoxide`).
-- `crates/cli`: the `inkoxide` command-line tool.
-- `crates/node`: the napi-rs binding. `npm/` is the JS package around it.
-- `npm-schema/`: `@inkoxide/schema`, with TypeScript types and the bundled JSON Schema.
-- `fixtures/`: input documents, OFL fonts, images and expected renders.
-- `examples/node-smoke`: a client-style smoke test.
-- `docs/media/`: the README's example pictures, rendered by `@inkoxide/render`.
-
-### Documentation
-
-- [docs/CLIENT_INTEGRATION.md](docs/CLIENT_INTEGRATION.md): how to add Inkoxide to a Node app
-  (fonts, images, errors, threading, determinism, hyphenation).
-- [docs/API.md](docs/API.md): the Rust and Node APIs side by side, with options and error codes.
-- [schema/EXAMPLES.md](schema/EXAMPLES.md): complete example documents.
-  [docs/SCHEMA.md](docs/SCHEMA.md) is the full schema reference.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DECISIONS.md](docs/DECISIONS.md): design
-  and the decision log.
-- [docs/TESTING.md](docs/TESTING.md): test suites, fixtures and fuzzing.
-- [docs/BENCHMARKS.md](docs/BENCHMARKS.md): performance numbers.
-- [docs/DEPENDENCY_WATCH.md](docs/DEPENDENCY_WATCH.md): the pending rustybuzz/ttf-parser swap
-  (`scripts/dep-watch.sh`).
+| Path | Contents |
+|---|---|
+| `crates/core` | The engine (crate `inkoxide`) |
+| `crates/node`, `npm/` | The Node binding and its npm package |
+| `crates/cli` | The `inkoxide` command-line tool |
+| `schema/`, `npm-schema/` | The document schema and `@inkoxide/schema` |
+| `fixtures/` | Input documents, fonts, images and expected renders |
+| `examples/node-smoke` | A client-style test of the npm packages |
 
 ## Licence
 
-MIT. The fixture fonts are under the SIL Open Font License (see `fixtures/fonts/*-OFL.txt`).
+MIT. The fixture fonts are under the SIL Open Font License (`fixtures/fonts/*-OFL.txt`).

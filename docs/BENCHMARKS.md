@@ -1,5 +1,24 @@
 # Benchmarks
 
+## Compared with other libraries
+
+`@inkoxide/render` against `@react-pdf/renderer` 4.9, on the same documents with the same
+font, page size and page count. Each document is written once for both libraries where the API
+allows (the report uses only the primitives they share). Apple M4 Pro (14 cores), 24 GB,
+Node 24.14, macOS; median of 20 renders after a warm-up (10 for the report), in one process.
+Measured with `apps/compare/bench.tsx` in inkoxide-studio.
+
+| Document | Pages | Inkoxide, all cores | Inkoxide, 1 thread | react-pdf |
+|---|---:|---:|---:|---:|
+| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.3 ms | 1.0 ms | 19.2 ms |
+| Invoice (react-pdf with `StyleSheet`) | 1 | 1.2 ms | 1.3 ms | 17.6 ms |
+| Report: 40 sections, 1,000 table rows | 43 | 33 ms | 44 ms | 2,214 ms |
+
+The first render in a new process, including loading each library, takes 164 ms against
+231 ms for the invoice, and 191 ms against 2,407 ms for the report (median of 5 processes).
+
+## Engine
+
 **Headline:** `scripts/bench-headline.sh` renders
 `fixtures/docs/report-100p-realistic.json` (98 pages, 40 tables, two
 fonts, a header, and a footer with page numbers) 10 times and prints the
