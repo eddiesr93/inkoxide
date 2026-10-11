@@ -265,12 +265,3 @@ fn render_inner(
         marks: &marks,
     })
 }
-
-/// Raw serde message of a document that fails to parse (test support for
-/// the schema-parity check; not part of the stable API).
-#[doc(hidden)]
-pub fn debug_raw_parse_error(doc: &[u8]) -> Option<String> {
-    serde_json::from_slice::<schema::Document>(doc)
-        .err()
-        .map(|e| e.to_string())
-}

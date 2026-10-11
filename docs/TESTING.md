@@ -21,8 +21,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   output must pass veraPDF's `2b` profile.
 - `crates/core/tests/limits.rs`: memory guards (page limit, deepest
   accepted nesting on a small stack).
-- `crates/core/tests/schema_parity.rs`: serde structs accept exactly the
-  properties the JSON Schema declares.
+- `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
+  the properties the JSON Schema declares.
 - `crates/core/tests/threads.rs`: concurrent one-thread renders each run
   on their calling thread, at the same time.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.

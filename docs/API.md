@@ -146,6 +146,5 @@ get the full list.
 
 ## Not part of the API
 
-- `inkoxide::debug_raw_parse_error` is `#[doc(hidden)]` test support.
 - The Node `__testPanic` export is a non-enumerable test hook.
-- Everything else in the crate is `pub(crate)`.
+- Nothing else in the Rust crate is public: its modules are private.

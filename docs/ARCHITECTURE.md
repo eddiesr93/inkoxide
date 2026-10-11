@@ -49,8 +49,8 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 
 | Stage | Module | What it does |
 |---|---|---|
-| Parse | `schema`, `schema/de.rs` | JSON or MessagePack into typed structs, with the path of every error |
-| Validate | `validate` | Semantic checks: font ids, image ids, anchors, value ranges |
+| Parse | `validate` (`parse`), `schema` | JSON or MessagePack into the typed structs of `schema` (hand-written deserialisers in `schema/de.rs`); serde errors become validation errors with their path and code |
+| Validate | `validate` (`check`) | Semantic checks: font ids, image ids, anchors, value ranges |
 | Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding; Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
@@ -68,7 +68,11 @@ pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &
     -> Result<Vec<u8>, InkoxideError>;
 ```
 
-Everything else is `pub(crate)`.
+Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
+`InputFormat`, `FontStore`, `ImageStore`, `HyphenationStore`, `InkoxideError`,
+`ValidationError`, `ValidationCode`) and the constants `ENGINE_VERSION` and
+`SCHEMA_VERSION`. Every module is private, so nothing else is reachable from
+outside the crate.
 
 ## Layout data model
 

@@ -13,6 +13,16 @@ All notable changes to the packages in this repository. The format follows
   runs it), as documented. Every one-thread render used to queue for the same worker thread,
   so concurrent renders ran one at a time.
 
+### Removed
+
+- `inkoxide::debug_raw_parse_error`, a hidden test hook that was never part of the API. The
+  schema-parity check that used it is now a unit test inside the crate.
+
+### Repository
+
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) lists every public item of the crate, and places
+  parsing in `validate`, where it lives.
+
 ## 0.3.0 - 2026-10-12
 
 `inkoxide` 0.3.0, `@inkoxide/schema` 2.1.0, `@inkoxide/tailwind` 0.2.0, `@inkoxide/react` 0.2.0
