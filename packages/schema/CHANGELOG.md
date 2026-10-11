@@ -8,6 +8,13 @@ schema version 2.
 
 - **Text runs:** `hyphenate` on a run overrides the text node's `hyphenate` for the run's
   words, in the node's language.
+- **Fixed nodes:** a child of the page with `break.fixed` and `position: "absolute"` is placed
+  against the page content box, at the same place on every page, and takes no space. Before,
+  its `inset` and percentages were resolved against the whole flow, several pages tall, so a
+  `bottom` inset or a node after content that moved to a later page landed elsewhere, and a
+  node below the content could add a page. One placed on the first page with `top`, `left`
+  and `right` in points, before any content moves to another page, renders as before. `fixed`
+  now has a description in the schema.
 
 ## 1.0.0 - 2026-10-11
 

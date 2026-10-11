@@ -41,7 +41,8 @@ pub(crate) struct Placement {
     pub line_shifts: Vec<Vec<f32>>,
     /// First and last page each node or any descendant touches.
     pub page_range: Vec<(u32, u32)>,
-    /// Nodes with `break.fixed`: painted on every page.
+    /// Nodes with `break.fixed` (outermost only): painted on every page, at
+    /// their place on their first page. Overlays are not in the flow tree.
     pub fixed: Vec<NodeIdx>,
 }
 

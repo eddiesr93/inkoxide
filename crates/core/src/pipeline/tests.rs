@@ -328,3 +328,215 @@ fn letter_spaced_page_numbers_take_their_own_width() {
         }
     }
 }
+
+// Fixed nodes: overlays (fixed and absolutely positioned, at the top of the
+// flow) and fixed nodes in the flow.
+
+/// Page margin in the documents with fixed nodes; the content box is
+/// `W - 2·M` by `H - 2·M`.
+const M: f32 = 10.0;
+
+/// A document of `pages` pages (margins `M`) whose flow is `fixed` (one or
+/// more nodes) followed by a box that fills the pages.
+fn with_fixed(pages: u32, fixed: &str) -> String {
+    let flow = f32::from(u16::try_from(pages).unwrap()) * (H - 2.0 * M) - 1.0;
+    format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},
+            "margin":{{"top":{M},"right":{M},"bottom":{M},"left":{M}}},
+            "children":[{fixed},{{"type":"box","style":{{"height":{flow}}}}}]}}]}}"#
+    )
+}
+
+/// A red box with the node properties `extra` and the style `style`.
+fn red_box(extra: &str, style: &str) -> String {
+    format!(r#"{{"type":"box"{extra},"style":{{"backgroundColor":[1,0,0,1],{style}}}}}"#)
+}
+
+/// Runs `f` on the painted pages and the marks of a document.
+fn render_doc<R>(json: &str, f: impl FnOnce(&[PageContent], &Marks<'_>) -> R) -> R {
+    let store = store();
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, marks) = run(&doc, &fonts, &mut text, &images, Ok).unwrap();
+    f(&pages, &marks)
+}
+
+type Bounds = (f32, f32, f32, f32);
+
+/// The red rectangles painted on every page, as `(x, y, w, h)`.
+fn red_boxes(json: &str) -> Vec<Vec<Bounds>> {
+    render_doc(json, |pages, _| {
+        pages
+            .iter()
+            .map(|page| {
+                let mut out = Vec::new();
+                for op in &page.ops {
+                    let Op::FillPath { path, color, .. } = op else {
+                        continue;
+                    };
+                    if *color != [1.0, 0.0, 0.0, 1.0] {
+                        continue;
+                    }
+                    let (mut x0, mut y0) = (f32::INFINITY, f32::INFINITY);
+                    let (mut x1, mut y1) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+                    for seg in &path.segs {
+                        if let paint::PathSeg::MoveTo(x, y) | paint::PathSeg::LineTo(x, y) = *seg {
+                            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+                        }
+                    }
+                    out.push((x0, y0, x1 - x0, y1 - y0));
+                }
+                out
+            })
+            .collect()
+    })
+}
+
+fn close_bounds(a: Bounds, b: Bounds) -> bool {
+    close(a.0, b.0) && close(a.1, b.1) && close(a.2, b.2) && close(a.3, b.3)
+}
+
+/// Asserts that the document has `pages` pages and each shows one red box
+/// at `want`.
+fn on_every_page(json: &str, pages: u32, want: Bounds) {
+    let boxes = red_boxes(json);
+    assert_eq!(boxes.len(), pages as usize, "{boxes:?}");
+    for (k, b) in boxes.iter().enumerate() {
+        assert!(
+            b.len() == 1 && close_bounds(b[0], want),
+            "page {}: {b:?}, want {want:?}",
+            k + 1
+        );
+    }
+}
+
+const FIXED: &str = r#","break":{"fixed":true}"#;
+
+#[test]
+fn overlays_are_placed_in_the_content_box_of_every_page() {
+    let (cw, ch) = (W - 2.0 * M, H - 2.0 * M);
+    // From the bottom-right corner of one page's content box, not of the
+    // flow (several pages tall).
+    let corner = red_box(
+        FIXED,
+        r#""position":"absolute","inset":{"bottom":5,"right":5},"width":20,"height":10"#,
+    );
+    on_every_page(
+        &with_fixed(3, &corner),
+        3,
+        (M + cw - 25.0, M + ch - 15.0, 20.0, 10.0),
+    );
+    // Percentages are of the content box.
+    let centre = red_box(
+        FIXED,
+        r#""position":"absolute","inset":{"top":"50%","left":"25%"},"width":"50%","height":"10%""#,
+    );
+    on_every_page(
+        &with_fixed(2, &centre),
+        2,
+        (M + cw / 4.0, M + ch / 2.0, cw / 2.0, ch / 10.0),
+    );
+    // Insets on all sides size the box; negative ones reach into the margin.
+    let border = red_box(
+        FIXED,
+        r#""position":"absolute","inset":{"top":-5,"right":-5,"bottom":-5,"left":-5}"#,
+    );
+    on_every_page(
+        &with_fixed(4, &border),
+        4,
+        (M - 5.0, M - 5.0, cw + 10.0, ch + 10.0),
+    );
+}
+
+#[test]
+fn overlays_take_no_space() {
+    // Below the content box: painted off the page, without adding pages.
+    let low = red_box(
+        FIXED,
+        r#""position":"absolute","inset":{"top":1000},"width":20,"height":10"#,
+    );
+    assert_eq!(red_boxes(&with_fixed(2, &low)).len(), 2);
+    // The flow starts at the top of the content box, as without it.
+    let flow = with_fixed(
+        1,
+        &format!(
+            "{},{}",
+            red_box(FIXED, r#""position":"absolute","width":20,"height":10"#),
+            red_box("", r#""height":5"#)
+        ),
+    );
+    let boxes = &red_boxes(&flow)[0];
+    assert_eq!(boxes.len(), 2, "{boxes:?}");
+    assert!(close(boxes[0].1, M) && close(boxes[1].1, M), "{boxes:?}");
+}
+
+#[test]
+fn overlays_show_the_page_they_are_on() {
+    let pages = 12;
+    let numbers = n_of_m(
+        r#""position":"absolute","inset":{"bottom":0,"right":0}"#,
+        "Inter-Regular",
+        "",
+        ["Page ", " of "],
+        None,
+    );
+    let overlay = numbers.replacen(r#""type":"text""#, &format!(r#""type":"text"{FIXED}"#), 1);
+    let json = with_fixed(pages, &overlay);
+    for (k, numbers) in painted_numbers(&json).iter().enumerate() {
+        assert_eq!(numbers, &[(k + 1).to_string(), pages.to_string()]);
+    }
+    // Laid out with each page's digits: it ends at the content box's edge.
+    each_line(&json, pages, |n, lines| {
+        assert_eq!(lines.len(), 1, "page {n}: {lines:?}");
+        assert!(close(lines[0].2, W - M), "page {n}: {lines:?}");
+    });
+}
+
+#[test]
+fn overlays_follow_their_page_filter() {
+    let overlay = red_box(
+        &format!(r#"{FIXED},"pages":"notFirst""#),
+        r#""position":"absolute","width":20,"height":10"#,
+    );
+    let counts: Vec<usize> = red_boxes(&with_fixed(3, &overlay))
+        .iter()
+        .map(Vec::len)
+        .collect();
+    assert_eq!(counts, [0, 1, 1]);
+}
+
+#[test]
+fn fixed_nodes_in_the_flow_repeat_where_they_are() {
+    // Not positioned: it takes its room once, in the flow (which then needs
+    // a fourth page), and is painted at the same place on every page.
+    let fixed = red_box(FIXED, r#""height":10"#);
+    on_every_page(&with_fixed(3, &fixed), 4, (M, M, W - 2.0 * M, 10.0));
+}
+
+#[test]
+fn ids_and_bookmarks_in_overlays_point_at_the_first_page() {
+    let overlay = red_box(
+        &format!(r#"{FIXED},"id":"stamp","bookmark":{{"title":"Stamp"}}"#),
+        r#""position":"absolute","inset":{"bottom":0,"left":0},"width":20,"height":10"#,
+    );
+    let heading = red_box(r#","bookmark":{"title":"Body"}"#, r#""height":5"#);
+    let after = red_box(r#","bookmark":{"title":"After"}"#, r#""height":5"#);
+    let json = with_fixed(2, &format!("{heading},{overlay},{after}"));
+    render_doc(&json, |pages, marks| {
+        assert_eq!(pages.len(), 3);
+        // Once each, in document order.
+        let titles: Vec<&str> = marks.outline.iter().map(|e| e.title).collect();
+        assert_eq!(titles, ["Body", "Stamp", "After"]);
+        // PDF coordinates: y up from the bottom of the page.
+        let want = Dest {
+            page: 0,
+            x: M,
+            y: M + 10.0,
+        };
+        assert_eq!(marks.outline[1].dest, want);
+        assert_eq!(marks.anchors["stamp"], want);
+    });
+}
