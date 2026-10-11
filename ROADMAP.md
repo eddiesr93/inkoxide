@@ -3,28 +3,14 @@
 What is planned, in rough order. Plans change: open an issue if something you need is missing
 or should come sooner.
 
-## Now: components, styles and sources
+## Now
 
-Most of this lives in the React layer.
-
-- **`<Link>`**, as a component next to `href` on `Text` and `View`.
 - **`fixed`**: repeat any element on every page, besides `<Header>` and `<Footer>`.
-- **Page sizes**: the full ISO A, B and C series, RA and SRA, Folio and ID-1, `size={[w, h]}`
-  and a bare number.
-- **Image sources**: file paths, `{ uri, method, headers, body }`, and a function or promise
-  that returns a source.
-- **Style keys and values**:
-  - `objectFit` and `objectPosition` as style keys (today only the `fit` prop, always centred).
-  - `textOverflow: 'ellipsis'`; `textDecoration: 'line-through'` and `'underline line-through'`;
-    `textDecorationColor` and `textDecorationStyle`.
-  - `border`, `borderTop`… shorthand strings such as `'1px solid #e5e7eb'`.
-  - The units `em`, `rem`, `vw`, `vh` and `pc` in style objects.
+- **`objectPosition`**: place a fitted image inside its box (today it is always centred).
 - **Document props**: `producer`, `pageMode`, `pageLayout`.
-- **Fonts**: WOFF and WOFF2 files, and a custom hyphenation function.
-- **Output**: `renderToStream`.
 - **`debug`**: outline boxes, padding and margins.
-- **Page numbers**: size `<PageNumber />` and `<TotalPages />` to the final digits instead of a
-  fixed width.
+- **Page numbers in body text**: lay them out with their real digits, as headers and footers
+  already do.
 
 ## Next: engine features
 

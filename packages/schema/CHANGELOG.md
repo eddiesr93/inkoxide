@@ -4,6 +4,11 @@ Changes to the document format. Within schema version 1, changes are backwards c
 documents that were valid stay valid and render the same way. A breaking change would start
 schema version 2.
 
+## Unreleased
+
+- **Text runs:** `hyphenate` on a run overrides the text node's `hyphenate` for the run's
+  words, in the node's language.
+
 ## 1.0.0 - 2026-10-11
 
 Schema version 1, the first release.
