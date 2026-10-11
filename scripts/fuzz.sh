@@ -6,7 +6,7 @@
 # or runs out of memory; findings land in fuzz/artifacts/.
 #
 #   scripts/fuzz.sh          # 60 s
-#   scripts/fuzz.sh 3600     # the M6 acceptance run (1 h)
+#   scripts/fuzz.sh 3600     # a one-hour run
 set -euo pipefail
 cd "$(dirname "$0")/../fuzz"
 

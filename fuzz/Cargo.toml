@@ -1,6 +1,6 @@
 # Fuzz targets (cargo-fuzz, nightly). Not a workspace member: libFuzzer
 # needs sanitizer flags the rest of the build must not see. See
-# docs/TESTING.md and ADR-031.
+# docs/TESTING.md.
 [package]
 name = "inkoxide-fuzz"
 version = "0.0.0"

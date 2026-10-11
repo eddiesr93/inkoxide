@@ -185,7 +185,7 @@ impl LeafMeasure for NoContent {
     }
 }
 
-/// Dependency firewall around the flex/grid engine (§5.1).
+/// Dependency firewall around the flex/grid engine.
 pub(crate) trait LayoutEngine {
     /// Lays out `tree` in a column of the given `width` and unbounded
     /// height (at least `min_height`, so `flexGrow` can fill a short page),

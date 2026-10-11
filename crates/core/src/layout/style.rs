@@ -171,7 +171,7 @@ fn align_self(a: AlignSelf) -> Option<TAlignSelf> {
     })
 }
 
-/// Converts a node style. `flexDirection` defaults to `column` (ADR-006).
+/// Converts a node style. `flexDirection` defaults to `column`.
 pub(crate) fn to_taffy(s: &S) -> Style {
     let mut t = Style {
         display: match s.display {

@@ -1,0 +1,250 @@
+import { createContext } from 'react';
+import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants.js';
+
+import { HOST, HOST_NAME } from '../components/index.ts';
+import { TemplateError } from '../errors.ts';
+import type { Container, Instance, Node, TextInstance } from './instance.ts';
+
+interface HostContext {
+  /** Host type of the nearest host ancestor (`'root'` at the top). */
+  parent: string;
+}
+
+const ROOT_CONTEXT: HostContext = { parent: 'root' };
+const contexts = new Map<string, HostContext>();
+const contextFor = (parent: string): HostContext => {
+  let c = contexts.get(parent);
+  if (!c) {
+    c = { parent };
+    contexts.set(parent, c);
+  }
+  return c;
+};
+
+const FLOW = new Set<string>([
+  HOST.View,
+  HOST.Text,
+  HOST.Image,
+  HOST.Table,
+  HOST.PageBreak,
+  HOST.Spacer,
+  HOST.Field,
+  HOST.Svg,
+  HOST.Canvas,
+]);
+const INLINE = new Set<string>([HOST.Text, HOST.PageNumber, HOST.TotalPages]);
+const SVG_SHAPES = new Set<string>([
+  HOST.Path,
+  HOST.Rect,
+  HOST.Circle,
+  HOST.Ellipse,
+  HOST.Line,
+  HOST.Polyline,
+  HOST.Polygon,
+]);
+const SVG_CONTENT = new Set<string>([
+  ...SVG_SHAPES,
+  HOST.G,
+  HOST.Defs,
+  HOST.ClipPath,
+  HOST.LinearGradient,
+  HOST.RadialGradient,
+]);
+const LEAF = new Set<string>([
+  HOST.Image,
+  HOST.PageBreak,
+  HOST.Spacer,
+  HOST.PageNumber,
+  HOST.TotalPages,
+  HOST.Field,
+  HOST.Canvas,
+  HOST.Stop,
+  ...SVG_SHAPES,
+]);
+
+/** Which host types may appear directly inside which. Strings: see TEXT_PARENTS. */
+function allowed(parent: string, child: string): boolean {
+  switch (parent) {
+    case 'root':
+      return child === HOST.Document;
+    case HOST.Document:
+      return child === HOST.Page;
+    case HOST.Page:
+      return FLOW.has(child) || child === HOST.Header || child === HOST.Footer;
+    case HOST.Text:
+      return INLINE.has(child);
+    case HOST.Table:
+      return child === HOST.Row;
+    case HOST.Row:
+      return child === HOST.Cell;
+    case HOST.Header:
+    case HOST.Footer:
+    case HOST.View:
+    case HOST.Cell:
+      return FLOW.has(child);
+    case HOST.Svg:
+    case HOST.G:
+    case HOST.Defs:
+    case HOST.ClipPath:
+      return SVG_CONTENT.has(child);
+    case HOST.LinearGradient:
+    case HOST.RadialGradient:
+      return child === HOST.Stop;
+    default:
+      return false;
+  }
+}
+
+/** Containers where bare strings are allowed (they become an anonymous text node). */
+const TEXT_PARENTS = new Set<string>([HOST.Text, HOST.View, HOST.Cell, HOST.Header, HOST.Footer, HOST.Page]);
+
+const name = (type: string): string => (type === 'root' ? 'the root' : `<${HOST_NAME[type] ?? type}>`);
+
+function placementError(parent: string, child: string): TemplateError {
+  if (!HOST_NAME[child]) {
+    return new TemplateError(
+      `<${child}> is not an Inkoxide component. Templates use only @inkoxide/react components (View, Text, Table, …), not HTML elements.`,
+    );
+  }
+  if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
+  if (parent === HOST.Text) {
+    return new TemplateError(
+      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <PageNumber> and <TotalPages>.`,
+    );
+  }
+  if (child === HOST.PageNumber || child === HOST.TotalPages) {
+    return new TemplateError(`${name(child)} must be inside a <Text>.`);
+  }
+  if (SVG_CONTENT.has(child) || child === HOST.Stop) {
+    return new TemplateError(`${name(child)} is an SVG primitive: it goes inside <Svg>.`);
+  }
+  if (parent === HOST.Svg || SVG_CONTENT.has(parent)) {
+    return new TemplateError(`${name(child)} cannot be inside ${name(parent)}; only SVG primitives can.`);
+  }
+  if (child === HOST.Header || child === HOST.Footer) {
+    return new TemplateError(`${name(child)} must be a direct child of <Page>.`);
+  }
+  if (parent === 'root') return new TemplateError('A template must render one <Document> at the top.');
+  return new TemplateError(`${name(child)} cannot be inside ${name(parent)}.`);
+}
+
+let currentPriority: number = NoEventPriority;
+
+const append = (parent: Instance | Container, child: Node): void => {
+  parent.children.push(child);
+};
+const insert = (parent: Instance | Container, child: Node, before: Node): void => {
+  const at = parent.children.indexOf(child);
+  if (at >= 0) parent.children.splice(at, 1);
+  const i = parent.children.indexOf(before);
+  parent.children.splice(i < 0 ? parent.children.length : i, 0, child);
+};
+const remove = (parent: Instance | Container, child: Node): void => {
+  const i = parent.children.indexOf(child);
+  if (i >= 0) parent.children.splice(i, 1);
+};
+
+/**
+ * The host config: a mutation-mode renderer whose instances are plain objects. Templates render
+ * once and synchronously, so the update paths exist only for completeness.
+ */
+export const hostConfig = {
+  rendererPackageName: '@inkoxide/react',
+  rendererVersion: '0.1.0',
+  extraDevToolsConfig: null,
+  isPrimaryRenderer: false,
+  supportsMutation: true,
+  supportsPersistence: false,
+  supportsHydration: false,
+  supportsMicrotasks: true,
+  scheduleMicrotask: queueMicrotask,
+  scheduleTimeout: setTimeout,
+  cancelTimeout: clearTimeout,
+  noTimeout: -1,
+  NotPendingTransition: null,
+  HostTransitionContext: createContext(null),
+
+  // A nested root (a `render` prop's output) starts inside its owner's host type.
+  getRootHostContext: (root: Container): HostContext =>
+    root.parent ? contextFor(root.parent) : ROOT_CONTEXT,
+  getChildHostContext: (_parent: HostContext, type: string): HostContext => contextFor(type),
+  getPublicInstance: (instance: Instance): Instance => instance,
+  prepareForCommit: (): null => null,
+  resetAfterCommit: (): void => {},
+  preparePortalMount: (): void => {},
+
+  createInstance(
+    type: string,
+    props: Record<string, unknown>,
+    _root: Container,
+    ctx: HostContext,
+    fiber: unknown,
+  ) {
+    if (!allowed(ctx.parent, type)) throw placementError(ctx.parent, type);
+    const instance: Instance = { kind: 'element', type, props, children: [], fiber };
+    return instance;
+  },
+  createTextInstance(text: string, _root: Container, ctx: HostContext, fiber: unknown): TextInstance {
+    if (ctx.parent === HOST.Svg || SVG_CONTENT.has(ctx.parent)) {
+      throw new TemplateError('Text inside <Svg> is not supported; place a <Text> over the drawing instead.');
+    }
+    if (!TEXT_PARENTS.has(ctx.parent)) {
+      throw new TemplateError(
+        `Text "${text.length > 40 ? `${text.slice(0, 40)}…` : text}" cannot be directly inside ${name(ctx.parent)}; wrap it in <Text>.`,
+      );
+    }
+    return { kind: 'text', text, fiber };
+  },
+  appendInitialChild: append,
+  appendChild: append,
+  appendChildToContainer: append,
+  insertBefore: insert,
+  insertInContainerBefore: insert,
+  removeChild: remove,
+  removeChildFromContainer: remove,
+  clearContainer(container: Container): void {
+    container.children.length = 0;
+  },
+  finalizeInitialChildren: (): boolean => false,
+  shouldSetTextContent: (): boolean => false,
+  commitMount: (): void => {},
+  commitUpdate(instance: Instance, _type: string, _old: unknown, next: Record<string, unknown>): void {
+    instance.props = next;
+  },
+  commitTextUpdate(instance: TextInstance, _old: string, next: string): void {
+    instance.text = next;
+  },
+  resetTextContent: (): void => {},
+  hideInstance: (): void => {},
+  unhideInstance: (): void => {},
+  hideTextInstance: (): void => {},
+  unhideTextInstance: (): void => {},
+  detachDeletedInstance: (): void => {},
+
+  setCurrentUpdatePriority(p: number): void {
+    currentPriority = p;
+  },
+  getCurrentUpdatePriority: (): number => currentPriority,
+  resolveUpdatePriority: (): number =>
+    currentPriority !== NoEventPriority ? currentPriority : DefaultEventPriority,
+  resolveEventType: (): null => null,
+  resolveEventTimeStamp: (): number => -1.1,
+  trackSchedulerEvent: (): void => {},
+  shouldAttemptEagerTransition: (): boolean => false,
+  requestPostPaintCallback: (): void => {},
+  getInstanceFromNode: (): null => null,
+  getInstanceFromScope: (): null => null,
+  beforeActiveInstanceBlur: (): void => {},
+  afterActiveInstanceBlur: (): void => {},
+  prepareScopeUpdate: (): void => {},
+  resetFormInstance: (): void => {},
+
+  maySuspendCommit: (): boolean => false,
+  maySuspendCommitOnUpdate: (): boolean => false,
+  maySuspendCommitInSyncRender: (): boolean => false,
+  preloadInstance: (): boolean => true,
+  startSuspendingCommit: (): void => {},
+  suspendInstance: (): void => {},
+  waitForCommitToBeReady: (): null => null,
+  getSuspendedCommitReason: (): null => null,
+};

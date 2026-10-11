@@ -1,4 +1,4 @@
-//! Memory and stack guards (M6): hostile sizes fail fast with an error,
+//! Memory and stack guards: hostile sizes fail fast with an error,
 //! the deepest nesting the parser accepts renders on a small stack.
 
 use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};

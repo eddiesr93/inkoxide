@@ -9,7 +9,7 @@ license = "MIT"
 rust-version = "1.97"
 repository = "https://github.com/eddiesr93/inkoxide"
 
-# Exact pins (§3): upgrades are deliberate PRs.
+# Exact pins: upgrades are deliberate PRs.
 [workspace.dependencies]
 inkoxide = { path = "crates/core", version = "=0.1.0" }
 serde = { version = "=1.0.229", features = ["derive"] }

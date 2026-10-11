@@ -1,0 +1,16 @@
+name: Feature request
+description: A component, style property, Tailwind class or engine feature you need.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: The document you are building and what is missing. How you would write it, if you know.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: Anything you do today instead, if any.

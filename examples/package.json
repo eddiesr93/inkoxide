@@ -1,0 +1,17 @@
+{
+  "name": "@inkoxide/examples",
+  "private": true,
+  "type": "module",
+  "description": "Example documents for @inkoxide/render, and the screenshots in its README.",
+  "scripts": {
+    "render": "tsx render.ts"
+  },
+  "dependencies": {
+    "@inkoxide/render": "workspace:*",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "tsx": "4.23.15"
+  }
+}

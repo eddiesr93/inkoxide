@@ -1,4 +1,4 @@
-//! `AcroForm` output (ADR-048): one field per name, one widget annotation
+//! `AcroForm` output: one field per name, one widget annotation
 //! per painted field op, and an appearance stream for every widget state
 //! (no `NeedAppearances`, so PDF/A-2b accepts the form).
 

@@ -2,7 +2,7 @@
 
 use super::{Path, PathSeg};
 
-/// Bézier circle approximation constant (§6.7).
+/// Bézier circle approximation constant.
 const KAPPA: f32 = 0.552_284_8;
 
 /// Corner radii `(rx, ry)` in order top-left, top-right, bottom-right,

@@ -8,14 +8,14 @@
 //! is its layout position plus its shift; page `k` shows paged space
 //! `[k·H, (k+1)·H)`.
 //!
-//! Rules (§6.4):
+//! Rules:
 //! - `break.before/after: page` and `pageBreak` nodes force a new page
 //!   (never an empty one).
 //! - A node whose first unbreakable piece (its *head*) does not fit in the
 //!   rest of the page moves whole to the next page, so a box never leaves
 //!   just its top border/padding behind. `minPresenceAhead` raises the head.
 //! - Atomic nodes (`inside: avoid`, row/grid/reversed boxes, images,
-//!   spacers, tables until M4, positioned, rotated or fixed nodes) move
+//!   spacers, positioned, rotated or fixed nodes) move
 //!   whole; taller than a page, they are sliced (with a warning).
 //! - Column boxes split between children; text splits between lines.
 

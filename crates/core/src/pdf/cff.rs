@@ -1,9 +1,9 @@
 //! CFF helpers for embedding CFF-outline OpenType fonts as
-//! `CIDFontType0C` (ADR-037).
+//! `CIDFontType0C`.
 //!
 //! `subsetter` turns every CFF font into a CID-keyed one whose charset is
 //! the identity (CID = new glyph id). Content streams use the original
-//! glyph ids as CIDs (ADR-032), so a subset gets a new format 0 charset
+//! glyph ids as CIDs, so a subset gets a new format 0 charset
 //! that maps each new glyph id back to its original id. The Top DICT
 //! writes the charset offset as a fixed 5-byte integer, so it is patched
 //! in place and the charset is appended at the end.

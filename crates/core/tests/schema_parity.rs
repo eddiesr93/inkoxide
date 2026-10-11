@@ -9,7 +9,7 @@ use std::path::Path;
 use inkoxide::{FontStore, ImageStore, InputFormat};
 
 fn schema() -> serde_json::Value {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/document.v1.json");
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/schema/document.v1.json");
     serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap()
 }
 

@@ -1,7 +1,7 @@
 //! Image `XObjects`: JPEG passthrough (`DCTDecode`) or Flate samples with an
 //! optional soft mask for alpha. SVG becomes a Form `XObject` (`svg.rs`).
 //! PDF/A output has an sRGB output intent only, so CMYK JPEGs are
-//! converted to RGB samples there (ADR-039).
+//! converted to RGB samples there.
 
 use pdf_writer::{Filter, Pdf, Ref};
 

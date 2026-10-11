@@ -5,7 +5,7 @@
 //! ```
 //!
 //! The input is a fully resolved document tree (see
-//! `schema/document.v1.json`); the engine knows nothing about HTML, CSS or
+//! `packages/schema/document.v1.json`); the engine knows nothing about HTML, CSS or
 //! React. This crate does no I/O: bytes in, bytes out.
 
 #![forbid(unsafe_code)]
@@ -78,14 +78,14 @@ pub struct RenderOptions {
     /// shared pool (all cores), `Some(1)` renders on the calling thread.
     pub threads: Option<usize>,
     /// Embed only the glyphs a document uses (default `true`). Off embeds
-    /// whole font programs, as before M7.
+    /// whole font programs, for debugging.
     pub subset_fonts: bool,
     /// Write PDF/A-2b (default `false`): XMP metadata, an sRGB output
     /// intent and a file identifier; CMYK JPEGs are converted to RGB and
-    /// `.notdef` glyphs are left out (ADR-039).
+    /// `.notdef` glyphs are left out.
     pub pdf_a: bool,
     /// Hyphenation patterns registered at runtime; they win over the
-    /// built-in ones for their language (ADR-044). Default: none.
+    /// built-in ones for their language. Default: none.
     pub hyphenation: HyphenationStore,
 }
 

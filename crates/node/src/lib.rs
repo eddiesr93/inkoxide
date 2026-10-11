@@ -3,11 +3,11 @@
 //! libuv pool, and error mapping. All engine logic lives in `inkoxide`.
 //!
 //! Errors cross the boundary as `Error`s whose message is a JSON object
-//! `{ code, path, message }`; `npm/index.js` unpacks it into an
+//! `{ code, path, message }`; `packages/inkoxide/index.js` unpacks it into an
 //! `InkoxideError` with those three properties.
 
 // napi exports take owned JS values and document their errors in
-// `npm/index.d.ts`; napi objects hold JS handles that have no `Debug`.
+// `packages/inkoxide/index.d.ts`; napi objects hold JS handles that have no `Debug`.
 #![allow(
     clippy::needless_pass_by_value,
     clippy::missing_errors_doc,

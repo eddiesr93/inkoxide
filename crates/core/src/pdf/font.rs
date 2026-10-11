@@ -1,9 +1,9 @@
 //! Font embedding: Type0 / Identity-H with a `CIDFontType2` descendant and a
 //! TrueType program (`FontFile2`), or a `CIDFontType0` descendant and a
-//! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`, ADR-037); `W`
-//! widths for used glyphs and a `ToUnicode` `CMap` (§6.1).
+//! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`); `W`
+//! widths for used glyphs and a `ToUnicode` `CMap`.
 //!
-//! Programs are subset to the glyphs used (ADR-032). CIDs stay the
+//! Programs are subset to the glyphs used. CIDs stay the
 //! original glyph ids, so content streams are encoded before the glyph set
 //! is known; a `CIDToGIDMap` stream maps them to the renumbered subset.
 

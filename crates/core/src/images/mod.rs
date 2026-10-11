@@ -2,7 +2,7 @@
 //! the per-render set of unique images (deduplicated by content hash).
 //!
 //! JPEG is never decoded: its bytes go into the PDF as `DCTDecode` and only
-//! the headers are read (§6.6). PNG is decoded behind [`ImageDecoder`] and
+//! the headers are read. PNG is decoded behind [`ImageDecoder`] and
 //! written as Flate-compressed samples plus an optional alpha `SMask`.
 
 mod base64;

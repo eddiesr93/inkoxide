@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+# Binary fixtures and media
+*.png binary
+*.jpg binary
+*.ttf binary
+*.otf binary
+*.gif binary
+*.webp binary
+
+# Generated files: collapsed in diffs, not counted in language statistics
+packages/schema/index.d.ts linguist-generated
+docs/SCHEMA.md linguist-generated
+docs/TAILWIND_SUPPORT.md linguist-generated
+fixtures/docs/report-100p-realistic.json linguist-generated
+fixtures/** linguist-vendored
+pnpm-lock.yaml linguist-generated

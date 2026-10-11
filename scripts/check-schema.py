@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Validates every fixtures/docs/*.json, and every ```json block in
-schema/EXAMPLES.md, against schema/document.v1.json.
+packages/schema/EXAMPLES.md, against packages/schema/document.v1.json.
 
 Together with crates/core/tests/schema_parity.rs this keeps the JSON Schema
 (the contract) and the Rust structs in agreement.
@@ -13,12 +13,12 @@ import sys
 from jsonschema import Draft202012Validator
 
 root = pathlib.Path(__file__).resolve().parent.parent
-schema = json.loads((root / "schema/document.v1.json").read_text())
+schema = json.loads((root / "packages/schema/document.v1.json").read_text())
 Draft202012Validator.check_schema(schema)
 validator = Draft202012Validator(schema)
 
 docs = [(p.name, json.loads(p.read_text())) for p in sorted((root / "fixtures/docs").glob("*.json"))]
-examples = (root / "schema/EXAMPLES.md").read_text().split("```json\n")[1:]
+examples = (root / "packages/schema/EXAMPLES.md").read_text().split("```json\n")[1:]
 docs += [(f"EXAMPLES.md #{i + 1}", json.loads(b.split("\n```")[0])) for i, b in enumerate(examples)]
 
 failed = 0

@@ -1,6 +1,6 @@
-//! Hyphenation behind a trait (§5.1), so pattern sources can change
+//! Hyphenation behind a trait, so pattern sources can change
 //! without touching line layout. Patterns registered at runtime
-//! ([`HyphenationStore`], ADR-044) win over hypher's built-in ones.
+//! ([`HyphenationStore`]) win over hypher's built-in ones.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -16,7 +16,7 @@ pub(crate) trait Hyphenator: Send + Sync {
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize>;
 }
 
-/// `hypher`: embedded TeX patterns for ~50 languages (ADR-015).
+/// `hypher`: embedded TeX patterns for ~50 languages.
 pub(crate) struct HypherHyphenator;
 
 fn lang_of(code: &str) -> Option<hypher::Lang> {
@@ -429,7 +429,7 @@ mod tests {
     fn registered_patterns_come_first() {
         let mut store = HyphenationStore::new();
         let h = ResolvedHyphenator { store: &store };
-        // Built in (hypher), and none for Japanese (ADR-015).
+        // Built in (hypher), and none for Japanese.
         assert_eq!(
             h.hyphenate("documentation", "en"),
             HypherHyphenator.hyphenate("documentation", "en")

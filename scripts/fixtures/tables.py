@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates the M4 table fixtures: table-basic, table-split-header-repeat.
+"""Generates the table fixtures: table-basic, table-split-header-repeat.
 The 500-page table dump is generated on demand by
 crates/core/tests/large.rs (too large to commit)."""
 import json

@@ -1,4 +1,4 @@
-//! Interactive form fields (`AcroForm`, ADR-048): intrinsic size and the
+//! Interactive form fields (`AcroForm`): intrinsic size and the
 //! widget ops painting hands to the PDF writer.
 
 use taffy::{AvailableSpace, Size as TSize};

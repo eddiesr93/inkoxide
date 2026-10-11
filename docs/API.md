@@ -1,12 +1,12 @@
 # Public API
 
 Inkoxide has two public surfaces: the Rust crate `inkoxide`
-(`crates/core`) and the Node package `inkoxide` (`npm/`, built from
-`crates/node`). They expose the same engine with the same options and
+(`crates/core`) and the Node package `inkoxide` (`packages/inkoxide`,
+built from `crates/node`). They expose the same engine with the same options and
 error codes. The document format itself is described in
-[`SCHEMA.md`](SCHEMA.md) and [`../schema/EXAMPLES.md`](../schema/EXAMPLES.md).
+[`SCHEMA.md`](SCHEMA.md) and [`EXAMPLES.md`](../packages/schema/EXAMPLES.md).
 
-The API was frozen for integration in ADR-042. From here on, changes are
+The API follows semantic versioning. Changes are
 additive: new options, new error codes and new functions are minor
 versions; removing or renaming any of them is a major version.
 
@@ -37,8 +37,8 @@ string, which is read as UTF-8 JSON.
 | `creation_date` / `with_creation_date` | `creationDate` | none | RFC 3339 timestamp; overrides `meta.creationDate`. With neither, no date is written |
 | `threads` / `with_threads` | `threads` | all cores | Worker threads for this render; `1` stays on the calling thread |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
-| `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b (ADR-039) |
-| `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns (ADR-044) |
+| `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b |
+| `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
 
@@ -81,7 +81,7 @@ language hypher lacks), register a file:
 1. Download a pattern file from hyph-utf8, for example `hyph-en-us.tex` from
    `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`.
 2. Check that its licence suits you. Pattern files are not shipped with
-   Inkoxide (ADR-015).
+   Inkoxide.
 3. Register it:
 
 ```js
@@ -127,7 +127,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 
 The full list of validation codes is `ValidationCode` in
 `crates/core/src/error.rs` and the `ValidationCode` union in
-`npm/index.d.ts`.
+`packages/inkoxide/index.d.ts`.
 
 The fields of a Node error are:
 

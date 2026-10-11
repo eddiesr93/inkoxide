@@ -1,15 +1,13 @@
 # Testing
 
-Everything runs locally. The hosted workflows are
-`.github/workflows/release.yml`, which builds and publishes the npm
-packages and never runs tests (ADR-051): run `scripts/ci.sh` before
-dispatching it; and `.github/workflows/test-windows.yml`, which runs the
-Node binding tests against a release run's Windows binary, the one
-platform a Mac cannot run (ADR-053).
+Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
+clippy, the Rust tests, the schema checks, the Node binding tests and the
+TypeScript packages. `scripts/ci.sh` runs the same checks and more
+(visual regression, cargo-deny, a fuzz smoke) on your machine:
 
 ```sh
-scripts/ci.sh          # fmt, clippy, tests, schema, qpdf, visual diff, cargo-deny, node, fuzz smoke
-scripts/ci.sh --quick  # fmt + tests + schema
+scripts/ci.sh          # everything
+scripts/ci.sh --quick  # formatting, tests and schema checks
 ```
 
 ## Suites
@@ -38,25 +36,14 @@ scripts/ci.sh --quick  # fmt + tests + schema
   and fails if the committed JSON differs. It is also the input of
   `scripts/bench-headline.sh`.
 - `fixtures/hyphenation/<fixture>.<lang>.tex`: hyphenation patterns
-  registered only while rendering `<fixture>` (ADR-044).
-- `npm/test`: the Node binding (`scripts/build-node.sh` first).
-- `examples/node-smoke`: a separate package that installs `npm/` with
-  `file:../../npm` and uses it like a client app: it registers two fonts,
-  renders the invoice asynchronously, checks `%PDF-` and `qpdf --check`,
-  prints timings, checks that a 10 ms interval keeps ticking during a
-  100-page render, and checks the error shapes (`UNKNOWN_FONT` with a
-  path, `INVALID_ARGUMENT`, `INTERNAL`). Run it with
-  `scripts/build-node.sh && cd examples/node-smoke && pnpm install && pnpm test`.
-  After rebuilding the binary, run `pnpm install --force`, because pnpm
-  copies `file:` packages. The `INTERNAL` case prints a Rust panic
-  message to stderr; that is expected.
-  The same package type-checks `invoice.ts` against `@inkoxide/schema`
-  (`tsc --noEmit`), renders it, and checks that the result is
-  byte-identical to `fixtures/docs/invoice.json`. It also renders every
-  document in `schema/EXAMPLES.md` and checks that ajv error paths match
-  the engine's.
-- `scripts/schema/gen-ts.sh`: regenerates `npm-schema/`. `ci.sh` fails
-  when the checked-in output is stale.
+  registered only while rendering `<fixture>`.
+- `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
+  first): rendering, error shapes, the libuv thread pool, ESM and CommonJS.
+- `packages/*/test` (Vitest, `pnpm test`): Tailwind class mapping, the
+  React tree builder, `renderToBuffer`, `Font.register` and error messages.
+- `node scripts/gen-schema-types.mjs`: regenerates
+  `packages/schema/index.d.ts`. `ci.sh` fails when the checked-in output
+  is stale.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).
 
 ## Fuzzing
@@ -67,7 +54,7 @@ Needs the nightly toolchain and cargo-fuzz:
 rustup toolchain install nightly
 cargo install cargo-fuzz
 scripts/fuzz.sh 60       # both targets, 60 s each
-scripts/fuzz.sh 3600     # the M6 acceptance run
+scripts/fuzz.sh 3600     # a one-hour run
 ```
 
 Targets (in `fuzz/`, outside the workspace):
@@ -97,47 +84,14 @@ cargo run --release --bin repro -- stats corpus/render_tree             # genera
 `scripts/ci.sh` runs a 30-second smoke per target when nightly and
 cargo-fuzz are installed and skips it otherwise.
 
-## macOS (Apple Silicon)
+## Platform notes
 
-Verified on 2026-10-11 (macOS arm64, Node 24): `scripts/ci.sh` passes,
-and every fixture matches the Linux references at the default visual
-threshold. `cargo-deny` and the fuzz smoke were not installed, so those
-steps were skipped. To verify again, run on the Mac:
-
-```sh
-# Tools (once)
-xcode-select --install                       # C toolchain / linker
-curl https://sh.rustup.rs -sSf | sh          # rustup; rust-toolchain.toml pins 1.97.0
-brew install qpdf poppler python node pnpm   # qpdf, pdftoppm/pdfinfo, python3, node ≥ 18
-python3 -m pip install --user jsonschema numpy pillow
-cargo install cargo-deny                     # optional; ci.sh skips it when missing
-rustup toolchain install nightly && cargo install cargo-fuzz   # optional (fuzz smoke)
-brew install verapdf                         # optional (PDF/A validation); or the veraPDF installer
-
-# Checks
-scripts/ci.sh
-```
-
-Expected output: the first line is `platform: Darwin arm64`, every step
-prints its `== …` header, the Node step prints `# fail 0`, the visual
-step lists `ok   <fixture>` for every fixture, and the run ends with
-`== all checks passed` (exit status 0).
-
-Notes:
-
-- The Node binding is built by `scripts/build-node.sh`, which runs
-  `cargo build -p inkoxide-node` and copies `libinkoxide_node.dylib` to
-  `npm/inkoxide.darwin-arm64.node`. `napi-build` sets the macOS linker
-  flags (`-undefined dynamic_lookup`), so `@napi-rs/cli` is not needed.
-- Output is deterministic on each platform. Across platforms it is
-  expected to match too, but this is not guaranteed: rotation, SVG arcs
-  and the sRGB curve call `sin`/`cos`/`powf`, which come from the
-  platform's libm and may differ in the last bit. Separately, poppler and
-  FreeType from Homebrew may antialias slightly differently from the
-  Linux build that produced `fixtures/expected/`. If the visual step
-  fails while `cargo test` passes, compare `target/visual/*-diff.png`; for
-  pure antialiasing noise, rerun with a looser comparison, e.g.
-  `INKOXIDE_VISUAL_THRESHOLD=0.003 scripts/ci.sh`, and record the value
-  needed in this section. Do not regenerate the references on macOS.
-- To confirm cross-platform byte identity, compare
-  `shasum -a 256 target/fixtures/*.pdf` from both machines.
+Output is byte-identical between runs on one platform. Across platforms it
+is expected to match too, but this is not guaranteed: rotation, SVG arcs and
+the sRGB curve call `sin`/`cos`/`powf`, which come from the platform's libm
+and may differ in the last bit. Poppler and FreeType builds may also
+antialias differently from the Linux build that produced
+`fixtures/expected/`. If the visual step fails while `cargo test` passes,
+compare `target/visual/*-diff.png`; for antialiasing noise, rerun with a
+looser threshold, e.g. `INKOXIDE_VISUAL_THRESHOLD=0.003 scripts/ci.sh`.
+Regenerate the references on Linux only.

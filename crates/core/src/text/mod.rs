@@ -203,7 +203,7 @@ impl UnicodeMap {
     }
 }
 
-/// Dependency firewall around text shaping (§5.1).
+/// Dependency firewall around text shaping.
 pub(crate) trait TextShaper {
     /// Shapes a paragraph once, independently of width.
     fn prepare(&mut self, runs: &[TextRun], style: &ParaStyle) -> Prepared;

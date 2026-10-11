@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates the M3 pagination fixtures:
+"""Generates the pagination fixtures:
 multi-page-text, keep-together, header-footer-pagenumbers."""
 import json
 import pathlib

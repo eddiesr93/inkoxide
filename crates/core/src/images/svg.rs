@@ -1,4 +1,4 @@
-//! SVG parsing through `usvg`, with limits for untrusted input (ADR-038).
+//! SVG parsing through `usvg`, with limits for untrusted input.
 //!
 //! The XML is parsed once with `roxmltree` (re-exported by `usvg`), checked,
 //! then converted. The checks run before `usvg` builds its tree because

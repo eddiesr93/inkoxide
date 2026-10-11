@@ -2,7 +2,7 @@
 //! styles beyond point padding and vertical alignment. Such a cell is a
 //! column flexbox whose only item stretches to the content width, so its
 //! layout is closed-form; building a Taffy tree per cell would dominate
-//! the layout of large tables (ADR-028). Anything else goes to Taffy.
+//! the layout of large tables. Anything else goes to Taffy.
 
 use taffy::prelude::{AvailableSpace, Size as TSize};
 

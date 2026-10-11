@@ -1,29 +1,24 @@
 # Client integration (Node.js)
 
-How to add Inkoxide to a Node application. [API.md](API.md) has the full
-API and [../schema/EXAMPLES.md](../schema/EXAMPLES.md) has complete
-documents. `examples/node-smoke` is a working client that covers
-everything on this page.
+How to use the engine directly from a Node application, with documents
+built as JSON. To write documents as React components, use
+[`@inkoxide/render`](../packages/render/README.md) instead; it does all of
+this for you. [API.md](API.md) has the full API and
+[EXAMPLES.md](../packages/schema/EXAMPLES.md) has complete documents.
 
 ## Install
 
-Nothing is published to npm. Build the package from a checkout next to
-your app, then install it with `file:` dependencies:
-
 ```sh
-# in ../inkoxide
-scripts/build-node.sh        # writes npm/inkoxide.<platform>.node
-
-# in your app
-pnpm add file:../inkoxide/npm           # the engine: `inkoxide`
-pnpm add file:../inkoxide/npm-schema    # types and JSON Schema: `@inkoxide/schema`
+npm install inkoxide @inkoxide/schema
 ```
 
-- **The native addon is per platform.** Run `scripts/build-node.sh` on
-  every OS and CPU you deploy to: a Linux build does not load on macOS.
-- **Rebuild after every engine change.** After pulling, run
-  `scripts/build-node.sh` again; pnpm then picks up the new files from
-  the `file:` dependency.
+- **The native addon is per platform.** npm installs the prebuilt binary
+  for the current platform (see the platform table in the
+  [README](../README.md#platforms)). Install on the platform you deploy
+  to, or with `--os`/`--cpu` when building a container image elsewhere.
+- **Other platforms.** Build the addon from a checkout with
+  `scripts/build-node.sh`, which writes
+  `packages/inkoxide/inkoxide.<platform>.node`.
 - **Module systems.** The package is CommonJS and has named exports, so
   `import { render } from 'inkoxide'` works from ESM and TypeScript
   (`module: nodenext`).
@@ -90,7 +85,7 @@ const pdf = await render(doc, {
     `[{ code, path, message }]`, without rendering.
   - Client-side, ajv with the schema from `@inkoxide/schema` reports the
     same paths through `enginePath(error)`
-    ([npm-schema/README.md](../npm-schema/README.md)).
+    ([@inkoxide/schema](../packages/schema/README.md)).
 
 ## Errors
 

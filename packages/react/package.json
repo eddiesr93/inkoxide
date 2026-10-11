@@ -1,0 +1,22 @@
+{
+  "name": "@inkoxide/react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React components and reconciler that build Inkoxide document trees.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@inkoxide/schema": "workspace:*",
+    "@inkoxide/tailwind": "workspace:*",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "react": "19.3.0",
+    "react-reconciler": "0.34.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-reconciler": "0.33.1"
+  }
+}

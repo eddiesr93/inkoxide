@@ -1,4 +1,4 @@
-//! Pagination invariants (§6.4) on synthetic trees.
+//! Pagination invariants on synthetic trees.
 
 use super::*;
 use crate::layout::{LayoutEngine, NoContent, TaffyLayout};

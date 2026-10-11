@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 110,
+  "singleQuote": true,
+  "semi": true,
+  "trailingComma": "all",
+  "sortImports": true,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "**/*.md",
+    "**/*.toml",
+    "fixtures/**",
+    "fuzz/**",
+    "target/**",
+    "tmp/**",
+    "pnpm-lock.yaml",
+    "packages/schema/index.d.ts",
+    "packages/schema/document.v1.json",
+    "packages/render/assets/**"
+  ]
+}

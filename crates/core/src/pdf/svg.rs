@@ -1,5 +1,4 @@
-//! SVG → PDF: a `usvg` tree becomes a Form `XObject` with vector content
-//! (ADR-038).
+//! SVG → PDF: a `usvg` tree becomes a Form `XObject` with vector content.
 //!
 //! - Paths keep their geometry; quadratic segments become cubics.
 //! - Solid paints are RGB colours; gradients are axial/radial shading

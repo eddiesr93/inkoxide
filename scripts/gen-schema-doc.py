@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates docs/SCHEMA.md from schema/document.v1.json.
+"""Generates docs/SCHEMA.md from packages/schema/document.v1.json.
 
   scripts/gen-schema-doc.py          # rewrite docs/SCHEMA.md
   scripts/gen-schema-doc.py --check  # fail if docs/SCHEMA.md is stale
@@ -9,12 +9,12 @@ import pathlib
 import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
-schema = json.loads((root / "schema/document.v1.json").read_text())
+schema = json.loads((root / "packages/schema/document.v1.json").read_text())
 defs = schema["$defs"]
 
 INTRO = """# Document schema v1
 
-> Generated from [`schema/document.v1.json`](../schema/document.v1.json) by
+> Generated from [`packages/schema/document.v1.json`](../packages/schema/document.v1.json) by
 > `scripts/gen-schema-doc.py`. Do not edit by hand; edit the schema and
 > regenerate. Behavioural notes live in the schema `description`s and in
 > [ARCHITECTURE.md](ARCHITECTURE.md).

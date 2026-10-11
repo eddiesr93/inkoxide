@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "react/react-in-jsx-scope": "off"
+  },
+  "env": {
+    "builtin": true,
+    "node": true
+  },
+  "ignorePatterns": ["fixtures/**", "fuzz/**", "target/**", "tmp/**", "packages/render/assets/**"]
+}

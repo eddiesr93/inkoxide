@@ -1,0 +1,65 @@
+{
+  "series": "INK",
+  "number": "0042",
+  "issueDate": "October 8, 2026",
+  "dueDate": "November 7, 2026",
+  "currency": "USD",
+  "vatRate": 20,
+  "supplier": {
+    "name": "Inkoxide Inc.",
+    "regNumber": "C4518273",
+    "taxId": "87-6543210",
+    "address": "25 Harbor Street, Suite 400, Portland, OR 97204",
+    "account": "0213 4567 8901 2345",
+    "bank": "First Harbor Bank"
+  },
+  "client": {
+    "name": "Lincoln Elementary School",
+    "regNumber": "S0074512",
+    "taxId": "45-4123007",
+    "address": "4 Maple Avenue, Springfield, IL 62704"
+  },
+  "items": [
+    {
+      "name": "PDF engine license — annual",
+      "details": "Production use, one server",
+      "unit": "ea",
+      "quantity": 1,
+      "unitPrice": 5900
+    },
+    {
+      "name": "Integration support",
+      "details": "Remote working sessions",
+      "unit": "hr",
+      "quantity": 6,
+      "unitPrice": 450
+    },
+    {
+      "name": "Document templates",
+      "details": "Enrollment request, certificate, transcript",
+      "unit": "ea",
+      "quantity": 3,
+      "unitPrice": 1200
+    },
+    {
+      "name": "Brand fonts",
+      "details": "Validation and embedding of four font families",
+      "unit": "ea",
+      "quantity": 4,
+      "unitPrice": 215.5
+    },
+    {
+      "name": "Maintenance plan",
+      "details": "Next-business-day response, 12 months",
+      "unit": "mo",
+      "quantity": 12,
+      "unitPrice": 380
+    }
+  ],
+  "notes": [
+    "Payment by bank transfer to the account above within 30 days of the invoice date.",
+    "Please quote the invoice number with your payment. Late payments may incur a 1.5% monthly fee.",
+    "Thank you for your business!"
+  ],
+  "issuedBy": "Andrea Miller"
+}

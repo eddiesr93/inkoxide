@@ -1,0 +1,26 @@
+{
+  "name": "@inkoxide/schema",
+  "version": "1.0.0",
+  "private": false,
+  "description": "TypeScript types and JSON Schema for Inkoxide documents (schema version 1).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eddiesr93/inkoxide.git",
+    "directory": "packages/schema"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "document.v1.json"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./document.v1.json": "./document.v1.json"
+  }
+}

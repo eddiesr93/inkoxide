@@ -1,6 +1,6 @@
 # Document schema v1
 
-> Generated from [`schema/document.v1.json`](../schema/document.v1.json) by
+> Generated from [`packages/schema/document.v1.json`](../packages/schema/document.v1.json) by
 > `scripts/gen-schema-doc.py`. Do not edit by hand; edit the schema and
 > regenerate. Behavioural notes live in the schema `description`s and in
 > [ARCHITECTURE.md](ARCHITECTURE.md).

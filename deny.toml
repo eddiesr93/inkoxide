@@ -7,10 +7,10 @@ all-features = false
 version = 2
 yanked = "deny"
 # Unmaintained (not vulnerable) shaping/parsing crates, isolated behind the
-# TextShaper trait and the fonts module. Migration plan: ADR-020.
+# TextShaper trait and the fonts module. Both are replaced together by harfrust and read-fonts.
 ignore = [
-  { id = "RUSTSEC-2026-0206", reason = "rustybuzz unmaintained; only text/prepare.rs uses it; harfrust migration per ADR-020" },
-  { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained; only fonts/ uses it; read-fonts migration per ADR-020" },
+  { id = "RUSTSEC-2026-0206", reason = "rustybuzz unmaintained; only text/prepare.rs uses it; harfrust migration" },
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained; only fonts/ uses it; read-fonts migration" },
 ]
 
 [licenses]
@@ -26,7 +26,7 @@ allow = [
   "ISC",
   "Zlib",
   "Unicode-3.0",
-  # Boost: permissive, OSI-approved (xxhash-rust, on the §3 allowlist).
+  # Boost: permissive, OSI-approved (xxhash-rust).
   "BSL-1.0",
 ]
 
@@ -34,8 +34,8 @@ allow = [
 multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
-# Explicitly rejected in the build brief (§3). Adding any of these needs an
-# ADR in docs/DECISIONS.md first.
+# Kept out of the dependency tree on purpose. Open an issue before
+# adding one.
 deny = [
   { crate = "printpdf" },
   { crate = "lopdf" },

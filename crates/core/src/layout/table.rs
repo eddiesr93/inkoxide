@@ -1,4 +1,4 @@
-//! Table layout (§6.5): our own algorithm, since a CSS grid can neither
+//! Table layout: our own algorithm, since a CSS grid can neither
 //! split rows across pages nor repeat header rows.
 //!
 //! - Column widths: fixed points, `fr` weights over the remaining width, or

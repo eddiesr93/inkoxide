@@ -1,4 +1,4 @@
-//! Serde mirror of `schema/document.v1.json`.
+//! Serde mirror of `packages/schema/document.v1.json`.
 //!
 //! The JSON Schema is the source of truth; these structs are checked against
 //! it in CI (every fixture must pass both). Structural rules that serde can
@@ -580,7 +580,7 @@ impl<T: Copy> OptEdges<T> {
 }
 
 /// The style of a node or cell, shared between nodes whose styles are
-/// equal (ADR-040). Reads as a [`Style`].
+/// equal. Reads as a [`Style`].
 #[derive(Debug, Clone)]
 pub struct NodeStyle(std::sync::Arc<Style>);
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Local CI: everything a PR must pass. No hosted CI runs for this repo;
-# run this before pushing.
+# Every check a pull request must pass, plus the slower ones that the hosted
+# workflow skips (visual regression, cargo-deny, a fuzz smoke).
 #
 #   scripts/ci.sh           # full run
-#   scripts/ci.sh --quick   # skip clippy/deny/visual diff
+#   scripts/ci.sh --quick   # skip clippy, cargo-deny, fuzzing and the visual diff
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -30,23 +30,32 @@ fi
 [[ -n "${VERAPDF:-}" ]] || echo "verapdf not installed; PDF/A outputs not validated"
 cargo test --workspace
 
-step "node binding (npm/)"
+step "node binding (packages/inkoxide)"
 if command -v node >/dev/null; then
   scripts/build-node.sh --debug >/dev/null
   # The greps below read TAP; Node 23+ prints the spec reporter even when piped.
-  (cd npm && node --test --test-reporter=tap test/*.test.js test/*.test.mjs) |
+  (cd packages/inkoxide && node --test --test-reporter=tap test/*.test.js test/*.test.mjs) |
     grep -E '^# (pass|fail)'
-  step "node smoke (examples/node-smoke, installed from file:../../npm)"
-  if command -v pnpm >/dev/null; then
-    # --force re-copies the local package, so the binary just built is used.
-    (cd examples/node-smoke && pnpm install --force --silent &&
-      NODE_OPTIONS=--test-reporter=tap pnpm test) |
-      grep -E '^# (inkoxide|invoice|report|pass|fail)'
-  else
-    echo "pnpm not installed; skipped (npm i -g pnpm)"
-  fi
 else
   echo "node not installed; skipped"
+fi
+
+step "TypeScript packages (typecheck, lint, tests)"
+if command -v pnpm >/dev/null; then
+  pnpm install --frozen-lockfile --silent
+  pnpm typecheck
+  pnpm lint
+  pnpm format:check
+  NODE_ENV=test pnpm test
+  node scripts/gen-schema-types.mjs
+  pnpm exec tsx scripts/gen-tailwind-docs.ts
+  git diff --exit-code -- packages/schema/index.d.ts docs/TAILWIND_SUPPORT.md || {
+    echo "generated files are stale: run node scripts/gen-schema-types.mjs and"
+    echo "pnpm exec tsx scripts/gen-tailwind-docs.ts, then commit the result"
+    exit 1
+  }
+else
+  echo "pnpm not installed; skipped (npm i -g pnpm)"
 fi
 
 step "schema docs up to date"
@@ -62,18 +71,6 @@ echo "report-100p-realistic.json: up to date"
 
 step "schema conformance of fixtures"
 python3 scripts/check-schema.py
-
-step "@inkoxide/schema types up to date (npm-schema/)"
-if command -v pnpm >/dev/null; then
-  scripts/schema/gen-ts.sh >/dev/null
-  git diff --exit-code -- npm-schema/ || {
-    echo "npm-schema/ is stale: run scripts/schema/gen-ts.sh and commit the result"
-    exit 1
-  }
-  echo "npm-schema: up to date"
-else
-  echo "pnpm not installed; skipped"
-fi
 
 step "fixture outputs (qpdf --check)"
 if command -v qpdf >/dev/null; then

@@ -1,4 +1,4 @@
-//! Image decoding behind the [`ImageDecoder`] firewall (§5.1).
+//! Image decoding behind the [`ImageDecoder`] firewall.
 
 use std::sync::Arc;
 

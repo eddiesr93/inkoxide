@@ -60,7 +60,7 @@ pub(crate) struct DocumentOut<'a> {
     pub marks: &'a Marks<'a>,
 }
 
-/// Dependency firewall around the PDF writer (§5.1).
+/// Dependency firewall around the PDF writer.
 pub(crate) trait PdfSink {
     /// Encodes one page; called from worker threads.
     fn encode_page(
@@ -74,9 +74,9 @@ pub(crate) trait PdfSink {
 pub(crate) struct PdfWriterSink {
     /// Flate level for content streams; `None` writes them uncompressed.
     pub compression: Option<u32>,
-    /// Embed only the glyphs used (ADR-032).
+    /// Embed only the glyphs used.
     pub subset_fonts: bool,
-    /// Write PDF/A-2b (ADR-039).
+    /// Write PDF/A-2b.
     pub pdf_a: bool,
 }
 

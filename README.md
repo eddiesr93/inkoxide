@@ -6,24 +6,25 @@
 
 Typeset documents from React components, or from a JSON document tree.
 
+[![CI](https://github.com/eddiesr93/inkoxide/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiesr93/inkoxide/actions/workflows/ci.yml)
 [![@inkoxide/render on npm](https://img.shields.io/npm/v/@inkoxide/render?color=4f46e5&label=%40inkoxide%2Frender)](https://www.npmjs.com/package/@inkoxide/render)
 [![inkoxide on npm](https://img.shields.io/npm/v/inkoxide?color=0f766e&label=inkoxide)](https://www.npmjs.com/package/inkoxide)
-[![Licence: MIT](https://img.shields.io/badge/licence-MIT-0ea5e9)](#licence)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-0ea5e9)](LICENSE)
 
-[Getting started](#getting-started) · [Documentation](#documentation) · [Performance](#performance) · [Platforms](#platforms)
+[Getting started](#getting-started) · [Documentation](#documentation) · [Packages](#packages) · [Performance](#performance) · [Contributing](#contributing)
 
 </div>
 
 <table>
 <tr>
-<td align="center" valign="top" width="33%"><img src="docs/media/invoice.png" alt="Invoice PDF: logo, sender and client addresses, a four-row line-item table, subtotal, tax and a highlighted total due." width="260"><br><sub><b>Invoice</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="docs/media/report.png" alt="First page of a sales report PDF: three KPI cards, a monthly revenue bar chart and the start of a regional sales table." width="260"><br><sub><b>Multi-page report</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="docs/media/certificate.png" alt="Landscape certificate PDF: a double border, Certificate of Completion, the recipient name, two signature lines and a gold seal." width="260"><br><sub><b>Certificate</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/render/media/invoice.png" alt="Invoice PDF: logo, sender and client addresses, a four-row line-item table, subtotal, tax and a highlighted total due." width="260"><br><sub><b>Invoice</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/render/media/report.png" alt="First page of a sales report PDF: three KPI cards, a monthly revenue bar chart and the start of a regional sales table." width="260"><br><sub><b>Multi-page report</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/render/media/certificate.png" alt="Landscape certificate PDF: a double border, Certificate of Completion, the recipient name, two signature lines and a gold seal." width="260"><br><sub><b>Certificate</b></sub></td>
 </tr>
 <tr>
-<td align="center" valign="top" width="33%"><img src="docs/media/letter.png" alt="Business letter PDF: a letterhead, the date and address block, four justified paragraphs and a signature." width="260"><br><sub><b>Business letter</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="docs/media/resume.png" alt="Résumé PDF: a dark sidebar with initials, contact details and skill tags, and a main column with profile, experience and education." width="260"><br><sub><b>Résumé</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="docs/media/form.png" alt="Membership application PDF with text fields, a plan select, two radio buttons and two consent checkboxes." width="260"><br><sub><b>Fillable form</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/render/media/letter.png" alt="Business letter PDF: a letterhead, the date and address block, four justified paragraphs and a signature." width="260"><br><sub><b>Business letter</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/render/media/resume.png" alt="Résumé PDF: a dark sidebar with initials, contact details and skill tags, and a main column with profile, experience and education." width="260"><br><sub><b>Résumé</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/render/media/form.png" alt="Membership application PDF with text fields, a plan select, two radio buttons and two consent checkboxes." width="260"><br><sub><b>Fillable form</b></sub></td>
 </tr>
 </table>
 
@@ -94,11 +95,11 @@ await renderToFile(
 );
 ```
 
-<img src="docs/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="280">
+<img src="packages/render/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="280">
 
 Run it with `npx tsx receipt.tsx`. The fonts (Inter, Noto Sans, Roboto Mono) and the Tailwind
-compiler ship with the package. The [@inkoxide/render README](https://www.npmjs.com/package/@inkoxide/render)
-has the six documents above with their code.
+compiler ship with the package. The six documents above, with their code, are in
+[`examples/`](examples) and in the [@inkoxide/render README](packages/render/README.md).
 
 ### With JSON
 
@@ -124,19 +125,31 @@ writeFileSync('hello.pdf', await render(JSON.stringify(doc)));
 ```
 
 The document tree is a fully resolved description of boxes, text, images and tables, as JSON or
-MessagePack. `@inkoxide/schema` has its TypeScript types and JSON Schema.
+MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and JSON Schema.
 
 ## Documentation
 
 | Topic | Document |
 |---|---|
-| Writing documents in React | [Guide](docs/react/GUIDE.md): components, styling, fonts, images, pagination, tables, forms, API, errors |
-| Moving from react-pdf | [Migration guide](docs/react/MIGRATING.md) |
-| Using the engine from Node | [Client integration](docs/CLIENT_INTEGRATION.md): fonts, images, errors, threading, determinism, hyphenation |
-| The engine API | [API](docs/API.md): the Rust and Node APIs, options and error codes |
-| The document tree | [Schema reference](docs/SCHEMA.md) and [example documents](schema/EXAMPLES.md) |
-| How it works | [Architecture](docs/ARCHITECTURE.md) and the [decision log](docs/DECISIONS.md) |
+| Writing documents in React | [Guide](packages/render/GUIDE.md): components, styling, fonts, images, pagination, tables, forms, API, errors |
+| Tailwind classes | [Supported utilities](docs/TAILWIND_SUPPORT.md) |
+| Moving from react-pdf | [Migration guide](packages/render/MIGRATING.md) |
+| Using the engine from Node | [Client integration](docs/CLIENT_INTEGRATION.md): fonts, images, errors, threading, determinism |
+| The engine API | [API reference](docs/API.md): the Rust and Node APIs, options and error codes |
+| The document tree | [Schema reference](docs/SCHEMA.md) and [example documents](packages/schema/EXAMPLES.md) |
+| How it works | [Architecture](docs/ARCHITECTURE.md) |
 | Testing and benchmarks | [Testing](docs/TESTING.md) and [benchmarks](docs/BENCHMARKS.md) |
+
+## Packages
+
+| Package | What it is |
+|---|---|
+| [`@inkoxide/render`](packages/render) | React components to PDF: `renderToBuffer`, `renderToFile`, `Font.register`, bundled fonts |
+| [`@inkoxide/react`](packages/react) | The React components and reconciler that build document trees |
+| [`@inkoxide/tailwind`](packages/tailwind) | Tailwind class strings to engine styles, with the Tailwind v4 compiler |
+| [`inkoxide`](packages/inkoxide) | The engine for Node.js: a JSON or MessagePack document tree in, PDF bytes out |
+| [`@inkoxide/schema`](packages/schema) | TypeScript types and JSON Schema of the document tree |
+| [`inkoxide` crate](crates/core) | The engine as a Rust library |
 
 ## Performance
 
@@ -154,42 +167,23 @@ with other libraries.
 
 ## Platforms
 
-Prebuilt binaries for Node.js 22 or later; npm installs the one for the current platform:
+Prebuilt binaries; npm installs the one for the current platform. `@inkoxide/render` needs
+Node.js 22 or later, `inkoxide` Node.js 18 or later.
 
 | OS | Architectures |
 |---|---|
 | macOS | arm64, x64 |
-| Linux | x64 (glibc and musl), arm64 (glibc) |
+| Linux | x64 (glibc 2.35+ and musl), arm64 (glibc 2.35+) |
 | Windows | x64 |
 
-## Development
+## Contributing
 
-```sh
-git clone https://github.com/eddiesr93/inkoxide && cd inkoxide
-scripts/ci.sh            # build and test everything
-scripts/ci.sh --quick    # format, tests and schema
-scripts/build-node.sh    # build the Node package in npm/
-```
-
-You need Rust (rustup picks 1.97.0 from `rust-toolchain.toml`), Node.js 22 or later, pnpm,
-Python 3 with `jsonschema`, `numpy` and `Pillow`, and poppler for the visual tests; `qpdf`,
-`cargo-deny` and `cargo-fuzz` are optional. [docs/TESTING.md](docs/TESTING.md) describes the
-test suites. The command-line tool renders a JSON document directly:
-
-```sh
-cargo run --release -p inkoxide-cli -- \
-  render fixtures/docs/invoice.json --fonts fixtures/fonts -o invoice.pdf
-```
-
-| Path | Contents |
-|---|---|
-| `crates/core` | The engine (crate `inkoxide`) |
-| `crates/node`, `npm/` | The Node binding and its npm package |
-| `crates/cli` | The `inkoxide` command-line tool |
-| `schema/`, `npm-schema/` | The document schema and `@inkoxide/schema` |
-| `fixtures/` | Input documents, fonts, images and expected renders |
-| `examples/node-smoke` | A client-style test of the npm packages |
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build
+the project, run the tests and propose a change, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+how the code is organised. Please report security issues privately, as described in
+[SECURITY.md](SECURITY.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 
-MIT. The fixture fonts are under the SIL Open Font License (`fixtures/fonts/*-OFL.txt`).
+[MIT](LICENSE). The bundled fonts are under the SIL Open Font License
+(`fixtures/fonts/*-OFL.txt`).

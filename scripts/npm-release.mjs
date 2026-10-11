@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Stages (and optionally publishes) the npm packages from a directory of
-// prebuilt native bindings. Plain Node, no dependencies. See ADR-051.
+// prebuilt native bindings. Plain Node, no dependencies.
 //
 //   node scripts/npm-release.mjs <bin-dir> <staging-dir>
 //   node scripts/npm-release.mjs <bin-dir> <staging-dir> --publish
@@ -11,7 +11,7 @@
 //   @inkoxide/<triple>  one per platform, the binary only
 //   inkoxide            the loader and types; optionalDependencies pin
 //                       every platform package to the same version
-//   @inkoxide/schema    a copy of npm-schema/
+//   @inkoxide/schema    a copy of packages/schema/
 // --publish publishes platform packages first, then inkoxide, then
 // @inkoxide/schema, skipping any name@version already on the registry.
 
@@ -24,7 +24,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCOPE = '@inkoxide';
 const REGISTRY = 'https://registry.npmjs.org';
 
-// Triple (as npm/index.js platformTriple() names it) -> npm platform fields.
+// Triple (as packages/inkoxide/index.js platformTriple() names it) -> npm platform fields.
 const PLATFORMS = {
   'linux-x64-gnu': { os: 'linux', cpu: 'x64', libc: 'glibc', label: 'Linux x64 (glibc)' },
   'linux-x64-musl': { os: 'linux', cpu: 'x64', libc: 'musl', label: 'Linux x64 (musl)' },
@@ -100,7 +100,7 @@ function stageMain(stageDir, version, mainPkg) {
   const dir = join(stageDir, 'inkoxide');
   mkdirSync(dir, { recursive: true });
   for (const f of ['index.js', 'index.d.ts', 'README.md']) {
-    copyFileSync(join(ROOT, 'npm', f), join(dir, f));
+    copyFileSync(join(ROOT, 'packages', 'inkoxide', f), join(dir, f));
   }
   copyFileSync(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'));
   const optionalDependencies = {};
@@ -123,7 +123,7 @@ function stageMain(stageDir, version, mainPkg) {
 }
 
 function stageSchema(stageDir) {
-  const src = join(ROOT, 'npm-schema');
+  const src = join(ROOT, 'packages', 'schema');
   const pkg = readJson(join(src, 'package.json'));
   const dir = join(stageDir, SCOPE, 'schema');
   mkdirSync(dir, { recursive: true });
@@ -153,7 +153,7 @@ function isPublished(name, version) {
     // An existing package without that version prints nothing.
     return parsed === version || (Array.isArray(parsed) && parsed.includes(version));
   }
-  const code = parsed && parsed.error && parsed.error.code;
+  const code = parsed?.error?.code;
   if (code === 'E404' || /\bE404\b/.test(r.stderr || '')) return false;
   fail(`npm view ${name}@${version} failed (exit ${r.status}):\n${r.stderr || out}`);
 }
@@ -174,7 +174,7 @@ function publish(pkg, dryRun) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const mainPkg = readJson(join(ROOT, 'npm', 'package.json'));
+  const mainPkg = readJson(join(ROOT, 'packages', 'inkoxide', 'package.json'));
   const { version, repository } = mainPkg;
 
   const missing = Object.keys(PLATFORMS)

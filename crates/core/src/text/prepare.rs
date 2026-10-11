@@ -59,8 +59,8 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
             WhiteSpace::Normal | WhiteSpace::NoWrap | WhiteSpace::PreLine => {
                 for c in src.chars() {
                     if c == '\n' {
-                        // Forced break (like CSS `pre-line`; react-pdf
-                        // parity). A space just before it is dropped.
+                        // Forced break, like CSS `pre-line`. A space just
+                        // before it is dropped.
                         if text.ends_with(' ') && text.len() > start {
                             text.pop();
                         }
@@ -198,7 +198,7 @@ type WordKey = (FontKey, Option<bool>, Box<str>);
 /// Per-render shaping cache: shape plans per (font, direction, script) and
 /// shaped words per (font, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
-/// reusing results removes most shaping work (ADR-027).
+/// reusing results removes most shaping work.
 #[derive(Default)]
 pub(crate) struct ShapeCache {
     plans:
@@ -532,7 +532,7 @@ mod tests {
         assert_eq!(language_code("eng"), None);
         assert_eq!(language_code("x"), None);
         assert!(HypherHyphenator.supports("de"));
-        // Languages without built-in patterns (ADR-015).
+        // Languages without built-in patterns.
         assert!(!HypherHyphenator.supports("ja"));
     }
 }

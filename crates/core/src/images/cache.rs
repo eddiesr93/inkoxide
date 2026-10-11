@@ -1,4 +1,4 @@
-//! Process-wide cache of decoded images, keyed by content hash (§7).
+//! Process-wide cache of decoded images, keyed by content hash.
 //!
 //! An [`ImageStore`](super::ImageStore) already decodes each of its images
 //! once, but the Node binding builds a fresh store per call from the

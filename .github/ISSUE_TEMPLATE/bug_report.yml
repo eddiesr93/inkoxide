@@ -1,0 +1,27 @@
+name: Bug report
+description: Something renders wrongly, fails or crashes.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead. A screenshot of the PDF helps.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest component or JSON document that shows the problem.
+      render: tsx
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Package versions, Node.js version and operating system.
+      placeholder: '@inkoxide/render 0.1.1, Node 22.22, macOS 26 arm64'
+    validations:
+      required: true

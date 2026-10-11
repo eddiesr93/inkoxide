@@ -1,4 +1,4 @@
-//! PDF/A-2b support (ADR-039): an sRGB output intent, XMP metadata that
+//! PDF/A-2b support: an sRGB output intent, XMP metadata that
 //! mirrors the document information dictionary, and a file identifier.
 
 use std::fmt::Write as _;
