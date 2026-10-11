@@ -27,6 +27,9 @@ import {
   type FieldProps,
   HOST,
   HOST_NAME,
+  type ImageRequest,
+  type ImageSrc,
+  type ImageSrcValue,
   type Length,
   type PageSize,
   type RenderProp,
@@ -93,6 +96,24 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
   });
 }
 
+/**
+ * True when an image `src` string is a file path: absolute (`/img/logo.png`, `C:\img\logo.png`),
+ * relative to the working directory with `./` or `../`, or a `file:` URL. Other strings are image
+ * ids, so a template never reads a file by accident.
+ */
+export function isImagePath(src: string): boolean {
+  return /^(?:\.{0,2}[\\/]|[a-z]:[\\/]|file:)/i.test(src);
+}
+
+/**
+ * An image the caller loads before rendering (`@inkoxide/render` does): a file, a request
+ * allowed by the remote image policy, or a function or promise `src`, not yet called or awaited.
+ */
+export type PendingImage =
+  | { kind: 'file'; path: string }
+  | { kind: 'request'; request: ImageRequest }
+  | { kind: 'deferred'; src: Promise<ImageSrcValue> | (() => ImageSrcValue | Promise<ImageSrcValue>) };
+
 export interface BuildOptions {
   fonts: FontRegistry;
   /** Default font stack (Tailwind's `--font-sans`). */
@@ -102,6 +123,8 @@ export interface BuildOptions {
   /** Page count from a previous render, for `render` props (1 when unknown). */
   pageCount?: number;
   remoteImages?: RemoteImagePolicy;
+  /** Ids of the images the caller passes in: a `src` string naming one is that image, path or not. */
+  imageIds?: readonly string[];
 }
 
 export interface BuildResult {
@@ -118,7 +141,12 @@ export interface BuildResult {
   dynamic: boolean;
   /** Remote images to fetch: image id → URL (allowed by `remoteImages`). */
   remote: Record<string, string>;
+  /** Other images to load: image id → a file, a request, or a function or promise `src`. */
+  pending: Record<string, PendingImage>;
 }
+
+const isThenable = (v: unknown): v is PromiseLike<ImageSrcValue> =>
+  typeof (v as PromiseLike<unknown> | null)?.then === 'function';
 
 type Inline = Instance | { kind: 'text'; text: string; fiber: unknown };
 
@@ -168,11 +196,16 @@ class Builder {
   readonly origin: Map<object, Instance> | undefined;
   readonly remote: Record<string, string> = {};
   private readonly remoteIds = new Map<string, string>();
+  readonly pending: Record<string, PendingImage> = {};
+  private readonly pendingIds = new Map<unknown, string>();
+  private readonly pendingCount = new Map<string, number>();
+  private readonly registered: ReadonlySet<string>;
   dynamic = false;
   private docLang: string | undefined;
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
+    this.registered = new Set(opts.imageIds);
   }
 
   private fail(
@@ -695,7 +728,7 @@ class Builder {
     const node: ImageNode = { type: 'image' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const src = inst.props.src as Uint8Array | string | undefined;
+    const src = inst.props.src as ImageSrc | undefined;
     if (src instanceof Uint8Array) {
       let id = this.imageIds.get(src);
       if (!id) {
@@ -704,18 +737,14 @@ class Builder {
         this.images[id] = src;
       }
       node.src = id;
+    } else if (typeof src === 'string' && this.registered.has(src)) {
+      node.src = src;
     } else if (typeof src === 'string' && src.startsWith('data:')) {
       node.data = src;
+    } else if (typeof src === 'string' && isImagePath(src)) {
+      node.src = this.pendingId(src, 'file', () => ({ kind: 'file', path: src }));
     } else if (typeof src === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(src)) {
-      if (!remoteAllowed(src, this.opts.remoteImages)) {
-        this.fail(
-          inst,
-          `<Image src="${src}">: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.`,
-          {
-            kind: 'props',
-          },
-        );
-      }
+      this.allowRemote(inst, src, `src="${src}"`);
       let id = this.remoteIds.get(src);
       if (!id) {
         id = `remote-${this.remoteIds.size}`;
@@ -725,13 +754,54 @@ class Builder {
       node.src = id;
     } else if (typeof src === 'string' && src.length > 0) {
       node.src = src;
+    } else if (typeof src === 'function') {
+      node.src = this.pendingId(src, 'deferred', () => ({ kind: 'deferred', src }));
+    } else if (isThenable(src)) {
+      node.src = this.pendingId(src, 'deferred', () => {
+        // Handled now, awaited by the caller: a rejection before then must not crash the process.
+        const promise = Promise.resolve(src);
+        promise.catch(() => {});
+        return { kind: 'deferred', src: promise };
+      });
+    } else if (typeof src === 'object' && src !== null) {
+      if (typeof src.uri !== 'string' || src.uri === '') {
+        this.fail(inst, '<Image src={{ uri }}>: a request needs a uri.', { kind: 'props' });
+      }
+      this.allowRemote(inst, src.uri, `src={{ uri: "${src.uri}" }}`);
+      node.src = this.pendingId(src, 'request', () => ({ kind: 'request', request: src }));
     } else {
-      this.fail(inst, '<Image> needs a src: bytes, a data: URL, or an image id.', { kind: 'props' });
+      this.fail(
+        inst,
+        '<Image> needs a src: bytes, a data: URL, an image id, a file path, a URL, a request, or a function or promise.',
+        { kind: 'props' },
+      );
     }
     const fit = inst.props.fit as ImageNode['fit'];
     if (fit) node.fit = fit;
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  private allowRemote(inst: Instance, url: string, prop: string): void {
+    if (remoteAllowed(url, this.opts.remoteImages)) return;
+    this.fail(
+      inst,
+      `<Image ${prop}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.`,
+      { kind: 'props' },
+    );
+  }
+
+  /** One id per file path, request, function or promise, however many images use it. */
+  private pendingId(key: unknown, prefix: string, image: () => PendingImage): string {
+    let id = this.pendingIds.get(key);
+    if (!id) {
+      const n = this.pendingCount.get(prefix) ?? 0;
+      this.pendingCount.set(prefix, n + 1);
+      id = `${prefix}-${n}`;
+      this.pendingIds.set(key, id);
+      this.pending[id] = image();
+    }
+    return id;
   }
 
   private field(inst: Instance, parent: TextCtx): FieldNode {
@@ -903,6 +973,7 @@ export function buildTree(container: Container, opts: BuildOptions): BuildResult
     origin: b.origin,
     dynamic: b.dynamic,
     remote: b.remote,
+    pending: b.pending,
   };
 }
 

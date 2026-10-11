@@ -14,7 +14,13 @@ export * from './components/index.ts';
 export { TemplateError, type TemplateErrorKind } from './errors.ts';
 export * from './fonts/index.ts';
 export { usePage } from './page.ts';
-export { PAGE_SIZES, type RemoteImagePolicy, remoteAllowed } from './tree/build.ts';
+export {
+  isImagePath,
+  PAGE_SIZES,
+  type PendingImage,
+  type RemoteImagePolicy,
+  remoteAllowed,
+} from './tree/build.ts';
 export { parsePath } from './tree/locate.ts';
 export { weightOf as fontWeightValue } from './tree/style.ts';
 export { type SchemaProblem, validateTree } from './tree/validate.ts';
@@ -25,6 +31,11 @@ export interface TreeOptions {
   remoteImages?: RemoteImagePolicy;
   /** Page count for `render` props (from a previous render); 1 when omitted. */
   pageCount?: number;
+  /**
+   * Ids of the images the caller passes to the renderer: a `src` string naming one is that image,
+   * even when it looks like a path or a URL.
+   */
+  imageIds?: readonly string[];
 }
 
 export interface Located {
@@ -60,7 +71,12 @@ export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): Tree
 function fromContainer(container: Container, opts: TreeOptions, reactMs: number): TreeResult {
   const registry = opts.fonts ?? defaultFonts;
   const t1 = performance.now();
-  const build = { fonts: registry, pageCount: opts.pageCount, remoteImages: opts.remoteImages };
+  const build = {
+    fonts: registry,
+    pageCount: opts.pageCount,
+    remoteImages: opts.remoteImages,
+    imageIds: opts.imageIds,
+  };
   const built = buildTree(container, build);
   const t2 = performance.now();
   let tracked: { doc: Document; origin: Map<object, Instance> } | undefined;
@@ -81,6 +97,7 @@ function fromContainer(container: Container, opts: TreeOptions, reactMs: number)
     warnings: built.warnings,
     dynamic: built.dynamic,
     remote: built.remote,
+    pending: built.pending,
     pageCount: opts.pageCount ?? 1,
     timings: { reactMs, treeMs: t2 - t1 },
     locate: locateFn,

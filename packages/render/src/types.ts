@@ -11,11 +11,15 @@ export interface RenderOpts {
   subsetFonts?: boolean;
   /** Write PDF/A-2b (default false). */
   pdfA?: boolean;
-  /** Extra image bytes by id, for `<Image src="id">`. */
+  /**
+   * Extra image bytes by id, for `<Image src="id">`. An id wins over a file path or URL with the
+   * same text.
+   */
   images?: Record<string, Uint8Array>;
   /**
-   * Remote images `<Image src="https://…">` may use. Defaults to the comma-separated
-   * `INKOXIDE_REMOTE_IMAGES` environment variable; without either, remote URLs are rejected.
+   * Remote images `<Image src="https://…">` and `<Image src={{ uri }}>` may use. Defaults to the
+   * comma-separated `INKOXIDE_REMOTE_IMAGES` environment variable; without either, remote URLs
+   * are rejected.
    */
   remoteImages?: RemoteImageOptions;
 }
@@ -38,7 +42,7 @@ export interface Timings {
   validateMs: number;
   /** The engine render (every pass, with `render` props). */
   engineMs: number;
-  /** Fetching remote images. */
+  /** Loading images: remote URLs and requests, files, functions and promises. */
   fetchMs: number;
   /** Everything, data validation included. */
   totalMs: number;
@@ -76,6 +80,8 @@ export type RenderErrorCode =
   | 'INVALID_FONT'
   /** An allowed remote image could not be fetched (502). */
   | 'IMAGE_FETCH_FAILED'
+  /** An image file could not be read (400). */
+  | 'IMAGE_READ_FAILED'
   /** A bug: an INTERNAL or INVALID_ARGUMENT engine error, or anything unexpected (500). */
   | 'INTERNAL';
 

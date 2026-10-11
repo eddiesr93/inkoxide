@@ -310,12 +310,37 @@ export interface TextProps extends Flow {
   render?: RenderProp;
 }
 
+/**
+ * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must
+ * be allowed by the remote image policy, like a URL string.
+ */
+export interface ImageRequest {
+  uri: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string | Uint8Array;
+}
+
+/** What a function or promise `src` resolves to: bytes, any string `src`, or a request. */
+export type ImageSrcValue = Uint8Array | string | ImageRequest;
+
+/**
+ * An image `src`: bytes, a string (an image id, a `data:` URL, a file path or `file:` URL, an
+ * allowed remote URL), a request, or a function or promise resolving to one of those.
+ */
+export type ImageSrc =
+  | ImageSrcValue
+  | Promise<ImageSrcValue>
+  | (() => ImageSrcValue | Promise<ImageSrcValue>);
+
 export interface ImageProps extends Omit<Flow, 'children'> {
   /**
    * Bytes (JPEG, PNG, GIF, WebP, SVG), a `data:` URL, the id of an image passed in the render
-   * options, or an `https:` URL allowed by the render option `remoteImages`.
+   * options, a file path (`./logo.png`, `/srv/img/logo.png`) or `file:` URL, an `https:` URL or a
+   * request allowed by the render option `remoteImages`, or a function or promise resolving to
+   * one of those. A string naming an image in the render options is that image, path or not.
    */
-  src: Uint8Array | string;
+  src: ImageSrc;
   fit?: 'fill' | 'contain' | 'cover' | 'none';
 }
 

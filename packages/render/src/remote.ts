@@ -1,3 +1,5 @@
+import type { ImageRequest } from '@inkoxide/react';
+
 import type { RemoteImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
@@ -21,47 +23,63 @@ export async function fetchRemote(
   remote: Record<string, string>,
   opts: RemoteImageOptions,
 ): Promise<Record<string, Uint8Array>> {
-  const timeoutMs = opts.timeoutMs ?? 10_000;
-  const maxBytes = opts.maxBytes ?? 20 * 1024 * 1024;
   const entries = await Promise.all(
-    Object.entries(remote).map(async ([id, url]): Promise<[string, Uint8Array]> => {
-      const fail = (why: string, cause?: unknown): never => {
-        throw new RenderError('IMAGE_FETCH_FAILED', `Cannot fetch the image ${url}: ${why}.`, { cause });
-      };
-      let res: Response;
-      try {
-        res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) });
-      } catch (e) {
-        return fail(
-          (e as Error).name === 'TimeoutError' ? `no answer in ${timeoutMs} ms` : (e as Error).message,
-          e,
-        );
-      }
-      if (!res.ok) return fail(`HTTP ${res.status}`);
-      const length = Number(res.headers.get('content-length') ?? 0);
-      if (length > maxBytes) return fail(`${length} bytes, over the ${maxBytes}-byte limit`);
-      const reader = res.body?.getReader();
-      if (!reader) return fail('empty response');
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > maxBytes) {
-          await reader.cancel();
-          return fail(`over the ${maxBytes}-byte limit`);
-        }
-        chunks.push(value);
-      }
-      const bytes = new Uint8Array(size);
-      let at = 0;
-      for (const c of chunks) {
-        bytes.set(c, at);
-        at += c.byteLength;
-      }
-      return [id, bytes];
-    }),
+    Object.entries(remote).map(async ([id, url]): Promise<[string, Uint8Array]> => [
+      id,
+      await fetchImage(url, opts),
+    ]),
   );
   return Object.fromEntries(entries);
+}
+
+/**
+ * Fetches one image from a URL or a request (already checked against the allowlist), within the
+ * policy's timeout and size limit. Redirects are refused.
+ */
+export async function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions): Promise<Uint8Array> {
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const maxBytes = opts.maxBytes ?? 20 * 1024 * 1024;
+  const url = typeof src === 'string' ? src : src.uri;
+  const fail = (why: string, cause?: unknown): never => {
+    throw new RenderError('IMAGE_FETCH_FAILED', `Cannot fetch the image ${url}: ${why}.`, { cause });
+  };
+  const init: RequestInit = { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) };
+  if (typeof src !== 'string') {
+    if (src.method !== undefined) init.method = src.method;
+    if (src.headers !== undefined) init.headers = src.headers;
+    if (src.body !== undefined) init.body = src.body as BodyInit;
+  }
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    return fail(
+      (e as Error).name === 'TimeoutError' ? `no answer in ${timeoutMs} ms` : (e as Error).message,
+      e,
+    );
+  }
+  if (!res.ok) return fail(`HTTP ${res.status}`);
+  const length = Number(res.headers.get('content-length') ?? 0);
+  if (length > maxBytes) return fail(`${length} bytes, over the ${maxBytes}-byte limit`);
+  const reader = res.body?.getReader();
+  if (!reader) return fail('empty response');
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      return fail(`over the ${maxBytes}-byte limit`);
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    bytes.set(c, at);
+    at += c.byteLength;
+  }
+  return bytes;
 }

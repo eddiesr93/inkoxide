@@ -12,6 +12,7 @@ import {
   Footer,
   G,
   Image,
+  isImagePath,
   LinearGradient,
   Page,
   Path,
@@ -374,5 +375,118 @@ describe('remote images', () => {
     expect(thrown(() => tree(<Image src="https://img.example.com/private/a.png" />)).message).toContain(
       'allowlist',
     );
+  });
+});
+
+describe('image sources', () => {
+  const images = (children: ReactNode, imageIds?: string[]) =>
+    renderTemplate(
+      <Document>
+        <Page>{children}</Page>
+      </Document>,
+      { fonts, imageIds, remoteImages: { allow: ['cdn.example.com'] } },
+    );
+  const srcs = (r: ReturnType<typeof images>) =>
+    (r.document.pages[0].children ?? []).map((n) => (n as ImageNode).src);
+
+  it('tells file paths from image ids by their form', () => {
+    for (const p of [
+      '/srv/logo.png',
+      './logo.png',
+      '../img/logo.png',
+      '.\\logo.png',
+      'C:\\img\\a.png',
+      'file:///a.png',
+    ])
+      expect(isImagePath(p)).toBe(true);
+    for (const p of [
+      'logo',
+      'logo.png',
+      'img/logo.png',
+      'https://cdn.example.com/a.png',
+      'data:image/png;base64,',
+    ])
+      expect(isImagePath(p)).toBe(false);
+  });
+
+  it('lists file paths and file URLs to load, one id per path; other strings stay ids', () => {
+    const r = images(
+      <>
+        <Image src="./logo.png" />
+        <Image src="/srv/img/photo.jpg" />
+        <Image src="./logo.png" />
+        <Image src="file:///srv/img/a.png" />
+        <Image src="logo.png" />
+      </>,
+    );
+    expect(srcs(r)).toEqual(['file-0', 'file-1', 'file-0', 'file-2', 'logo.png']);
+    expect(r.pending).toEqual({
+      'file-0': { kind: 'file', path: './logo.png' },
+      'file-1': { kind: 'file', path: '/srv/img/photo.jpg' },
+      'file-2': { kind: 'file', path: 'file:///srv/img/a.png' },
+    });
+  });
+
+  it('keeps a string that names a passed-in image as that id, path or URL alike', () => {
+    const r = images(
+      <>
+        <Image src="./logo.png" />
+        <Image src="https://img.example.com/private/a.png" />
+      </>,
+      ['./logo.png', 'https://img.example.com/private/a.png'],
+    );
+    expect(srcs(r)).toEqual(['./logo.png', 'https://img.example.com/private/a.png']);
+    expect(r.pending).toEqual({});
+    expect(r.remote).toEqual({});
+  });
+
+  it('lists allowed requests and checks their uri against the allowlist', () => {
+    const request = { uri: 'https://cdn.example.com/a.png', method: 'POST', headers: { a: 'b' }, body: 'x' };
+    const r = images(
+      <>
+        <Image src={request} />
+        <Image src={request} />
+      </>,
+    );
+    expect(srcs(r)).toEqual(['request-0', 'request-0']);
+    expect(r.pending).toEqual({ 'request-0': { kind: 'request', request } });
+    expect(thrown(() => images(<Image src={{ uri: 'https://evil.example.org/a.png' }} />)).message).toBe(
+      '<Image src={{ uri: "https://evil.example.org/a.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
+    );
+    expect(thrown(() => images(<Image src={{ uri: '' }} />)).message).toContain('a request needs a uri');
+  });
+
+  it('lists functions and promises without calling or awaiting them', async () => {
+    let calls = 0;
+    const fn = () => {
+      calls++;
+      return 'logo';
+    };
+    const promise = Promise.resolve(new Uint8Array([1]));
+    const r = images(
+      <>
+        <Image src={fn} />
+        <Image src={promise} />
+        <Image src={fn} />
+      </>,
+    );
+    expect(srcs(r)).toEqual(['deferred-0', 'deferred-1', 'deferred-0']);
+    expect(calls).toBe(0);
+    expect(r.pending['deferred-0']).toEqual({ kind: 'deferred', src: fn });
+    const p = r.pending['deferred-1'];
+    expect(p?.kind === 'deferred' && (await p.src)).toEqual(new Uint8Array([1]));
+  });
+
+  it('does not leave a rejected promise unhandled when the tree is never rendered', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      images(<Image src={Promise.reject(new Error('gone'))} />);
+      await new Promise((ok) => setTimeout(ok, 10));
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+    expect(unhandled).toEqual([]);
   });
 });
