@@ -367,7 +367,7 @@ All three take the same options:
 |---|---|---|
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
-| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MB) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |

@@ -38,7 +38,7 @@ export interface LocalImageOptions {
    * the first; any path must lead, symbolic links followed, to a file inside one of them.
    */
   root: string | readonly string[];
-  /** Largest accepted file (default 20 MiB). */
+  /** Largest accepted file in bytes (default 20 MiB). */
   maxBytes?: number;
 }
 
@@ -47,7 +47,7 @@ export interface RemoteImageOptions {
   allow: readonly string[];
   /** Per-image timeout (default 10 000 ms). */
   timeoutMs?: number;
-  /** Largest accepted image (default 20 MB). */
+  /** Largest accepted image in bytes (default 20 MiB). */
   maxBytes?: number;
 }
 
