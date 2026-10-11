@@ -212,7 +212,8 @@ impl Task for RenderJob {
     }
 }
 
-/// Registers (or replaces) a TrueType or CFF OpenType font for all later renders.
+/// Registers (or replaces) a TrueType, CFF OpenType, WOFF or WOFF2 font for all
+/// later renders.
 #[napi]
 pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
     let mut fonts = FONTS

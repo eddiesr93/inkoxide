@@ -1,8 +1,11 @@
 //! Font registry, metrics and the per-render font set.
 //!
 //! Fonts are registered explicitly (no system font discovery: determinism).
-//! Registration parses and validates the font once; per render, the fonts a
-//! document declares are wrapped in shaping faces (`FontSet`).
+//! Registration decodes WOFF and WOFF2 files to the font they wrap, then
+//! parses and validates the font once; per render, the fonts a document
+//! declares are wrapped in shaping faces (`FontSet`).
+
+mod woff;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
@@ -37,6 +40,8 @@ pub(crate) struct FontMetrics {
 /// A registered font face.
 #[derive(Debug)]
 pub struct FontData {
+    /// The sfnt font (TrueType or CFF OpenType), decoded from WOFF or WOFF2
+    /// when it was registered in one of them.
     pub(crate) bytes: Arc<[u8]>,
     /// xxh3 of `bytes`: the font's identity in process-wide caches.
     pub(crate) hash: u64,
@@ -50,6 +55,10 @@ pub struct FontData {
 impl FontData {
     fn parse(id: &str, bytes: Arc<[u8]>) -> Result<Self, InkoxideError> {
         let err = |msg: &str| InkoxideError::Font(format!("font `{id}`: {msg}"));
+        let bytes = match woff::decode(&bytes).map_err(|m| err(&m))? {
+            Some(sfnt) => sfnt.into(),
+            None => bytes,
+        };
         let face = ttf_parser::Face::parse(&bytes, 0)
             .map_err(|e| err(&format!("not a valid TrueType/OpenType font ({e})")))?;
         let tables = face.tables();
@@ -166,12 +175,13 @@ impl FontStore {
         Self::default()
     }
 
-    /// Registers (or replaces) font `id` from TrueType or CFF OpenType bytes.
+    /// Registers (or replaces) font `id` from TrueType or CFF OpenType bytes,
+    /// plain or in a WOFF or WOFF2 file.
     ///
     /// # Errors
     ///
-    /// Fails for bytes that are not a font and for unsupported fonts
-    /// (variable fonts).
+    /// Fails for bytes that are not a font, for WOFF and WOFF2 files that
+    /// cannot be decoded, and for unsupported fonts (variable fonts).
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -317,11 +327,120 @@ mod tests {
         assert!(!s.get("Bold").unwrap().compressed().unwrap().is_empty());
     }
 
+    /// Drawing commands with their coordinates.
+    type Outline = Vec<(char, Vec<f32>)>;
+
+    /// Every glyph's advance and outline.
+    fn glyphs(bytes: &[u8]) -> Vec<(Option<u16>, Outline)> {
+        struct Path(Outline);
+        impl ttf_parser::OutlineBuilder for Path {
+            fn move_to(&mut self, x: f32, y: f32) {
+                self.0.push(('M', vec![x, y]));
+            }
+            fn line_to(&mut self, x: f32, y: f32) {
+                self.0.push(('L', vec![x, y]));
+            }
+            fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+                self.0.push(('Q', vec![x1, y1, x, y]));
+            }
+            fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+                self.0.push(('C', vec![x1, y1, x2, y2, x, y]));
+            }
+            fn close(&mut self) {
+                self.0.push(('Z', vec![]));
+            }
+        }
+        let face = ttf_parser::Face::parse(bytes, 0).unwrap();
+        (0..face.number_of_glyphs())
+            .map(|g| {
+                let gid = ttf_parser::GlyphId(g);
+                let mut path = Path(Vec::new());
+                face.outline_glyph(gid, &mut path);
+                (face.glyph_hor_advance(gid), path.0)
+            })
+            .collect()
+    }
+
+    /// Registers `plain` and its web font `web`; they must be the same font.
+    fn assert_same_font(plain: &[u8], web: Vec<u8>) {
+        let mut s = FontStore::new();
+        s.register("plain", plain.to_vec()).unwrap();
+        s.register("web", web).unwrap();
+        let (a, b) = (s.get("plain").unwrap(), s.get("web").unwrap());
+        assert_eq!(format!("{:?}", a.metrics), format!("{:?}", b.metrics));
+        assert_eq!(glyphs(&a.bytes), glyphs(&b.bytes));
+        assert!(!b.compressed().unwrap().is_empty());
+    }
+
+    #[test]
+    fn registers_woff() {
+        let ttf = fixture("RobotoMono-Regular.ttf");
+        assert_same_font(&ttf, fixture("woff/RobotoMono-Regular.woff"));
+        // WOFF keeps every table byte for byte.
+        let mut s = FontStore::new();
+        s.register("web", fixture("woff/RobotoMono-Regular.woff"))
+            .unwrap();
+        let (plain, web) = (
+            ttf_parser::RawFace::parse(&ttf, 0).unwrap(),
+            ttf_parser::RawFace::parse(&s.get("web").unwrap().bytes, 0).unwrap(),
+        );
+        assert_eq!(plain.table_records.len(), web.table_records.len());
+        for t in plain.table_records {
+            assert_eq!(plain.table(t.tag), web.table(t.tag), "{}", t.tag);
+        }
+    }
+
+    #[test]
+    fn registers_woff2() {
+        // glyf and loca are rebuilt from the WOFF2 transform.
+        assert_same_font(
+            &fixture("RobotoMono-Regular.ttf"),
+            fixture("woff/RobotoMono-Regular.woff2"),
+        );
+    }
+
+    #[test]
+    fn registers_cff_in_woff() {
+        let otf = fixture("InterDisplay-Bold.otf");
+        let web = woff::woff_from_sfnt(&otf, true, None);
+        assert_same_font(&otf, web.clone());
+        let mut s = FontStore::new();
+        s.register("Bold", web).unwrap();
+        assert!(s.get("Bold").unwrap().metrics.cff);
+    }
+
+    #[test]
+    fn renders_woff2_deterministically() {
+        let mut fonts = FontStore::new();
+        fonts
+            .register("Mono", fixture("woff/RobotoMono-Regular.woff2"))
+            .unwrap();
+        let doc = br#"{"version":1,"fonts":[{"id":"Mono","family":"Roboto Mono"}],
+            "pages":[{"size":{"width":300,"height":200},"children":[
+              {"type":"text","runs":[{"text":"WOFF2 fonts, decoded.","font":"Mono","size":14}]}]}]}"#;
+        let images = crate::ImageStore::new();
+        for subset in [true, false] {
+            let opts = crate::RenderOptions::default().with_subset_fonts(subset);
+            let render = || crate::render(doc, crate::InputFormat::Json, &opts, &fonts, &images);
+            let pdf = render().unwrap();
+            assert!(pdf.starts_with(b"%PDF-"));
+            assert_eq!(pdf, render().unwrap());
+        }
+    }
+
     #[test]
     fn rejects_garbage() {
         let mut s = FontStore::new();
         let e = s.register("x", vec![0u8; 100]).unwrap_err();
         assert_eq!(e.code(), "FONT_ERROR");
+        let mut woff2 = fixture("woff/RobotoMono-Regular.woff2");
+        woff2.truncate(woff2.len() / 2);
+        let e = s.register("x", woff2).unwrap_err();
+        assert_eq!(e.code(), "FONT_ERROR");
+        assert_eq!(
+            e.to_string(),
+            "font error: font `x`: not a valid WOFF2 font"
+        );
     }
 
     #[test]

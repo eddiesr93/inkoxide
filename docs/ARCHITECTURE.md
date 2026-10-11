@@ -51,7 +51,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 |---|---|---|
 | Parse | `schema`, `schema/de.rs` | JSON or MessagePack into typed structs, with the path of every error |
 | Validate | `validate` | Semantic checks: font ids, image ids, anchors, value ranges |
-| Fonts | `fonts`, `pdf/font.rs` | Registry and metrics; Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
+| Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding; Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |

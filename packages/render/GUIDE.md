@@ -106,8 +106,8 @@ Font.register({
 Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lora]"`.
 
 - **Sources.** `src` is a file path, a `file:` or `https:` URL, or the bytes (`Uint8Array` or
-  `ArrayBuffer`). Formats are TrueType (`.ttf`) and OpenType (`.otf`). Variable fonts are not
-  supported: register the static instances.
+  `ArrayBuffer`). Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
+  (`.woff2`). Variable fonts are not supported: register the static instances.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`.
 - **Weights.** Weights are numbers (100–900) or names (`'light'`, `'medium'`, `'bold'`).
