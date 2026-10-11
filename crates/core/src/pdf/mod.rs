@@ -80,10 +80,45 @@ pub(crate) struct PdfWriterSink {
     pub pdf_a: bool,
 }
 
-/// Rounds to 1/1000 pt so output has at most three decimals.
+/// `v`, or 0 when it is infinite or NaN: the backstop that keeps every
+/// number this module writes finite.
+///
+/// PDF has no syntax for infinity or NaN; `pdf-writer` would write `inf` or
+/// `NaN`, which makes the content stream invalid, and viewers reject the
+/// page. Validation bounds every number in a document, but bounded values
+/// can still compound past `f32` (a percentage of a percentage, a few
+/// dozen levels deep), and SVG images bring numbers of their own. So this
+/// is not a `debug_assert`: a valid document must not panic a debug build
+/// (the fuzz targets and the debug Node binding run with assertions on).
+/// Zero keeps the file valid; only the shape whose geometry overflowed is
+/// misplaced. Finite values pass unchanged, so output is byte-identical,
+/// and the check is a compare and a well-predicted branch.
+#[inline]
+pub(crate) fn finite(v: f32) -> f32 {
+    if v.is_finite() {
+        v
+    } else {
+        0.0
+    }
+}
+
+/// Rounds to 1/1000 pt so output has at most three decimals; never
+/// infinite or NaN (see [`finite`]).
 #[inline]
 pub(crate) fn q(v: f32) -> f32 {
-    (v * 1000.0).round() / 1000.0
+    round_to(v, 1000.0)
+}
+
+/// Rounds to `1 / per`, through [`finite`]. Past about 3e35 points the
+/// scaling overflows, but `f32` has no fraction left to round there.
+#[inline]
+fn round_to(v: f32, per: f32) -> f32 {
+    let r = (v * per).round() / per;
+    if r.is_finite() {
+        r
+    } else {
+        finite(v)
+    }
 }
 
 struct RefAlloc(i32);
@@ -663,7 +698,7 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool
                     buf.clear();
                 }
                 // TJ adjustments are in thousandths of text space, inverted.
-                items.adjust(((-delta * 1000.0 / t.size) * 1000.0).round() / 1000.0);
+                items.adjust(q(-delta * 1000.0 / t.size));
             }
             buf.extend_from_slice(&g.id.to_be_bytes());
             pen = g.x + font.advance(g.id) * scale;
@@ -714,7 +749,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
                 c.restore_state();
             }
             Op::Transform(m) => {
-                c.transform(m.map(|v| (v * 1e5).round() / 1e5));
+                c.transform(m.map(|v| round_to(v, 1e5)));
             }
             Op::ClipRect(r) => {
                 c.rect(q(r.x), q(r.y), q(r.w), q(r.h));
@@ -779,4 +814,79 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
         }
     }
     c.finish().into_vec()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::paint::{Dash, Path};
+
+    #[test]
+    fn numbers_are_rounded_and_never_non_finite() {
+        assert_eq!(q(1.234_56), 1.235);
+        assert_eq!(q(-0.000_4), -0.0);
+        // Too large to scale by 1000, finite all the same.
+        assert_eq!(q(f32::MAX), f32::MAX);
+        assert_eq!(q(-3e36), -3e36);
+        for v in [f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
+            assert_eq!(finite(v), 0.0);
+            assert_eq!(q(v), 0.0);
+            assert_eq!(round_to(v, 1e5), 0.0);
+        }
+    }
+
+    #[test]
+    fn the_content_stream_writes_non_finite_numbers_as_zero() {
+        let doc: crate::schema::Document =
+            serde_json::from_str(r#"{"version":1,"pages":[{"size":{"width":10,"height":10}}]}"#)
+                .unwrap();
+        let store = crate::FontStore::new();
+        let fonts = FontSet::load(&doc, &store).unwrap();
+        let (inf, nan) = (f32::INFINITY, f32::NAN);
+        let path = Path {
+            segs: vec![
+                PathSeg::MoveTo(inf, 1.0),
+                PathSeg::LineTo(nan, -inf),
+                PathSeg::CubicTo(1.0, inf, nan, 2.0, -inf, f32::MAX),
+                PathSeg::Close,
+            ],
+        };
+        let mut page = PageContent::new(10.0, 10.0);
+        page.ops = vec![
+            Op::Transform([inf, 0.0, nan, 1.0, -inf, f32::MAX]),
+            Op::ClipRect(Rect::new(nan, 0.0, inf, 1.0)),
+            Op::FillRect {
+                rect: Rect::new(1.0, nan, 2.0, -inf),
+                color: [nan, 0.5, inf, 1.0],
+            },
+            Op::FillPath {
+                path: path.clone(),
+                color: [0.0; 4],
+                rule: FillRule::EvenOdd,
+            },
+            Op::StrokePath {
+                path,
+                color: [0.0; 4],
+                width: inf,
+                dash: Some(Dash {
+                    pattern: [nan, inf],
+                    round_cap: false,
+                }),
+            },
+            Op::SetOpacity(nan),
+            Op::Image {
+                key: 0,
+                matrix: [inf, nan, 0.0, -inf, 1.0, 2.0],
+            },
+        ];
+        let out = String::from_utf8(content_stream(&page, &fonts, false)).unwrap();
+        for token in out.split_whitespace() {
+            let t = token.trim_start_matches('-');
+            assert!(t != "inf" && t != "NaN", "`{token}` in:\n{out}");
+        }
+        assert!(
+            out.contains("0 0 0 1 0 340282350000000000000000000000000000000 cm"),
+            "{out}"
+        );
+    }
 }

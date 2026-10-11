@@ -25,6 +25,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
+use super::finite;
 use crate::InkoxideError;
 
 /// Most path segments one SVG may emit, copies included.
@@ -143,8 +144,11 @@ impl Canvas {
     }
 }
 
+/// A transform as a PDF matrix. Transforms compound (a tiny `viewBox`
+/// scaled up, nested scales), so they can overflow `f32`; see
+/// [`super::finite`].
 fn matrix(t: Transform) -> [f32; 6] {
-    [t.sx, t.ky, t.kx, t.sy, t.tx, t.ty]
+    [t.sx, t.ky, t.kx, t.sy, t.tx, t.ty].map(finite)
 }
 
 fn pdf_rect(r: usvg::NonZeroRect) -> Rect {
@@ -509,7 +513,7 @@ impl Svg<'_> {
             let Some(st) = p.stroke() else { return Ok(()) };
             cv.c.save_state();
             s.set_paint(cv, st.paint(), st.opacity().get(), true, ts, bbox, depth)?;
-            cv.c.set_line_width(st.width().get());
+            cv.c.set_line_width(finite(st.width().get()));
             cv.c.set_line_cap(match st.linecap() {
                 usvg::LineCap::Butt => LineCapStyle::ButtCap,
                 usvg::LineCap::Round => LineCapStyle::RoundCap,
@@ -520,9 +524,9 @@ impl Svg<'_> {
                 usvg::LineJoin::Round => LineJoinStyle::RoundJoin,
                 usvg::LineJoin::Bevel => LineJoinStyle::BevelJoin,
             });
-            cv.c.set_miter_limit(st.miterlimit().get());
+            cv.c.set_miter_limit(finite(st.miterlimit().get()));
             if let Some(d) = st.dasharray() {
-                cv.c.set_dash_pattern(d.iter().copied(), st.dashoffset());
+                cv.c.set_dash_pattern(d.iter().map(|&v| finite(v)), finite(st.dashoffset()));
             }
             s.emit_path(&mut cv.c, p.data())?;
             cv.c.stroke();
@@ -691,7 +695,7 @@ impl Svg<'_> {
             sh.color_space().device_rgb();
         }
         sh.function(function)
-            .coords(coords.iter().copied())
+            .coords(coords.iter().map(|&v| finite(v)))
             .extend([true, true]);
         sh.finish();
         id
