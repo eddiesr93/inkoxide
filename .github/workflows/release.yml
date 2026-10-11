@@ -3,6 +3,8 @@
 # `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
 # already on the registry are skipped. npm trusts this workflow (trusted
 # publishing), so no token is stored and every package gets provenance.
+# Finally it tags the commit and creates the GitHub release from the newest
+# CHANGELOG.md section.
 # Manual dispatch only; it runs no tests, so dispatch it from a commit that
 # passed the ci workflow.
 name: release
@@ -195,3 +197,23 @@ jobs:
           flags=()
           [[ "$DRY_RUN" == "true" ]] && flags+=(--dry-run)
           scripts/release/publish.sh ${flags[@]+"${flags[@]}"}
+
+  github-release:
+    name: tag and GitHub release
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # the tag and the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create the release from the newest CHANGELOG.md section
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--target "$GITHUB_SHA")
+          [[ "$DRY_RUN" == "true" ]] && flags+=(--dry-run)
+          node scripts/release/github-release.mjs "${flags[@]}"

@@ -67,7 +67,9 @@ Maintainers release from `main`:
 2. Dispatch the `release` workflow, first with `dry_run` on. It builds the native bindings on
    every platform and publishes every package whose version is not on npm yet, in dependency
    order. npm trusts the workflow (trusted publishing), so no token is involved and every
-   package is published with provenance.
+   package is published with provenance. Then it tags the commit and creates the GitHub
+   release from the newest changelog section: `v0.2.0` for a heading `## 0.2.0 - <date>`,
+   `@inkoxide/render@0.1.1` for `## @inkoxide/render 0.1.1 - <date>`.
 
 ## Licence
 
