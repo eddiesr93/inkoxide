@@ -113,7 +113,8 @@ Run it with `npx tsx receipt.tsx`, which writes `receipt.pdf`:
 
 <img src="media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="300">
 
-In a server, `renderToBuffer(<Receipt … />)` returns the bytes to send.
+In a server, `renderToBuffer(<Receipt … />)` returns the bytes to send, and
+`renderToStream(<Receipt … />)` a stream to pipe into the response.
 
 ## Examples
 
@@ -1001,7 +1002,7 @@ await renderToFile(<Form {...sample} />, 'form.pdf');
 | Document | Contents |
 |---|---|
 | [Guide](GUIDE.md) | Components, styling, fonts, images, pagination, tables, links, drawing and forms |
-| [API](GUIDE.md#api) | `renderToBuffer`, `renderToFile` and their options, `Font.register`, `init`, concurrency |
+| [API](GUIDE.md#api) | `renderToBuffer`, `renderToFile`, `renderToStream` and their options, `Font.register`, `init`, concurrency |
 | [Errors](GUIDE.md#errors) | Error codes and what they mean |
 | [FAQ](GUIDE.md#faq) | Installing on servers and in Docker, hooks, page numbers, determinism |
 | [Migrating from react-pdf](MIGRATING.md) | What has another name, and what is not available |

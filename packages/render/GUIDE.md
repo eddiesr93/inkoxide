@@ -273,9 +273,14 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 ```ts
 renderToBuffer(element, options?): Promise<Uint8Array>   // the PDF bytes
 renderToFile(element, path, options?): Promise<void>      // renders, then writes the file
+renderToStream(element, options?): Promise<Readable>     // the PDF as a Node stream
 ```
 
-Both take the same options:
+`renderToStream` returns a stream to pipe into an HTTP response:
+`(await renderToStream(<Invoice />)).pipe(res)`. The stream starts once the PDF is ready, and a
+failed render rejects the promise.
+
+All three take the same options:
 
 | Option | Default | What it does |
 |---|---|---|

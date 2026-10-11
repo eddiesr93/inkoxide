@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 
 import { assertValidTree, renderTemplate, TemplateError, type TreeResult } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
@@ -285,6 +286,25 @@ export async function renderToFile(
   opts: RenderToBufferOptions = {},
 ): Promise<void> {
   await writeFile(path, await renderToBuffer(element, opts));
+}
+
+/**
+ * `renderToBuffer` as a Node stream, to pipe into an HTTP response:
+ *
+ * ```tsx
+ * (await renderToStream(<Invoice invoice={invoice} />)).pipe(res);
+ * ```
+ *
+ * The engine writes the whole file at once, so the stream starts when the PDF is ready, and a
+ * render that fails rejects the promise instead of erroring the stream.
+ */
+export async function renderToStream(
+  element: ReactElement,
+  opts: RenderToBufferOptions = {},
+): Promise<Readable> {
+  const pdf = await renderToBuffer(element, opts);
+  // Buffer chunks, as from a file stream; the view shares the PDF's memory.
+  return Readable.from([Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength)], { objectMode: false });
 }
 
 function componentName(element: ReactElement): string {
