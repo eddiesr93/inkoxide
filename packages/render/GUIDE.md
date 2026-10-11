@@ -435,10 +435,13 @@ Yes. A document is ordinary React: components, props, context, `.map` and condit
 as do hooks that compute during render (`useMemo`, `useContext`). The PDF is built from that
 first render, so state updates and effects do not change it.
 
-**A page number at the right of a footer stops short of the margin.**
-Give its text `text-right`: `<Text className="text-right">Page <PageNumber /></Text>`. The
-engine reserves room for the widest page number, and the alignment decides where shorter ones
-sit.
+**How much room does a page number take?**
+In a header or footer, its own digits: the text is laid out again on every page, so
+`<Text className="text-right">Page <PageNumber /> of <TotalPages /></Text>` ends at the
+footer's padding on every page. In the page body, the engine sizes the text for a three-digit
+number, because the page breaks depend on that layout: each line is still aligned with the real
+digits, but a box sized by its text keeps the three-digit width, and a number of four digits or
+more can overflow it.
 
 **Is the output the same on every machine?**
 Yes, for the same input, fonts and options, as long as you leave out `creationDate`.
@@ -449,4 +452,5 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
   run on edge runtimes such as Cloudflare Workers.
 - **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet.
 - **Tailwind.** Variants (`md:`, `hover:`), shadows and gradients are not supported.
-- **Output.** There is no streaming: you get the whole PDF as bytes.
+- **Output.** The engine produces the whole PDF at once: `renderToStream` streams the finished
+  file, it does not send pages while later ones are still being laid out.
