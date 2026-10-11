@@ -22,6 +22,7 @@ import { createElement } from 'react';
 
 import { Painter } from '../canvas.ts';
 import {
+  type AbsoluteLength,
   type BookmarkProp,
   type BreakProp,
   type FieldProps,
@@ -495,7 +496,7 @@ class Builder {
    */
   private pageSize(inst: Instance, size: PageSize): { width: number; height: number } {
     if (Array.isArray(size)) {
-      const [w, h, ...extra] = size as Length[];
+      const [w, h, ...extra] = size as AbsoluteLength[];
       if (w === undefined || extra.length > 0) {
         this.fail(inst, `<Page size>: use [width, height] or [width], not ${size.length} values.`, {
           kind: 'props',

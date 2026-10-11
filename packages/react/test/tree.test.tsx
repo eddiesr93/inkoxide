@@ -668,7 +668,10 @@ describe('errors carry component stacks', () => {
   });
 
   it('rejects a Link without a target and block content inside an inline Link', () => {
+    // @ts-expect-error: a Link needs href or src
     expect(thrown(() => render(<Link>x</Link>)).message).toContain('<Link> needs an href');
+    // @ts-expect-error: a Link needs href or src
+    expect(thrown(() => render(<Link className="p-2">x</Link>)).message).toContain('<Link> needs an href');
     const inline = () =>
       render(
         <Text>

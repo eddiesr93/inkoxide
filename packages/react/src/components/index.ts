@@ -303,9 +303,9 @@ type PresetName = PagePreset | Lowercase<PagePreset> | Uppercase<PagePreset>;
 export type PageSize =
   | PresetName
   | `${PresetName}-landscape`
-  | Length
-  | [width: Length, height: Length]
-  | [side: Length]
+  | AbsoluteLength
+  | [width: AbsoluteLength, height: AbsoluteLength]
+  | [side: AbsoluteLength]
   | {
       width: AbsoluteLength;
       height: AbsoluteLength;
@@ -373,10 +373,15 @@ export interface TextProps extends Flow {
   render?: RenderProp;
 }
 
-export interface LinkProps extends Flow {
-  /** The same as `href`. */
-  src?: string;
-}
+/** A `Link` needs a target: `href`, or `src`, which is the same. */
+export type LinkProps = Flow &
+  (
+    | { href: string; src?: string }
+    | {
+        /** The same as `href`. */
+        src: string;
+      }
+  );
 
 /**
  * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must

@@ -439,6 +439,26 @@ describe('page filters, sizes and per-page content', () => {
     expect(thrown(() => tree(null, { page: { size: [] } })).message).toContain('[width, height] or [width]');
     expect(thrown(() => tree(null, { page: { size: [1, 2, 3] } })).message).toContain('not 3 values');
     expect(thrown(() => tree(null, { page: { size: ['10'] } })).message).toContain('"10" is not a length');
+    // A page has no font size or page to be relative to, and the types say so.
+    expect(thrown(() => tree(null, { page: { size: '10em' } })).message).toContain(
+      'Unknown page size "10em"',
+    );
+    for (const bad of [['10em', 5], [5, '50vh'], ['2vw'], { width: 100, height: '1em' }]) {
+      expect(thrown(() => tree(null, { page: { size: bad } })).message).toContain(
+        'depends on the font or page size',
+      );
+    }
+    const types = (
+      <Document>
+        {/* @ts-expect-error: relative units are not page sizes */}
+        <Page size="10em" />
+        {/* @ts-expect-error: relative units are not page sizes */}
+        <Page size={['10em', 5]} />
+        {/* @ts-expect-error: relative units are not page sizes */}
+        <Page size={['2vw']} />
+      </Document>
+    );
+    expect(types).toBeDefined();
   });
 
   it('renders a render prop once per page and groups identical output', () => {
