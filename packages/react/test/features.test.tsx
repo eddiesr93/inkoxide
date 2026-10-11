@@ -156,8 +156,8 @@ describe('paint styles', () => {
     expect(a?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '0%' });
     expect(b?.style).toEqual({ flexGrow: 2, flexShrink: 3, flexBasis: 28.346457 });
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
-    expect(thrown(() => tree(<View style={{ objectPosition: 'top' } as never} />)).message).toContain(
-      'unknown style property "objectPosition"',
+    expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
+      'unknown style property "boxShadow"',
     );
   });
 });
@@ -311,6 +311,56 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectFit: 'scale-down' as never }} />)).message,
     ).toContain('objectFit "scale-down" is not fill, contain, cover or none');
+  });
+
+  it('maps objectPosition and object-* classes to the image position', () => {
+    const r = tree(
+      <>
+        <Image src="logo" fit="cover" style={{ objectPosition: 'left top' }} />
+        <Image src="logo" fit="contain" style={{ objectPosition: 'bottom' }} />
+        <Image src="logo" fit="none" style={{ objectPosition: '25% 75%' }} />
+        <Image src="logo" fit="none" style={{ objectPosition: '10pt 20px' }} />
+        <Image src="logo" fit="none" style={{ objectPosition: 'top right' }} />
+        <Image src="logo" style={{ objectPosition: '5mm' }} />
+        <Image src="logo" className="object-cover object-right-bottom" />
+        <Image src="logo" className="object-left" style={{ objectPosition: 'center top' }} />
+        <Image src="logo" fit="contain" />
+        <Image src="logo" style={{ fontSize: 10, objectPosition: '2em 0' }} />
+      </>,
+    );
+    const nodes = body(r) as ImageNode[];
+    expect(nodes.map((n) => n.position)).toEqual([
+      { x: 'left', y: 'top' },
+      { x: 'center', y: 'bottom' },
+      { x: '25%', y: '75%' },
+      { x: 10, y: 15 },
+      { x: 'right', y: 'top' },
+      { x: 14.173228, y: 'center' },
+      { x: 'right', y: 'bottom' },
+      { x: 'center', y: 'top' },
+      undefined,
+      { x: 20, y: 0 },
+    ]);
+    expect(nodes[6]?.fit).toBe('cover');
+    // Not a style property of the box.
+    expect(nodes.every((n) => n.style === undefined || !('objectPosition' in n.style))).toBe(true);
+  });
+
+  it('throws on objectPosition off an Image or in a form the engine cannot place', () => {
+    expect(thrown(() => tree(<View style={{ objectPosition: 'left' }} />)).message).toContain(
+      'objectPosition applies to <Image>, not <View>',
+    );
+    expect(thrown(() => tree(<Text className="object-top">x</Text>)).message).toContain(
+      'objectPosition applies to <Image>, not <Text>',
+    );
+    for (const bad of ['top 25%', '25% left', 'left right', 'right 10px top', 'middle', '10', 'auto', '']) {
+      expect(thrown(() => tree(<Image src="logo" style={{ objectPosition: bad }} />)).message, bad).toContain(
+        `objectPosition: ${bad}`,
+      );
+    }
+    expect(
+      thrown(() => tree(<Image src="logo" style={{ objectPosition: ['left', 'top'] as never }} />)).message,
+    ).toContain('objectPosition must be a CSS string');
   });
 });
 

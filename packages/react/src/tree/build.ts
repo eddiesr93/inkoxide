@@ -375,8 +375,12 @@ class Builder {
         });
       }
     }
-    if (s.objectFit !== undefined && inst.type !== HOST.Image) {
-      this.fail(inst, `objectFit applies to <Image>, not <${HOST_NAME[inst.type]}>.`, { kind: 'props' });
+    if (inst.type !== HOST.Image) {
+      for (const key of ['objectFit', 'objectPosition'] as const) {
+        if (s[key] !== undefined) {
+          this.fail(inst, `${key} applies to <Image>, not <${HOST_NAME[inst.type]}>.`, { kind: 'props' });
+        }
+      }
     }
     return s;
   }
@@ -1024,6 +1028,7 @@ class Builder {
     }
     const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
     if (fit) node.fit = fit;
+    if (own.objectPosition) node.position = own.objectPosition;
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }

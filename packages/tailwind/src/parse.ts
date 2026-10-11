@@ -1,7 +1,7 @@
 import type { GridPlacement, Style, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
-import type { ColorValue, Len, LenPercent, TransformOp, TwStyle } from './types.ts';
+import type { ColorValue, ImagePosition, Len, LenPercent, TransformOp, TwStyle } from './types.ts';
 import {
   type Dim,
   evalDim,
@@ -88,6 +88,7 @@ const ENUMS = {
   decorationStyle: ['solid', 'double', 'dotted', 'dashed', 'wavy'],
   direction: ['ltr', 'rtl'],
   textTransform: ['none', 'uppercase', 'lowercase', 'capitalize'],
+  objectFit: ['fill', 'contain', 'cover', 'none'],
 } as const;
 
 type EnumKey = keyof typeof ENUMS;
@@ -308,6 +309,38 @@ export function parseOrigin(prop: string, value: string): [LenPercent, LenPercen
   const x = ORIGIN_X[a] ?? lenPercent(prop, a);
   const y = ORIGIN_Y[b] ?? lenPercent(prop, b);
   return [x, y];
+}
+
+const POSITION_X: ReadonlySet<string> = new Set(['left', 'right']);
+const POSITION_Y: ReadonlySet<string> = new Set(['top', 'bottom']);
+const isPositionKeyword = (v: string) => v === 'center' || POSITION_X.has(v) || POSITION_Y.has(v);
+
+/**
+ * Parses CSS `object-position`: one or two values, each a keyword, a length or a percentage. Two
+ * keywords may come in either order (`top left`); otherwise the first value is x. A single value
+ * leaves the other axis centred. Edge offsets (`right 10px bottom 5px`) are not supported.
+ * `length` reads a value that is not a keyword (default: Tailwind's absolute units).
+ */
+export function parseObjectPosition(
+  prop: string,
+  value: string,
+  length: (v: string) => LenPercent = (v) => lenPercent(prop, v),
+): ImagePosition {
+  const parts = splitTopLevel(value, ' ');
+  if (parts.length === 0 || parts.length > 2) {
+    throw new Unsupported(prop, `${prop}: ${value} (one or two values; edge offsets are not supported)`);
+  }
+  let [a = 'center', b = 'center'] = parts;
+  // Keywords alone may name y first (`top left`, or `top`, whose x is `center`).
+  if (isPositionKeyword(a) && isPositionKeyword(b) && (POSITION_Y.has(a) || POSITION_X.has(b))) {
+    [a, b] = [b, a];
+  }
+  if (POSITION_Y.has(a) || POSITION_X.has(b)) {
+    throw new Unsupported(prop, `${prop}: ${value} (expected x then y, e.g. "left top" or "25% 75%")`);
+  }
+  const x = a === 'center' || POSITION_X.has(a) ? (a as 'left' | 'center' | 'right') : length(a);
+  const y = b === 'center' || POSITION_Y.has(b) ? (b as 'top' | 'center' | 'bottom') : length(b);
+  return { x, y };
 }
 
 const CORNERS: Record<string, 'TopLeft' | 'TopRight' | 'BottomRight' | 'BottomLeft'> = {
@@ -566,6 +599,12 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       return;
     case 'transform-origin':
       s.transformOrigin = parseOrigin(prop, v);
+      return;
+    case 'object-fit':
+      s.objectFit = pick('objectFit', prop, v);
+      return;
+    case 'object-position':
+      s.objectPosition = parseObjectPosition(prop, v);
       return;
     case 'text-decoration-color': {
       const c = color(prop, v);

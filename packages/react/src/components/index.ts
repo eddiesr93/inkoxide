@@ -108,6 +108,7 @@ export interface StyleProp extends Omit<
   | 'translate'
   | 'transform'
   | 'transformOrigin'
+  | 'objectPosition'
 > {
   fontFamily?: string | string[];
   /** 100–900, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
@@ -198,6 +199,11 @@ export interface StyleProp extends Omit<
   transform?: TransformOp[] | string;
   /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
   transformOrigin?: [LengthPercent, LengthPercent] | string;
+  /**
+   * `Image` only: where a `contain`, `cover` or `none` image sits in its box, as CSS
+   * `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default centred.
+   */
+  objectPosition?: string;
 }
 
 /** One style object, or a list of them merged left to right (falsy entries are skipped). */

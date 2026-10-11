@@ -800,6 +800,16 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
                     json!(s.pick(&["fill", "contain", "cover", "none"])),
                 );
             }
+            if s.chance(96) {
+                let mut axis = |keywords: [&str; 3]| match s.below(3) {
+                    0 => json!(s.pick(&keywords)),
+                    1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1e3%"])),
+                    _ => num(s),
+                };
+                let x = axis(["left", "center", "right"]);
+                let y = axis(["top", "center", "bottom"]);
+                m.insert("position".into(), json!({ "x": x, "y": y }));
+            }
         }
         "table" => {
             m.extend(table(s, depth, budget));

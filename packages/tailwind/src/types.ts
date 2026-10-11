@@ -1,4 +1,11 @@
-import type { GridPlacement, Style, TemplateTrack, TrackSize, TransformOp } from '@inkoxide/schema';
+import type {
+  GridPlacement,
+  ImagePosition,
+  Style,
+  TemplateTrack,
+  TrackSize,
+  TransformOp,
+} from '@inkoxide/schema';
 
 /** RGBA floats in [0, 1], the engine's colour format. */
 export type Color = [number, number, number, number];
@@ -25,7 +32,7 @@ export type BorderStyle = 'solid' | 'dashed' | 'dotted';
 export type DecorationStyle = 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
 export type ObjectFit = 'fill' | 'contain' | 'cover' | 'none';
 export type Direction = 'ltr' | 'rtl' | 'auto';
-export type { TransformOp };
+export type { ImagePosition, TransformOp };
 
 /**
  * The style of one class string, flattened. Edges are separate keys so that `px-4 pt-2` merge
@@ -114,6 +121,8 @@ export interface TwStyle {
   verticalAlign?: Style['verticalAlign'];
   /** How an `Image` fills its box: the image node's `fit`. */
   objectFit?: ObjectFit;
+  /** Where a fitted `Image` sits in its box: the image node's `position`. */
+  objectPosition?: ImagePosition;
 
   // Text, inherited.
   fontFamily?: string[];

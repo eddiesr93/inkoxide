@@ -49,18 +49,327 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
 #[test]
 fn fit_modes() {
     let b = (0.0, 0.0, 100.0, 50.0);
-    assert_eq!(fit_rect(ImageFit::Fill, b, (10.0, 10.0)), (b, false));
+    let fit = |f| fit_rect(f, ImagePosition::default(), b, (10.0, 10.0));
+    assert_eq!(fit(ImageFit::Fill), (b, false));
+    assert_eq!(fit(ImageFit::Contain), ((25.0, 0.0, 50.0, 50.0), false));
+    assert_eq!(fit(ImageFit::Cover), ((0.0, -25.0, 100.0, 100.0), true));
+    assert_eq!(fit(ImageFit::None), ((45.0, 20.0, 10.0, 10.0), false));
+}
+
+/// An image position from its JSON form.
+fn pos(json: &str) -> ImagePosition {
+    serde_json::from_str(json).unwrap()
+}
+
+#[test]
+fn position_keywords_are_fractions_of_the_free_space() {
+    use crate::schema::LengthPercent::{Percent, Points};
+    let p = |x, y| ImagePosition { x, y };
+    assert_eq!(pos("{}"), ImagePosition::default());
+    assert_eq!(pos("{}"), p(Percent(0.5), Percent(0.5)));
     assert_eq!(
-        fit_rect(ImageFit::Contain, b, (10.0, 10.0)),
-        ((25.0, 0.0, 50.0, 50.0), false)
+        pos(r#"{"x":"left","y":"top"}"#),
+        p(Percent(0.0), Percent(0.0))
     );
     assert_eq!(
-        fit_rect(ImageFit::Cover, b, (10.0, 10.0)),
-        ((0.0, -25.0, 100.0, 100.0), true)
+        pos(r#"{"x":"center","y":"center"}"#),
+        p(Percent(0.5), Percent(0.5))
     );
     assert_eq!(
-        fit_rect(ImageFit::None, b, (10.0, 10.0)),
-        ((45.0, 20.0, 10.0, 10.0), false)
+        pos(r#"{"x":"right","y":"bottom"}"#),
+        p(Percent(1.0), Percent(1.0))
+    );
+    assert_eq!(
+        pos(r#"{"x":"25%","y":"-50%"}"#),
+        p(Percent(0.25), Percent(-0.5))
+    );
+    assert_eq!(pos(r#"{"x":10,"y":-2.5}"#), p(Points(10.0), Points(-2.5)));
+    assert_eq!(pos(r#"{"y":"bottom"}"#), p(Percent(0.5), Percent(1.0)));
+    for bad in [
+        r#"{"x":"top"}"#,
+        r#"{"x":"bottom"}"#,
+        r#"{"y":"left"}"#,
+        r#"{"y":"right"}"#,
+        r#"{"x":"start"}"#,
+        r#"{"x":"10pt"}"#,
+        r#"{"z":0}"#,
+    ] {
+        assert!(serde_json::from_str::<ImagePosition>(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn position_places_contain_cover_and_none() {
+    // A 100 × 50 box at (10, 20) and a square image.
+    let b = (10.0, 20.0, 100.0, 50.0);
+    let at = |fit, json: &str| fit_rect(fit, pos(json), b, (10.0, 10.0));
+
+    // contain: 50 × 50, free space 50 across and none down.
+    let contain = |json| at(ImageFit::Contain, json);
+    assert_eq!(
+        contain(r#"{"x":"left"}"#),
+        ((10.0, 20.0, 50.0, 50.0), false)
+    );
+    assert_eq!(
+        contain(r#"{"x":"center"}"#),
+        ((35.0, 20.0, 50.0, 50.0), false)
+    );
+    assert_eq!(
+        contain(r#"{"x":"right"}"#),
+        ((60.0, 20.0, 50.0, 50.0), false)
+    );
+    assert_eq!(contain(r#"{"x":"20%"}"#), ((20.0, 20.0, 50.0, 50.0), false));
+    assert_eq!(contain(r#"{"x":5}"#), ((15.0, 20.0, 50.0, 50.0), false));
+    assert_eq!(
+        contain(r#"{"y":"top"}"#),
+        contain(r#"{"y":"bottom"}"#),
+        "no free space down"
+    );
+
+    // cover: 100 × 100, 50 to spare down; always clipped.
+    let cover = |json| at(ImageFit::Cover, json);
+    assert_eq!(cover(r#"{"y":"top"}"#), ((10.0, 20.0, 100.0, 100.0), true));
+    assert_eq!(
+        cover(r#"{"y":"center"}"#),
+        ((10.0, -5.0, 100.0, 100.0), true)
+    );
+    assert_eq!(
+        cover(r#"{"y":"bottom"}"#),
+        ((10.0, -30.0, 100.0, 100.0), true)
+    );
+    assert_eq!(cover(r#"{"y":"10%"}"#), ((10.0, 15.0, 100.0, 100.0), true));
+    assert_eq!(cover(r#"{"y":-10}"#), ((10.0, 10.0, 100.0, 100.0), true));
+    assert_eq!(
+        cover(r#"{"x":"left"}"#),
+        cover(r#"{"x":"right"}"#),
+        "no spare width"
+    );
+
+    // none: intrinsic 10 × 10 with 90 and 40 to spare.
+    let none = |json| at(ImageFit::None, json);
+    assert_eq!(
+        none(r#"{"x":"left","y":"top"}"#),
+        ((10.0, 20.0, 10.0, 10.0), false)
+    );
+    assert_eq!(
+        none(r#"{"x":"right","y":"top"}"#),
+        ((100.0, 20.0, 10.0, 10.0), false)
+    );
+    assert_eq!(
+        none(r#"{"x":"left","y":"bottom"}"#),
+        ((10.0, 60.0, 10.0, 10.0), false)
+    );
+    assert_eq!(
+        none(r#"{"x":"right","y":"bottom"}"#),
+        ((100.0, 60.0, 10.0, 10.0), false)
+    );
+    assert_eq!(
+        none(r#"{"x":"center","y":"center"}"#),
+        ((55.0, 40.0, 10.0, 10.0), false)
+    );
+    assert_eq!(
+        none(r#"{"x":"25%","y":"75%"}"#),
+        ((32.5, 50.0, 10.0, 10.0), false)
+    );
+    assert_eq!(none(r#"{"x":12,"y":4}"#), ((22.0, 24.0, 10.0, 10.0), false));
+
+    // fill: the box, wherever the position says.
+    for json in [r#"{"x":"right","y":"bottom"}"#, r#"{"x":-30,"y":"200%"}"#] {
+        assert_eq!(at(ImageFit::Fill, json), (b, false));
+    }
+}
+
+#[test]
+fn an_image_placed_past_its_box_is_clipped() {
+    let b = (0.0, 0.0, 100.0, 50.0);
+    let none = |json: &str| fit_rect(ImageFit::None, pos(json), b, (10.0, 10.0)).1;
+    // Inside the box, edges included.
+    for json in [
+        "{}",
+        r#"{"x":0,"y":0}"#,
+        r#"{"x":90,"y":40}"#,
+        r#"{"x":"0%","y":"100%"}"#,
+    ] {
+        assert!(!none(json), "{json}");
+    }
+    // Past an edge: lengths, percentages beyond 0–100 %, negative values.
+    for json in [
+        r#"{"x":-1}"#,
+        r#"{"x":91}"#,
+        r#"{"y":-0.5}"#,
+        r#"{"y":45}"#,
+        r#"{"x":"110%"}"#,
+        r#"{"y":"-10%"}"#,
+    ] {
+        assert!(none(json), "{json}");
+    }
+    // A contained image moved off its centre line by a length.
+    let contain = fit_rect(ImageFit::Contain, pos(r#"{"y":5}"#), b, (10.0, 10.0));
+    assert_eq!(contain, ((25.0, 5.0, 50.0, 50.0), true));
+    // An image larger than the box is clipped wherever it sits.
+    for json in [r#"{"x":"left","y":"top"}"#, r#"{"x":"right","y":"bottom"}"#] {
+        assert!(
+            fit_rect(ImageFit::None, pos(json), b, (200.0, 10.0)).1,
+            "{json}"
+        );
+    }
+}
+
+/// `(x, y, w, h)`.
+type Xywh = (f32, f32, f32, f32);
+
+/// The rectangle and clip an image node is painted with, from a document
+/// whose only node is `node` (store images `photo`, 240 × 150 pt, and
+/// `chart`, an SVG of 300 × 180 pt), in a 100 × 100 box at (10, 20).
+fn painted(node: &str) -> (Xywh, Option<Xywh>) {
+    use crate::paint::{ContentCtx, Op};
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":200,"height":200}},"children":[{node}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let mut store = ImageStore::new();
+    store.insert("photo", fixture("photo.jpg"));
+    store.insert("chart", fixture("chart.svg"));
+    let set = ImageSet::load(&doc.pages, &store, &ImageCrateDecoder).unwrap();
+    let geo = crate::layout::Geometry {
+        x: 10.0,
+        y: 20.0,
+        w: 100.0,
+        h: 100.0,
+        border: [0.0; 4],
+        padding: [0.0; 4],
+    };
+    let ctx = ContentCtx {
+        dx: 0.0,
+        dy: 0.0,
+        shift: 0.0,
+        line_shifts: &[],
+        window: None,
+        opacity: 1.0,
+    };
+    let mut ops = Vec::new();
+    set.paint(&doc.pages[0].children[0], &geo, &ctx, &mut ops);
+    let mut clip = None;
+    let mut rect = None;
+    for op in &ops {
+        match op {
+            Op::ClipRect(r) => clip = Some((r.x, r.y, r.w, r.h)),
+            // Orientation 1: [w 0 0 −h x y+h].
+            Op::Image { matrix: m, .. } => rect = Some((m[4], m[5] + m[3], m[0], -m[3])),
+            _ => {}
+        }
+    }
+    (rect.expect("an image op"), clip)
+}
+
+fn near(a: Xywh, b: Xywh) -> bool {
+    let d = [a.0 - b.0, a.1 - b.1, a.2 - b.2, a.3 - b.3];
+    d.iter().all(|d| d.abs() < 1e-3)
+}
+
+#[test]
+fn raster_and_svg_images_follow_their_position() {
+    const BOX: Xywh = (10.0, 20.0, 100.0, 100.0);
+    let image = |src: &str, fit: &str, position: &str| {
+        painted(&format!(
+            r#"{{"type":"image","src":"{src}","fit":"{fit}","position":{position}}}"#
+        ))
+    };
+    for (src, fit, position, rect, clipped) in [
+        // photo, contain: 100 × 62.5 with 37.5 to spare down.
+        ("photo", "contain", "{}", (10.0, 38.75, 100.0, 62.5), false),
+        (
+            "photo",
+            "contain",
+            r#"{"y":"top"}"#,
+            (10.0, 20.0, 100.0, 62.5),
+            false,
+        ),
+        (
+            "photo",
+            "contain",
+            r#"{"y":"bottom"}"#,
+            (10.0, 57.5, 100.0, 62.5),
+            false,
+        ),
+        // photo, cover: 160 × 100, 60 too wide.
+        (
+            "photo",
+            "cover",
+            r#"{"x":"left"}"#,
+            (10.0, 20.0, 160.0, 100.0),
+            true,
+        ),
+        (
+            "photo",
+            "cover",
+            r#"{"x":"right"}"#,
+            (-50.0, 20.0, 160.0, 100.0),
+            true,
+        ),
+        (
+            "photo",
+            "cover",
+            r#"{"x":"25%"}"#,
+            (-5.0, 20.0, 160.0, 100.0),
+            true,
+        ),
+        // photo, none: 240 × 150.
+        (
+            "photo",
+            "none",
+            r#"{"x":10,"y":"bottom"}"#,
+            (20.0, -30.0, 240.0, 150.0),
+            true,
+        ),
+        // chart (SVG), contain: 100 × 60 with 40 to spare down.
+        (
+            "chart",
+            "contain",
+            r#"{"x":"right","y":"bottom"}"#,
+            (10.0, 60.0, 100.0, 60.0),
+            false,
+        ),
+        (
+            "chart",
+            "contain",
+            r#"{"y":"25%"}"#,
+            (10.0, 30.0, 100.0, 60.0),
+            false,
+        ),
+        // chart, cover: 166.67 × 100.
+        (
+            "chart",
+            "cover",
+            r#"{"x":"right"}"#,
+            (-56.666_67, 20.0, 166.666_67, 100.0),
+            true,
+        ),
+        (
+            "chart",
+            "none",
+            r#"{"x":"left","y":"top"}"#,
+            (10.0, 20.0, 300.0, 180.0),
+            true,
+        ),
+        // fill ignores the position.
+        ("chart", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
+    ] {
+        let (r, clip) = image(src, fit, position);
+        assert!(near(r, rect), "{src} {fit} {position}: {r:?}");
+        assert_eq!(
+            clip.is_some(),
+            clipped,
+            "{src} {fit} {position}: clip {clip:?}"
+        );
+        if let Some(c) = clip {
+            assert!(near(c, BOX), "clipped to the content box: {c:?}");
+        }
+    }
+    // Without `position`, the image is centred as before.
+    assert_eq!(
+        painted(r#"{"type":"image","src":"photo","fit":"cover"}"#),
+        image("photo", "cover", r#"{"x":"center","y":"center"}"#)
     );
 }
 

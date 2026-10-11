@@ -4,7 +4,7 @@ import { mapClasses, splitClasses, type UnsupportedUtilityError } from './parse.
 import type { TwStyle } from './types.ts';
 
 export { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
-export { parseOrigin, parseTransform, UnsupportedUtilityError } from './parse.ts';
+export { parseObjectPosition, parseOrigin, parseTransform, UnsupportedUtilityError } from './parse.ts';
 export { SUPPORTED, type SupportedFamily, UNSUPPORTED } from './supported.ts';
 export * from './types.ts';
 export { PT_PER_PX, PT_PER_REM, parseColor } from './values.ts';

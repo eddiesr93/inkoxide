@@ -24,7 +24,9 @@ pub(crate) use decode::{
 };
 pub(crate) use probe::probe;
 
-use crate::schema::{ImageFit, ImageSource, Node, NodeKind, PageSpec};
+use crate::schema::{
+    ImageFit, ImagePosition, ImageSource, LengthPercent, Node, NodeKind, PageSpec,
+};
 use crate::InkoxideError;
 
 /// Largest accepted image, in pixels (decoded-memory guard).
@@ -237,7 +239,8 @@ impl ImageSet {
 }
 
 impl ImageSet {
-    /// Paints an image node into its content box according to `fit`.
+    /// Paints an image node into its content box according to `fit` and
+    /// `position`.
     pub fn paint(
         &self,
         node: &Node,
@@ -246,7 +249,7 @@ impl ImageSet {
         ops: &mut Vec<crate::paint::Op>,
     ) {
         use crate::paint::{Op, Rect};
-        let NodeKind::Image { fit, .. } = &node.kind else {
+        let NodeKind::Image { fit, position, .. } = &node.kind else {
             return;
         };
         let (Some(key), Some(intrinsic)) = (self.key(node), self.intrinsic(node)) else {
@@ -257,7 +260,7 @@ impl ImageSet {
             return;
         }
         let bx = (cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
-        let (rect, clip) = fit_rect(*fit, bx, intrinsic);
+        let (rect, clip) = fit_rect(*fit, *position, bx, intrinsic);
         ops.push(Op::Save);
         if clip {
             ops.push(Op::ClipRect(Rect::new(bx.0, bx.1, bx.2, bx.3)));
@@ -271,31 +274,51 @@ impl ImageSet {
 }
 
 /// Placement of an image inside a content box `(x, y, w, h)`: the drawn
-/// rectangle and whether it must be clipped to the box.
+/// rectangle and whether it must be clipped to the box. `fit` sizes the
+/// image and `position` places it (`fill` covers the box and ignores it).
 pub(crate) fn fit_rect(
     fit: ImageFit,
+    position: ImagePosition,
     (x, y, w, h): (f32, f32, f32, f32),
     (iw, ih): (f32, f32),
 ) -> ((f32, f32, f32, f32), bool) {
+    /// Overflow below this (points) is rounding, not worth a clip.
+    const EPS: f32 = 1e-3;
     if iw <= 0.0 || ih <= 0.0 {
         return ((x, y, w, h), false);
     }
-    let centred = |dw: f32, dh: f32| (x + (w - dw) / 2.0, y + (h - dh) / 2.0, dw, dh);
-    match fit {
-        ImageFit::Fill => ((x, y, w, h), false),
+    let (dw, dh) = match fit {
+        ImageFit::Fill => return ((x, y, w, h), false),
         ImageFit::Contain => {
             let s = (w / iw).min(h / ih);
-            (centred(iw * s, ih * s), false)
+            (iw * s, ih * s)
         }
         ImageFit::Cover => {
             let s = (w / iw).max(h / ih);
-            let r = centred(iw * s, ih * s);
-            (r, r.2 > w + 1e-3 || r.3 > h + 1e-3)
+            (iw * s, ih * s)
         }
-        ImageFit::None => {
-            let r = centred(iw, ih);
-            (r, iw > w + 1e-3 || ih > h + 1e-3)
-        }
+        ImageFit::None => (iw, ih),
+    };
+    let (rx, ry) = (
+        x + offset(position.x, w - dw),
+        y + offset(position.y, h - dh),
+    );
+    let clip = dw > w + EPS
+        || dh > h + EPS
+        || rx < x - EPS
+        || ry < y - EPS
+        || rx + dw > x + w + EPS
+        || ry + dh > y + h + EPS;
+    ((rx, ry, dw, dh), clip)
+}
+
+/// Offset of an image from the start edge of its box along one axis, given
+/// the free space (box minus image; negative when the image is larger): a
+/// percentage lines up that point of the image with that point of the box.
+fn offset(p: LengthPercent, free: f32) -> f32 {
+    match p {
+        LengthPercent::Points(v) => v,
+        LengthPercent::Percent(f) => free * f,
     }
 }
 

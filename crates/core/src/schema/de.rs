@@ -11,8 +11,8 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, ImageFit, ImageSource, Node, NodeKind, OptEdges, PageFilter, PagePattern, Style, Table,
-    TableRow, TextRun,
+    Field, ImageFit, ImagePosition, ImageSource, Node, NodeKind, OptEdges, PageFilter, PagePattern,
+    Style, Table, TableRow, TextRun,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -148,6 +148,47 @@ num_or_str_visitor!(
     |v| finite(v).map(LengthPercent::Points),
     |s| parse_suffixed(s, "%").map(|p| LengthPercent::Percent(p / 100.0))
 );
+
+/// One axis of an [`ImagePosition`]: a percentage, or that axis's keywords
+/// (`start`, `"center"`, `end`) as 0 %, 50 % and 100 %.
+fn position_axis(s: &str, start: &str, end: &str) -> Option<LengthPercent> {
+    let fraction = match s {
+        "center" => 0.5,
+        _ if s == start => 0.0,
+        _ if s == end => 1.0,
+        _ => parse_suffixed(s, "%")? / 100.0,
+    };
+    Some(LengthPercent::Percent(fraction))
+}
+
+/// The horizontal axis of an [`ImagePosition`].
+struct PositionX(LengthPercent);
+/// The vertical axis of an [`ImagePosition`].
+struct PositionY(LengthPercent);
+
+num_or_str_visitor!(
+    PositionX,
+    "a number of points, a percentage, \"left\", \"center\" or \"right\"",
+    |v| finite(v).map(|p| PositionX(LengthPercent::Points(p))),
+    |s| position_axis(s, "left", "right").map(PositionX)
+);
+
+num_or_str_visitor!(
+    PositionY,
+    "a number of points, a percentage, \"top\", \"center\" or \"bottom\"",
+    |v| finite(v).map(|p| PositionY(LengthPercent::Points(p))),
+    |s| position_axis(s, "top", "bottom").map(PositionY)
+);
+
+/// `deserialize_with` for [`ImagePosition::x`].
+pub(super) fn position_x<'de, D: Deserializer<'de>>(d: D) -> Result<LengthPercent, D::Error> {
+    PositionX::deserialize(d).map(|p| p.0)
+}
+
+/// `deserialize_with` for [`ImagePosition::y`].
+pub(super) fn position_y<'de, D: Deserializer<'de>>(d: D) -> Result<LengthPercent, D::Error> {
+    PositionY::deserialize(d).map(|p| p.0)
+}
 
 impl<'de> Deserialize<'de> for BorderRadius {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -435,6 +476,7 @@ pub struct RawNode {
     src: Option<String>,
     data: Option<String>,
     fit: Option<ImageFit>,
+    position: Option<ImagePosition>,
     columns: Option<Vec<ColumnSpec>>,
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
@@ -482,6 +524,7 @@ impl TryFrom<RawNode> for Node {
             ("src", r.src.is_some()),
             ("data", r.data.is_some()),
             ("fit", r.fit.is_some()),
+            ("position", r.position.is_some()),
             ("columns", r.columns.is_some()),
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
@@ -491,7 +534,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::Box => &["style", "break", "link", "bookmark", "pages", "children"],
             NodeType::Text => &["style", "break", "link", "bookmark", "pages", "runs"],
             NodeType::Image => &[
-                "style", "break", "link", "bookmark", "pages", "src", "data", "fit",
+                "style", "break", "link", "bookmark", "pages", "src", "data", "fit", "position",
             ],
             NodeType::Table => &[
                 "style",
@@ -536,6 +579,7 @@ impl TryFrom<RawNode> for Node {
                 NodeKind::Image {
                     source,
                     fit: r.fit.unwrap_or_default(),
+                    position: r.position.unwrap_or_default(),
                 }
             }
             NodeType::Table => NodeKind::Table(Table {

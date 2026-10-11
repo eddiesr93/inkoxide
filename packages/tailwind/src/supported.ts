@@ -360,6 +360,43 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     notes: 'Paint order among siblings; not on table cells.',
     examples: { 'z-10': { zIndex: 10 }, '-z-10': { zIndex: -10 }, 'z-auto': {} },
   },
+  {
+    group: 'Visual',
+    utilities: '`object-contain`, `object-cover`, `object-fill`, `object-none`',
+    maps: 'image `fit`',
+    notes: 'On `Image` only. The `fit` prop wins over it.',
+    examples: {
+      'object-contain': { objectFit: 'contain' },
+      'object-cover': { objectFit: 'cover' },
+      'object-fill': { objectFit: 'fill' },
+      'object-none': { objectFit: 'none' },
+    },
+  },
+  {
+    group: 'Visual',
+    utilities:
+      '`object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]`',
+    maps: 'image `position`',
+    notes:
+      'On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported.',
+    examples: {
+      'object-left-top': { objectPosition: { x: 'left', y: 'top' } },
+      'object-left': { objectPosition: { x: 'left', y: 'center' } },
+      'object-right': { objectPosition: { x: 'right', y: 'center' } },
+      'object-top': { objectPosition: { x: 'center', y: 'top' } },
+      'object-bottom': { objectPosition: { x: 'center', y: 'bottom' } },
+      'object-center': { objectPosition: { x: 'center', y: 'center' } },
+      'object-left-bottom': { objectPosition: { x: 'left', y: 'bottom' } },
+      'object-right-top': { objectPosition: { x: 'right', y: 'top' } },
+      'object-right-bottom': { objectPosition: { x: 'right', y: 'bottom' } },
+      'object-top-left': { objectPosition: { x: 'left', y: 'top' } },
+      'object-bottom-right': { objectPosition: { x: 'right', y: 'bottom' } },
+      'object-[25%_75%]': { objectPosition: { x: '25%', y: '75%' } },
+      'object-[10pt_20px]': { objectPosition: { x: 10, y: 15 } },
+      'object-[bottom_left]': { objectPosition: { x: 'left', y: 'bottom' } },
+      'object-[1rem]': { objectPosition: { x: 12, y: 'center' } },
+    },
+  },
   // Border
   {
     group: 'Border',
@@ -651,5 +688,7 @@ export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
   { example: 'overline', why: '`overline` and `underline-offset-*`.' },
   { example: 'whitespace-break-spaces', why: '`break-spaces`.' },
   { example: 'text-ellipsis', why: '`text-overflow` alone; use `truncate` or `line-clamp-N`.' },
+  { example: 'object-scale-down', why: '`object-fit: scale-down`.' },
+  { example: 'object-[right_1rem_top]', why: '`object-position` with edge offsets.' },
   { example: 'not-a-class', why: 'Classes Tailwind does not know.' },
 ];

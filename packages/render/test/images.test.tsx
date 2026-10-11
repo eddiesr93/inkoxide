@@ -535,3 +535,33 @@ describe('generated image ids', () => {
     expect(pageImages(settled.pdf)).toEqual([[LOGO, PALETTE, PHOTO]]);
   });
 });
+
+describe('objectPosition', () => {
+  /** The photo (240 × 150 pt) covering a 60 × 60 pt box: drawn 96 × 60, 36 too wide. */
+  const draw = async (style?: { objectPosition: string }) => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Image src={photo} fit="cover" className="h-20 w-20" style={style} />
+        </Page>
+      </Document>,
+      { compress: false },
+    );
+    const text = Buffer.from(pdf).toString('latin1');
+    const m = /([-\d.]+) 0 0 ([-\d.]+) ([-\d.]+) [-\d.]+ cm\s*\/\S+ Do/.exec(text);
+    expect(m, 'an image drawn with a scale and a translation').not.toBeNull();
+    return { pdf, w: Number(m?.[1]), h: Number(m?.[2]), x: Number(m?.[3]) };
+  };
+
+  it('places a fitted image in its box, centred by default', async () => {
+    const centred = await draw();
+    expect(Buffer.from((await draw({ objectPosition: 'center' })).pdf)).toEqual(Buffer.from(centred.pdf));
+    const left = await draw({ objectPosition: 'left' });
+    const right = await draw({ objectPosition: 'right bottom' });
+    // The height is negative: image space has y up, the page content y down.
+    for (const d of [centred, left, right]) expect([d.w, d.h]).toEqual([96, -60]);
+    expect(left.x - centred.x).toBeCloseTo(18);
+    expect(centred.x - right.x).toBeCloseTo(18);
+    expect((await draw({ objectPosition: '25%' })).x - left.x).toBeCloseTo(-9);
+  });
+});
