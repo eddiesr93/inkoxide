@@ -198,6 +198,12 @@ export type BreakProp = 'avoid' | 'page-before' | 'page-after' | Break;
 
 export type BookmarkProp = string | { title: string; level?: number };
 
+/**
+ * Splits a word into the parts a line may break between: `'hyphenation'` →
+ * `['hy', 'phen', 'ation']`. `[word]` keeps the word whole.
+ */
+export type HyphenationCallback = (word: string) => string[];
+
 interface Common {
   className?: string;
   style?: Style;
@@ -301,6 +307,12 @@ export interface TextProps extends Flow {
   hyphenate?: boolean;
   /** Language of this text, when it differs from the document's. */
   lang?: string;
+  /**
+   * Breaks words where this function says, instead of the built-in patterns (`hyphenate`).
+   * Overrides the registered callback (`Font.registerHyphenationCallback`); `null` turns it off
+   * for this text.
+   */
+  hyphenationCallback?: HyphenationCallback | null;
   /** Base direction: `rtl` for Arabic or Hebrew paragraphs, `auto` from the first strong letter. */
   dir?: 'ltr' | 'rtl' | 'auto';
   /** Minimum lines left at the bottom of a page before a break (default 1). */

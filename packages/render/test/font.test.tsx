@@ -1,14 +1,18 @@
-/** `Font.register`: families from paths, URLs and bytes, loaded before the next render. */
+/**
+ * `Font.register`: families from paths, URLs and bytes, loaded before the next render.
+ * `Font.registerHyphenationCallback`: word breaks for every render.
+ */
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   assetsDir,
+  countPages,
   Document,
   Font,
   fonts,
@@ -120,5 +124,37 @@ describe('Font.register', () => {
     expect(() => Font.register({ family: 'Brand', src, fontWeight: 'heavyish' as never })).toThrow(
       'not 1–1000 or a CSS weight name',
     );
+  });
+});
+
+describe('Font.registerHyphenationCallback', () => {
+  afterEach(() => Font.registerHyphenationCallback(null));
+
+  // Two of these words do not fit on a 400pt line, and five lines fit on the page.
+  const Words = () => (
+    <Document>
+      <Page size={{ width: 400, height: 110 }} style={{ fontSize: 10, lineHeight: 2 }}>
+        <Text>{'Pneumonoultramicroscopicsilicovolcanoconiosis '.repeat(6)}</Text>
+      </Page>
+    </Document>
+  );
+  const threes = (word: string) => word.match(/.{1,3}/gu) ?? [word];
+
+  it('breaks words where the callback says, in later renders', async () => {
+    expect(countPages(await renderToBuffer(<Words />))).toBe(2);
+    Font.registerHyphenationCallback(threes);
+    expect(renderTemplate(<Words />).document.pages[0].children?.[0]).toMatchObject({
+      runs: [{ text: expect.stringMatching(/^Pne\u00ADumo\u00ADnou/u) }],
+    });
+    expect(countPages(await renderToBuffer(<Words />))).toBe(1);
+    Font.registerHyphenationCallback((word) => [word]);
+    expect(countPages(await renderToBuffer(<Words />))).toBe(2);
+  });
+
+  it('is removed with null and rejects anything but a function', async () => {
+    Font.registerHyphenationCallback(threes);
+    Font.registerHyphenationCallback(null);
+    expect(countPages(await renderToBuffer(<Words />))).toBe(2);
+    expect(() => Font.registerHyphenationCallback('en' as never)).toThrow('needs a function');
   });
 });

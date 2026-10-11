@@ -11,7 +11,7 @@ import {
   type TwStyle,
 } from '@inkoxide/tailwind';
 
-import type { StyleProp } from '../components/index.ts';
+import type { HyphenationCallback, StyleProp } from '../components/index.ts';
 
 /** The text properties in effect at a point of the tree, after inheritance. */
 export interface TextCtx {
@@ -35,6 +35,8 @@ export interface TextCtx {
   orphans: number | undefined;
   widows: number | undefined;
   lang: string | undefined;
+  /** Splits words into syllables in place of the built-in patterns (`hyphenationCallback`). */
+  hyphenation: HyphenationCallback | undefined;
   /** Link target inherited by runs (nested `Text href`). */
   link: string | undefined;
   /** Resolved font id, cached by the builder (reset when the font properties change). */
@@ -56,6 +58,8 @@ export function hasInherited(s: TwStyle): boolean {
 export interface InheritExtra {
   lang?: string | undefined;
   hyphenate?: boolean | undefined;
+  /** `null` turns off the callback inherited from the document. */
+  hyphenation?: HyphenationCallback | null | undefined;
   link?: string | undefined;
   direction?: TwStyle['direction'];
   orphans?: number | undefined;
@@ -96,6 +100,7 @@ export function inherit(parent: TextCtx, own: TwStyle, extra?: InheritExtra): Te
   if (extra) {
     if (extra.lang !== undefined) c.lang = extra.lang;
     if (extra.hyphenate !== undefined) c.hyphenate = extra.hyphenate;
+    if (extra.hyphenation !== undefined) c.hyphenation = extra.hyphenation ?? undefined;
     if (extra.link !== undefined) c.link = extra.link;
     if (extra.direction !== undefined) c.direction = extra.direction;
     if (extra.orphans !== undefined) c.orphans = extra.orphans;
@@ -398,7 +403,8 @@ export function textNodeStyle(
   if (own.maxLines !== undefined) set('maxLines', own.maxLines);
   if (own.ellipsis) set('ellipsis', true);
   if (ctx.whiteSpace !== undefined && ctx.whiteSpace !== 'normal') set('whiteSpace', ctx.whiteSpace);
-  if (ctx.hyphenate) set('hyphenate', true);
+  // A hyphenation callback replaces the patterns: the engine would break the words it keeps whole.
+  if (ctx.hyphenate && !ctx.hyphenation) set('hyphenate', true);
   if (ctx.lang !== undefined && ctx.lang !== docLang) set('lang', ctx.lang);
   return out;
 }

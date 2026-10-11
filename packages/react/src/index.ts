@@ -60,7 +60,12 @@ export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): Tree
 function fromContainer(container: Container, opts: TreeOptions, reactMs: number): TreeResult {
   const registry = opts.fonts ?? defaultFonts;
   const t1 = performance.now();
-  const build = { fonts: registry, pageCount: opts.pageCount, remoteImages: opts.remoteImages };
+  const build = {
+    fonts: registry,
+    pageCount: opts.pageCount,
+    remoteImages: opts.remoteImages,
+    hyphenationCallback: registry.hyphenationCallback,
+  };
   const built = buildTree(container, build);
   const t2 = performance.now();
   let tracked: { doc: Document; origin: Map<object, Instance> } | undefined;

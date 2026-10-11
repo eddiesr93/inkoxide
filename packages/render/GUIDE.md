@@ -214,7 +214,25 @@ PDF/A-2b, for archiving.
 
 - **Hyphenation** is off by default. Turn it on per `Text` with `hyphenate` (or the class
   `hyphens-auto`); it follows the `lang` of the text or the document. US English patterns ship
-  with the package; other languages use the engine's built-in patterns.
+  with the package; other languages use the engine's built-in patterns. A soft hyphen
+  (`\u00AD`) in the text is always a possible break.
+- **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
+  word into the parts a line may break between, for every `Text`; `[word]` keeps a word whole.
+  It replaces the built-in patterns, so `hyphenate` is not needed with it.
+
+  ```ts
+  import { Font } from '@inkoxide/render';
+
+  const whole = new Set(['Inkoxide', 'PostgreSQL']);
+  // syllables(word) is your own rules, or a hyphenation library: 'hyphenation' → ['hy', 'phen', 'ation'].
+  Font.registerHyphenationCallback((word) => (whole.has(word) ? [word] : syllables(word)));
+  ```
+
+  A word is a run of letters; spaces, digits and punctuation stay as they are, and a word that
+  already has soft hyphens is left alone. A `Text` takes its own function with
+  `hyphenationCallback={fn}`, or goes back to `hyphenate` and `lang` with
+  `hyphenationCallback={null}`. Text with `whitespace-nowrap` or `whitespace-pre` is not
+  broken.
 - **Right-to-left text** uses `dir="rtl"` on a `Text`. Register a font that covers the script
   first (for example Noto Sans Arabic or Noto Sans Hebrew with `Font.register`): the bundled
   fonts cover Latin, Greek and Cyrillic.
@@ -272,6 +290,9 @@ Both take the same options:
 
 **`Font.register({ family, src })`** adds a font family, from a path, a URL or bytes. See
 [Fonts](#fonts).
+
+**`Font.registerHyphenationCallback(fn)`** splits words for hyphenation with your own function;
+`null` removes it. See [Text: hyphenation and direction](#text-hyphenation-and-direction).
 
 **`StyleSheet.create(styles)`** returns the styles unchanged, with their types.
 

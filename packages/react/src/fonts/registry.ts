@@ -3,6 +3,8 @@ import { join } from 'node:path';
 
 import type { FontDecl } from '@inkoxide/schema';
 
+import type { HyphenationCallback } from '../components/index.ts';
+
 export interface FontFace {
   /** The engine font id, used in `fonts[].id` and `runs[].font` (`Inter-Bold`). */
   id: string;
@@ -35,6 +37,8 @@ export class FontRegistry {
   private readonly faces: Face[] = [];
   private readonly byId = new Map<string, Face>();
   private readonly memo = new Map<string, ResolvedFont>();
+  /** Splits words into syllables in every `Text` without its own `hyphenationCallback`. */
+  hyphenationCallback: HyphenationCallback | undefined;
 
   register(face: FontFace, bytes?: Uint8Array): this {
     if (this.byId.has(face.id)) throw new Error(`Font id "${face.id}" is already registered`);

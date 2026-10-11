@@ -9,6 +9,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `import … from '@react-pdf/renderer'` | `import … from '@inkoxide/render'` | Change it |
 | `Document`, `Page`, `View`, `Text`, `Image`, `StyleSheet.create`, style objects in points | The same | Works as is |
 | `Font.register({ family, src })` | The same, see [Fonts](GUIDE.md#fonts) | Works as is; Inter is built in |
+| `Font.registerHyphenationCallback(fn)` | The same, see [hyphenation](GUIDE.md#text-hyphenation-and-direction); a `Text` can also take its own `hyphenationCallback` | Works as is |
 | `wrap={false}`, `break`, `minPresenceAhead={80}` | The same, or `break="avoid"`, `break="page-before"`, `break={{ minPresenceAhead: 80 }}` | Works as is |
 | `<Text render={({ pageNumber, totalPages }) => …} />` | The same, or `<PageNumber />` and `<TotalPages />` | Works as is |
 | `fontWeight: 'bold'`, `flex: 1`, `paddingHorizontal`, `borderBottomColor`, `top`/`left` | The same | Works as is |
@@ -22,7 +23,6 @@ over by changing the import. This page lists what has another name, and what is 
 - **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.
 - **Other output forms:** `pdf().toBuffer()` and `renderToStream`. Use `renderToBuffer`.
 - **Fonts and annotations:**
-  - `Font.registerHyphenationCallback`: hyphenation is built in, via `hyphenate` and `lang`.
   - `Font.registerEmojiSource`: there are no colour emoji yet.
   - `<Note>`.
 - **`debug`:** it is ignored.
