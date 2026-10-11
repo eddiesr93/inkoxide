@@ -307,6 +307,18 @@ function toBreak(b: BreakProp | undefined): Break | undefined {
   return b;
 }
 
+/** Whether the element has the `fixed` prop. */
+function isFixed(inst: Instance): boolean {
+  return inst.props.fixed !== undefined && inst.props.fixed !== false;
+}
+
+/** Whether `b` sets a pagination control: a break before, after or inside, or `minPresenceAhead`. */
+function paginates(b: Break | undefined): boolean {
+  if (b === undefined) return false;
+  const set = (v: string | undefined) => v !== undefined && v !== 'auto';
+  return set(b.before) || set(b.after) || set(b.inside) || b.minPresenceAhead !== undefined;
+}
+
 function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
   if (b === undefined) return undefined;
   return typeof b === 'string' ? { title: b } : b;
@@ -334,6 +346,8 @@ class Builder {
   private readonly onPage = new WeakSet<Instance>();
   /** The band being built (`'Header'` or `'Footer'`), if any. */
   private band: string | undefined;
+  /** The fixed element being built (`'View'`, `'Text'`, …), if any. */
+  private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
 
@@ -688,9 +702,24 @@ class Builder {
     let b = toBreak(br as BreakProp | undefined);
     if (p.wrap === false) b = { ...b, inside: 'avoid' };
     if (typeof p.minPresenceAhead === 'number') b = { ...b, minPresenceAhead: p.minPresenceAhead };
-    if (p.fixed !== undefined && p.fixed !== false) {
+    const name = HOST_NAME[inst.type];
+    if (isFixed(inst)) {
       this.checkFixed(inst, node.style);
+      if (paginates(b)) {
+        this.fail(
+          inst,
+          `<${name} fixed>: break, wrap={false} and minPresenceAhead do nothing on a fixed element, which is painted whole on every page. Remove them.`,
+          { kind: 'props' },
+        );
+      }
       b = { ...b, fixed: true };
+    } else if (paginates(b) && (this.band ?? this.fixedEl)) {
+      const within = this.band ? `a <${this.band}>` : `a fixed <${this.fixedEl}>`;
+      this.fail(
+        inst,
+        `<${name}>: break, wrap={false} and minPresenceAhead do nothing inside ${within}, which is painted whole on every page. Remove them.`,
+        { kind: 'props' },
+      );
     }
     if (b) node.break = b;
     const href = inst.type === HOST.Link ? this.target(inst) : p.href;
@@ -737,6 +766,18 @@ class Builder {
   }
 
   private node(inst: Instance, ctx: TextCtx): SchemaNode {
+    if (this.fixedEl === undefined && isFixed(inst)) {
+      this.fixedEl = HOST_NAME[inst.type];
+      try {
+        return this.element(inst, ctx);
+      } finally {
+        this.fixedEl = undefined;
+      }
+    }
+    return this.element(inst, ctx);
+  }
+
+  private element(inst: Instance, ctx: TextCtx): SchemaNode {
     if (typeof inst.props.render === 'function' && (inst.type === HOST.View || inst.type === HOST.Text)) {
       return this.perPage(inst, ctx);
     }
@@ -756,6 +797,10 @@ class Builder {
       case HOST.Image:
         return this.image(inst, ctx);
       case HOST.PageBreak: {
+        if (this.band ?? this.fixedEl) {
+          const within = this.band ? `a <${this.band}>` : `a fixed <${this.fixedEl}>`;
+          this.fail(inst, `<PageBreak> does nothing inside ${within}, which is painted whole on every page.`);
+        }
         const n: SchemaNode = { type: 'pageBreak' };
         if (typeof inst.props.id === 'string') n.id = inst.props.id;
         return this.mark(n, inst);
@@ -791,6 +836,12 @@ class Builder {
     if (inst.type === HOST.View || inst.type === HOST.Link) this.flowProps(node, inst);
     else {
       // <Header> and <Footer>.
+      if (isFixed(inst)) {
+        const name = HOST_NAME[inst.type];
+        this.fail(inst, `<${name} fixed>: a <${name}> is already on every page. Remove \`fixed\`.`, {
+          kind: 'props',
+        });
+      }
       if (typeof inst.props.id === 'string') node.id = inst.props.id;
       if (inst.props.debug === true) node.debug = true;
     }
@@ -847,7 +898,7 @@ class Builder {
       switch (n.type) {
         case HOST.Text:
         case HOST.Link: {
-          if (n.props.fixed !== undefined && n.props.fixed !== false) {
+          if (isFixed(n)) {
             this.fail(
               n,
               `<${HOST_NAME[n.type]} fixed>: an inline run inside a <Text> cannot be fixed. Put \`fixed\` on an element placed directly in the <Page>.`,

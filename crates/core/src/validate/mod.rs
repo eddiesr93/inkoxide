@@ -320,8 +320,14 @@ fn collect_anchors<'a>(nodes: &'a [Node], out: &mut HashSet<&'a str>) {
 /// Where a node sits; some node types are only valid in the flow.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Ctx {
+    /// A child of the page: in the flow, or an overlay.
+    Page,
     Flow,
+    /// In a header or footer.
     Fixed,
+    /// In an overlay: a fixed, absolutely positioned page child, laid out
+    /// on its own and painted whole on every page, like a header.
+    Overlay,
     Cell,
 }
 
@@ -463,7 +469,7 @@ impl<'a> Checker<'a> {
             self.at("footer", false, |c| c.node(f, Ctx::Fixed));
         }
         self.in_fixed = false;
-        self.children(None, &page.children, Ctx::Flow);
+        self.children(None, &page.children, Ctx::Page);
     }
 
     fn children(&mut self, parent: Option<&Style>, children: &[Node], ctx: Ctx) {
@@ -540,9 +546,31 @@ impl<'a> Checker<'a> {
                 });
             }
         }
-        if ctx != Ctx::Flow && node.brk != Break::default() {
-            self.err(Code::InvalidValue, Some("break"), "pagination controls only apply to flowing content, not inside headers, footers or table cells");
-        }
+        let ctx = match ctx {
+            Ctx::Page if crate::pipeline::is_overlay(node) => {
+                // Its own `fixed` makes it an overlay; nothing else applies.
+                let brk = Break {
+                    fixed: false,
+                    ..node.brk
+                };
+                if brk != Break::default() {
+                    self.err(Code::InvalidValue, Some("break"), "only `fixed` applies to a fixed, absolutely positioned page child: it is laid out on its own and painted whole on every page");
+                }
+                Ctx::Overlay
+            }
+            Ctx::Page => Ctx::Flow,
+            ctx => {
+                if ctx != Ctx::Flow && node.brk != Break::default() {
+                    let message = if ctx == Ctx::Overlay {
+                        "pagination controls do not apply inside a fixed, absolutely positioned page child: it is painted whole on every page"
+                    } else {
+                        "pagination controls only apply to flowing content, not inside headers, footers or table cells"
+                    };
+                    self.err(Code::InvalidValue, Some("break"), message);
+                }
+                ctx
+            }
+        };
         if let Some(crate::schema::PageFilter::List(list)) = node.pages.as_deref() {
             if list.is_empty() || list.contains(&0) {
                 self.err(

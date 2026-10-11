@@ -245,6 +245,74 @@ fn page_breaks_only_in_flow() {
 }
 
 #[test]
+fn pagination_controls_do_not_apply_in_overlays() {
+    // An overlay: fixed and absolutely positioned, directly in the page.
+    let overlay = |brk: &str, children: &str| {
+        doc(&format!(
+            r#"{{"type":"box","break":{{"fixed":true{brk}}},"style":{{"position":"absolute"}},
+                "children":[{children}]}}"#
+        ))
+    };
+    assert_eq!(run(&overlay("", r#"{"type":"box"}"#)), vec![]);
+    for brk in [
+        r#","before":"page""#,
+        r#","after":"page""#,
+        r#","inside":"avoid""#,
+        r#","minPresenceAhead":20"#,
+    ] {
+        let (code, path) = one(&overlay(brk, ""));
+        assert_eq!(
+            (code, path.as_str()),
+            (C::InvalidValue, "pages[0].children[0].break"),
+            "{brk}"
+        );
+    }
+    // Inside it, like inside a header.
+    let inside = "pages[0].children[0].children[0]";
+    for (child, at) in [
+        (
+            r#"{"type":"box","break":{"before":"page"}}"#,
+            inside.to_owned(),
+        ),
+        (
+            r#"{"type":"box","break":{"inside":"avoid"}}"#,
+            inside.to_owned(),
+        ),
+        (
+            r#"{"type":"box","break":{"fixed":true}}"#,
+            inside.to_owned(),
+        ),
+        (
+            r#"{"type":"box","children":[{"type":"box","break":{"minPresenceAhead":20}}]}"#,
+            format!("{inside}.children[0]"),
+        ),
+    ] {
+        let (code, path) = one(&overlay("", child));
+        assert_eq!(
+            (code, path),
+            (C::InvalidValue, format!("{at}.break")),
+            "{child}"
+        );
+    }
+    let (code, path) = one(&overlay("", r#"{"type":"pageBreak"}"#));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidNode, "pages[0].children[0].children[0]")
+    );
+    // A fixed node in the flow, or an absolute one that is not fixed, keeps
+    // its pagination controls.
+    for flowing in [
+        r#"{"type":"box","break":{"fixed":true,"before":"page"}}"#,
+        r#"{"type":"box","break":{"before":"page"},"style":{"position":"absolute"},
+            "children":[{"type":"pageBreak"}]}"#,
+        r#"{"type":"box","children":[{"type":"box","break":{"fixed":true,"inside":"avoid"},
+            "style":{"position":"absolute"}}]}"#,
+    ] {
+        assert_eq!(run(&doc(flowing)), vec![], "{flowing}");
+    }
+}
+
+#[test]
 fn render_refuses_invalid_documents() {
     let err = crate::render(
         doc(r#"{"type":"box","style":{"lineHeight":1}}"#).as_bytes(),

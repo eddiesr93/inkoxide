@@ -276,8 +276,10 @@ on every page of its `Page`, over the content or, with a negative `zIndex`, unde
 - **Links, ids and bookmarks.** An `href` makes a link on every page. An `id` (the target of
   `href="#id"`) and a `bookmark` point to the first page.
 - **Not allowed.** `fixed` on an element inside another element, in a `Table`, `Header` or
-  `Footer`, on a `Text` inside a `Text`, on a form field, or without `position: 'absolute'`. Each
-  is an error that names the component.
+  `Footer`, on a `Header` or `Footer` itself, on a `Text` inside a `Text`, on a form field, or
+  without `position: 'absolute'`. A fixed element is painted whole on every page, so `break`,
+  `wrap={false}` and `minPresenceAhead` on it or inside it, and a `PageBreak` inside it, would do
+  nothing (as in a `Header` or `Footer`). Each is an error that names the component.
 
 ### Page sizes
 

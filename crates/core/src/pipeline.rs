@@ -135,7 +135,7 @@ impl<'a> Band<'a> {
 /// absolutely positioned. An overlay is laid out on its own, against the
 /// page content box, and painted on every page of the flow; it takes no
 /// space in the flow.
-fn is_overlay(node: &Node) -> bool {
+pub(crate) fn is_overlay(node: &Node) -> bool {
     node.brk.fixed && node.style.position == Some(Position::Absolute)
 }
 

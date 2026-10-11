@@ -269,7 +269,8 @@ interface Flow extends Common {
    * Repeats the element on every page of its `Page`: a watermark, a page border, a stamp. Only
    * for an element placed directly in the `Page`, with `position: 'absolute'`: it is placed
    * against the page content box (inside the margins) and takes no space. `render` and `pages`
-   * work inside it. For content that needs room on every page, use `<Header>` or `<Footer>`.
+   * work inside it; `break`, `wrap` and `minPresenceAhead` do not, on it or inside it. For content
+   * that needs room on every page, use `<Header>` or `<Footer>`.
    */
   fixed?: boolean;
   /**
