@@ -93,6 +93,10 @@ pub(crate) struct Prepared {
     pub rtl: bool,
     /// Some glyph has an odd bidi level (lines need reordering).
     pub bidi: bool,
+    /// Placeholder runs hold the stand-in digits of
+    /// [`prepare::PLACEHOLDER_TEXT`]; the painter draws the page numbers
+    /// in their place.
+    pub placeholders: bool,
 }
 
 impl Prepared {
@@ -215,6 +219,9 @@ pub(crate) trait TextShaper {
         style: &ParaStyle,
         max_width: f32,
     ) -> LineLayout;
+    /// `p` with the page numbers in place of its placeholders' stand-in
+    /// digits.
+    fn fill_numbers(&self, p: &Prepared, runs: &[TextRun], numbers: PageNumbers) -> Prepared;
 }
 
 /// rustybuzz + unicode-linebreak + hypher implementation.
@@ -280,6 +287,10 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
     ) -> LineLayout {
         lines::break_lines(p, runs, style, self.fonts, max_width)
     }
+
+    fn fill_numbers(&self, p: &Prepared, runs: &[TextRun], numbers: PageNumbers) -> Prepared {
+        prepare::fill_numbers(p, runs, self.fonts, numbers)
+    }
 }
 
 /// Cache key of a layout width. Exact: bucketing could round below a
@@ -300,6 +311,76 @@ struct Entry {
     layouts: Vec<(u32, Arc<LineLayout>)>,
 }
 
+impl Entry {
+    fn new(style: ParaStyle, prepared: Prepared) -> Self {
+        Self {
+            min_content: min_content(&prepared, &style),
+            style,
+            prepared,
+            layouts: Vec::new(),
+        }
+    }
+
+    fn cached(&self, width: f32) -> Option<Arc<LineLayout>> {
+        let key = width_key(width);
+        self.layouts
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, l)| l.clone())
+    }
+
+    fn break_lines<S: TextShaper>(&self, shaper: &S, runs: &[TextRun], width: f32) -> LineLayout {
+        shaper.break_lines(&self.prepared, runs, &self.style, width.max(0.0))
+    }
+
+    /// The lines at `width`, cached.
+    fn layout<S: TextShaper>(
+        &mut self,
+        shaper: &S,
+        runs: &[TextRun],
+        width: f32,
+    ) -> Arc<LineLayout> {
+        if let Some(l) = self.cached(width) {
+            return l;
+        }
+        let layout = Arc::new(self.break_lines(shaper, runs, width));
+        self.layouts.push((width_key(width), layout.clone()));
+        layout
+    }
+
+    /// The lines at `width`: cached, or computed without caching.
+    fn layout_at<S: TextShaper>(
+        &self,
+        shaper: &S,
+        runs: &[TextRun],
+        width: f32,
+    ) -> Arc<LineLayout> {
+        self.cached(width)
+            .unwrap_or_else(|| Arc::new(self.break_lines(shaper, runs, width)))
+    }
+
+    /// The width to break lines at in Taffy's available space.
+    fn width_in(&self, available: AvailableSpace) -> f32 {
+        match available {
+            AvailableSpace::Definite(w) => w,
+            AvailableSpace::MaxContent => f32::INFINITY,
+            // Truncating text can shrink to (almost) nothing.
+            AvailableSpace::MinContent if self.style.ellipsis => 0.0,
+            AvailableSpace::MinContent => self.min_content,
+        }
+    }
+}
+
+/// A text leaf's size from its lines at `width`. Taffy's `known` is the
+/// border box; the width it makes available is already the content box
+/// (the known width minus padding and border).
+fn leaf_size(l: &LineLayout, known: TSize<Option<f32>>, width: f32) -> TSize<f32> {
+    TSize {
+        width: known.width.unwrap_or(l.width.min(width.max(0.0))),
+        height: known.height.unwrap_or(l.height),
+    }
+}
+
 /// Shapes a text node into a cache entry.
 fn new_entry<S: TextShaper>(
     shaper: &mut S,
@@ -309,6 +390,11 @@ fn new_entry<S: TextShaper>(
 ) -> Entry {
     let style = ParaStyle::from_style(&node.style, lang);
     let prepared = shaper.prepare(runs, &style);
+    Entry::new(style, prepared)
+}
+
+/// Widest unbreakable piece of a paragraph, first-line indent included.
+fn min_content(prepared: &Prepared, style: &ParaStyle) -> f32 {
     let mut min_content = 0.0f32;
     let mut start = 0usize;
     let bounds = prepared
@@ -325,13 +411,7 @@ fn new_entry<S: TextShaper>(
         min_content = min_content.max(w);
         start = end;
     }
-    min_content += style.indent.max(0.0);
-    Entry {
-        style,
-        prepared,
-        min_content,
-        layouts: Vec::new(),
-    }
+    min_content + style.indent.max(0.0)
 }
 
 /// Per-render cache of shaped paragraphs, keyed by node identity. Also
@@ -420,43 +500,34 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
-        let key = width_key(width);
-        // Split borrows: the shaper is only read while breaking lines.
         self.entry(node, runs);
+        // Split borrows: the shaper is only read while breaking lines.
         let entry = self.entries.get_mut(&node_key(node))?;
-        if let Some((_, l)) = entry.layouts.iter().find(|(k, _)| *k == key) {
-            return Some(l.clone());
-        }
-        let layout =
-            Arc::new(
-                self.shaper
-                    .break_lines(&entry.prepared, runs, &entry.style, width.max(0.0)),
-            );
-        entry.layouts.push((key, layout.clone()));
-        Some(layout)
+        Some(entry.layout(&self.shaper, runs, width))
     }
 
     /// Read-only [`layout`](Self::layout) for painting (which runs in
     /// parallel): the cached layout at `width`, or one computed without
-    /// caching. Layout has already measured every painted text at its final
-    /// width, so the fallback is rare.
-    pub fn layout_at(&self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
+    /// caching, with the text and style it was broken from. Layout has
+    /// already measured every painted text at its final width, so the
+    /// fallback is rare.
+    pub fn paragraph(
+        &self,
+        node: &Node,
+        width: f32,
+    ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
-        let entry = self.entries.get(&node_key(node))?;
-        let key = width_key(width);
-        if let Some((_, l)) = entry.layouts.iter().find(|(k, _)| *k == key) {
-            return Some(l.clone());
-        }
-        Some(Arc::new(self.shaper.break_lines(
-            &entry.prepared,
-            runs,
-            &entry.style,
-            width.max(0.0),
-        )))
+        let e = self.entries.get(&node_key(node))?;
+        Some((
+            e.layout_at(&self.shaper, runs, width),
+            &e.prepared,
+            &e.style,
+        ))
     }
 
+    #[cfg(test)]
     pub fn prepared(&self, node: &Node) -> Option<(&Prepared, &ParaStyle)> {
         self.entries
             .get(&node_key(node))
@@ -472,28 +543,12 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         let NodeKind::Text { runs } = &node.kind else {
             return TSize::ZERO;
         };
-        // Taffy's `known` is the border box; `available` is already the
-        // content box (the known width minus padding and border).
-        let width = match available.width {
-            AvailableSpace::Definite(w) => w,
-            AvailableSpace::MaxContent => f32::INFINITY,
-            AvailableSpace::MinContent => {
-                let e = self.entry(node, runs);
-                if e.style.ellipsis {
-                    // Truncating text can shrink to (almost) nothing.
-                    0.0
-                } else {
-                    e.min_content
-                }
-            }
-        };
-        let Some(l) = self.layout(node, width) else {
+        self.entry(node, runs);
+        let Some(entry) = self.entries.get_mut(&node_key(node)) else {
             return TSize::ZERO;
         };
-        TSize {
-            width: known.width.unwrap_or(l.width.min(width.max(0.0))),
-            height: known.height.unwrap_or(l.height),
-        }
+        let width = entry.width_in(available.width);
+        leaf_size(&entry.layout(&self.shaper, runs, width), known, width)
     }
 }
 
@@ -508,6 +563,73 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
             NodeKind::Text { .. } => self.measure_text(node, known, available),
             _ => TSize::ZERO,
         }
+    }
+}
+
+/// The text of one page's header and footer, for laying them out again
+/// with that page's numbers. Paragraphs with placeholders get the numbers
+/// in place of their stand-in digits, and line layouts of their own; the
+/// rest comes from the shared cache, which pages only read, so they can be
+/// laid out in parallel.
+pub(crate) struct PageText<'c, 's, S: TextShaper> {
+    cache: &'c TextCache<'s, S>,
+    numbers: PageNumbers,
+    /// Paragraphs with placeholders, by node.
+    entries: HashMap<usize, Entry>,
+}
+
+impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
+    pub fn new(cache: &'c TextCache<'s, S>, numbers: PageNumbers) -> Self {
+        Self {
+            cache,
+            numbers,
+            entries: HashMap::new(),
+        }
+    }
+
+    /// For a paragraph with placeholders measured on this page: its lines
+    /// at `width`, and the text and style they were broken from.
+    pub fn paragraph(
+        &self,
+        node: &Node,
+        width: f32,
+    ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return None;
+        };
+        let e = self.entries.get(&node_key(node))?;
+        let layout = e.layout_at(&self.cache.shaper, runs, width);
+        Some((layout, &e.prepared, &e.style))
+    }
+}
+
+impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
+    fn measure(
+        &mut self,
+        node: &Node,
+        known: TSize<Option<f32>>,
+        available: TSize<AvailableSpace>,
+    ) -> TSize<f32> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return TSize::ZERO;
+        };
+        let key = node_key(node);
+        // Every header and footer paragraph was shaped before layout.
+        let Some(shared) = self.cache.entries.get(&key) else {
+            return TSize::ZERO;
+        };
+        let shaper = &self.cache.shaper;
+        if !shared.prepared.placeholders {
+            let width = shared.width_in(available.width);
+            return leaf_size(&shared.layout_at(shaper, runs, width), known, width);
+        }
+        let numbers = self.numbers;
+        let entry = self.entries.entry(key).or_insert_with(|| {
+            let prepared = shaper.fill_numbers(&shared.prepared, runs, numbers);
+            Entry::new(shared.style.clone(), prepared)
+        });
+        let width = entry.width_in(available.width);
+        leaf_size(&entry.layout(shaper, runs, width), known, width)
     }
 }
 

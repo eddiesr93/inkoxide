@@ -101,6 +101,13 @@ header → footer. `FlowPart` tells the box painter which part of a flow to
 paint; leaf painters get a `ContentCtx` with the node's shift, per-line
 shifts and the page window.
 
+Page-number placeholders are laid out as `999` until the page count is
+known. Flow text keeps that width, because pagination depends on it. A
+header or footer that shows page numbers is laid out again on each page,
+in the page's paint job: `text::PageText` puts the page's digits in place
+of the stand-ins (`fill_numbers`) and breaks those paragraphs' lines
+again, and reads every other paragraph from the shared cache.
+
 ## Testing
 
 See [TESTING.md](TESTING.md): unit and fixture tests (byte-determinism,

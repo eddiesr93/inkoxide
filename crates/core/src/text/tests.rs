@@ -38,7 +38,12 @@ fn lines(d: &Document, store: &FontStore, width: f32) -> (Vec<String>, LineLayou
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout(node, width).unwrap()).clone();
     let (p, _) = cache.prepared(node).unwrap();
-    let texts = layout
+    (line_texts(p, &layout), layout)
+}
+
+/// The text of each line, mapped back through the glyph clusters.
+fn line_texts(p: &Prepared, layout: &LineLayout) -> Vec<String> {
+    layout
         .lines
         .iter()
         .map(|l| {
@@ -59,8 +64,7 @@ fn lines(d: &Document, store: &FontStore, width: f32) -> (Vec<String>, LineLayou
             }
             t.trim_end().to_string()
         })
-        .collect();
-    (texts, layout)
+        .collect()
 }
 
 const LOREM: &str = "The quick brown fox jumps over the lazy dog and keeps running far away";
@@ -175,6 +179,57 @@ fn placeholder_reserves_width_of_999() {
     let d2 = doc(&para("999", ""));
     let (_, l2) = lines(&d2, &s, 500.0);
     assert!((l.width - l2.width).abs() < 1e-4);
+}
+
+#[test]
+fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
+    let s = store();
+    let run = |r: &str| format!(r#"{{{r},"font":"Inter-Regular","size":10}}"#);
+    let d = doc(&format!(
+        r#"{{"type":"text","runs":[{},{},{},{}]}}"#,
+        run(r#""text":"Page ""#),
+        run(r#""placeholder":"pageNumber""#),
+        run(r#""text":" of ""#),
+        run(r#""placeholder":"totalPages""#),
+    ));
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let node = &d.pages[0].children[0];
+    let NodeKind::Text { runs } = &node.kind else {
+        unreachable!()
+    };
+    cache.layout(node, 500.0);
+    let (p, style) = cache.prepared(node).unwrap();
+    assert!(p.placeholders);
+    assert_eq!(p.text, "Page 999 of 999");
+
+    let numbers = PageNumbers {
+        current: 7,
+        total: 1234,
+    };
+    let filled = cache.shaper.fill_numbers(p, runs, numbers);
+    assert!(!filled.placeholders);
+    assert_eq!(filled.text, "Page 7 of 1234");
+    let pieces: Vec<&str> = filled
+        .segments
+        .iter()
+        .map(|seg| &filled.text[seg.text.start as usize..seg.text.end as usize])
+        .collect();
+    assert_eq!(pieces, ["Page ", "7", " of ", "1234"]);
+    for b in &filled.breaks {
+        let at = filled.glyphs[b.glyph as usize].cluster as usize;
+        assert!(filled.text[..at].ends_with(' '), "break at {at}");
+    }
+
+    // As wide as the numbers written out, and wrapped like them.
+    let one_line = cache
+        .shaper
+        .break_lines(&filled, runs, style, f32::INFINITY);
+    let written = lines(&doc(&para("Page 7 of 1234", "")), &s, 500.0).1;
+    assert!((one_line.width - written.width).abs() < 0.01);
+    let narrow = lines(&doc(&para("Page 7 of", "")), &s, 500.0).1.width + 1.0;
+    let wrapped = cache.shaper.break_lines(&filled, runs, style, narrow);
+    assert_eq!(line_texts(&filled, &wrapped), ["Page 7 of", "1234"]);
 }
 
 #[test]
