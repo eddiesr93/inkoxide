@@ -17,6 +17,7 @@ All notable changes to the packages in this repository. The format follows
   as a `URL`.
 - A font from `Font.register` that cannot be loaded no longer keeps the fonts registered with
   it from loading. The render still fails with `INVALID_FONT`, and the next one can use them.
+- `inkoxide` no longer exports its `__testPanic` test hook, which was never public API.
 
 ## 0.3.0 - 2026-10-12
 

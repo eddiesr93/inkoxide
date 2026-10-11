@@ -147,5 +147,6 @@ get the full list.
 ## Not part of the API
 
 - `inkoxide::debug_raw_parse_error` is `#[doc(hidden)]` test support.
-- The Node `__testPanic` export is a non-enumerable test hook.
+- `InkoxideError.__testPanic` in the Node binding is a non-enumerable test hook, not a
+  module export.
 - Everything else in the crate is `pub(crate)`.
