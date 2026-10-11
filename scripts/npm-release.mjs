@@ -65,7 +65,7 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function stagePlatform(stageDir, binDir, triple, version, repository) {
+function stagePlatform(stageDir, binDir, triple, version, repository, mainPkg) {
   const p = PLATFORMS[triple];
   const name = `${SCOPE}/${triple}`;
   const binary = `inkoxide.${triple}.node`;
@@ -84,7 +84,7 @@ function stagePlatform(stageDir, binDir, triple, version, repository) {
     os: [p.os],
     cpu: [p.cpu],
     ...(p.libc ? { libc: [p.libc] } : {}),
-    engines: { node: '>= 18' },
+    engines: mainPkg.engines,
   };
   writeJson(join(dir, 'package.json'), pkg);
   writeFileSync(
@@ -111,8 +111,10 @@ function stageMain(stageDir, version, mainPkg) {
     description: mainPkg.description,
     license: mainPkg.license,
     repository: mainPkg.repository,
+    type: mainPkg.type,
     main: mainPkg.main,
     types: mainPkg.types,
+    exports: mainPkg.exports,
     // No bundled binary: the platform package supplies it.
     files: ['index.js', 'index.d.ts'],
     engines: mainPkg.engines,
@@ -190,7 +192,7 @@ function main() {
   rmSync(args.stageDir, { recursive: true, force: true });
   mkdirSync(args.stageDir, { recursive: true });
   const platforms = Object.keys(PLATFORMS).map((t) =>
-    stagePlatform(args.stageDir, args.binDir, t, version, repository),
+    stagePlatform(args.stageDir, args.binDir, t, version, repository, mainPkg),
   );
   const loader = stageMain(args.stageDir, version, mainPkg);
   const schema = stageSchema(args.stageDir);

@@ -1,13 +1,13 @@
-'use strict';
 // Every JSON document in packages/schema/EXAMPLES.md validates and renders.
-const test = require('node:test');
-const assert = require('node:assert');
-const { readFileSync } = require('node:fs');
-const { join } = require('node:path');
+import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const ink = require('..');
+import * as ink from '../index.js';
 
-const root = join(__dirname, '..', '..', '..');
+const root = fileURLToPath(new URL('../../../', import.meta.url));
 for (const id of ['Inter-Regular', 'Inter-Bold']) {
   ink.registerFont(id, readFileSync(join(root, 'fixtures', 'fonts', `${id}.ttf`)));
 }

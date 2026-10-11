@@ -1,9 +1,12 @@
-'use strict';
 // Loader for the native binding plus the JS-side error type. Hand-written
 // and reviewed together with index.d.ts (the public contract).
 
-const { existsSync } = require('node:fs');
-const { join } = require('node:path');
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+// Native addons (.node files) load through require, also from an ES module.
+const require = createRequire(import.meta.url);
 
 function isMusl() {
   if (process.platform !== 'linux') return false;
@@ -24,7 +27,7 @@ function platformTriple() {
 
 function loadNative() {
   const triple = platformTriple();
-  const local = join(__dirname, `inkoxide.${triple}.node`);
+  const local = fileURLToPath(new URL(`inkoxide.${triple}.node`, import.meta.url));
   if (existsSync(local)) return require(local);
   try {
     return require(`@inkoxide/${triple}`);
@@ -38,7 +41,7 @@ function loadNative() {
 
 const native = loadNative();
 
-class InkoxideError extends Error {
+export class InkoxideError extends Error {
   constructor(code, path, message) {
     super(path ? `${code} at ${path}: ${message}` : `${code}: ${message}`);
     this.name = 'InkoxideError';
@@ -101,23 +104,22 @@ function toUint8Array(b) {
   return new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
 }
 
-// Plain `exports.x =` assignments so ESM `import { render } from 'inkoxide'`
-// sees named exports.
-exports.InkoxideError = InkoxideError;
-exports.registerFont = (id, data) => call(native.registerFont, [id, data]);
-exports.unregisterFont = (id) => call(native.unregisterFont, [id]);
-exports.registerHyphenationPatterns = (lang, data) => call(native.registerHyphenationPatterns, [lang, data]);
-exports.unregisterHyphenationPatterns = (lang) => call(native.unregisterHyphenationPatterns, [lang]);
-exports.validate = (doc, format, images) =>
+export const registerFont = (id, data) => call(native.registerFont, [id, data]);
+export const unregisterFont = (id) => call(native.unregisterFont, [id]);
+export const registerHyphenationPatterns = (lang, data) =>
+  call(native.registerHyphenationPatterns, [lang, data]);
+export const unregisterHyphenationPatterns = (lang) => call(native.unregisterHyphenationPatterns, [lang]);
+export const validate = (doc, format, images) =>
   call(native.validate, [doc, format ?? undefined, images ?? undefined]);
-exports.render = async (doc, options) => {
+export const render = async (doc, options) => {
   try {
     return toUint8Array(await native.render(doc, options ?? undefined));
   } catch (e) {
     throw wrapError(e);
   }
 };
-exports.renderSync = (doc, options) => toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
-exports.version = () => call(native.version, []);
-// Test hook (not public API): a panic behind the native boundary.
-Object.defineProperty(exports, '__testPanic', { value: () => call(native.__testPanic, []) });
+export const renderSync = (doc, options) =>
+  toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
+export const version = () => call(native.version, []);
+// Test hook, not public API and not in index.d.ts: a panic behind the native boundary.
+export const __testPanic = () => call(native.__testPanic, []);

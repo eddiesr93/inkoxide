@@ -55,7 +55,12 @@ millisecond; a 98-page report with 40 tables in about 130 ms.
 
 ```sh
 npm install @inkoxide/render react
+npm install -D tsx @types/react
+npm pkg set type=module
+echo '{ "compilerOptions": { "jsx": "react-jsx" } }' > tsconfig.json
 ```
+
+Then save this as `receipt.tsx`:
 
 ```tsx
 import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
@@ -167,8 +172,8 @@ with other libraries.
 
 ## Platforms
 
-Prebuilt binaries; npm installs the one for the current platform. `@inkoxide/render` needs
-Node.js 22 or later, `inkoxide` Node.js 18 or later.
+Prebuilt binaries; npm installs the one for the current platform. Every package needs
+Node.js 22 or later and is an ES module.
 
 | OS | Architectures |
 |---|---|

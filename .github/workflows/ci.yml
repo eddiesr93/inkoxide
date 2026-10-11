@@ -93,7 +93,7 @@ jobs:
         run: scripts/build-node.sh --debug
       - name: Binding tests
         working-directory: packages/inkoxide
-        run: node --test test/*.test.js test/*.test.mjs
+        run: node --test test/*.test.js
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck

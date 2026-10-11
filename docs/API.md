@@ -57,8 +57,10 @@ let pdf = inkoxide::render(&doc, InputFormat::Json, &options, &fonts, &ImageStor
 ```
 
 ```js
-const { registerFont, render } = require('inkoxide');
-registerFont('Inter-Regular', fs.readFileSync('Inter-Regular.ttf'));
+import { readFileSync } from 'node:fs';
+import { registerFont, render } from 'inkoxide';
+
+registerFont('Inter-Regular', readFileSync('Inter-Regular.ttf'));
 const pdf = await render(JSON.stringify(doc), { threads: 1, creationDate: '2026-01-01T00:00:00Z' });
 ```
 

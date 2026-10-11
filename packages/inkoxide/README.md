@@ -19,7 +19,7 @@ automatically (as optional dependencies) for the current platform:
 | macOS x64             | `@inkoxide/darwin-x64`      |
 | Windows x64           | `@inkoxide/win32-x64-msvc`  |
 
-Linux glibc builds need glibc 2.35 or newer. Node.js 18 or newer.
+Linux glibc builds need glibc 2.35 or newer. Node.js 22 or newer; ES modules only.
 Other platforms: build from source with `scripts/build-node.sh`, which
 puts `inkoxide.<platform>.node` next to the loader.
 

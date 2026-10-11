@@ -38,7 +38,7 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `fixtures/hyphenation/<fixture>.<lang>.tex`: hyphenation patterns
   registered only while rendering `<fixture>`.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
-  first): rendering, error shapes, the libuv thread pool, ESM and CommonJS.
+  first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): Tailwind class mapping, the
   React tree builder, `renderToBuffer`, `Font.register` and error messages.
 - `node scripts/gen-schema-types.mjs`: regenerates

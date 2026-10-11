@@ -7,7 +7,24 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
-### @inkoxide/render 0.1.1
+### Breaking: ES modules only
+
+`inkoxide` 0.2.0 and `@inkoxide/schema` 2.0.0 are ES modules and need Node.js 22 or later, like
+the React packages already did. Replace `require('inkoxide')` with `import … from 'inkoxide'`.
+`@inkoxide/schema` 2.0.0 still describes document schema version 1; documents do not change.
+
+### Dependency updates
+
+`@inkoxide/tailwind` 0.1.1, `@inkoxide/react` 0.1.1 and `@inkoxide/render` 0.1.2 depend on the
+releases above. The `@inkoxide/render` README now shows the project setup the quick start needs.
+
+### Repository
+
+- `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render` are developed in this
+  repository, under `packages/`, with the examples and the benchmarks.
+- Continuous integration on every pull request.
+
+## @inkoxide/render 0.1.1 - 2026-10-11
 
 - A new README with examples, and two new guides: [GUIDE.md](packages/render/GUIDE.md) and
   [MIGRATING.md](packages/render/MIGRATING.md).
@@ -15,12 +32,6 @@ All notable changes to the packages in this repository. The format follows
   directory.
 - `StudioError` and `StudioErrorCode` are deprecated aliases of `RenderError` and
   `RenderErrorCode`.
-
-### Repository
-
-- `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render` are developed in this
-  repository, under `packages/`, with the examples and the benchmarks.
-- Continuous integration on every pull request.
 
 ## 0.1.0 - 2026-10-11
 

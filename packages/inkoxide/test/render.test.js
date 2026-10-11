@@ -1,12 +1,12 @@
-'use strict';
-const test = require('node:test');
-const assert = require('node:assert');
-const { readFileSync, readdirSync } = require('node:fs');
-const { join } = require('node:path');
+import assert from 'node:assert';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const ink = require('..');
+import * as ink from '../index.js';
 
-const root = join(__dirname, '..', '..', '..');
+const root = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = (p) => readFileSync(join(root, 'fixtures', p));
 
 for (const f of readdirSync(join(root, 'fixtures/fonts')).filter((f) => f.endsWith('.ttf'))) {

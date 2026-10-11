@@ -34,7 +34,7 @@ step "node binding (packages/inkoxide)"
 if command -v node >/dev/null; then
   scripts/build-node.sh --debug >/dev/null
   # The greps below read TAP; Node 23+ prints the spec reporter even when piped.
-  (cd packages/inkoxide && node --test --test-reporter=tap test/*.test.js test/*.test.mjs) |
+  (cd packages/inkoxide && node --test --test-reporter=tap test/*.test.js) |
     grep -E '^# (pass|fail)'
 else
   echo "node not installed; skipped"

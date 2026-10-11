@@ -8,6 +8,9 @@ version 1. The types are generated from `document.v1.json` by
 npm install @inkoxide/schema
 ```
 
+The package is an ES module and needs Node.js 22 or later. Its version is independent of the
+document schema version: `@inkoxide/schema` 2.x describes schema version 1.
+
 ## Types
 
 ```ts

@@ -19,9 +19,8 @@ npm install inkoxide @inkoxide/schema
 - **Other platforms.** Build the addon from a checkout with
   `scripts/build-node.sh`, which writes
   `packages/inkoxide/inkoxide.<platform>.node`.
-- **Module systems.** The package is CommonJS and has named exports, so
-  `import { render } from 'inkoxide'` works from ESM and TypeScript
-  (`module: nodenext`).
+- **ES modules only.** Import it with `import { render } from 'inkoxide'`;
+  it needs Node.js 22 or later.
 
 Log `version()` once at startup. It returns
 `{ engine, schema, gitSha }`, so a bug report can name the exact build.

@@ -42,4 +42,4 @@ jobs:
         run: |
           ls -l *.node
           node -p "process.platform + '-' + process.arch + ' ' + JSON.stringify(require('./index.js').version())"
-          node --test --test-reporter=tap test/*.test.js test/*.test.mjs
+          node --test --test-reporter=tap test/*.test.js

@@ -1,12 +1,20 @@
 {
   "name": "inkoxide",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Native PDF layout and rendering engine: declarative document tree in, PDF bytes out.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eddiesr93/inkoxide.git",
     "directory": "packages/inkoxide"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
   },
   "main": "index.js",
   "types": "index.d.ts",
@@ -16,11 +24,11 @@
     "*.node"
   ],
   "engines": {
-    "node": ">= 18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "../../scripts/build-node.sh",
-    "test": "node --test test/*.test.js test/*.test.mjs"
+    "test": "node --test test/*.test.js"
   },
   "napi": {
     "binaryName": "inkoxide",
