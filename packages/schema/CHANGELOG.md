@@ -13,7 +13,8 @@ schema version 2.
   words, in the node's language.
 - **Images:** `objectPosition` places an image with `fit` `contain`, `cover` or `none` in its
   box, like CSS `object-position`: `{x, y}`, each a keyword (`left`/`center`/`right`,
-  `top`/`center`/`bottom`), a percentage or points. The default is centred, as before.
+  `top`/`center`/`bottom`), a percentage (within ±10000%) or points (within ±14400). The
+  default is centred, as before.
 - **Fixed nodes:** a child of the page with `break.fixed` and `position: "absolute"` is placed
   against the page content box, at the same place on every page, and takes no space. Before,
   its `inset` and percentages were resolved against the whole flow, several pages tall, so a

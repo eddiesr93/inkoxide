@@ -280,7 +280,8 @@ impl ImageSet {
 
 /// Placement of an image inside a content box `(x, y, w, h)`: the drawn
 /// rectangle and whether it must be clipped to the box. `fit` sizes the
-/// image and `objectPosition` places it (`fill` covers the box and ignores it).
+/// image and `objectPosition` places it; `fill` covers the box and ignores
+/// the position.
 pub(crate) fn fit_rect(
     fit: ImageFit,
     position: ObjectPosition,
@@ -304,10 +305,7 @@ pub(crate) fn fit_rect(
         }
         ImageFit::None => (iw, ih),
     };
-    let (rx, ry) = (
-        x + offset(position.x, w - dw),
-        y + offset(position.y, h - dh),
-    );
+    let (rx, ry) = (place(x, position.x, w - dw), place(y, position.y, h - dh));
     let clip = dw > w + EPS
         || dh > h + EPS
         || rx < x - EPS
@@ -315,6 +313,18 @@ pub(crate) fn fit_rect(
         || rx + dw > x + w + EPS
         || ry + dh > y + h + EPS;
     ((rx, ry, dw, dh), clip)
+}
+
+/// Start of an image along one axis: the box's start plus the offset.
+/// Validation bounds `objectPosition`, so this stays finite for a validated
+/// document; should a placement still overflow `f32` (a caller that skipped
+/// validation), the image is centred instead, so that `inf` or `NaN` never
+/// reaches the content stream, where it would make the PDF invalid.
+fn place(start: f32, p: LengthPercent, free: f32) -> f32 {
+    [start + offset(p, free), start + free / 2.0]
+        .into_iter()
+        .find(|v| v.is_finite())
+        .unwrap_or(start)
 }
 
 /// Offset of an image from the start edge of its box along one axis, given

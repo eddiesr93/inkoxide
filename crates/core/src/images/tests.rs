@@ -377,6 +377,86 @@ fn raster_and_svg_images_follow_their_object_position() {
     );
 }
 
+#[test]
+fn an_overflowing_object_position_is_centred_not_infinite() {
+    use crate::schema::LengthPercent::Percent;
+    // Validation keeps percentages within ±10000 %; without it, a huge one
+    // times the free space overflows f32.
+    let b = (0.0, 0.0, 100.0, 50.0);
+    let at = |x, y| fit_rect(ImageFit::Cover, ObjectPosition { x, y }, b, (10.0, 10.0));
+    let centred = fit_rect(ImageFit::Cover, ObjectPosition::default(), b, (10.0, 10.0));
+    for y in [Percent(f32::MAX), Percent(-f32::MAX)] {
+        assert_eq!(at(Percent(0.5), y), centred, "{y:?}");
+    }
+    // Only the overflowing axis falls back.
+    let ((rx, ry, ..), _) = at(Percent(0.0), Percent(f32::MAX));
+    assert_eq!((rx, ry), (0.0, (centred.0).1));
+}
+
+/// The operands of every `cm` and `re` operator in an uncompressed PDF.
+fn placement_operands(pdf: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(pdf);
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        for (i, t) in tokens.iter().enumerate() {
+            let n = match *t {
+                "cm" => 6,
+                "re" => 4,
+                _ => continue,
+            };
+            if i >= n {
+                out.extend(tokens[i - n..i].iter().map(ToString::to_string));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn object_positions_at_the_bounds_render_finite_numbers() {
+    let mut store = ImageStore::new();
+    store.insert("photo", fixture("photo.jpg"));
+    store.insert("chart", fixture("chart.svg"));
+    let mut nodes = Vec::new();
+    for src in ["photo", "chart"] {
+        for fit in ["contain", "cover", "none"] {
+            for (x, y) in [
+                (r#""10000%""#, r#""-10000%""#),
+                (r#""-10000%""#, r#""10000%""#),
+                ("14400", "-14400"),
+                ("-14400", "14400"),
+            ] {
+                nodes.push(format!(
+                    r#"{{"type":"image","src":"{src}","fit":"{fit}","style":{{"width":100,"height":60}},"objectPosition":{{"x":{x},"y":{y}}}}}"#
+                ));
+            }
+        }
+    }
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":300,"height":300}},"children":[{}]}}]}}"#,
+        nodes.join(",")
+    );
+    let options = crate::RenderOptions::default().with_compress(false);
+    let pdf = crate::render(
+        json.as_bytes(),
+        crate::InputFormat::Json,
+        &options,
+        &crate::FontStore::new(),
+        &store,
+    )
+    .unwrap();
+    let operands = placement_operands(&pdf);
+    // 24 images, each drawn with a matrix (6) and clipped to its box (4).
+    assert!(operands.len() >= 24 * 10, "{} operands", operands.len());
+    for n in &operands {
+        assert!(
+            n.parse::<f64>().is_ok_and(f64::is_finite),
+            "non-finite operand `{n}` in the content stream"
+        );
+    }
+}
+
 /// Maps stored-pixel corner (a, b) (normalised, y down) through the matrix.
 fn corner(m: [f32; 6], a: f32, b: f32) -> (f32, f32) {
     let (u, v) = (a, 1.0 - b);

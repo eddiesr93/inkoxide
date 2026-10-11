@@ -408,7 +408,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 
 ### ObjectPosition
 
-Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). What falls outside the box is clipped.
+Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). Points are within ±14400 and percentages within ±10000%. What falls outside the box is clipped.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|

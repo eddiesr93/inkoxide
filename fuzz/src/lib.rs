@@ -804,9 +804,22 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
                 );
             }
             if s.chance(96) {
-                let mut axis = |keywords: [&str; 3]| match s.below(3) {
+                let mut axis = |keywords: [&str; 3]| match s.below(4) {
                     0 => json!(s.pick(&keywords)),
-                    1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1e3%"])),
+                    1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1000.5%"])),
+                    // The bounds (±10000 %, ±14400 pt), just past them, and
+                    // values far past them that would overflow f32 if
+                    // validation let them through.
+                    2 => match s.below(8) {
+                        0 => json!("10000%"),
+                        1 => json!("-10000%"),
+                        2 => json!("10000.01%"),
+                        3 => json!("-9999999999999999999999999999999999999%"),
+                        4 => json!(14_400),
+                        5 => json!(-14_400),
+                        6 => json!(14_400.01),
+                        _ => json!(-1e30),
+                    },
                     _ => num(s),
                 };
                 let x = axis(["left", "center", "right"]);
