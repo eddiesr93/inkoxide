@@ -243,28 +243,40 @@ export interface DocumentProps {
   children?: ReactNode;
 }
 
+type Series<P extends string> = `${P}${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10}`;
+
 export type PagePreset =
-  | 'A3'
-  | 'A4'
-  | 'A5'
-  | 'A6'
-  | 'B4'
-  | 'B5'
+  | '4A0'
+  | '2A0'
+  | Series<'A' | 'B' | 'C'>
+  | `${'RA' | 'SRA'}${0 | 1 | 2 | 3 | 4}`
   | 'Letter'
   | 'Legal'
   | 'Tabloid'
-  | 'Executive';
+  | 'Executive'
+  | 'Folio'
+  | 'ID1';
+
+/** A preset name in any case (`'A4'`, `'letter'`, `'LEGAL'`). */
+type PresetName = PagePreset | Lowercase<PagePreset> | Uppercase<PagePreset>;
 
 export type PageSize =
-  | PagePreset
-  | `${PagePreset}-landscape`
+  | PresetName
+  | `${PresetName}-landscape`
+  | Length
+  | [width: Length, height: Length]
+  | [side: Length]
   | {
       width: Length;
       height: Length;
     };
 
 export interface PageProps {
-  /** Preset or `{ width, height }` (points, or strings with a unit: `'210mm'`). Default `A4`. */
+  /**
+   * A preset (`'A4'`, `'letter'`, `'A5-landscape'`), `[width, height]`, `{ width, height }`, or
+   * `[width]` or a single length for a square page. Lengths are points or strings with a unit
+   * (`'210mm'`). Default `A4`.
+   */
   size?: PageSize;
   /** Turns the size sideways (`landscape`) or upright (`portrait`). */
   orientation?: 'portrait' | 'landscape';

@@ -25,7 +25,7 @@ All components take `className`, `style` and `id`.
 | Component | What it is |
 |---|---|
 | `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `lang` (`"en-US"`). |
-| `Page` | One page layout; content flows over as many sheets as it needs. `size` (`A3`–`A6`, `B4`, `B5`, `Letter`, `Legal`, `Tabloid`, `Executive`, `"A4-landscape"`, or `{ width, height }`), `orientation`, `margin`. Padding on a page is its margin. |
+| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
@@ -162,6 +162,31 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
   head of a page.
 - **Content that depends on the page.** Use `render={({ pageNumber, totalPages }) => …}` on a
   `Text` or `View` in a header or footer.
+
+### Page sizes
+
+| `size` | Sizes |
+|---|---|
+| `4A0`, `2A0`, `A0`–`A10` | ISO 216 A series (`A4` is 210 × 297 mm) |
+| `B0`–`B10` | ISO 216 B series |
+| `C0`–`C10` | ISO 269 C series (envelopes) |
+| `RA0`–`RA4`, `SRA0`–`SRA4` | ISO 217 untrimmed paper |
+| `Letter`, `Legal`, `Tabloid`, `Executive`, `Folio` | 8.5 × 11, 8.5 × 14, 11 × 17, 7.25 × 10.5 and 8.5 × 13 in |
+| `ID1` | ID-1 card (a bank card), 53.98 × 85.6 mm |
+
+Presets are portrait, and their names match in any case (`"letter"`, `"LETTER"`). Add
+`-landscape` (`"A5-landscape"`) or `orientation="landscape"` to turn one sideways. Any other size
+is `[width, height]` or `{ width, height }`, and `[width]` or a single length makes a square
+page. Lengths are points or strings with a unit:
+
+```tsx
+<Page size="a4-landscape" />
+<Page size={[400, 600]} />
+<Page size={['100mm', '150mm']} />
+<Page size="80mm" />
+```
+
+`PAGE_SIZES` has every preset in points.
 
 ## Tables
 
