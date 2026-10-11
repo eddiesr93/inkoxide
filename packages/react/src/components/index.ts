@@ -13,6 +13,7 @@ export const HOST = {
   Footer: 'ink-footer',
   View: 'ink-view',
   Text: 'ink-text',
+  Link: 'ink-link',
   Image: 'ink-image',
   Table: 'ink-table',
   Row: 'ink-row',
@@ -242,28 +243,40 @@ export interface DocumentProps {
   children?: ReactNode;
 }
 
+type Series<P extends string> = `${P}${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10}`;
+
 export type PagePreset =
-  | 'A3'
-  | 'A4'
-  | 'A5'
-  | 'A6'
-  | 'B4'
-  | 'B5'
+  | '4A0'
+  | '2A0'
+  | Series<'A' | 'B' | 'C'>
+  | `${'RA' | 'SRA'}${0 | 1 | 2 | 3 | 4}`
   | 'Letter'
   | 'Legal'
   | 'Tabloid'
-  | 'Executive';
+  | 'Executive'
+  | 'Folio'
+  | 'ID1';
+
+/** A preset name in any case (`'A4'`, `'letter'`, `'LEGAL'`). */
+type PresetName = PagePreset | Lowercase<PagePreset> | Uppercase<PagePreset>;
 
 export type PageSize =
-  | PagePreset
-  | `${PagePreset}-landscape`
+  | PresetName
+  | `${PresetName}-landscape`
+  | Length
+  | [width: Length, height: Length]
+  | [side: Length]
   | {
       width: Length;
       height: Length;
     };
 
 export interface PageProps {
-  /** Preset or `{ width, height }` (points, or strings with a unit: `'210mm'`). Default `A4`. */
+  /**
+   * A preset (`'A4'`, `'letter'`, `'A5-landscape'`), `[width, height]`, `{ width, height }`, or
+   * `[width]` or a single length for a square page. Lengths are points or strings with a unit
+   * (`'210mm'`). Default `A4`.
+   */
   size?: PageSize;
   /** Turns the size sideways (`landscape`) or upright (`portrait`). */
   orientation?: 'portrait' | 'landscape';
@@ -308,6 +321,11 @@ export interface TextProps extends Flow {
   /** Minimum lines carried to the top of the next page (default 1). */
   widows?: number;
   render?: RenderProp;
+}
+
+export interface LinkProps extends Flow {
+  /** The same as `href`. */
+  src?: string;
 }
 
 export interface ImageProps extends Omit<Flow, 'children'> {
@@ -496,6 +514,11 @@ export const Header = host<HeaderProps>(HOST.Header);
 export const Footer = host<FooterProps>(HOST.Footer);
 export const View = host<ViewProps>(HOST.View);
 export const Text = host<TextProps>(HOST.Text);
+/**
+ * A link to `href` (`https://…`, `mailto:…` or `#id`; `src` is the same). Inside a `Text` it is
+ * an inline run; elsewhere a box, like a `View` with `href`. It adds no colour or underline.
+ */
+export const Link = host<LinkProps>(HOST.Link);
 export const Image = host<ImageProps>(HOST.Image);
 export const Table = host<TableProps>(HOST.Table);
 export const Row = host<RowProps>(HOST.Row);

@@ -13,7 +13,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `<Text render={({ pageNumber, totalPages }) => …} />` | The same, or `<PageNumber />` and `<TotalPages />` | Works as is |
 | `fontWeight: 'bold'`, `flex: 1`, `paddingHorizontal`, `borderBottomColor`, `top`/`left` | The same | Works as is |
 | A footer as a `View` with `fixed` and `position: 'absolute'` | `<Footer>` and `<Header>`, which line up with the page by themselves | `fixed` throws, pointing here |
-| `<Link src="…">` | `href` on `Text` or `View`; `href="#id"` jumps to an element's `id` | Rename |
+| `<Link src="…">` | The same, or `href` on `Text` or `View`; `href="#id"` jumps to an element's `id` | Works as is; adds no colour or underline |
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Built in |
 | `<Svg>`, `<Canvas>` | The same | No `<Text>` inside `<Svg>` yet |

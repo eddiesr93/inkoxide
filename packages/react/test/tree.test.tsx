@@ -9,6 +9,7 @@ import {
   Footer,
   Header,
   Image,
+  Link,
   Page,
   PageNumber,
   Row,
@@ -118,6 +119,46 @@ describe('text inheritance and runs', () => {
     expect(t.link).toBe('#intro');
     expect(t.bookmark).toEqual({ title: 'Introduction' });
     expect(t.runs[1]?.link).toBe('https://example.com');
+  });
+
+  it('makes a Link inside Text a linked run without adding any style', () => {
+    const r = render(
+      <Text className="text-[#ff0000]">
+        See <Link href="https://example.com">the website</Link> or{' '}
+        <Link src="#totals" className="underline">
+          the <Text className="font-bold">totals</Text>
+        </Link>
+        .
+      </Text>,
+    );
+    const red = [1, 0, 0, 1];
+    expect(first<TextNode>(r).runs).toEqual([
+      { text: 'See ', font: 'Inter-Regular', size: 10, color: red },
+      { text: 'the website', font: 'Inter-Regular', size: 10, color: red, link: 'https://example.com' },
+      { text: ' or ', font: 'Inter-Regular', size: 10, color: red },
+      { text: 'the ', font: 'Inter-Regular', size: 10, color: red, decoration: 'underline', link: '#totals' },
+      { text: 'totals', font: 'Inter-Bold', size: 10, color: red, decoration: 'underline', link: '#totals' },
+      { text: '.', font: 'Inter-Regular', size: 10, color: red },
+    ]);
+  });
+
+  it('makes a Link outside Text a box with a link, like a View with href', () => {
+    const r = render(
+      <Link src="https://example.com" className="p-2" bookmark="Website">
+        Example
+        <Text>More</Text>
+      </Link>,
+    );
+    const box = first<BoxNode>(r);
+    expect(box).toMatchObject({
+      type: 'box',
+      link: 'https://example.com',
+      bookmark: { title: 'Website' },
+      style: { padding: { top: 6, right: 6, bottom: 6, left: 6 } },
+    });
+    const [label, more] = (box.children ?? []) as TextNode[];
+    expect(label?.runs).toEqual([{ text: 'Example', font: 'Inter-Regular', size: 10, color: [0, 0, 0, 1] }]);
+    expect(more?.runs[0]?.link).toBeUndefined();
   });
 
   it('turns bare strings in a View into an anonymous text node', () => {
@@ -428,6 +469,30 @@ describe('errors carry component stacks', () => {
       ),
     );
     expect(e.message).toContain('nested <Text> is an inline run');
+    const link = thrown(() =>
+      render(
+        <Text>
+          a{' '}
+          <Link href="#a" className="p-2">
+            b
+          </Link>
+        </Text>,
+      ),
+    );
+    expect(link.message).toContain('A <Link> inside <Text> is an inline run');
+  });
+
+  it('rejects a Link without a target and block content inside an inline Link', () => {
+    expect(thrown(() => render(<Link>x</Link>)).message).toContain('<Link> needs an href');
+    const inline = () =>
+      render(
+        <Text>
+          <Link href="#a">
+            <View />
+          </Link>
+        </Text>,
+      );
+    expect(thrown(inline).message).toContain('<View> cannot be inside <Text>');
   });
 
   it('maps engine and ajv paths back to components', () => {

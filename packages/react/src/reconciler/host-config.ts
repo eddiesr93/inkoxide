@@ -24,6 +24,7 @@ const contextFor = (parent: string): HostContext => {
 const FLOW = new Set<string>([
   HOST.View,
   HOST.Text,
+  HOST.Link,
   HOST.Image,
   HOST.Table,
   HOST.PageBreak,
@@ -32,7 +33,7 @@ const FLOW = new Set<string>([
   HOST.Svg,
   HOST.Canvas,
 ]);
-const INLINE = new Set<string>([HOST.Text, HOST.PageNumber, HOST.TotalPages]);
+const INLINE = new Set<string>([HOST.Text, HOST.Link, HOST.PageNumber, HOST.TotalPages]);
 const SVG_SHAPES = new Set<string>([
   HOST.Path,
   HOST.Rect,
@@ -80,6 +81,7 @@ function allowed(parent: string, child: string): boolean {
     case HOST.Header:
     case HOST.Footer:
     case HOST.View:
+    case HOST.Link:
     case HOST.Cell:
       return FLOW.has(child);
     case HOST.Svg:
@@ -96,7 +98,15 @@ function allowed(parent: string, child: string): boolean {
 }
 
 /** Containers where bare strings are allowed (they become an anonymous text node). */
-const TEXT_PARENTS = new Set<string>([HOST.Text, HOST.View, HOST.Cell, HOST.Header, HOST.Footer, HOST.Page]);
+const TEXT_PARENTS = new Set<string>([
+  HOST.Text,
+  HOST.View,
+  HOST.Link,
+  HOST.Cell,
+  HOST.Header,
+  HOST.Footer,
+  HOST.Page,
+]);
 
 const name = (type: string): string => (type === 'root' ? 'the root' : `<${HOST_NAME[type] ?? type}>`);
 
@@ -109,7 +119,7 @@ function placementError(parent: string, child: string): TemplateError {
   if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
   if (parent === HOST.Text) {
     return new TemplateError(
-      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <PageNumber> and <TotalPages>.`,
+      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <PageNumber> and <TotalPages>.`,
     );
   }
   if (child === HOST.PageNumber || child === HOST.TotalPages) {
@@ -167,7 +177,9 @@ export const hostConfig = {
   // A nested root (a `render` prop's output) starts inside its owner's host type.
   getRootHostContext: (root: Container): HostContext =>
     root.parent ? contextFor(root.parent) : ROOT_CONTEXT,
-  getChildHostContext: (_parent: HostContext, type: string): HostContext => contextFor(type),
+  // A Link inside a Text is an inline run: its content follows the rules of Text.
+  getChildHostContext: (parent: HostContext, type: string): HostContext =>
+    contextFor(type === HOST.Link && parent.parent === HOST.Text ? HOST.Text : type),
   getPublicInstance: (instance: Instance): Instance => instance,
   prepareForCommit: (): null => null,
   resetAfterCommit: (): void => {},

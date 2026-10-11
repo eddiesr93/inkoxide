@@ -9,6 +9,7 @@ import {
   countPages,
   Document,
   Footer,
+  Link,
   Page,
   PageNumber,
   RenderError,
@@ -71,6 +72,22 @@ describe('renderToBuffer', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'inkoxide-')), 'receipt.pdf');
     await renderToFile(<Receipt customer="Ada" lines={[]} />, path);
     expect(readFileSync(path).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('writes a link annotation for an inline and a block Link', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Text id="top">
+            See <Link href="https://example.com/inline">the website</Link>
+          </Text>
+          <Link src="#top">Back to the top</Link>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes.match(/\/Subtype ?\/Link/g)).toHaveLength(2);
+    expect(bytes).toContain('https://example.com/inline');
   });
 
   it('names the component when the structure is wrong', async () => {

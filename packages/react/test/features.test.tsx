@@ -13,6 +13,7 @@ import {
   G,
   Image,
   LinearGradient,
+  PAGE_SIZES,
   Page,
   Path,
   Radio,
@@ -211,6 +212,79 @@ describe('page filters, sizes and per-page content', () => {
     expect(r.document.pages[0].margin?.top).toBeCloseTo(42.52, 2);
     const custom = tree(null, { page: { size: { width: '210mm', height: '297mm' } } });
     expect(custom.document.pages[0].size.width).toBeCloseTo(595.28, 2);
+  });
+
+  it('has every ISO A, B and C size, RA, SRA, the US sizes, Folio and ID-1', () => {
+    const names = [
+      '4A0',
+      '2A0',
+      ...['A', 'B', 'C'].flatMap((s) => Array.from({ length: 11 }, (_, i) => `${s}${i}`)),
+      ...['RA', 'SRA'].flatMap((s) => Array.from({ length: 5 }, (_, i) => `${s}${i}`)),
+      'Letter',
+      'Legal',
+      'Tabloid',
+      'Executive',
+      'Folio',
+      'ID1',
+    ];
+    expect(Object.keys(PAGE_SIZES).sort()).toEqual(names.sort());
+    for (const { width, height } of Object.values(PAGE_SIZES)) expect(width).toBeLessThan(height);
+    const size = (s: unknown) => tree(null, { page: { size: s } }).document.pages[0].size;
+    expect(size('4A0')).toEqual({ width: 4767.87, height: 6740.79 });
+    expect(size('A10')).toEqual({ width: 73.7, height: 104.88 });
+    expect(size('B0')).toEqual({ width: 2834.65, height: 4008.19 });
+    expect(size('C4')).toEqual({ width: 649.13, height: 918.43 });
+    expect(size('RA4')).toEqual({ width: 609.45, height: 864.57 });
+    expect(size('SRA3')).toEqual({ width: 907.09, height: 1275.59 });
+    expect(size('Folio')).toEqual({ width: 612, height: 936 });
+    expect(size('ID1')).toEqual({ width: 153.01, height: 242.65 });
+  });
+
+  it('matches preset names in any case, with or without "-landscape"', () => {
+    const size = (s: unknown) => tree(null, { page: { size: s } }).document.pages[0].size;
+    const letter = { width: 612, height: 792 };
+    expect(size('letter')).toEqual(letter);
+    expect(size('LETTER')).toEqual(letter);
+    expect(size('a4-landscape')).toEqual({ width: 841.89, height: 595.28 });
+    expect(size('SRA2-Landscape')).toEqual({ width: 1814.17, height: 1275.59 });
+    expect(size('id1-landscape')).toEqual({ width: 242.65, height: 153.01 });
+  });
+
+  it('sizes pages from [width, height], [width] and a bare length', () => {
+    const size = (s: unknown, page: Record<string, unknown> = {}) =>
+      tree(null, { page: { size: s, ...page } }).document.pages[0].size;
+    expect(size([400, 600])).toEqual({ width: 400, height: 600 });
+    expect(size(['100mm', '2in'])).toEqual({ width: 283.464567, height: 144 });
+    expect(size([300])).toEqual({ width: 300, height: 300 });
+    expect(size(['1in'])).toEqual({ width: 72, height: 72 });
+    expect(size(250)).toEqual({ width: 250, height: 250 });
+    expect(size('3in')).toEqual({ width: 216, height: 216 });
+    expect(size([400, 600], { orientation: 'landscape' })).toEqual({ width: 600, height: 400 });
+    // Each form is typed.
+    const typed = renderTemplate(
+      <Document>
+        <Page size="letter" />
+        <Page size="SRA2-landscape" />
+        <Page size={['100mm', 200]} />
+        <Page size={[300]} />
+        <Page size="80mm" />
+      </Document>,
+      { fonts },
+    );
+    expect(typed.document.pages.map((p) => p.size.width)).toEqual([
+      612, 1814.17, 283.464567, 300, 226.771654,
+    ]);
+  });
+
+  it('rejects unknown page sizes', () => {
+    for (const bad of ['A11', 'D4', 'A4-sideways', 'A4-landscape-x', '50%']) {
+      expect(thrown(() => tree(null, { page: { size: bad } })).message).toContain(
+        `Unknown page size "${bad}"`,
+      );
+    }
+    expect(thrown(() => tree(null, { page: { size: [] } })).message).toContain('[width, height] or [width]');
+    expect(thrown(() => tree(null, { page: { size: [1, 2, 3] } })).message).toContain('not 3 values');
+    expect(thrown(() => tree(null, { page: { size: ['10'] } })).message).toContain('"10" is not a length');
   });
 
   it('renders a render prop once per page and groups identical output', () => {
