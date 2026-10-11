@@ -1,8 +1,9 @@
 # Schema changelog
 
 Changes to the document format. Within schema version 1, changes are backwards compatible:
-documents that were valid stay valid and render the same way. A breaking change would start
-schema version 2.
+documents that were valid stay valid and render the same way, except to fix behaviour that was
+clearly wrong; such fixes are listed under **Fixed**. A breaking change would start schema
+version 2.
 
 ## Unreleased
 
@@ -14,13 +15,13 @@ schema version 2.
 - **Images:** `position` places an image with `fit` `contain`, `cover` or `none` in its box,
   like CSS `object-position`: `{x, y}`, each a keyword (`left`/`center`/`right`,
   `top`/`center`/`bottom`), a percentage or points. The default is centred, as before.
-- **Fixed nodes:** a child of the page with `break.fixed` and `position: "absolute"` is placed
-  against the page content box, at the same place on every page, and takes no space. Before,
-  its `inset` and percentages were resolved against the whole flow, several pages tall, so a
-  `bottom` inset or a node after content that moved to a later page landed elsewhere, and a
-  node below the content could add a page. One placed on the first page with `top`, `left`
-  and `right` in points, before any content moves to another page, renders as before. `fixed`
-  now has a description in the schema.
+- **Fixed:** a fixed node (`break.fixed`) with `position: "absolute"` that is a child of the
+  page is placed against the page content box, at the same place on every page, and takes no
+  space. Before, its `inset` and percentages were resolved against the whole flow, several
+  pages tall, so a `bottom` inset or a node after content that moved to a later page landed
+  elsewhere, and a node below the content could add a page. One placed on the first page with
+  `top`, `left` and `right` in points, before any content moves to another page, renders as
+  before. `fixed` now has a description in the schema.
 
 ## 1.0.0 - 2026-10-11
 
