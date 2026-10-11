@@ -103,7 +103,9 @@ async function resolveValue(
   if (typeof value === 'string') {
     const known = Object.hasOwn(registered, value) ? registered[value] : undefined;
     if (known) return known;
-    if (value.startsWith('data:')) return dataUrlBytes(value) ?? fail('a data: URL that cannot be read');
+    if (value.startsWith('data:')) {
+      return dataUrlBytes(value) ?? fail('a data: URL that is not valid base64 (`data:<type>;base64,…`)');
+    }
     if (isImagePath(value)) return readFile(value, policies.local);
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return fetchAllowed(value, policies.remote);
     return fail(`"${value}", which is not an id in the images option, a path or a URL`);
@@ -131,18 +133,16 @@ async function fetchAllowed(
   return fetchImage(src, policy);
 }
 
-/** The bytes of a `data:` URL, base64 or percent-encoded; undefined when it is malformed. */
+/**
+ * The bytes of a `data:` URL, decoded as the engine decodes one written in `src`: base64 only,
+ * ASCII whitespace ignored, padding optional. Undefined for a URL the engine refuses.
+ */
 function dataUrlBytes(url: string): Uint8Array | undefined {
-  const comma = url.indexOf(',');
-  if (comma < 0) return undefined;
-  const body = url.slice(comma + 1);
-  try {
-    return /;base64$/i.test(url.slice(0, comma))
-      ? Buffer.from(body, 'base64')
-      : Buffer.from(decodeURIComponent(body), 'utf8');
-  } catch {
-    return undefined;
-  }
+  const at = url.indexOf(';base64,');
+  if (at < 0) return undefined;
+  const body = url.slice(at + ';base64,'.length).replace(/[ \t\n\f\r]/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body) || body.replace(/=+$/, '').length % 4 === 1) return undefined;
+  return Buffer.from(body, 'base64');
 }
 
 /** Reads an image file, when the render allows local images. */

@@ -321,6 +321,21 @@ describe('image functions and promises', () => {
     expect(countPages(await render(slow, { imageTimeoutMs: 1000 }))).toBe(1);
   });
 
+  it('reads a data: URL as one written in src: base64 only, strictly', async () => {
+    const base64 = logo.toString('base64');
+    const wrapped = `data:image/png;base64,${base64.replace(/(.{60})/g, '$1\n')}`;
+    const percent = `data:image/png,${[...logo].map((b) => `%${b.toString(16).padStart(2, '0')}`).join('')}`;
+    const stray = `data:image/png;base64,${base64.slice(0, 40)}!${base64.slice(40)}`;
+    expect(countPages(await render(wrapped))).toBe(1);
+    expect(countPages(await render(() => wrapped))).toBe(1);
+    for (const bad of [percent, stray]) {
+      expect((await failure(bad)).code).toBe('ENGINE_REJECTED');
+      expect((await failure(() => bad)).message).toBe(
+        'An <Image src> function or promise resolved to a data: URL that is not valid base64 (`data:<type>;base64,…`).',
+      );
+    }
+  });
+
   it('checks what it resolves to like a src written in the template', async () => {
     expect((await failure(() => 'brand')).message).toBe(
       'An <Image src> function or promise resolved to "brand", which is not an id in the images option, a path or a URL.',

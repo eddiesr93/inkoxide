@@ -133,7 +133,7 @@ import { readFileSync } from 'node:fs';
 const logo = readFileSync('logo.png');
 
 <Image src={logo} className="h-10 w-10" fit="contain" />         // bytes
-<Image src="data:image/png;base64,iVBORw0…" />                  // a data: URL
+<Image src="data:image/png;base64,iVBORw0…" />                  // a base64 data: URL
 <Image src="logo" />                                            // an id from options.images
 <Image src="./images/logo.png" />                               // a file, when allowed
 <Image src="https://cdn.example.com/photo.jpg" />               // remote, when allowed
