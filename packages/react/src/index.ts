@@ -29,6 +29,11 @@ export interface TreeOptions {
   fonts?: FontRegistry;
   /** Remote image URLs `<Image src>` may use; they are listed in `remote` for the caller to fetch. */
   remoteImages?: RemoteImagePolicy;
+  /**
+   * File paths in `src` (`./logo.png`, `file:` URLs) are listed in `pending` for the caller to
+   * read. Off by default: a path is then an image id like any other string.
+   */
+  localImages?: boolean;
   /** Page count for `render` props (from a previous render); 1 when omitted. */
   pageCount?: number;
   /**
@@ -75,6 +80,7 @@ function fromContainer(container: Container, opts: TreeOptions, reactMs: number)
     fonts: registry,
     pageCount: opts.pageCount,
     remoteImages: opts.remoteImages,
+    localImages: opts.localImages,
     hyphenationCallback: registry.hyphenationCallback,
     imageIds: opts.imageIds,
   };

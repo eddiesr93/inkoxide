@@ -1,7 +1,13 @@
 import { writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 
-import { assertValidTree, renderTemplate, TemplateError, type TreeResult } from '@inkoxide/react';
+import {
+  assertValidTree,
+  renderTemplate,
+  TemplateError,
+  type TreeOptions,
+  type TreeResult,
+} from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 import { initTailwind } from '@inkoxide/tailwind';
 import { type ComponentType, createElement, type ReactElement } from 'react';
@@ -9,7 +15,8 @@ import type { z } from 'zod';
 
 import { countPages, type EngineStatus, initEngine, renderPdf, version } from './engine.ts';
 import { loadRegisteredFonts } from './font.ts';
-import { loadImages } from './images.ts';
+import { type ImagePolicies, loadImages } from './images.ts';
+import { localPolicy } from './local.ts';
 import { remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
@@ -111,12 +118,23 @@ function buildTree<S extends z.ZodType>(
 ): TreeResult {
   try {
     return renderTemplate(createElement(t.Template, { data }), {
-      remoteImages: remotePolicy(opts.remoteImages),
+      ...treeImageOptions(opts),
       imageIds: Object.keys({ ...t.images, ...opts.images }),
     });
   } catch (e) {
     fromTemplateError(e, t.meta.id);
   }
+}
+
+/** The image policies of a render: its options, else the environment variables. */
+function imagePolicies(opts: RenderOpts): ImagePolicies {
+  return { remote: remotePolicy(opts.remoteImages), local: localPolicy(opts.localImages) };
+}
+
+/** What tree building needs to know of the image policies. */
+function treeImageOptions(opts: RenderOpts): Pick<TreeOptions, 'remoteImages' | 'localImages'> {
+  const { remote, local } = imagePolicies(opts);
+  return { remoteImages: remote, localImages: local !== undefined };
 }
 
 /** Most passes for `render` props: each one renders with the page count of the previous. */
@@ -165,7 +183,7 @@ export async function generate<S extends z.ZodType>(
 
   const f0 = performance.now();
   const registered = { ...t.images, ...opts.images };
-  const loaded = await loadImages(tree, registered, remotePolicy(opts.remoteImages));
+  const loaded = await loadImages(tree, registered, imagePolicies(opts));
   const fetchMs = performance.now() - f0;
   const images = { ...t.images, ...tree.images, ...loaded, ...opts.images };
   const e0 = performance.now();
@@ -271,14 +289,14 @@ export async function renderToBuffer(
   let tree: TreeResult;
   try {
     tree = renderTemplate(element, {
-      remoteImages: remotePolicy(opts.remoteImages),
+      ...treeImageOptions(opts),
       imageIds: Object.keys(opts.images ?? {}),
     });
     if (opts.validate ?? !isProduction()) assertValidTree(tree);
   } catch (e) {
     fromTemplateError(e, name);
   }
-  const loaded = await loadImages(tree, opts.images ?? {}, remotePolicy(opts.remoteImages));
+  const loaded = await loadImages(tree, opts.images ?? {}, imagePolicies(opts));
   const { pdf } = await renderSettled(tree, { ...tree.images, ...loaded, ...opts.images }, opts);
   return pdf;
 }

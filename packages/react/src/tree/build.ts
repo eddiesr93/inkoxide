@@ -151,9 +151,10 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
 }
 
 /**
- * True when an image `src` string is a file path: absolute (`/img/logo.png`, `C:\img\logo.png`),
- * relative to the working directory with `./` or `../`, or a `file:` URL. Other strings are image
- * ids, so a template never reads a file by accident.
+ * True when an image `src` string is written as a file path: absolute (`/img/logo.png`,
+ * `C:\img\logo.png`), relative with `./` or `../`, or a `file:` URL. Other strings are image ids,
+ * so a template never reads a file by accident. Paths are files only when the caller allows them
+ * (`localImages`); otherwise they are ids too.
  */
 export function isImagePath(src: string): boolean {
   return /^(?:\.{0,2}[\\/]|[a-z]:[\\/]|file:)/i.test(src);
@@ -177,6 +178,8 @@ export interface BuildOptions {
   /** Page count from a previous render, for `render` props (1 when unknown). */
   pageCount?: number;
   remoteImages?: RemoteImagePolicy;
+  /** File paths in `src` are images to load (the caller reads them); otherwise they are ids. */
+  localImages?: boolean;
   /** Splits words into syllables for every `Text` without its own `hyphenationCallback`. */
   hyphenationCallback?: HyphenationCallback | undefined;
   /** Ids of the images the caller passes in: a `src` string naming one is that image, path or not. */
@@ -907,7 +910,7 @@ class Builder {
       node.src = src;
     } else if (typeof src === 'string' && src.startsWith('data:')) {
       node.data = src;
-    } else if (typeof src === 'string' && isImagePath(src)) {
+    } else if (typeof src === 'string' && this.opts.localImages && isImagePath(src)) {
       node.src = this.pendingId(src, 'file', () => ({ kind: 'file', path: src }));
     } else if (typeof src === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(src)) {
       this.allowRemote(inst, src, `src="${src}"`);

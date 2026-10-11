@@ -2,10 +2,6 @@
  * Loads the images a tree cannot carry itself: allowed remote URLs and requests, files, and
  * function or promise `src`s. Tree building stays synchronous; this runs before the engine.
  */
-import { readFile, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import {
   type ImageRequest,
   type ImageSrcValue,
@@ -15,8 +11,15 @@ import {
   type TreeResult,
 } from '@inkoxide/react';
 
-import { fetchImage, fetchRemote } from './remote.ts';
-import { RenderError, type RemoteImageOptions } from './types.ts';
+import { readLocalImage } from './local.ts';
+import { fetchImage } from './remote.ts';
+import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
+
+/** Where images may come from: the remote and local policies of the render. */
+export interface ImagePolicies {
+  remote: RemoteImageOptions | undefined;
+  local: LocalImageOptions | undefined;
+}
 
 /**
  * The bytes of every remote and pending image of a tree, by id, loaded in parallel. `registered`
@@ -25,33 +28,29 @@ import { RenderError, type RemoteImageOptions } from './types.ts';
 export async function loadImages(
   tree: Pick<TreeResult, 'remote' | 'pending'>,
   registered: Record<string, Uint8Array>,
-  policy: RemoteImageOptions | undefined,
+  policies: ImagePolicies,
 ): Promise<Record<string, Uint8Array>> {
-  const pending = Object.entries(tree.pending);
-  const hasRemote = policy !== undefined && Object.keys(tree.remote).length > 0;
-  if (pending.length === 0 && !hasRemote) return {};
-  const [remote, loaded] = await Promise.all([
-    hasRemote ? fetchRemote(tree.remote, policy) : {},
-    Promise.all(
-      pending.map(async ([id, image]): Promise<[string, Uint8Array]> => [
-        id,
-        await loadPending(image, registered, policy),
-      ]),
-    ),
+  const remote = Object.entries(tree.remote).map(async ([id, url]): Promise<[string, Uint8Array]> => [
+    id,
+    await fetchAllowed(url, policies.remote),
   ]);
-  return { ...remote, ...Object.fromEntries(loaded) };
+  const pending = Object.entries(tree.pending).map(async ([id, image]): Promise<[string, Uint8Array]> => [
+    id,
+    await loadPending(image, registered, policies),
+  ]);
+  return Object.fromEntries(await Promise.all([...remote, ...pending]));
 }
 
 async function loadPending(
   image: PendingImage,
   registered: Record<string, Uint8Array>,
-  policy: RemoteImageOptions | undefined,
+  policies: ImagePolicies,
 ): Promise<Uint8Array> {
   switch (image.kind) {
     case 'file':
-      return readImageFile(image.path);
+      return readFile(image.path, policies.local);
     case 'request':
-      return fetchAllowed(image.request, policy);
+      return fetchAllowed(image.request, policies.remote);
     case 'deferred': {
       let value: ImageSrcValue;
       try {
@@ -63,7 +62,7 @@ async function loadPending(
           { cause: e },
         );
       }
-      return resolveValue(value, registered, policy);
+      return resolveValue(value, registered, policies);
     }
   }
 }
@@ -72,7 +71,7 @@ async function loadPending(
 async function resolveValue(
   value: unknown,
   registered: Record<string, Uint8Array>,
-  policy: RemoteImageOptions | undefined,
+  policies: ImagePolicies,
 ): Promise<Uint8Array> {
   const fail = (why: string): never => {
     throw new RenderError('TEMPLATE_ERROR', `An <Image src> function or promise resolved to ${why}.`);
@@ -82,12 +81,12 @@ async function resolveValue(
     const known = Object.hasOwn(registered, value) ? registered[value] : undefined;
     if (known) return known;
     if (value.startsWith('data:')) return dataUrlBytes(value) ?? fail('a data: URL that cannot be read');
-    if (isImagePath(value)) return readImageFile(value);
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return fetchAllowed(value, policy);
+    if (isImagePath(value)) return readFile(value, policies.local);
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return fetchAllowed(value, policies.remote);
     return fail(`"${value}", which is not an id in the images option, a path or a URL`);
   }
   if (typeof value === 'object' && value !== null && typeof (value as ImageRequest).uri === 'string') {
-    return fetchAllowed(value as ImageRequest, policy);
+    return fetchAllowed(value as ImageRequest, policies.remote);
   }
   return fail(`${describe(value)}; expected bytes, a string or a request`);
 }
@@ -123,34 +122,13 @@ function dataUrlBytes(url: string): Uint8Array | undefined {
   }
 }
 
-const FILE_ERRORS: Record<string, string> = {
-  ENOENT: 'no such file',
-  ENOTDIR: 'no such file',
-  EACCES: 'permission denied',
-  EPERM: 'permission denied',
-};
-
-/**
- * Reads an image file: a path relative to the working directory or absolute, or a `file:` URL.
- * Only regular files: a directory, device or pipe is refused before it is opened.
- */
-async function readImageFile(path: string): Promise<Uint8Array> {
-  let full = path;
-  const fail = (why: string, cause?: unknown): never => {
-    const where = full === path ? path : `${path} (${full})`;
-    throw new RenderError('IMAGE_READ_FAILED', `Cannot read the image ${where}: ${why}.`, { cause });
-  };
-  try {
-    full = /^file:/i.test(path) ? fileURLToPath(new URL(path)) : resolve(path);
-  } catch (e) {
-    return fail((e as Error).message, e);
+/** Reads an image file, when the render allows local images. */
+async function readFile(path: string, policy: LocalImageOptions | undefined): Promise<Uint8Array> {
+  if (!policy) {
+    throw new RenderError(
+      'TEMPLATE_ERROR',
+      `<Image src="${path}">: image files are off. Allow their folder with the render option localImages.root (or the INKOXIDE_LOCAL_IMAGES variable), or pass the bytes.`,
+    );
   }
-  try {
-    if (!(await stat(full)).isFile()) return fail('not a file');
-    return await readFile(full);
-  } catch (e) {
-    if (e instanceof RenderError) throw e;
-    const code = (e as NodeJS.ErrnoException).code;
-    return fail((code && FILE_ERRORS[code]) ?? (e as Error).message, e);
-  }
+  return readLocalImage(path, policy);
 }

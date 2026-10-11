@@ -399,9 +399,10 @@ export type ImageSrc =
 export interface ImageProps extends Omit<Flow, 'children'> {
   /**
    * Bytes (JPEG, PNG, GIF, WebP, SVG), a `data:` URL, the id of an image passed in the render
-   * options, a file path (`./logo.png`, `/srv/img/logo.png`) or `file:` URL, an `https:` URL or a
-   * request allowed by the render option `remoteImages`, or a function or promise resolving to
-   * one of those. A string naming an image in the render options is that image, path or not.
+   * options, a file path (`./logo.png`, `/srv/img/logo.png`) or `file:` URL in a folder allowed by
+   * the render option `localImages`, an `https:` URL or a request allowed by the render option
+   * `remoteImages`, or a function or promise resolving to one of those. A string naming an image
+   * in the render options is that image, path or not.
    */
   src: ImageSrc;
   fit?: 'fill' | 'contain' | 'cover' | 'none';

@@ -611,7 +611,7 @@ describe('image sources', () => {
       <Document>
         <Page>{children}</Page>
       </Document>,
-      { fonts, imageIds, remoteImages: { allow: ['cdn.example.com'] } },
+      { fonts, imageIds, remoteImages: { allow: ['cdn.example.com'] }, localImages: true },
     );
   const srcs = (r: ReturnType<typeof images>) =>
     (r.document.pages[0].children ?? []).map((n) => (n as ImageNode).src);
@@ -652,6 +652,20 @@ describe('image sources', () => {
       'file-1': { kind: 'file', path: '/srv/img/photo.jpg' },
       'file-2': { kind: 'file', path: 'file:///srv/img/a.png' },
     });
+  });
+
+  it('keeps paths as image ids unless local images are allowed', () => {
+    const r = renderTemplate(
+      <Document>
+        <Page>
+          <Image src="./logo.png" />
+          <Image src="/srv/img/photo.jpg" />
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(srcs(r)).toEqual(['./logo.png', '/srv/img/photo.jpg']);
+    expect(r.pending).toEqual({});
   });
 
   it('keeps a string that names a passed-in image as that id, path or URL alike', () => {

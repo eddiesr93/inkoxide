@@ -1,8 +1,10 @@
 /** `<Image src>` from files, request objects, functions and promises, loaded before the engine. */
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { join, relative, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -14,6 +16,7 @@ import {
   generate,
   type ImageSrc,
   Image,
+  type LocalImageOptions,
   Page,
   RenderError,
   type RenderToBufferOptions,
@@ -69,32 +72,126 @@ afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
 const allowed = (): RenderToBufferOptions => ({ remoteImages: { allow: [`${base}/`] } });
 
 describe('image files', () => {
-  it('reads an absolute path, a path relative to the working directory and a file: URL', async () => {
-    const rel = relative(process.cwd(), logoPath);
-    for (const src of [logoPath, rel.startsWith('.') ? rel : `./${rel}`, pathToFileURL(logoPath).href]) {
-      expect(countPages(await render(src))).toBe(1);
+  // root/logo.png, root/sub/logo.png, root/big.png, root/fifo, root/out.png -> outside/secret.png
+  let dir: string;
+  let root: string;
+  let other: string;
+  let secret: string;
+  const local = (extra?: Partial<LocalImageOptions>): RenderToBufferOptions => ({
+    localImages: { root, ...extra },
+  });
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'inkoxide-images-'));
+    root = join(dir, 'root');
+    other = join(dir, 'other');
+    mkdirSync(join(root, 'sub'), { recursive: true });
+    mkdirSync(other);
+    mkdirSync(join(dir, 'outside'));
+    secret = join(dir, 'outside', 'secret.png');
+    for (const f of [join(root, 'logo.png'), join(root, 'sub', 'logo.png'), join(other, 'logo.png'), secret])
+      writeFileSync(f, logo);
+    symlinkSync(secret, join(root, 'out.png'));
+    if (process.platform !== 'win32') execFileSync('mkfifo', [join(root, 'fifo')]);
+  });
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('reads no file unless local images are allowed: a path is an image id', async () => {
+    for (const src of ['./logo.png', logoPath, pathToFileURL(logoPath).href]) {
+      const err = await failure(src);
+      expect(err.code).toBe(src.startsWith('file:') ? 'TEMPLATE_ERROR' : 'ENGINE_REJECTED');
+      if (!src.startsWith('file:')) expect(err.engineCode).toBe('UNKNOWN_IMAGE');
+    }
+    expect((await failure(() => logoPath)).message).toBe(
+      `<Image src="${logoPath}">: image files are off. Allow their folder with the render option localImages.root (or the INKOXIDE_LOCAL_IMAGES variable), or pass the bytes.`,
+    );
+  });
+
+  it('reads a path relative to the root, an absolute path and a file: URL inside it', async () => {
+    for (const src of [
+      './logo.png',
+      './sub/../logo.png',
+      './sub/logo.png',
+      join(root, 'logo.png'),
+      pathToFileURL(join(root, 'sub', 'logo.png')).href,
+      () => './sub/logo.png',
+    ]) {
+      expect(countPages(await render(src, local()))).toBe(1);
     }
   });
 
-  it('names the path, and where it resolved to, when a file cannot be read', async () => {
-    const err = await failure('./no/such/logo.png');
-    expect(err.code).toBe('IMAGE_READ_FAILED');
-    expect(err.status).toBe(400);
+  it('takes several roots: relative paths resolve against the first', async () => {
+    const roots = { localImages: { root: [root, other] } };
+    expect(countPages(await render(join(other, 'logo.png'), roots))).toBe(1);
+    expect(countPages(await render('./logo.png', roots))).toBe(1);
+  });
+
+  it('reads the root from INKOXIDE_LOCAL_IMAGES', async () => {
+    process.env.INKOXIDE_LOCAL_IMAGES = `${other}${delimiter}${root}`;
+    try {
+      expect(countPages(await render(join(root, 'sub', 'logo.png')))).toBe(1);
+    } finally {
+      delete process.env.INKOXIDE_LOCAL_IMAGES;
+    }
+  });
+
+  it('refuses paths outside the root, symbolic links included, with the error of a missing file', async () => {
+    const outside = [
+      '../outside/secret.png',
+      './sub/../../outside/secret.png',
+      secret,
+      pathToFileURL(secret).href,
+      './out.png',
+      () => '../outside/secret.png',
+    ];
+    for (const src of [...outside, './missing.png', '../outside/missing.png']) {
+      const err = await failure(src, local());
+      expect(err.code).toBe('IMAGE_READ_FAILED');
+      const written = typeof src === 'function' ? src() : src;
+      expect(err.message).toBe(`Cannot read the image ${written}: no such file in the localImages folders.`);
+      expect(err.cause).toBeUndefined();
+    }
+  });
+
+  it('refuses network paths without touching the network', async () => {
+    for (const src of ['\\\\host\\share\\a.png', '//host/share/a.png', 'file://host/share/a.png']) {
+      const err = await failure(src, local());
+      expect(err.code).toBe('IMAGE_READ_FAILED');
+      expect(err.message).toBe(`Cannot read the image ${src}: network paths are not allowed.`);
+    }
+  });
+
+  it('applies the size limit before reading', async () => {
+    const err = await failure('./logo.png', local({ maxBytes: 10 }));
     expect(err.message).toBe(
-      `Cannot read the image ./no/such/logo.png (${resolve('no/such/logo.png')}): no such file.`,
+      `Cannot read the image ./logo.png: ${logo.byteLength} bytes, over the 10-byte limit.`,
     );
-    const dir = await failure(join(logoPath, '..'));
-    expect(dir.message).toBe(`Cannot read the image ${join(logoPath, '..')}: not a file.`);
+  });
+
+  it('reads regular files only, and does not wait on a FIFO', async () => {
+    expect((await failure('./sub', local())).message).toBe('Cannot read the image ./sub: not a file.');
+    if (process.platform !== 'win32') {
+      expect((await failure('./fifo', local())).message).toBe('Cannot read the image ./fifo: not a file.');
+    }
+  });
+
+  it('never names where a path resolved to', async () => {
+    for (const src of ['./missing.png', '../outside/secret.png', './sub', './out.png']) {
+      const err = await failure(src, local());
+      expect(err.message).not.toContain(dir);
+      expect(JSON.stringify(err)).not.toContain(dir);
+    }
   });
 
   it('uses a passed-in image whose id looks like a path, without reading a file', async () => {
-    const pdf = await render('./no/such/logo.png', { images: { './no/such/logo.png': logo } });
+    const pdf = await render('./no/such/logo.png', { ...local(), images: { './no/such/logo.png': logo } });
     expect(countPages(pdf)).toBe(1);
   });
 
   it('keeps a bare name as an image id', async () => {
-    expect(countPages(await render('logo.png', { images: { 'logo.png': logo } }))).toBe(1);
-    const err = await failure('logo.png');
+    expect(countPages(await render('logo.png', { ...local(), images: { 'logo.png': logo } }))).toBe(1);
+    const err = await failure('logo.png', local());
     expect(err.code).toBe('ENGINE_REJECTED');
   });
 });
@@ -146,7 +243,8 @@ describe('image functions and promises', () => {
       () => `${base}/logo.png`,
     ];
     for (const src of sources) {
-      expect(countPages(await render(src, { ...allowed(), images: { brand: logo } }))).toBe(1);
+      const opts = { ...allowed(), localImages: { root: dirname(logoPath) }, images: { brand: logo } };
+      expect(countPages(await render(src, opts))).toBe(1);
     }
   });
 
@@ -181,7 +279,8 @@ describe('image functions and promises', () => {
     expect((await failure(() => 'brand')).message).toBe(
       'An <Image src> function or promise resolved to "brand", which is not an id in the images option, a path or a URL.',
     );
-    expect((await failure(() => './no/such/logo.png')).code).toBe('IMAGE_READ_FAILED');
+    const files = { localImages: { root: dirname(logoPath) } };
+    expect((await failure(() => './no/such/logo.png', files)).code).toBe('IMAGE_READ_FAILED');
     expect((await failure(async () => 'https://example.com/logo.png', allowed())).message).toContain(
       'remoteImages allowlist',
     );
@@ -206,7 +305,7 @@ describe('generate', () => {
       ),
       images: { './brand.png': logo },
     };
-    const r = await generate(template, {});
+    const r = await generate(template, {}, { localImages: { root: dirname(logoPath) } });
     expect(r.pages).toBe(1);
   });
 });

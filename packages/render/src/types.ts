@@ -22,6 +22,22 @@ export interface RenderOpts {
    * are rejected.
    */
   remoteImages?: RemoteImageOptions;
+  /**
+   * Folders `<Image src="./logo.png">` may read files from. Defaults to the
+   * `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, or `;` on Windows);
+   * without either, no file is read and a path in `src` is an image id like any other string.
+   */
+  localImages?: LocalImageOptions;
+}
+
+export interface LocalImageOptions {
+  /**
+   * The folders image files may come from. A relative path (`./logo.png`) is resolved against
+   * the first; any path must lead, symbolic links followed, to a file inside one of them.
+   */
+  root: string | readonly string[];
+  /** Largest accepted file (default 20 MiB). */
+  maxBytes?: number;
 }
 
 export interface RemoteImageOptions {
