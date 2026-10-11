@@ -236,7 +236,7 @@ pub enum NodeKind {
     Image {
         source: ImageSource,
         fit: ImageFit,
-        position: ImagePosition,
+        object_position: ObjectPosition,
     },
     Table(Table),
     PageBreak,
@@ -313,7 +313,7 @@ pub enum ImageFit {
 /// keywords are 0, ½ and 1).
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ImagePosition {
+pub struct ObjectPosition {
     #[serde(default = "centre", deserialize_with = "de::position_x")]
     pub x: LengthPercent,
     #[serde(default = "centre", deserialize_with = "de::position_y")]
@@ -324,7 +324,7 @@ fn centre() -> LengthPercent {
     LengthPercent::Percent(0.5)
 }
 
-impl Default for ImagePosition {
+impl Default for ObjectPosition {
     fn default() -> Self {
         Self {
             x: centre(),

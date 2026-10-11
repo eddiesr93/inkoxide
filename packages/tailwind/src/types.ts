@@ -1,6 +1,6 @@
 import type {
   GridPlacement,
-  ImagePosition,
+  ObjectPosition,
   Style,
   TemplateTrack,
   TrackSize,
@@ -32,7 +32,7 @@ export type BorderStyle = 'solid' | 'dashed' | 'dotted';
 export type DecorationStyle = 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
 export type ObjectFit = 'fill' | 'contain' | 'cover' | 'none';
 export type Direction = 'ltr' | 'rtl' | 'auto';
-export type { ImagePosition, TransformOp };
+export type { ObjectPosition, TransformOp };
 
 /**
  * The style of one class string, flattened. Edges are separate keys so that `px-4 pt-2` merge
@@ -121,8 +121,8 @@ export interface TwStyle {
   verticalAlign?: Style['verticalAlign'];
   /** How an `Image` fills its box: the image node's `fit`. */
   objectFit?: ObjectFit;
-  /** Where a fitted `Image` sits in its box: the image node's `position`. */
-  objectPosition?: ImagePosition;
+  /** Where a fitted `Image` sits in its box: the image node's `objectPosition`. */
+  objectPosition?: ObjectPosition;
 
   // Text, inherited.
   fontFamily?: string[];

@@ -2,11 +2,11 @@ import type { Color, Style, TransformOp } from '@inkoxide/schema';
 import {
   type BorderStyle,
   type ColorValue,
-  type ImagePosition,
   type LenPercent,
   type LetterSpacing,
   type LineHeight,
   type ObjectFit,
+  type ObjectPosition,
   parseColor,
   parseObjectPosition,
   parseOrigin,
@@ -789,7 +789,7 @@ function fitOf(v: string): ObjectFit {
 }
 
 /** CSS `object-position`: one or two keywords, lengths (in the style units) or percentages. */
-function positionOf(v: unknown, units: Units | undefined): ImagePosition {
+function positionOf(v: unknown, units: Units | undefined): ObjectPosition {
   if (typeof v !== 'string') {
     throw new Error(`objectPosition must be a CSS string such as 'left top' or '25% 75%', not ${typeof v}`);
   }

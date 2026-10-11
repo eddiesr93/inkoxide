@@ -1260,8 +1260,8 @@
           ],
           "default": "fill"
         },
-        "position": {
-          "$ref": "#/$defs/ImagePosition",
+        "objectPosition": {
+          "$ref": "#/$defs/ObjectPosition",
           "description": "Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred."
         }
       },
@@ -1288,7 +1288,7 @@
         }
       ]
     },
-    "ImagePosition": {
+    "ObjectPosition": {
       "description": "Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `\"0%\"` is the start edge, `\"100%\"` the end edge). What falls outside the box is clipped.",
       "type": "object",
       "additionalProperties": false,

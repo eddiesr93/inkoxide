@@ -31,7 +31,7 @@
   pagination depends on it; a longer number can overflow that space.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. `fit` defaults to `fill`, like CSS `object-fit`, and
-  `position` places a fitted image in its box like `object-position`
+  `objectPosition` places a fitted image in its box like `object-position`
   (centred by default; what falls outside the box is clipped).
 
 ## Validation error codes
@@ -404,9 +404,9 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
 | `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
-| `position` | [`ImagePosition`](#imageposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
+| `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
 
-### ImagePosition
+### ObjectPosition
 
 Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). What falls outside the box is clipped.
 

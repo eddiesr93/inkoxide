@@ -49,23 +49,23 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
 #[test]
 fn fit_modes() {
     let b = (0.0, 0.0, 100.0, 50.0);
-    let fit = |f| fit_rect(f, ImagePosition::default(), b, (10.0, 10.0));
+    let fit = |f| fit_rect(f, ObjectPosition::default(), b, (10.0, 10.0));
     assert_eq!(fit(ImageFit::Fill), (b, false));
     assert_eq!(fit(ImageFit::Contain), ((25.0, 0.0, 50.0, 50.0), false));
     assert_eq!(fit(ImageFit::Cover), ((0.0, -25.0, 100.0, 100.0), true));
     assert_eq!(fit(ImageFit::None), ((45.0, 20.0, 10.0, 10.0), false));
 }
 
-/// An image position from its JSON form.
-fn pos(json: &str) -> ImagePosition {
+/// An `objectPosition` from its JSON form.
+fn pos(json: &str) -> ObjectPosition {
     serde_json::from_str(json).unwrap()
 }
 
 #[test]
-fn position_keywords_are_fractions_of_the_free_space() {
+fn object_position_keywords_are_fractions_of_the_free_space() {
     use crate::schema::LengthPercent::{Percent, Points};
-    let p = |x, y| ImagePosition { x, y };
-    assert_eq!(pos("{}"), ImagePosition::default());
+    let p = |x, y| ObjectPosition { x, y };
+    assert_eq!(pos("{}"), ObjectPosition::default());
     assert_eq!(pos("{}"), p(Percent(0.5), Percent(0.5)));
     assert_eq!(
         pos(r#"{"x":"left","y":"top"}"#),
@@ -94,12 +94,15 @@ fn position_keywords_are_fractions_of_the_free_space() {
         r#"{"x":"10pt"}"#,
         r#"{"z":0}"#,
     ] {
-        assert!(serde_json::from_str::<ImagePosition>(bad).is_err(), "{bad}");
+        assert!(
+            serde_json::from_str::<ObjectPosition>(bad).is_err(),
+            "{bad}"
+        );
     }
 }
 
 #[test]
-fn position_places_contain_cover_and_none() {
+fn object_position_places_contain_cover_and_none() {
     // A 100 × 50 box at (10, 20) and a square image.
     let b = (10.0, 20.0, 100.0, 50.0);
     let at = |fit, json: &str| fit_rect(fit, pos(json), b, (10.0, 10.0));
@@ -269,11 +272,11 @@ fn near(a: Xywh, b: Xywh) -> bool {
 }
 
 #[test]
-fn raster_and_svg_images_follow_their_position() {
+fn raster_and_svg_images_follow_their_object_position() {
     const BOX: Xywh = (10.0, 20.0, 100.0, 100.0);
     let image = |src: &str, fit: &str, position: &str| {
         painted(&format!(
-            r#"{{"type":"image","src":"{src}","fit":"{fit}","position":{position}}}"#
+            r#"{{"type":"image","src":"{src}","fit":"{fit}","objectPosition":{position}}}"#
         ))
     };
     for (src, fit, position, rect, clipped) in [
@@ -353,7 +356,7 @@ fn raster_and_svg_images_follow_their_position() {
             (10.0, 20.0, 300.0, 180.0),
             true,
         ),
-        // fill ignores the position.
+        // fill ignores objectPosition.
         ("chart", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
     ] {
         let (r, clip) = image(src, fit, position);
@@ -367,7 +370,7 @@ fn raster_and_svg_images_follow_their_position() {
             assert!(near(c, BOX), "clipped to the content box: {c:?}");
         }
     }
-    // Without `position`, the image is centred as before.
+    // Without `objectPosition`, the image is centred as before.
     assert_eq!(
         painted(r#"{"type":"image","src":"photo","fit":"cover"}"#),
         image("photo", "cover", r#"{"x":"center","y":"center"}"#)

@@ -25,7 +25,7 @@ pub(crate) use decode::{
 pub(crate) use probe::probe;
 
 use crate::schema::{
-    ImageFit, ImagePosition, ImageSource, LengthPercent, Node, NodeKind, PageSpec,
+    ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,
 };
 use crate::InkoxideError;
 
@@ -240,7 +240,7 @@ impl ImageSet {
 
 impl ImageSet {
     /// Paints an image node into its content box according to `fit` and
-    /// `position`.
+    /// `objectPosition`.
     pub fn paint(
         &self,
         node: &Node,
@@ -249,7 +249,12 @@ impl ImageSet {
         ops: &mut Vec<crate::paint::Op>,
     ) {
         use crate::paint::{Op, Rect};
-        let NodeKind::Image { fit, position, .. } = &node.kind else {
+        let NodeKind::Image {
+            fit,
+            object_position,
+            ..
+        } = &node.kind
+        else {
             return;
         };
         let (Some(key), Some(intrinsic)) = (self.key(node), self.intrinsic(node)) else {
@@ -260,7 +265,7 @@ impl ImageSet {
             return;
         }
         let bx = (cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
-        let (rect, clip) = fit_rect(*fit, *position, bx, intrinsic);
+        let (rect, clip) = fit_rect(*fit, *object_position, bx, intrinsic);
         ops.push(Op::Save);
         if clip {
             ops.push(Op::ClipRect(Rect::new(bx.0, bx.1, bx.2, bx.3)));
@@ -275,10 +280,10 @@ impl ImageSet {
 
 /// Placement of an image inside a content box `(x, y, w, h)`: the drawn
 /// rectangle and whether it must be clipped to the box. `fit` sizes the
-/// image and `position` places it (`fill` covers the box and ignores it).
+/// image and `objectPosition` places it (`fill` covers the box and ignores it).
 pub(crate) fn fit_rect(
     fit: ImageFit,
-    position: ImagePosition,
+    position: ObjectPosition,
     (x, y, w, h): (f32, f32, f32, f32),
     (iw, ih): (f32, f32),
 ) -> ((f32, f32, f32, f32), bool) {

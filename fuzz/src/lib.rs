@@ -811,7 +811,7 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
                 };
                 let x = axis(["left", "center", "right"]);
                 let y = axis(["top", "center", "bottom"]);
-                m.insert("position".into(), json!({ "x": x, "y": y }));
+                m.insert("objectPosition".into(), json!({ "x": x, "y": y }));
             }
         }
         "table" => {

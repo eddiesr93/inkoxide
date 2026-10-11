@@ -581,15 +581,15 @@ export interface ImageNode {
   /**
    * Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
    */
-  position?: ImagePosition;
+  objectPosition?: ObjectPosition;
 }
 /**
  * Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). What falls outside the box is clipped.
  *
  * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "ImagePosition".
+ * via the `definition` "ObjectPosition".
  */
-export interface ImagePosition {
+export interface ObjectPosition {
   x?: ('left' | 'center' | 'right') | number | Percent;
   y?: ('top' | 'center' | 'bottom') | number | Percent;
 }

@@ -11,8 +11,8 @@ schema version 2.
   page, for the page and every element on it. It changes the output and is off by default.
 - **Text runs:** `hyphenate` on a run overrides the text node's `hyphenate` for the run's
   words, in the node's language.
-- **Images:** `position` places an image with `fit` `contain`, `cover` or `none` in its box,
-  like CSS `object-position`: `{x, y}`, each a keyword (`left`/`center`/`right`,
+- **Images:** `objectPosition` places an image with `fit` `contain`, `cover` or `none` in its
+  box, like CSS `object-position`: `{x, y}`, each a keyword (`left`/`center`/`right`,
   `top`/`center`/`bottom`), a percentage or points. The default is centred, as before.
 - **Fixed nodes:** a child of the page with `break.fixed` and `position: "absolute"` is placed
   against the page content box, at the same place on every page, and takes no space. Before,

@@ -377,7 +377,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Visual',
     utilities:
       '`object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]`',
-    maps: 'image `position`',
+    maps: 'image `objectPosition`',
     notes:
       'On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported.',
     examples: {

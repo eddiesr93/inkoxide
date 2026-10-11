@@ -11,8 +11,8 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, ImageFit, ImagePosition, ImageSource, Node, NodeKind, OptEdges, PageFilter, PagePattern,
-    Style, Table, TableRow, TextRun,
+    Field, ImageFit, ImageSource, Node, NodeKind, ObjectPosition, OptEdges, PageFilter,
+    PagePattern, Style, Table, TableRow, TextRun,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -149,7 +149,7 @@ num_or_str_visitor!(
     |s| parse_suffixed(s, "%").map(|p| LengthPercent::Percent(p / 100.0))
 );
 
-/// One axis of an [`ImagePosition`]: a percentage, or that axis's keywords
+/// One axis of an [`ObjectPosition`]: a percentage, or that axis's keywords
 /// (`start`, `"center"`, `end`) as 0 %, 50 % and 100 %.
 fn position_axis(s: &str, start: &str, end: &str) -> Option<LengthPercent> {
     let fraction = match s {
@@ -161,9 +161,9 @@ fn position_axis(s: &str, start: &str, end: &str) -> Option<LengthPercent> {
     Some(LengthPercent::Percent(fraction))
 }
 
-/// The horizontal axis of an [`ImagePosition`].
+/// The horizontal axis of an [`ObjectPosition`].
 struct PositionX(LengthPercent);
-/// The vertical axis of an [`ImagePosition`].
+/// The vertical axis of an [`ObjectPosition`].
 struct PositionY(LengthPercent);
 
 num_or_str_visitor!(
@@ -180,12 +180,12 @@ num_or_str_visitor!(
     |s| position_axis(s, "top", "bottom").map(PositionY)
 );
 
-/// `deserialize_with` for [`ImagePosition::x`].
+/// `deserialize_with` for [`ObjectPosition::x`].
 pub(super) fn position_x<'de, D: Deserializer<'de>>(d: D) -> Result<LengthPercent, D::Error> {
     PositionX::deserialize(d).map(|p| p.0)
 }
 
-/// `deserialize_with` for [`ImagePosition::y`].
+/// `deserialize_with` for [`ObjectPosition::y`].
 pub(super) fn position_y<'de, D: Deserializer<'de>>(d: D) -> Result<LengthPercent, D::Error> {
     PositionY::deserialize(d).map(|p| p.0)
 }
@@ -477,7 +477,7 @@ pub struct RawNode {
     src: Option<String>,
     data: Option<String>,
     fit: Option<ImageFit>,
-    position: Option<ImagePosition>,
+    object_position: Option<ObjectPosition>,
     columns: Option<Vec<ColumnSpec>>,
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
@@ -526,7 +526,7 @@ impl TryFrom<RawNode> for Node {
             ("src", r.src.is_some()),
             ("data", r.data.is_some()),
             ("fit", r.fit.is_some()),
-            ("position", r.position.is_some()),
+            ("objectPosition", r.object_position.is_some()),
             ("columns", r.columns.is_some()),
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
@@ -540,8 +540,16 @@ impl TryFrom<RawNode> for Node {
                 "style", "break", "link", "bookmark", "pages", "debug", "runs",
             ],
             NodeType::Image => &[
-                "style", "break", "link", "bookmark", "pages", "debug", "src", "data", "fit",
-                "position",
+                "style",
+                "break",
+                "link",
+                "bookmark",
+                "pages",
+                "debug",
+                "src",
+                "data",
+                "fit",
+                "objectPosition",
             ],
             NodeType::Table => &[
                 "style",
@@ -587,7 +595,7 @@ impl TryFrom<RawNode> for Node {
                 NodeKind::Image {
                     source,
                     fit: r.fit.unwrap_or_default(),
-                    position: r.position.unwrap_or_default(),
+                    object_position: r.object_position.unwrap_or_default(),
                 }
             }
             NodeType::Table => NodeKind::Table(Table {

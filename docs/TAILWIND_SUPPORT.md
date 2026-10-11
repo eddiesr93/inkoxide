@@ -81,7 +81,7 @@ that are supported and tested; each example is a unit test.
 | `origin-*` | `transformOrigin` | `origin-center` → `{"transformOrigin":["50%","50%"]}` |  |
 | `z-*`, `-z-*`, `z-auto` | `zIndex` | `z-10` → `{"zIndex":10}` | Paint order among siblings; not on table cells. |
 | `object-contain`, `object-cover`, `object-fill`, `object-none` | image `fit` | `object-contain` → `{"objectFit":"contain"}` | On `Image` only. The `fit` prop wins over it. |
-| `object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]` | image `position` | `object-left-top` → `{"objectPosition":{"x":"left","y":"top"}}` | On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported. |
+| `object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]` | image `objectPosition` | `object-left-top` → `{"objectPosition":{"x":"left","y":"top"}}` | On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported. |
 
 ## Border
 

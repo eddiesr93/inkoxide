@@ -663,10 +663,10 @@ fn decoration_thickness_and_colour_are_checked() {
 }
 
 #[test]
-fn image_position_is_checked() {
+fn image_object_position_is_checked() {
     let image = |position: &str| {
         doc(&format!(
-            r#"{{"type":"image","src":"logo","position":{position}}}"#
+            r#"{{"type":"image","src":"logo","objectPosition":{position}}}"#
         ))
     };
     for ok in [
@@ -688,7 +688,7 @@ fn image_position_is_checked() {
         (r#"{"y":"+5%"}"#, "y"),
     ] {
         let (code, path) = one(&image(bad));
-        let want = format!("pages[0].children[0].position.{field}");
+        let want = format!("pages[0].children[0].objectPosition.{field}");
         assert_eq!(
             (code, path.as_str()),
             (C::InvalidValue, want.as_str()),
@@ -698,17 +698,17 @@ fn image_position_is_checked() {
     let (code, path) = one(&image(r#"{"x":"left","z":0}"#));
     assert_eq!(
         (code, path.as_str()),
-        (C::UnknownField, "pages[0].children[0].position.z")
+        (C::UnknownField, "pages[0].children[0].objectPosition.z")
     );
     let (code, path) = one(&image(r#"{"x":true}"#));
     assert_eq!(
         (code, path.as_str()),
-        (C::InvalidType, "pages[0].children[0].position.x")
+        (C::InvalidType, "pages[0].children[0].objectPosition.x")
     );
-    let (code, path) = one(&doc(r#"{"type":"box","position":{"x":"left"}}"#));
+    let (code, path) = one(&doc(r#"{"type":"box","objectPosition":{"x":"left"}}"#));
     assert_eq!(
         (code, path.as_str()),
-        (C::UnknownField, "pages[0].children[0].position")
+        (C::UnknownField, "pages[0].children[0].objectPosition")
     );
 }
 

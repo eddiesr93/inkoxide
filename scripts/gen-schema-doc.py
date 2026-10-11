@@ -45,7 +45,7 @@ INTRO = """# Document schema v1
   pagination depends on it; a longer number can overflow that space.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. `fit` defaults to `fill`, like CSS `object-fit`, and
-  `position` places a fitted image in its box like `object-position`
+  `objectPosition` places a fitted image in its box like `object-position`
   (centred by default; what falls outside the box is clipped).
 
 ## Validation error codes
