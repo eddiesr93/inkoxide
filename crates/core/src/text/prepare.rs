@@ -25,8 +25,10 @@ pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 pub(crate) struct ParagraphOptions<'a> {
     pub white_space: WhiteSpace,
     pub direction: Direction,
+    /// Whether runs without their own `hyphenate` are hyphenated.
+    pub hyphenate: bool,
     /// Language code to hyphenate in (only set when patterns exist).
-    pub hyphenate: Option<&'a str>,
+    pub lang: Option<&'a str>,
     pub hyphenator: &'a dyn Hyphenator,
     pub runs: &'a [TextRun],
 }
@@ -84,8 +86,9 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
                 }
             }
         }
-        if let Some(lang) = opts.hyphenate {
-            if !matches!(opts.white_space, WhiteSpace::Pre | WhiteSpace::NoWrap)
+        if let Some(lang) = opts.lang {
+            if run.hyphenate.unwrap_or(opts.hyphenate)
+                && !matches!(opts.white_space, WhiteSpace::Pre | WhiteSpace::NoWrap)
                 && run.placeholder.is_none()
             {
                 let hyphenated = insert_soft_hyphens(&text[start..], opts.hyphenator, lang);
@@ -571,6 +574,7 @@ mod tests {
             decoration_style: None,
             placeholder: None,
             link: None,
+            hyphenate: None,
         }
     }
 
@@ -578,7 +582,8 @@ mod tests {
         build_text(&ParagraphOptions {
             white_space: ws,
             direction: Direction::Ltr,
-            hyphenate: None,
+            hyphenate: false,
+            lang: None,
             hyphenator: &NoHyphenation,
             runs,
         })
@@ -593,7 +598,8 @@ mod tests {
         let (text, ranges) = build_text(&ParagraphOptions {
             white_space: WhiteSpace::Normal,
             direction: Direction::Ltr,
-            hyphenate: None,
+            hyphenate: false,
+            lang: None,
             hyphenator: &NoHyphenation,
             runs: &[run("a "), run(" b")],
         });
@@ -648,6 +654,35 @@ mod tests {
             "{out:?}"
         );
         assert_eq!(out.replace('\u{AD}', ""), "a documentation hyphenation");
+    }
+
+    #[test]
+    fn a_run_overrides_the_paragraph_hyphenation() {
+        let text = |hyphenate: bool, runs: &[TextRun]| {
+            build_text(&ParagraphOptions {
+                white_space: WhiteSpace::Normal,
+                direction: Direction::Ltr,
+                hyphenate,
+                lang: Some("en"),
+                hyphenator: &HypherHyphenator,
+                runs,
+            })
+            .0
+        };
+        let mut kept = run("documentation");
+        kept.hyphenate = Some(false);
+        let runs = [run("documentation "), kept];
+        assert_eq!(
+            text(true, &runs),
+            "doc\u{AD}u\u{AD}men\u{AD}ta\u{AD}tion documentation"
+        );
+        let mut on = run("documentation");
+        on.hyphenate = Some(true);
+        let runs = [run("documentation "), on];
+        assert_eq!(
+            text(false, &runs),
+            "documentation doc\u{AD}u\u{AD}men\u{AD}ta\u{AD}tion"
+        );
     }
 
     #[test]

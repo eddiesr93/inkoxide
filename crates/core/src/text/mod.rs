@@ -158,9 +158,12 @@ pub(crate) struct ParaStyle {
     pub white_space: WhiteSpace,
     pub indent: f32,
     pub direction: Direction,
-    /// ISO 639-1 code when hyphenation is requested (patterns may still be
-    /// missing; the hyphenator decides).
-    pub hyphenate: Option<String>,
+    /// Whether the paragraph's words are hyphenated; a run's own
+    /// `hyphenate` overrides it.
+    pub hyphenate: bool,
+    /// ISO 639-1 code of the paragraph's language, for hyphenation (patterns
+    /// may still be missing; the hyphenator decides).
+    pub lang: Option<String>,
 }
 
 impl ParaStyle {
@@ -179,14 +182,12 @@ impl ParaStyle {
             white_space,
             indent: s.text_indent.unwrap_or(0.0),
             direction: s.direction.unwrap_or(Direction::Ltr),
-            hyphenate: if s.hyphenate == Some(true) {
-                s.lang
-                    .as_deref()
-                    .or(doc_lang)
-                    .and_then(hyphen::language_code)
-            } else {
-                None
-            },
+            hyphenate: s.hyphenate == Some(true),
+            lang: s
+                .lang
+                .as_deref()
+                .or(doc_lang)
+                .and_then(hyphen::language_code),
         }
     }
 }
@@ -265,13 +266,14 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
 impl TextShaper for RustybuzzShaper<'_, '_> {
     fn prepare(&mut self, runs: &[TextRun], style: &ParaStyle) -> Prepared {
         let lang = style
-            .hyphenate
+            .lang
             .as_deref()
             .filter(|l| self.hyphenator.supports(l));
         let opts = prepare::ParagraphOptions {
             white_space: style.white_space,
             direction: style.direction,
-            hyphenate: lang,
+            hyphenate: style.hyphenate,
+            lang,
             hyphenator: self.hyphenator,
             runs,
         };

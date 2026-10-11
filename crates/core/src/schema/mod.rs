@@ -331,6 +331,8 @@ pub struct TextRun {
     pub placeholder: Option<Placeholder>,
     /// Link target of this run (as `Node::link`).
     pub link: Option<String>,
+    /// Overrides the paragraph's `hyphenate` for this run's words.
+    pub hyphenate: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]

@@ -535,6 +535,10 @@ export interface TextRun {
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
    */
   link?: Link;
+  /**
+   * Overrides the text node's `hyphenate` for this run's words, in the node's language.
+   */
+  hyphenate?: boolean;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

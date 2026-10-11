@@ -966,6 +966,10 @@
         "link": {
           "$ref": "#/$defs/Link",
           "description": "Makes the run a link; the clickable area covers the run's glyphs on each line."
+        },
+        "hyphenate": {
+          "type": "boolean",
+          "description": "Overrides the text node's `hyphenate` for this run's words, in the node's language."
         }
       },
       "oneOf": [
