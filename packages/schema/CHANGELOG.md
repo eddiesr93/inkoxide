@@ -8,6 +8,9 @@ schema version 2.
 
 - **Text runs:** `hyphenate` on a run overrides the text node's `hyphenate` for the run's
   words, in the node's language.
+- **Images:** `position` places an image with `fit` `contain`, `cover` or `none` in its box,
+  like CSS `object-position`: `{x, y}`, each a keyword (`left`/`center`/`right`,
+  `top`/`center`/`bottom`), a percentage or points. The default is centred, as before.
 
 ## 1.0.0 - 2026-10-11
 

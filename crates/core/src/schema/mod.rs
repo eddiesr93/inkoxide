@@ -228,6 +228,7 @@ pub enum NodeKind {
     Image {
         source: ImageSource,
         fit: ImageFit,
+        position: ImagePosition,
     },
     Table(Table),
     PageBreak,
@@ -297,6 +298,31 @@ pub enum ImageFit {
     Contain,
     Cover,
     None,
+}
+
+/// Where a fitted image sits in its box (CSS `object-position`), per axis:
+/// points from the left or top edge, or a fraction of the free space (the
+/// keywords are 0, ½ and 1).
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImagePosition {
+    #[serde(default = "centre", deserialize_with = "de::position_x")]
+    pub x: LengthPercent,
+    #[serde(default = "centre", deserialize_with = "de::position_y")]
+    pub y: LengthPercent,
+}
+
+fn centre() -> LengthPercent {
+    LengthPercent::Percent(0.5)
+}
+
+impl Default for ImagePosition {
+    fn default() -> Self {
+        Self {
+            x: centre(),
+            y: centre(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

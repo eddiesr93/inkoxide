@@ -661,3 +661,53 @@ fn decoration_thickness_and_colour_are_checked() {
         )
     );
 }
+
+#[test]
+fn image_position_is_checked() {
+    let image = |position: &str| {
+        doc(&format!(
+            r#"{{"type":"image","src":"logo","position":{position}}}"#
+        ))
+    };
+    for ok in [
+        "{}",
+        r#"{"x":"left","y":"top"}"#,
+        r#"{"x":"center","y":"center"}"#,
+        r#"{"x":"right","y":"bottom"}"#,
+        r#"{"x":"25%","y":"-10.5%"}"#,
+        r#"{"x":10,"y":-4.5}"#,
+        r#"{"y":"bottom"}"#,
+    ] {
+        assert_eq!(run(&image(ok)), vec![], "{ok}");
+    }
+    for (bad, field) in [
+        (r#"{"x":"top"}"#, "x"),
+        (r#"{"y":"left"}"#, "y"),
+        (r#"{"x":"middle"}"#, "x"),
+        (r#"{"x":"10pt"}"#, "x"),
+        (r#"{"y":"+5%"}"#, "y"),
+    ] {
+        let (code, path) = one(&image(bad));
+        let want = format!("pages[0].children[0].position.{field}");
+        assert_eq!(
+            (code, path.as_str()),
+            (C::InvalidValue, want.as_str()),
+            "{bad}"
+        );
+    }
+    let (code, path) = one(&image(r#"{"x":"left","z":0}"#));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::UnknownField, "pages[0].children[0].position.z")
+    );
+    let (code, path) = one(&image(r#"{"x":true}"#));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidType, "pages[0].children[0].position.x")
+    );
+    let (code, path) = one(&doc(r#"{"type":"box","position":{"x":"left"}}"#));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::UnknownField, "pages[0].children[0].position")
+    );
+}

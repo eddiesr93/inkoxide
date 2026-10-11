@@ -131,6 +131,11 @@ fn structs_match_schema() {
     );
     check(
         &s,
+        Some("ImagePosition"),
+        &node(r#"{"type":"image","src":"i","position":{@"x":1}}"#),
+    );
+    check(
+        &s,
         Some("Field"),
         &node(r#"{"type":"field","field":{@"name":"n","kind":"text"}}"#),
     );

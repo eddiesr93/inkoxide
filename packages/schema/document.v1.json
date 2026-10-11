@@ -1234,6 +1234,10 @@
             "none"
           ],
           "default": "fill"
+        },
+        "position": {
+          "$ref": "#/$defs/ImagePosition",
+          "description": "Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred."
         }
       },
       "oneOf": [
@@ -1258,6 +1262,49 @@
           }
         }
       ]
+    },
+    "ImagePosition": {
+      "description": "Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `\"0%\"` is the start edge, `\"100%\"` the end edge). What falls outside the box is clipped.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "oneOf": [
+            {
+              "enum": [
+                "left",
+                "center",
+                "right"
+              ]
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Percent"
+            }
+          ],
+          "default": "center"
+        },
+        "y": {
+          "oneOf": [
+            {
+              "enum": [
+                "top",
+                "center",
+                "bottom"
+              ]
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Percent"
+            }
+          ],
+          "default": "center"
+        }
+      }
     },
     "TableNode": {
       "type": "object",
