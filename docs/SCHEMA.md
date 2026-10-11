@@ -121,21 +121,31 @@ Type: `boolean` (default `false`)
 
 ### NonNegative
 
-Type: `number` (≥ 0)
+A non-negative number of at most 1000000.
+
+Type: `number` (≥ 0, ≤ 1000000)
 
 ### Percent
 
-Type: `string` matching `^-?[0-9]+(\.[0-9]+)?%$`
+A percentage within ±10000%, like `"50%"`.
+
+Type: `string` matching `^-?0*([0-9]{1,4}(\.[0-9]+)?|10000(\.0+)?)%$`
+
+### Fr
+
+A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
+
+Type: `string` matching `^0*([0-9]{1,6}(\.[0-9]+)?|1000000(\.0+)?)fr$`
 
 ### Length
 
-Points, a percentage of the containing block, or "auto".
+Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto".
 
 Type: `number` or [`Percent`](#percent) or `"auto"`
 
 ### LengthPercent
 
-Points or a percentage of the containing block's width.
+Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).
 
 Type: `number` or [`Percent`](#percent)
 
@@ -242,7 +252,7 @@ Type: `"solid"` \| `"dashed"` \| `"dotted"` or object with `top`, `right`, `bott
 
 ### TransformOp
 
-One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.
+One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.
 
 Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale: …}` (array of `number`) or `{rotate: …}` (`number`) or `{skew: …}` (array of `number`) or `{matrix: …}` (array of `number`)
 
@@ -269,7 +279,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `minHeight` | [`Length`](#length) |  |  |
 | `maxWidth` | [`Length`](#length) |  |  |
 | `maxHeight` | [`Length`](#length) |  |  |
-| `aspectRatio` | `number` |  | > 0 |
+| `aspectRatio` | `number` |  | ≥ 0.000001, ≤ 1000000; Width divided by height. |
 | `padding` | [`EdgesLengthPercent`](#edgeslengthpercent) |  |  |
 | `margin` | [`EdgesLength`](#edgeslength) |  |  |
 | `position` | `"relative"` \| `"absolute"` |  | default `"relative"` |
@@ -292,18 +302,18 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `borderColor` | [`EdgesColor`](#edgescolor) |  |  |
 | `borderRadius` | [`BorderRadius`](#borderradius) |  |  |
 | `borderStyle` | [`BorderStyles`](#borderstyles) |  | default `"solid"` |
-| `rotate` | `number` |  | Degrees, clockwise, around the box centre. |
+| `rotate` | `number` |  | ≥ -1000000, ≤ 1000000; Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
 | `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
 | `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
-| `lineHeight` | `number` |  | > 0; text nodes only; multiplier of the largest run size on the line |
+| `lineHeight` | `number` |  | > 0, ≤ 100; text nodes only; multiplier of the largest run size on the line |
 | `maxLines` | `integer` |  | ≥ 1; text nodes only |
 | `ellipsis` | `boolean` |  | text nodes only; requires maxLines |
 | `hyphenate` | `boolean` |  | text nodes only |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
 | `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. |
-| `textIndent` | `number` |  | text nodes only; indent of the first line in points (negative: hanging indent) |
+| `textIndent` | `number` |  | ≥ -10000, ≤ 10000; text nodes only; indent of the first line in points (negative: hanging indent) |
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |
 | `widows` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines carried to the top of the next page when the paragraph breaks |
@@ -319,7 +329,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `font` | [`Id`](#id) | yes |  |
 | `size` | `number` | yes | > 0, ≤ 1000 |
 | `color` | [`Color`](#color) |  |  |
-| `letterSpacing` | `number` |  |  |
+| `letterSpacing` | `number` |  | ≥ -1000, ≤ 1000 |
 | `decoration` | `"none"` \| `"underline"` \| `"lineThrough"` |  |  |
 | `decorationColor` | [`Color`](#color) |  | Default: the run colour. |
 | `decorationThickness` | `number` |  | > 0, ≤ 100; Points. Default: from the font. |
@@ -332,7 +342,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `width` | `number` or `string` matching `^[0-9]+(\.[0-9]+)?fr$` or `"auto"` | yes |  |
+| `width` | `number` or [`Fr`](#fr) or `"auto"` | yes |  |
 
 ### TableCell
 
@@ -487,9 +497,9 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 ### TrackBreadth
 
-Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content".
+Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
 
-Type: `number` or [`Percent`](#percent) or `string` matching `^[0-9]+(\.[0-9]+)?fr$` or `"auto"` \| `"min-content"` \| `"max-content"`
+Type: `number` or [`Percent`](#percent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
 
 ### TemplateTrack
 

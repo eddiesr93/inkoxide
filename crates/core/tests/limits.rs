@@ -35,7 +35,10 @@ fn render(doc: &str, threads: Option<usize>) -> Result<Vec<u8>, InkoxideError> {
 #[test]
 fn runaway_page_count_is_an_error() {
     let t = std::time::Instant::now();
-    let err = render(&doc(r#"{"type":"box","style":{"height":1e11}}"#), Some(1)).unwrap_err();
+    // Lengths are bounded (±1000000 points), but enough of them still add
+    // up to more pages than allowed: here about 118 000.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 100].join(",");
+    let err = render(&doc(&tall), Some(1)).unwrap_err();
     assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
     assert!(err.to_string().contains("the limit is 100000"), "{err}");
     assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());

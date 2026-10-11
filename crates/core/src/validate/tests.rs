@@ -468,7 +468,7 @@ fn grid_parity() {
         (
             r#""gridTemplateRows":[{"min":-1,"max":5}]"#,
             C::OutOfRange,
-            "gridTemplateRows[0]",
+            "gridTemplateRows[0].min",
         ),
         (
             r#""gridAutoRows":[{"repeat":2,"tracks":[10]}]"#,
@@ -478,7 +478,7 @@ fn grid_parity() {
         (
             r#""gridAutoRows":[{"fitContent":-3}]"#,
             C::OutOfRange,
-            "gridAutoRows[0]",
+            "gridAutoRows[0].fitContent",
         ),
         (
             r#""gridTemplateAreas":["a b","b b"]"#,
@@ -517,7 +517,7 @@ fn transforms_radii_border_styles_and_z_index() {
         (
             r#"{"type":"box","style":{"transform":[{"skew":[90,0]}]}}"#,
             C::OutOfRange,
-            "pages[0].children[0].style.transform[0]",
+            "pages[0].children[0].style.transform[0].skew[0]",
         ),
         (
             r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"style":{"zIndex":1}}]}]}"#,
@@ -778,5 +778,108 @@ fn debug_is_a_boolean_on_nodes_with_a_box() {
     assert_eq!(
         (code, path.as_str()),
         (C::InvalidType, "pages[0].children[0].debug")
+    );
+}
+
+/// Far past the ±10000 % bound: resolved, it overflowed f32.
+const HUGE_PERCENT: &str = r#""9999999999999999999999999999999999999%""#;
+
+#[test]
+fn lengths_and_numbers_at_their_bounds_are_valid() {
+    let box_ = |style: &str| format!(r#"{{"type":"box","style":{{{style}}}}}"#);
+    let nodes = [
+        box_(r#""width":"10000%","height":1000000,"minWidth":"10000%","maxHeight":1000000,"flexBasis":"10000%""#),
+        box_(r#""margin":{"top":-1000000,"left":"-10000%","right":"10000%"},"padding":{"top":1000000,"left":"10000%"}"#),
+        box_(r#""position":"absolute","inset":{"top":"-10000%","left":-1000000,"bottom":1000000}"#),
+        box_(r#""gap":"10000%","rowGap":1000000,"flexGrow":1000000,"flexShrink":1000000,"aspectRatio":0.000001"#),
+        box_(r#""borderWidth":{"top":1000000},"borderRadius":{"topLeft":1000000},"aspectRatio":1000000"#),
+        box_(r#""display":"grid","gridTemplateColumns":[1000000,"10000%","1000000fr",{"min":"10000%","max":1000000},{"fitContent":"10000%"}],"gridAutoRows":[{"fitContent":1000000}]"#),
+        box_(r#""rotate":-1000000,"transformOrigin":["-10000%",1000000],"transform":[{"translate":["10000%",-1000000]},{"scale":[1000000,-1000000]},{"rotate":1000000},{"skew":[89.9,-89.9]},{"matrix":[1000000,-1000000,1000000,-1000000,1000000,-1000000]}]"#),
+        r#"{"type":"table","style":{"borderCollapse":"separate","borderSpacing":1000000},"columns":[{"width":1000000},{"width":"1000000fr"}],
+            "rows":[{"minHeight":1000000,"cells":[{},{}]}]}"#
+            .into(),
+        r#"{"type":"box","break":{"minPresenceAhead":1000000}}"#.into(),
+    ];
+    assert_eq!(run(&doc(&nodes.join(","))), vec![]);
+}
+
+#[test]
+fn lengths_and_numbers_are_bounded() {
+    for (node, path) in [
+        // Percentages, past ±10000 % or far past it.
+        (format!(r#"{{"type":"box","style":{{"width":{HUGE_PERCENT}}}}}"#), "style.width"),
+        (r#"{"type":"box","style":{"height":"10000.5%"}}"#.into(), "style.height"),
+        (r#"{"type":"box","style":{"maxWidth":"20000%"}}"#.into(), "style.maxWidth"),
+        (format!(r#"{{"type":"box","style":{{"flexBasis":{HUGE_PERCENT}}}}}"#), "style.flexBasis"),
+        (format!(r#"{{"type":"box","style":{{"margin":{{"left":{HUGE_PERCENT}}}}}}}"#), "style.margin.left"),
+        (r#"{"type":"box","style":{"margin":{"top":"-10001%"}}}"#.into(), "style.margin.top"),
+        (r#"{"type":"box","style":{"padding":{"right":"10001%"}}}"#.into(), "style.padding.right"),
+        (r#"{"type":"box","style":{"position":"absolute","inset":{"bottom":"-10001%"}}}"#.into(), "style.inset.bottom"),
+        (r#"{"type":"box","style":{"columnGap":"10001%"}}"#.into(), "style.columnGap"),
+        (format!(r#"{{"type":"box","style":{{"transform":[{{"translate":[0,{HUGE_PERCENT}]}}]}}}}"#), "style.transform[0].translate[1]"),
+        (r#"{"type":"box","style":{"transformOrigin":["-10001%",0]}}"#.into(), "style.transformOrigin[0]"),
+        (r#"{"type":"box","style":{"display":"grid","gridTemplateColumns":[10,{"repeat":2,"tracks":[10,"10001%"]}]}}"#.into(), "style.gridTemplateColumns[1].tracks[1]"),
+        (r#"{"type":"box","style":{"display":"grid","gridAutoColumns":[{"fitContent":"10001%"}]}}"#.into(), "style.gridAutoColumns[0].fitContent"),
+        // Points past ±1000000, including numbers that are infinite as f32.
+        (r#"{"type":"box","style":{"width":1000000.5}}"#.into(), "style.width"),
+        (r#"{"type":"box","style":{"minHeight":1e30}}"#.into(), "style.minHeight"),
+        (r#"{"type":"box","style":{"margin":{"bottom":-1e30}}}"#.into(), "style.margin.bottom"),
+        (r#"{"type":"box","style":{"position":"absolute","inset":{"left":2000000}}}"#.into(), "style.inset.left"),
+        (r#"{"type":"box","style":{"padding":{"top":3e38}}}"#.into(), "style.padding.top"),
+        (r#"{"type":"box","style":{"gap":1e7}}"#.into(), "style.gap"),
+        (r#"{"type":"box","style":{"display":"grid","gridTemplateRows":[{"min":0,"max":1e9}]}}"#.into(), "style.gridTemplateRows[0].max"),
+        (r#"{"type":"box","style":{"display":"grid","gridTemplateColumns":["1000001fr"]}}"#.into(), "style.gridTemplateColumns[0]"),
+        (r#"{"type":"box","style":{"transform":[{"translate":[-1e30,0]}]}}"#.into(), "style.transform[0].translate[0]"),
+        (r#"{"type":"box","style":{"transformOrigin":[0,1e30]}}"#.into(), "style.transformOrigin[1]"),
+        (r#"{"type":"box","style":{"borderWidth":{"left":1e39}}}"#.into(), "style.borderWidth.left"),
+        (r#"{"type":"box","style":{"borderRadius":1e39}}"#.into(), "style.borderRadius"),
+        (r#"{"type":"box","style":{"borderRadius":{"bottomLeft":2e6}}}"#.into(), "style.borderRadius.bottomLeft"),
+        (r#"{"type":"box","break":{"minPresenceAhead":1e39}}"#.into(), "break.minPresenceAhead"),
+        // Other numbers: factors and angles within ±1000000.
+        (r#"{"type":"box","style":{"flexGrow":1e39}}"#.into(), "style.flexGrow"),
+        (r#"{"type":"box","style":{"flexShrink":2e6}}"#.into(), "style.flexShrink"),
+        (r#"{"type":"box","style":{"aspectRatio":1e-30}}"#.into(), "style.aspectRatio"),
+        (r#"{"type":"box","style":{"aspectRatio":1e39}}"#.into(), "style.aspectRatio"),
+        (r#"{"type":"box","style":{"rotate":1e39}}"#.into(), "style.rotate"),
+        (r#"{"type":"box","style":{"transform":[{"rotate":-2e6}]}}"#.into(), "style.transform[0].rotate"),
+        (r#"{"type":"box","style":{"transform":[{"scale":[1,3e38]}]}}"#.into(), "style.transform[0].scale[1]"),
+        (r#"{"type":"box","style":{"transform":[{"matrix":[1,0,0,1,0,-1e30]}]}}"#.into(), "style.transform[0].matrix[5]"),
+        // Tables.
+        (r#"{"type":"table","columns":[{"width":1e39}],"rows":[]}"#.into(), "columns[0].width"),
+        (r#"{"type":"table","columns":[{"width":10},{"width":"2000000fr"}],"rows":[]}"#.into(), "columns[1].width"),
+        (r#"{"type":"table","columns":[{"width":10}],"rows":[{"minHeight":1e39,"cells":[{}]}]}"#.into(), "rows[0].minHeight"),
+        (r#"{"type":"table","style":{"borderCollapse":"separate","borderSpacing":1e39},"columns":[{"width":10}],"rows":[]}"#.into(), "style.borderSpacing"),
+        (r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"style":{"padding":{"left":"10001%"}}}]}]}"#.into(), "rows[0].cells[0].style.padding.left"),
+        // Text: the existing bounds also reject infinity.
+        (r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10,"letterSpacing":1e39}]}"#.into(), "runs[0].letterSpacing"),
+        (r#"{"type":"text","style":{"textIndent":1e39},"runs":[{"text":"x","font":"Inter-Regular","size":10}]}"#.into(), "style.textIndent"),
+    ] {
+        let (code, got) = one(&doc(&node));
+        let want = format!("pages[0].children[0].{path}");
+        assert_eq!((code, got.as_str()), (C::OutOfRange, want.as_str()), "{node}");
+    }
+}
+
+#[test]
+fn out_of_range_messages_state_the_range() {
+    let errs = run(&doc(&format!(
+        r#"{{"type":"box","style":{{"width":{HUGE_PERCENT},"margin":{{"top":-2e6}},"padding":{{"left":-1}},"flexGrow":2e6,"gridTemplateColumns":["2000000fr"]}}}}"#
+    )));
+    let got: Vec<_> = errs
+        .iter()
+        .map(|e| (e.path.rsplit('.').next().unwrap(), e.message.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("flexGrow", "must be at most 1000000"),
+            ("width", "percentages must be within [0%, 10000%]"),
+            ("left", "must be non-negative"),
+            ("top", "points must be within [-1000000, 1000000]"),
+            (
+                "gridTemplateColumns[0]",
+                "flexible sizes must be within [0fr, 1000000fr]"
+            ),
+        ]
     );
 }
