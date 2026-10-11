@@ -15,10 +15,11 @@ import { readLocalImage } from './local.ts';
 import { fetchImage } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
 
-/** Where images may come from: the remote and local policies of the render. */
+/** Where images may come from, and how long a function or promise `src` may take. */
 export interface ImagePolicies {
   remote: RemoteImageOptions | undefined;
   local: LocalImageOptions | undefined;
+  timeoutMs: number;
 }
 
 /**
@@ -51,20 +52,42 @@ async function loadPending(
       return readFile(image.path, policies.local);
     case 'request':
       return fetchAllowed(image.request, policies.remote);
-    case 'deferred': {
-      let value: ImageSrcValue;
-      try {
-        value = await (typeof image.src === 'function' ? image.src() : image.src);
-      } catch (e) {
-        throw new RenderError(
-          'TEMPLATE_ERROR',
-          `An <Image src> function or promise failed: ${(e as Error)?.message ?? String(e)}`,
-          { cause: e },
-        );
-      }
-      return resolveValue(value, registered, policies);
-    }
+    case 'deferred':
+      return resolveValue(await settle(image.src, policies.timeoutMs), registered, policies);
   }
+}
+
+/** Calls a function `src` or awaits a promise, within `timeoutMs`. */
+async function settle(
+  src: Extract<PendingImage, { kind: 'deferred' }>['src'],
+  timeoutMs: number,
+): Promise<ImageSrcValue> {
+  const timedOut = Symbol('timeout');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let value: ImageSrcValue | typeof timedOut;
+  try {
+    value = await Promise.race([
+      (async () => (typeof src === 'function' ? src() : src))(),
+      new Promise<typeof timedOut>((ok) => {
+        timer = setTimeout(() => ok(timedOut), timeoutMs);
+      }),
+    ]);
+  } catch (e) {
+    throw new RenderError(
+      'TEMPLATE_ERROR',
+      `An <Image src> function or promise failed: ${(e as Error)?.message ?? String(e)}`,
+      { cause: e },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  if (value === timedOut) {
+    throw new RenderError(
+      'TEMPLATE_ERROR',
+      `An <Image src> function or promise did not settle in ${timeoutMs} ms. Raise the render option imageTimeoutMs if it needs longer.`,
+    );
+  }
+  return value;
 }
 
 /** What a function or promise resolved to, read like the same `src` written in the template. */

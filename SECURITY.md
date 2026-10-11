@@ -23,6 +23,7 @@ Inkoxide is designed to render documents built from untrusted data:
   path must lead, symbolic links followed, to a regular file inside one of those folders and
   within the size limit; network paths are refused. Errors name the path as the template wrote
   it, and do not tell a missing file from one outside the folders.
+- A function or promise `<Image src>` that does not settle in time fails the render.
 
 A crash, a hang, unbounded memory use, a network request or a file read that the caller did not
 allow is a security issue. Please report it as above.

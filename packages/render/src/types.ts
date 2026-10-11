@@ -28,6 +28,8 @@ export interface RenderOpts {
    * without either, no file is read and a path in `src` is an image id like any other string.
    */
   localImages?: LocalImageOptions;
+  /** How long a function or promise `<Image src>` may take to settle (default 10 000 ms). */
+  imageTimeoutMs?: number;
 }
 
 export interface LocalImageOptions {

@@ -309,6 +309,18 @@ describe('image functions and promises', () => {
     expect(rejected.message).toBe('An <Image src> function or promise failed: no logo');
   });
 
+  it('fails the render when the function or promise does not settle in time', async () => {
+    const message =
+      'An <Image src> function or promise did not settle in 50 ms. Raise the render option imageTimeoutMs if it needs longer.';
+    for (const src of [new Promise<Uint8Array>(() => {}), () => new Promise<Uint8Array>(() => {})]) {
+      const err = await failure(src, { imageTimeoutMs: 50 });
+      expect(err.code).toBe('TEMPLATE_ERROR');
+      expect(err.message).toBe(message);
+    }
+    const slow = () => new Promise<Uint8Array>((ok) => setTimeout(() => ok(logo), 20));
+    expect(countPages(await render(slow, { imageTimeoutMs: 1000 }))).toBe(1);
+  });
+
   it('checks what it resolves to like a src written in the template', async () => {
     expect((await failure(() => 'brand')).message).toBe(
       'An <Image src> function or promise resolved to "brand", which is not an id in the images option, a path or a URL.',

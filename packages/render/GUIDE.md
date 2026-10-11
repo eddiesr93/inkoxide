@@ -166,11 +166,11 @@ const logo = readFileSync('logo.png');
   body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
 - **Functions and promises.** A function is called once per render, after the tree is built and
   before the engine runs, with the other images loading in parallel; a promise is awaited
-  then. A `render` prop that creates a new function or promise each time loads it again when it
-  renders again for the page count. Either resolves to bytes, a string or a request, read as if written in `src`. If it
-  throws or rejects, the render fails with `TEMPLATE_ERROR`. Prefer a function to a promise made
-  before the render starts: a promise that rejects while nothing awaits it yet is an unhandled
-  rejection.
+  then. Either resolves to bytes, a string or a request, read as if written in `src`. If it throws, rejects or does not settle within
+  `imageTimeoutMs` (default 10 000 ms), the render fails with `TEMPLATE_ERROR`. A `render` prop
+  that creates a new function or promise each time has it loaded again when it renders again
+  for the page count. Prefer a function to a promise made before the render starts: a promise
+  that rejects while nothing awaits it yet is an unhandled rejection.
 
 Image files and remote images are off by default, so a template cannot make your server read
 its files or fetch arbitrary URLs. Allow only the folders and hosts your images are in. Remote
@@ -367,6 +367,7 @@ All three take the same options:
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
 | `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MB) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |

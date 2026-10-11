@@ -126,9 +126,13 @@ function buildTree<S extends z.ZodType>(
   }
 }
 
-/** The image policies of a render: its options, else the environment variables. */
+/** The image policies of a render: its options, else the environment variables and defaults. */
 function imagePolicies(opts: RenderOpts): ImagePolicies {
-  return { remote: remotePolicy(opts.remoteImages), local: localPolicy(opts.localImages) };
+  return {
+    remote: remotePolicy(opts.remoteImages),
+    local: localPolicy(opts.localImages),
+    timeoutMs: opts.imageTimeoutMs ?? 10_000,
+  };
 }
 
 /** What tree building needs to know of the image policies. */
