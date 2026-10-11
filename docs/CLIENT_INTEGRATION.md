@@ -137,8 +137,8 @@ try {
   line.
 - **Many small documents.** For a server producing invoices or forms,
   pass `{ threads: 1 }` and raise `UV_THREADPOOL_SIZE` to about the core
-  count. That gives one document per thread with no coordination
-  overhead.
+  count. Each render then runs entirely on its own libuv thread, so
+  concurrent renders use one core each with no coordination overhead.
 - **Few large documents.** For a 500-page export, keep the default.
 - **Memory.** Peak memory grows with the document: about 210 MB for a
   435-page table (see [BENCHMARKS.md](BENCHMARKS.md)). The engine

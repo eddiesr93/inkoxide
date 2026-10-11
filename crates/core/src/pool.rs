@@ -1,6 +1,7 @@
 //! Thread pools for `RenderOptions::threads`. `None` uses rayon's global
-//! pool; an explicit size gets its own pool, built once per size and kept
-//! for the life of the process (pools are expensive to start).
+//! pool and `Some(1)` the calling thread (no pool); any other size gets its
+//! own pool, built once per size and kept for the life of the process
+//! (pools are expensive to start).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

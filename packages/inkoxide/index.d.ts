@@ -54,7 +54,10 @@ export interface RenderOptions {
    * `meta.creationDate`. With neither set no date is written. Default: none.
    */
   creationDate?: string;
-  /** Worker threads for this render. Default: all cores. `1` renders on one thread. */
+  /**
+   * Worker threads for this render. Default: all cores. `1` renders on the libuv thread that
+   * runs it, with no parallelism inside, so concurrent renders do not wait for each other.
+   */
   threads?: number;
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
   subsetFonts?: boolean;

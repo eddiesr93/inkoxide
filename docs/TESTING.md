@@ -23,6 +23,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   accepted nesting on a small stack).
 - `crates/core/tests/schema_parity.rs`: serde structs accept exactly the
   properties the JSON Schema declares.
+- `crates/core/tests/threads.rs`: concurrent one-thread renders each run
+  on their calling thread, at the same time.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.
 - `scripts/visual-diff.py`: rasterises fixture PDFs and compares them with
   `fixtures/expected/*.png`; `scripts/update-expected.sh` regenerates the

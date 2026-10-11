@@ -74,8 +74,12 @@ pub struct RenderOptions {
     /// RFC 3339 timestamp; overrides `meta.creationDate`. With neither set
     /// no date is written, so output is byte-for-byte deterministic.
     pub creation_date: Option<String>,
-    /// Worker threads for page painting and compression; `None` uses the
-    /// shared pool (all cores), `Some(1)` renders on the calling thread.
+    /// Worker threads for shaping, page painting and compression. `None`
+    /// uses rayon's global pool (all cores, shared by every render in the
+    /// process). `Some(n)` uses a pool of `n` threads, shared by every
+    /// render that asks for `n`. `Some(1)` runs the whole render on the
+    /// calling thread with no parallelism inside it, so concurrent
+    /// one-thread renders run side by side on their own threads.
     pub threads: Option<usize>,
     /// Embed only the glyphs a document uses (default `true`). Off embeds
     /// whole font programs, for debugging.
@@ -186,10 +190,14 @@ pub fn render(
 ) -> Result<Vec<u8>, InkoxideError> {
     let _span = tracing::debug_span!("render", bytes = doc.len()).entered();
     match options.threads {
-        None => render_inner(doc, format, options, fonts, images),
+        None => render_inner(doc, format, options, fonts, images, true),
+        // Outside a pool, rayon would use the global one: run every
+        // parallel section in sequence instead, so concurrent one-thread
+        // renders each keep to their own thread.
+        Some(0 | 1) => render_inner(doc, format, options, fonts, images, false),
         Some(n) => {
             let pool = pool::get(n)?;
-            pool.install(|| render_inner(doc, format, options, fonts, images))
+            pool.install(|| render_inner(doc, format, options, fonts, images, true))
         }
     }
 }
@@ -200,6 +208,7 @@ fn render_inner(
     options: &RenderOptions,
     fonts: &FontStore,
     images: &ImageStore,
+    parallel: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
     let document = validate::parse(doc, format)?;
     if let Some(first) = validate::check(&document, fonts, images).into_iter().next() {
@@ -234,10 +243,16 @@ fn render_inner(
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
         pdf_a: options.pdf_a,
+        parallel,
     };
-    let (pages, marks) = pipeline::run(&document, &font_set, &mut text, &image_set, |page| {
-        sink.encode_page(&page, &font_set)
-    })?;
+    let (pages, marks) = pipeline::run(
+        &document,
+        &font_set,
+        &mut text,
+        &image_set,
+        parallel,
+        |page| sink.encode_page(&page, &font_set),
+    )?;
     let unicode: UnicodeMap = text.shaper.unicode;
 
     sink.write(&DocumentOut {

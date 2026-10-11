@@ -78,6 +78,9 @@ pub(crate) struct PdfWriterSink {
     pub subset_fonts: bool,
     /// Write PDF/A-2b.
     pub pdf_a: bool,
+    /// Prepare font programs on the current rayon pool; otherwise on the
+    /// calling thread.
+    pub parallel: bool,
 }
 
 /// `v`, or 0 when it is infinite or NaN: the backstop that keeps every
@@ -227,10 +230,14 @@ impl PdfSink for PdfWriterSink {
             }
         }
         // Subsetting and compression are independent per font.
-        let programs: Vec<font::Program> = used
-            .par_iter()
-            .map(|(key, glyphs)| font::program(doc.fonts.get(*key), glyphs, self.subset_fonts))
-            .collect::<Result<_, _>>()?;
+        let program = |(key, glyphs): (&FontKey, &BTreeSet<u16>)| {
+            font::program(doc.fonts.get(*key), glyphs, self.subset_fonts)
+        };
+        let programs: Vec<font::Program> = if self.parallel {
+            used.par_iter().map(program).collect::<Result<_, _>>()?
+        } else {
+            used.iter().map(program).collect::<Result<_, _>>()?
+        };
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
         for ((key, glyphs), program) in used.iter().zip(&programs) {
             let r = font::write_font(

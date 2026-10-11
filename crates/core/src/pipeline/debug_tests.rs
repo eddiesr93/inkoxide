@@ -29,7 +29,7 @@ fn pages(json: &str) -> Vec<PageContent> {
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
     let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    run(&doc, &fonts, &mut text, &images, Ok).unwrap().0
+    run(&doc, &fonts, &mut text, &images, true, Ok).unwrap().0
 }
 
 /// One page of `W × H` with `page` properties and `children`.
@@ -446,7 +446,7 @@ fn debug_adds_no_text_links_or_fields() {
         let fonts = FontSet::load(&doc, &store).unwrap();
         let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
         let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-        let (pages, marks) = run(&doc, &fonts, &mut text, &images, Ok).unwrap();
+        let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
         let kept: Vec<Vec<Op>> = pages
             .into_iter()
             .map(|p| {
