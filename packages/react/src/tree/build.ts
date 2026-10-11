@@ -204,6 +204,9 @@ export class ImageIds {
  */
 function requestKey(r: ImageRequest): string | undefined {
   const { body } = r;
+  // Only plain header objects are compared; a `Headers` instance keeps its request apart.
+  const proto = r.headers === undefined ? null : Object.getPrototypeOf(r.headers);
+  if (proto !== null && proto !== Object.prototype) return undefined;
   const bytes = body instanceof Uint8Array;
   if (body !== undefined && typeof body !== 'string' && !bytes) return undefined;
   const sent = bytes ? Array.from(body, (b) => b.toString(16).padStart(2, '0')).join('') : body;
@@ -979,8 +982,11 @@ class Builder {
       node.src = src;
     } else if (typeof src === 'string' && src.startsWith('data:')) {
       node.data = src;
-    } else if (typeof src === 'string' && this.opts.localImages && isImagePath(src)) {
-      node.src = this.pendingId(`file\0${src}`, 'file', () => ({ kind: 'file', path: src }));
+    } else if (typeof src === 'string' && isImagePath(src)) {
+      // Without localImages a path, `file:` URLs included, is an image id like any other string.
+      node.src = this.opts.localImages
+        ? this.pendingId(`file\0${src}`, 'file', () => ({ kind: 'file', path: src }))
+        : src;
     } else if (typeof src === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(src)) {
       this.allowRemote(inst, src, `src="${src}"`);
       node.src = this.generated.of(`remote\0${src}`, 'remote');

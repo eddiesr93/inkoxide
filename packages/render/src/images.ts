@@ -63,13 +63,15 @@ async function settle(
   timeoutMs: number,
 ): Promise<ImageSrcValue> {
   const timedOut = Symbol('timeout');
+  // Infinity waits without a limit; setTimeout fires at once past 2^31 - 1 ms, so cap there.
+  const limit = timeoutMs === Infinity ? undefined : Math.min(timeoutMs, 2 ** 31 - 1);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let value: ImageSrcValue | typeof timedOut;
   try {
     value = await Promise.race([
       (async () => (typeof src === 'function' ? src() : src))(),
       new Promise<typeof timedOut>((ok) => {
-        timer = setTimeout(() => ok(timedOut), timeoutMs);
+        if (limit !== undefined) timer = setTimeout(() => ok(timedOut), limit);
       }),
     ]);
   } catch (e) {

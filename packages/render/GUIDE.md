@@ -370,7 +370,7 @@ All three take the same options:
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
 | `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
-| `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle |
+| `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
@@ -418,12 +418,12 @@ Every error is a `RenderError` with a `code`, and with `path`, `component` and
 
 | Code | What happened |
 |---|---|
-| `TEMPLATE_ERROR` | A component used in the wrong place, or an unknown class or style key |
+| `TEMPLATE_ERROR` | A component used in the wrong place, an unknown class or style key, or an image `src` that cannot be used: a URL outside `remoteImages`, a path while `localImages` is off (from a function), or a function or promise that fails or does not settle in `imageTimeoutMs` |
 | `INVALID_TREE` | A prop with an invalid value |
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched |
-| `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a regular file, or over the size limit |
+| `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
 
 ## FAQ
 

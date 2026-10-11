@@ -94,6 +94,7 @@ beforeAll(async () => {
     else if (req.url === '/palette.png') res.end(palette);
     else if (req.url === '/photo.jpg') res.end(photo);
     else if (req.url === '/image' && req.method === 'POST') res.end(body === 'palette' ? palette : logo);
+    else if (req.url === '/by-token') res.end(req.headers['x-token'] === 'palette' ? palette : logo);
     else if (req.url === '/moved') res.writeHead(302, { location: '/logo.png' }).end();
     else res.writeHead(404).end();
   });
@@ -134,8 +135,8 @@ describe('image files', () => {
   it('reads no file unless local images are allowed: a path is an image id', async () => {
     for (const src of ['./logo.png', logoPath, pathToFileURL(logoPath).href]) {
       const err = await failure(src);
-      expect(err.code).toBe(src.startsWith('file:') ? 'TEMPLATE_ERROR' : 'ENGINE_REJECTED');
-      if (!src.startsWith('file:')) expect(err.engineCode).toBe('UNKNOWN_IMAGE');
+      expect(err.code).toBe('ENGINE_REJECTED');
+      expect(err.engineCode).toBe('UNKNOWN_IMAGE');
     }
     expect((await failure(() => logoPath)).message).toBe(
       `<Image src="${logoPath}">: image files are off. Allow their folder with the render option localImages.root (or the INKOXIDE_LOCAL_IMAGES variable), or pass the bytes.`,
@@ -196,6 +197,14 @@ describe('image files', () => {
     }
   });
 
+  it('refuses an empty root, which would mean the working directory', async () => {
+    for (const root of ['', [fixtures, ''], []]) {
+      const err = await failure('./logo.png', { localImages: { root } });
+      expect(err.code).toBe('IMAGE_READ_FAILED');
+      expect(err.message).toBe('Cannot read the image ./logo.png: a localImages folder cannot be opened.');
+    }
+  });
+
   it('applies the size limit before reading', async () => {
     const err = await failure('./logo.png', local({ maxBytes: 10 }));
     expect(err.message).toBe(
@@ -252,6 +261,24 @@ describe('image requests', () => {
     expect((await failure({ uri: `${base}/gone.png` }, allowed())).message).toBe(
       `Cannot fetch the image ${base}/gone.png: HTTP 404.`,
     );
+  });
+
+  it('keeps requests with Headers instances apart', async () => {
+    const request = (token: string) => ({
+      uri: `${base}/by-token`,
+      headers: new Headers({ 'x-token': token }),
+    });
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          {/* Headers instances are outside the types, but JavaScript callers can pass them. */}
+          <Image src={request('logo') as unknown as ImageSrc} className="h-4 w-4" />
+          <Image src={request('palette') as unknown as ImageSrc} className="h-4 w-4" />
+        </Page>
+      </Document>,
+      { ...allowed(), compress: false },
+    );
+    expect(pageImages(pdf)).toEqual([[LOGO, PALETTE]]);
   });
 
   it('applies the size limit', async () => {
@@ -327,7 +354,10 @@ describe('image functions and promises', () => {
       expect(err.message).toBe(message);
     }
     const slow = () => new Promise<Uint8Array>((ok) => setTimeout(() => ok(logo), 20));
-    expect(countPages(await render(slow, { imageTimeoutMs: 1000 }))).toBe(1);
+    // Past setTimeout's limit, and Infinity, mean waiting rather than failing at once.
+    for (const imageTimeoutMs of [1000, 2 ** 31, Number.MAX_SAFE_INTEGER, Infinity]) {
+      expect(countPages(await render(slow, { imageTimeoutMs }))).toBe(1);
+    }
   });
 
   it('reads a data: URL as one written in src: base64 only, strictly', async () => {
@@ -473,6 +503,22 @@ describe('generated image ids', () => {
       const pdf = await renderToBuffer(<Both first={first} />, opts);
       expect(pageImages(pdf)).toEqual([[LOGO, PALETTE, PHOTO]]);
     }
+  });
+
+  it('let an image passed in replace a template image through renderTree and renderSettled', async () => {
+    const template = {
+      meta: { id: 'override' },
+      schema: z.object({}),
+      Template: () => <Both first="logo" />,
+      images: { logo },
+    };
+    // The engine embeds identical images once, so the photo in place of the logo shows as one.
+    const opts = { images: { ...images, logo: photo }, compress: false };
+    const first = renderTree(template, {}, opts);
+    const settled = await renderSettled(first, first.images, opts);
+    expect(pageImages(settled.pdf)[0]?.toSorted()).toEqual([PALETTE, PHOTO].toSorted());
+    const { pdf } = await renderSettled(renderTree(template, {}), { ...images }, { compress: false });
+    expect(pageImages(pdf)).toEqual([[LOGO, PALETTE, PHOTO]]);
   });
 
   it('fail the render when a tree built without the passed-in ids clashes with one', async () => {

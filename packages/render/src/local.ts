@@ -45,7 +45,10 @@ export async function readLocalImage(src: string, opts: LocalImageOptions): Prom
     throw new RenderError('IMAGE_READ_FAILED', `Cannot read the image ${src}: ${why}.`, { cause });
   };
   const missing = () => fail('no such file in the localImages folders');
-  const roots = (typeof opts.root === 'string' ? [opts.root] : opts.root).map((r) => resolve(r));
+  const given = typeof opts.root === 'string' ? [opts.root] : opts.root;
+  // An empty root would quietly mean the working directory.
+  if (given.length === 0 || given.some((r) => r === '')) fail('a localImages folder cannot be opened');
+  const roots = given.map((r) => resolve(r));
 
   let path = src;
   if (/^file:/i.test(src)) {

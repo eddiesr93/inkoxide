@@ -19,6 +19,7 @@ over by changing the import. This page lists what has another name, and what is 
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Built in |
 | `<Svg>`, `<Canvas>` | The same | No `<Text>` inside `<Svg>` yet |
+| `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
 **Not available:**
 - **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.

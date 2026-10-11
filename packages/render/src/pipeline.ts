@@ -154,16 +154,24 @@ export function renderTree<S extends z.ZodType>(
   opts: RenderOpts = {},
 ): TreeResult {
   const tree = buildTree(t, parseData(t, data), opts);
-  return withTemplateImages(t, tree);
+  return withTemplateImages(t, tree, opts.images);
 }
 
-/** Static template images (a logo) come with the tree, so it renders on its own. */
-function withTemplateImages(t: TemplateLike, tree: TreeResult): TreeResult {
+/**
+ * Static template images (a logo) come with the tree, so it renders on its own. An image the
+ * caller passes under the same id replaces the template's, as in `generate`.
+ */
+function withTemplateImages(
+  t: TemplateLike,
+  tree: TreeResult,
+  passed: Record<string, Uint8Array> = {},
+): TreeResult {
   if (!t.images) return tree;
+  const own = Object.fromEntries(Object.entries(t.images).filter(([id]) => !Object.hasOwn(passed, id)));
   return {
     ...tree,
-    images: { ...t.images, ...tree.images },
-    rebuild: (pages) => withTemplateImages(t, tree.rebuild(pages)),
+    images: { ...own, ...tree.images },
+    rebuild: (pages) => withTemplateImages(t, tree.rebuild(pages), passed),
   };
 }
 
