@@ -130,4 +130,98 @@ mod tests {
         let short = woff_from_sfnt(&sfnt, true, Some(1 << 20));
         assert_eq!(decode(&short).unwrap_err(), "not a valid WOFF font");
     }
+
+    /// 1 KiB of zeros, Brotli-compressed.
+    const ZEROS_1_KIB: &[u8] = &[
+        0x1b, 0xff, 0x03, 0x00, 0x24, 0x00, 0xa2, 0xb1, 0x40, 0x72, 0x03,
+    ];
+
+    /// 256 MiB of zeros, Brotli-compressed into 203 bytes.
+    const ZEROS_256_MIB: &[u8] = &[
+        0xcf, 0xff, 0xff, 0x7f, 0x00, 0x24, 0x00, 0xe2, 0xb1, 0x40, 0x72, 0xef, 0xff, 0xf9, 0xff,
+        0xff, 0x0f, 0x80, 0x04, 0x40, 0x1c, 0x16, 0x80, 0xee, 0xfd, 0x3f, 0xff, 0xff, 0xff, 0x01,
+        0x90, 0x00, 0x88, 0xc3, 0x02, 0xd0, 0xbd, 0xff, 0xe7, 0xff, 0xff, 0x3f, 0x00, 0x12, 0x00,
+        0x71, 0x58, 0x00, 0xba, 0xf7, 0xff, 0xfc, 0xff, 0xff, 0x07, 0x40, 0x02, 0x20, 0x0e, 0x0b,
+        0x40, 0xf7, 0xfe, 0x9f, 0xff, 0xff, 0xff, 0x00, 0x48, 0x00, 0xc4, 0x61, 0x01, 0xe8, 0xde,
+        0xff, 0xf3, 0xff, 0xff, 0x1f, 0x00, 0x09, 0x80, 0x38, 0x2c, 0x00, 0xdd, 0xfb, 0x7f, 0xfe,
+        0xff, 0xff, 0x03, 0x20, 0x01, 0x10, 0x87, 0x05, 0xa0, 0x7b, 0xff, 0xcf, 0xff, 0xff, 0x7f,
+        0x00, 0x24, 0x00, 0xe2, 0xb0, 0x00, 0x74, 0xef, 0xff, 0xf9, 0xff, 0xff, 0x0f, 0x80, 0x04,
+        0x40, 0x1c, 0x16, 0x80, 0xee, 0xfd, 0x3f, 0xff, 0xff, 0xff, 0x01, 0x90, 0x00, 0x88, 0xc3,
+        0x02, 0xd0, 0xbd, 0xff, 0xe7, 0xff, 0xff, 0x3f, 0x00, 0x12, 0x00, 0x71, 0x58, 0x00, 0xba,
+        0xf7, 0xff, 0xfc, 0xff, 0xff, 0x07, 0x40, 0x02, 0x20, 0x0e, 0x0b, 0x40, 0xf7, 0xfe, 0x9f,
+        0xff, 0xff, 0xff, 0x00, 0x48, 0x00, 0xc4, 0x61, 0x01, 0xe8, 0xde, 0xff, 0xf3, 0xff, 0xff,
+        0x1f, 0x00, 0x09, 0x80, 0x38, 0x2c, 0x00, 0xdd, 0xfb, 0x7f, 0xfe, 0xff, 0xff, 0x03, 0x20,
+        0x01, 0x10, 0x87, 0x05, 0xa0, 0x7b, 0xff, 0x3f,
+    ];
+
+    /// A WOFF2 file with one `name` table that declares `orig_length`
+    /// bytes, stored as the Brotli stream `data`, followed by `private`
+    /// bytes of private data.
+    fn woff2(orig_length: u32, data: &[u8], private: usize) -> Vec<u8> {
+        let mut dir = vec![63]; // tag follows, null transform
+        dir.extend_from_slice(b"name");
+        // UIntBase128: seven bits a byte, most significant first.
+        let mut n = orig_length;
+        let mut digits = vec![(n & 0x7f) as u8];
+        while n >= 0x80 {
+            n >>= 7;
+            digits.push(0x80 | (n & 0x7f) as u8);
+        }
+        dir.extend(digits.iter().rev());
+        let data_end = (48 + dir.len() + data.len()).next_multiple_of(4);
+        let len = data_end + private;
+        let mut out = Vec::with_capacity(len);
+        out.extend_from_slice(b"wOF2\0\x01\0\0");
+        out.extend_from_slice(&(len as u32).to_be_bytes());
+        out.extend_from_slice(&1u16.to_be_bytes()); // numTables
+        out.extend_from_slice(&[0; 2]); // reserved
+        let sfnt_size = (u64::from(orig_length) + 28)
+            .next_multiple_of(4)
+            .min(u32::MAX.into()) as u32;
+        out.extend_from_slice(&sfnt_size.to_be_bytes()); // totalSfntSize
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes()); // totalCompressedSize
+        out.extend_from_slice(&[0, 1, 0, 0]); // version 1.0
+        out.extend_from_slice(&[0; 12]); // no metadata
+        let (offset, length) = if private > 0 {
+            (data_end, private)
+        } else {
+            (0, 0)
+        };
+        out.extend_from_slice(&(offset as u32).to_be_bytes());
+        out.extend_from_slice(&(length as u32).to_be_bytes());
+        out.extend_from_slice(&dir);
+        out.extend_from_slice(data);
+        out.resize(len, 0);
+        out
+    }
+
+    #[test]
+    fn woff2_bombs_fail_before_they_expand() {
+        // The file is well formed: the same table with a stream of its
+        // size decodes.
+        assert!(decode(&woff2(1024, ZEROS_1_KIB, 0)).unwrap().is_some());
+        // Decoding 256 MiB would take seconds; each bomb fails at once.
+        let start = std::time::Instant::now();
+        // A 4 GiB table in a 300-byte file: rejected by its compression
+        // ratio before anything is allocated or decompressed.
+        let claims = woff2(u32::MAX, ZEROS_256_MIB, 0);
+        assert!(claims.len() < 300);
+        assert_eq!(decode(&claims).unwrap_err(), "not a valid WOFF2 font");
+        // A plausible ratio, padded with private data, but more than the
+        // 128 MiB limit: rejected before decompressing.
+        let padded = woff2(200 << 20, ZEROS_256_MIB, 3 << 20);
+        assert_eq!(decode(&padded).unwrap_err(), "not a valid WOFF2 font");
+        // A stream that expands to 256 MiB in a table that declares 16 KiB:
+        // decoded into a 16 KiB buffer, which it overflows.
+        let expands = woff2(16 << 10, ZEROS_256_MIB, 0);
+        assert_eq!(decode(&expands).unwrap_err(), "not a valid WOFF2 font");
+        assert!(start.elapsed().as_secs() < 1, "{:?}", start.elapsed());
+        // Registration reports each as a font error.
+        for bomb in [claims, padded, expands] {
+            let err = super::super::FontStore::new()
+                .register("bomb", bomb)
+                .unwrap_err();
+            assert_eq!(err.code(), "FONT_ERROR", "{err}");
+        }
+    }
 }
