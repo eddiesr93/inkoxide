@@ -354,6 +354,36 @@ fn rejects_corrupt_and_unknown_images() {
 }
 
 #[test]
+fn images_over_the_pixel_limit_are_too_large() {
+    // A PNG header claiming 100000×100000 pixels: the probe reads no further.
+    let mut huge = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    huge.extend_from_slice(&100_000u32.to_be_bytes());
+    huge.extend_from_slice(&100_000u32.to_be_bytes());
+    let mut images = ImageStore::new();
+    images.insert("huge", huge);
+    let doc = r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
+      "children":[{"type":"image","src":"huge"},{"type":"image","data":"iVBORw0KGgoAAAANSUhEUgABhqAAAYag"}]}]}"#;
+    let e = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &FontStore::new(),
+        &images,
+    );
+    let got: Vec<(&str, &str)> = e
+        .iter()
+        .map(|e| (e.code.as_str(), e.path.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("IMAGE_TOO_LARGE", "pages[0].children[0].src"),
+            ("IMAGE_TOO_LARGE", "pages[0].children[1].data"),
+        ]
+    );
+    assert!(e[0].message.contains("megapixels"), "{}", e[0].message);
+}
+
+#[test]
 fn links_and_bookmarks() {
     let ok = doc(
         r##"{"type":"text","id":"a","bookmark":{"title":"A"},"runs":[{"text":"x","font":"Inter-Regular","size":9}]},

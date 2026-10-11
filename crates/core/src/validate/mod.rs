@@ -686,11 +686,7 @@ impl<'a> Checker<'a> {
                 ),
                 Some(data) => {
                     if let Err(e) = crate::images::probe(&data.bytes) {
-                        self.err(
-                            Code::InvalidImage,
-                            Some("src"),
-                            format!("image `{id}`: {e}"),
-                        );
+                        self.err(probe_code(&e), Some("src"), format!("image `{id}`: {e}"));
                     }
                 }
             },
@@ -698,7 +694,7 @@ impl<'a> Checker<'a> {
                 Err(e) => self.err(Code::InvalidImage, Some("data"), e),
                 Ok(bytes) => {
                     if let Err(e) = crate::images::probe(&bytes) {
-                        self.err(Code::InvalidImage, Some("data"), e);
+                        self.err(probe_code(&e), Some("data"), e.to_string());
                     }
                 }
             },
@@ -1468,6 +1464,14 @@ fn fixed_size(t: &TrackSize) -> Option<f32> {
         TrackSize::Breadth(b) => fixed(b),
         TrackSize::MinMax(a, b) => fixed(b).or(fixed(a)),
         TrackSize::FitContent(_) => None,
+    }
+}
+
+/// The code for an image that failed its header probe.
+fn probe_code(e: &crate::images::ProbeError) -> Code {
+    match e {
+        crate::images::ProbeError::Invalid(_) => Code::InvalidImage,
+        crate::images::ProbeError::TooLarge(_) => Code::ImageTooLarge,
     }
 }
 

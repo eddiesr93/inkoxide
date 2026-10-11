@@ -30,7 +30,7 @@ pub enum ValidationCode {
     UnknownImage,
     /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
     InvalidImage,
-    /// A decoded image exceeds the size guard.
+    /// An image has more than 50 million pixels (width × height).
     ImageTooLarge,
     /// A style property was set on a node type it does not apply to.
     StyleNotApplicable,

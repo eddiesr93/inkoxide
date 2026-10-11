@@ -64,7 +64,7 @@ INTRO = """# Document schema v1
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
 | `INVALID_IMAGE` | Image data cannot be decoded |
-| `IMAGE_TOO_LARGE` | Decoded image exceeds the size guard |
+| `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |

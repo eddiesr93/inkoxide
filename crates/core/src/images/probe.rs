@@ -26,7 +26,38 @@ pub(crate) struct ImageInfo {
 
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
-pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, String> {
+/// Why [`probe`] rejected an image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProbeError {
+    /// Not a supported image, or its header is malformed.
+    Invalid(String),
+    /// More pixels than [`super::MAX_PIXELS`].
+    TooLarge(String),
+}
+
+impl From<String> for ProbeError {
+    fn from(e: String) -> Self {
+        Self::Invalid(e)
+    }
+}
+
+impl From<ProbeError> for String {
+    fn from(e: ProbeError) -> Self {
+        match e {
+            ProbeError::Invalid(m) | ProbeError::TooLarge(m) => m,
+        }
+    }
+}
+
+impl std::fmt::Display for ProbeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Invalid(m) | Self::TooLarge(m) => f.write_str(m),
+        }
+    }
+}
+
+pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, ProbeError> {
     let info = if bytes.starts_with(PNG_SIGNATURE) {
         probe_png(bytes)?
     } else if bytes.starts_with(&[0xFF, 0xD8]) {
@@ -47,19 +78,21 @@ pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, String> {
             orientation: 1,
         });
     } else {
-        return Err("unsupported image format (expected JPEG, PNG, GIF, WebP or SVG)".into());
+        return Err(ProbeError::Invalid(
+            "unsupported image format (expected JPEG, PNG, GIF, WebP or SVG)".into(),
+        ));
     };
     if info.width == 0 || info.height == 0 {
-        return Err("image has zero width or height".into());
+        return Err(ProbeError::Invalid("image has zero width or height".into()));
     }
     let pixels = u64::from(info.width) * u64::from(info.height);
     if pixels > super::MAX_PIXELS {
-        return Err(format!(
+        return Err(ProbeError::TooLarge(format!(
             "image is {}×{} pixels; the limit is {} megapixels",
             info.width,
             info.height,
             super::MAX_PIXELS / 1_000_000
-        ));
+        )));
     }
     Ok(info)
 }
