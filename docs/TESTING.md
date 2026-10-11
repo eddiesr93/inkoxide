@@ -56,7 +56,7 @@ Needs the nightly toolchain and cargo-fuzz:
 ```sh
 rustup toolchain install nightly
 cargo install cargo-fuzz
-scripts/fuzz.sh 60       # both targets, 60 s each
+scripts/fuzz.sh 60       # every target, 60 s each
 scripts/fuzz.sh 3600     # a one-hour run
 ```
 
@@ -68,6 +68,10 @@ Targets (in `fuzz/`, outside the workspace):
   (edge values, long words, mixed scripts, big tables, deep nesting).
 - `render_svg`: raw bytes registered as an image and drawn twice; seeded
   with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
+- `register_font`: raw bytes registered as a font, as they are and with
+  the WOFF and WOFF2 signatures over its first bytes, so every input reaches both
+  decoders; each font that registers sets a line of text. Seeded with
+  `fixtures/fonts`.
 
 All share one oracle: no panic; `render` succeeds only when `validate`
 is clean and vice versa for validation errors; the output is a complete
@@ -81,6 +85,7 @@ cd fuzz
 cargo run --release --bin repro -- tree artifacts/render_tree/crash-…   # prints the document, runs the oracle
 cargo run --release --bin repro -- json artifacts/render_json/crash-…
 cargo run --release --bin repro -- image artifacts/render_svg/crash-…
+cargo run --release --bin repro -- font artifacts/register_font/crash-…
 cargo run --release --bin repro -- stats corpus/render_tree             # generator validity rate
 ```
 

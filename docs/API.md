@@ -67,7 +67,8 @@ const pdf = await render(JSON.stringify(doc), { threads: 1, creationDate: '2026-
 ## Hyphenation patterns
 
 A text node with `hyphenate: true` is hyphenated in its `lang` (or
-`meta.lang`). The patterns are chosen in this order:
+`meta.lang`). A run's own `hyphenate` overrides the node's for that run's
+words, in the node's language. The patterns are chosen in this order:
 
 1. patterns registered for the language;
 2. hypher's built-in patterns (about 50 languages, English included);

@@ -40,7 +40,10 @@ export interface TextCtx {
   orphans: number | undefined;
   widows: number | undefined;
   lang: string | undefined;
-  /** Splits words into syllables in place of the built-in patterns (`hyphenationCallback`). */
+  /**
+   * Splits words into syllables in place of the built-in patterns (`hyphenationCallback`), unless
+   * `hyphenate` is `false`: read it with `callbackOf`.
+   */
   hyphenation: HyphenationCallback | undefined;
   /** Link target inherited by runs (nested `Text href`). */
   link: string | undefined;
@@ -105,13 +108,28 @@ export function inherit(parent: TextCtx, own: TwStyle, extra?: InheritExtra): Te
   if (extra) {
     if (extra.lang !== undefined) c.lang = extra.lang;
     if (extra.hyphenate !== undefined) c.hyphenate = extra.hyphenate;
-    if (extra.hyphenation !== undefined) c.hyphenation = extra.hyphenation ?? undefined;
+    if (extra.hyphenation !== undefined) {
+      c.hyphenation = extra.hyphenation ?? undefined;
+      // A callback given to this element applies even where an ancestor turned hyphenation off.
+      const ownSwitch = own.hyphenate ?? extra.hyphenate;
+      if (extra.hyphenation && c.hyphenate === false && ownSwitch === undefined) c.hyphenate = undefined;
+    }
     if (extra.link !== undefined) c.link = extra.link;
     if (extra.direction !== undefined) c.direction = extra.direction;
     if (extra.orphans !== undefined) c.orphans = extra.orphans;
     if (extra.widows !== undefined) c.widows = extra.widows;
   }
   return c;
+}
+
+/** The hyphenation callback in effect: none where `hyphenate` (or `hyphens-none`) turns it off. */
+export function callbackOf(ctx: TextCtx): HyphenationCallback | undefined {
+  return ctx.hyphenate === false ? undefined : ctx.hyphenation;
+}
+
+/** Whether the engine hyphenates with its patterns: `hyphenate` is on and no callback replaces them. */
+export function usesPatterns(ctx: TextCtx): boolean {
+  return ctx.hyphenate === true && ctx.hyphenation === undefined;
 }
 
 const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
@@ -409,7 +427,7 @@ export function textNodeStyle(
   if (own.ellipsis) set('ellipsis', true);
   if (ctx.whiteSpace !== undefined && ctx.whiteSpace !== 'normal') set('whiteSpace', ctx.whiteSpace);
   // A hyphenation callback replaces the patterns: the engine would break the words it keeps whole.
-  if (ctx.hyphenate && !ctx.hyphenation) set('hyphenate', true);
+  if (usesPatterns(ctx)) set('hyphenate', true);
   if (ctx.lang !== undefined && ctx.lang !== docLang) set('lang', ctx.lang);
   return out;
 }

@@ -216,10 +216,15 @@ impl Task for RenderJob {
 /// later renders.
 #[napi]
 pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
+    let bytes = data.to_vec();
     let mut fonts = FONTS
         .write()
         .map_err(|_| engine_error("INTERNAL", "", "font registry poisoned"))?;
-    fonts.register(id, data.to_vec()).map_err(from_engine)
+    // The panic is caught while the guard is still held, so it does not
+    // poison the registry, and a font is only inserted once it has parsed.
+    catch_unwind(AssertUnwindSafe(|| fonts.register(id, bytes)))
+        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?
+        .map_err(from_engine)
 }
 
 /// Removes a registered font; returns whether it existed.
@@ -236,7 +241,9 @@ pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, Stri
     let mut store = HYPHENATION
         .write()
         .map_err(|_| engine_error("INTERNAL", "", "hyphenation registry poisoned"))?;
-    store.register(&lang, &bytes).map_err(from_engine)
+    catch_unwind(AssertUnwindSafe(|| store.register(&lang, &bytes)))
+        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?
+        .map_err(from_engine)
 }
 
 /// Removes registered patterns; returns whether there were any.

@@ -234,7 +234,8 @@ export type BookmarkProp = string | { title: string; level?: number };
 
 /**
  * Splits a word into the parts a line may break between: `'hyphenation'` →
- * `['hy', 'phen', 'ation']`. `[word]` keeps the word whole.
+ * `['hy', 'phen', 'ation']`. `[word]` keeps the word whole. The word is as displayed, after
+ * `textTransform` (`uppercase` gives `'HYPHENATION'`).
  */
 export type HyphenationCallback = (word: string) => string[];
 
@@ -302,9 +303,9 @@ type PresetName = PagePreset | Lowercase<PagePreset> | Uppercase<PagePreset>;
 export type PageSize =
   | PresetName
   | `${PresetName}-landscape`
-  | Length
-  | [width: Length, height: Length]
-  | [side: Length]
+  | AbsoluteLength
+  | [width: AbsoluteLength, height: AbsoluteLength]
+  | [side: AbsoluteLength]
   | {
       width: AbsoluteLength;
       height: AbsoluteLength;
@@ -349,14 +350,18 @@ export interface ViewProps extends Flow {
 }
 
 export interface TextProps extends Flow {
-  /** Hyphenate this text (same as `hyphens-auto`). Needs patterns for its language. */
+  /**
+   * Hyphenate this text (same as `hyphens-auto`). Needs patterns for its language. `false`
+   * (`hyphens-none`) also turns off the registered `hyphenationCallback`.
+   */
   hyphenate?: boolean;
   /** Language of this text, when it differs from the document's. */
   lang?: string;
   /**
-   * Breaks words where this function says, instead of the built-in patterns (`hyphenate`).
-   * Overrides the registered callback (`Font.registerHyphenationCallback`); `null` turns it off
-   * for this text.
+   * Breaks words where this function says, instead of the built-in patterns (`hyphenate`), which
+   * then leave this text alone. Overrides the registered callback
+   * (`Font.registerHyphenationCallback`); `null` turns it off for this text, which goes back to
+   * `hyphenate`.
    */
   hyphenationCallback?: HyphenationCallback | null;
   /** Base direction: `rtl` for Arabic or Hebrew paragraphs, `auto` from the first strong letter. */
@@ -368,10 +373,15 @@ export interface TextProps extends Flow {
   render?: RenderProp;
 }
 
-export interface LinkProps extends Flow {
-  /** The same as `href`. */
-  src?: string;
-}
+/** A `Link` needs a target: `href`, or `src`, which is the same. */
+export type LinkProps = Flow &
+  (
+    | { href: string; src?: string }
+    | {
+        /** The same as `href`. */
+        src: string;
+      }
+  );
 
 /**
  * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must

@@ -309,11 +309,13 @@ PDF/A-2b, for archiving.
   Font.registerHyphenationCallback((word) => (whole.has(word) ? [word] : syllables(word)));
   ```
 
-  A word is a run of letters; spaces, digits and punctuation stay as they are, and a word that
-  already has soft hyphens is left alone. A `Text` takes its own function with
-  `hyphenationCallback={fn}`, or goes back to `hyphenate` and `lang` with
-  `hyphenationCallback={null}`. Text with `whitespace-nowrap` or `whitespace-pre` is not
-  broken.
+  A word is a run of letters as displayed, after `uppercase` or another text transform; spaces,
+  digits and punctuation stay as they are, and a word that already has soft hyphens is left
+  alone. A `Text`, or a `Text` inside one, takes its own function with
+  `hyphenationCallback={fn}`, and the built-in patterns leave its words alone; it goes back to
+  `hyphenate` and `lang` with `hyphenationCallback={null}`. `hyphenate={false}` (or
+  `hyphens-none`) turns the callback off for that text. Text with `whitespace-nowrap` or
+  `whitespace-pre` is not broken.
 - **Right-to-left text** uses `dir="rtl"` on a `Text`. Register a font that covers the script
   first (for example Noto Sans Arabic or Noto Sans Hebrew with `Font.register`): the bundled
   fonts cover Latin, Greek and Cyrillic.
@@ -450,10 +452,13 @@ Yes. A document is ordinary React: components, props, context, `.map` and condit
 as do hooks that compute during render (`useMemo`, `useContext`). The PDF is built from that
 first render, so state updates and effects do not change it.
 
-**A page number at the right of a footer stops short of the margin.**
-Give its text `text-right`: `<Text className="text-right">Page <PageNumber /></Text>`. The
-engine reserves room for the widest page number, and the alignment decides where shorter ones
-sit.
+**How much room does a page number take?**
+In a header or footer, its own digits: the text is laid out again on every page, so
+`<Text className="text-right">Page <PageNumber /> of <TotalPages /></Text>` ends at the
+footer's padding on every page. In the page body, the engine sizes the text for a three-digit
+number, because the page breaks depend on that layout: each line is still aligned with the real
+digits, but a box sized by its text keeps the three-digit width, and a number of four digits or
+more can overflow it.
 
 **Is the output the same on every machine?**
 Yes, for the same input, fonts and options, as long as you leave out `creationDate`.
@@ -464,4 +469,5 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
   run on edge runtimes such as Cloudflare Workers.
 - **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet.
 - **Tailwind.** Variants (`md:`, `hover:`), shadows and gradients are not supported.
-- **Output.** There is no streaming: you get the whole PDF as bytes.
+- **Output.** The engine produces the whole PDF at once: `renderToStream` streams the finished
+  file, it does not send pages while later ones are still being laid out.

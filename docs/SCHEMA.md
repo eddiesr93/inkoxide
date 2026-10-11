@@ -317,6 +317,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `decorationStyle` | `"solid"` \| `"double"` \| `"dotted"` \| `"dashed"` \| `"wavy"` |  | default `"solid"` |
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  |  |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
+| `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
 
 ### ColumnSpec
 

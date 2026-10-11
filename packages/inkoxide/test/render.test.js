@@ -107,6 +107,31 @@ test('fonts can be unregistered', () => {
   );
 });
 
+test('broken font files are FONT_ERROR and leave the registry usable', () => {
+  for (const f of [
+    'woff/RobotoMono-Regular.woff',
+    'woff/RobotoMono-Regular.woff2',
+    'RobotoMono-Regular.ttf',
+  ]) {
+    const bytes = fixture(`fonts/${f}`);
+    const broken = [
+      bytes.subarray(0, 64),
+      bytes.subarray(0, bytes.length >> 1),
+      Buffer.from(bytes).fill(0xff, 12, 400),
+    ];
+    for (const b of broken) {
+      assert.throws(
+        () => ink.registerFont('Broken', b),
+        (e) => e instanceof ink.InkoxideError && e.code === 'FONT_ERROR',
+        f,
+      );
+    }
+  }
+  assert.strictEqual(ink.unregisterFont('Broken'), false);
+  ink.registerFont('Tmp', fixture('fonts/woff/RobotoMono-Regular.woff2'));
+  assert.strictEqual(ink.unregisterFont('Tmp'), true);
+});
+
 test('wrong argument types are INVALID_ARGUMENT errors', async () => {
   const isArgError = (e) => {
     assert.ok(e instanceof ink.InkoxideError, `${e}`);

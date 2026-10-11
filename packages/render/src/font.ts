@@ -107,8 +107,9 @@ export const Font = {
    * Breaks words where `callback` says, in every `Text` of later renders:
    * `Font.registerHyphenationCallback((word) => (word === 'Inkoxide' ? [word] : split(word)))`.
    * It returns the parts of a word in order; `[word]` keeps the word whole. It replaces the
-   * built-in patterns (`hyphenate`), and a `Text` can override it with its own
-   * `hyphenationCallback`. Registering again replaces it; `null` removes it.
+   * built-in patterns (`hyphenate`); a `Text` can override it with its own
+   * `hyphenationCallback`, and turns it off with `hyphenate={false}`. Registering again replaces
+   * it; `null` removes it.
    */
   registerHyphenationCallback(callback: HyphenationCallback | null): void {
     if (callback !== null && typeof callback !== 'function') {

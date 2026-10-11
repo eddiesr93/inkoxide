@@ -162,8 +162,9 @@ PDFs by hash.
 
 ## Hyphenation
 
-A text node hyphenates when its style has `hyphenate: true`. The language
-is the node's `lang`, or else `meta.lang`. The engine includes patterns
+A text node hyphenates when its style has `hyphenate: true`; a run with
+its own `hyphenate` overrides that for its words. The language is the
+node's `lang`, or else `meta.lang`. The engine includes patterns
 for about 50 languages, English included. For a language without
 built-in patterns, or to replace the built-in ones, load standard TeX
 patterns yourself, once, at startup:
