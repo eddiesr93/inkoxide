@@ -132,7 +132,7 @@ import { readFileSync } from 'node:fs';
 
 const logo = readFileSync('logo.png');
 
-<Image src={logo} className="h-10 w-10" fit="contain" />         // bytes
+<Image src={logo} className="h-10 w-10" fit="contain" />         // bytes: Uint8Array, Buffer, ArrayBuffer
 <Image src="data:image/png;base64,iVBORw0…" />                  // a base64 data: URL
 <Image src="logo" />                                            // an id from options.images
 <Image src="./images/logo.png" />                               // a file, when allowed
@@ -166,11 +166,12 @@ const logo = readFileSync('logo.png');
   body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
 - **Functions and promises.** A function is called once per render, after the tree is built and
   before the engine runs, with the other images loading in parallel; a promise is awaited
-  then. Either resolves to bytes, a string or a request, read as if written in `src`. If it throws, rejects or does not settle within
-  `imageTimeoutMs` (default 10 000 ms), the render fails with `TEMPLATE_ERROR`. A `render` prop
-  that creates a new function or promise each time has it loaded again when it renders again
-  for the page count. Prefer a function to a promise made before the render starts: a promise
-  that rejects while nothing awaits it yet is an unhandled rejection.
+  then. Either resolves to bytes, a string or a request, read as if written in `src`. If it
+  throws, rejects or does not settle within `imageTimeoutMs` (default 10 000 ms), the render
+  fails with `TEMPLATE_ERROR`. A `render` prop that creates a new function or promise each time
+  has it loaded again when it renders again for the page count. Prefer a function to a promise
+  made before the render starts: a promise that rejects while nothing awaits it yet is an
+  unhandled rejection.
 
 Image files and remote images are off by default, so a template cannot make your server read
 its files or fetch arbitrary URLs. Allow only the folders and hosts your images are in. Remote

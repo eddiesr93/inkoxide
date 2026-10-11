@@ -282,6 +282,15 @@ describe('image functions and promises', () => {
     }
   });
 
+  it('takes bytes as a Uint8Array, a Buffer or an ArrayBuffer, directly or resolved', async () => {
+    const buffer = logo.buffer.slice(logo.byteOffset, logo.byteOffset + logo.byteLength) as ArrayBuffer;
+    for (const bytes of [new Uint8Array(buffer), logo, buffer]) {
+      expect(countPages(await render(bytes))).toBe(1);
+      expect(countPages(await render(() => bytes))).toBe(1);
+      expect(countPages(await render(Promise.resolve(bytes)))).toBe(1);
+    }
+  });
+
   it('calls a function once per render, however many images use it', async () => {
     let calls = 0;
     const src = () => {

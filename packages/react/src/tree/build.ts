@@ -210,6 +210,19 @@ function requestKey(r: ImageRequest): string | undefined {
   return JSON.stringify([r.uri, (r.method ?? 'GET').toUpperCase(), headers, bytes, sent ?? null]);
 }
 
+/** One view per `ArrayBuffer`, so every build passes the same bytes object for it. */
+const views = new WeakMap<ArrayBuffer, Uint8Array>();
+
+function bytesOf(src: Uint8Array | ArrayBuffer): Uint8Array {
+  if (src instanceof Uint8Array) return src;
+  let view = views.get(src);
+  if (!view) {
+    view = new Uint8Array(src);
+    views.set(src, view);
+  }
+  return view;
+}
+
 export interface BuildOptions {
   fonts: FontRegistry;
   /** Default font stack (Tailwind's `--font-sans`). */
@@ -939,9 +952,9 @@ class Builder {
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
     const src = inst.props.src as ImageSrc | undefined;
-    if (src instanceof Uint8Array) {
+    if (src instanceof Uint8Array || src instanceof ArrayBuffer) {
       node.src = this.generated.of(src, 'image');
-      this.images[node.src] = src;
+      this.images[node.src] = bytesOf(src);
     } else if (typeof src === 'string' && this.registered.has(src)) {
       node.src = src;
     } else if (typeof src === 'string' && src.startsWith('data:')) {

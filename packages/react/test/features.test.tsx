@@ -718,6 +718,19 @@ describe('image sources', () => {
     expect(p?.kind === 'deferred' && (await p.src)).toEqual(new Uint8Array([1]));
   });
 
+  it('takes an ArrayBuffer as bytes, one id per buffer', () => {
+    const buffer = new Uint8Array([1, 2, 3]).buffer;
+    const r = images(
+      <>
+        <Image src={buffer} />
+        <Image src={buffer} />
+      </>,
+    );
+    expect(srcs(r)).toEqual(['image-0', 'image-0']);
+    expect(r.images).toEqual({ 'image-0': new Uint8Array([1, 2, 3]) });
+    expect(r.rebuild(2).images['image-0']).toBe(r.images['image-0']);
+  });
+
   it('never generates an id the caller passes in', () => {
     const r = images(
       <>

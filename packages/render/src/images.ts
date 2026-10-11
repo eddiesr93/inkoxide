@@ -100,6 +100,7 @@ async function resolveValue(
     throw new RenderError('TEMPLATE_ERROR', `An <Image src> function or promise resolved to ${why}.`);
   };
   if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
   if (typeof value === 'string') {
     const known = Object.hasOwn(registered, value) ? registered[value] : undefined;
     if (known) return known;
