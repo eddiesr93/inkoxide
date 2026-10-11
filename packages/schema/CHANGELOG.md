@@ -22,7 +22,10 @@ version 2.
   pages tall, so a `bottom` inset or a node after content that moved to a later page landed
   elsewhere, and a node below the content could add a page. One placed on the first page with
   `top`, `left` and `right` in points, before any content moves to another page, renders as
-  before. `fixed` now has a description in the schema.
+  before. `fixed` now has a description in the schema. Such a node with a negative `zIndex`
+  is painted under the flow, the others over it. Its own `break` may hold only `fixed`, and
+  its subtree is validated like a header's: no `break` and no `pageBreak`, which did nothing
+  there.
 - **Fixed:** every length and the other unbounded numbers have a range, so layout can no longer
   overflow and write `inf` or `NaN` into the PDF, which made it invalid. A percentage like
   `"9999999999999999999999999999999999999%"` in `width`, `margin` or a `translate` was

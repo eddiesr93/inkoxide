@@ -5,12 +5,10 @@ or should come sooner.
 
 ## Now
 
-- **`fixed`**: repeat any element on every page, besides `<Header>` and `<Footer>`.
-- **`objectPosition`**: place a fitted image inside its box (today it is always centred).
 - **Document props**: `producer`, `pageMode`, `pageLayout`.
-- **`debug`**: outline boxes, padding and margins.
 - **Page numbers in body text**: lay them out with their real digits, as headers and footers
   already do.
+- **Text outlines in `debug`**: outline inline runs inside a `Text`, line by line.
 
 ## Next: engine features
 

@@ -35,8 +35,17 @@ All notable changes to the packages in this repository. The format follows
   - `Font.registerHyphenationCallback` and a `hyphenationCallback` prop on `Text`, to split
     words with your own function.
 - **`renderToStream`**: the PDF as a Node `Readable`.
+- **`fixed`**: an element placed directly in a `Page` with `position: 'absolute'` repeats on
+  every page, placed against the page's content box, for watermarks, borders and page
+  numbers. A negative `zIndex` puts it under the content.
+- **`objectPosition`** on images, in style objects and as Tailwind `object-*` classes, places
+  a fitted image in its box: keywords, percentages or lengths. `objectFit` also has its
+  Tailwind classes now.
+- **`debug`**: outlines the margin, border, padding and content boxes of an element and labels
+  its size; on a `Page` or the `Document`, of every element. Labels are drawn, not text, so
+  copying text from the PDF is unaffected.
 - **`@inkoxide/schema`**: `hyphenate` on a text run, overriding its text node's setting for
-  the run's words.
+  the run's words; `objectPosition` on images; `debug` on nodes, rows, cells and pages.
 
 ### Changed
 
@@ -44,6 +53,12 @@ All notable changes to the packages in this repository. The format follows
   it looks like a URL. Such strings used to be fetched.
 - `Page` `size` strings are checked in full: `"A4-landscape-x"` is an error instead of `A4`
   landscape.
+- Every length, percentage and factor in a document has a range (percentages within ±10000%,
+  points within ±1000000), and a value outside it is `OUT_OF_RANGE`. In React, an infinite or
+  `NaN` style value is an error instead of being dropped.
+- A fixed, absolutely positioned child of a page in a JSON document is placed against the
+  page's content box on every page. Its insets used to be resolved against the whole flow, so
+  `bottom` and percentages put it in the wrong place.
 
 ### Fixed
 
@@ -52,6 +67,9 @@ All notable changes to the packages in this repository. The format follows
   space.
 - A panic while registering a font or hyphenation patterns is reported as an `INTERNAL` error
   instead of ending the process.
+- Huge percentages, for example in `width`, `margin` or a `translate`, no longer write `inf` or
+  `NaN` into the PDF, which made it invalid. The PDF writer also never writes a non-finite
+  number, from layout or from an SVG image.
 
 ## 0.2.0 - 2026-10-11
 
