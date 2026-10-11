@@ -20,6 +20,8 @@ All notable changes to the packages in this repository. The format follows
 - `inkoxide` no longer exports its `__testPanic` test hook, which was never public API.
 - `<Svg fixed>` and `<Svg debug>` no longer write `fixed` and `debug` attributes into the
   drawing.
+- The `@inkoxide/react` renderer gives React its real version, from its `package.json`, instead
+  of `0.1.0`.
 
 ## 0.3.0 - 2026-10-12
 
