@@ -324,6 +324,8 @@ class Builder {
   private readonly registered: ReadonlySet<string>;
   dynamic = false;
   private docLang: string | undefined;
+  /** `debug` on the `<Document>`: every page outlines its elements. */
+  private debugAll = false;
   /** Hyphenated words by callback, so each distinct word calls it once per build. */
   private readonly hyphenatedWords = new Map<HyphenationCallback, Map<string, string>>();
   /** The size of the page being built: what `vw` and `vh` are relative to. */
@@ -433,6 +435,7 @@ class Builder {
       if (typeof v === 'string') meta[k] = v;
     }
     this.docLang = meta.lang;
+    this.debugAll = p.debug === true;
     const family = this.opts.defaultFamily ?? tw('font-sans').fontFamily ?? ['Inter'];
     const ctx: TextCtx = {
       fontFamily: family,
@@ -530,6 +533,7 @@ class Builder {
     if (own.backgroundColor !== undefined) {
       spec.background = own.backgroundColor === 'currentColor' ? ctx.color : own.backgroundColor;
     }
+    if (this.debugAll || inst.props.debug === true) spec.debug = true;
     const flow: Node[] = [];
     for (const child of inst.children) {
       if (isEl(child, HOST.Header) || isEl(child, HOST.Footer)) {
@@ -641,12 +645,20 @@ class Builder {
   }
 
   private flowProps(
-    node: { id?: string; break?: Break; link?: string; bookmark?: Bookmark; pages?: PageFilter },
+    node: {
+      id?: string;
+      break?: Break;
+      link?: string;
+      bookmark?: Bookmark;
+      pages?: PageFilter;
+      debug?: boolean;
+    },
     inst: Instance,
   ): void {
     const p = inst.props;
     if (typeof p.id === 'string') node.id = p.id;
     if (p.pages !== undefined) node.pages = p.pages as PageFilter;
+    if (p.debug === true) node.debug = true;
     // Aliases for the same behaviour: `wrap`, `break={true}` and `minPresenceAhead`.
     const br = p.break === true ? 'page-before' : p.break === false ? undefined : p.break;
     let b = toBreak(br as BreakProp | undefined);
@@ -728,7 +740,11 @@ class Builder {
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
     if (inst.type === HOST.View || inst.type === HOST.Link) this.flowProps(node, inst);
-    else if (typeof inst.props.id === 'string') node.id = inst.props.id;
+    else {
+      // <Header> and <Footer>.
+      if (typeof inst.props.id === 'string') node.id = inst.props.id;
+      if (inst.props.debug === true) node.debug = true;
+    }
     const children = this.children(content, ctx, inst);
     if (children.length > 0) node.children = children;
     return this.mark(node, inst);
@@ -937,6 +953,7 @@ class Builder {
       const rctx = inherit(ctx, rOwn);
       const row: TableRow = { cells: [] };
       if (typeof r.props.id === 'string') row.id = r.props.id;
+      if (r.props.debug === true) row.debug = true;
       const minHeight =
         (r.props.minHeight as number | undefined) ??
         (typeof rOwn.minHeight === 'number' ? rOwn.minHeight : undefined);
@@ -960,6 +977,7 @@ class Builder {
     const cell: TableCell = {};
     const p = inst.props;
     if (typeof p.id === 'string') cell.id = p.id;
+    if (p.debug === true) cell.debug = true;
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
     let style: Style | undefined = boxStyle(own, ctx.color, true);
@@ -1088,7 +1106,7 @@ class Builder {
     const node: FieldNode = { type: 'field', field };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const n = node as { id?: string; break?: Break; pages?: PageFilter };
+    const n = node as { id?: string; break?: Break; pages?: PageFilter; debug?: boolean };
     this.flowProps(n, inst);
     return this.mark(node, inst);
   }
@@ -1160,6 +1178,8 @@ class Builder {
         if (v[k] !== undefined) (wrapper as unknown as Record<string, unknown>)[k] = v[k];
         delete v[k];
       }
+      // Both outlined: the wrapper holds the margins, the variant the border and padding.
+      if (v.debug === true) wrapper.debug = true;
       const inner: Record<string, unknown> = { ...(v.style as Record<string, unknown> | undefined) };
       for (const k of OUTER_KEYS) {
         if (inner[k] !== undefined) (outer as Record<string, unknown>)[k] = inner[k];

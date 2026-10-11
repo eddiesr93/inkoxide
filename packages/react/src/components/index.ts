@@ -244,6 +244,11 @@ interface Common {
   style?: Style;
   /** Node id: the target of `href="#id"` links. */
   id?: string;
+  /**
+   * Draws the element's boxes over the page: margin (orange), border (yellow), padding (green),
+   * content box (blue outline) and its size in points. A development aid; it changes the output.
+   */
+  debug?: boolean;
   children?: ReactNode;
 }
 
@@ -280,6 +285,8 @@ export interface DocumentProps {
   creationDate?: string;
   /** Font ids tried for characters missing from a run's font. Default: `['NotoSans-Regular']`. */
   fallbackFonts?: string[];
+  /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */
+  debug?: boolean;
   children?: ReactNode;
 }
 
@@ -325,6 +332,8 @@ export interface PageProps {
   /** Text utilities set the defaults inherited by the page's content; `bg-*` sets the page background. */
   className?: string;
   style?: Style;
+  /** Outlines the page's margins and the boxes of every element on it, header and footer included. */
+  debug?: boolean;
   children?: ReactNode;
 }
 
@@ -435,6 +444,8 @@ export interface RowProps {
   style?: Style;
   id?: string;
   minHeight?: number;
+  /** Outlines the row's box. */
+  debug?: boolean;
   children?: ReactNode;
 }
 
@@ -452,6 +463,8 @@ export interface SpacerProps {
   className?: string;
   style?: Style;
   id?: string;
+  /** Outlines the spacer's box. */
+  debug?: boolean;
 }
 
 export interface PageBreakProps {
@@ -529,6 +542,8 @@ export interface SvgProps extends SvgPresentation {
   pages?: PageFilter;
   break?: BreakProp;
   href?: string;
+  /** Outlines the drawing's box. */
+  debug?: boolean;
 }
 
 export interface PathProps extends SvgPresentation {

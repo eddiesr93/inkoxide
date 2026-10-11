@@ -93,6 +93,29 @@ describe('renderToBuffer', () => {
     expect(bytes).toContain('https://example.com/inline');
   });
 
+  it('draws debug outlines without changing the pages, the links or the fonts', async () => {
+    const doc = (debug: boolean) => (
+      <Document debug={debug}>
+        <Page style={{ padding: 40 }}>
+          <View style={{ margin: 8, padding: 6, borderWidth: 2 }}>
+            <Text>
+              See <Link href="https://example.com/debug">the website</Link>
+            </Text>
+          </View>
+        </Page>
+      </Document>
+    );
+    const plain = await renderToBuffer(doc(false));
+    const debug = await renderToBuffer(doc(true));
+    expect(Buffer.compare(debug, plain)).not.toBe(0);
+    expect(countPages(debug)).toBe(countPages(plain));
+    const text = (pdf: Uint8Array) => Buffer.from(pdf).toString('latin1');
+    expect(text(debug).match(/\/Subtype ?\/Link/g)).toHaveLength(1);
+    // Labels are drawn with lines: no font is added.
+    const fonts = (pdf: Uint8Array) => text(pdf).match(/\/Type ?\/Font\b/g)?.length;
+    expect(fonts(debug)).toBe(fonts(plain));
+  });
+
   it('names the component when the structure is wrong', async () => {
     const Broken = () => (
       <Document>
