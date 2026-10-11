@@ -13,6 +13,7 @@ export const HOST = {
   Footer: 'ink-footer',
   View: 'ink-view',
   Text: 'ink-text',
+  Link: 'ink-link',
   Image: 'ink-image',
   Table: 'ink-table',
   Row: 'ink-row',
@@ -310,6 +311,11 @@ export interface TextProps extends Flow {
   render?: RenderProp;
 }
 
+export interface LinkProps extends Flow {
+  /** The same as `href`. */
+  src?: string;
+}
+
 export interface ImageProps extends Omit<Flow, 'children'> {
   /**
    * Bytes (JPEG, PNG, GIF, WebP, SVG), a `data:` URL, the id of an image passed in the render
@@ -496,6 +502,11 @@ export const Header = host<HeaderProps>(HOST.Header);
 export const Footer = host<FooterProps>(HOST.Footer);
 export const View = host<ViewProps>(HOST.View);
 export const Text = host<TextProps>(HOST.Text);
+/**
+ * A link to `href` (`https://…`, `mailto:…` or `#id`; `src` is the same). Inside a `Text` it is
+ * an inline run; elsewhere a box, like a `View` with `href`. It adds no colour or underline.
+ */
+export const Link = host<LinkProps>(HOST.Link);
 export const Image = host<ImageProps>(HOST.Image);
 export const Table = host<TableProps>(HOST.Table);
 export const Row = host<RowProps>(HOST.Row);

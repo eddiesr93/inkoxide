@@ -461,9 +461,19 @@ class Builder {
         { kind: 'props' },
       );
     }
-    if (typeof p.href === 'string') node.link = p.href;
+    const href = inst.type === HOST.Link ? this.target(inst) : p.href;
+    if (typeof href === 'string') node.link = href;
     const bm = toBookmark(p.bookmark as BookmarkProp | undefined);
     if (bm) node.bookmark = bm;
+  }
+
+  /** A `<Link>`'s target: `href`, or its alias `src`. */
+  private target(inst: Instance): string {
+    const href = inst.props.href ?? inst.props.src;
+    if (typeof href !== 'string' || href === '') {
+      this.fail(inst, '<Link> needs an href: https://…, mailto:… or #id.', { kind: 'props' });
+    }
+    return href;
   }
 
   private node(inst: Instance, ctx: TextCtx): SchemaNode {
@@ -472,6 +482,7 @@ class Builder {
     }
     switch (inst.type) {
       case HOST.View:
+      case HOST.Link:
         return this.box(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
@@ -516,7 +527,7 @@ class Builder {
     const node: SchemaNode = { type: 'box' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    if (inst.type === HOST.View) this.flowProps(node, inst);
+    if (inst.type === HOST.View || inst.type === HOST.Link) this.flowProps(node, inst);
     else if (typeof inst.props.id === 'string') node.id = inst.props.id;
     const children = this.children(content, ctx, inst);
     if (children.length > 0) node.children = children;
@@ -550,23 +561,26 @@ class Builder {
         continue;
       }
       switch (n.type) {
-        case HOST.Text: {
+        case HOST.Text:
+        case HOST.Link: {
           const own = this.styleOf(n);
           const box = boxKeys(own);
           if (box.length > 0 || textOnlyKeys(own).length > 0) {
+            const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
             this.fail(
               n,
-              `A nested <Text> is an inline run: only text utilities apply, not "${[...box, ...textOnlyKeys(own)].join(', ')}" (className="${n.props.className ?? ''}").`,
+              `${what} is an inline run: only text utilities apply, not "${[...box, ...textOnlyKeys(own)].join(', ')}" (className="${n.props.className ?? ''}").`,
               {
                 kind: 'tailwind',
                 className: n.props.className as string | undefined,
               },
             );
           }
+          const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
           const inner =
-            hasInherited(own) || n.props.href !== undefined || n.props.lang !== undefined
+            hasInherited(own) || href !== undefined || n.props.lang !== undefined
               ? inherit(ctx, own, {
-                  link: n.props.href as string | undefined,
+                  link: href,
                   lang: n.props.lang as string | undefined,
                 })
               : ctx;
