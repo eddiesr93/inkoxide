@@ -96,8 +96,10 @@ cargo-fuzz are installed and skips it otherwise.
 
 ## macOS (Apple Silicon)
 
-The engine has been verified on Linux x86_64 only; the development
-container is Linux. To verify macOS arm64, run on the Mac:
+Verified on 2026-10-11 (macOS arm64, Node 24): `scripts/ci.sh` passes,
+and every fixture matches the Linux references at the default visual
+threshold. `cargo-deny` and the fuzz smoke were not installed, so those
+steps were skipped. To verify again, run on the Mac:
 
 ```sh
 # Tools (once)

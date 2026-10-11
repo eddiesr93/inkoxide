@@ -42,7 +42,7 @@ The output is deterministic for a fixed creation date.
 | Platform | Status |
 |---|---|
 | Linux x86_64 (glibc) | ✅ verified: `scripts/ci.sh` green |
-| macOS arm64 | ⏳ not yet verified; steps in [docs/TESTING.md](docs/TESTING.md#macos-apple-silicon) |
+| macOS arm64 | ✅ verified: `scripts/ci.sh` green, visual diff at the default threshold ([docs/TESTING.md](docs/TESTING.md#macos-apple-silicon)) |
 | Linux musl, Linux arm64, macOS x86_64, Windows | untested |
 
 ## Setup
