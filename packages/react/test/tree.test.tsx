@@ -287,6 +287,94 @@ describe('hyphenation callback', () => {
     expect(nowrap.runs[0]?.text).toBe('nowrap words');
   });
 
+  it('is turned off by hyphenate={false} and hyphens-none, unless a Text gives its own', () => {
+    const reg = registry();
+    reg.hyphenationCallback = thirds;
+    const r = renderTemplate(
+      <Document>
+        <Page>
+          <Text hyphenate={false}>some words</Text>
+          <Text className="hyphens-none">some words</Text>
+          <Text>
+            some <Text hyphenate={false}>words</Text> <Text className="hyphens-manual">words</Text>
+          </Text>
+          <Text className="hyphens-none">
+            some <Text hyphenationCallback={thirds}>words</Text>
+          </Text>
+        </Page>
+      </Document>,
+      { fonts: reg },
+    );
+    const [off, none, inline, own] = r.document.pages[0].children as TextNode[];
+    expect(off?.runs.map((x) => x.text)).toEqual(['some words']);
+    expect(off?.style).toBeUndefined();
+    expect(none?.runs.map((x) => x.text)).toEqual(['some words']);
+    expect(inline?.runs.map((x) => x.text)).toEqual([`som${SHY}e words words`]);
+    expect(own?.runs.map((x) => x.text)).toEqual([`some wor${SHY}ds`]);
+  });
+
+  it('keeps the patterns off a run with its own callback inside hyphenated text', () => {
+    const r = render(
+      <Text hyphenate>
+        documentation <Text hyphenationCallback={(w) => [w]}>documentation</Text>{' '}
+        <Text className="hyphens-none">documentation</Text>
+      </Text>,
+    );
+    const text = first<TextNode>(r);
+    expect(text.style).toEqual({ hyphenate: true });
+    expect(text.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+      { text: 'documentation ', hyphenate: undefined },
+      { text: 'documentation', hyphenate: false },
+      { text: ' ', hyphenate: undefined },
+      { text: 'documentation', hyphenate: false },
+    ]);
+  });
+
+  it('brings the patterns back for a run with a null callback', () => {
+    const reg = registry();
+    reg.hyphenationCallback = thirds;
+    const r = renderTemplate(
+      <Document lang="en-US">
+        <Page>
+          <Text hyphenate>
+            some <Text hyphenationCallback={null}>words</Text>
+          </Text>
+          <Text>
+            some <Text hyphenationCallback={null}>words</Text>
+          </Text>
+        </Page>
+      </Document>,
+      { fonts: reg },
+    );
+    const [on, off] = r.document.pages[0].children as TextNode[];
+    // The callback replaces the patterns in the rest of the text.
+    expect(on?.style).toBeUndefined();
+    expect(on?.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+      { text: `som${SHY}e `, hyphenate: undefined },
+      { text: 'words', hyphenate: true },
+    ]);
+    // Without `hyphenate`, a run without a callback is not hyphenated.
+    expect(off?.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+      { text: `som${SHY}e words`, hyphenate: undefined },
+    ]);
+  });
+
+  it('sees each word as displayed, after textTransform', () => {
+    const asked: string[] = [];
+    render(
+      <Text
+        className="uppercase"
+        hyphenationCallback={(w) => {
+          asked.push(w);
+          return [w];
+        }}
+      >
+        word
+      </Text>,
+    );
+    expect(asked).toEqual(['WORD']);
+  });
+
   it('asks once for each distinct word', () => {
     const asked: string[] = [];
     const r = render(

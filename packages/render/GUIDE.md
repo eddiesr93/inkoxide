@@ -294,11 +294,13 @@ PDF/A-2b, for archiving.
   Font.registerHyphenationCallback((word) => (whole.has(word) ? [word] : syllables(word)));
   ```
 
-  A word is a run of letters; spaces, digits and punctuation stay as they are, and a word that
-  already has soft hyphens is left alone. A `Text` takes its own function with
-  `hyphenationCallback={fn}`, or goes back to `hyphenate` and `lang` with
-  `hyphenationCallback={null}`. Text with `whitespace-nowrap` or `whitespace-pre` is not
-  broken.
+  A word is a run of letters as displayed, after `uppercase` or another text transform; spaces,
+  digits and punctuation stay as they are, and a word that already has soft hyphens is left
+  alone. A `Text`, or a `Text` inside one, takes its own function with
+  `hyphenationCallback={fn}`, and the built-in patterns leave its words alone; it goes back to
+  `hyphenate` and `lang` with `hyphenationCallback={null}`. `hyphenate={false}` (or
+  `hyphens-none`) turns the callback off for that text. Text with `whitespace-nowrap` or
+  `whitespace-pre` is not broken.
 - **Right-to-left text** uses `dir="rtl"` on a `Text`. Register a font that covers the script
   first (for example Noto Sans Arabic or Noto Sans Hebrew with `Font.register`): the bundled
   fonts cover Latin, Greek and Cyrillic.

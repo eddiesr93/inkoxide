@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -159,6 +160,39 @@ describe('Font.registerHyphenationCallback', () => {
     expect(countPages(await renderToBuffer(<Words />))).toBe(1);
     Font.registerHyphenationCallback((word) => [word]);
     expect(countPages(await renderToBuffer(<Words />))).toBe(2);
+  });
+
+  const Para = ({ hyphenate, children }: { hyphenate?: boolean; children: ReactNode }) => (
+    <Document lang="en-US">
+      <Page size={{ width: 400, height: 110 }} style={{ fontSize: 10, lineHeight: 2 }}>
+        <Text hyphenate={hyphenate}>{children}</Text>
+      </Page>
+    </Document>
+  );
+  const words = 'Pneumonoultramicroscopicsilicovolcanoconiosis '.repeat(6);
+
+  it('gives way to hyphenate={false}', async () => {
+    Font.registerHyphenationCallback(threes);
+    expect(countPages(await renderToBuffer(<Para>{words}</Para>))).toBe(1);
+    expect(countPages(await renderToBuffer(<Para hyphenate={false}>{words}</Para>))).toBe(2);
+  });
+
+  it('keeps the patterns off a run with its own callback, and brings them back with null', async () => {
+    expect(countPages(await renderToBuffer(<Para hyphenate>{words}</Para>))).toBe(1);
+    const kept = (
+      <Para hyphenate>
+        <Text hyphenationCallback={(word) => [word]}>{words}</Text>
+      </Para>
+    );
+    expect(countPages(await renderToBuffer(kept))).toBe(2);
+    Font.registerHyphenationCallback((word) => [word]);
+    expect(countPages(await renderToBuffer(<Para hyphenate>{words}</Para>))).toBe(2);
+    const patterns = (
+      <Para hyphenate>
+        <Text hyphenationCallback={null}>{words}</Text>
+      </Para>
+    );
+    expect(countPages(await renderToBuffer(patterns))).toBe(1);
   });
 
   it('is removed with null and rejects anything but a function', async () => {

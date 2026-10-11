@@ -44,6 +44,7 @@ import { renderToInstances } from '../reconciler/render.ts';
 import {
   boxKeys,
   boxStyle,
+  callbackOf,
   hasInherited,
   inherit,
   type TextCtx,
@@ -51,6 +52,7 @@ import {
   textOnlyKeys,
   toPt,
   type Units,
+  usesPatterns,
   withStyleProp,
 } from './style.ts';
 import { svgDataUrl, svgMarkup } from './svg.ts';
@@ -690,15 +692,27 @@ class Builder {
     return this.mark(node, inst);
   }
 
-  /** Flattens inline content into runs, merging neighbours with the same resolved style. */
-  private runs(nodes: readonly Inline[], ctx: TextCtx, out: TextRun[], owner: Instance): void {
+  /**
+   * Flattens inline content into runs, merging neighbours with the same resolved style. `para`
+   * is whether the paragraph uses the engine's patterns; a run that differs says so itself.
+   */
+  private runs(
+    nodes: readonly Inline[],
+    ctx: TextCtx,
+    out: TextRun[],
+    owner: Instance,
+    para = usesPatterns(ctx),
+  ): void {
     for (const n of nodes) {
       if (n.kind === 'text') {
         if (n.text === '') continue;
+        // The callback sees the words as displayed, after `textTransform`.
         const text = transform(n.text, ctx.textTransform, ctx.lang);
         // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
-        const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : ctx.hyphenation;
-        this.push(out, cb ? this.hyphenated(text, cb, owner) : text, ctx, owner, undefined);
+        const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : callbackOf(ctx);
+        const patterns = usesPatterns(ctx);
+        const hyphenate = patterns === para ? undefined : patterns;
+        this.push(out, cb ? this.hyphenated(text, cb, owner) : text, ctx, owner, undefined, hyphenate);
         continue;
       }
       switch (n.type) {
@@ -722,14 +736,16 @@ class Builder {
             hasInherited(own) ||
             href !== undefined ||
             n.props.lang !== undefined ||
+            n.props.hyphenate !== undefined ||
             n.props.hyphenationCallback !== undefined
               ? inherit(ctx, own, {
                   link: href,
                   lang: n.props.lang as string | undefined,
+                  hyphenate: n.props.hyphenate as boolean | undefined,
                   hyphenation: n.props.hyphenationCallback as HyphenationCallback | null | undefined,
                 })
               : ctx;
-          this.runs(n.children, inner, out, n);
+          this.runs(n.children, inner, out, n, para);
           break;
         }
         case HOST.PageNumber:
@@ -788,6 +804,7 @@ class Builder {
     ctx: TextCtx,
     owner: Instance,
     placeholder: TextRun['placeholder'],
+    hyphenate?: boolean,
   ): void {
     const font = this.font(ctx, owner);
     const size = ctx.fontSize;
@@ -810,7 +827,8 @@ class Builder {
       sameColor(last.decorationColor, decoColor) &&
       last.decorationThickness === decoThickness &&
       last.decorationStyle === decoStyle &&
-      last.link === ctx.link
+      last.link === ctx.link &&
+      last.hyphenate === hyphenate
     ) {
       last.text += text;
       return;
@@ -823,6 +841,7 @@ class Builder {
     if (decoThickness !== undefined) run.decorationThickness = decoThickness;
     if (decoStyle) run.decorationStyle = decoStyle;
     if (ctx.link !== undefined) run.link = ctx.link;
+    if (hyphenate !== undefined) run.hyphenate = hyphenate;
     out.push(this.mark(run, owner));
   }
 
