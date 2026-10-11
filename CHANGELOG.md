@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-12
+
+`inkoxide` 0.3.0, `@inkoxide/schema` 2.1.0, `@inkoxide/tailwind` 0.2.0, `@inkoxide/react` 0.2.0
+and `@inkoxide/render` 0.2.0.
+
 ### Added
 
 - **`<Link>`**: a link as a component, next to `href` on `Text` and `View`. Inside a `Text` it

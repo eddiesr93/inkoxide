@@ -7,6 +7,10 @@ version 2.
 
 ## Unreleased
 
+## 2.1.0 - 2026-10-12
+
+Still document schema version 1.
+
 ### Added
 
 - **Debugging:** `debug` on nodes (all but `pageBreak`), table rows and cells, and pages draws
