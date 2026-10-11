@@ -2,6 +2,8 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable, Writable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 import { describe, expect, it } from 'vitest';
 
@@ -15,6 +17,7 @@ import {
   RenderError,
   renderToBuffer,
   renderToFile,
+  renderToStream,
   StyleSheet,
   Text,
   TotalPages,
@@ -102,5 +105,39 @@ describe('renderToBuffer', () => {
       </Document>
     );
     await expect(renderToBuffer(<Broken />)).rejects.toBeInstanceOf(RenderError);
+  });
+});
+
+describe('renderToStream', () => {
+  it('streams the same bytes as renderToBuffer, as Buffer chunks', async () => {
+    const element = <Receipt customer="Ada" lines={[{ name: 'Coffee', amount: 3.5 }]} />;
+    const stream = await renderToStream(element);
+    expect(stream).toBeInstanceOf(Readable);
+    const chunks: Buffer[] = [];
+    await pipeline(
+      stream,
+      new Writable({
+        write(chunk: Buffer, _encoding, done) {
+          chunks.push(chunk);
+          done();
+        },
+      }),
+    );
+    expect(chunks.every((c) => Buffer.isBuffer(c))).toBe(true);
+    const pdf = Buffer.concat(chunks);
+    expect(pdf.equals(Buffer.from(await renderToBuffer(element)))).toBe(true);
+  });
+
+  it('rejects before streaming when the render fails', async () => {
+    const Broken = () => (
+      <Document>
+        <Page>
+          <Text>
+            <View />
+          </Text>
+        </Page>
+      </Document>
+    );
+    await expect(renderToStream(<Broken />)).rejects.toBeInstanceOf(RenderError);
   });
 });

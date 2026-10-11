@@ -2,10 +2,11 @@
  * `Font.register`: adds a font family next to the bundled Inter, Noto Sans and
  * Roboto Mono. Registration only records the source; the file is read (or fetched) and handed
  * to the engine before the next render, so `register` stays synchronous.
+ * `Font.registerHyphenationCallback`: the word breaking used by every render.
  */
 import { readFile } from 'node:fs/promises';
 
-import { type FontWeightName, fonts, fontWeightValue } from '@inkoxide/react';
+import { type FontWeightName, fonts, fontWeightValue, type HyphenationCallback } from '@inkoxide/react';
 
 import { registerEngineFont } from './engine.ts';
 import { RenderError } from './types.ts';
@@ -97,6 +98,20 @@ export const Font = {
       known.set(id, face.src);
       pending.push({ id, family, weight, style, src: face.src });
     }
+  },
+
+  /**
+   * Breaks words where `callback` says, in every `Text` of later renders:
+   * `Font.registerHyphenationCallback((word) => (word === 'Inkoxide' ? [word] : split(word)))`.
+   * It returns the parts of a word in order; `[word]` keeps the word whole. It replaces the
+   * built-in patterns (`hyphenate`), and a `Text` can override it with its own
+   * `hyphenationCallback`. Registering again replaces it; `null` removes it.
+   */
+  registerHyphenationCallback(callback: HyphenationCallback | null): void {
+    if (callback !== null && typeof callback !== 'function') {
+      throw new Error('Font.registerHyphenationCallback needs a function, or null to remove it.');
+    }
+    fonts.hyphenationCallback = callback ?? undefined;
   },
 };
 

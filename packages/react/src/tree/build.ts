@@ -27,6 +27,7 @@ import {
   type FieldProps,
   HOST,
   HOST_NAME,
+  type HyphenationCallback,
   type Length,
   type PageSize,
   type RenderProp,
@@ -154,6 +155,8 @@ export interface BuildOptions {
   /** Page count from a previous render, for `render` props (1 when unknown). */
   pageCount?: number;
   remoteImages?: RemoteImagePolicy;
+  /** Splits words into syllables for every `Text` without its own `hyphenationCallback`. */
+  hyphenationCallback?: HyphenationCallback | undefined;
 }
 
 export interface BuildResult {
@@ -198,6 +201,10 @@ function transform(text: string, how: TextCtx['textTransform'], lang: string | u
   }
 }
 
+/** A word as a hyphenation callback sees it: letters, their marks, and soft hyphens. */
+const WORD = /[\p{L}\p{M}\u00AD]+/gu;
+const SHY = '\u00AD';
+
 function toBreak(b: BreakProp | undefined): Break | undefined {
   if (b === undefined) return undefined;
   if (b === 'avoid') return { inside: 'avoid' };
@@ -222,6 +229,8 @@ class Builder {
   private readonly remoteIds = new Map<string, string>();
   dynamic = false;
   private docLang: string | undefined;
+  /** Hyphenated words by callback, so each distinct word calls it once per build. */
+  private readonly hyphenatedWords = new Map<HyphenationCallback, Map<string, string>>();
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
@@ -345,6 +354,7 @@ class Builder {
       orphans: undefined,
       widows: undefined,
       lang: meta.lang,
+      hyphenation: this.opts.hyphenationCallback,
       link: undefined,
     };
     const pages = root.children
@@ -616,6 +626,7 @@ class Builder {
     const ctx = inherit(parent, own, {
       lang: p.lang as string | undefined,
       hyphenate: p.hyphenate as boolean | undefined,
+      hyphenation: p.hyphenationCallback as HyphenationCallback | null | undefined,
       direction: p.dir as TextCtx['direction'],
       orphans: p.orphans as number | undefined,
       widows: p.widows as number | undefined,
@@ -633,7 +644,10 @@ class Builder {
     for (const n of nodes) {
       if (n.kind === 'text') {
         if (n.text === '') continue;
-        this.push(out, transform(n.text, ctx.textTransform, ctx.lang), ctx, owner, undefined);
+        const text = transform(n.text, ctx.textTransform, ctx.lang);
+        // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
+        const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : ctx.hyphenation;
+        this.push(out, cb ? this.hyphenated(text, cb, owner) : text, ctx, owner, undefined);
         continue;
       }
       switch (n.type) {
@@ -654,10 +668,14 @@ class Builder {
           }
           const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
           const inner =
-            hasInherited(own) || href !== undefined || n.props.lang !== undefined
+            hasInherited(own) ||
+            href !== undefined ||
+            n.props.lang !== undefined ||
+            n.props.hyphenationCallback !== undefined
               ? inherit(ctx, own, {
                   link: href,
                   lang: n.props.lang as string | undefined,
+                  hyphenation: n.props.hyphenationCallback as HyphenationCallback | null | undefined,
                 })
               : ctx;
           this.runs(n.children, inner, out, n);
@@ -671,6 +689,46 @@ class Builder {
           this.fail(n, `<${HOST_NAME[n.type]}> cannot be inside <Text>.`);
       }
     }
+  }
+
+  /** Joins the parts `cb` returns for each word with soft hyphens, which the engine breaks at. */
+  private hyphenated(text: string, cb: HyphenationCallback, owner: Instance): string {
+    let done = this.hyphenatedWords.get(cb);
+    if (!done) {
+      done = new Map();
+      this.hyphenatedWords.set(cb, done);
+    }
+    const cache = done;
+    return text.replace(WORD, (word) => {
+      // Soft hyphens already in a word are the author's own break points.
+      if (word.includes(SHY)) return word;
+      let out = cache.get(word);
+      if (out === undefined) {
+        out = this.syllablesOf(word, cb, owner).join(SHY);
+        cache.set(word, out);
+      }
+      return out;
+    });
+  }
+
+  private syllablesOf(word: string, cb: HyphenationCallback, owner: Instance): string[] {
+    let parts: unknown;
+    try {
+      parts = cb(word);
+    } catch (e) {
+      this.fail(owner, `hyphenationCallback threw for "${word}": ${(e as Error).message}`, {
+        kind: 'render',
+        cause: e,
+      });
+    }
+    if (!Array.isArray(parts) || parts.some((p) => typeof p !== 'string') || parts.join('') !== word) {
+      this.fail(
+        owner,
+        `hyphenationCallback returned ${JSON.stringify(parts)} for "${word}": return the parts of the word in order (["hy", "phen", "ation"]), or [word] to keep it whole.`,
+        { kind: 'props' },
+      );
+    }
+    return (parts as string[]).filter((p) => p !== '');
   }
 
   private push(

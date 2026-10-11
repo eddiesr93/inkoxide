@@ -22,6 +22,7 @@ export {
   renderSettled,
   renderToBuffer,
   renderToFile,
+  renderToStream,
   renderTree,
   type TemplateLike,
 } from './pipeline.ts';

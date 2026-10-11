@@ -230,6 +230,103 @@ describe('placeholders', () => {
   });
 });
 
+describe('hyphenation callback', () => {
+  const SHY = '\u00AD';
+  /** Splits every word after its third letter. */
+  const thirds = (word: string) => (word.length > 3 ? [word.slice(0, 3), word.slice(3)] : [word]);
+  const texts = (r: ReturnType<typeof render>) => first<TextNode>(r).runs.map((x) => x.text);
+
+  it('joins the parts of each word with soft hyphens, leaving the rest of the text alone', () => {
+    const keep = (w: string) => (w === 'Inkoxide' ? [w] : thirds(w));
+    const r = render(<Text hyphenationCallback={keep}>Inkoxide: typesetting, 2026 (régions) a b</Text>);
+    expect(texts(r)).toEqual([`Inkoxide: typ${SHY}esetting, 2026 (rég${SHY}ions) a b`]);
+  });
+
+  it('leaves words that already have soft hyphens as written', () => {
+    const r = render(<Text hyphenationCallback={thirds}>{`hyph${SHY}enation words`}</Text>);
+    expect(texts(r)).toEqual([`hyph${SHY}enation wor${SHY}ds`]);
+  });
+
+  it('replaces the built-in patterns, unless a Text turns it off with null', () => {
+    const r = render(
+      <View>
+        <Text hyphenate hyphenationCallback={thirds}>
+          words
+        </Text>
+        <Text hyphenate hyphenationCallback={null}>
+          words
+        </Text>
+      </View>,
+    );
+    const [a, b] = (first<BoxNode>(r).children ?? []) as TextNode[];
+    expect(a?.style).toBeUndefined();
+    expect(a?.runs[0]?.text).toBe(`wor${SHY}ds`);
+    expect(b?.style).toEqual({ hyphenate: true });
+    expect(b?.runs[0]?.text).toBe('words');
+  });
+
+  it('applies the registry callback to every Text, which a nested Text can override', () => {
+    const reg = registry();
+    reg.hyphenationCallback = thirds;
+    const r = renderTemplate(
+      <Document>
+        <Page>
+          <View>loose words</View>
+          <Text>
+            some <Text hyphenationCallback={(w) => [w]}>kept</Text> words
+          </Text>
+          <Text className="whitespace-nowrap">nowrap words</Text>
+        </Page>
+      </Document>,
+      { fonts: reg },
+    );
+    const [view, text, nowrap] = r.document.pages[0].children as [BoxNode, TextNode, TextNode];
+    const loose = view.children?.[0] as TextNode;
+    expect(loose.runs[0]?.text).toBe(`loo${SHY}se wor${SHY}ds`);
+    expect(text.runs[0]?.text).toBe(`som${SHY}e kept wor${SHY}ds`);
+    expect(nowrap.runs[0]?.text).toBe('nowrap words');
+  });
+
+  it('asks once for each distinct word', () => {
+    const asked: string[] = [];
+    const r = render(
+      <Text
+        hyphenationCallback={(w) => {
+          asked.push(w);
+          return [w];
+        }}
+      >
+        the cat and the hat and the bat
+      </Text>,
+    );
+    expect(texts(r)).toEqual(['the cat and the hat and the bat']);
+    expect(asked).toEqual(['the', 'cat', 'and', 'hat', 'bat']);
+  });
+
+  it('reports parts that do not make up the word, and exceptions, with the stack', () => {
+    function Title() {
+      return <Text hyphenationCallback={(w) => [w.toUpperCase()]}>word</Text>;
+    }
+    const bad = thrown(() => render(<Title />));
+    expect(bad.kind).toBe('props');
+    expect(bad.message).toContain('hyphenationCallback returned ["WORD"] for "word"');
+    expect(bad.componentStack).toContain('in Title');
+    const fails = thrown(() =>
+      render(
+        <Text
+          hyphenationCallback={() => {
+            throw new Error('no patterns');
+          }}
+        >
+          word
+        </Text>,
+      ),
+    );
+    expect(fails.kind).toBe('render');
+    expect(fails.message).toBe('hyphenationCallback threw for "word": no patterns');
+  });
+});
+
 describe('fonts', () => {
   it('resolves family, weight and style to registered ids', () => {
     const r = render(
