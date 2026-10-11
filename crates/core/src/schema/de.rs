@@ -471,6 +471,7 @@ pub struct RawNode {
     link: Option<Box<str>>,
     bookmark: Option<Box<Bookmark>>,
     pages: Option<Box<PageFilter>>,
+    debug: Option<bool>,
     children: Option<Vec<Node>>,
     runs: Option<Vec<TextRun>>,
     src: Option<String>,
@@ -519,6 +520,7 @@ impl TryFrom<RawNode> for Node {
             ("link", r.link.is_some()),
             ("bookmark", r.bookmark.is_some()),
             ("pages", r.pages.is_some()),
+            ("debug", r.debug.is_some()),
             ("children", r.children.is_some()),
             ("runs", r.runs.is_some()),
             ("src", r.src.is_some()),
@@ -531,10 +533,15 @@ impl TryFrom<RawNode> for Node {
             ("field", r.field.is_some()),
         ];
         let allowed: &[&str] = match r.ty {
-            NodeType::Box => &["style", "break", "link", "bookmark", "pages", "children"],
-            NodeType::Text => &["style", "break", "link", "bookmark", "pages", "runs"],
+            NodeType::Box => &[
+                "style", "break", "link", "bookmark", "pages", "debug", "children",
+            ],
+            NodeType::Text => &[
+                "style", "break", "link", "bookmark", "pages", "debug", "runs",
+            ],
             NodeType::Image => &[
-                "style", "break", "link", "bookmark", "pages", "src", "data", "fit", "position",
+                "style", "break", "link", "bookmark", "pages", "debug", "src", "data", "fit",
+                "position",
             ],
             NodeType::Table => &[
                 "style",
@@ -542,13 +549,14 @@ impl TryFrom<RawNode> for Node {
                 "link",
                 "bookmark",
                 "pages",
+                "debug",
                 "columns",
                 "headerRows",
                 "rows",
             ],
             NodeType::PageBreak => &[],
-            NodeType::Spacer => &["style", "break", "link", "bookmark", "pages"],
-            NodeType::Field => &["style", "break", "pages", "field"],
+            NodeType::Spacer => &["style", "break", "link", "bookmark", "pages", "debug"],
+            NodeType::Field => &["style", "break", "pages", "debug", "field"],
         };
         if let Some((field, _)) = present.iter().find(|(f, set)| *set && !allowed.contains(f)) {
             return Err(format!(
@@ -598,6 +606,7 @@ impl TryFrom<RawNode> for Node {
             link: r.link,
             bookmark: r.bookmark,
             pages: r.pages,
+            debug: r.debug.unwrap_or(false),
             kind,
         })
     }

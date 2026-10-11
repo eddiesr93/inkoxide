@@ -103,6 +103,9 @@ pub struct PageSpec {
     #[serde(default)]
     pub margin: Edges<f32>,
     pub background: Option<Color>,
+    /// Draws the boxes of the page and of every element on it.
+    #[serde(default)]
+    pub debug: bool,
     pub header: Option<Box<Node>>,
     pub footer: Option<Box<Node>>,
     #[serde(default, deserialize_with = "de::shrunk")]
@@ -158,6 +161,8 @@ pub struct Node {
     /// Pages the node is painted on (boxed: rare). It takes its space in
     /// the layout on every page.
     pub pages: Option<Box<PageFilter>>,
+    /// Draws the node's boxes over the page (a development aid).
+    pub debug: bool,
     pub kind: NodeKind,
 }
 
@@ -383,6 +388,9 @@ pub struct ColumnSpec {
 pub struct TableCell {
     #[expect(dead_code, reason = "part of the schema; cells are not link targets")]
     pub id: Option<String>,
+    /// Draws the cell's boxes over the page.
+    #[serde(default)]
+    pub debug: bool,
     #[serde(default = "one")]
     pub col_span: u32,
     #[serde(default = "one")]
@@ -402,6 +410,9 @@ fn one() -> u32 {
 pub struct TableRow {
     #[expect(dead_code, reason = "part of the schema; rows are not link targets")]
     pub id: Option<String>,
+    /// Draws the row's box over the page.
+    #[serde(default)]
+    pub debug: bool,
     pub min_height: Option<f32>,
     pub background_color: Option<Color>,
     #[serde(deserialize_with = "de::shrunk")]

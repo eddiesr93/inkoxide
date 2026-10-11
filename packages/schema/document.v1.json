@@ -71,6 +71,11 @@
         }
       }
     },
+    "Debug": {
+      "type": "boolean",
+      "default": false,
+      "description": "A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production."
+    },
     "Meta": {
       "type": "object",
       "additionalProperties": false,
@@ -283,6 +288,10 @@
         },
         "background": {
           "$ref": "#/$defs/Color"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug",
+          "description": "Draws the boxes of the page (its margins and content area) and of every element on it, the header and footer included."
         },
         "header": {
           "description": "Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it.",
@@ -1027,6 +1036,9 @@
         "id": {
           "$ref": "#/$defs/Id"
         },
+        "debug": {
+          "$ref": "#/$defs/Debug"
+        },
         "colSpan": {
           "type": "integer",
           "minimum": 1,
@@ -1057,6 +1069,9 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/Id"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug"
         },
         "minHeight": {
           "$ref": "#/$defs/NonNegative"
@@ -1145,6 +1160,9 @@
         "pages": {
           "$ref": "#/$defs/PageFilter"
         },
+        "debug": {
+          "$ref": "#/$defs/Debug"
+        },
         "children": {
           "type": "array",
           "items": {
@@ -1182,6 +1200,9 @@
         "pages": {
           "$ref": "#/$defs/PageFilter"
         },
+        "debug": {
+          "$ref": "#/$defs/Debug"
+        },
         "runs": {
           "type": "array",
           "items": {
@@ -1217,6 +1238,9 @@
         },
         "pages": {
           "$ref": "#/$defs/PageFilter"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug"
         },
         "src": {
           "$ref": "#/$defs/Id",
@@ -1337,6 +1361,9 @@
         "pages": {
           "$ref": "#/$defs/PageFilter"
         },
+        "debug": {
+          "$ref": "#/$defs/Debug"
+        },
         "columns": {
           "type": "array",
           "minItems": 1,
@@ -1399,6 +1426,9 @@
         },
         "pages": {
           "$ref": "#/$defs/PageFilter"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug"
         }
       }
     },
@@ -1425,6 +1455,9 @@
         },
         "pages": {
           "$ref": "#/$defs/PageFilter"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug"
         },
         "field": {
           "$ref": "#/$defs/Field"

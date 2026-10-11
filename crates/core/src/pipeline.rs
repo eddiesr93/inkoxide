@@ -9,7 +9,7 @@ use crate::fonts::FontSet;
 use crate::images::ImageSet;
 use crate::layout::{Geometry, LayoutEngine, LeafMeasure, NodeIdx, TaffyLayout, Tree};
 use crate::paginate::{paginate, Placement};
-use crate::paint::{self, ContentCtx, ContentPainter, FlowPart, Op, PageContent, Rect};
+use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
 use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
 use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
 use crate::InkoxideError;
@@ -393,12 +393,16 @@ fn paint_page(
         images,
     };
 
+    // `debug` outlines, drawn over everything once the page is painted.
+    let mut debug = DebugBoxes::new(spec.debug);
+
     // Flow: paged space [k·H, (k+1)·H) mapped onto the content band,
     // clipped vertically (split boxes are sliced, like CSS
     // `box-decoration-break: slice`).
     let dy = m.top - k as f32 * h;
+    let band = Rect::new(0.0, m.top, pw, h);
     page.ops.push(Op::Save);
-    page.ops.push(Op::ClipRect(Rect::new(0.0, m.top, pw, h)));
+    page.ops.push(Op::ClipRect(band));
     paint::paint_flow(
         &l.flow,
         FlowPart::Page {
@@ -410,8 +414,10 @@ fn paint_page(
         nums,
         &mut painter,
         &mut page.ops,
+        &mut debug,
     );
     page.ops.push(Op::Restore);
+    let flow_boxes = std::mem::take(&mut debug.boxes);
     if !l.placement.fixed.is_empty() {
         paint::paint_flow(
             &l.flow,
@@ -424,6 +430,7 @@ fn paint_page(
             nums,
             &mut painter,
             &mut page.ops,
+            &mut debug,
         );
     }
     painter.text.page = Some(&page_text);
@@ -437,6 +444,7 @@ fn paint_page(
             nums,
             &mut painter,
             &mut page.ops,
+            &mut debug,
         );
     }
     if let Some(header) = header {
@@ -448,6 +456,7 @@ fn paint_page(
             nums,
             &mut painter,
             &mut page.ops,
+            &mut debug,
         );
     }
     if let Some(footer) = footer {
@@ -460,10 +469,28 @@ fn paint_page(
             nums,
             &mut painter,
             &mut page.ops,
+            &mut debug,
         );
     }
+
+    let mut labels = Vec::new();
+    if spec.debug {
+        let page_box = paint::debug_page_box(pw, ph, [m.top, m.right, m.bottom, m.left]);
+        paint::draw_debug(std::slice::from_ref(&page_box), &mut page.ops, &mut labels);
+    }
+    if !flow_boxes.is_empty() {
+        // Sliced like the flow they outline.
+        page.ops.push(Op::Save);
+        page.ops.push(Op::ClipRect(band));
+        paint::draw_debug(&flow_boxes, &mut page.ops, &mut labels);
+        page.ops.push(Op::Restore);
+    }
+    paint::draw_debug(&debug.boxes, &mut page.ops, &mut labels);
     Ok(page)
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod debug_tests;

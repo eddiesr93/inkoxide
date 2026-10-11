@@ -1,10 +1,11 @@
 //! Box painting: background, borders, clipping, opacity, rotation, then
 //! content and children, in document order.
 
+use super::debug::{DebugBox, DebugBoxes};
 use super::shapes::{
     corner_radii, inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII,
 };
-use super::{Dash, FillRule, Op, Path};
+use super::{Dash, FillRule, Op, Path, Rect};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, NodeIdx, Part, Tree};
 use crate::paginate::Placement;
@@ -49,7 +50,9 @@ pub(crate) enum FlowPart<'p> {
 
 /// Paints part of `tree`. `dx`/`dy` translate flow (or paged) coordinates
 /// to page coordinates; `numbers` is the physical page number and the
-/// page count, for nodes shown on some pages only.
+/// page count, for nodes shown on some pages only. The boxes of elements
+/// with `debug` (of all, with `debug.all`) go to `debug`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn paint_flow(
     tree: &Tree<'_>,
     part: FlowPart<'_>,
@@ -58,6 +61,7 @@ pub(crate) fn paint_flow(
     numbers: (u32, u32),
     content: &mut dyn ContentPainter,
     ops: &mut Vec<Op>,
+    debug: &mut DebugBoxes,
 ) {
     let (placement, page, fixed_only) = match part {
         FlowPart::All => (None, 0, false),
@@ -73,8 +77,10 @@ pub(crate) fn paint_flow(
         override_shift: None,
         numbers,
         opacity: 1.0,
+        ctm: None,
         content,
         ops,
+        debug,
     };
     match (fixed_only, placement) {
         (true, Some(pl)) => {
@@ -108,8 +114,11 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
     numbers: (u32, u32),
     /// Cumulative opacity of the ancestors.
     opacity: f32,
+    /// Transform in effect (`None`: identity), for `debug` outlines.
+    ctm: Option<[f32; 6]>,
     content: &'c mut dyn ContentPainter,
     ops: &'c mut Vec<Op>,
+    debug: &'c mut DebugBoxes,
 }
 
 impl BoxPainter<'_, '_, '_, '_> {
@@ -117,10 +126,27 @@ impl BoxPainter<'_, '_, '_, '_> {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else {
             // Rows and cells: the table paints their backgrounds and borders.
-            if let (Some(pl), None, false) = (self.placement, self.override_shift, as_fixed) {
+            let paged = matches!(
+                (self.placement, self.override_shift, as_fixed),
+                (Some(_), None, false)
+            );
+            if let (Some(pl), true) = (self.placement, paged) {
                 if !pl.on_page(i, self.page) {
                     return;
                 }
+            }
+            let debug = match ln.part {
+                Part::Row(r) => r.debug,
+                Part::Cell(c) => c.debug,
+                _ => false,
+            };
+            if debug || self.debug.all {
+                let window = self.placement.filter(|_| paged).map(|pl| {
+                    let h = pl.page_h;
+                    (self.page as f32 * h, (self.page + 1) as f32 * h)
+                });
+                let (shift, extra) = self.shifts(i);
+                self.outline(&ln.geo, shift, extra, window, None);
             }
             for c in self.tree.children(i) {
                 self.node(c, as_fixed);
@@ -149,14 +175,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             _ => None,
         };
         let g = ln.geo;
-        let (shift, extra) = match (self.override_shift, self.placement) {
-            (Some(o), _) => (o, 0.0),
-            (None, Some(pl)) => {
-                let st = pl.shift_top[i as usize];
-                (st, pl.shift_bottom[i as usize] - st)
-            }
-            (None, None) => (0.0, 0.0),
-        };
+        let (shift, extra) = self.shifts(i);
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
         if let Some(target) = &node.link {
             // Only the part of the box shown on this page.
@@ -172,15 +191,38 @@ impl BoxPainter<'_, '_, '_, '_> {
             }
         }
 
+        let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
+        let transform = s.transform.as_deref().filter(|t| !t.is_empty());
+        let own = if transform.is_some() || (rotate.is_some() && s.transform_origin.is_some()) {
+            Some(box_transform(s, x, y, w, h))
+        } else {
+            rotate.map(|deg| {
+                let (sin, cos) = deg.to_radians().sin_cos();
+                let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+                // translate(c) · rotate · translate(-c); y-down, so positive
+                // angles turn clockwise like CSS.
+                [
+                    cos,
+                    sin,
+                    -sin,
+                    cos,
+                    cx - cos * cx + sin * cy,
+                    cy - sin * cx - cos * cy,
+                ]
+            })
+        };
+        if node.debug || self.debug.all {
+            self.outline(&g, shift, extra, window, own);
+        }
+
         let opacity = s.opacity.unwrap_or(1.0);
         if opacity <= 0.0 {
             return;
         }
-        let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
-        let transform = s.transform.as_deref().filter(|t| !t.is_empty());
         let clip = s.overflow == Some(Overflow::Hidden);
-        let saved = opacity < 1.0 || rotate.is_some() || transform.is_some() || clip;
+        let saved = opacity < 1.0 || own.is_some() || clip;
         let outer_opacity = self.opacity;
+        let outer_ctm = self.ctm;
         if saved {
             self.ops.push(Op::Save);
         }
@@ -188,21 +230,9 @@ impl BoxPainter<'_, '_, '_, '_> {
             self.opacity *= opacity;
             self.ops.push(Op::SetOpacity(self.opacity));
         }
-        if transform.is_some() || (rotate.is_some() && s.transform_origin.is_some()) {
-            self.ops.push(Op::Transform(box_transform(s, x, y, w, h)));
-        } else if let Some(deg) = rotate {
-            let (sin, cos) = deg.to_radians().sin_cos();
-            let (cx, cy) = (x + w / 2.0, y + h / 2.0);
-            // translate(c) · rotate · translate(-c); y-down, so positive
-            // angles turn clockwise like CSS.
-            self.ops.push(Op::Transform([
-                cos,
-                sin,
-                -sin,
-                cos,
-                cx - cos * cx + sin * cy,
-                cy - sin * cx - cos * cy,
-            ]));
+        if let Some(m) = own {
+            self.ops.push(Op::Transform(m));
+            self.ctm = Some(self.ctm.map_or(m, |c| mul(c, m)));
         }
 
         let radii = radii(s, w, h);
@@ -262,6 +292,52 @@ impl BoxPainter<'_, '_, '_, '_> {
             self.ops.push(Op::Restore);
         }
         self.opacity = outer_opacity;
+        self.ctm = outer_ctm;
+    }
+
+    /// Shift of node `i` into paged space, and its growth from being split
+    /// across pages.
+    fn shifts(&self, i: NodeIdx) -> (f32, f32) {
+        match (self.override_shift, self.placement) {
+            (Some(o), _) => (o, 0.0),
+            (None, Some(pl)) => {
+                let st = pl.shift_top[i as usize];
+                (st, pl.shift_bottom[i as usize] - st)
+            }
+            (None, None) => (0.0, 0.0),
+        }
+    }
+
+    /// Records the boxes of a node for its `debug` outline. `window` is the
+    /// paged range shown on this page; `own` the node's own transform.
+    fn outline(
+        &mut self,
+        g: &Geometry,
+        shift: f32,
+        extra: f32,
+        window: Option<(f32, f32)>,
+        own: Option<[f32; 6]>,
+    ) {
+        let y = g.y + shift + self.dy;
+        let ctm = match (self.ctm, own) {
+            (Some(c), Some(m)) => Some(mul(c, m)),
+            (c, m) => c.or(m),
+        };
+        self.debug.boxes.push(DebugBox {
+            rect: Rect::new(g.x + self.dx, y, g.w, g.h + extra),
+            border: g.border,
+            padding: g.padding,
+            margin: g.margin,
+            size: [g.w, g.h],
+            shown: match window {
+                Some((top, bottom)) => (
+                    y.max(top + self.dy),
+                    (y + g.h + extra).min(bottom + self.dy),
+                ),
+                None => (y, y + g.h + extra),
+            },
+            ctm,
+        });
     }
 
     /// Shift of table row `r` (paged space).

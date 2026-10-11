@@ -238,6 +238,7 @@ fn painted(node: &str) -> (Xywh, Option<Xywh>) {
         h: 100.0,
         border: [0.0; 4],
         padding: [0.0; 4],
+        margin: [0.0; 4],
     };
     let ctx = ContentCtx {
         dx: 0.0,

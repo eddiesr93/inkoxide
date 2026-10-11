@@ -1,4 +1,4 @@
-import type { BoxNode, FieldNode, ImageNode, TextNode } from '@inkoxide/schema';
+import type { BoxNode, FieldNode, ImageNode, TableNode, TextNode } from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -28,6 +28,7 @@ import {
   renderTemplate,
   Row,
   Select,
+  Spacer,
   Stop,
   Svg,
   Table,
@@ -982,5 +983,94 @@ describe('image sources', () => {
       process.off('unhandledRejection', onUnhandled);
     }
     expect(unhandled).toEqual([]);
+  });
+});
+
+describe('debug', () => {
+  it('puts debug on the nodes, rows and cells that set it, and nowhere else', () => {
+    const r = renderTemplate(
+      <Document>
+        <Page>
+          <Header debug>
+            <Text>Head</Text>
+          </Header>
+          <View debug className="m-2 p-2">
+            <Text debug>
+              Hi <Text debug>inline</Text>
+            </Text>
+            <Text>plain</Text>
+          </View>
+          <Image debug src="logo" />
+          <Svg debug width={10} height={10} />
+          <Canvas debug width={10} height={10} paint={() => {}} />
+          <Spacer debug h={4} />
+          <Checkbox debug name="ok" />
+          <Table debug columns={[1]}>
+            <Row debug>
+              <Cell debug>
+                <Text>cell</Text>
+              </Cell>
+            </Row>
+            <Row>
+              <Cell>
+                <Text>cell</Text>
+              </Cell>
+            </Row>
+          </Table>
+          <View debug={false} />
+        </Page>
+      </Document>,
+      { fonts, imageIds: ['logo'] },
+    );
+    const page = r.document.pages[0];
+    expect(page.debug).toBeUndefined();
+    expect((page.header as BoxNode).debug).toBe(true);
+    const nodes = page.children ?? [];
+    expect(nodes.map((n) => ('debug' in n ? n.debug : undefined))).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      undefined,
+    ]);
+    // Inline text has no box of its own: only the paragraph is outlined.
+    const view = nodes[0] as BoxNode;
+    expect(view.children?.map((n) => ('debug' in n ? n.debug : undefined))).toEqual([true, undefined]);
+    const table = nodes[6] as TableNode;
+    expect(table.rows.map((row) => [row.debug, row.cells[0]?.debug])).toEqual([
+      [true, true],
+      [undefined, undefined],
+    ]);
+  });
+
+  it('sets debug on the page from <Page debug> and on every page from <Document debug>', () => {
+    const one = renderTemplate(
+      <Document>
+        <Page debug />
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(one.document.pages.map((p) => p.debug)).toEqual([true, undefined]);
+    const all = renderTemplate(
+      <Document debug>
+        <Page />
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(all.document.pages.map((p) => p.debug)).toEqual([true, true]);
+  });
+
+  it('outlines both the per-page wrapper and its variants', () => {
+    const r = tree(<View debug className="m-2" render={({ pageNumber }) => <Text>{pageNumber}</Text>} />, {
+      pageCount: 2,
+    });
+    const wrapper = first<BoxNode>(r);
+    expect(wrapper.debug).toBe(true);
+    expect((wrapper.children as BoxNode[]).map((v) => v.debug)).toEqual([true, true]);
   });
 });

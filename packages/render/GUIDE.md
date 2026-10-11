@@ -13,6 +13,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [Text: hyphenation and direction](#text-hyphenation-and-direction)
 - [Drawing: SVG and Canvas](#drawing-svg-and-canvas)
 - [Forms](#forms)
+- [Debugging layout](#debugging-layout)
 - [API](#api)
 - [Errors](#errors)
 - [FAQ](#faq)
@@ -20,7 +21,8 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 
 ## Components
 
-All components take `className`, `style` and `id`.
+All components take `className`, `style` and `id`; those with a box also take `debug`
+([Debugging layout](#debugging-layout)).
 
 | Component | What it is |
 |---|---|
@@ -413,6 +415,25 @@ can also go straight into `<Image src={svgBytes} />`.
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
 must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
 `maxLength` and `password`; size, border, background and text style come from the classes.
+
+## Debugging layout
+
+```tsx
+<View debug className="m-4 border-2 p-3">…</View>   // one element
+<Page debug>…</Page>                                // the page and everything on it
+<Document debug>…</Document>                        // every page
+```
+
+`debug` draws an element's boxes over the page, like the box model in browser developer tools:
+the margin in orange, the border in yellow, the padding in green, the content box as a blue
+outline, and the element's width and height in points as a small label. It works on `View`,
+`Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
+`Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
+on each page it crosses, and a header or footer on every page.
+
+The outlines are drawn last, on top of the content, and the labels are drawn with lines, so
+text selection, search, links, bookmarks and form fields are unchanged. It changes the output,
+so remove it before you ship.
 
 ## API
 

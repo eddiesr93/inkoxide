@@ -18,6 +18,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `<Link src="…">` | The same, or `href` on `Text` or `View`; `href="#id"` jumps to an element's `id` | Works as is; adds no colour or underline |
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Built in |
+| `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points |
 | `<Svg>`, `<Canvas>` | The same | No `<Text>` inside `<Svg>` yet |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
@@ -27,7 +28,6 @@ over by changing the import. This page lists what has another name, and what is 
 - **Fonts and annotations:**
   - `Font.registerEmojiSource`: there are no colour emoji yet.
   - `<Note>`.
-- **`debug`:** it is ignored.
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document
 can break onto a different number of pages. Any style key that is not supported throws, naming
