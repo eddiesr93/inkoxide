@@ -11,6 +11,8 @@ All notable changes to the packages in this repository. The format follows
 
 - An image over the 50-megapixel limit fails validation with `IMAGE_TOO_LARGE`, as documented.
   It was reported as `INVALID_IMAGE`.
+- A document with `pages: []` fails validation with `INVALID_VALUE` at `pages`, as the schema
+  requires at least one page. It rendered a PDF with no pages, which viewers reject.
 
 ## 0.3.0 - 2026-10-12
 

@@ -129,6 +129,12 @@ fn invalid_values() {
         (code, path.as_str()),
         (C::InvalidValue, "pages[0].children[0].type")
     );
+
+    // A PDF without pages is not a valid PDF.
+    assert_eq!(
+        one(r#"{"version":1,"pages":[]}"#),
+        (C::InvalidValue, "pages".into())
+    );
 }
 
 #[test]

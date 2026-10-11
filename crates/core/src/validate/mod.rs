@@ -476,6 +476,13 @@ impl<'a> Checker<'a> {
                 });
             }
         }
+        if doc.pages.is_empty() {
+            self.err(
+                Code::InvalidValue,
+                Some("pages"),
+                "a document needs at least one page",
+            );
+        }
         for (i, page) in doc.pages.iter().enumerate() {
             self.at("pages", false, |c| c.at(i, true, |c| c.page(page)));
         }
