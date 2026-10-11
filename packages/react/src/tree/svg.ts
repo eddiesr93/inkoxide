@@ -30,7 +30,7 @@ const CAMEL_ATTRS = new Set([
 ]);
 
 /** Props of `<Svg>` that are about its box in the layout, not the drawing. */
-const BOX_PROPS = new Set(['className', 'style', 'pages', 'break', 'href', 'children', 'width', 'height']);
+const BOX_PROPS = new Set(['className', 'style', 'pages', 'break', 'href', 'children', 'width', 'height', 'fixed', 'debug']);
 
 const attrName = (k: string): string =>
   CAMEL_ATTRS.has(k) ? k : k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
