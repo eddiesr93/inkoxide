@@ -78,6 +78,14 @@ describe('renderToBuffer', () => {
     expect(readFileSync(path).subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
+  it('fails with a RenderError when the file cannot be written', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'inkoxide-')), 'missing', 'receipt.pdf');
+    const err = await renderToFile(<Receipt customer="Ada" lines={[]} />, path).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect(err).toMatchObject({ code: 'INTERNAL', cause: { code: 'ENOENT' } });
+    expect((err as RenderError).message).toContain(`Cannot write the PDF to ${path}`);
+  });
+
   it('writes a link annotation for an inline and a block Link', async () => {
     const pdf = await renderToBuffer(
       <Document>
@@ -188,6 +196,28 @@ describe('renderToBuffer', () => {
       </Document>
     );
     await expect(renderToBuffer(<Broken />)).rejects.toBeInstanceOf(RenderError);
+  });
+
+  it('fails with a RenderError when a render prop throws on a later pass', async () => {
+    // The first pass renders with one page; the throw comes from the rebuild with the real count.
+    const Growing = () => (
+      <Document>
+        <Page>
+          <Text
+            render={({ totalPages }) => {
+              if (totalPages > 1) throw new Error('only one page expected');
+              return 'one page';
+            }}
+          />
+          <PageBreak />
+          <Text>Second page</Text>
+        </Page>
+      </Document>
+    );
+    const err = await renderToBuffer(<Growing />).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect(err).toMatchObject({ code: 'TEMPLATE_ERROR' });
+    expect((err as RenderError).message).toContain('only one page expected');
   });
 });
 

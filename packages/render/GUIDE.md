@@ -507,17 +507,24 @@ RenderError: <View> cannot be inside <Text>. A Text contains only strings, numbe
     in Receipt
 ```
 
-Every error is a `RenderError` with a `code`, and with `path`, `component` and
-`componentStack` where they apply:
+Every error of `renderToBuffer`, `renderToStream`, `renderToFile` and `init` is a `RenderError`
+with a `code` and an HTTP `status`, and with `path`, `component` and `componentStack` where they
+apply:
 
 | Code | What happened |
 |---|---|
-| `TEMPLATE_ERROR` | A component used in the wrong place, an unknown class or style key, or an image `src` that cannot be used: a URL outside `remoteImages`, a path while `localImages` is off (from a function), or a function or promise that fails or does not settle in `imageTimeoutMs` |
-| `INVALID_TREE` | A prop with an invalid value |
+| `TEMPLATE_ERROR` | A component used in the wrong place, a prop with an invalid value (a bad `Page` `size`, a `Link` without `href`), an unknown class or style key, a component or `render` prop that throws, or an image `src` that cannot be used: a URL outside `remoteImages`, a path while `localImages` is off (from a function), or a function or promise that fails or does not settle in `imageTimeoutMs` |
+| `INVALID_TREE` | The document tree does not match the engine's schema. Checked only with `validate`, which is on outside production |
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched |
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
+| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), `renderToFile` could not write the file, or a bug |
+
+`INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. `Font.register` and
+`Font.registerHyphenationCallback` check their arguments when you call them and throw a plain
+`Error` straight away: a missing family name or `src`, an unknown weight, or a face already
+registered from another source.
 
 ## FAQ
 

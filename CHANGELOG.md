@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- Every failure of `renderToBuffer`, `renderToStream`, `renderToFile` and `init` is a
+  `RenderError`. An engine that cannot start and a PDF that `renderToFile` cannot write are
+  `INTERNAL`; a `render` prop that throws on a later pass is `TEMPLATE_ERROR`. The guide's error
+  table lists `INTERNAL`, and gives `TEMPLATE_ERROR` as the code of an invalid prop.
+
 ## 0.3.0 - 2026-10-12
 
 `inkoxide` 0.3.0, `@inkoxide/schema` 2.1.0, `@inkoxide/tailwind` 0.2.0, `@inkoxide/react` 0.2.0
