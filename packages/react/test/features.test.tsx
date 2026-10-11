@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   Canvas,
+  Cell,
   Checkbox,
   Circle,
   Defs,
@@ -12,22 +13,28 @@ import {
   Field,
   Footer,
   G,
+  Header,
   Image,
   isImagePath,
   LinearGradient,
+  Link,
   PAGE_SIZES,
   Page,
+  PageNumber,
   Path,
   Radio,
   Rect,
   remoteAllowed,
   renderTemplate,
+  Row,
   Select,
   Stop,
   Svg,
+  Table,
   TemplateError,
   Text,
   TextField,
+  TotalPages,
   usePage,
   View,
 } from '../src/index.ts';
@@ -120,7 +127,7 @@ describe('paint styles', () => {
     expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain('not a length');
   });
 
-  it('accepts the wrap, break and minPresenceAhead aliases and weight names, and explains fixed', () => {
+  it('accepts the wrap, break and minPresenceAhead aliases and weight names', () => {
     const r = tree(
       <>
         <View {...{ wrap: false, minPresenceAhead: 40 }}>
@@ -136,9 +143,6 @@ describe('paint styles', () => {
     expect(b?.break).toEqual({ before: 'page' });
     const bold = b?.children?.[0] as TextNode | undefined;
     expect(bold?.runs[0]).toMatchObject({ font: 'Inter-Bold' });
-    expect(thrown(() => tree(<View {...({ fixed: true } as object)} />)).message).toContain(
-      'put content that repeats',
-    );
     expect(thrown(() => tree(<Text style={{ fontWeight: 'heavyish' as never }}>x</Text>)).message).toContain(
       'CSS weight name',
     );
@@ -501,6 +505,139 @@ describe('page filters, sizes and per-page content', () => {
       return null;
     }
     expect(thrown(() => tree(<Outside />)).message).toContain('only inside a render prop');
+  });
+});
+
+describe('fixed', () => {
+  const corner = { position: 'absolute', bottom: 0, right: 0 } as const;
+
+  it('repeats View, Text, Image, Svg and Canvas on every page through break.fixed', () => {
+    const r = tree(
+      <>
+        <View fixed style={corner} id="stamp" href="https://example.com" pages="notFirst" />
+        <Text fixed className="absolute top-0 left-0" break="avoid">
+          Draft
+        </Text>
+        <Image fixed src="logo" className="absolute right-0 bottom-0 h-4 w-4" />
+        <Svg fixed width={10} height={10} className="absolute top-0 right-0">
+          <Rect width={10} height={10} fill="#f00" />
+        </Svg>
+        <Canvas fixed width={10} height={10} style={corner} paint={(p) => p.rect(0, 0, 5, 5).fill('#000')} />
+        <Link fixed href="#top" style={corner}>
+          <Text>Top</Text>
+        </Link>
+        <View fixed={false} />
+      </>,
+    );
+    const nodes = body(r) as Array<BoxNode | TextNode | ImageNode>;
+    expect(nodes.map((n) => n.break)).toEqual([
+      { fixed: true },
+      { inside: 'avoid', fixed: true },
+      { fixed: true },
+      { fixed: true },
+      { fixed: true },
+      { fixed: true },
+      undefined,
+    ]);
+    expect(nodes.slice(0, 6).every((n) => n.style?.position === 'absolute')).toBe(true);
+    expect(nodes[0]).toMatchObject({ id: 'stamp', link: 'https://example.com', pages: 'notFirst' });
+    expect(nodes[0]?.style).toMatchObject({ inset: { bottom: 0, right: 0 } });
+  });
+
+  it('shows each page its own render output', () => {
+    const footer = (
+      <Text
+        fixed
+        style={{ position: 'absolute', bottom: -24, left: 0, right: 0, textAlign: 'center' }}
+        render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+      />
+    );
+    const three = tree(footer).rebuild(3);
+    const wrapper = body(three)[0] as BoxNode;
+    // The wrapper is the fixed, positioned element; each variant is painted on its page.
+    expect(wrapper.break).toEqual({ fixed: true });
+    expect(wrapper.style).toMatchObject({
+      display: 'grid',
+      position: 'absolute',
+      inset: { bottom: -24, left: 0, right: 0 },
+    });
+    const variants = (wrapper.children ?? []) as TextNode[];
+    expect(variants.map((v) => [v.pages, v.runs[0]?.text, v.break])).toEqual([
+      [[1], '1 / 3', undefined],
+      [[2], '2 / 3', undefined],
+      [[3], '3 / 3', undefined],
+    ]);
+    // Placeholders work too; the engine fills them in on every page.
+    const numbers = tree(
+      <Text fixed style={corner}>
+        <PageNumber /> of <TotalPages />
+      </Text>,
+    );
+    expect(first<TextNode>(numbers).runs.map((run) => run.placeholder ?? run.text)).toEqual([
+      'pageNumber',
+      ' of ',
+      'totalPages',
+    ]);
+  });
+
+  it('explains where fixed cannot be used', () => {
+    const message = (children: ReactNode) => thrown(() => tree(children)).message;
+    expect(message(<View fixed />)).toContain("<View fixed>: a fixed element needs position: 'absolute'");
+    expect(message(<Text fixed>x</Text>)).toContain('use <Header> or <Footer>');
+    expect(message(<View fixed className="relative" />)).toContain("needs position: 'absolute'");
+    expect(
+      message(
+        <View>
+          <View fixed style={corner} />
+        </View>,
+      ),
+    ).toContain('only an element placed directly in a <Page> can be fixed');
+    expect(message(<View render={() => <View fixed style={corner} />} />)).toContain(
+      'only an element placed directly in a <Page>',
+    );
+    expect(
+      message(
+        <Header>
+          <Text fixed style={corner}>
+            x
+          </Text>
+        </Header>,
+      ),
+    ).toContain('<Text fixed>: a <Header> is already on every page');
+    expect(
+      message(
+        <Footer>
+          <View fixed style={corner} />
+        </Footer>,
+      ),
+    ).toContain('a <Footer> is already on every page');
+    expect(
+      message(
+        <Table columns={[100]}>
+          <Row>
+            <Cell>
+              <View fixed style={corner} />
+            </Cell>
+          </Row>
+        </Table>,
+      ),
+    ).toContain('an element in a <Table> cannot be fixed');
+    expect(
+      message(
+        <Text>
+          a <Text {...({ fixed: true } as object)}>b</Text>
+        </Text>,
+      ),
+    ).toContain('an inline run inside a <Text> cannot be fixed');
+    expect(message(<Field kind="text" name="n" style={corner} {...({ fixed: true } as object)} />)).toContain(
+      'a form field cannot be fixed',
+    );
+    // CSS `position: fixed` points to the prop.
+    expect(message(<View className="fixed" />)).toContain('give it the fixed prop and position: absolute');
+    expect(message(<View style={{ position: 'fixed' as never }} />)).toContain('give it the fixed prop');
+    const e = thrown(() => tree(<View fixed />));
+    expect(e.kind).toBe('props');
+    expect(e.componentStack).toContain('in View');
   });
 });
 

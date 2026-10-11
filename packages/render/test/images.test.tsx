@@ -410,6 +410,35 @@ describe('generate', () => {
   });
 });
 
+describe('images in fixed elements', () => {
+  it('repeats a fixed image, and gives each page its own render output', async () => {
+    const perPage = [palette, photo, palette];
+    const ThreePages = () => (
+      <Document>
+        <Page>
+          <Image fixed src={logo} className="absolute top-0 right-0 h-4 w-4" />
+          <View
+            fixed
+            className="absolute bottom-0 left-0"
+            render={({ pageNumber }) => <Image src={perPage[pageNumber - 1] ?? logo} className="h-4 w-4" />}
+          />
+          <Text>one</Text>
+          <PageBreak />
+          <Text>two</Text>
+          <PageBreak />
+          <Text>three</Text>
+        </Page>
+      </Document>
+    );
+    const pdf = await renderToBuffer(<ThreePages />, { compress: false });
+    expect(pageImages(pdf)).toEqual([
+      [LOGO, PALETTE],
+      [LOGO, PHOTO],
+      [LOGO, PALETTE],
+    ]);
+  });
+});
+
 describe('images in render props', () => {
   // A header image chosen per page, a static image on page 1; the page count is known on pass 2.
   const TwoPages = ({ header, body }: { header: (page: number) => ImageSrc; body?: ImageSrc }) => (

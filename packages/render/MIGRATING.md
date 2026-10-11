@@ -14,7 +14,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `wrap={false}`, `break`, `minPresenceAhead={80}` | The same, or `break="avoid"`, `break="page-before"`, `break={{ minPresenceAhead: 80 }}` | Works as is |
 | `<Text render={({ pageNumber, totalPages }) => …} />` | The same, or `<PageNumber />` and `<TotalPages />` | Works as is |
 | `fontWeight: 'bold'`, `flex: 1`, `paddingHorizontal`, `borderBottomColor`, `top`/`left` | The same | Works as is |
-| A footer as a `View` with `fixed` and `position: 'absolute'` | `<Footer>` and `<Header>`, which line up with the page by themselves | `fixed` throws, pointing here |
+| `fixed` with `position: 'absolute'` (a watermark, a page border, a footer) | The same; `<Footer>` and `<Header>` line up with the page by themselves | Works directly in a `Page`. `top`, `bottom` and the other insets are measured from the content box, inside the page padding: `bottom: 30` on a page with `paddingBottom: 65` becomes `bottom: -35`. `fixed` without `position: 'absolute'`, or inside another element, throws and points to `<Header>` and `<Footer>` |
 | `<Link src="…">` | The same, or `href` on `Text` or `View`; `href="#id"` jumps to an element's `id` | Works as is; adds no colour or underline |
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Built in |

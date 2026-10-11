@@ -65,7 +65,7 @@ that are supported and tested; each example is a unit test.
 
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
-| `relative`, `absolute` | `position` | `relative` → `{"position":"relative"}` | `fixed` and `sticky` are not supported; use `Header`/`Footer` for repeating content. |
+| `relative`, `absolute` | `position` | `relative` → `{"position":"relative"}` | `fixed` and `sticky` are not supported. To repeat an element on every page, use `Header`/`Footer`, or the `fixed` prop with `absolute`. |
 | `inset-*`, `inset-x-*`, `inset-y-*`, `top-*`, `right-*`, `bottom-*`, `left-*` | `inset` | `inset-0` → `{"insetTop":0,"insetRight":0,"insetBottom":0,"insetLeft":0}` |  |
 
 ## Visual
@@ -124,7 +124,7 @@ that are supported and tested; each example is a unit test.
 | `bg-linear-to-r` | Gradients and background images. |
 | `rotate-x-12` | 3D transforms and `perspective-*`. |
 | `block` | `display` other than `flex`, `grid` and `none`. |
-| `fixed` | `fixed` and `sticky` positioning. |
+| `fixed` | `fixed` and `sticky` positioning; the `fixed` prop with `absolute` repeats an element on every page. |
 | `w-fit` | Intrinsic sizes (`fit`, `min`, `max`) and viewport units. |
 | `w-screen` | Intrinsic sizes (`fit`, `min`, `max`) and viewport units. |
 | `rounded-[4pt/8pt]` | Elliptical corners. |
