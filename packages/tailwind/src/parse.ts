@@ -1,7 +1,7 @@
 import type { GridPlacement, Style, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
-import type { ColorValue, ImagePosition, Len, LenPercent, TransformOp, TwStyle } from './types.ts';
+import type { ColorValue, Len, LenPercent, ObjectPosition, TransformOp, TwStyle } from './types.ts';
 import {
   type Dim,
   evalDim,
@@ -325,7 +325,7 @@ export function parseObjectPosition(
   prop: string,
   value: string,
   length: (v: string) => LenPercent = (v) => lenPercent(prop, v),
-): ImagePosition {
+): ObjectPosition {
   const parts = splitTopLevel(value, ' ');
   if (parts.length === 0 || parts.length > 2) {
     throw new Unsupported(prop, `${prop}: ${value} (one or two values; edge offsets are not supported)`);

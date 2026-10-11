@@ -318,7 +318,7 @@ describe('CSS names and shorthands in the style prop', () => {
     ).toContain('objectFit "scale-down" is not fill, contain, cover or none');
   });
 
-  it('maps objectPosition and object-* classes to the image position', () => {
+  it('maps objectPosition and object-* classes to the image objectPosition', () => {
     const r = tree(
       <>
         <Image src="logo" fit="cover" style={{ objectPosition: 'left top' }} />
@@ -334,7 +334,7 @@ describe('CSS names and shorthands in the style prop', () => {
       </>,
     );
     const nodes = body(r) as ImageNode[];
-    expect(nodes.map((n) => n.position)).toEqual([
+    expect(nodes.map((n) => n.objectPosition)).toEqual([
       { x: 'left', y: 'top' },
       { x: 'center', y: 'bottom' },
       { x: '25%', y: '75%' },

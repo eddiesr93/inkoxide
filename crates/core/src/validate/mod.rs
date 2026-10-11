@@ -14,8 +14,8 @@ use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, Display,
-    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, OptEdges,
-    PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
+    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, ObjectPosition,
+    OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
     SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
@@ -25,6 +25,11 @@ const MAX_ERRORS: usize = 100;
 
 /// Largest page edge PDF viewers accept (200 in, PDF 1.6+ user unit aside).
 const MAX_PAGE_EDGE: f32 = 14_400.0;
+
+/// Largest `objectPosition` percentage either way, as a fraction (10000 %).
+/// Far past any useful placement, and small enough that the offset stays
+/// finite for any image and box.
+const MAX_OBJECT_POSITION_FRACTION: f32 = 100.0;
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -577,34 +582,14 @@ impl<'a> Checker<'a> {
                     });
                 }
             }
-            NodeKind::Image { source, .. } => match source {
-                crate::schema::ImageSource::Ref(id) => match self.images.get(id) {
-                    None => self.err(
-                        Code::UnknownImage,
-                        Some("src"),
-                        format!("image `{id}` was not provided in the render options"),
-                    ),
-                    Some(data) => {
-                        if let Err(e) = crate::images::probe(&data.bytes) {
-                            self.err(
-                                Code::InvalidImage,
-                                Some("src"),
-                                format!("image `{id}`: {e}"),
-                            );
-                        }
-                    }
-                },
-                crate::schema::ImageSource::Inline(data) => {
-                    match crate::images::decode_inline(data) {
-                        Err(e) => self.err(Code::InvalidImage, Some("data"), e),
-                        Ok(bytes) => {
-                            if let Err(e) = crate::images::probe(&bytes) {
-                                self.err(Code::InvalidImage, Some("data"), e);
-                            }
-                        }
-                    }
-                }
-            },
+            NodeKind::Image {
+                source,
+                object_position,
+                ..
+            } => {
+                self.object_position(object_position);
+                self.image_source(source);
+            }
             NodeKind::Table(t) => self.table(t),
             NodeKind::PageBreak => {
                 if ctx != Ctx::Flow {
@@ -618,6 +603,60 @@ impl<'a> Checker<'a> {
             NodeKind::Spacer => {}
             NodeKind::Field(f) => self.at("field", false, |c| c.field(f)),
         }
+    }
+
+    fn image_source(&mut self, source: &crate::schema::ImageSource) {
+        match source {
+            crate::schema::ImageSource::Ref(id) => match self.images.get(id) {
+                None => self.err(
+                    Code::UnknownImage,
+                    Some("src"),
+                    format!("image `{id}` was not provided in the render options"),
+                ),
+                Some(data) => {
+                    if let Err(e) = crate::images::probe(&data.bytes) {
+                        self.err(
+                            Code::InvalidImage,
+                            Some("src"),
+                            format!("image `{id}`: {e}"),
+                        );
+                    }
+                }
+            },
+            crate::schema::ImageSource::Inline(data) => match crate::images::decode_inline(data) {
+                Err(e) => self.err(Code::InvalidImage, Some("data"), e),
+                Ok(bytes) => {
+                    if let Err(e) = crate::images::probe(&bytes) {
+                        self.err(Code::InvalidImage, Some("data"), e);
+                    }
+                }
+            },
+        }
+    }
+
+    /// Bounds both axes of an image's `objectPosition` (untrusted input: a
+    /// huge percentage times the free space would overflow `f32`).
+    fn object_position(&mut self, p: &ObjectPosition) {
+        self.at("objectPosition", false, |c| {
+            for (axis, v) in [("x", p.x), ("y", p.y)] {
+                match v {
+                    LengthPercent::Points(v) if !(v.abs() <= MAX_PAGE_EDGE) => c.err(
+                        Code::OutOfRange,
+                        Some(axis),
+                        format!("points must be within [-{MAX_PAGE_EDGE}, {MAX_PAGE_EDGE}]"),
+                    ),
+                    LengthPercent::Percent(f) if !(f.abs() <= MAX_OBJECT_POSITION_FRACTION) => {
+                        let max = MAX_OBJECT_POSITION_FRACTION * 100.0;
+                        c.err(
+                            Code::OutOfRange,
+                            Some(axis),
+                            format!("percentages must be within [-{max}%, {max}%]"),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        });
     }
 
     fn field(&mut self, f: &Field) {

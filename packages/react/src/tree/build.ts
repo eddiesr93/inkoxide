@@ -1104,7 +1104,7 @@ class Builder {
     }
     const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
     if (fit) node.fit = fit;
-    if (own.objectPosition) node.position = own.objectPosition;
+    if (own.objectPosition) node.objectPosition = own.objectPosition;
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }

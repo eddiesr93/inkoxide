@@ -49,23 +49,23 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
 #[test]
 fn fit_modes() {
     let b = (0.0, 0.0, 100.0, 50.0);
-    let fit = |f| fit_rect(f, ImagePosition::default(), b, (10.0, 10.0));
+    let fit = |f| fit_rect(f, ObjectPosition::default(), b, (10.0, 10.0));
     assert_eq!(fit(ImageFit::Fill), (b, false));
     assert_eq!(fit(ImageFit::Contain), ((25.0, 0.0, 50.0, 50.0), false));
     assert_eq!(fit(ImageFit::Cover), ((0.0, -25.0, 100.0, 100.0), true));
     assert_eq!(fit(ImageFit::None), ((45.0, 20.0, 10.0, 10.0), false));
 }
 
-/// An image position from its JSON form.
-fn pos(json: &str) -> ImagePosition {
+/// An `objectPosition` from its JSON form.
+fn pos(json: &str) -> ObjectPosition {
     serde_json::from_str(json).unwrap()
 }
 
 #[test]
-fn position_keywords_are_fractions_of_the_free_space() {
+fn object_position_keywords_are_fractions_of_the_free_space() {
     use crate::schema::LengthPercent::{Percent, Points};
-    let p = |x, y| ImagePosition { x, y };
-    assert_eq!(pos("{}"), ImagePosition::default());
+    let p = |x, y| ObjectPosition { x, y };
+    assert_eq!(pos("{}"), ObjectPosition::default());
     assert_eq!(pos("{}"), p(Percent(0.5), Percent(0.5)));
     assert_eq!(
         pos(r#"{"x":"left","y":"top"}"#),
@@ -94,12 +94,15 @@ fn position_keywords_are_fractions_of_the_free_space() {
         r#"{"x":"10pt"}"#,
         r#"{"z":0}"#,
     ] {
-        assert!(serde_json::from_str::<ImagePosition>(bad).is_err(), "{bad}");
+        assert!(
+            serde_json::from_str::<ObjectPosition>(bad).is_err(),
+            "{bad}"
+        );
     }
 }
 
 #[test]
-fn position_places_contain_cover_and_none() {
+fn object_position_places_contain_cover_and_none() {
     // A 100 × 50 box at (10, 20) and a square image.
     let b = (10.0, 20.0, 100.0, 50.0);
     let at = |fit, json: &str| fit_rect(fit, pos(json), b, (10.0, 10.0));
@@ -269,11 +272,11 @@ fn near(a: Xywh, b: Xywh) -> bool {
 }
 
 #[test]
-fn raster_and_svg_images_follow_their_position() {
+fn raster_and_svg_images_follow_their_object_position() {
     const BOX: Xywh = (10.0, 20.0, 100.0, 100.0);
     let image = |src: &str, fit: &str, position: &str| {
         painted(&format!(
-            r#"{{"type":"image","src":"{src}","fit":"{fit}","position":{position}}}"#
+            r#"{{"type":"image","src":"{src}","fit":"{fit}","objectPosition":{position}}}"#
         ))
     };
     for (src, fit, position, rect, clipped) in [
@@ -353,7 +356,7 @@ fn raster_and_svg_images_follow_their_position() {
             (10.0, 20.0, 300.0, 180.0),
             true,
         ),
-        // fill ignores the position.
+        // fill ignores objectPosition.
         ("chart", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
     ] {
         let (r, clip) = image(src, fit, position);
@@ -367,11 +370,91 @@ fn raster_and_svg_images_follow_their_position() {
             assert!(near(c, BOX), "clipped to the content box: {c:?}");
         }
     }
-    // Without `position`, the image is centred as before.
+    // Without `objectPosition`, the image is centred as before.
     assert_eq!(
         painted(r#"{"type":"image","src":"photo","fit":"cover"}"#),
         image("photo", "cover", r#"{"x":"center","y":"center"}"#)
     );
+}
+
+#[test]
+fn an_overflowing_object_position_is_centred_not_infinite() {
+    use crate::schema::LengthPercent::Percent;
+    // Validation keeps percentages within ±10000 %; without it, a huge one
+    // times the free space overflows f32.
+    let b = (0.0, 0.0, 100.0, 50.0);
+    let at = |x, y| fit_rect(ImageFit::Cover, ObjectPosition { x, y }, b, (10.0, 10.0));
+    let centred = fit_rect(ImageFit::Cover, ObjectPosition::default(), b, (10.0, 10.0));
+    for y in [Percent(f32::MAX), Percent(-f32::MAX)] {
+        assert_eq!(at(Percent(0.5), y), centred, "{y:?}");
+    }
+    // Only the overflowing axis falls back.
+    let ((rx, ry, ..), _) = at(Percent(0.0), Percent(f32::MAX));
+    assert_eq!((rx, ry), (0.0, (centred.0).1));
+}
+
+/// The operands of every `cm` and `re` operator in an uncompressed PDF.
+fn placement_operands(pdf: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(pdf);
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        for (i, t) in tokens.iter().enumerate() {
+            let n = match *t {
+                "cm" => 6,
+                "re" => 4,
+                _ => continue,
+            };
+            if i >= n {
+                out.extend(tokens[i - n..i].iter().map(ToString::to_string));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn object_positions_at_the_bounds_render_finite_numbers() {
+    let mut store = ImageStore::new();
+    store.insert("photo", fixture("photo.jpg"));
+    store.insert("chart", fixture("chart.svg"));
+    let mut nodes = Vec::new();
+    for src in ["photo", "chart"] {
+        for fit in ["contain", "cover", "none"] {
+            for (x, y) in [
+                (r#""10000%""#, r#""-10000%""#),
+                (r#""-10000%""#, r#""10000%""#),
+                ("14400", "-14400"),
+                ("-14400", "14400"),
+            ] {
+                nodes.push(format!(
+                    r#"{{"type":"image","src":"{src}","fit":"{fit}","style":{{"width":100,"height":60}},"objectPosition":{{"x":{x},"y":{y}}}}}"#
+                ));
+            }
+        }
+    }
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":300,"height":300}},"children":[{}]}}]}}"#,
+        nodes.join(",")
+    );
+    let options = crate::RenderOptions::default().with_compress(false);
+    let pdf = crate::render(
+        json.as_bytes(),
+        crate::InputFormat::Json,
+        &options,
+        &crate::FontStore::new(),
+        &store,
+    )
+    .unwrap();
+    let operands = placement_operands(&pdf);
+    // 24 images, each drawn with a matrix (6) and clipped to its box (4).
+    assert!(operands.len() >= 24 * 10, "{} operands", operands.len());
+    for n in &operands {
+        assert!(
+            n.parse::<f64>().is_ok_and(f64::is_finite),
+            "non-finite operand `{n}` in the content stream"
+        );
+    }
 }
 
 /// Maps stored-pixel corner (a, b) (normalised, y down) through the matrix.

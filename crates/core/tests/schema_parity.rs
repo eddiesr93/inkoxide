@@ -131,8 +131,8 @@ fn structs_match_schema() {
     );
     check(
         &s,
-        Some("ImagePosition"),
-        &node(r#"{"type":"image","src":"i","position":{@"x":1}}"#),
+        Some("ObjectPosition"),
+        &node(r#"{"type":"image","src":"i","objectPosition":{@"x":1}}"#),
     );
     check(
         &s,

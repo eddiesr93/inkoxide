@@ -593,4 +593,51 @@ describe('objectPosition', () => {
     expect(centred.x - right.x).toBeCloseTo(18);
     expect((await draw({ objectPosition: '25%' })).x - left.x).toBeCloseTo(-9);
   });
+
+  it('places a fixed, outlined image the same way on every page', async () => {
+    // The photo (240 × 150 pt) contained in a 140 × 60 pt box: drawn 96 × 60, 44 pt to spare
+    // across, so `right` moves it 44 pt from the box's left edge, and none down.
+    const doc = (debug: boolean) => (
+      <Document>
+        <Page size={[300, 300]} margin={20}>
+          <Image
+            fixed
+            debug={debug}
+            src={photo}
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 30,
+              width: 140,
+              height: 60,
+              objectPosition: 'right bottom',
+              objectFit: 'contain',
+            }}
+          />
+          <Text>one</Text>
+          <PageBreak />
+          <Text>two</Text>
+          <PageBreak />
+          <Text>three</Text>
+        </Page>
+      </Document>
+    );
+    const draws = (pdf: Uint8Array) =>
+      [
+        ...Buffer.from(pdf)
+          .toString('latin1')
+          .matchAll(/((?:[-\d.]+ ){6})cm\s*\/\S+ Do/g),
+      ].map((m) => (m[1] ?? '').trim().split(' ').map(Number));
+    const pdf = await renderToBuffer(doc(true), { compress: false });
+    expect(countPages(pdf)).toBe(3);
+    expect(pageImages(pdf)).toEqual([[PHOTO], [PHOTO], [PHOTO]]);
+    // The box is at (50, 30) on every page: the margin plus `left` and `top`. The page content
+    // runs y down, so the matrix is [w 0 0 −h x y+h].
+    const placed = [96, 0, 0, -60, 50 + 44, 30 + 60];
+    expect(draws(pdf)).toEqual([placed, placed, placed]);
+    // The outlines change the pages, not where the image is drawn.
+    const plain = await renderToBuffer(doc(false), { compress: false });
+    expect(Buffer.compare(pdf, plain)).not.toBe(0);
+    expect(draws(plain)).toEqual(draws(pdf));
+  });
 });

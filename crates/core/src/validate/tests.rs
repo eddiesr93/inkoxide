@@ -663,10 +663,10 @@ fn decoration_thickness_and_colour_are_checked() {
 }
 
 #[test]
-fn image_position_is_checked() {
+fn image_object_position_is_checked() {
     let image = |position: &str| {
         doc(&format!(
-            r#"{{"type":"image","src":"logo","position":{position}}}"#
+            r#"{{"type":"image","src":"logo","objectPosition":{position}}}"#
         ))
     };
     for ok in [
@@ -688,7 +688,7 @@ fn image_position_is_checked() {
         (r#"{"y":"+5%"}"#, "y"),
     ] {
         let (code, path) = one(&image(bad));
-        let want = format!("pages[0].children[0].position.{field}");
+        let want = format!("pages[0].children[0].objectPosition.{field}");
         assert_eq!(
             (code, path.as_str()),
             (C::InvalidValue, want.as_str()),
@@ -698,17 +698,64 @@ fn image_position_is_checked() {
     let (code, path) = one(&image(r#"{"x":"left","z":0}"#));
     assert_eq!(
         (code, path.as_str()),
-        (C::UnknownField, "pages[0].children[0].position.z")
+        (C::UnknownField, "pages[0].children[0].objectPosition.z")
     );
     let (code, path) = one(&image(r#"{"x":true}"#));
     assert_eq!(
         (code, path.as_str()),
-        (C::InvalidType, "pages[0].children[0].position.x")
+        (C::InvalidType, "pages[0].children[0].objectPosition.x")
     );
-    let (code, path) = one(&doc(r#"{"type":"box","position":{"x":"left"}}"#));
+    let (code, path) = one(&doc(r#"{"type":"box","objectPosition":{"x":"left"}}"#));
     assert_eq!(
         (code, path.as_str()),
-        (C::UnknownField, "pages[0].children[0].position")
+        (C::UnknownField, "pages[0].children[0].objectPosition")
+    );
+}
+
+#[test]
+fn image_object_position_is_bounded() {
+    let image = |position: &str| {
+        doc(&format!(
+            r#"{{"type":"image","src":"logo","objectPosition":{position}}}"#
+        ))
+    };
+    // Points within ±14400 (the largest page edge), percentages within
+    // ±10000 %, bounds included.
+    for ok in [
+        r#"{"x":14400,"y":-14400}"#,
+        r#"{"x":-14400,"y":14400}"#,
+        r#"{"x":"10000%","y":"-10000%"}"#,
+        r#"{"x":"-10000%","y":"10000%"}"#,
+        r#"{"x":"9999.99%","y":0}"#,
+    ] {
+        assert_eq!(run(&image(ok)), vec![], "{ok}");
+    }
+    for (bad, field) in [
+        (r#"{"x":14400.5}"#, "x"),
+        (r#"{"y":-20000}"#, "y"),
+        (r#"{"x":1e30}"#, "x"),
+        (r#"{"x":"10000.5%"}"#, "x"),
+        (r#"{"y":"-99999%"}"#, "y"),
+        (r#"{"x":"9999999999999999999999999999999999999%"}"#, "x"),
+        (r#"{"y":"9999999999999999999999999999999999999%"}"#, "y"),
+    ] {
+        let (code, path) = one(&image(bad));
+        let want = format!("pages[0].children[0].objectPosition.{field}");
+        assert_eq!(
+            (code, path.as_str()),
+            (C::OutOfRange, want.as_str()),
+            "{bad}"
+        );
+    }
+    // Both axes are reported.
+    let errs = run(&image(r#"{"x":"-20000%","y":20000}"#));
+    let paths: Vec<_> = errs.iter().map(|e| (e.code, e.path.as_str())).collect();
+    assert_eq!(
+        paths,
+        [
+            (C::OutOfRange, "pages[0].children[0].objectPosition.x"),
+            (C::OutOfRange, "pages[0].children[0].objectPosition.y"),
+        ]
     );
 }
 
