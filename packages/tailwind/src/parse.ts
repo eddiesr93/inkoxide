@@ -494,6 +494,12 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       return;
     }
     case 'position':
+      if (v.trim() === 'fixed') {
+        throw new Unsupported(
+          prop,
+          `position: fixed (supported: relative, absolute; to repeat an element on every page, give it the fixed prop and position: absolute)`,
+        );
+      }
       s.position = pick('position', prop, v);
       return;
     case 'overflow':

@@ -10,7 +10,7 @@ use crate::images::ImageSet;
 use crate::layout::{Geometry, LayoutEngine, LeafMeasure, NodeIdx, TaffyLayout, Tree};
 use crate::paginate::{paginate, Placement};
 use crate::paint::{self, ContentCtx, ContentPainter, FlowPart, Op, PageContent, Rect};
-use crate::schema::{Display, Document, Node, NodeKind, PageSpec};
+use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
 use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
 use crate::InkoxideError;
 
@@ -85,26 +85,34 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
 /// One page template after layout and pagination.
 struct Laid<'a> {
     spec: &'a PageSpec,
+    /// The flow, without its overlays.
     flow: Tree<'a>,
     placement: Placement,
     header: Option<Band<'a>>,
     footer: Option<Band<'a>>,
+    /// The flow's overlays, with their index in `spec.children`.
+    overlays: Vec<(usize, Band<'a>)>,
 }
 
-/// A header or footer, laid out once with stand-in digits for page
-/// numbers. One that shows page numbers is laid out again on every page,
-/// with that page's numbers, so its lines break and its boxes size to the
-/// digits painted; the first layout then only warms the text cache.
+/// A header, a footer or an overlay, laid out once with stand-in digits for
+/// page numbers. One that shows page numbers is laid out again on every
+/// page, with that page's numbers, so its lines break and its boxes size to
+/// the digits painted; the first layout then only warms the text cache.
 struct Band<'a> {
     node: &'a Node,
     tree: Tree<'a>,
     numbered: bool,
+    /// The box it is laid out in: the page width for headers and footers,
+    /// the page content box for overlays.
+    width: f32,
+    height: f32,
 }
 
 impl<'a> Band<'a> {
     fn new(
         node: &'a Node,
         width: f32,
+        height: f32,
         leaves: &mut dyn LeafMeasure,
     ) -> Result<Self, InkoxideError> {
         let mut texts = Vec::new();
@@ -115,19 +123,32 @@ impl<'a> Band<'a> {
         });
         Ok(Self {
             node,
-            tree: layout_fixed(node, width, leaves)?,
+            tree: layout_fixed(node, width, height, leaves)?,
             numbered,
+            width,
+            height,
         })
     }
 }
 
+/// Whether a node of a page's `children` is an overlay: fixed and
+/// absolutely positioned. An overlay is laid out on its own, against the
+/// page content box, and painted on every page of the flow; it takes no
+/// space in the flow.
+fn is_overlay(node: &Node) -> bool {
+    node.brk.fixed && node.style.position == Some(Position::Absolute)
+}
+
+/// Lays out `node` alone in a box `width` wide and at least `height` high
+/// (an absolutely positioned node is placed against that box).
 fn layout_fixed<'a>(
     node: &'a Node,
     width: f32,
+    height: f32,
     leaves: &mut dyn LeafMeasure,
 ) -> Result<Tree<'a>, InkoxideError> {
     let mut tree = Tree::build_single(node);
-    TaffyLayout.compute(&mut tree, width, 0.0, leaves)?;
+    TaffyLayout.compute(&mut tree, width, height, leaves)?;
     Ok(tree)
 }
 
@@ -158,19 +179,26 @@ pub(crate) fn run<'d, T: Send>(
         let m = spec.margin;
         let content_w = spec.size.width - m.left - m.right;
         let content_h = spec.size.height - m.top - m.bottom;
-        let mut flow = Tree::build(&spec.children);
+        let mut flow = Tree::build_from(spec.children.iter().filter(|n| !is_overlay(n)));
         let mut leaves = Leaves { text, images };
         TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
         let header = spec
             .header
             .as_deref()
-            .map(|n| Band::new(n, spec.size.width, &mut leaves))
+            .map(|n| Band::new(n, spec.size.width, 0.0, &mut leaves))
             .transpose()?;
         let footer = spec
             .footer
             .as_deref()
-            .map(|n| Band::new(n, spec.size.width, &mut leaves))
+            .map(|n| Band::new(n, spec.size.width, 0.0, &mut leaves))
             .transpose()?;
+        let overlays = spec
+            .children
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| is_overlay(n))
+            .map(|(k, n)| Ok((k, Band::new(n, content_w, content_h, &mut leaves)?)))
+            .collect::<Result<_, InkoxideError>>()?;
         let placement = paginate(&flow, content_h, text);
         laid.push(Laid {
             spec,
@@ -178,6 +206,7 @@ pub(crate) fn run<'d, T: Send>(
             placement,
             header,
             footer,
+            overlays,
         });
     }
 
@@ -216,10 +245,39 @@ pub(crate) fn run<'d, T: Send>(
 }
 
 /// Destinations of the ids and bookmarks in one paginated flow, whose
-/// first page is document page `first`. Headers and footers have none.
+/// first page is document page `first`, in document order. Headers and
+/// footers have none; an overlay's point to where it is painted on the
+/// flow's first page.
 fn collect_marks<'d>(l: &Laid<'d>, first: u32, out: &mut Marks<'d>) {
-    let (tree, pl, m) = (&l.flow, &l.placement, l.spec.margin);
-    let mut stack: Vec<NodeIdx> = tree.children(0).rev().collect();
+    let (flow, pl) = (&l.flow, &l.placement);
+    let mut flow_nodes = flow.children(0);
+    let mut overlays = l.overlays.iter().peekable();
+    for k in 0..l.spec.children.len() {
+        if let Some((_, o)) = overlays.next_if(|(i, _)| *i == k) {
+            subtree_marks(l, &o.tree, 1, first, |_, y| (0, y), out);
+        } else if let Some(c) = flow_nodes.next() {
+            let at = |i: NodeIdx, y: f32| {
+                let page = pl.page_range[i as usize].0;
+                (page, y + pl.shift_top[i as usize] - page as f32 * pl.page_h)
+            };
+            subtree_marks(l, flow, c, first, at, out);
+        }
+    }
+}
+
+/// Destinations of the ids and bookmarks under node `root` of `tree`.
+/// `at(i, y)` is the page of node `i` in its flow, and its top `y` on that
+/// page.
+fn subtree_marks<'d>(
+    l: &Laid<'d>,
+    tree: &Tree<'d>,
+    root: NodeIdx,
+    first: u32,
+    at: impl Fn(NodeIdx, f32) -> (u32, f32),
+    out: &mut Marks<'d>,
+) {
+    let m = l.spec.margin;
+    let mut stack = vec![root];
     while let Some(i) = stack.pop() {
         let ln = &tree.nodes[i as usize];
         if ln.style().display == Some(Display::None) {
@@ -232,8 +290,7 @@ fn collect_marks<'d>(l: &Laid<'d>, first: u32, out: &mut Marks<'d>) {
         if node.id.is_none() && node.bookmark.is_none() {
             continue;
         }
-        let page = pl.page_range[i as usize].0;
-        let top = ln.geo.y + pl.shift_top[i as usize] - page as f32 * pl.page_h;
+        let (page, top) = at(i, ln.geo.y);
         let dest = Dest {
             page: first + page,
             x: ln.geo.x + m.left,
@@ -278,15 +335,14 @@ fn collect_texts<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
     }
 }
 
-/// Lays out a header or footer that shows page numbers again, measuring
-/// with one page's text.
+/// Lays out a header, footer or overlay that shows page numbers again,
+/// measuring with one page's text.
 fn relayout<'a>(
     band: Option<&Band<'a>>,
-    width: f32,
     leaves: &mut dyn LeafMeasure,
 ) -> Result<Option<Tree<'a>>, InkoxideError> {
     match band {
-        Some(b) if b.numbered => layout_fixed(b.node, width, leaves).map(Some),
+        Some(b) if b.numbered => layout_fixed(b.node, b.width, b.height, leaves).map(Some),
         _ => Ok(None),
     }
 }
@@ -311,14 +367,20 @@ fn paint_page(
         });
     }
     let nums = (numbers.current, numbers.total);
-    // Headers and footers with page numbers, laid out for this page.
+    // Headers, footers and overlays with page numbers, laid out for this
+    // page.
     let mut page_text = PageText::new(text, numbers);
     let mut leaves = Leaves {
         text: &mut page_text,
         images,
     };
-    let header_here = relayout(l.header.as_ref(), pw, &mut leaves)?;
-    let footer_here = relayout(l.footer.as_ref(), pw, &mut leaves)?;
+    let header_here = relayout(l.header.as_ref(), &mut leaves)?;
+    let footer_here = relayout(l.footer.as_ref(), &mut leaves)?;
+    let overlays_here = l
+        .overlays
+        .iter()
+        .map(|(_, o)| relayout(Some(o), &mut leaves))
+        .collect::<Result<Vec<_>, _>>()?;
     let header = header_here.as_ref().or(l.header.as_ref().map(|b| &b.tree));
     let footer = footer_here.as_ref().or(l.footer.as_ref().map(|b| &b.tree));
     let mut painter = Content {
@@ -365,6 +427,18 @@ fn paint_page(
         );
     }
     painter.text.page = Some(&page_text);
+    // Overlays: placed in the content box, like the flow, but not clipped.
+    for ((_, o), here) in l.overlays.iter().zip(&overlays_here) {
+        paint::paint_flow(
+            here.as_ref().unwrap_or(&o.tree),
+            FlowPart::All,
+            m.left,
+            m.top,
+            nums,
+            &mut painter,
+            &mut page.ops,
+        );
+    }
     if let Some(header) = header {
         paint::paint_flow(
             header,

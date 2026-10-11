@@ -264,7 +264,8 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Position',
     utilities: '`relative`, `absolute`',
     maps: '`position`',
-    notes: '`fixed` and `sticky` are not supported; use `Header`/`Footer` for repeating content.',
+    notes:
+      '`fixed` and `sticky` are not supported. To repeat an element on every page, use `Header`/`Footer`, or the `fixed` prop with `absolute`.',
     examples: { relative: { position: 'relative' }, absolute: { position: 'absolute' } },
   },
   {
@@ -681,7 +682,10 @@ export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
   { example: 'bg-linear-to-r', why: 'Gradients and background images.' },
   { example: 'rotate-x-12', why: '3D transforms and `perspective-*`.' },
   { example: 'block', why: '`display` other than `flex`, `grid` and `none`.' },
-  { example: 'fixed', why: '`fixed` and `sticky` positioning.' },
+  {
+    example: 'fixed',
+    why: '`fixed` and `sticky` positioning; the `fixed` prop with `absolute` repeats an element on every page.',
+  },
   { example: 'w-fit', why: 'Intrinsic sizes (`fit`, `min`, `max`) and viewport units.' },
   { example: 'w-screen', why: 'Intrinsic sizes (`fit`, `min`, `max`) and viewport units.' },
   { example: 'rounded-[4pt/8pt]', why: 'Elliptical corners.' },

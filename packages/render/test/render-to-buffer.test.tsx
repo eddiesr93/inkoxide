@@ -13,6 +13,7 @@ import {
   Footer,
   Link,
   Page,
+  PageBreak,
   PageNumber,
   RenderError,
   renderToBuffer,
@@ -91,6 +92,65 @@ describe('renderToBuffer', () => {
     const bytes = Buffer.from(pdf).toString('latin1');
     expect(bytes.match(/\/Subtype ?\/Link/g)).toHaveLength(2);
     expect(bytes).toContain('https://example.com/inline');
+  });
+
+  it('repeats a fixed element with its link on every page, and its bookmark once', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page style={{ padding: 48 }}>
+          <View
+            fixed
+            id="stamp"
+            bookmark="Stamp"
+            href="https://example.com/stamp"
+            style={{ position: 'absolute', bottom: -30, right: 0, width: 40, height: 10 }}
+          />
+          <Text bookmark="Body">one</Text>
+          <PageBreak />
+          <Text href="#stamp">two</Text>
+          <PageBreak />
+          <Text>three</Text>
+        </Page>
+      </Document>,
+      { compress: false },
+    );
+    expect(countPages(pdf)).toBe(3);
+    const bytes = Buffer.from(pdf).toString('latin1');
+    // One link per page from the fixed element, and the one to it on page 2.
+    expect(bytes.match(/https:\/\/example\.com\/stamp/g)).toHaveLength(3);
+    expect(bytes.match(/\/Subtype ?\/Link/g)).toHaveLength(4);
+    expect(bytes.match(/\/Title ?\((Stamp|Body)\)/g)).toEqual(['/Title (Stamp)', '/Title (Body)']);
+  });
+
+  it('renders the fixed watermark, border and page numbers of the guide', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page size="A4" style={{ padding: 48 }}>
+          <Text
+            fixed
+            style={{ position: 'absolute', top: '45%', left: 0, right: 0, textAlign: 'center' }}
+            className="rotate-[-30deg] text-[64pt] font-bold text-red-500/15"
+          >
+            DRAFT
+          </Text>
+          <View
+            fixed
+            style={{ position: 'absolute', top: -16, right: -16, bottom: -16, left: -16 }}
+            className="border border-gray-300"
+          />
+          <Text
+            fixed
+            pages="notFirst"
+            style={{ position: 'absolute', bottom: -36, left: 0, right: 0, textAlign: 'center' }}
+            render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+          />
+          {Array.from({ length: 120 }, (_, i) => (
+            <Text key={i}>Line {i + 1}</Text>
+          ))}
+        </Page>
+      </Document>,
+    );
+    expect(countPages(pdf)).toBe(3);
   });
 
   it('names the component when the structure is wrong', async () => {

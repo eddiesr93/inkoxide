@@ -221,11 +221,57 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
   vertically. Their own vertical padding or alignment (`items-*` in a `flex-row`, `justify-*` in a
   column) overrides that.
 - **Showing on some pages.** `pages="first" | "notFirst" | "last" | "notLast" | "odd" | "even"`,
-  or a list of page numbers, shows an element in a header or footer only on those pages.
+  or a list of page numbers, shows an element in a header, a footer or a
+  [fixed element](#on-every-page-fixed) only on those pages.
 - **Paragraphs.** `orphans` and `widows` keep at least that many lines together at the foot and
   head of a page.
 - **Content that depends on the page.** Use `render={({ pageNumber, totalPages }) => …}` on a
-  `Text` or `View` in a header or footer.
+  `Text` or `View` in a header, a footer or a fixed element.
+
+### On every page: `fixed`
+
+Use `Header` and `Footer` for page chrome: titles and page numbers in the margins, with room
+kept for them. For a watermark, a page border or a stamp, mark an element `fixed`. It is painted
+over the content on every page of its `Page`:
+
+```tsx
+<Page size="A4" style={{ padding: 48 }}>
+  <Text
+    fixed
+    style={{ position: 'absolute', top: '45%', left: 0, right: 0, textAlign: 'center' }}
+    className="rotate-[-30deg] text-[64pt] font-bold text-red-500/15"
+  >
+    DRAFT
+  </Text>
+  <View
+    fixed
+    style={{ position: 'absolute', top: -16, right: -16, bottom: -16, left: -16 }}
+    className="border border-gray-300"
+  />
+  <Text
+    fixed
+    pages="notFirst"
+    style={{ position: 'absolute', bottom: -36, left: 0, right: 0, textAlign: 'center' }}
+    render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+  />
+  {/* the content */}
+</Page>
+```
+
+- **Placement.** A fixed element goes directly in the `Page`, with `position: 'absolute'` (or
+  `className="absolute"`). Its `top`, `right`, `bottom`, `left` and percentages are measured from
+  the page's content box, the area inside the margin, on every page. Negative values reach into
+  the margin: with `padding: 48`, `bottom: -36` is 12pt above the edge of the paper. On a
+  one-page document, adding `fixed` moves nothing.
+- **Space.** It takes none: the content flows under it. Content that needs room on every page
+  belongs in a `Header` or `Footer`, with a margin sized for it.
+- **Page numbers.** `render`, `<PageNumber />` and `<TotalPages />` show each page its own
+  numbers, and `pages` chooses the pages it appears on.
+- **Links, ids and bookmarks.** An `href` makes a link on every page. An `id` (the target of
+  `href="#id"`) and a `bookmark` point to the first page.
+- **Not allowed.** `fixed` on an element inside another element, in a `Table`, `Header` or
+  `Footer`, on a `Text` inside a `Text`, on a form field, or without `position: 'absolute'`. Each
+  is an error that names the component.
 
 ### Page sizes
 
@@ -470,9 +516,9 @@ as do hooks that compute during render (`useMemo`, `useContext`). The PDF is bui
 first render, so state updates and effects do not change it.
 
 **How much room does a page number take?**
-In a header or footer, its own digits: the text is laid out again on every page, so
-`<Text className="text-right">Page <PageNumber /> of <TotalPages /></Text>` ends at the
-footer's padding on every page. In the page body, the engine sizes the text for a three-digit
+In a header, a footer or a fixed element, its own digits: the text is laid out again on every
+page, so `<Text className="text-right">Page <PageNumber /> of <TotalPages /></Text>` ends at
+the footer's padding on every page. In the page body, the engine sizes the text for a three-digit
 number, because the page breaks depend on that layout: each line is still aligned with the real
 digits, but a box sized by its text keeps the three-digit width, and a number of four digits or
 more can overflow it.

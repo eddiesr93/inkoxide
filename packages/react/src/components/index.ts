@@ -260,8 +260,13 @@ interface Flow extends Common {
   wrap?: boolean;
   /** The same as `break={{ minPresenceAhead }}`, in points. */
   minPresenceAhead?: number;
-  /** Not supported: put content that repeats on every page in `<Header>` or `<Footer>`. */
-  fixed?: never;
+  /**
+   * Repeats the element on every page of its `Page`: a watermark, a page border, a stamp. Only
+   * for an element placed directly in the `Page`, with `position: 'absolute'`: it is placed
+   * against the page content box (inside the margins) and takes no space. `render` and `pages`
+   * work inside it. For content that needs room on every page, use `<Header>` or `<Footer>`.
+   */
+  fixed?: boolean;
   /**
    * Pages that paint this element (it keeps its layout space on the others): `'first'`,
    * `'last'`, `'notFirst'`, `'notLast'`, `'odd'`, `'even'`, or page numbers (negative from the
@@ -464,7 +469,7 @@ export interface PageBreakProps {
   id?: string;
 }
 
-interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark'> {
+interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
   /** Field name, unique in the document (radio buttons of one group share it). No `.`. */
   name: string;
   readOnly?: boolean;
@@ -535,6 +540,8 @@ export interface SvgProps extends SvgPresentation {
   pages?: PageFilter;
   break?: BreakProp;
   href?: string;
+  /** Repeats the drawing on every page, like `fixed` on a `View`. */
+  fixed?: boolean;
 }
 
 export interface PathProps extends SvgPresentation {

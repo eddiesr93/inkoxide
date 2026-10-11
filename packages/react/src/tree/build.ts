@@ -328,6 +328,12 @@ class Builder {
   private readonly hyphenatedWords = new Map<HyphenationCallback, Map<string, string>>();
   /** The size of the page being built: what `vw` and `vh` are relative to. */
   private pageBox = { width: 0, height: 0 };
+  /** Elements placed directly in a `<Page>`: the only ones that can be `fixed`. */
+  private readonly onPage = new WeakSet<Instance>();
+  /** The band being built (`'Header'` or `'Footer'`), if any. */
+  private band: string | undefined;
+  /** How many table cells the element being built is in. */
+  private inCell = 0;
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
@@ -374,6 +380,13 @@ class Builder {
           cause: e,
         });
       }
+    }
+    if ((s.position as string | undefined) === 'fixed') {
+      this.fail(
+        inst,
+        `<${HOST_NAME[inst.type]}>: position: 'fixed' is not supported; to repeat an element on every page, give it the fixed prop and position: 'absolute'.`,
+        { kind: 'props' },
+      );
     }
     if (inst.type !== HOST.Image) {
       for (const key of ['objectFit', 'objectPosition'] as const) {
@@ -539,16 +552,22 @@ class Builder {
       if (isEl(child, HOST.Header) || isEl(child, HOST.Footer)) {
         const key = child.type === HOST.Header ? 'header' : 'footer';
         if (spec[key]) this.fail(child, `A <Page> can have only one <${HOST_NAME[child.type]}>.`);
-        spec[key] = this.box(
-          child,
-          ctx,
-          child.children,
-          bandDefaults(spec.margin, key, this.styleOf(child, ctx)),
-        );
+        this.band = HOST_NAME[child.type];
+        try {
+          spec[key] = this.box(
+            child,
+            ctx,
+            child.children,
+            bandDefaults(spec.margin, key, this.styleOf(child, ctx)),
+          );
+        } finally {
+          this.band = undefined;
+        }
       } else {
         flow.push(child);
       }
     }
+    for (const child of flow) if (child.kind === 'element') this.onPage.add(child);
     const children = this.children(flow, ctx, inst);
     if (children.length > 0) spec.children = children;
     return this.mark(spec, inst);
@@ -645,7 +664,14 @@ class Builder {
   }
 
   private flowProps(
-    node: { id?: string; break?: Break; link?: string; bookmark?: Bookmark; pages?: PageFilter },
+    node: {
+      id?: string;
+      break?: Break;
+      link?: string;
+      bookmark?: Bookmark;
+      pages?: PageFilter;
+      style?: Style;
+    },
     inst: Instance,
   ): void {
     const p = inst.props;
@@ -656,18 +682,43 @@ class Builder {
     let b = toBreak(br as BreakProp | undefined);
     if (p.wrap === false) b = { ...b, inside: 'avoid' };
     if (typeof p.minPresenceAhead === 'number') b = { ...b, minPresenceAhead: p.minPresenceAhead };
-    if (b) node.break = b;
     if (p.fixed !== undefined && p.fixed !== false) {
-      this.fail(
-        inst,
-        `\`fixed\` is not supported on <${HOST_NAME[inst.type]}>: put content that repeats on every page in <Header> or <Footer>, which can show <PageNumber /> and <TotalPages />.`,
-        { kind: 'props' },
-      );
+      this.checkFixed(inst, node.style);
+      b = { ...b, fixed: true };
     }
+    if (b) node.break = b;
     const href = inst.type === HOST.Link ? this.target(inst) : p.href;
     if (typeof href === 'string') node.link = href;
     const bm = toBookmark(p.bookmark as BookmarkProp | undefined);
     if (bm) node.bookmark = bm;
+  }
+
+  /**
+   * `fixed` repeats an element on every page of its `<Page>`: it must be placed directly in the
+   * page and positioned absolutely, against the page content box, so it is in the same place on
+   * every page and takes no space. Content that needs room on every page belongs in `<Header>` or
+   * `<Footer>`.
+   */
+  private checkFixed(inst: Instance, style: Style | undefined): void {
+    const name = HOST_NAME[inst.type];
+    const fail = (why: string) => this.fail(inst, `<${name} fixed>: ${why}`, { kind: 'props' });
+    if (this.band) {
+      fail(`a <${this.band}> is already on every page, so nothing inside it can be fixed. Remove \`fixed\`.`);
+    }
+    if (this.inCell > 0) {
+      fail('an element in a <Table> cannot be fixed. Put it directly in the <Page>.');
+    }
+    if (!this.onPage.has(inst)) {
+      fail(
+        'only an element placed directly in a <Page> can be fixed, not one inside another element. Move it out, next to the page content.',
+      );
+    }
+    if (inst.type === HOST.Field) fail('a form field cannot be fixed.');
+    if (style?.position !== 'absolute') {
+      fail(
+        "a fixed element needs position: 'absolute' (or the class absolute); it is placed against the page content box on every page and takes no space. For content that needs room on every page, use <Header> or <Footer>.",
+      );
+    }
   }
 
   /** A `<Link>`'s target: `href`, or its alias `src`. */
@@ -786,6 +837,13 @@ class Builder {
       switch (n.type) {
         case HOST.Text:
         case HOST.Link: {
+          if (n.props.fixed !== undefined && n.props.fixed !== false) {
+            this.fail(
+              n,
+              `<${HOST_NAME[n.type]} fixed>: an inline run inside a <Text> cannot be fixed. Put \`fixed\` on an element placed directly in the <Page>.`,
+              { kind: 'props' },
+            );
+          }
           const own = this.styleOf(n, ctx);
           const box = boxKeys(own);
           if (box.length > 0 || textOnlyKeys(own).length > 0) {
@@ -970,7 +1028,13 @@ class Builder {
     if (typeof p.verticalAlign === 'string')
       style = { ...style, verticalAlign: p.verticalAlign as Style['verticalAlign'] };
     if (style) cell.style = style;
-    const children = this.children(inst.children, ctx, inst);
+    this.inCell++;
+    let children: SchemaNode[];
+    try {
+      children = this.children(inst.children, ctx, inst);
+    } finally {
+      this.inCell--;
+    }
     if (children.length > 0) cell.children = children;
     return this.mark(cell, inst);
   }

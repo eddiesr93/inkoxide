@@ -135,6 +135,9 @@ pub struct Break {
     #[serde(default)]
     pub inside: InsideMode,
     pub min_presence_ahead: Option<f32>,
+    /// Painted on every page of the flow. An absolutely positioned page
+    /// child is an overlay, placed against the page content box (see
+    /// `pipeline`); any other fixed node keeps its place in the flow.
     #[serde(default)]
     pub fixed: bool,
 }
