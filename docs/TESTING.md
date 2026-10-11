@@ -75,8 +75,9 @@ Targets (in `fuzz/`, outside the workspace):
 
 All share one oracle: no panic; `render` succeeds only when `validate`
 is clean and vice versa for validation errors; the output is a complete
-PDF; a document that renders from JSON renders the same bytes from
-MessagePack (`render_json` and `render_tree`).
+PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
+content streams; a document that renders from JSON renders the same bytes
+from MessagePack (`render_json` and `render_tree`).
 
 Findings land in `fuzz/artifacts/`. To inspect one:
 

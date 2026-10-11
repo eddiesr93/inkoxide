@@ -23,6 +23,17 @@ version 2.
   elsewhere, and a node below the content could add a page. One placed on the first page with
   `top`, `left` and `right` in points, before any content moves to another page, renders as
   before. `fixed` now has a description in the schema.
+- **Fixed:** every length and the other unbounded numbers have a range, so layout can no longer
+  overflow and write `inf` or `NaN` into the PDF, which made it invalid. A percentage like
+  `"9999999999999999999999999999999999999%"` in `width`, `margin` or a `translate` was
+  accepted. Percentages are now within ±10000% everywhere; points (lengths, column widths,
+  grid tracks, border widths and radii, `borderSpacing`, `minPresenceAhead`, row
+  `minHeight`), `fr`, `flexGrow`, `flexShrink`, `rotate` and the scale, rotate and matrix
+  values of `transform` are within ±1000000 (non-negative where they were); `aspectRatio` is
+  within [0.000001, 1000000]. A value past these is `OUT_OF_RANGE` at its path; errors on
+  grid tracks and skew angles now point at the value (`gridTemplateRows[0].min`,
+  `transform[0].skew[0]`). The schema also states the engine's existing bounds of
+  `lineHeight` (at most 100), `letterSpacing` (±1000) and `textIndent` (±10000).
 
 ## 1.0.0 - 2026-10-11
 

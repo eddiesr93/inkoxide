@@ -7,6 +7,8 @@
  */
 export type Id = string;
 /**
+ * A non-negative number of at most 1000000.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "NonNegative".
  */
@@ -35,19 +37,21 @@ export type Debug = boolean;
 export type Node =
   BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode;
 /**
- * Points, a percentage of the containing block, or "auto".
+ * Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto".
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Length".
  */
 export type Length = number | Percent | 'auto';
 /**
+ * A percentage within ±10000%, like `"50%"`.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Percent".
  */
 export type Percent = string;
 /**
- * Points or a percentage of the containing block's width.
+ * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "LengthPercent".
@@ -84,12 +88,19 @@ export type TrackSize =
       fitContent: LengthPercent;
     };
 /**
- * Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content".
+ * Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TrackBreadth".
  */
-export type TrackBreadth = number | Percent | string | ('auto' | 'min-content' | 'max-content');
+export type TrackBreadth = number | Percent | Fr | ('auto' | 'min-content' | 'max-content');
+/**
+ * A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Fr".
+ */
+export type Fr = string;
 /**
  * One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.
  *
@@ -119,7 +130,7 @@ export type BorderStyles =
       left?: 'solid' | 'dashed' | 'dotted';
     };
 /**
- * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.
+ * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TransformOp".
@@ -323,6 +334,9 @@ export interface Style {
   minHeight?: Length;
   maxWidth?: Length;
   maxHeight?: Length;
+  /**
+   * Width divided by height.
+   */
   aspectRatio?: number;
   padding?: EdgesLengthPercent;
   margin?: EdgesLength;
@@ -618,7 +632,7 @@ export interface TableNode {
  * via the `definition` "ColumnSpec".
  */
 export interface ColumnSpec {
-  width: number | string | 'auto';
+  width: number | Fr | 'auto';
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

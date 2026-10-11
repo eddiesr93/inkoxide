@@ -1,6 +1,6 @@
 import { enginePath, schema } from '@inkoxide/schema';
 import addFormatsModule from 'ajv-formats';
-import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
+import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 
 export interface SchemaProblem {
   path: string;
@@ -21,16 +21,40 @@ function compile(): ValidateFunction {
   return ajv.compile(schema);
 }
 
+/** Keywords that only say a `oneOf` branch did not apply: the least telling errors. */
+const BRANCH_KEYWORDS: Readonly<Record<string, number>> = { type: 1, const: 1, enum: 1, oneOf: 2 };
+
+/** Depth of the value an error is about. */
+const depth = (e: ErrorObject) => e.instancePath.split('/').length;
+
+/**
+ * A `pattern` error on a described definition (`Percent`) says what the pattern means
+ * ("must be a percentage within ±10000%…") rather than quoting the regular expression.
+ */
+function message(e: ErrorObject): string {
+  const def = /^#\/\$defs\/(\w+)\/pattern$/.exec(e.schemaPath)?.[1];
+  const defs = schema.$defs as Record<string, { description?: string }>;
+  const description = def === undefined ? undefined : defs[def]?.description;
+  if (!description) return e.message ?? e.keyword;
+  return `must be ${description[0]?.toLowerCase()}${description.slice(1).replace(/\.$|`/g, '')}`;
+}
+
 /**
  * Validates a tree against the engine's JSON Schema with ajv (dev only): shape errors
  * show up with component stacks before the engine sees the document. Empty when valid.
+ * The most telling problem comes first: for a value that matches no `oneOf` branch (a
+ * length, a transform function), the error deepest in the value, and a bound or pattern
+ * before "must be number" from a branch that does not apply.
  */
 export function validateTree(doc: unknown): SchemaProblem[] {
   validator ??= compile();
   if (validator(doc)) return [];
-  return (validator.errors ?? []).map((e) => ({
+  const errors = [...(validator.errors ?? [])].sort(
+    (a, b) => depth(b) - depth(a) || (BRANCH_KEYWORDS[a.keyword] ?? 0) - (BRANCH_KEYWORDS[b.keyword] ?? 0),
+  );
+  return errors.map((e) => ({
     path: enginePath(e),
-    message: e.message ?? e.keyword,
+    message: message(e),
     keyword: e.keyword,
   }));
 }

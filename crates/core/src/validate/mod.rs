@@ -13,10 +13,10 @@ use serde::Deserialize;
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
-    is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, Display,
-    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, ObjectPosition,
-    OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
-    SCHEMA_VERSION,
+    is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, ColumnWidth,
+    Display, Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind,
+    ObjectPosition, OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth,
+    TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -26,10 +26,61 @@ const MAX_ERRORS: usize = 100;
 /// Largest page edge PDF viewers accept (200 in, PDF 1.6+ user unit aside).
 const MAX_PAGE_EDGE: f32 = 14_400.0;
 
-/// Largest `objectPosition` percentage either way, as a fraction (10000 %).
-/// Far past any useful placement, and small enough that the offset stays
-/// finite for any image and box.
-const MAX_OBJECT_POSITION_FRACTION: f32 = 100.0;
+/// Largest percentage either way, as a fraction (10000 %), wherever a
+/// percentage is accepted. Far past any useful layout, and small enough
+/// that a percentage of any length stays finite: an unbounded one (say
+/// `"9999999999999999999999999999999999999%"`) overflowed `f32` and wrote
+/// `inf` into the content stream.
+const MAX_PERCENT: f32 = 100.0;
+
+/// Largest magnitude of a length in points (about 350 m), and of the other
+/// numbers that have no tighter bound of their own: flex factors, `fr`,
+/// angles, scale and matrix entries. Sums over a whole document stay far
+/// from overflowing `f32`.
+const MAX_NUMBER: f32 = 1_000_000.0;
+
+/// A length as the range checks see it.
+#[derive(Clone, Copy)]
+enum Len {
+    Points(f32),
+    /// A fraction (`"50%"` is 0.5).
+    Percent(f32),
+    Fr(f32),
+    /// `auto` and the content keywords: nothing to bound.
+    Keyword,
+}
+
+impl From<Length> for Len {
+    fn from(v: Length) -> Self {
+        match v {
+            Length::Points(p) => Self::Points(p),
+            Length::Percent(f) => Self::Percent(f),
+            Length::Auto => Self::Keyword,
+        }
+    }
+}
+
+impl From<LengthPercent> for Len {
+    fn from(v: LengthPercent) -> Self {
+        match v {
+            LengthPercent::Points(p) => Self::Points(p),
+            LengthPercent::Percent(f) => Self::Percent(f),
+        }
+    }
+}
+
+impl From<TrackBreadth> for Len {
+    fn from(v: TrackBreadth) -> Self {
+        match v {
+            TrackBreadth::Points(p) => Self::Points(p),
+            TrackBreadth::Percent(f) => Self::Percent(f),
+            TrackBreadth::Fr(f) => Self::Fr(f),
+            TrackBreadth::Auto | TrackBreadth::MinContent | TrackBreadth::MaxContent => {
+                Self::Keyword
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -540,16 +591,8 @@ impl<'a> Checker<'a> {
                 );
             });
         }
-        if let Some(v) = node.brk.min_presence_ahead {
-            if !(v >= 0.0) {
-                self.at("break", false, |c| {
-                    c.err(
-                        Code::OutOfRange,
-                        Some("minPresenceAhead"),
-                        "must be non-negative",
-                    );
-                });
-            }
+        if let v @ Some(_) = node.brk.min_presence_ahead {
+            self.at("break", false, |c| c.non_neg("minPresenceAhead", v));
         }
         let ctx = match ctx {
             Ctx::Page if crate::pipeline::is_overlay(node) => {
@@ -673,8 +716,8 @@ impl<'a> Checker<'a> {
                         Some(axis),
                         format!("points must be within [-{MAX_PAGE_EDGE}, {MAX_PAGE_EDGE}]"),
                     ),
-                    LengthPercent::Percent(f) if !(f.abs() <= MAX_OBJECT_POSITION_FRACTION) => {
-                        let max = MAX_OBJECT_POSITION_FRACTION * 100.0;
+                    LengthPercent::Percent(f) if !(f.abs() <= MAX_PERCENT) => {
+                        let max = MAX_PERCENT * 100.0;
                         c.err(
                             Code::OutOfRange,
                             Some(axis),
@@ -920,7 +963,7 @@ impl<'a> Checker<'a> {
             self.color(Some("color"), col);
         }
         if let Some(ls) = r.letter_spacing {
-            if ls.abs() > 1000.0 {
+            if !(ls.abs() <= 1000.0) {
                 self.err(
                     Code::OutOfRange,
                     Some("letterSpacing"),
@@ -940,6 +983,16 @@ impl<'a> Checker<'a> {
             );
             return;
         }
+        self.at("columns", false, |c| {
+            for (i, col) in t.columns.iter().enumerate() {
+                let width = match col.width {
+                    ColumnWidth::Points(p) => Len::Points(p),
+                    ColumnWidth::Fr(f) => Len::Fr(f),
+                    ColumnWidth::Auto => continue,
+                };
+                c.at(i, true, |c| c.len(Some("width"), width, false));
+            }
+        });
         if t.header_rows as usize > t.rows.len() {
             self.err(
                 Code::InvalidTable,
@@ -957,11 +1010,7 @@ impl<'a> Checker<'a> {
         self.at("rows", false, |c| {
             for (ri, row) in t.rows.iter().enumerate() {
                 c.at(ri, true, |c| {
-                    if let Some(h) = row.min_height {
-                        if !(h >= 0.0) {
-                            c.err(Code::OutOfRange, Some("minHeight"), "must be non-negative");
-                        }
-                    }
+                    c.non_neg("minHeight", row.min_height);
                     if let Some(bg) = &row.background_color {
                         c.color(Some("backgroundColor"), bg);
                     }
@@ -1051,20 +1100,81 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A non-negative number of at most [`MAX_NUMBER`].
     fn non_neg(&mut self, field: &str, v: Option<f32>) {
         if let Some(v) = v {
             if !(v >= 0.0) {
                 self.err(Code::OutOfRange, Some(field), "must be non-negative");
+            } else if !(v <= MAX_NUMBER) {
+                self.err(
+                    Code::OutOfRange,
+                    Some(field),
+                    format!("must be at most {MAX_NUMBER}"),
+                );
             }
         }
     }
 
-    fn length(&mut self, field: &str, v: Option<Length>, allow_negative: bool) {
-        match v {
-            Some(Length::Points(p) | Length::Percent(p)) if !allow_negative && p < 0.0 => {
-                self.err(Code::OutOfRange, Some(field), "must be non-negative");
+    /// A number within ±[`MAX_NUMBER`] (an angle, a scale factor).
+    fn signed(&mut self, field: Option<&str>, v: f32) {
+        if !(v.abs() <= MAX_NUMBER) {
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!("must be within [-{MAX_NUMBER}, {MAX_NUMBER}]"),
+            );
+        }
+    }
+
+    /// Bounds a length, the one check for every length in the document:
+    /// points (and `fr`) within ±[`MAX_NUMBER`], percentages within
+    /// ±[`MAX_PERCENT`], neither negative unless `negative` allows it.
+    /// Untrusted input: past these, layout overflows `f32`.
+    fn len(&mut self, field: Option<&str>, v: impl Into<Len>, negative: bool) {
+        let (v, max, unit, what) = match v.into() {
+            Len::Points(p) => (p, MAX_NUMBER, "", "points"),
+            Len::Percent(f) => (f, MAX_PERCENT, "%", "percentages"),
+            Len::Fr(f) => (f, MAX_NUMBER, "fr", "flexible sizes"),
+            Len::Keyword => return,
+        };
+        if !negative && v < 0.0 {
+            self.err(Code::OutOfRange, field, "must be non-negative");
+        } else if !(v.abs() <= max) {
+            // Percentages are stored as fractions; report them as written.
+            let max = if unit == "%" { max * 100.0 } else { max };
+            let min = if negative {
+                format!("-{max}")
+            } else {
+                "0".into()
+            };
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!("{what} must be within [{min}{unit}, {max}{unit}]"),
+            );
+        }
+    }
+
+    /// [`Self::len`] on each side that is set.
+    fn edges<T: Copy + Into<Len>>(&mut self, field: &str, e: Option<&OptEdges<T>>, negative: bool) {
+        let Some(e) = e else { return };
+        self.at(field, false, |c| {
+            for (k, v) in e.iter() {
+                c.len(Some(k), *v, negative);
             }
-            _ => {}
+        });
+    }
+
+    /// A grid track: its breadth, or each bound of `{min, max}` or
+    /// `{fitContent}`.
+    fn track(&mut self, t: &TrackSize) {
+        match *t {
+            TrackSize::Breadth(b) => self.len(None, b, false),
+            TrackSize::MinMax(min, max) => {
+                self.len(Some("min"), min, false);
+                self.len(Some("max"), max, false);
+            }
+            TrackSize::FitContent(f) => self.len(Some("fitContent"), f, false),
         }
     }
 
@@ -1117,29 +1227,26 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        for (k, op) in s.transform.iter().flat_map(|t| t.iter()).enumerate() {
-            let field = format!("transform[{k}]");
-            let finite = match op {
-                TransformOp::Translate(_) => true,
-                TransformOp::Scale(v) | TransformOp::Skew(v) => v.iter().all(|x| x.is_finite()),
-                TransformOp::Rotate(v) => v.is_finite(),
-                TransformOp::Matrix(m) => m.iter().all(|x| x.is_finite()),
-            };
-            if !finite {
-                self.err(Code::OutOfRange, Some(&field), "must be finite");
-            } else if let TransformOp::Skew(v) = op {
-                if v.iter().any(|a| a.abs() >= 90.0) {
-                    self.err(
-                        Code::OutOfRange,
-                        Some(&field),
-                        "skew angles must be within (-90, 90) degrees",
-                    );
+        if let Some(ops) = &s.transform {
+            self.at("transform", false, |c| {
+                for (k, op) in ops.iter().enumerate() {
+                    c.at(k, true, |c| c.transform_op(op));
                 }
-            }
+            });
+        }
+        if let Some(origin) = &s.transform_origin {
+            self.at("transformOrigin", false, |c| {
+                for (i, v) in origin.iter().enumerate() {
+                    c.at(i, true, |c| c.len(None, *v, true));
+                }
+            });
+        }
+        if let Some(r) = s.rotate {
+            self.signed(Some("rotate"), r);
         }
         self.non_neg("borderSpacing", s.border_spacing);
-        self.length("flexBasis", s.flex_basis, false);
         for (name, v) in [
+            ("flexBasis", s.flex_basis),
             ("width", s.width),
             ("height", s.height),
             ("minWidth", s.min_width),
@@ -1147,29 +1254,28 @@ impl<'a> Checker<'a> {
             ("maxWidth", s.max_width),
             ("maxHeight", s.max_height),
         ] {
-            self.length(name, v, false);
+            if let Some(v) = v {
+                self.len(Some(name), v, false);
+            }
         }
         for (name, v) in [
             ("gap", s.gap),
             ("rowGap", s.row_gap),
             ("columnGap", s.column_gap),
         ] {
-            if let Some(LengthPercent::Points(p) | LengthPercent::Percent(p)) = v {
-                if p < 0.0 {
-                    self.err(Code::OutOfRange, Some(name), "must be non-negative");
-                }
+            if let Some(v) = v {
+                self.len(Some(name), v, false);
             }
         }
-        if let Some(p) = &s.padding {
-            self.edges_lp("padding", p);
-        }
+        self.edges("padding", s.padding.as_ref(), false);
+        self.edges("margin", s.margin.as_ref(), true);
+        self.edges("inset", s.inset.as_ref(), true);
         if let Some(bw) = &s.border_width {
-            for (k, v) in bw.iter() {
-                if !(*v >= 0.0) {
-                    let f = format!("borderWidth.{k}");
-                    self.err(Code::OutOfRange, Some(&f), "must be non-negative");
+            self.at("borderWidth", false, |c| {
+                for (k, v) in bw.iter() {
+                    c.non_neg(k, Some(*v));
                 }
-            }
+            });
         }
         if let Some(bc) = &s.border_color {
             for (k, v) in bc.iter() {
@@ -1188,6 +1294,12 @@ impl<'a> Checker<'a> {
         if let Some(a) = s.aspect_ratio {
             if !(a > 0.0) {
                 self.err(Code::OutOfRange, Some("aspectRatio"), "must be positive");
+            } else if !((1.0 / MAX_NUMBER..=MAX_NUMBER).contains(&a)) {
+                self.err(
+                    Code::OutOfRange,
+                    Some("aspectRatio"),
+                    format!("must be within [{}, {MAX_NUMBER}]", 1.0 / MAX_NUMBER),
+                );
             }
         }
         if let Some(lh) = s.line_height {
@@ -1228,15 +1340,12 @@ impl<'a> Checker<'a> {
             ("gridAutoColumns", &s.grid_auto_columns),
             ("gridAutoRows", &s.grid_auto_rows),
         ] {
-            for (i, t) in tracks.iter().flat_map(|t| t.iter()).enumerate() {
-                if !track_non_neg(t) {
-                    let f = format!("{name}[{i}]");
-                    self.err(
-                        Code::OutOfRange,
-                        Some(&f),
-                        "track sizes must be non-negative",
-                    );
-                }
+            if let Some(tracks) = tracks {
+                self.at(name, false, |c| {
+                    for (i, t) in tracks.iter().enumerate() {
+                        c.at(i, true, |c| c.track(t));
+                    }
+                });
             }
         }
         if let Some(rows) = &s.grid_template_areas {
@@ -1270,11 +1379,14 @@ impl<'a> Checker<'a> {
                 GridTrack::Single(t) => (std::slice::from_ref(t), false),
                 GridTrack::Repeat(n, t) => (&t[..], !matches!(n, RepeatCount::Count(_))),
             };
-            if sizes.iter().any(|t| !track_non_neg(t)) {
-                self.at(i, true, |c| {
-                    c.err(Code::OutOfRange, None, "track sizes must be non-negative");
-                });
-            }
+            self.at(i, true, |c| match t {
+                GridTrack::Single(t) => c.track(t),
+                GridTrack::Repeat(_, t) => c.at("tracks", false, |c| {
+                    for (j, t) in t.iter().enumerate() {
+                        c.at(j, true, |c| c.track(t));
+                    }
+                }),
+            });
             if auto {
                 auto_repeats += 1;
                 if auto_repeats > 1 {
@@ -1313,26 +1425,35 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn edges_lp(&mut self, field: &str, e: &OptEdges<LengthPercent>) {
-        for (k, v) in e.iter() {
-            let (LengthPercent::Points(p) | LengthPercent::Percent(p)) = v;
-            if *p < 0.0 {
-                let f = format!("{field}.{k}");
-                self.err(Code::OutOfRange, Some(&f), "must be non-negative");
-            }
+    /// One transform function: lengths as everywhere, angles and factors
+    /// within ±[`MAX_NUMBER`], skew angles short of ±90°.
+    fn transform_op(&mut self, op: &TransformOp) {
+        let each = |c: &mut Self, name: &str, xs: &[f32], f: fn(&mut Self, f32)| {
+            c.at(name, false, |c| {
+                for (i, &x) in xs.iter().enumerate() {
+                    c.at(i, true, |c| f(c, x));
+                }
+            });
+        };
+        match op {
+            TransformOp::Translate(v) => self.at("translate", false, |c| {
+                for (i, &v) in v.iter().enumerate() {
+                    c.at(i, true, |c| c.len(None, v, true));
+                }
+            }),
+            TransformOp::Scale(v) => each(self, "scale", v, |c, x| c.signed(None, x)),
+            TransformOp::Rotate(v) => self.signed(Some("rotate"), *v),
+            TransformOp::Skew(v) => each(self, "skew", v, |c, a| {
+                if !(a.abs() < 90.0) {
+                    c.err(
+                        Code::OutOfRange,
+                        None,
+                        "skew angles must be within (-90, 90) degrees",
+                    );
+                }
+            }),
+            TransformOp::Matrix(m) => each(self, "matrix", m, |c, x| c.signed(None, x)),
         }
-    }
-}
-
-fn breadth_non_neg(b: TrackBreadth) -> bool {
-    !matches!(b, TrackBreadth::Points(v) | TrackBreadth::Percent(v) if v < 0.0)
-}
-
-fn track_non_neg(t: &TrackSize) -> bool {
-    match *t {
-        TrackSize::Breadth(b) => breadth_non_neg(b),
-        TrackSize::MinMax(a, b) => breadth_non_neg(a) && breadth_non_neg(b),
-        TrackSize::FitContent(LengthPercent::Points(v) | LengthPercent::Percent(v)) => v >= 0.0,
     }
 }
 

@@ -137,18 +137,28 @@
       }
     },
     "NonNegative": {
+      "description": "A non-negative number of at most 1000000.",
       "type": "number",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 1000000
     },
     "Percent": {
+      "description": "A percentage within ±10000%, like `\"50%\"`.",
       "type": "string",
-      "pattern": "^-?[0-9]+(\\.[0-9]+)?%$"
+      "pattern": "^-?0*([0-9]{1,4}(\\.[0-9]+)?|10000(\\.0+)?)%$"
+    },
+    "Fr": {
+      "description": "A flexible size, a share of the free space, of at most 1000000fr, like `\"1fr\"`.",
+      "type": "string",
+      "pattern": "^0*([0-9]{1,6}(\\.[0-9]+)?|1000000(\\.0+)?)fr$"
     },
     "Length": {
-      "description": "Points, a percentage of the containing block, or \"auto\".",
+      "description": "Points (within ±1000000), a percentage of the containing block (within ±10000%), or \"auto\".",
       "oneOf": [
         {
-          "type": "number"
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
         },
         {
           "$ref": "#/$defs/Percent"
@@ -159,10 +169,12 @@
       ]
     },
     "LengthPercent": {
-      "description": "Points or a percentage of the containing block's width.",
+      "description": "Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).",
       "oneOf": [
         {
-          "type": "number"
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
         },
         {
           "$ref": "#/$defs/Percent"
@@ -470,7 +482,7 @@
       ]
     },
     "TransformOp": {
-      "description": "One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise.",
+      "description": "One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.",
       "oneOf": [
         {
           "type": "object",
@@ -499,7 +511,9 @@
             "scale": {
               "type": "array",
               "items": {
-                "type": "number"
+                "type": "number",
+                "minimum": -1000000,
+                "maximum": 1000000
               },
               "minItems": 2,
               "maxItems": 2
@@ -514,7 +528,9 @@
           ],
           "properties": {
             "rotate": {
-              "type": "number"
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
             }
           }
         },
@@ -547,7 +563,9 @@
             "matrix": {
               "type": "array",
               "items": {
-                "type": "number"
+                "type": "number",
+                "minimum": -1000000,
+                "maximum": 1000000
               },
               "minItems": 6,
               "maxItems": 6
@@ -673,7 +691,9 @@
         },
         "aspectRatio": {
           "type": "number",
-          "exclusiveMinimum": 0
+          "minimum": 1e-06,
+          "maximum": 1000000,
+          "description": "Width divided by height."
         },
         "padding": {
           "$ref": "#/$defs/EdgesLengthPercent"
@@ -798,6 +818,8 @@
         },
         "rotate": {
           "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000,
           "description": "Degrees, clockwise, around the box centre."
         },
         "transform": {
@@ -836,6 +858,7 @@
         "lineHeight": {
           "type": "number",
           "exclusiveMinimum": 0,
+          "maximum": 100,
           "description": "text nodes only; multiplier of the largest run size on the line"
         },
         "maxLines": {
@@ -867,6 +890,8 @@
         },
         "textIndent": {
           "type": "number",
+          "minimum": -10000,
+          "maximum": 10000,
           "description": "text nodes only; indent of the first line in points (negative: hanging indent)"
         },
         "direction": {
@@ -938,7 +963,9 @@
           "$ref": "#/$defs/Color"
         },
         "letterSpacing": {
-          "type": "number"
+          "type": "number",
+          "minimum": -1000,
+          "maximum": 1000
         },
         "decoration": {
           "enum": [
@@ -1016,11 +1043,11 @@
           "oneOf": [
             {
               "type": "number",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
             },
             {
-              "type": "string",
-              "pattern": "^[0-9]+(\\.[0-9]+)?fr$"
+              "$ref": "#/$defs/Fr"
             },
             {
               "const": "auto"
@@ -1550,18 +1577,18 @@
       }
     },
     "TrackBreadth": {
-      "description": "Grid track breadth: points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\".",
+      "description": "Grid track breadth: points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\". Points and fr are at most 1000000.",
       "oneOf": [
         {
           "type": "number",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 1000000
         },
         {
           "$ref": "#/$defs/Percent"
         },
         {
-          "type": "string",
-          "pattern": "^[0-9]+(\\.[0-9]+)?fr$"
+          "$ref": "#/$defs/Fr"
         },
         {
           "enum": [

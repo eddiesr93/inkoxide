@@ -102,11 +102,16 @@ def type_of(p):
     return out
 
 
+def number(v):
+    """A bound as written in the schema: `0.000001`, not `1e-06`."""
+    return f"{v:f}".rstrip("0").rstrip(".") if isinstance(v, float) else str(v)
+
+
 def constraints(p):
     parts = []
     for key, label in [("minimum", "≥"), ("exclusiveMinimum", ">"), ("maximum", "≤"), ("minItems", "min items")]:
         if key in p:
-            parts.append(f"{label} {p[key]}")
+            parts.append(f"{label} {number(p[key])}")
     if "default" in p:
         parts.append(f"default `{json.dumps(p['default'])}`")
     return ", ".join(parts)

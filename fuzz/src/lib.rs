@@ -148,6 +148,7 @@ fn render_with(
                 "rendered a document validate rejects: {errors:?}"
             );
             assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
+            assert_finite_numbers(pdf, true);
         }
         Err(InkoxideError::Validation(e)) => {
             assert!(
@@ -158,6 +159,94 @@ fn render_with(
         Err(_) => {}
     }
     result
+}
+
+/// PDF whitespace and delimiters.
+fn delimiter(b: u8) -> bool {
+    b.is_ascii_whitespace() || b"()<>[]{}/%".contains(&b)
+}
+
+/// Panics on an `inf` or `NaN` operand (what pdf-writer writes for a
+/// non-finite f32; PDF has no such numbers and viewers reject the page).
+/// Scans the object syntax (`objects`) and, from there, the uncompressed
+/// streams: content streams (the oracle renders without compression) and
+/// widget appearances. Compressed streams (fonts, images, SVG forms) and
+/// XMP metadata are skipped, and so are strings and names, which hold
+/// document text (`(inf)`, `/NaN`) rather than numbers.
+fn assert_finite_numbers(data: &[u8], objects: bool) {
+    let mut i = 0;
+    // Since the last `obj`: the `/Length` and whether the stream is
+    // compressed or metadata.
+    let (mut length, mut skip, mut after_length) = (None, false, false);
+    while i < data.len() {
+        match data[i] {
+            b'(' => {
+                // A literal string: balanced parentheses, `\` escapes.
+                let mut depth = 0;
+                while i < data.len() {
+                    match data[i] {
+                        b'\\' => i += 1,
+                        b'(' => depth += 1,
+                        b')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'%' => {
+                while i < data.len() && data[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' => {
+                let start = i + 1;
+                i = start;
+                while i < data.len() && !delimiter(data[i]) {
+                    i += 1;
+                }
+                let name = &data[start..i];
+                after_length = name == b"Length";
+                skip |= objects && (name == b"Filter" || name == b"Metadata");
+            }
+            b if delimiter(b) => i += 1,
+            _ => {
+                let start = i;
+                while i < data.len() && !delimiter(data[i]) {
+                    i += 1;
+                }
+                let token = &data[start..i];
+                let number = token.strip_prefix(b"-").unwrap_or(token);
+                assert!(
+                    number != b"inf" && number != b"NaN",
+                    "non-finite number `{}` in the PDF",
+                    String::from_utf8_lossy(token)
+                );
+                if !objects {
+                    continue;
+                }
+                if after_length {
+                    length = std::str::from_utf8(token).ok().and_then(|t| t.parse().ok());
+                }
+                after_length = false;
+                if token == b"obj" {
+                    (length, skip) = (None, false);
+                } else if token == b"stream" {
+                    let body = i + if data[i..].starts_with(b"\r\n") { 2 } else { 1 };
+                    let end = length.map_or(data.len(), |n: usize| (body + n).min(data.len()));
+                    if !skip {
+                        assert_finite_numbers(&data[body.min(end)..end], false);
+                    }
+                    i = end;
+                }
+            }
+        }
+    }
 }
 
 /// Entropy source over the fuzzer's bytes; reads zeros once exhausted, so
@@ -213,33 +302,69 @@ fn num(s: &mut Src) -> Value {
     match s.below(12) {
         0 => json!(0),
         1 => json!(-(s.below(100) as f64)),
-        2 => json!(1e9),
+        2 => edge(s),
         3 => json!(1e-6),
-        4 => json!(f32::MAX as f64),
-        5 => json!(14_400),
+        4 => json!(14_400),
         _ => json!(s.below(600) as f64 + s.below(4) as f64 * 0.25),
     }
 }
 
+/// Numbers at the bounds of validation (±1000000 for lengths and factors),
+/// and now and then just past them or far past them: values that
+/// overflowed f32 in layout before validation bounded them. 1e39 is
+/// infinite as f32, which fails the whole parse where a length is
+/// expected, so it is rarer still.
+fn edge(s: &mut Src) -> Value {
+    match s.below(8) {
+        0 | 1 => json!(1_000_000),
+        2 | 3 => json!(-1_000_000),
+        4 => json!(999_999.75),
+        5 => json!(1_000_000.5),
+        6 => json!(s.pick(&[-1e9, f64::from(f32::MAX), -1e30])),
+        _ if s.chance(32) => json!(1e39),
+        _ => json!(-999_999.75),
+    }
+}
+
+/// Percentages at and past the ±10000 % bound; a huge one resolved to
+/// `inf` before it was bounded.
+fn edge_pct(s: &mut Src) -> Value {
+    json!(s.pick(&[
+        "10000%",
+        "-10000%",
+        "9999.5%",
+        "10000.01%",
+        "-20000%",
+        "9999999999999999999999999999999999999%",
+        "-9999999999999999999999999999999999999%",
+    ]))
+}
+
 fn nonneg(s: &mut Src) -> Value {
-    match s.below(6) {
+    match s.below(8) {
         0 => json!(0),
-        1 => json!(1e7),
+        1 => json!(1_000_000),
+        2 if s.chance(64) => json!(s.pick(&[1_000_000.5, 1e7, 1e39])),
         _ => json!(s.below(50)),
     }
 }
 
 fn length(s: &mut Src) -> Value {
-    match s.below(5) {
+    match s.below(6) {
         0 => json!("auto"),
         1 => json!(format!("{}%", s.below(250))),
+        2 if s.chance(64) => edge_pct(s),
         _ => num(s),
     }
 }
 
 fn length_pct(s: &mut Src) -> Value {
     if s.chance(60) {
-        json!(format!("{}%", s.below(120)))
+        if s.chance(16) {
+            edge_pct(s)
+        } else {
+            json!(format!("{}%", s.below(120)))
+        }
     } else {
         num(s)
     }
@@ -264,12 +389,18 @@ fn edges(s: &mut Src, f: fn(&mut Src) -> Value) -> Value {
 }
 
 fn breadth(s: &mut Src) -> Value {
-    match s.below(6) {
+    match s.below(7) {
         0 => json!(format!("{}fr", s.below(4))),
         1 => json!("auto"),
         2 => json!("min-content"),
         3 => json!("max-content"),
         4 => json!(format!("{}%", s.below(100))),
+        // The bounds (1000000 points or fr, 10000 %) and past them.
+        5 if s.chance(64) => match s.below(4) {
+            0 => json!(s.pick(&["1000000fr", "1000001fr"])),
+            1 => edge_pct(s),
+            _ => edge(s),
+        },
         _ => json!(s.below(300)),
     }
 }
@@ -352,6 +483,7 @@ const TEXT_ONLY: &[&str] = &[
     "hyphenate",
     "lang",
     "whiteSpace",
+    "textIndent",
 ];
 
 const PROPS: &[&str] = &[
@@ -398,6 +530,8 @@ const PROPS: &[&str] = &[
     "borderRadius",
     "borderStyle",
     "rotate",
+    "transform",
+    "transformOrigin",
     "textAlign",
     "lineHeight",
     "maxLines",
@@ -405,6 +539,7 @@ const PROPS: &[&str] = &[
     "hyphenate",
     "lang",
     "whiteSpace",
+    "textIndent",
     "verticalAlign",
 ];
 
@@ -459,6 +594,12 @@ fn prop(s: &mut Src, name: &str) -> Value {
             length(s)
         }
         "aspectRatio" | "lineHeight" | "rotate" => num(s),
+        "transform" => transform(s),
+        "transformOrigin" => json!([length_pct(s), length_pct(s)]),
+        "textIndent" => match s.below(4) {
+            0 => json!(s.pick(&[10_000.0, -10_000.0, 10_000.5])),
+            _ => json!(s.below(40) as f64 - 20.0),
+        },
         "padding" => edges(s, length_pct),
         "margin" | "inset" => edges(s, length),
         "position" => e(s, &["relative", "absolute"]),
@@ -492,6 +633,29 @@ fn prop(s: &mut Src, name: &str) -> Value {
     }
 }
 
+/// A scale factor or matrix entry: ordinary, mirrored, or at the edges.
+fn factor(s: &mut Src) -> Value {
+    match s.below(4) {
+        0 => edge(s),
+        1 => json!(-1),
+        _ => json!(0.5 + s.below(4) as f64),
+    }
+}
+
+/// `transform`: one to three functions.
+fn transform(s: &mut Src) -> Value {
+    let ops = (0..1 + s.below(3))
+        .map(|_| match s.below(5) {
+            0 => json!({"translate": [length_pct(s), length_pct(s)]}),
+            1 => json!({"scale": [factor(s), factor(s)]}),
+            2 => json!({"rotate": num(s)}),
+            3 => json!({"skew": [s.pick(&[0.0, 30.0, -89.9, 90.0]), 0]}),
+            _ => json!({"matrix": [factor(s), 0, 0, factor(s), num(s), num(s)]}),
+        })
+        .collect();
+    Value::Array(ops)
+}
+
 fn style(s: &mut Src, text: bool) -> Value {
     let mut m = Map::new();
     for _ in 0..s.below(7) {
@@ -500,15 +664,7 @@ fn style(s: &mut Src, text: bool) -> Value {
             continue;
         }
         if text && s.chance(128) {
-            p = s.pick(&[
-                "textAlign",
-                "lineHeight",
-                "maxLines",
-                "ellipsis",
-                "hyphenate",
-                "lang",
-                "whiteSpace",
-            ]);
+            p = s.pick(TEXT_ONLY);
         }
         m.insert(p.into(), prop(s, p));
     }
@@ -644,7 +800,13 @@ fn cell(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         m.insert("rowSpan".into(), json!(1 + s.below(3)));
     }
     if s.chance(100) {
-        m.insert("style".into(), style(s, false));
+        let mut st = style(s, false);
+        if let (false, Value::Object(st)) = (s.chaos, &mut st) {
+            // Not on table cells.
+            st.remove("transform");
+            st.remove("transformOrigin");
+        }
+        m.insert("style".into(), st);
     }
     let flow = std::mem::replace(&mut s.flow, false);
     let kids: Vec<Value> = (0..s.below(3))
