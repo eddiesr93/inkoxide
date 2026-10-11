@@ -253,6 +253,8 @@ interface Common {
   /**
    * Draws the element's boxes over the page: margin (orange), border (yellow), padding (green),
    * content box (blue outline) and its size in points. A development aid; it changes the output.
+   * Not on a `<Text>` or `<Link>` inside a `<Text>`: a run of the paragraph has no box of its own,
+   * so put it on the outer `<Text>`.
    */
   debug?: boolean;
   children?: ReactNode;
@@ -269,7 +271,8 @@ interface Flow extends Common {
    * Repeats the element on every page of its `Page`: a watermark, a page border, a stamp. Only
    * for an element placed directly in the `Page`, with `position: 'absolute'`: it is placed
    * against the page content box (inside the margins) and takes no space. `render` and `pages`
-   * work inside it. For content that needs room on every page, use `<Header>` or `<Footer>`.
+   * work inside it; `break`, `wrap` and `minPresenceAhead` do not, on it or inside it. For content
+   * that needs room on every page, use `<Header>` or `<Footer>`.
    */
   fixed?: boolean;
   /**

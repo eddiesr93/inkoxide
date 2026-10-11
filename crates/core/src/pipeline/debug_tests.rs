@@ -10,8 +10,21 @@ use crate::{FontStore, InputFormat, RenderOptions};
 const W: f32 = 200.0;
 const H: f32 = 100.0;
 
+/// A font store with Inter as `Inter-Regular`.
+fn inter() -> FontStore {
+    let mut store = FontStore::new();
+    let path = format!(
+        "{}/../../fixtures/fonts/Inter-Regular.ttf",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    store
+        .register("Inter-Regular", std::fs::read(path).unwrap())
+        .unwrap();
+    store
+}
+
 fn pages(json: &str) -> Vec<PageContent> {
-    let store = FontStore::new();
+    let store = inter();
     let doc = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
@@ -232,6 +245,82 @@ fn a_fixed_element_is_outlined_on_every_page() {
 }
 
 #[test]
+fn an_overlay_under_the_flow_is_outlined_unclipped() {
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},
+            "margin":{{"top":10,"left":10}},
+            "children":[
+                {{"type":"box","debug":true,"style":{{"height":20}}}},
+                {{"type":"box","debug":true,"break":{{"fixed":true}},
+                  "style":{{"position":"absolute","inset":{{"top":-5,"left":5}},
+                            "width":30,"height":20,"zIndex":-1}}}}]}}]}}"#
+    );
+    let pages = pages(&json);
+    // Outlined in paint order, the overlay first; reaching into the
+    // margin, it is not clipped to the flow's band.
+    assert_eq!(
+        outlines(&pages[0]),
+        [
+            Outline {
+                content: Rect::new(15.0, 5.0, 30.0, 20.0),
+                clipped: false
+            },
+            Outline {
+                content: Rect::new(10.0, 10.0, W - 10.0, 20.0),
+                clipped: true
+            },
+        ]
+    );
+}
+
+#[test]
+fn an_overlay_with_page_numbers_is_outlined_as_laid_out_on_each_page() {
+    // Shrink-wrapped text with page numbers, fixed in the top-left corner,
+    // over a flow of three pages.
+    let overlay = |runs: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+                "pages":[{{"size":{{"width":{W},"height":{H}}},
+                "children":[
+                  {{"type":"text","debug":true,"break":{{"fixed":true}},
+                    "style":{{"position":"absolute"}},"runs":[{runs}]}},
+                  {{"type":"box","style":{{"height":{}}}}}]}}]}}"#,
+            3.0 * H - 1.0
+        )
+    };
+    let run = |run: &str| format!(r#"{{{run},"font":"Inter-Regular","size":10}}"#);
+    let numbered = overlay(
+        &[
+            run(r#""text":"Page ""#),
+            run(r#""placeholder":"pageNumber""#),
+            run(r#""text":" of ""#),
+            run(r#""placeholder":"totalPages""#),
+        ]
+        .join(","),
+    );
+    let widths: Vec<f32> = pages(&numbered)
+        .iter()
+        .map(|p| {
+            let o = outlines(p);
+            assert_eq!(o.len(), 1, "{o:?}");
+            o[0].content.w
+        })
+        .collect();
+    assert_eq!(widths.len(), 3);
+    // Each page's box is the one its own digits need: as wide as the same
+    // text written out, not as wide as the `999` stand-ins.
+    for (k, w) in widths.iter().enumerate() {
+        let written = overlay(&run(&format!(r#""text":"Page {} of 3""#, k + 1)));
+        let want = outlines(&pages(&written)[0])[0].content.w;
+        assert!((w - want).abs() < 1e-3, "page {}: {w}, want {want}", k + 1);
+    }
+    assert!(
+        widths[0] != widths[1] && widths[1] != widths[2],
+        "{widths:?}"
+    );
+}
+
+#[test]
 fn debug_on_the_page_outlines_every_element() {
     let json = doc(
         r#","margin":{"top":20,"right":10,"bottom":20,"left":10},"debug":true,
@@ -319,14 +408,7 @@ fn rich(debug: &str) -> String {
 }
 
 fn render_bytes(json: &str, threads: Option<usize>) -> Vec<u8> {
-    let mut fonts = FontStore::new();
-    let path = format!(
-        "{}/../../fixtures/fonts/Inter-Regular.ttf",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    fonts
-        .register("Inter-Regular", std::fs::read(path).unwrap())
-        .unwrap();
+    let fonts = inter();
     let options = RenderOptions {
         threads,
         ..RenderOptions::default()
@@ -358,16 +440,7 @@ fn debug_output_is_deterministic_and_thread_count_independent() {
 
 #[test]
 fn debug_adds_no_text_links_or_fields() {
-    let store = {
-        let mut s = FontStore::new();
-        let path = format!(
-            "{}/../../fixtures/fonts/Inter-Regular.ttf",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        s.register("Inter-Regular", std::fs::read(path).unwrap())
-            .unwrap();
-        s
-    };
+    let store = inter();
     let paint = |json: &str| {
         let doc = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
         let fonts = FontSet::load(&doc, &store).unwrap();
@@ -395,4 +468,33 @@ fn debug_adds_no_text_links_or_fields() {
     assert!(all.iter().any(|op| matches!(op, Op::Field(_))));
     assert_eq!(debug, plain);
     assert_eq!(debug_marks, plain_marks);
+}
+
+#[test]
+fn a_page_of_50k_outlined_elements_renders_quickly() {
+    // Untrusted documents can hold many elements on one page: placing a
+    // label must not look at every label already placed.
+    let n = 50_000;
+    let side = 224;
+    let kids: Vec<String> = (0..n)
+        .map(|k| {
+            format!(
+                r#"{{"type":"box","style":{{"position":"absolute",
+                    "inset":{{"top":{},"left":{}}},"width":3,"height":3}}}}"#,
+                (k / side) * 62,
+                (k % side) * 62
+            )
+        })
+        .collect();
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":14400,"height":14400}},"debug":true,
+            "children":[{}]}}]}}"#,
+        kids.join(",")
+    );
+    let start = std::time::Instant::now();
+    let pages = pages(&json);
+    let took = start.elapsed();
+    // The page and every box.
+    assert_eq!(labels(&pages[0]).len(), n + 1);
+    assert!(took.as_secs_f32() < 10.0, "{took:?}");
 }

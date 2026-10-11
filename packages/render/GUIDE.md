@@ -234,7 +234,7 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
 
 Use `Header` and `Footer` for page chrome: titles and page numbers in the margins, with room
 kept for them. For a watermark, a page border or a stamp, mark an element `fixed`. It is painted
-over the content on every page of its `Page`:
+on every page of its `Page`, over the content or, with a negative `zIndex`, under it:
 
 ```tsx
 <Page size="A4" style={{ padding: 48 }}>
@@ -265,6 +265,10 @@ over the content on every page of its `Page`:
   the page's content box, the area inside the margin, on every page. Negative values reach into
   the margin: with `padding: 48`, `bottom: -36` is 12pt above the edge of the paper. On a
   one-page document, adding `fixed` moves nothing.
+- **Stacking.** A fixed element is painted over the content, and under the `Header` and
+  `Footer`. With a negative `zIndex` (`-z-10`) it is painted under the content instead, over the
+  page background: a watermark that text and filled boxes cover. Fixed elements stack among
+  themselves by `zIndex`, then in the order they are written.
 - **Space.** It takes none: the content flows under it. Content that needs room on every page
   belongs in a `Header` or `Footer`, with a margin sized for it.
 - **Page numbers.** `render`, `<PageNumber />` and `<TotalPages />` show each page its own
@@ -272,8 +276,10 @@ over the content on every page of its `Page`:
 - **Links, ids and bookmarks.** An `href` makes a link on every page. An `id` (the target of
   `href="#id"`) and a `bookmark` point to the first page.
 - **Not allowed.** `fixed` on an element inside another element, in a `Table`, `Header` or
-  `Footer`, on a `Text` inside a `Text`, on a form field, or without `position: 'absolute'`. Each
-  is an error that names the component.
+  `Footer`, on a `Header` or `Footer` itself, on a `Text` inside a `Text`, on a form field, or
+  without `position: 'absolute'`. A fixed element is painted whole on every page, so `break`,
+  `wrap={false}` and `minPresenceAhead` on it or inside it, and a `PageBreak` inside it, would do
+  nothing (as in a `Header` or `Footer`). Each is an error that names the component.
 
 ### Page sizes
 
@@ -430,6 +436,10 @@ outline, and the element's width and height in points as a small label. It works
 `Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
+
+It outlines elements with a box of their own. A `Text` or `Link` inside a `Text` is a run of that
+paragraph's lines, not a box, so `debug` on it draws nothing: put it on the outer `Text`, which
+outlines the whole paragraph.
 
 The outlines are drawn last, on top of the content, and the labels are drawn with lines, so
 text selection, search, links, bookmarks and form fields are unchanged. It changes the output,

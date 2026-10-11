@@ -20,6 +20,7 @@ import {
   Link,
   PAGE_SIZES,
   Page,
+  PageBreak,
   PageNumber,
   Path,
   Radio,
@@ -566,7 +567,7 @@ describe('fixed', () => {
     const r = tree(
       <>
         <View fixed style={corner} id="stamp" href="https://example.com" pages="notFirst" />
-        <Text fixed className="absolute top-0 left-0" break="avoid">
+        <Text fixed className="absolute top-0 left-0" break={false}>
           Draft
         </Text>
         <Image fixed src="logo" className="absolute right-0 bottom-0 h-4 w-4" />
@@ -583,7 +584,7 @@ describe('fixed', () => {
     const nodes = body(r) as Array<BoxNode | TextNode | ImageNode>;
     expect(nodes.map((n) => n.break)).toEqual([
       { fixed: true },
-      { inside: 'avoid', fixed: true },
+      { fixed: true },
       { fixed: true },
       { fixed: true },
       { fixed: true },
@@ -683,6 +684,60 @@ describe('fixed', () => {
     expect(message(<Field kind="text" name="n" style={corner} {...({ fixed: true } as object)} />)).toContain(
       'a form field cannot be fixed',
     );
+    // Pagination controls do nothing on a fixed element, inside one, or inside a header or footer.
+    expect(message(<View fixed style={corner} break />)).toContain(
+      '<View fixed>: break, wrap={false} and minPresenceAhead do nothing on a fixed element',
+    );
+    expect(message(<View fixed style={corner} break="avoid" />)).toContain('<View fixed>: break');
+    expect(message(<View fixed style={corner} wrap={false} />)).toContain('<View fixed>: break');
+    expect(message(<Text fixed style={corner} minPresenceAhead={20} />)).toContain('<Text fixed>: break');
+    expect(message(<View fixed style={corner} break={{ after: 'page' }} />)).toContain('<View fixed>: break');
+    expect(
+      message(
+        <View fixed style={corner}>
+          <View>
+            <Text break="page-after">x</Text>
+          </View>
+        </View>,
+      ),
+    ).toContain('<Text>: break, wrap={false} and minPresenceAhead do nothing inside a fixed <View>');
+    expect(message(<View fixed style={corner} render={() => <View wrap={false} />} />)).toContain(
+      '<View>: break, wrap={false} and minPresenceAhead do nothing inside a fixed <View>',
+    );
+    expect(
+      message(
+        <View fixed style={corner}>
+          <PageBreak />
+        </View>,
+      ),
+    ).toContain('<PageBreak> does nothing inside a fixed <View>');
+    expect(
+      message(
+        <Header>
+          <View minPresenceAhead={10} />
+        </Header>,
+      ),
+    ).toContain('<View>: break, wrap={false} and minPresenceAhead do nothing inside a <Header>');
+    expect(
+      message(
+        <Footer>
+          <PageBreak />
+        </Footer>,
+      ),
+    ).toContain('<PageBreak> does nothing inside a <Footer>');
+    // A header or footer is on every page already.
+    expect(message(<Header {...({ fixed: true } as object)} />)).toContain(
+      '<Header fixed>: a <Header> is already on every page. Remove `fixed`.',
+    );
+    expect(message(<Footer {...({ fixed: true } as object)} />)).toContain(
+      '<Footer fixed>: a <Footer> is already',
+    );
+    // Defaults are not controls; outside a fixed element, nothing changes.
+    expect(first<BoxNode>(tree(<View fixed style={corner} break={{ before: 'auto' }} />)).break).toEqual({
+      before: 'auto',
+      fixed: true,
+    });
+    expect(first<BoxNode>(tree(<View wrap={false} />)).break).toEqual({ inside: 'avoid' });
     // CSS `position: fixed` points to the prop.
     expect(message(<View className="fixed" />)).toContain('give it the fixed prop and position: absolute');
     expect(message(<View style={{ position: 'fixed' as never }} />)).toContain('give it the fixed prop');
