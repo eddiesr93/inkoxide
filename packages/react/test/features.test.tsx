@@ -243,6 +243,19 @@ describe('relative units in the style prop', () => {
     );
     expect(problems({ width: '100%', transform: 'translate(-50%, 1pt)' })).toEqual([]);
   });
+
+  it('reports the pattern of the unit a track was written in', () => {
+    const first = (style: Record<string, unknown>) => {
+      const [p] = tree(<View style={{ display: 'grid', ...style }} />).validate();
+      return p && `${p.path}: ${p.message}`;
+    };
+    expect(first({ gridTemplateColumns: ['1000001fr'] })).toBe(
+      'pages[0].children[0].style.gridTemplateColumns[0]: must be a flexible size, a share of the free space, of at most 1000000fr, like "1fr"',
+    );
+    expect(first({ gridTemplateColumns: ['20000%'] })).toBe(
+      'pages[0].children[0].style.gridTemplateColumns[0]: must be a percentage within ±10000%, like "50%"',
+    );
+  });
 });
 
 describe('CSS names and shorthands in the style prop', () => {

@@ -39,18 +39,47 @@ function message(e: ErrorObject): string {
   return `must be ${description[0]?.toLowerCase()}${description.slice(1).replace(/\.$|`/g, '')}`;
 }
 
+/** The value at a JSON Pointer of the document. */
+function valueAt(doc: unknown, pointer: string): unknown {
+  let v = doc;
+  for (const key of pointer.split('/').slice(1)) {
+    if (typeof v !== 'object' || v === null) return undefined;
+    v = (v as Record<string, unknown>)[key.replace(/~1/g, '/').replace(/~0/g, '~')];
+  }
+  return v;
+}
+
+/** Definitions whose `pattern` describes strings with this suffix. */
+const SUFFIXED: Readonly<Record<string, string>> = { Percent: '%', Fr: 'fr' };
+
+/**
+ * 0 for a `pattern` error from the definition the value was written for (`"2000000fr"` and
+ * `Fr`), so it comes before one from a sibling definition (`Percent`); 1 otherwise.
+ */
+function suffixRank(e: ErrorObject, doc: unknown): number {
+  const def = /^#\/\$defs\/(\w+)\/pattern$/.exec(e.schemaPath)?.[1];
+  const suffix = def === undefined ? undefined : SUFFIXED[def];
+  if (suffix === undefined) return 1;
+  const value = valueAt(doc, e.instancePath);
+  return typeof value === 'string' && value.trim().endsWith(suffix) ? 0 : 1;
+}
+
 /**
  * Validates a tree against the engine's JSON Schema with ajv (dev only): shape errors
  * show up with component stacks before the engine sees the document. Empty when valid.
  * The most telling problem comes first: for a value that matches no `oneOf` branch (a
  * length, a transform function), the error deepest in the value, and a bound or pattern
- * before "must be number" from a branch that does not apply.
+ * before "must be number" from a branch that does not apply; of two patterns, the one for
+ * the value's suffix (`fr` or `%`).
  */
 export function validateTree(doc: unknown): SchemaProblem[] {
   validator ??= compile();
   if (validator(doc)) return [];
   const errors = [...(validator.errors ?? [])].sort(
-    (a, b) => depth(b) - depth(a) || (BRANCH_KEYWORDS[a.keyword] ?? 0) - (BRANCH_KEYWORDS[b.keyword] ?? 0),
+    (a, b) =>
+      depth(b) - depth(a) ||
+      (BRANCH_KEYWORDS[a.keyword] ?? 0) - (BRANCH_KEYWORDS[b.keyword] ?? 0) ||
+      suffixRank(a, doc) - suffixRank(b, doc),
   );
   return errors.map((e) => ({
     path: enginePath(e),
