@@ -755,14 +755,16 @@ class Builder {
 
   /**
    * Flattens inline content into runs, merging neighbours with the same resolved style. `para`
-   * is whether the paragraph uses the engine's patterns; a run that differs says so itself.
+   * is whether the paragraph uses the engine's patterns, and its language; a run that differs
+   * says so itself. Runs carry no language, so a run in another language never turns the
+   * patterns on: they would be the paragraph's.
    */
   private runs(
     nodes: readonly Inline[],
     ctx: TextCtx,
     out: TextRun[],
     owner: Instance,
-    para = usesPatterns(ctx),
+    para: { patterns: boolean; lang: string | undefined } = { patterns: usesPatterns(ctx), lang: ctx.lang },
   ): void {
     for (const n of nodes) {
       if (n.kind === 'text') {
@@ -772,7 +774,8 @@ class Builder {
         // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
         const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : callbackOf(ctx);
         const patterns = usesPatterns(ctx);
-        const hyphenate = patterns === para ? undefined : patterns;
+        const hyphenate =
+          patterns === para.patterns || (patterns && ctx.lang !== para.lang) ? undefined : patterns;
         this.push(out, cb ? this.hyphenated(text, cb, owner) : text, ctx, owner, undefined, hyphenate);
         continue;
       }

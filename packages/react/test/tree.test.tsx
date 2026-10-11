@@ -330,6 +330,23 @@ describe('hyphenation callback', () => {
     ]);
   });
 
+  it('never turns the patterns on for a run in another language', () => {
+    const r = render(
+      <Text lang="en">
+        hello{' '}
+        <Text lang="de" hyphenate>
+          Donaudampfschifffahrt
+        </Text>{' '}
+        <Text hyphenate>documentation</Text>
+      </Text>,
+    );
+    // Runs carry no language: the paragraph's English patterns would break the German word.
+    expect(first<TextNode>(r).runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+      { text: 'hello Donaudampfschifffahrt ', hyphenate: undefined },
+      { text: 'documentation', hyphenate: true },
+    ]);
+  });
+
   it('brings the patterns back for a run with a null callback', () => {
     const reg = registry();
     reg.hyphenationCallback = thirds;
