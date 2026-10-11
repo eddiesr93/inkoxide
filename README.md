@@ -17,7 +17,8 @@ A 98-page report with 40 tables renders in about 130 ms on 4 cores
 
 **v1 is feature-complete and ready for integration.** npm releases
 (`inkoxide`, its per-platform binaries and `@inkoxide/schema`) are built by
-the manually dispatched `.github/workflows/release.yml` (ADR-051); nothing
+the manually dispatched `.github/workflows/release.yml` (ADR-051), with the
+macOS bindings optionally built on a Mac (ADR-052); nothing
 goes to crates.io. Clients can also install the packages from a local checkout.
 The public API is frozen (ADR-042), so changes from now on are additive.
 

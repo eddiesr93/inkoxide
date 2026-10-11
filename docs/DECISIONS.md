@@ -1230,3 +1230,29 @@ it the macOS job (fat LTO, two targets). Publishing needs the
 Provenance (`--provenance`) is not used: npm supports it only for public
 source repositories. Only the linux-x64-gnu binary is exercised before
 publishing; the others are checked for file type only.
+
+## ADR-052 — macOS bindings built locally (v1.1)
+
+Amends ADR-051.
+
+**Context.** The macOS job is billed at 10x and is most of a release run's
+cost; the owner had about 100 minutes left. macOS arm64 is verified
+locally (2026-10-11), and the Mac builds both macOS targets natively.
+**Decision.**
+- `release.yml` takes a `build_macos` input (default `true`). Off, it
+  builds Linux and Windows only, uploads them as artifacts and skips
+  `publish`.
+- On the Mac, at the same commit as the dispatched run (the binding embeds
+  `git rev-parse HEAD` as `version().gitSha`):
+  `cargo build -p inkoxide-node --release --locked --target <triple>` for
+  `aarch64-apple-darwin` and `x86_64-apple-darwin`, copied to
+  `inkoxide.darwin-arm64.node` and `inkoxide.darwin-x64.node`.
+- `gh run download <run-id> -p 'bindings-*' -D <bin-dir>` adds the other
+  four; `node scripts/npm-release.mjs <bin-dir> <staging-dir> --publish`
+  publishes from the Mac with the owner's npm login.
+- Before publishing, the Linux binaries are tested in Docker: the Node
+  tests run on Ubuntu 22.04 (x64, arm64) and Alpine (musl). darwin-x64 is
+  tested under Rosetta with an x64 Node.
+**Consequences.** A run without macOS costs roughly 35 billed minutes.
+More binaries are exercised before publishing than in ADR-051; Windows
+is still checked for file type only.
