@@ -859,6 +859,35 @@ describe('drawings', () => {
     expect(thrown(() => tree(<Rect width={1} height={1} />)).message).toContain('goes inside <Svg>');
   });
 
+  it('keeps the layout props of Svg out of the drawing', () => {
+    // A fixed element takes no break, so the layout props come in two drawings.
+    const r = tree(
+      <>
+        <Svg width={10} height={10} className="absolute top-0" fixed debug fill="red">
+          <Rect width={1} height={1} />
+        </Svg>
+        <Svg
+          width={10}
+          height={10}
+          className="mt-2"
+          style={{ marginLeft: 4 }}
+          pages="first"
+          break="avoid"
+          href="https://example.com"
+          fill="red"
+        >
+          <Rect width={1} height={1} />
+        </Svg>
+      </>,
+    );
+    for (const node of body(r)) {
+      expect(decode((node as ImageNode).data)).toBe(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10" fill="red"><rect width="1" height="1"/></svg>',
+      );
+    }
+    expect(body(r)).toHaveLength(2);
+  });
+
   it('records Canvas painting as SVG', () => {
     const r = tree(
       <Canvas
