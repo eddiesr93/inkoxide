@@ -124,12 +124,33 @@ const logo = readFileSync('logo.png');
 <Image src={logo} className="h-10 w-10" fit="contain" />         // bytes
 <Image src="data:image/png;base64,iVBORw0…" />                  // a data: URL
 <Image src="logo" />                                            // an id from options.images
+<Image src="./images/logo.png" />                               // a file
 <Image src="https://cdn.example.com/photo.jpg" />               // remote, when allowed
+<Image src={{ uri: 'https://cdn.example.com/chart', method: 'POST', headers, body }} />
+<Image src={() => loadLogo()} />                                // a function or a promise
 ```
 
-Remote images are off by default, so a template cannot make your server fetch arbitrary URLs.
-Allow them per render, or with the `INKOXIDE_REMOTE_IMAGES` environment variable (a
-comma-separated list):
+- **Files.** A string is a file path when it is written as one: absolute (`/srv/img/logo.png`,
+  `C:\img\logo.png`), relative to the working directory with `./` or `../`, or a `file:` URL.
+  Any other string (`logo`, `logo.png`, `img/logo.png`) is an image id, so write
+  `./logo.png` for a file next to the process. Only regular files are read, and an error names
+  the path and where it resolved to: `Cannot read the image ./logo.png
+  (/srv/app/logo.png): no such file.` (`IMAGE_READ_FAILED`).
+- **Ids first.** A string that names an image in the `images` option (or a template's `images`)
+  is that image, even when it looks like a path or a URL. No file is read for it.
+- **Requests.** `{ uri, method, headers, body }` fetches `uri` with that method, headers and
+  body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
+- **Functions and promises.** A function is called once per render, after the tree is built and
+  before the engine runs, with the other images loading in parallel; a promise is awaited
+  then. Either resolves to bytes, a string or a request, read as if written in `src`. If it
+  throws or rejects, the render fails with `TEMPLATE_ERROR`. Prefer a function to a promise made
+  before the render starts: a promise that rejects while nothing awaits it yet is an unhandled
+  rejection.
+
+Do not pass untrusted strings to `src` unchecked: a path reads a file on the server. Remote
+images are off by default, so a template cannot make your server fetch arbitrary URLs. Allow
+them per render, or with the `INKOXIDE_REMOTE_IMAGES` environment variable (a comma-separated
+list):
 
 ```ts
 await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com/', '*.example.org'] } });
@@ -318,8 +339,8 @@ All three take the same options:
 
 | Option | Default | What it does |
 |---|---|---|
-| `images` | none | Image bytes by id, for `<Image src="logo">` |
-| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` may load from. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
+| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MB) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
@@ -372,6 +393,7 @@ Every error is a `RenderError` with a `code`, and with `path`, `component` and
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched |
+| `IMAGE_READ_FAILED` | An image file could not be read |
 
 ## FAQ
 

@@ -9,7 +9,8 @@ import type { z } from 'zod';
 
 import { countPages, type EngineStatus, initEngine, renderPdf, version } from './engine.ts';
 import { loadRegisteredFonts } from './font.ts';
-import { fetchRemote, remotePolicy } from './remote.ts';
+import { loadImages } from './images.ts';
+import { remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
@@ -111,6 +112,7 @@ function buildTree<S extends z.ZodType>(
   try {
     return renderTemplate(createElement(t.Template, { data }), {
       remoteImages: remotePolicy(opts.remoteImages),
+      imageIds: Object.keys({ ...t.images, ...opts.images }),
     });
   } catch (e) {
     fromTemplateError(e, t.meta.id);
@@ -161,11 +163,11 @@ export async function generate<S extends z.ZodType>(
     validateMs = performance.now() - v0;
   }
 
-  const policy = remotePolicy(opts.remoteImages);
   const f0 = performance.now();
-  const remote = policy && Object.keys(tree.remote).length > 0 ? await fetchRemote(tree.remote, policy) : {};
+  const registered = { ...t.images, ...opts.images };
+  const loaded = await loadImages(tree, registered, remotePolicy(opts.remoteImages));
   const fetchMs = performance.now() - f0;
-  const images = { ...t.images, ...tree.images, ...remote, ...opts.images };
+  const images = { ...t.images, ...tree.images, ...loaded, ...opts.images };
   const e0 = performance.now();
   const first = tree;
   const settled = await renderSettled(tree, images, opts);
@@ -268,14 +270,16 @@ export async function renderToBuffer(
   const name = componentName(element);
   let tree: TreeResult;
   try {
-    tree = renderTemplate(element, { remoteImages: remotePolicy(opts.remoteImages) });
+    tree = renderTemplate(element, {
+      remoteImages: remotePolicy(opts.remoteImages),
+      imageIds: Object.keys(opts.images ?? {}),
+    });
     if (opts.validate ?? !isProduction()) assertValidTree(tree);
   } catch (e) {
     fromTemplateError(e, name);
   }
-  const policy = remotePolicy(opts.remoteImages);
-  const remote = policy && Object.keys(tree.remote).length > 0 ? await fetchRemote(tree.remote, policy) : {};
-  const { pdf } = await renderSettled(tree, { ...tree.images, ...remote, ...opts.images }, opts);
+  const loaded = await loadImages(tree, opts.images ?? {}, remotePolicy(opts.remoteImages));
+  const { pdf } = await renderSettled(tree, { ...tree.images, ...loaded, ...opts.images }, opts);
   return pdf;
 }
 
