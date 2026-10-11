@@ -558,7 +558,7 @@ fn bidi_levels(text: &str, direction: Direction) -> (Option<Vec<u8>>, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::hyphen::{language_code, HypherHyphenator, NoHyphenation};
+    use super::super::hyphen::{HypherHyphenator, NoHyphenation};
     use super::*;
 
     fn run(text: &str) -> TextRun {
@@ -686,11 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn lang_tags() {
-        assert_eq!(language_code("en-GB").as_deref(), Some("en"));
-        assert_eq!(language_code("DE").as_deref(), Some("de"));
-        assert_eq!(language_code("eng"), None);
-        assert_eq!(language_code("x"), None);
+    fn built_in_languages() {
         assert!(HypherHyphenator.supports("de"));
         // Languages without built-in patterns.
         assert!(!HypherHyphenator.supports("ja"));

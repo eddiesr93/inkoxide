@@ -161,8 +161,8 @@ pub(crate) struct ParaStyle {
     /// Whether the paragraph's words are hyphenated; a run's own
     /// `hyphenate` overrides it.
     pub hyphenate: bool,
-    /// ISO 639-1 code of the paragraph's language, for hyphenation (patterns
-    /// may still be missing; the hyphenator decides).
+    /// The paragraph's language tag, normalised (`en-gb`), for hyphenation
+    /// (patterns may still be missing; the hyphenator decides).
     pub lang: Option<String>,
 }
 
@@ -187,7 +187,7 @@ impl ParaStyle {
                 .lang
                 .as_deref()
                 .or(doc_lang)
-                .and_then(hyphen::language_code),
+                .and_then(hyphen::paragraph_tag),
         }
     }
 }

@@ -92,12 +92,13 @@ export function unregisterFont(id: string): boolean;
  * Registers (or replaces), for all later renders, TeX hyphenation patterns
  * for a language: a hyph-utf8 file such as `hyph-en-us.tex` with
  * `\patterns{…}` and optional `\hyphenation{…}` groups, in UTF-8.
- * `lang` is a BCP-47 tag (`"en"`, `"en-GB"`); patterns apply to its
- * language. Registered patterns win over the built-in ones. Throws
- * `HYPHENATION_ERROR` for malformed patterns.
+ * `lang` is a BCP-47 tag with a two- or three-letter language (`"en"`,
+ * `"en-GB"`, `"haw"`). Text uses the patterns of its own tag, else of the
+ * nearest less specific one (`"en-GB"`, then `"en"`), else the built-in
+ * ones. Throws `HYPHENATION_ERROR` for a malformed tag or patterns.
  */
 export function registerHyphenationPatterns(lang: string, data: Uint8Array | string): void;
-/** Removes registered patterns; returns whether there were any. */
+/** Removes the patterns registered for exactly `lang`; returns whether there were any. */
 export function unregisterHyphenationPatterns(lang: string): boolean;
 /**
  * Validates a document against the schema and the registered fonts. Image

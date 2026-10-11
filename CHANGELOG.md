@@ -7,6 +7,15 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- Hyphenation patterns are registered for the whole language tag. Patterns for `en-GB` no longer
+  replace those for `en-US`; text uses the patterns of its own tag, else of the nearest less
+  specific one (`en-GB`, then `en`), else the built-in ones. Three-letter languages such as
+  `haw` or `fil` can be registered. `@inkoxide/render` registers its US English patterns for
+  `en`, so they still serve every English `lang`; `engineStatus().hyphenation` lists them as
+  `en`.
+
 ## 0.3.0 - 2026-10-12
 
 `inkoxide` 0.3.0, `@inkoxide/schema` 2.1.0, `@inkoxide/tailwind` 0.2.0, `@inkoxide/react` 0.2.0

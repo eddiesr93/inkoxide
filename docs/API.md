@@ -70,11 +70,18 @@ A text node with `hyphenate: true` is hyphenated in its `lang` (or
 `meta.lang`). A run's own `hyphenate` overrides the node's for that run's
 words, in the node's language. The patterns are chosen in this order:
 
-1. patterns registered for the language;
-2. hypher's built-in patterns (about 50 languages, English included);
+1. patterns registered for the tag, then for each less specific tag
+   (`en-GB`, then `en`);
+2. hypher's built-in patterns for the language (about 50 languages,
+   English included);
 3. none.
 
 Soft hyphens (U+00AD) in the text are always honoured.
+
+Patterns are registered for a BCP-47 tag with a two- or three-letter
+language (`en`, `en-GB`, `haw`), in any case and with `-` or `_`.
+Patterns for `en-GB` and for `en-US` coexist; patterns for `en` serve
+every English tag without patterns of its own.
 
 Patterns are TeX files in the hyph-utf8 format: `\patterns{…}`, with
 an optional `\hyphenation{…}` exception list, in UTF-8. English is

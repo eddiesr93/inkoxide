@@ -189,6 +189,16 @@ fn registered_hyphenation_patterns() {
         render(other) == without,
         "patterns for another language changed the output"
     );
+    // The document is `en-US`: patterns for `en` serve it, those for
+    // `en-GB` do not.
+    let tex = fs::read(root().join(format!("fixtures/hyphenation/{name}.en-us.tex"))).unwrap();
+    let under = |lang: &str| {
+        let mut s = HyphenationStore::new();
+        s.register(lang, &tex).unwrap();
+        render(s)
+    };
+    assert!(under("en") == with, "`en` patterns did not serve `en-US`");
+    assert!(under("en-GB") == without, "`en-GB` patterns served `en-US`");
     assert!(render(store) == with, "not deterministic");
 }
 

@@ -366,7 +366,8 @@ PDF/A-2b, for archiving.
 
 - **Hyphenation** is off by default. Turn it on per `Text` with `hyphenate` (or the class
   `hyphens-auto`); it follows the `lang` of the text or the document. US English patterns ship
-  with the package; other languages use the engine's built-in patterns. A soft hyphen
+  with the package and serve every English `lang`; other languages use the engine's built-in
+  patterns. A soft hyphen
   (`\u00AD`) in the text is always a possible break.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
   word into the parts a line may break between, for every `Text`; `[word]` keeps a word whole.
