@@ -7,15 +7,19 @@ use std::sync::Arc;
 use unicode_linebreak::{linebreaks, BreakOpportunity};
 
 use super::hyphen::Hyphenator;
-use super::{BreakKind, BreakPoint, Glyph, Prepared, Segment, GLYPH_INVISIBLE, GLYPH_SPACE};
+use super::{
+    BreakKind, BreakPoint, Glyph, PageNumbers, Prepared, Segment, GLYPH_INVISIBLE, GLYPH_SPACE,
+};
 use crate::fonts::{FontKey, FontSet};
-use crate::schema::{Direction, TextRun, WhiteSpace};
+use crate::schema::{Direction, Placeholder, TextRun, WhiteSpace};
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
 pub(crate) const SHY: char = '\u{00AD}';
 
-/// Text laid out in place of page-number placeholders: wide enough for
-/// three digits in any font, so painting the real number never reflows.
+/// Stand-in digits laid out in place of page-number placeholders until the
+/// page count is known. Headers and footers are laid out again on every
+/// page with the real numbers ([`fill_numbers`]); flow text keeps this
+/// width, since pagination depends on its layout.
 pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 
 pub(crate) struct ParagraphOptions<'a> {
@@ -396,6 +400,127 @@ pub(crate) fn prepare(
         breaks,
         rtl,
         bidi,
+        placeholders: opts.runs.iter().any(|r| r.placeholder.is_some()),
+    }
+}
+
+/// `p` with the page numbers in place of the stand-in digits of its
+/// placeholder runs, so its lines break and align at the width the numbers
+/// take. Like the painter, takes each digit's glyph from the font's `cmap`
+/// without shaping.
+pub(crate) fn fill_numbers(
+    p: &Prepared,
+    runs: &[TextRun],
+    fonts: &FontSet<'_>,
+    numbers: PageNumbers,
+) -> Prepared {
+    let mut glyphs = Vec::with_capacity(p.glyphs.len() + 4);
+    let mut segments: Vec<Segment> = Vec::with_capacity(p.segments.len());
+    // Per segment: (first old glyph, first new glyph) for remapping breaks.
+    let mut starts: Vec<(u32, u32)> = Vec::with_capacity(p.segments.len());
+    #[cfg(test)]
+    let mut text = String::with_capacity(p.text.len() + 4);
+    #[cfg(test)]
+    let mut copied = 0usize;
+    // Bytes the text has grown by so far.
+    let mut grown = 0i64;
+    let shift = |at: u32, grown: i64| (i64::from(at) + grown) as u32;
+    for seg in &p.segments {
+        let run = &runs[seg.run as usize];
+        let first = glyphs.len() as u32;
+        let text_start = shift(seg.text.start, grown);
+        starts.push((seg.glyphs.start, first));
+        let Some(ph) = run.placeholder else {
+            glyphs.extend(
+                p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize]
+                    .iter()
+                    .map(|g| Glyph {
+                        cluster: shift(g.cluster, grown),
+                        ..*g
+                    }),
+            );
+            segments.push(Segment {
+                text: text_start..shift(seg.text.end, grown),
+                glyphs: first..glyphs.len() as u32,
+                ..seg.clone()
+            });
+            continue;
+        };
+        // A placeholder is one segment (its digits share a font and a
+        // level); any later piece of it is dropped with its stand-ins.
+        if segments.last().is_some_and(|s| s.run == seg.run) {
+            grown -= i64::from(seg.text.end - seg.text.start);
+            #[cfg(test)]
+            {
+                copied = seg.text.end as usize;
+            }
+            continue;
+        }
+        let digits = match ph {
+            Placeholder::PageNumber => numbers.current,
+            Placeholder::TotalPages => numbers.total,
+        }
+        .to_string();
+        let font = fonts.get(seg.font);
+        let scale = font.scale(run.size);
+        let letter_spacing = run.letter_spacing.unwrap_or(0.0);
+        let at = glyphs.len();
+        for (i, c) in digits.char_indices() {
+            let id = font.glyph(c).unwrap_or(0);
+            glyphs.push(Glyph {
+                id,
+                advance: font.advance(id) * scale + letter_spacing,
+                x_offset: 0.0,
+                y_offset: 0.0,
+                cluster: text_start + i as u32,
+                flags: 0,
+            });
+        }
+        // Painting reverses right-to-left segments; numbers read left to
+        // right whatever the level.
+        if seg.level % 2 == 1 {
+            glyphs[at..].reverse();
+        }
+        #[cfg(test)]
+        {
+            text.push_str(&p.text[copied..seg.text.start as usize]);
+            text.push_str(&digits);
+            copied = seg.text.end as usize;
+        }
+        grown += digits.len() as i64 - i64::from(seg.text.end - seg.text.start);
+        segments.push(Segment {
+            text: text_start..text_start + digits.len() as u32,
+            glyphs: first..glyphs.len() as u32,
+            ..seg.clone()
+        });
+    }
+    #[cfg(test)]
+    text.push_str(&p.text[copied..]);
+
+    // No break falls inside a number (UAX #14 keeps digits together), so
+    // every break moves with the segment it starts.
+    let breaks = p
+        .breaks
+        .iter()
+        .map(|b| {
+            let k = starts.partition_point(|&(old, _)| old <= b.glyph).max(1) - 1;
+            let (old, new) = starts.get(k).copied().unwrap_or((0, 0));
+            BreakPoint {
+                glyph: new + (b.glyph - old),
+                kind: b.kind,
+            }
+        })
+        .collect();
+
+    Prepared {
+        #[cfg(test)]
+        text,
+        segments,
+        glyphs,
+        breaks,
+        rtl: p.rtl,
+        bidi: p.bidi,
+        placeholders: false,
     }
 }
 

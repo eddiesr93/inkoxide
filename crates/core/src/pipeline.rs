@@ -11,7 +11,7 @@ use crate::layout::{Geometry, LayoutEngine, LeafMeasure, NodeIdx, TaffyLayout, T
 use crate::paginate::{paginate, Placement};
 use crate::paint::{self, ContentCtx, ContentPainter, FlowPart, Op, PageContent, Rect};
 use crate::schema::{Display, Document, Node, NodeKind, PageSpec};
-use crate::text::{PageNumbers, RustybuzzShaper, TextCache, TextPainter};
+use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
 use crate::InkoxideError;
 
 /// Most pages one render may produce: a memory guard against runaway
@@ -45,13 +45,14 @@ pub(crate) struct Marks<'d> {
 
 type Cache<'s, 'f, 'a> = TextCache<'s, RustybuzzShaper<'f, 'a>>;
 
-/// Leaf measurement: text through the text cache, images by intrinsic size.
-struct Leaves<'x, 's, 'f, 'a> {
-    text: &'x mut Cache<'s, 'f, 'a>,
+/// Leaf measurement: text through `T` (the text cache, or one page's
+/// text), images by intrinsic size.
+struct Leaves<'x, T: LeafMeasure> {
+    text: &'x mut T,
     images: &'x ImageSet,
 }
 
-impl LeafMeasure for Leaves<'_, '_, '_, '_> {
+impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     fn measure(
         &mut self,
         node: &Node,
@@ -86,14 +87,44 @@ struct Laid<'a> {
     spec: &'a PageSpec,
     flow: Tree<'a>,
     placement: Placement,
-    header: Option<Tree<'a>>,
-    footer: Option<Tree<'a>>,
+    header: Option<Band<'a>>,
+    footer: Option<Band<'a>>,
+}
+
+/// A header or footer, laid out once with stand-in digits for page
+/// numbers. One that shows page numbers is laid out again on every page,
+/// with that page's numbers, so its lines break and its boxes size to the
+/// digits painted; the first layout then only warms the text cache.
+struct Band<'a> {
+    node: &'a Node,
+    tree: Tree<'a>,
+    numbered: bool,
+}
+
+impl<'a> Band<'a> {
+    fn new(
+        node: &'a Node,
+        width: f32,
+        leaves: &mut dyn LeafMeasure,
+    ) -> Result<Self, InkoxideError> {
+        let mut texts = Vec::new();
+        collect_texts(node, &mut texts);
+        let numbered = texts.iter().any(|n| match &n.kind {
+            NodeKind::Text { runs } => runs.iter().any(|r| r.placeholder.is_some()),
+            _ => false,
+        });
+        Ok(Self {
+            node,
+            tree: layout_fixed(node, width, leaves)?,
+            numbered,
+        })
+    }
 }
 
 fn layout_fixed<'a>(
     node: &'a Node,
     width: f32,
-    leaves: &mut Leaves<'_, '_, '_, '_>,
+    leaves: &mut dyn LeafMeasure,
 ) -> Result<Tree<'a>, InkoxideError> {
     let mut tree = Tree::build_single(node);
     TaffyLayout.compute(&mut tree, width, 0.0, leaves)?;
@@ -133,12 +164,12 @@ pub(crate) fn run<'d, T: Send>(
         let header = spec
             .header
             .as_deref()
-            .map(|n| layout_fixed(n, spec.size.width, &mut leaves))
+            .map(|n| Band::new(n, spec.size.width, &mut leaves))
             .transpose()?;
         let footer = spec
             .footer
             .as_deref()
-            .map(|n| layout_fixed(n, spec.size.width, &mut leaves))
+            .map(|n| Band::new(n, spec.size.width, &mut leaves))
             .transpose()?;
         let placement = paginate(&flow, content_h, text);
         laid.push(Laid {
@@ -150,7 +181,8 @@ pub(crate) fn run<'d, T: Send>(
         });
     }
 
-    // Page numbers are known only now; placeholders are filled at paint.
+    // Page numbers are known only now: placeholders are filled at paint,
+    // and headers and footers that show them are laid out per page.
     let total: u64 = laid.iter().map(|l| u64::from(l.placement.pages)).sum();
     if total > u64::from(MAX_PAGES) {
         return Err(InkoxideError::Layout(format!(
@@ -177,7 +209,7 @@ pub(crate) fn run<'d, T: Send>(
                 current: i as u32 + 1,
                 total,
             };
-            encode(paint_page(l, k, numbers, fonts, text, images))
+            encode(paint_page(l, k, numbers, fonts, text, images)?)
         })
         .collect::<Result<_, _>>()?;
     Ok((pages, marks))
@@ -246,6 +278,19 @@ fn collect_texts<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
     }
 }
 
+/// Lays out a header or footer that shows page numbers again, measuring
+/// with one page's text.
+fn relayout<'a>(
+    band: Option<&Band<'a>>,
+    width: f32,
+    leaves: &mut dyn LeafMeasure,
+) -> Result<Option<Tree<'a>>, InkoxideError> {
+    match band {
+        Some(b) if b.numbered => layout_fixed(b.node, width, leaves).map(Some),
+        _ => Ok(None),
+    }
+}
+
 fn paint_page(
     l: &Laid<'_>,
     k: u32,
@@ -253,7 +298,7 @@ fn paint_page(
     fonts: &FontSet<'_>,
     text: &Cache<'_, '_, '_>,
     images: &ImageSet,
-) -> PageContent {
+) -> Result<PageContent, InkoxideError> {
     let spec = l.spec;
     let (pw, ph) = (spec.size.width, spec.size.height);
     let m = spec.margin;
@@ -266,9 +311,20 @@ fn paint_page(
         });
     }
     let nums = (numbers.current, numbers.total);
+    // Headers and footers with page numbers, laid out for this page.
+    let mut page_text = PageText::new(text, numbers);
+    let mut leaves = Leaves {
+        text: &mut page_text,
+        images,
+    };
+    let header_here = relayout(l.header.as_ref(), pw, &mut leaves)?;
+    let footer_here = relayout(l.footer.as_ref(), pw, &mut leaves)?;
+    let header = header_here.as_ref().or(l.header.as_ref().map(|b| &b.tree));
+    let footer = footer_here.as_ref().or(l.footer.as_ref().map(|b| &b.tree));
     let mut painter = Content {
         text: TextPainter {
             cache: text,
+            page: None,
             fonts,
             numbers,
         },
@@ -308,7 +364,8 @@ fn paint_page(
             &mut page.ops,
         );
     }
-    if let Some(header) = &l.header {
+    painter.text.page = Some(&page_text);
+    if let Some(header) = header {
         paint::paint_flow(
             header,
             FlowPart::All,
@@ -319,7 +376,7 @@ fn paint_page(
             &mut page.ops,
         );
     }
-    if let Some(footer) = &l.footer {
+    if let Some(footer) = footer {
         let fh = footer.nodes[0].geo.h;
         paint::paint_flow(
             footer,
@@ -331,5 +388,8 @@ fn paint_page(
             &mut page.ops,
         );
     }
-    page
+    Ok(page)
 }
+
+#[cfg(test)]
+mod tests;

@@ -33,13 +33,16 @@ INTRO = """# Document schema v1
   font, size and colour.
 - **Defaults** follow CSS flexbox except `flexDirection`, which defaults to
   `column` (document flow is vertical).
-- **Header/footer.** Laid out once at the full page width. The header is
-  painted at the top of every physical page (y = 0), the footer with its
-  bottom edge on the bottom of the page. Use their padding to inset them and
-  size the page margins so the flow does not overlap them.
+- **Header/footer.** Laid out at the full page width: once, or again on
+  every page when it shows page numbers. The header is painted at the top
+  of every physical page (y = 0), the footer with its bottom edge on the
+  bottom of the page. Use their padding to inset them and size the page
+  margins so the flow does not overlap them.
 - **Placeholders.** A run with `placeholder: "pageNumber" | "totalPages"`
-  is filled in after pagination. Layout reserves the width of `999` in the
-  run's font, so the surrounding text never reflows.
+  is filled in after pagination. In a header or footer, the text is laid
+  out with each page's numbers, so it wraps and aligns at their width. In
+  the flow, layout reserves the width of `999` in the run's font, since
+  pagination depends on it; a longer number can overflow that space.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. `fit` defaults to `fill`, like CSS `object-fit`.
 

@@ -1,7 +1,9 @@
 //! Text nodes → `Op::Text` (plus decorations), with alignment,
 //! justification and page-number placeholders.
 
-use super::{Ellipsis, Line, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE};
+use super::{
+    Ellipsis, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
+};
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
 use crate::paint::{ContentCtx, ContentPainter, Dash, Op, Path, PathSeg, Rect, TextGlyph, TextOp};
@@ -20,6 +22,9 @@ pub(crate) struct PageNumbers {
 
 pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     pub cache: &'c TextCache<'s, S>,
+    /// The page's own layouts of paragraphs with placeholders, when
+    /// painting a header or footer laid out for this page.
+    pub page: Option<&'c PageText<'c, 's, S>>,
     pub fonts: &'f FontSet<'a>,
     pub numbers: PageNumbers,
 }
@@ -34,10 +39,11 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
             return;
         };
         let (cx, cy, cw, _) = geo.content_box();
-        let Some(layout) = self.cache.layout_at(node, cw) else {
-            return;
-        };
-        let Some((prepared, style)) = self.cache.prepared(node) else {
+        let paragraph = self
+            .page
+            .and_then(|page| page.paragraph(node, cw))
+            .or_else(|| self.cache.paragraph(node, cw));
+        let Some((layout, prepared, style)) = paragraph else {
             return;
         };
         for (li, line) in layout.lines.iter().enumerate() {
@@ -142,7 +148,7 @@ fn paint_line(
             glyphs: Vec::with_capacity(b - a),
             width: 0.0,
         };
-        if let Some(ph) = run.placeholder {
+        if let Some(ph) = run.placeholder.filter(|_| p.placeholders) {
             let n = match ph {
                 Placeholder::PageNumber => numbers.current,
                 Placeholder::TotalPages => numbers.total,
