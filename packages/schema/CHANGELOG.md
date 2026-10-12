@@ -7,6 +7,15 @@ version 2.
 
 ## Unreleased
 
+### Added
+
+- `Meta.producer`, `Meta.pageMode` and `Meta.pageLayout`: the PDF producer (default
+  `Inkoxide <version>`), what the viewer shows when it opens the document (`useNone`,
+  `useOutlines`, `useThumbs`, `fullScreen`; default `useOutlines` when the document has
+  bookmarks, else `useNone`, as before), and how it lays out the pages (`singlePage`,
+  `oneColumn`, `twoColumnLeft`, `twoColumnRight`, `twoPageLeft`, `twoPageRight`; default: not
+  set). All optional; documents without them render as before.
+
 ### Fixed
 
 - **Engine parity:** integers are bounded as the schema states. An integer past the engine's own

@@ -5,7 +5,6 @@ or should come sooner.
 
 ## Now
 
-- **Document props**: `producer`, `pageMode`, `pageLayout`.
 - **Text outlines in `debug`**: outline inline runs inside a `Text`, line by line.
 
 ## Next: engine features

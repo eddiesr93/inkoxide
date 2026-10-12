@@ -1,4 +1,4 @@
-import type { Break, Color, PageFilter, TransformOp } from '@inkoxide/schema';
+import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
 import type { TwStyle } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
@@ -294,10 +294,22 @@ export interface DocumentProps {
   subject?: string;
   keywords?: string;
   creator?: string;
+  /** The PDF producer. Default: `Inkoxide <version>`. */
+  producer?: string;
   /** BCP-47 language of the document (`"en-US"`); also selects hyphenation patterns. */
   lang?: string;
   /** RFC 3339 timestamp written to the PDF. Omit it for deterministic output. */
   creationDate?: string;
+  /**
+   * What the viewer shows when it opens the PDF: no panel, the bookmarks, page thumbnails or
+   * the pages full screen. Default: `'useOutlines'` when there are bookmarks, else `'useNone'`.
+   */
+  pageMode?: Meta['pageMode'];
+  /**
+   * How the viewer lays out the pages: one at a time, one scrolling column, two columns or two
+   * pages side by side (odd pages on the left or the right). Default: the viewer's setting.
+   */
+  pageLayout?: Meta['pageLayout'];
   /** Font ids tried for characters missing from a run's font. Default: `['NotoSans-Regular']`. */
   fallbackFonts?: string[];
   /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */

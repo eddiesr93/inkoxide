@@ -9,6 +9,11 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- Document metadata `producer`, `pageMode` and `pageLayout` (`meta` in the document, props of
+  `<Document>`): the PDF producer (default `Inkoxide <version>`), what the viewer shows when it
+  opens the PDF (no panel, the bookmarks, thumbnails or full screen; by default the bookmarks
+  when there are any, as before), and how it lays out the pages (one or two pages, or one or two
+  scrolling columns).
 - `inkoxide` (Rust): `validate_without_images`, which validates a document without looking up
   its image ids, as the Node `validate` does when it is given no `images`.
 

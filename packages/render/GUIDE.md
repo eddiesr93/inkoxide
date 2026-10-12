@@ -30,7 +30,7 @@ take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stro
 
 | Component | What it is |
 |---|---|
-| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `lang` (`"en-US"`), `creationDate` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)). |
+| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)). |
 | `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
@@ -385,10 +385,22 @@ with that `id`.
 Bookmarks become the PDF outline in the viewer's sidebar. With `{ pdfA: true }`, the output is
 PDF/A-2b, for archiving.
 
-`Document` writes `title`, `author`, `subject`, `keywords` and `creator` (the application that
-made the file) into the PDF's properties. `creationDate` (an RFC 3339 timestamp,
-`"2026-10-12T09:30:00Z"`) dates it, as the `creationDate` option does; without either, the same
-input gives byte-identical output.
+`Document` writes `title`, `author`, `subject`, `keywords`, `creator` (the application that
+made the file) and `producer` (the software that wrote the PDF, by default `Inkoxide <version>`)
+into the PDF's properties. `creationDate` (an RFC 3339 timestamp, `"2026-10-12T09:30:00Z"`) dates
+it, as the `creationDate` option does; without either, the same input gives byte-identical output.
+
+`pageMode` and `pageLayout` say how the viewer opens the PDF:
+
+```tsx
+<Document pageMode="useThumbs" pageLayout="twoPageRight">…</Document>
+```
+
+`pageMode` is `'useNone'` (no side panel), `'useOutlines'` (the bookmarks), `'useThumbs'` (page
+thumbnails) or `'fullScreen'`. The default shows the bookmarks when there are any. `pageLayout`
+is `'singlePage'`, `'oneColumn'` (continuous scrolling), `'twoColumnLeft'` or `'twoColumnRight'`
+(two scrolling columns, odd pages on the left or right), or `'twoPageLeft'` or `'twoPageRight'`
+(two pages at a time); without it, the viewer uses its own setting.
 
 `fallbackFonts` lists the fonts tried, in order, for characters a run's font lacks. The default is
 `['NotoSans-Regular']`. The entries are font ids: the bundled `Inter-Regular`, `Inter-Italic`,

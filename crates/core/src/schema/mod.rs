@@ -46,8 +46,36 @@ pub struct Meta {
     pub subject: Option<String>,
     pub keywords: Option<String>,
     pub creator: Option<String>,
+    /// Default `Inkoxide <version>`.
+    pub producer: Option<String>,
     pub lang: Option<String>,
     pub creation_date: Option<String>,
+    /// Default: `useOutlines` when the document has bookmarks.
+    pub page_mode: Option<PageMode>,
+    /// Default: not written (the viewer's choice).
+    pub page_layout: Option<PageLayout>,
+}
+
+/// What the viewer shows when it opens the document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageMode {
+    UseNone,
+    UseOutlines,
+    UseThumbs,
+    FullScreen,
+}
+
+/// How the viewer lays out the pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageLayout {
+    SinglePage,
+    OneColumn,
+    TwoColumnLeft,
+    TwoColumnRight,
+    TwoPageLeft,
+    TwoPageRight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]

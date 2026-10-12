@@ -513,6 +513,22 @@ describe('tables', () => {
 });
 
 describe('pages, images and structure', () => {
+  it('maps the Document metadata props to meta', () => {
+    const r = renderTemplate(
+      <Document title="Report" creator="App" producer="Acme" pageMode="useThumbs" pageLayout="twoPageRight">
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(r.document.meta).toEqual({
+      title: 'Report',
+      creator: 'App',
+      producer: 'Acme',
+      pageMode: 'useThumbs',
+      pageLayout: 'twoPageRight',
+    });
+  });
+
   it('maps page size presets, margins, background, header and footer', () => {
     const r = renderTemplate(
       <Document>

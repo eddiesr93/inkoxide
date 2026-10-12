@@ -114,8 +114,11 @@ Type: `boolean` (default `false`)
 | `subject` | `string` |  |  |
 | `keywords` | `string` |  |  |
 | `creator` | `string` |  |  |
+| `producer` | `string` |  | The PDF producer, written to the PDF Info dictionary (and to the XMP metadata of PDF/A). Default `Inkoxide <version>`. |
 | `lang` | `string` |  | BCP-47 language tag of the document, e.g. "en" or "en-GB". |
 | `creationDate` | `string` |  | format `date-time`; RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
+| `pageMode` | `"useNone"` \| `"useOutlines"` \| `"useThumbs"` \| `"fullScreen"` |  | What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) or the pages full screen (`fullScreen`). Default: `useOutlines` when the document has bookmarks, else `useNone`. |
+| `pageLayout` | `"singlePage"` \| `"oneColumn"` \| `"twoColumnLeft"` \| `"twoColumnRight"` \| `"twoPageLeft"` \| `"twoPageRight"` |  | How the viewer lays out the pages: one at a time (`singlePage`), one scrolling column (`oneColumn`), two scrolling columns with odd pages on the left or right (`twoColumnLeft`, `twoColumnRight`), or two pages at a time with odd pages on the left or right (`twoPageLeft`, `twoPageRight`). Default: the viewer's own setting. |
 
 ### FontDecl
 
