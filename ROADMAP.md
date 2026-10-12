@@ -6,8 +6,6 @@ or should come sooner.
 ## Now
 
 - **Document props**: `producer`, `pageMode`, `pageLayout`.
-- **Page numbers in body text**: lay them out with their real digits, as headers and footers
-  already do.
 - **Text outlines in `debug`**: outline inline runs inside a `Text`, line by line.
 
 ## Next: engine features

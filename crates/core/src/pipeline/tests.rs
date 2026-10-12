@@ -646,3 +646,101 @@ fn ids_and_bookmarks_in_overlays_point_at_the_first_page() {
         assert_eq!(marks.anchors["stamp"], want);
     });
 }
+
+// Page numbers in the flow.
+
+/// A document (no margins) whose flow fills `before` pages with a box,
+/// then shows `child` at the top of the next.
+fn in_flow(before: u32, child: &str) -> String {
+    let filler = f32::from(u16::try_from(before).unwrap()) * H;
+    format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},
+            "children":[{{"type":"box","style":{{"height":{filler}}}}},{child}]}}]}}"#
+    )
+}
+
+#[test]
+fn flow_page_numbers_take_their_own_width() {
+    let right = W - PAD;
+    // Pushed right in a row: the text box is as wide as the text.
+    let pushed = |written| {
+        footer(
+            r#""flexDirection":"row","justifyContent":"flex-end","#,
+            &n_of_m("", "Inter-Regular", "", ["Page ", " of "], written),
+        )
+    };
+    for pages in COUNTS {
+        let last = pages as usize - 1;
+        let lines = painted_lines(&in_flow(pages - 1, &pushed(None)));
+        assert_eq!(lines.len(), pages as usize);
+        let [line] = lines[last][..] else {
+            panic!("page {pages}: {:?}", lines[last]);
+        };
+        assert!(close(line.2, right), "{pages} pages: ends at {}", line.2);
+        // Laid out as if the numbers were written out.
+        let written = painted_lines(&in_flow(pages - 1, &pushed(Some((pages, pages)))));
+        let [(_, x0, x1)] = written[last][..] else {
+            panic!("{:?}", written[last]);
+        };
+        assert!(
+            close(line.1, x0) && close(line.2, x1),
+            "{line:?}, written out {x0}..{x1}"
+        );
+    }
+}
+
+#[test]
+fn page_numbers_can_bring_flow_text_back_a_page() {
+    // 13 pt are left at the foot of the page. "Page 999 of 999" takes two
+    // lines in 70 pt and moves on to a second page; "Page 1 of 1" takes
+    // one and fits.
+    let text = n_of_m(
+        r#""width":70"#,
+        "Inter-Regular",
+        "",
+        ["Page ", " of "],
+        None,
+    );
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},
+            "children":[{{"type":"box","style":{{"height":{}}}}},{text}]}}]}}"#,
+        H - 13.0
+    );
+    assert_eq!(painted_numbers(&json), [["1", "1"]]);
+    let stand_in = n_of_m(
+        r#""width":70"#,
+        "Inter-Regular",
+        "",
+        ["Page ", " of "],
+        Some((999, 999)),
+    );
+    assert_eq!(painted(&json.replace(&text, &stand_in)).len(), 2);
+}
+
+#[test]
+fn repeated_flow_text_shows_each_page_s_numbers() {
+    let numbers = n_of_m("", "Inter-Regular", "", ["Page ", " of "], None);
+    // A fixed node in the flow is painted on every page.
+    let fixed = numbers.replacen(r#""type":"text""#, &format!(r#""type":"text"{FIXED}"#), 1);
+    let pages = painted_numbers(&with_fixed(3, &fixed));
+    assert!(pages.len() >= 3, "{pages:?}");
+    let total = pages.len().to_string();
+    for (k, numbers) in pages.iter().enumerate() {
+        assert_eq!(numbers, &[(k + 1).to_string(), total.clone()]);
+    }
+    // So is a table's header row, on every page the table is on.
+    let row = r#"{"cells":[{"children":[{"type":"box","style":{"height":30}}]}]}"#;
+    let rows = [row; 8].join(",");
+    let table = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"cells":[{{"children":[{numbers}]}}]}},{rows}]}}"#
+    );
+    let pages = painted_numbers(&in_flow(0, &table));
+    assert!(pages.len() >= 3, "{pages:?}");
+    let total = pages.len().to_string();
+    for (k, numbers) in pages.iter().enumerate() {
+        assert_eq!(numbers, &[(k + 1).to_string(), total.clone()]);
+    }
+}

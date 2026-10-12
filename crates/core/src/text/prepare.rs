@@ -22,8 +22,9 @@ pub(crate) const SHY: char = '\u{00AD}';
 
 /// Stand-in digits laid out in place of page-number placeholders until the
 /// page count is known. Headers and footers are laid out again on every
-/// page with the real numbers ([`fill_numbers`]); flow text keeps this
-/// width, since pagination depends on its layout.
+/// page with the real numbers ([`fill_numbers`]), and flow text with the
+/// numbers of its page; flow text painted on several pages (fixed, or in
+/// a table's header rows) keeps this width.
 pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 
 pub(crate) struct ParagraphOptions<'a> {

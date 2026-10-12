@@ -99,9 +99,9 @@ pub(crate) struct Prepared {
     pub rtl: bool,
     /// Some glyph has an odd bidi level (lines need reordering).
     pub bidi: bool,
-    /// Placeholder runs hold the stand-in digits of
-    /// [`prepare::PLACEHOLDER_TEXT`]; the painter draws the page numbers
-    /// in their place.
+    /// Placeholder runs hold digits to lay out (the stand-ins of
+    /// [`prepare::PLACEHOLDER_TEXT`], or the numbers of the page flow text
+    /// lands on); the painter draws the page's own numbers in their place.
     pub placeholders: bool,
 }
 
@@ -434,6 +434,9 @@ pub(crate) struct TextCache<'s, S: TextShaper> {
     pub shaper: S,
     doc_lang: Option<&'s str>,
     entries: HashMap<usize, Entry>,
+    /// Flow paragraphs laid out with page numbers ([`TextCache::set_numbers`]):
+    /// their entries with the stand-in digits, and the numbers in place of them.
+    numbered: HashMap<usize, (Entry, PageNumbers)>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -505,7 +508,48 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             shaper,
             doc_lang,
             entries: HashMap::new(),
+            numbered: HashMap::new(),
         }
+    }
+
+    /// First glyph of a page-number placeholder in text node `node`, if it
+    /// shows one.
+    pub fn placeholder_glyph(&self, node: &Node) -> Option<u32> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return None;
+        };
+        let e = self.entries.get(&node_key(node))?;
+        e.prepared
+            .segments
+            .iter()
+            .find(|s| runs[s.run as usize].placeholder.is_some())
+            .map(|s| s.glyphs.start)
+    }
+
+    /// Lays out flow paragraph `node` with `numbers` in place of its
+    /// placeholders' stand-in digits, so its lines break, align and size at
+    /// the width they take. Returns whether its numbers changed.
+    pub fn set_numbers(&mut self, node: &Node, numbers: PageNumbers) -> bool {
+        let NodeKind::Text { runs } = &node.kind else {
+            return false;
+        };
+        let key = node_key(node);
+        if self.numbered.get(&key).is_some_and(|(_, n)| *n == numbers) {
+            return false;
+        }
+        let Some(current) = self.entries.remove(&key) else {
+            return false;
+        };
+        let (stand_in, used) = self.numbered.entry(key).or_insert((current, numbers));
+        *used = numbers;
+        let mut prepared = self.shaper.fill_numbers(&stand_in.prepared, runs, numbers);
+        // The painter still draws the page's own digits: the same glyphs,
+        // unless the paragraph ended up on another page than it was laid
+        // out for.
+        prepared.placeholders = true;
+        let entry = Entry::new(stand_in.style.clone(), prepared);
+        self.entries.insert(key, entry);
+        true
     }
 
     fn entry(&mut self, node: &Node, runs: &[TextRun]) -> &mut Entry {

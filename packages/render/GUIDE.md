@@ -711,12 +711,13 @@ as do hooks that compute during render (`useMemo`, `useContext`). The PDF is bui
 first render, so state updates and effects do not change it.
 
 **How much room does a page number take?**
-In a header, a footer or a fixed element, its own digits: the text is laid out again on every
+Its own digits. In a header, a footer or a fixed element, the text is laid out again on every
 page, so `<Text className="text-right">Page <PageNumber /> of <TotalPages /></Text>` ends at
-the footer's padding on every page. In the page body, the engine sizes the text for a three-digit
-number, because the page breaks depend on that layout: each line is still aligned with the real
-digits, but a box sized by its text keeps the three-digit width, and a number of four digits or
-more can overflow it.
+the footer's padding on every page. In the page body, the text is laid out with the numbers of
+the page it lands on, and the page breaks are worked out again if those numbers move it. The
+exception is text the body repeats on several pages, a table's header rows: it is sized for a
+three-digit number, each page draws its own digits in that room, and a number of four digits
+or more can overflow it.
 
 **Is the output the same on every machine?**
 Yes, for the same input, fonts and options, as long as you leave out `creationDate`.

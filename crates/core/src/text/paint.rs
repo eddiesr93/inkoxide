@@ -13,7 +13,7 @@ use crate::schema::{
 };
 
 /// Page numbers substituted for placeholders on the page being painted.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PageNumbers {
     pub current: u32,
     pub total: u32,

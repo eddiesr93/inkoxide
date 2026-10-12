@@ -7,6 +7,16 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Changed
+
+- Page numbers in the page body (`<PageNumber />` and `<TotalPages />` in a `Text`) are laid out
+  with their own digits, as in headers and footers. The text wraps, justifies and sizes its box
+  at the width of the numbers of the page it lands on, and the page breaks are worked out again
+  when those numbers move it. Until now the body kept room for a three-digit number: a box
+  sized by its text was too wide for a short number, and a number of four digits or more could
+  overflow it. Text the body repeats on several pages (a table's header rows) still keeps that
+  room, since each page draws its own digits in it.
+
 ## 0.4.1 - 2026-10-12
 
 `inkoxide` 0.4.1, `@inkoxide/tailwind` 0.2.2, `@inkoxide/react` 0.2.2 and `@inkoxide/render`

@@ -39,10 +39,13 @@ INTRO = """# Document schema v1
   bottom of the page. Use their padding to inset them and size the page
   margins so the flow does not overlap them.
 - **Placeholders.** A run with `placeholder: "pageNumber" | "totalPages"`
-  is filled in after pagination. In a header or footer, the text is laid
-  out with each page's numbers, so it wraps and aligns at their width. In
-  the flow, layout reserves the width of `999` in the run's font, since
-  pagination depends on it; a longer number can overflow that space.
+  is filled in after pagination, and the text wraps and aligns at the
+  width of the digits. A header, a footer or an overlay is laid out with
+  each page's numbers. Flow text is laid out with the numbers of the page
+  it lands on, and the flow is paginated again if they move it. Flow text
+  painted on several pages (in a fixed node or a table's header rows)
+  reserves the width of `999` in the run's font for each page's digits; a
+  longer number can overflow that space.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. `fit` defaults to `fill`, like CSS `object-fit`, and
   `objectPosition` places a fitted image in its box like `object-position`

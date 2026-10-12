@@ -8,7 +8,7 @@ use taffy::{AvailableSpace, Size as TSize};
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
 use crate::layout::{Geometry, LayoutEngine, LeafMeasure, NodeIdx, TaffyLayout, Tree};
-use crate::paginate::{paginate, Placement};
+use crate::paginate::{paginate, Placement, PAGED_EPS};
 use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
 use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
 use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
@@ -188,9 +188,8 @@ pub(crate) fn run<'d, T: Send>(
         let m = spec.margin;
         let content_w = spec.size.width - m.left - m.right;
         let content_h = spec.size.height - m.top - m.bottom;
-        let mut flow = Tree::build(spec.children.iter().filter(|n| !is_overlay(n)));
+        let (flow, placement) = lay_out_flow(spec, text, images)?;
         let mut leaves = Leaves { text, images };
-        TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
         let header = spec
             .header
             .as_deref()
@@ -208,7 +207,6 @@ pub(crate) fn run<'d, T: Send>(
             .filter(|(_, n)| is_overlay(n))
             .map(|(k, n)| Ok((k, Band::new(n, content_w, content_h, &mut leaves)?)))
             .collect::<Result<_, InkoxideError>>()?;
-        let placement = paginate(&flow, content_h, text);
         laid.push(Laid {
             spec,
             flow,
@@ -218,16 +216,12 @@ pub(crate) fn run<'d, T: Send>(
             overlays,
         });
     }
+    page_count(&laid)?;
+    number_flows(&mut laid, text, images)?;
 
-    // Page numbers are known only now: placeholders are filled at paint,
-    // and headers and footers that show them are laid out per page.
-    let total: u64 = laid.iter().map(|l| u64::from(l.placement.pages)).sum();
-    if total > u64::from(MAX_PAGES) {
-        return Err(InkoxideError::Layout(format!(
-            "the document needs {total} pages; the limit is {MAX_PAGES}"
-        )));
-    }
-    let total = total as u32;
+    // The painter draws each page's digits in placeholders, and headers
+    // and footers that show them are laid out per page.
+    let total = page_count(&laid)?;
     let mut marks = Marks::default();
     let mut first = 0;
     for l in &laid {
@@ -258,6 +252,125 @@ pub(crate) fn run<'d, T: Send>(
             .collect::<Result<_, _>>()?
     };
     Ok((pages, marks))
+}
+
+/// Lays out and paginates the flow of page template `spec`: its children
+/// other than overlays.
+fn lay_out_flow<'a>(
+    spec: &'a PageSpec,
+    text: &mut Cache<'_, '_, '_>,
+    images: &ImageSet,
+) -> Result<(Tree<'a>, Placement), InkoxideError> {
+    let m = spec.margin;
+    let content_w = spec.size.width - m.left - m.right;
+    let content_h = spec.size.height - m.top - m.bottom;
+    let mut flow = Tree::build(spec.children.iter().filter(|n| !is_overlay(n)));
+    let mut leaves = Leaves { text, images };
+    TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
+    let placement = paginate(&flow, content_h, text);
+    Ok((flow, placement))
+}
+
+/// The document's page count, within [`MAX_PAGES`].
+fn page_count(laid: &[Laid<'_>]) -> Result<u32, InkoxideError> {
+    let total: u64 = laid.iter().map(|l| u64::from(l.placement.pages)).sum();
+    if total > u64::from(MAX_PAGES) {
+        return Err(InkoxideError::Layout(format!(
+            "the document needs {total} pages; the limit is {MAX_PAGES}"
+        )));
+    }
+    Ok(total as u32)
+}
+
+/// Most times the flows are laid out again for the page numbers their text
+/// shows. Numbers rarely move a paragraph to another page; if they keep
+/// doing so, the last layout stands and the painter still draws each
+/// page's own digits.
+const NUMBER_PASSES: usize = 3;
+
+/// Lays out flow text that shows page numbers with the numbers of the page
+/// it lands on, instead of the stand-in digits: the flows with such text
+/// are laid out and paginated again, until no number changes.
+fn number_flows(
+    laid: &mut [Laid<'_>],
+    text: &mut Cache<'_, '_, '_>,
+    images: &ImageSet,
+) -> Result<(), InkoxideError> {
+    for _ in 0..NUMBER_PASSES {
+        let total = page_count(laid)?;
+        let mut first = 0;
+        let mut found = Vec::new();
+        for (k, l) in laid.iter().enumerate() {
+            for (node, page) in numbered_text(l, text) {
+                let current = first + page + 1;
+                found.push((k, node, PageNumbers { current, total }));
+            }
+            first += l.placement.pages;
+        }
+        let mut changed = vec![false; laid.len()];
+        for (k, node, numbers) in found {
+            changed[k] |= text.set_numbers(node, numbers);
+        }
+        if !changed.contains(&true) {
+            break;
+        }
+        for (l, _) in laid.iter_mut().zip(changed).filter(|(_, c)| *c) {
+            let _span = tracing::debug_span!("layout+paginate with page numbers").entered();
+            (l.flow, l.placement) = lay_out_flow(l.spec, text, images)?;
+        }
+    }
+    Ok(())
+}
+
+/// The flow paragraphs of `l` that show page numbers, with the page of
+/// the flow their first number is on. Text in a fixed node or in a table's
+/// header rows is painted on other pages too: it keeps the stand-in
+/// digits' width, and the painter draws each page's own.
+fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Node, u32)> {
+    let (tree, pl) = (&l.flow, &l.placement);
+    let mut repeated = vec![false; tree.nodes.len()];
+    let mut out = Vec::new();
+    // Breadth-first: a parent comes before its children.
+    for i in 1..tree.nodes.len() {
+        let ln = &tree.nodes[i];
+        let parent = ln.parent as usize;
+        let header_row = tree
+            .tables
+            .get(&ln.parent)
+            .is_some_and(|t| i - (tree.nodes[parent].children.start as usize) < t.header_rows);
+        let fixed = ln.node.is_some_and(|n| n.brk.fixed);
+        repeated[i] = repeated[parent] || header_row || fixed;
+        let Some(node) = ln.node else {
+            continue;
+        };
+        if repeated[i] || ln.style().display == Some(Display::None) {
+            continue;
+        }
+        let Some(glyph) = text.placeholder_glyph(node) else {
+            continue;
+        };
+        let content = ln.geo.content_box();
+        let Some(lines) = text.layout(node, content.w) else {
+            continue;
+        };
+        let Some(li) = lines
+            .lines
+            .iter()
+            .position(|line| glyph < line.end)
+            .or(lines.lines.len().checked_sub(1))
+        else {
+            continue;
+        };
+        let i = i as NodeIdx;
+        let shift = pl.line_shifts(i).get(li).copied().unwrap_or(pl.shift(i));
+        let top = content.y + lines.lines[li].top + shift;
+        let page = ((top + PAGED_EPS) / pl.page_h).floor().max(0.0) as u32;
+        out.push((
+            node,
+            page.clamp(pl.first_page(i), pl.pages.saturating_sub(1)),
+        ));
+    }
+    out
 }
 
 /// Destinations of the ids and bookmarks in one paginated flow, whose

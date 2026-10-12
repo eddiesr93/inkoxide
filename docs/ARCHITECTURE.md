@@ -121,11 +121,16 @@ Elements with `debug` have their boxes recorded as they are painted
 flow's clipped to its content band.
 
 Page-number placeholders are laid out as `999` until the page count is
-known. Flow text keeps that width, because pagination depends on it. A
+known. Then flow text that shows them gets the numbers of the page its
+first number lands on (`TextCache::set_numbers`, through `fill_numbers`),
+and the flows with such text are laid out and paginated again, until no
+number changes (at most three times; `pipeline::number_flows`). Text in a
+fixed node or a table's header rows is painted on several pages and keeps
+the stand-ins' width. The painter always draws the page's own digits. A
 header, footer or overlay that shows page numbers is laid out again on each page,
 in the page's paint job: `text::PageText` puts the page's digits in place
-of the stand-ins (`fill_numbers`) and breaks those paragraphs' lines
-again, and reads every other paragraph from the shared cache.
+of the stand-ins and breaks those paragraphs' lines again, and reads every
+other paragraph from the shared cache.
 
 ## Testing
 
