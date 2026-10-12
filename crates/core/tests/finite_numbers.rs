@@ -1,6 +1,8 @@
-//! Every number in the PDF is finite: PDF has no syntax for infinity or
-//! NaN, and one `inf` operand makes a page invalid. Validation bounds the
-//! numbers of a document; the writer turns whatever still overflows into 0.
+//! Every number in the PDF is finite and one readers parse: PDF has no
+//! syntax for infinity or NaN, and one `inf` operand makes a page invalid;
+//! an integer past 32 bits is an error or null to readers. Validation
+//! bounds the numbers of a document; the writer turns whatever still
+//! overflows into 0 and stops finite numbers at ±1e11.
 
 use inkoxide::{FontStore, ImageStore, InputFormat, RenderOptions};
 
@@ -266,13 +268,29 @@ fn svgs_too_small_to_scale_are_invalid_images() {
     let pdf = render_with(&json, &images);
     let tokens = tokens(&pdf, true);
     assert_finite_tokens(&tokens, 50);
-    let big: Vec<_> = tokens
+    assert_parsable_tokens(&tokens);
+    assert_qpdf_check("smallest-svgs", &pdf);
+}
+
+/// Asserts that every number token is one readers parse: an integer within
+/// 32 bits, or a real within the writer's bound (1e11).
+fn assert_parsable_tokens(tokens: &[String]) {
+    let bad: Vec<_> = tokens
         .iter()
-        .filter(|t| t.parse::<f64>().is_ok() && !t.contains('.') && t.parse::<i32>().is_err())
+        .filter(|t| match t.parse::<f64>() {
+            Ok(v) if !t.contains('.') => t.parse::<i32>().is_err() || v.abs() > 1e11,
+            Ok(v) => v.abs() > 1e11,
+            Err(_) => false,
+        })
         .collect();
-    assert!(big.is_empty(), "integers past 32 bits: {big:?}");
-    let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("smallest-svgs.pdf");
-    std::fs::write(&out, &pdf).unwrap();
+    assert!(bad.is_empty(), "numbers readers do not parse: {bad:?}");
+}
+
+/// Asserts that `qpdf --check` passes `pdf` without warnings (exit status
+/// 0), when qpdf is installed.
+fn assert_qpdf_check(name: &str, pdf: &[u8]) {
+    let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.pdf"));
+    std::fs::write(&out, pdf).unwrap();
     if let Ok(o) = std::process::Command::new("qpdf")
         .arg("--check")
         .arg(&out)
@@ -280,9 +298,46 @@ fn svgs_too_small_to_scale_are_invalid_images() {
     {
         assert!(
             o.status.success(),
-            "qpdf --check failed:\n{}{}",
+            "{name}: qpdf --check failed:\n{}{}",
             String::from_utf8_lossy(&o.stdout),
             String::from_utf8_lossy(&o.stderr)
         );
     }
+}
+
+#[test]
+fn huge_svg_numbers_are_written_within_what_readers_parse() {
+    // Finite SVG numbers past what PDF readers parse: pdf-writer writes
+    // them as digits only, integers far past 32 bits. The writer stops
+    // them at ±1e11, as reals.
+    const NS: &str = "xmlns='http://www.w3.org/2000/svg'";
+    let svg = |body: &str| format!("<svg {NS} width='100' height='100'>{body}</svg>");
+    let svgs = [
+        svg("<g transform='scale(1e30)'><rect width='1' height='1'/></g>"),
+        svg("<g transform='translate(1e30 -1e30)'><rect width='10' height='10'/></g>"),
+        svg("<g transform='scale(-2147483648)'><rect width='1' height='1'/></g>"),
+        svg("<defs><linearGradient id='g' x1='-1e30' y1='0' x2='1e30' y2='1e30' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue' stop-opacity='0.5'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/>"),
+        svg("<defs><radialGradient id='g' cx='1e30' cy='1e30' fx='-1e30' gradientUnits='userSpaceOnUse' spreadMethod='repeat'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue'/></radialGradient></defs><rect width='100' height='100' fill='url(#g)'/>"),
+        svg("<line x1='0' y1='0' x2='1e30' y2='-1e30' stroke='red'/><rect x='-1e30' y='1e30' width='1e30' height='1e30'/>"),
+        svg("<defs><clipPath id='c' transform='scale(1e30)'><rect width='1' height='1'/></clipPath></defs><rect width='100' height='100' clip-path='url(#c)'/>"),
+        svg("<defs><mask id='m' x='-1e30' y='-1e30' width='1e30' height='1e30' maskUnits='userSpaceOnUse'><rect width='1e30' height='100' fill='white'/></mask></defs><rect width='100' height='100' mask='url(#m)'/>"),
+        svg("<defs><pattern id='p' width='1e30' height='1e30' patternUnits='userSpaceOnUse'><rect width='1e30' height='1'/></pattern></defs><rect width='100' height='100' fill='url(#p)'/>"),
+    ];
+    let mut images = ImageStore::new();
+    let mut children = Vec::new();
+    for (i, svg) in svgs.iter().enumerate() {
+        images.insert(format!("svg{i}"), svg.as_bytes().to_vec());
+        children.push(format!(
+            r#"{{"type":"image","src":"svg{i}","style":{{"width":50,"height":50}}}}"#
+        ));
+    }
+    let pdf = render_with(&doc(r#"{"width":200,"height":200}"#, &children), &images);
+    let tokens = tokens(&pdf, true);
+    assert_finite_tokens(&tokens, 100);
+    assert_parsable_tokens(&tokens);
+    assert!(
+        tokens.iter().any(|t| t == "100000000000.0"),
+        "nothing reached the bound"
+    );
+    assert_qpdf_check("huge-svg-numbers", &pdf);
 }

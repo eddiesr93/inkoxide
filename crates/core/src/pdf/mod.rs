@@ -84,45 +84,77 @@ pub(crate) struct PdfWriterSink {
     pub parallel: bool,
 }
 
-/// `v`, or 0 when it is infinite or NaN: the backstop that keeps every
-/// number this module writes finite.
+/// Largest magnitude of a number the writer emits (see [`number`]).
+///
+/// PDF readers parse reals up to about ±3.4e38 but integers only within 32
+/// bits (PDF 1.7, Annex C), and `pdf-writer` writes a value of 1e12 or more
+/// as digits without a decimal point: an integer far past 2^31 − 1, which
+/// readers reject or read as null (qpdf: "overflow/underflow converting
+/// … to 64-bit integer"). Below 1e12 it writes a real, or an integer when
+/// the value is one within 32 bits. 1e11 stays clear of that edge and
+/// above anything a document draws: lengths are at most 1e6 pt, and the
+/// largest scale an SVG within the image limits needs is 1e10 (its
+/// largest size over its smallest `viewBox`). 1e11 pt is some 35,000 km,
+/// so clamping there only moves what had already overflowed any page.
+pub(crate) const MAX_NUMBER: f32 = 1e11;
+
+/// `v` as a number every PDF reader parses: 0 when it is infinite or NaN,
+/// and within ±[`MAX_NUMBER`]. The backstop for every number this module
+/// writes; numbers that cannot exceed it by construction (colours,
+/// opacities, font metrics in font units over at least 16 units per em,
+/// gradient stops and periods) are written as they are.
 ///
 /// PDF has no syntax for infinity or NaN; `pdf-writer` would write `inf` or
 /// `NaN`, which makes the content stream invalid, and viewers reject the
 /// page. Validation bounds every number in a document, but bounded values
 /// can still compound past `f32` (a percentage of a percentage, a few
-/// dozen levels deep), and SVG images bring numbers of their own. So this
-/// is not a `debug_assert`: a valid document must not panic a debug build
-/// (the fuzz targets and the debug Node binding run with assertions on).
-/// Zero keeps the file valid; only the shape whose geometry overflowed is
-/// misplaced. Finite values pass unchanged, so output is byte-identical,
-/// and the check is a compare and a well-predicted branch.
+/// dozen levels deep, or one node's scales multiplied), and SVG images
+/// bring numbers of their own (`scale(1e30)`). So this is not a
+/// `debug_assert`: a valid document must not panic a debug build (the
+/// fuzz targets and the debug Node binding run with assertions on). Zero
+/// or the bound keeps the file valid; only the shape whose geometry
+/// overflowed is misplaced. Other values pass unchanged, tiny ones too,
+/// so output is byte-identical, and the check is a few compares.
 #[inline]
-pub(crate) fn finite(v: f32) -> f32 {
-    if v.is_finite() {
-        v
-    } else {
+pub(crate) fn number(v: f32) -> f32 {
+    /// 2^31: `pdf-writer` writes ±2^31 as 32-bit integers (2^31 − 1 for
+    /// 2^31), and in a debug build panics registering −2^31. The `f32`
+    /// next to it, toward zero, is an integer within range.
+    const I32_EDGE: f32 = 2_147_483_648.0;
+    if !v.is_finite() {
         0.0
+    } else if v.abs() == I32_EDGE {
+        v.signum() * 2_147_483_520.0
+    } else {
+        v.clamp(-MAX_NUMBER, MAX_NUMBER)
     }
 }
 
-/// Rounds to 1/1000 pt so output has at most three decimals; never
-/// infinite or NaN (see [`finite`]).
+/// Rounds to 1/1000 pt so output has at most three decimals; bounded and
+/// never infinite or NaN (see [`number`]).
 #[inline]
 pub(crate) fn q(v: f32) -> f32 {
     round_to(v, 1000.0)
 }
 
-/// Rounds to `1 / per`, through [`finite`]. Past about 3e35 points the
+/// Rounds to `1 / per`, through [`number`]. Past about 3e35 points the
 /// scaling overflows, but `f32` has no fraction left to round there.
 #[inline]
 fn round_to(v: f32, per: f32) -> f32 {
     let r = (v * per).round() / per;
-    if r.is_finite() {
-        r
-    } else {
-        finite(v)
-    }
+    number(if r.is_finite() { r } else { v })
+}
+
+/// The bytes of content stream `c`, whose numbers went through
+/// [`number`] (checked in debug builds).
+pub(crate) fn content_bytes(c: Content) -> Vec<u8> {
+    let buf = c.finish();
+    debug_assert!(
+        buf.limits().real() <= MAX_NUMBER,
+        "a number past MAX_NUMBER: {}",
+        buf.limits().real()
+    );
+    buf.into_vec()
 }
 
 /// Hands out object numbers in order, from 1.
@@ -454,6 +486,13 @@ impl PdfSink for PdfWriterSink {
         }
         inf.finish();
 
+        // Content streams are checked as they are finished; this covers
+        // the objects (matrices, boxes, rectangles, coordinates).
+        debug_assert!(
+            pdf.limits().real() <= MAX_NUMBER,
+            "a number past MAX_NUMBER: {}",
+            pdf.limits().real()
+        );
         Ok(pdf.finish())
     }
 }
@@ -869,7 +908,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
             }
         }
     }
-    c.finish().into_vec()
+    content_bytes(c)
 }
 
 #[cfg(test)]
@@ -878,17 +917,63 @@ mod tests {
     use crate::paint::{Dash, Path};
 
     #[test]
-    fn numbers_are_rounded_and_never_non_finite() {
+    fn numbers_are_rounded_bounded_and_never_non_finite() {
         assert_eq!(q(1.234_56), 1.235);
         assert_eq!(q(-0.000_4), -0.0);
-        // Too large to scale by 1000, finite all the same.
-        assert_eq!(q(f32::MAX), f32::MAX);
-        assert_eq!(q(-3e36), -3e36);
+        // Tiny values keep their precision where they are not rounded.
+        assert_eq!(number(1e-7), 1e-7);
+        assert_eq!(number(-1e-30), -1e-30);
+        // Large values pass unchanged up to the bound, and stop there,
+        // whether or not they are too large to scale by 1000.
+        for v in [1e6, 1e10, MAX_NUMBER] {
+            assert_eq!(number(v), v);
+            assert_eq!(number(-v), -v);
+            assert_eq!(q(v), v);
+        }
+        for v in [1.5e11, 1e12, 1e30, f32::MAX] {
+            assert_eq!(number(v), MAX_NUMBER);
+            assert_eq!(number(-v), -MAX_NUMBER);
+            assert_eq!(q(v), MAX_NUMBER);
+            assert_eq!(q(-v), -MAX_NUMBER);
+            assert_eq!(round_to(v, 1e5), MAX_NUMBER);
+        }
+        // ±2^31 would be written as a 32-bit integer: -2^31 is past the
+        // range pdf-writer can register.
+        assert!(number(-2_147_483_648.0) > -2_147_483_648.0);
+        assert!(number(2_147_483_648.0) < 2_147_483_648.0);
         for v in [f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
-            assert_eq!(finite(v), 0.0);
+            assert_eq!(number(v), 0.0);
             assert_eq!(q(v), 0.0);
             assert_eq!(round_to(v, 1e5), 0.0);
         }
+    }
+
+    #[test]
+    fn bounded_numbers_are_written_as_numbers_readers_parse() {
+        // pdf-writer writes a finite f32 as an integer when it is one
+        // within 32 bits, as a real below 1e12, and digits only (an
+        // integer past 32 bits) from there. Every bounded number is one of
+        // the first two.
+        let mut c = Content::new();
+        for v in [
+            MAX_NUMBER,
+            -MAX_NUMBER,
+            3e9,
+            2_147_483_648.0,
+            -2_147_483_648.0,
+            1e30,
+            -f32::MAX,
+            1e-7,
+        ] {
+            c.move_to(number(v), 0.0);
+        }
+        let out = String::from_utf8(content_bytes(c)).unwrap();
+        for token in out.split_ascii_whitespace() {
+            if token.parse::<f64>().is_ok() && !token.contains('.') {
+                assert!(token.parse::<i32>().is_ok(), "{token} in {out}");
+            }
+        }
+        assert!(out.contains("-100000000000.0 0 m"), "{out}");
     }
 
     #[test]
@@ -987,7 +1072,7 @@ mod tests {
     }
 
     #[test]
-    fn the_content_stream_writes_non_finite_numbers_as_zero() {
+    fn the_content_stream_writes_non_finite_numbers_as_zero_and_bounds_the_rest() {
         let doc: crate::schema::Document =
             serde_json::from_str(r#"{"version":1,"pages":[{"size":{"width":10,"height":10}}]}"#)
                 .unwrap();
@@ -1034,11 +1119,12 @@ mod tests {
         for token in out.split_whitespace() {
             let t = token.trim_start_matches('-');
             assert!(t != "inf" && t != "NaN", "`{token}` in:\n{out}");
+            if t.parse::<f64>().is_ok() && !t.contains('.') {
+                assert!(t.parse::<i32>().is_ok(), "`{token}` in:\n{out}");
+            }
         }
-        assert!(
-            out.contains("0 0 0 1 0 340282350000000000000000000000000000000 cm"),
-            "{out}"
-        );
+        // f32::MAX stops at the bound, as a real.
+        assert!(out.contains("0 0 0 1 0 100000000000.0 cm"), "{out}");
     }
 
     #[test]

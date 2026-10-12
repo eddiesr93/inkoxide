@@ -167,6 +167,11 @@ All notable changes to the packages in this repository. The format follows
 - An SVG image whose width or height is under 0.00001 px, or whose `viewBox` width or height
   is, fails with `INVALID_IMAGE` at its path (a nested SVG image is left out). Scaling it up
   made the PDF writer output `inf`, or numbers too large for PDF readers, in the image's matrix.
+- Huge but finite numbers in an SVG image (`transform="scale(1e30)"`, a gradient, mask,
+  pattern or shape at 1e30) no longer make an invalid PDF. The PDF writer wrote them as digits
+  only, integers far past the 32 bits PDF readers parse, which they treat as errors or null.
+  Every number the writer emits, in page content, SVG drawings, annotations and dictionaries,
+  is now at most ±10¹¹.
 - `borderRadius` rounds an image's corners without `overflow: hidden`: the image is clipped to
   the rounded content box, as in CSS.
 - A select field embeds the glyphs of the common Latin range and of every option, as a text

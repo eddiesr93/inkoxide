@@ -283,7 +283,7 @@ impl Ctx<'_, '_, '_> {
                 }
                 c.restore_state();
                 c.end_marked_content();
-                out.push((None, form(pdf, c.finish().into_vec(), op.font)));
+                out.push((None, form(pdf, super::content_bytes(c), op.font)));
             }
             FieldKind::Checkbox | FieldKind::Radio => {
                 let mut c = Content::new();
@@ -295,7 +295,10 @@ impl Ctx<'_, '_, '_> {
                 };
                 super::path(&mut c, &segs);
                 c.fill_nonzero();
-                out.push((Some(on.to_string()), form(pdf, c.finish().into_vec(), None)));
+                out.push((
+                    Some(on.to_string()),
+                    form(pdf, super::content_bytes(c), None),
+                ));
                 out.push((Some("Off".into()), form(pdf, Vec::new(), None)));
             }
         }
