@@ -5,6 +5,7 @@
 //! buffers stay private to this file.
 
 use std::collections::HashMap;
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use unicode_linebreak::{linebreaks, BreakOpportunity};
@@ -213,6 +214,15 @@ struct UnitGlyph {
     cluster: u32,
 }
 
+/// What a panic while shaping unwinds with, in place of its own payload:
+/// the id of the font being shaped. `render` turns it into a font error.
+///
+/// The shaper panics on some malformed fonts. Registration rejects the
+/// ones known (see `fonts/layout.rs`); this names the font for the others.
+pub(crate) struct ShapingPanic {
+    pub font: String,
+}
+
 /// Font, direction and text of a shaped word.
 type WordKey = (FontKey, Option<bool>, Box<str>);
 
@@ -389,7 +399,14 @@ pub(crate) fn prepare(
         let first = glyphs.len() as u32;
         let dir = levels.is_some().then_some(seg.level % 2 == 1);
         for (off, word) in words(seg_text) {
-            let shaped = cache.word(seg.font, word, dir, unicode);
+            let shaped = catch_unwind(AssertUnwindSafe(|| {
+                cache.word(seg.font, word, dir, unicode)
+            }))
+            .unwrap_or_else(|_| {
+                resume_unwind(Box::new(ShapingPanic {
+                    font: fonts.get(seg.font).id.to_string(),
+                }))
+            });
             for (k, g) in shaped.iter().enumerate() {
                 let c = word[g.cluster as usize..].chars().next().unwrap_or(' ');
                 let mut flags = 0;

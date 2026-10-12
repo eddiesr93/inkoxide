@@ -294,6 +294,11 @@ All notable changes to the packages in this repository. The format follows
   type as `RenderToBufferOptions`.
 - `@inkoxide/render`: the start-up error for missing fonts says what `INKOXIDE_ASSETS_DIR` must
   point to, and the guide's FAQ explains when to set it (a bundled deployment).
+- A font whose `GSUB` or `GPOS` lookups point to a missing or malformed coverage table is
+  rejected with `FONT_ERROR` when it is registered. It registered, and the first render that
+  shaped text with it panicked in the shaper: a panic in Rust, an `INTERNAL` error in Node. The
+  Rust `render` now returns any panic as an error: `FONT_ERROR` naming the font when it happens
+  while shaping, `INTERNAL` otherwise.
 
 ## 0.5.0 - 2026-10-12
 

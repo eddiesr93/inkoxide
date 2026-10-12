@@ -12,6 +12,7 @@ pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
 mod paint;
 mod prepare;
+pub(crate) use prepare::ShapingPanic;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;

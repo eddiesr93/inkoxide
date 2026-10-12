@@ -12,6 +12,7 @@
 //! from [`FontData`]'s bytes.
 
 mod cff;
+mod layout;
 mod woff;
 
 use std::collections::BTreeMap;
@@ -92,6 +93,12 @@ impl FontData {
             .is_none_or(|c| !c.subtables.into_iter().any(|s| s.is_unicode()))
         {
             return Err(err("font has no Unicode cmap"));
+        }
+        if let Some(table) = layout::unresolved_coverage(&face) {
+            return Err(err(&format!(
+                "the {table} table is malformed (a coverage offset does not point to a \
+                 coverage table)"
+            )));
         }
 
         let upem = f32::from(face.units_per_em());
@@ -241,7 +248,9 @@ impl FontStore {
     /// - fonts with neither TrueType (`glyf`) nor CFF outlines that can be
     ///   embedded;
     /// - fonts without a Unicode `cmap` (text is mapped to glyphs through
-    ///   it).
+    ///   it);
+    /// - fonts whose `GSUB` or `GPOS` lookups point to coverage tables
+    ///   that are missing or malformed (they would fail shaping).
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -287,6 +296,8 @@ pub(crate) type FontKey = u16;
 
 /// A registered font parsed for one render: its `cmap` and advances.
 pub(crate) struct LoadedFont<'a> {
+    /// The id the document declares it under.
+    pub id: &'a str,
     pub data: &'a FontData,
     face: ttf_parser::Face<'a>,
 }
@@ -330,7 +341,11 @@ impl<'a> FontSet<'a> {
             let face = ttf_parser::Face::parse(&data.bytes, 0)
                 .map_err(|_| InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id)))?;
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
-            fonts.push(LoadedFont { data, face });
+            fonts.push(LoadedFont {
+                id: &decl.id,
+                data,
+                face,
+            });
         }
         let fallbacks = doc
             .fallback_fonts
@@ -527,6 +542,100 @@ mod tests {
         let e = FontStore::new().register("x", ttc).unwrap_err();
         assert_eq!(e.code(), "FONT_ERROR");
         assert!(e.to_string().contains("font collections (.ttc)"), "{e}");
+    }
+
+    /// A fuzz finding, minimised: Noto Sans Hebrew with the lookahead
+    /// coverage of a chained context lookup pointing to bytes that are not
+    /// a coverage table. Shaping an `i` before a soft hyphen with it panics
+    /// rustybuzz 0.20.1.
+    const BAD_COVERAGE: &str = "malformed/gsub-lookahead-coverage.ttf";
+
+    #[test]
+    fn rejects_coverage_offsets_that_do_not_resolve() {
+        let e = FontStore::new()
+            .register("x", fixture(BAD_COVERAGE))
+            .unwrap_err();
+        assert_eq!(e.code(), "FONT_ERROR");
+        assert_eq!(
+            e.to_string(),
+            "font error: font `x`: the GSUB table is malformed (a coverage offset does not \
+             point to a coverage table)"
+        );
+
+        // Noto Sans Hebrew has one chained context format 3 lookup with a
+        // lookahead in each table; a null offset there is rejected too.
+        let hebrew = fixture("NotoSansHebrew-Regular.ttf");
+        assert!(FontStore::new().register("x", hebrew.clone()).is_ok());
+        for (table, lookup) in [(b"GSUB", 3), (b"GPOS", 0)] {
+            let mut font = hebrew.clone();
+            let at = chain_format3(&font, table, lookup);
+            let back = usize::from(u16::from_be_bytes([font[at + 2], font[at + 3]]));
+            let input_at = at + 4 + 2 * back;
+            let input = usize::from(u16::from_be_bytes([font[input_at], font[input_at + 1]]));
+            let ahead_at = input_at + 2 + 2 * input;
+            assert_eq!(u16::from_be_bytes([font[ahead_at], font[ahead_at + 1]]), 1);
+            font[ahead_at + 2..ahead_at + 4].fill(0);
+            let e = FontStore::new().register("x", font).unwrap_err();
+            let table = std::str::from_utf8(table).unwrap();
+            assert!(e.to_string().contains(&format!("the {table} table")), "{e}");
+        }
+    }
+
+    /// The offset in `font` of the first subtable of lookup `lookup` in
+    /// GSUB or GPOS, which must be a chained context format 3 subtable.
+    fn chain_format3(font: &[u8], table: &[u8; 4], lookup: usize) -> usize {
+        let raw = ttf_parser::RawFace::parse(font, 0).unwrap();
+        let data = raw.table(ttf_parser::Tag::from_bytes(table)).unwrap();
+        let start = data.as_ptr() as usize - font.as_ptr() as usize;
+        let u16_at = |at: usize| usize::from(u16::from_be_bytes([font[at], font[at + 1]]));
+        let lookups = start + u16_at(start + 8);
+        let at = lookups + u16_at(lookups + 2 + 2 * lookup);
+        let subtable = at + u16_at(at + 6);
+        assert_eq!(u16_at(subtable), 3, "not format 3");
+        subtable
+    }
+
+    /// A font the shaper panics on that registration lets through (here by
+    /// skipping it): the render fails with a font error naming it, on one
+    /// thread and when paragraphs are shaped in parallel.
+    #[test]
+    fn a_panic_while_shaping_is_a_font_error() {
+        let hebrew = FontData::parse("bad", fixture("NotoSansHebrew-Regular.ttf").into()).unwrap();
+        let bytes: Arc<[u8]> = fixture(BAD_COVERAGE).into();
+        let mut fonts = FontStore::new();
+        fonts.fonts.insert(
+            "bad".into(),
+            Arc::new(FontData {
+                hash: xxhash_rust::xxh3::xxh3_64(&bytes),
+                bytes,
+                ..hebrew
+            }),
+        );
+        // An `i` before a soft hyphen reaches the broken lookup; enough
+        // paragraphs for `TextCache::prepare_all` to shape them in parallel.
+        let para = r#"{"type":"text","runs":[{"text":"i\u00ad","font":"bad","size":12}]}"#;
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"bad","family":"Bad"}}],
+              "pages":[{{"size":{{"width":300,"height":200}},"children":[{}]}}]}}"#,
+            [para; 200].join(",")
+        );
+        let images = crate::ImageStore::new();
+        for threads in [1, 4] {
+            let opts = crate::RenderOptions::default().with_threads(threads);
+            let e = crate::render(
+                doc.as_bytes(),
+                crate::InputFormat::Json,
+                &opts,
+                &fonts,
+                &images,
+            )
+            .unwrap_err();
+            assert_eq!(e.code(), "FONT_ERROR", "{e}");
+            assert!(
+                e.to_string().contains("font `bad`: the shaper panicked"),
+                "{e}"
+            );
+        }
     }
 
     #[test]
