@@ -1,5 +1,8 @@
 //! Width-independent text preparation: whitespace processing, hyphenation
 //! points, font itemisation and shaping.
+//!
+//! The only user of the shaping library (rustybuzz): its faces, plans and
+//! buffers stay private to this file.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,6 +15,7 @@ use super::{
 };
 use crate::fonts::{FontKey, FontSet};
 use crate::schema::{Direction, Placeholder, TextRun, WhiteSpace};
+use crate::InkoxideError;
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
 pub(crate) const SHY: char = '\u{00AD}';
@@ -202,12 +206,38 @@ struct UnitGlyph {
 /// Font, direction and text of a shaped word.
 type WordKey = (FontKey, Option<bool>, Box<str>);
 
+/// Shaping faces of a render's fonts, indexed by [`FontKey`]: parsed once
+/// per render and shared by every [`ShapeCache`] (one per shaping thread).
+#[derive(Clone)]
+pub(super) struct Faces<'a>(Arc<[rustybuzz::Face<'a>]>);
+
+impl<'a> Faces<'a> {
+    pub fn load(fonts: &FontSet<'a>) -> Result<Self, InkoxideError> {
+        fonts
+            .fonts
+            .iter()
+            .map(|f| {
+                let data = f.data;
+                // `from_slice` fails only where ttf-parser does, and
+                // `FontSet::load` parsed these bytes already.
+                rustybuzz::Face::from_slice(&data.bytes, 0).ok_or_else(|| {
+                    InkoxideError::Font(format!(
+                        "font `{}` cannot be loaded for shaping",
+                        data.metrics.post_script_name
+                    ))
+                })
+            })
+            .collect::<Result<_, _>>()
+            .map(Self)
+    }
+}
+
 /// Per-render shaping cache: shape plans per (font, direction, script) and
 /// shaped words per (font, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
 /// reusing results removes most shaping work.
-#[derive(Default)]
-pub(crate) struct ShapeCache {
+pub(super) struct ShapeCache<'a> {
+    faces: Faces<'a>,
     plans:
         HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
     /// Keyed by font, direction (`Some(true)`: right to left; `None`:
@@ -215,7 +245,19 @@ pub(crate) struct ShapeCache {
     words: HashMap<WordKey, Arc<[UnitGlyph]>>,
 }
 
-impl ShapeCache {
+impl<'a> ShapeCache<'a> {
+    pub fn new(faces: Faces<'a>) -> Self {
+        Self {
+            faces,
+            plans: HashMap::new(),
+            words: HashMap::new(),
+        }
+    }
+
+    pub fn faces(&self) -> &Faces<'a> {
+        &self.faces
+    }
+
     /// Shapes `word` in `font`, recording glyph → text mappings the first
     /// time a word is seen.
     /// Glyphs come back in logical order (clusters ascending) whatever
@@ -223,7 +265,6 @@ impl ShapeCache {
     fn word(
         &mut self,
         key: FontKey,
-        fonts: &FontSet<'_>,
         word: &str,
         rtl: Option<bool>,
         unicode: &mut super::UnicodeMap,
@@ -231,7 +272,7 @@ impl ShapeCache {
         if let Some(g) = self.words.get(&(key, rtl, Box::from(word))) {
             return g.clone();
         }
-        let face = &fonts.get(key).face;
+        let face = &self.faces.0[usize::from(key)];
         let mut buf = rustybuzz::UnicodeBuffer::new();
         buf.push_str(word);
         buf.guess_segment_properties();
@@ -318,7 +359,7 @@ fn words(s: &str) -> impl Iterator<Item = (usize, &str)> {
 pub(crate) fn prepare(
     opts: &ParagraphOptions<'_>,
     fonts: &FontSet<'_>,
-    cache: &mut ShapeCache,
+    cache: &mut ShapeCache<'_>,
     unicode: &mut super::UnicodeMap,
 ) -> Prepared {
     let (text, run_ranges) = build_text(opts);
@@ -338,7 +379,7 @@ pub(crate) fn prepare(
         let first = glyphs.len() as u32;
         let dir = levels.is_some().then_some(seg.level % 2 == 1);
         for (off, word) in words(seg_text) {
-            let shaped = cache.word(seg.font, fonts, word, dir, unicode);
+            let shaped = cache.word(seg.font, word, dir, unicode);
             for (k, g) in shaped.iter().enumerate() {
                 let c = word[g.cluster as usize..].chars().next().unwrap_or(' ');
                 let mut flags = 0;

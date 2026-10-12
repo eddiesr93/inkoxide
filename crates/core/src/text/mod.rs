@@ -2,7 +2,9 @@
 //! (hypher), and the per-render paragraph cache.
 //!
 //! Nothing outside this module sees shaping-library types: the rest of the
-//! engine works with [`Prepared`] paragraphs and [`LineLayout`]s.
+//! engine works with [`Prepared`] paragraphs and [`LineLayout`]s. Inside
+//! it, only `prepare.rs` uses rustybuzz; it builds its shaping faces from
+//! the font bytes, and takes glyph lookups and advances from `fonts`.
 
 mod hyphen;
 pub use hyphen::HyphenationStore;
@@ -24,6 +26,7 @@ pub(crate) use paint::{PageNumbers, TextPainter};
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::LeafMeasure;
 use crate::schema::{Direction, Node, NodeKind, Style, TextAlign, TextRun, WhiteSpace};
+use crate::InkoxideError;
 
 pub(crate) const GLYPH_SPACE: u8 = 1;
 pub(crate) const GLYPH_INVISIBLE: u8 = 2;
@@ -230,11 +233,17 @@ pub(crate) struct RustybuzzShaper<'f, 'a> {
     pub fonts: &'f FontSet<'a>,
     pub unicode: UnicodeMap,
     pub hyphenator: &'f dyn hyphen::Hyphenator,
-    shapes: prepare::ShapeCache,
+    shapes: prepare::ShapeCache<'a>,
 }
 
 impl<'f, 'a> RustybuzzShaper<'f, 'a> {
-    pub fn new(fonts: &'f FontSet<'a>) -> Self {
+    /// Parses the fonts' shaping faces, once per render: shapers for
+    /// other threads share them ([`TextCache::prepare_all`]).
+    pub fn new(fonts: &'f FontSet<'a>) -> Result<Self, InkoxideError> {
+        Ok(Self::with_faces(fonts, prepare::Faces::load(fonts)?))
+    }
+
+    fn with_faces(fonts: &'f FontSet<'a>, faces: prepare::Faces<'a>) -> Self {
         let mut unicode = UnicodeMap::default();
         // Glyphs the painter adds without shaping: hyphens, ellipses and
         // placeholder digits.
@@ -258,7 +267,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
             fonts,
             unicode,
             hyphenator: &hyphen::HypherHyphenator,
-            shapes: prepare::ShapeCache::default(),
+            shapes: prepare::ShapeCache::new(faces),
         }
     }
 }
@@ -457,10 +466,11 @@ impl TextCache<'_, RustybuzzShaper<'_, '_>> {
         }
         let chunk = todo.len().div_ceil(threads * 4).max(MIN_CHUNK);
         let (fonts, hyphenator, lang) = (self.shaper.fonts, self.shaper.hyphenator, self.doc_lang);
+        let faces = self.shaper.shapes.faces();
         let parts: Vec<(Vec<(usize, Entry)>, UnicodeMap)> = todo
             .par_chunks(chunk)
             .map(|nodes| {
-                let mut shaper = RustybuzzShaper::new(fonts);
+                let mut shaper = RustybuzzShaper::with_faces(fonts, faces.clone());
                 shaper.hyphenator = hyphenator;
                 let entries = nodes
                     .iter()

@@ -86,7 +86,7 @@ fn painted(json: &str) -> Vec<Vec<Painted>> {
     let store = store();
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
     let (pages, _) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
     pages
@@ -358,7 +358,7 @@ fn render_doc<R>(json: &str, f: impl FnOnce(&[PageContent], &Marks<'_>) -> R) ->
     let store = store();
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
     let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
     f(&pages, &marks)

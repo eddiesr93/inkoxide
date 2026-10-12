@@ -68,7 +68,11 @@ pub(super) fn woff_from_sfnt(sfnt: &[u8], compress: bool, orig_len: Option<u32>)
     for t in &tables {
         let raw = &sfnt[t.offset as usize..(t.offset + t.length) as usize];
         // Stored as is when compression does not make the table smaller.
-        let stored = Some(crate::pdf::deflate(raw, 9).unwrap())
+        let mut z = Vec::new();
+        flate2::read::ZlibEncoder::new(raw, flate2::Compression::best())
+            .read_to_end(&mut z)
+            .unwrap();
+        let stored = Some(z)
             .filter(|z| compress && z.len() < raw.len())
             .unwrap_or_else(|| raw.to_vec());
         dir.extend_from_slice(&t.tag.to_bytes());

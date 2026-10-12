@@ -51,7 +51,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 |---|---|---|
 | Parse | `validate` (`parse`), `schema` | JSON or MessagePack into the typed structs of `schema` (hand-written deserialisers in `schema/de.rs`); serde errors become validation errors with their path and code |
 | Validate | `validate` (`check`) | Semantic checks: font ids, image ids, anchors, value ranges |
-| Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding; Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
+| Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding, CFF programs (`fonts/cff.rs`); Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
@@ -90,6 +90,14 @@ runs ─▶ prepare (whitespace, soft hyphens, font per char, rustybuzz) ─▶ 
 Prepared + width ─▶ break_lines (greedy, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per width)
 LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
 ```
+
+Two third-party crates stay behind one module each, so replacing them
+touches only that module: ttf-parser (font parsing) is used only in
+`fonts`, which gives the rest of the engine metrics, glyph ids and
+advances; rustybuzz (shaping) only in `text/prepare.rs`, which parses its
+shaping faces from the font bytes once per render and shares them between
+threads. `pdf` depends on `fonts`, never the reverse: `fonts` caches the
+compressed font program, and the PDF writer supplies the compression.
 
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
 for min-content / max-content / definite widths and gets the paragraph's

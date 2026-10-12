@@ -238,7 +238,7 @@ fn text_splits_between_lines() {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
     TaffyLayout
         .compute(&mut tree, 200.0, H, &mut cache)
@@ -292,7 +292,7 @@ fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
     TaffyLayout
         .compute(&mut tree, 200.0, H, &mut cache)
@@ -389,7 +389,7 @@ fn horizontal_padding_narrows_measured_text() {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
     TaffyLayout
         .compute(&mut tree, 200.0, H, &mut cache)

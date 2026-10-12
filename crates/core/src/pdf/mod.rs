@@ -1,6 +1,5 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
-pub(crate) mod cff;
 mod font;
 mod forms;
 mod image;
