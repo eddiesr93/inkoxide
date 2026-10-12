@@ -93,8 +93,8 @@ describe('renderToBuffer', () => {
     const cases: Array<[unknown, string]> = [
       [null, 'A template must render exactly one <Document> at the top.'],
       [undefined, 'A template must render exactly one <Document> at the top.'],
-      ['hello', 'Text "hello" cannot be directly inside the root; wrap it in <Text>.'],
-      [42, 'Text "42" cannot be directly inside the root; wrap it in <Text>.'],
+      ['hello', 'Text "hello" cannot be directly inside the root; render a <Document> with a <Page>, and put it in the page.'],
+      [42, 'Text "42" cannot be directly inside the root; render a <Document> with a <Page>, and put it in the page.'],
     ];
     for (const [element, message] of cases) {
       const err = await renderToBuffer(element as never).catch((e: unknown) => e);
