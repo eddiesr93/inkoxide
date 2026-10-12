@@ -34,10 +34,11 @@ All notable changes to the packages in this repository. The format follows
   (`'5PX'`) and exponents (`'1e1pt'`), and `em`, `vw` and `vh` in a `transform` or
   `transformOrigin` string. Classes now take `em`, `vw` and `vh` (`w-[2em]`, `h-[10vh]`; `tw()`
   takes the font and page sizes as a second argument) and a space before the unit
-  (`w-[5_pt]`). A number too large for a float (`'1e999pt'`) is an error in both, and `style`
-  length errors name the property (`width: 3ex (unsupported unit "ex")`). `textDecoration` and
-  `objectFit` in `style` are read as their classes are, and `text-decoration-line` in a class
-  takes both lines (`underline line-through`), as `style` does.
+  (`w-[5_pt]`). A number too large for a float (`'1e999pt'`) is an error in both, as is a bare
+  `infinity` (`w-[infinity]`), which CSS takes only inside `calc()`, and `style` length errors
+  name the property (`width: 3ex (unsupported unit "ex")`). `textDecoration` and `objectFit` in
+  `style` are read as their classes are, and `text-decoration-line` in a class takes both lines
+  (`underline line-through`), as `style` does.
 
 ### Deprecated
 
@@ -193,8 +194,9 @@ All notable changes to the packages in this repository. The format follows
   silently. The guide lists what SVG drawing does not support.
 - **Grid placement:** a `gridColumn` or `gridRow` with `start`, `end` and `span` runs from
   `start` to `end`, as in CSS; the engine used `start` and `span` and ignored `end`. In Tailwind,
-  a span after the slash is kept (`col-[2/span_3]` was one column at line 2), and
-  `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns.
+  a span after the slash is kept (`col-[2/span_3]` was one column at line 2),
+  `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns, and a span at the end is
+  ignored after one at the start (`col-start-[span_2] col-end-[span_3]` is two columns).
 - **Tailwind themes:** `initTailwind({ css })` run alongside `init()` or another `initTailwind()`
   keeps its theme; whichever load finished last used to win, so the default theme could replace
   it.
@@ -207,9 +209,10 @@ All notable changes to the packages in this repository. The format follows
   `rotate-none` works, and lengths above 10000pt are no longer cut to 10000pt (`h-[12000pt]`).
 - **Tailwind mapping:** a class or style value outside what the engine takes fails where it is
   read, naming the class: `line-clamp-0`, `line-clamp-[2.5]`, `opacity-[1.5]`, `col-span-0`,
-  `aspect-[0]` and a skew of ±90deg or more. `grid-flow-dense` works. Switching strict mode on
-  checks class strings cached while it was off. Only selector problems that style children
-  suggest `gap`; `container` says that media queries have no meaning in a PDF.
+  `aspect-[0]`, a skew of ±90deg or more, and a percentage or negative grow or shrink
+  (`grow-[30%]`, `shrink-[-1]`), which CSS rejects. `grid-flow-dense` works. Switching strict
+  mode on checks class strings cached while it was off. Only selector problems that style
+  children suggest `gap`; `container` says that media queries have no meaning in a PDF.
 - **Style values:** `transformOrigin: 'center left'` and `'center right'` work, and names such
   as `toString` are not taken as keywords by `transformOrigin` or `fontWeight`. Colour keywords
   are case-insensitive (`'Transparent'`).
@@ -242,7 +245,8 @@ All notable changes to the packages in this repository. The format follows
   the text by the default rules instead of failing with an internal error.
 - `truncate`, `line-clamp-*`, `maxLines` and `ellipsis` on a `Page`, `Row` or `Spacer` are a
   template error, as on other elements, instead of doing nothing; a negative numeric `flex`
-  (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`.
+  (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`, and so is a
+  negative or non-numeric `flexGrow` or `flexShrink`.
 - `ClipPath` and `Defs` have exported props types, `ClipPathProps` and `DefsProps` (also from
   `@inkoxide/render`), and `ClipPath` takes `clipPathUnits`.
 - `@inkoxide/render`: a remote image that times out or drops its connection after the headers

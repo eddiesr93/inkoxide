@@ -118,6 +118,9 @@ interface Relative {
   keepEm: boolean;
 }
 
+/** Why a bare `infinity` (`width: infinity`) is not a value. */
+const INFINITY_OUTSIDE_CALC = 'infinity is only allowed inside calc()';
+
 function toDim(n: number, unit: string | undefined, rel: Relative): Dim {
   const d = unitDim(n, (unit ?? '').toLowerCase(), rel);
   // A number past the float range (`1e999pt`): only `infinity` is infinite.
@@ -155,6 +158,8 @@ class CalcParser {
   constructor(
     private readonly s: string,
     private readonly rel: Relative,
+    /** Inside `calc()`, where `infinity` is a number. */
+    private readonly inCalc = false,
   ) {}
 
   parse(): Dim {
@@ -196,13 +201,15 @@ class CalcParser {
     this.ws();
     const rest = this.s.slice(this.i);
     if (rest.startsWith('calc(') || rest.startsWith('(')) {
-      const open = this.i + (rest.startsWith('calc(') ? 4 : 0);
+      const calc = rest.startsWith('calc(');
+      const open = this.i + (calc ? 4 : 0);
       const close = matchParen(this.s, open);
-      const inner = new CalcParser(this.s.slice(open + 1, close), this.rel).parse();
+      const inner = new CalcParser(this.s.slice(open + 1, close), this.rel, this.inCalc || calc).parse();
       this.i = close + 1;
       return inner;
     }
     if (rest.startsWith('infinity')) {
+      if (!this.inCalc) throw new ValueError(INFINITY_OUTSIDE_CALC);
       this.i += 8;
       return { v: Number.POSITIVE_INFINITY, u: '' };
     }

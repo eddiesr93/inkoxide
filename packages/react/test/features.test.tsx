@@ -220,6 +220,18 @@ describe('paint styles', () => {
       'Invalid style prop on <View>: flex -1: grow and shrink cannot be negative',
     ]);
     expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');
+    for (const key of ['flexGrow', 'flexShrink'] as const) {
+      expect(thrown(() => tree(<View style={{ [key]: -1 }} />)).message).toBe(
+        `Invalid style prop on <View>: ${key} -1: cannot be negative`,
+      );
+      expect(thrown(() => tree(<View style={{ [key]: '30%' as never }} />)).message).toBe(
+        `Invalid style prop on <View>: ${key} "30%" is not a number`,
+      );
+    }
+    expect(first<BoxNode>(tree(<View style={{ flexGrow: 0, flexShrink: 2 }} />)).style).toEqual({
+      flexGrow: 0,
+      flexShrink: 2,
+    });
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
     );
@@ -665,6 +677,18 @@ describe('page filters, sizes and per-page content', () => {
     expect(thrown(() => tree(null, { page: { size: ['10'] } })).message).toContain(
       'size: 10 (expected a length',
     );
+    // `infinity` is a length only inside calc(), in a page size and a style.
+    expect(thrown(() => tree(null, { page: { size: 'infinity' } })).message).toContain(
+      'Unknown page size "infinity"',
+    );
+    expect(thrown(() => tree(null, { page: { size: ['infinity'] } })).message).toContain(
+      'size: infinity (infinity is only allowed inside calc())',
+    );
+    for (const width of ['infinity', '-infinity']) {
+      expect(thrown(() => tree(<View style={{ width: width as never }} />)).message).toContain(
+        `width: ${width} (infinity is only allowed inside calc())`,
+      );
+    }
     // A page has no font size or page to be relative to, and the types say so.
     expect(thrown(() => tree(null, { page: { size: '10em' } })).message).toContain(
       'Unknown page size "10em"',

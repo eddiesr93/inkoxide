@@ -181,6 +181,14 @@ export class Reader {
     return round(d.v);
   }
 
+  /** A `flex-grow` or `flex-shrink` factor: a number, not a percentage, that is not negative. */
+  factor(value: string): number {
+    const d = this.dim(value);
+    if (d.u !== '') throw this.error(`${this.prop}: ${value} (expected a number)`);
+    if (d.v < 0) throw this.error(`${this.prop}: ${value} (cannot be negative)`);
+    return round(d.v);
+  }
+
   color(value: string): ColorValue {
     try {
       return parseColor(value);

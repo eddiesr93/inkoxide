@@ -178,6 +178,28 @@ describe('grid placement', () => {
     expect(tw('col-span-3 col-start-1 col-end-3')).toEqual({ gridColumn: { start: 1, end: 3 } });
     expect(tw('row-span-2 row-end-4')).toEqual({ gridRow: { span: 2, end: 4 } });
   });
+
+  it('ignores a span at the end when the start is a span, as in CSS', () => {
+    expect(tw('col-start-[span_2] col-end-[span_3]')).toEqual({ gridColumn: { span: 2 } });
+    expect(tw('row-start-[span_2] row-end-[span_4]')).toEqual({ gridRow: { span: 2 } });
+    expect(tw('col-span-2 col-end-[span_3]')).toEqual({ gridColumn: { span: 2 } });
+    expect(tw('col-start-[span_2] col-end-5')).toEqual({ gridColumn: { span: 2, end: 5 } });
+    expect(tw('col-start-3 col-end-[span_2]')).toEqual({ gridColumn: { start: 3, span: 2 } });
+    expect(tw('col-end-[span_3]')).toEqual({ gridColumn: { span: 3 } });
+    expect(errorOf('col-start-[1/2]').reason).toBe('grid-column-start: 1/2');
+  });
+});
+
+describe('flex-grow and flex-shrink', () => {
+  it('take a number that is not negative, as in CSS', () => {
+    expect(tw('grow-[2] shrink-[0.5]')).toEqual({ flexGrow: 2, flexShrink: 0.5 });
+    for (const bad of ['grow-[30%]', 'shrink-[30%]']) {
+      expect(errorOf(bad).reason, bad).toMatch(/^flex-(grow|shrink): 30% \(expected a number\)$/);
+    }
+    for (const bad of ['grow-[-1]', 'shrink-[-1]']) {
+      expect(errorOf(bad).reason, bad).toMatch(/^flex-(grow|shrink): -1 \(cannot be negative\)$/);
+    }
+  });
 });
 
 describe('the flex shorthand', () => {
@@ -224,6 +246,12 @@ describe('arbitrary lengths', () => {
 
   it('cap an infinite radius', () => {
     expect(tw('rounded-full')).toEqual({ borderRadius: 1e4 });
+  });
+
+  it('take infinity only inside calc(), as CSS does', () => {
+    expect(tw('w-[calc(infinity*1pt)]')).toEqual({ width: 1e4 });
+    expect(errorOf('w-[infinity]').reason).toBe('width: infinity (infinity is only allowed inside calc())');
+    expect(errorOf('rounded-[infinity]').property).toBe('border-radius');
   });
 
   it('take units in any case, exponents and a space before the unit, as the style prop does', () => {
