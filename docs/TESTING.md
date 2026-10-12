@@ -22,9 +22,11 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `crates/core/tests/limits.rs`: memory guards (page limit, deepest
   accepted nesting on a small stack).
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
-  finite (one `inf` or `NaN` operand makes a page invalid), with every
-  property at its validation bound, percentages compounding past `f32`,
-  and SVG numbers that overflow.
+  finite (one `inf` or `NaN` operand makes a page invalid) and one
+  readers parse (an integer within 32 bits or a real within ±10¹¹), with
+  every property at its validation bound, percentages compounding past
+  `f32`, and SVG numbers that overflow or are huge (`scale(1e30)`); the
+  SVG cases also pass `qpdf --check` without warnings.
 - `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
   the properties the JSON Schema declares, and validation enforces the
   schema's bounds, read from the schema: ids, font families, `pages`,

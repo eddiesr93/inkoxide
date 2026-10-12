@@ -29,7 +29,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{alpha_key, finite, key_alpha, RefAlloc};
+use super::{alpha_key, key_alpha, number, RefAlloc};
 use crate::images::ContentKey;
 use crate::{flate, InkoxideError};
 
@@ -67,7 +67,7 @@ pub(crate) fn write_svg(
         id,
         cv,
         Rect::new(0.0, 0.0, w, h),
-        Some([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0].map(finite)),
+        Some([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0]),
         false,
     )?;
     Ok(id)
@@ -180,10 +180,16 @@ impl Canvas {
 }
 
 /// A transform as a PDF matrix. Transforms compound (a tiny `viewBox`
-/// scaled up, nested scales), so they can overflow `f32`; see
-/// [`super::finite`].
+/// scaled up, nested scales) and take any number (`scale(1e30)`), so they
+/// can pass what readers parse, or overflow `f32`; see [`number`].
 fn matrix(t: Transform) -> [f32; 6] {
-    [t.sx, t.ky, t.kx, t.sy, t.tx, t.ty].map(finite)
+    [t.sx, t.ky, t.kx, t.sy, t.tx, t.ty].map(number)
+}
+
+/// `r` with every corner through [`number`]: SVG sizes, positions and
+/// bounding boxes take any number.
+fn bounded(r: Rect) -> Rect {
+    Rect::new(number(r.x1), number(r.y1), number(r.x2), number(r.y2))
 }
 
 /// A gradient's shading geometry: axial (`[x1 y1 x2 y2]`) or radial
@@ -366,14 +372,14 @@ impl Svg<'_> {
         group: bool,
     ) -> Res {
         let data = super::deflate(
-            &std::mem::replace(&mut cv.c, Content::new()).finish(),
+            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new())),
             flate::LEVEL,
         )?;
         let mut f = self.pdf.form_xobject(id, &data);
         f.filter(Filter::FlateDecode);
-        f.bbox(bbox);
+        f.bbox(bounded(bbox));
         if let Some(m) = m {
-            f.matrix(m);
+            f.matrix(m.map(number));
         }
         if group {
             f.group().transparency().color_space().device_rgb();
@@ -431,16 +437,19 @@ impl Svg<'_> {
                 "SVG is too complex: more than {MAX_SEGMENTS} path segments"
             )));
         }
+        // Shapes that are not path data (`rect`, `line`, `image`) take any
+        // number, and a simple clip path is written transformed.
+        let n = number;
         let mut last = Point::zero();
         let mut start = Point::zero();
         for seg in path.segments() {
             match seg {
                 PathSegment::MoveTo(p) => {
-                    c.move_to(p.x, p.y);
+                    c.move_to(n(p.x), n(p.y));
                     (last, start) = (p, p);
                 }
                 PathSegment::LineTo(p) => {
-                    c.line_to(p.x, p.y);
+                    c.line_to(n(p.x), n(p.y));
                     last = p;
                 }
                 PathSegment::QuadTo(p1, p) => {
@@ -452,11 +461,11 @@ impl Svg<'_> {
                         p.x + 2.0 / 3.0 * (p1.x - p.x),
                         p.y + 2.0 / 3.0 * (p1.y - p.y),
                     );
-                    c.cubic_to(c1.0, c1.1, c2.0, c2.1, p.x, p.y);
+                    c.cubic_to(n(c1.0), n(c1.1), n(c2.0), n(c2.1), n(p.x), n(p.y));
                     last = p;
                 }
                 PathSegment::CubicTo(p1, p2, p) => {
-                    c.cubic_to(p1.x, p1.y, p2.x, p2.y, p.x, p.y);
+                    c.cubic_to(n(p1.x), n(p1.y), n(p2.x), n(p2.y), n(p.x), n(p.y));
                     last = p;
                 }
                 PathSegment::Close => {
@@ -589,7 +598,12 @@ impl Svg<'_> {
         }
         let r = m.rect();
         let form = self.sub_form(pdf_rect(r), |s, inner| {
-            inner.c.rect(r.x(), r.y(), r.width(), r.height());
+            inner.c.rect(
+                number(r.x()),
+                number(r.y()),
+                number(r.width()),
+                number(r.height()),
+            );
             inner.c.clip_nonzero();
             inner.c.end_path();
             s.group(inner, m.root(), Scope::form(depth + 1, false))
@@ -650,7 +664,7 @@ impl Svg<'_> {
             let Some(st) = p.stroke() else { return Ok(()) };
             cv.c.save_state();
             s.set_paint(cv, st.paint(), st.opacity().get(), true, bbox, at)?;
-            cv.c.set_line_width(finite(st.width().get()));
+            cv.c.set_line_width(number(st.width().get()));
             cv.c.set_line_cap(match st.linecap() {
                 usvg::LineCap::Butt => LineCapStyle::ButtCap,
                 usvg::LineCap::Round => LineCapStyle::RoundCap,
@@ -661,9 +675,9 @@ impl Svg<'_> {
                 usvg::LineJoin::Round => LineJoinStyle::RoundJoin,
                 usvg::LineJoin::Bevel => LineJoinStyle::BevelJoin,
             });
-            cv.c.set_miter_limit(finite(st.miterlimit().get()));
+            cv.c.set_miter_limit(number(st.miterlimit().get()));
             if let Some(d) = st.dasharray() {
-                cv.c.set_dash_pattern(d.iter().map(|&v| finite(v)), finite(st.dashoffset()));
+                cv.c.set_dash_pattern(d.iter().map(|&v| number(v)), number(st.dashoffset()));
             }
             s.emit_path(&mut cv.c, p.data())?;
             cv.c.stroke();
@@ -861,7 +875,7 @@ impl Svg<'_> {
             sh.insert(Name(b"Domain")).array().items(domain);
         }
         sh.function(function)
-            .coords(coords.iter().map(|&v| finite(v)))
+            .coords(coords.iter().map(|&v| number(v)))
             .extend([true, true]);
         sh.finish();
         id
@@ -872,7 +886,7 @@ impl Svg<'_> {
         let mut cv = Canvas::new();
         self.group(&mut cv, pt.root(), Scope::form(at.depth + 1, false))?;
         let data = super::deflate(
-            &std::mem::replace(&mut cv.c, Content::new()).finish(),
+            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new())),
             flate::LEVEL,
         )?;
         let id = self.next();
@@ -880,9 +894,9 @@ impl Svg<'_> {
         t.filter(Filter::FlateDecode);
         t.tiling_type(TilingType::ConstantSpacing)
             .paint_type(PaintType::Colored)
-            .bbox(Rect::new(0.0, 0.0, r.width(), r.height()))
-            .x_step(r.width())
-            .y_step(r.height())
+            .bbox(bounded(Rect::new(0.0, 0.0, r.width(), r.height())))
+            .x_step(number(r.width()))
+            .y_step(number(r.height()))
             .matrix(matrix(
                 at.ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
             ));
@@ -911,7 +925,7 @@ impl Svg<'_> {
             return Ok(());
         }
         let size = img.size();
-        let (w, h) = (size.width(), size.height());
+        let (w, h) = (number(size.width()), number(size.height()));
         match img.kind() {
             usvg::ImageKind::JPEG(data)
             | usvg::ImageKind::PNG(data)

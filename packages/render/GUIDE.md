@@ -532,6 +532,9 @@ In an SVG, whether in `<Svg>` or an image file:
 - **Size**: the width and height are 0.00001 to 100,000 px each, and the `viewBox` width and
   height at least 0.00001. Outside these the SVG fails the render with `INVALID_IMAGE`; a nested
   SVG image is left out.
+- **Huge numbers** elsewhere in the SVG (`transform="scale(1e30)"`, a gradient or a shape at
+  1e30) are written as at most ±10¹¹ points, the largest number the PDF writer emits anywhere,
+  so PDF readers can parse every number. What is drawn that far out is off the page either way.
 
 ## Forms
 
