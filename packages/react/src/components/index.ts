@@ -47,7 +47,8 @@ export const HOST_NAME = Object.fromEntries(
   Object.entries(HOST).map(([name, type]) => [type, name]),
 ) as Record<HostType, string>;
 
-type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
+/** A value for every side, or one per side (`{ top: 8, bottom: 4 }`). */
+export type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
 
 /**
  * A length that needs no context: points as a number, or a string with a unit (`'20mm'`,

@@ -1,5 +1,12 @@
 import type { Node as SchemaNode, Style } from '@inkoxide/schema';
 
+/**
+ * The props of an element in the flow (`Builder.flowProps`) that a per-page wrapper takes from its
+ * variants. `debug` is apart: both are outlined.
+ */
+export const FLOW_KEYS = ['id', 'break', 'link', 'bookmark', 'pages'] as const;
+export type FlowKey = (typeof FLOW_KEYS)[number];
+
 /** Style keys that place an element among its siblings (kept on a per-page wrapper). */
 const OUTER_KEYS = [
   'margin',
@@ -34,7 +41,7 @@ export function stackVariants(variants: ReadonlyArray<{ node: SchemaNode; pages:
   const outer: Style = { display: 'grid' };
   for (const { node, pages } of variants) {
     const v = node as SchemaNode & Record<string, unknown>;
-    for (const k of ['id', 'break', 'link', 'bookmark', 'pages'] as const) {
+    for (const k of FLOW_KEYS) {
       if (v[k] !== undefined) (wrapper as unknown as Record<string, unknown>)[k] = v[k];
       delete v[k];
     }

@@ -21,7 +21,7 @@ import {
   type TwStyle,
 } from '@inkoxide/style';
 
-import type { HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
+import type { Edges, HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
 
 /** A text property that cascades from an element to its content. */
 type InheritedKey = (typeof TEXT_INHERITED)[number];
@@ -117,7 +117,8 @@ export function usesPatterns(ctx: TextCtx): boolean {
   return ctx.hyphenate === true && ctx.hyphenation === undefined;
 }
 
-const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
+/** A colour, with `currentColor` as `current`. */
+export const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
 
 const SIMPLE_KEYS = [
   'display',
@@ -417,8 +418,6 @@ export function textNodeStyle(
 
 // ---------------------------------------------------------------------------------------------
 // The `style` prop
-
-type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
 
 function toColor(v: string | Color): ColorValue {
   return typeof v === 'string' ? parseColor(v) : v;

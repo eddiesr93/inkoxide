@@ -1,5 +1,6 @@
 import type {
   Bookmark,
+  BoxNode,
   Break,
   Color,
   ColumnSpec,
@@ -46,7 +47,7 @@ import {
 } from '../reconciler/instance.ts';
 import { renderToInstances } from '../reconciler/render.ts';
 import { classStyle, defaultFamily, isUnsupportedClass } from '../tailwind.ts';
-import { ImageIds, ImageTable, type PendingImage, type RemoteImagePolicy } from './images.ts';
+import { ImageTable, type ImageTableOptions, type PendingImage } from './images.ts';
 import { PRESET_NAMES, presetSize } from './page-sizes.ts';
 import {
   boxKeys,
@@ -54,6 +55,7 @@ import {
   callbackOf,
   hasInherited,
   inherit,
+  resolveColor,
   type TextCtx,
   textNodeStyle,
   textOnlyKeys,
@@ -64,25 +66,17 @@ import {
 } from './style.ts';
 import { svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
 import { Hyphenator, transformText } from './text.ts';
-import { stackVariants } from './variants.ts';
+import { type FlowKey, stackVariants } from './variants.ts';
 
 export interface BuildOptions {
+  /** The fonts, and the `hyphenationCallback` of every `Text` without its own. */
   fonts: FontRegistry;
-  /** Default font stack (Tailwind's `--font-sans`). */
-  defaultFamily?: readonly string[];
   /** Record which instance produced each output object (for error paths). */
   track?: boolean;
   /** Page count from a previous render, for `render` props (1 when unknown). */
   pageCount?: number;
-  remoteImages?: RemoteImagePolicy;
-  /** File paths in `src` are images to load (the caller reads them); otherwise they are ids. */
-  localImages?: boolean;
-  /** Splits words into syllables for every `Text` without its own `hyphenationCallback`. */
-  hyphenationCallback?: HyphenationCallback | undefined;
-  /** Ids of the images the caller passes in: a `src` string naming one is that image, path or not. */
-  imageIds?: readonly string[];
-  /** The id table of the tree this build rebuilds; a new one when omitted. */
-  generatedIds?: ImageIds;
+  /** The caller's image ids and policies, and the id table shared with the tree's rebuilds. */
+  images: ImageTableOptions;
 }
 
 export interface BuildResult {
@@ -102,8 +96,6 @@ export interface BuildResult {
   /** Other images to load: image id → a file, a request, or a function or promise `src`. */
   pending: Record<string, PendingImage>;
 }
-
-type Inline = Instance | { kind: 'text'; text: string; fiber: unknown };
 
 /**
  * Props of a `Text` or `Link` that need a node of its own: an inline run inside a `Text` has
@@ -142,6 +134,12 @@ function toBreak(b: BreakProp | undefined): Break | undefined {
   if (b === 'page-before') return { before: 'page' };
   if (b === 'page-after') return { after: 'page' };
   return b;
+}
+
+/** Copies the props every element's node takes, `id` and `debug`. */
+function commonProps(node: { id?: string; debug?: boolean }, inst: Instance): void {
+  if (typeof inst.props.id === 'string') node.id = inst.props.id;
+  if (inst.props.debug === true) node.debug = true;
 }
 
 /** Whether the element has the `fixed` prop. */
@@ -187,13 +185,7 @@ class Builder {
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
-    const registered = new Set(opts.imageIds);
-    this.imageTable = new ImageTable({
-      registered,
-      generated: opts.generatedIds ?? new ImageIds(registered),
-      remoteImages: opts.remoteImages,
-      localImages: opts.localImages,
-    });
+    this.imageTable = new ImageTable(opts.images);
   }
 
   private fail(
@@ -338,15 +330,14 @@ class Builder {
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
     this.docLang = meta.lang;
     this.debugAll = p.debug === true;
-    const family = this.opts.defaultFamily ?? defaultFamily();
     const ctx: TextCtx = {
-      fontFamily: family,
+      fontFamily: defaultFamily(),
       fontWeight: 400,
       fontStyle: 'normal',
       fontSize: 12,
       color: [0, 0, 0, 1],
       lang: meta.lang,
-      hyphenation: this.opts.hyphenationCallback,
+      hyphenation: this.opts.fonts.hyphenationCallback,
       link: undefined,
     };
     const pages = root.children
@@ -423,7 +414,7 @@ class Builder {
       spec.margin = { ...spec.margin, [k]: pt };
     }
     if (own.backgroundColor !== undefined) {
-      spec.background = own.backgroundColor === 'currentColor' ? ctx.color : own.backgroundColor;
+      spec.background = resolveColor(own.backgroundColor, ctx.color);
     }
     if (this.debugAll || inst.props.debug === true) spec.debug = true;
     const flow: Node[] = [];
@@ -493,7 +484,7 @@ class Builder {
   /** Block children; runs of bare strings become one anonymous text node. */
   private children(nodes: Node[], ctx: TextCtx, parent: Instance): SchemaNode[] {
     const out: SchemaNode[] = [];
-    let pending: Inline[] | undefined;
+    let pending: Node[] | undefined;
     const flush = () => {
       if (!pending) return;
       if (pending.some((n) => n.kind !== 'text' || n.text.trim() !== '')) {
@@ -539,28 +530,24 @@ class Builder {
     return out;
   }
 
+  /**
+   * The props of an element in the flow. A per-page wrapper (`stackVariants`) takes the ones in
+   * `FlowKey` from its variants, so a prop written here belongs there or with `style` and `debug`.
+   */
   private flowProps(
-    node: {
-      id?: string;
-      break?: Break;
-      link?: string;
-      bookmark?: Bookmark;
-      pages?: PageFilter;
-      style?: Style;
-      debug?: boolean;
-    },
+    node: Partial<Pick<BoxNode, FlowKey>> & { style?: Style; debug?: boolean },
     inst: Instance,
   ): void {
     const p = inst.props;
-    if (typeof p.id === 'string') node.id = p.id;
+    commonProps(node, inst);
     if (p.pages !== undefined) node.pages = p.pages as PageFilter;
-    if (p.debug === true) node.debug = true;
     // Aliases for the same behaviour: `wrap`, `break={true}` and `minPresenceAhead`.
     const br = p.break === true ? 'page-before' : p.break === false ? undefined : p.break;
     let b = toBreak(br as BreakProp | undefined);
     if (p.wrap === false) b = { ...b, inside: 'avoid' };
     if (typeof p.minPresenceAhead === 'number') b = { ...b, minPresenceAhead: p.minPresenceAhead };
     const name = HOST_NAME[inst.type];
+    const within = this.repeatedContainer();
     if (isFixed(inst)) {
       this.checkFixed(inst, node.style);
       if (paginates(b)) {
@@ -571,11 +558,10 @@ class Builder {
         );
       }
       b = { ...b, fixed: true };
-    } else if (paginates(b) && (this.band ?? this.fixedEl)) {
-      const within = this.band ? `a <${this.band}>` : `a fixed <${this.fixedEl}>`;
+    } else if (paginates(b) && within) {
       this.fail(
         inst,
-        `<${name}>: break, wrap={false} and minPresenceAhead do nothing inside ${within}, which is painted whole on every page. Remove them.`,
+        `<${name}>: break, wrap={false} and minPresenceAhead do nothing inside ${within}. Remove them.`,
         { kind: 'props' },
       );
     }
@@ -584,6 +570,15 @@ class Builder {
     if (typeof href === 'string') node.link = href;
     const bm = toBookmark(p.bookmark as BookmarkProp | undefined);
     if (bm) node.bookmark = bm;
+  }
+
+  /**
+   * The band or fixed element being built, for messages: "a <Header>, which is painted whole on
+   * every page".
+   */
+  private repeatedContainer(): string | undefined {
+    const within = this.band ? `a <${this.band}>` : this.fixedEl ? `a fixed <${this.fixedEl}>` : undefined;
+    return within && `${within}, which is painted whole on every page`;
   }
 
   /**
@@ -657,10 +652,8 @@ class Builder {
       case HOST.Image:
         return this.image(inst, ctx);
       case HOST.PageBreak: {
-        if (this.band ?? this.fixedEl) {
-          const within = this.band ? `a <${this.band}>` : `a fixed <${this.fixedEl}>`;
-          this.fail(inst, `<PageBreak> does nothing inside ${within}, which is painted whole on every page.`);
-        }
+        const within = this.repeatedContainer();
+        if (within) this.fail(inst, `<PageBreak> does nothing inside ${within}.`);
         const n: SchemaNode = { type: 'pageBreak' };
         if (typeof inst.props.id === 'string') n.id = inst.props.id;
         return this.mark(n, inst);
@@ -703,15 +696,14 @@ class Builder {
           kind: 'props',
         });
       }
-      if (typeof inst.props.id === 'string') node.id = inst.props.id;
-      if (inst.props.debug === true) node.debug = true;
+      commonProps(node, inst);
     }
     const children = this.children(content, ctx, inst);
     if (children.length > 0) node.children = children;
     return this.mark(node, inst);
   }
 
-  private text(inst: Instance, parent: TextCtx, content: readonly Inline[] = inst.children): TextNode {
+  private text(inst: Instance, parent: TextCtx, content: readonly Node[] = inst.children): TextNode {
     const own = this.styleOf(inst, parent);
     const p = inst.props;
     const ctx = inherit(parent, own, {
@@ -737,7 +729,7 @@ class Builder {
    * patterns: they would be the paragraph's.
    */
   private runs(
-    nodes: readonly Inline[],
+    nodes: readonly Node[],
     ctx: TextCtx,
     out: TextRun[],
     owner: Instance,
@@ -889,8 +881,7 @@ class Builder {
       );
       const rctx = inherit(ctx, rOwn);
       const row: TableRow = { cells: [] };
-      if (typeof r.props.id === 'string') row.id = r.props.id;
-      if (r.props.debug === true) row.debug = true;
+      commonProps(row, r);
       let minHeight = r.props.minHeight as number | undefined;
       if (minHeight === undefined && typeof rOwn.minHeight === 'number') minHeight = rOwn.minHeight;
       else if (minHeight === undefined && typeof rOwn.minHeight === 'string' && rOwn.minHeight !== 'auto') {
@@ -903,7 +894,7 @@ class Builder {
       }
       if (minHeight !== undefined) row.minHeight = minHeight;
       if (rOwn.backgroundColor !== undefined) {
-        row.backgroundColor = rOwn.backgroundColor === 'currentColor' ? rctx.color : rOwn.backgroundColor;
+        row.backgroundColor = resolveColor(rOwn.backgroundColor, rctx.color);
       }
       for (const c of r.children) {
         if (c.kind !== 'element') continue;
@@ -920,8 +911,7 @@ class Builder {
     const ctx = inherit(parent, own);
     const cell: TableCell = {};
     const p = inst.props;
-    if (typeof p.id === 'string') cell.id = p.id;
-    if (p.debug === true) cell.debug = true;
+    commonProps(cell, inst);
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
     let style: Style | undefined = boxStyle(own, ctx.color, true);
@@ -999,8 +989,7 @@ class Builder {
     const node: FieldNode = { type: 'field', field };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const n = node as { id?: string; break?: Break; pages?: PageFilter; debug?: boolean };
-    this.flowProps(n, inst);
+    this.flowProps(node, inst);
     return this.mark(node, inst);
   }
 
@@ -1053,8 +1042,7 @@ class Builder {
         createElement(PageContext.Provider, { value: page }, createElement(RenderCall, { fn, page })),
         inst.type,
       ).children;
-      const node =
-        inst.type === HOST.Text ? this.text(inst, ctx, content as Inline[]) : this.box(inst, ctx, content);
+      const node = inst.type === HOST.Text ? this.text(inst, ctx, content) : this.box(inst, ctx, content);
       const key = JSON.stringify(node);
       const g = groups.get(key);
       if (g) g.pages.push(n);
