@@ -45,7 +45,8 @@ interface FiberLike {
 const COMPONENT_TAGS = new Set([0, 1, 11, 14, 15]);
 const HOST_COMPONENT = 5;
 
-function nameOf(f: FiberLike): string | undefined {
+/** The component name of a fiber: a host type's (`View`), a component's, else undefined. */
+export function nameOf(f: FiberLike): string | undefined {
   if (f.tag === HOST_COMPONENT && typeof f.type === 'string') return hostName(f.type);
   if (f.tag === undefined || !COMPONENT_TAGS.has(f.tag)) return undefined;
   let t = f.type as

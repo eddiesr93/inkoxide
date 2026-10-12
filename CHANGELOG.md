@@ -220,9 +220,10 @@ All notable changes to the packages in this repository. The format follows
   since no serif face is bundled, and the `@inkoxide/schema` README's ajv example type-checks
   with `module: nodenext`.
 - A component that suspends (`use()` of a promise, a `lazy` component) fails the render with a
-  template error that names it, or the `<Suspense>` boundary it is in, and says that templates
-  cannot wait for data. Without a boundary the error blamed a missing `<Document>`; with one,
-  the PDF showed the fallback and the process crashed shortly afterwards.
+  template error that names it (a `lazy` component by its `displayName`, a `render` prop by its
+  element), or the `<Suspense>` boundary it is in, and says that templates cannot wait for data.
+  Without a boundary the error blamed a missing `<Document>`; with one, the PDF showed the
+  fallback and the process crashed shortly afterwards.
 - A later `border`, `borderStyle` or `borderRadius` for every side, in a style array or over
   `className`, replaces the per-side styles and per-corner radii set before it, and a per-corner
   `borderRadius` object keeps the corners it does not name instead of setting them to 0.
@@ -232,7 +233,7 @@ All notable changes to the packages in this repository. The format follows
   directly in a `Table`, `Row` or `Document` says where it belongs (a `Cell`, a `Page`) instead
   of suggesting a `Text`, which is not allowed there either. The remote-image error of
   `@inkoxide/react` names its own option, `remoteImages.allow`, and only `@inkoxide/render` adds
-  the `INKOXIDE_REMOTE_IMAGES` variable.
+  the `INKOXIDE_REMOTE_IMAGES` variable, for every refused URL or request.
 - Percentage padding on a `Page` (`style={{ padding: '10%' }}`, `p-[10%]`) is a share of the
   page width on every side, as in CSS, instead of being dropped, which also left the header and
   footer unaligned. A percentage minimum height on a `Row` (`min-h-[10%]`), which has no table
@@ -342,7 +343,9 @@ guide documents, and the template helpers moved to `@inkoxide/render/templates` 
 - `@inkoxide/tailwind` exports the CSS value helpers that `@inkoxide/react` shares with it:
   `PT_PER_UNIT`, `parseFlex`, `round`, `splitTopLevel`, `BORDER_STYLES` and `OBJECT_FITS`.
 - `@inkoxide/react` exports `imageSource` and its `ImageSource` type, `remoteRefused` and
-  `innermostComponent`, which `@inkoxide/render` uses. `HOST_NAME` is typed by host type
+  `innermostComponent`, which `@inkoxide/render` uses, and takes the tree option
+  `remoteImagesElsewhere`, another place the caller reads the remote allowlist from, which the
+  error for a refused URL names. `HOST_NAME` is typed by host type
   (`Record<HostType, string>`).
 
 ### Changed

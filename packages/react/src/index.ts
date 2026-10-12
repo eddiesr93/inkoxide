@@ -37,6 +37,11 @@ export interface TreeOptions {
   /** Remote image URLs `<Image src>` may use; they are listed in `remote` for the caller to fetch. */
   remoteImages?: RemoteImagePolicy;
   /**
+   * Where else the caller reads that allowlist from (`'the INKOXIDE_REMOTE_IMAGES variable'`),
+   * named after the option when a URL is refused.
+   */
+  remoteImagesElsewhere?: string;
+  /**
    * File paths in `src` (`./logo.png`, `file:` URLs) are listed in `pending` for the caller to
    * read. Off by default: a path is then an image id like any other string.
    */
@@ -86,6 +91,7 @@ export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): Tree
     registered,
     generated: new ImageIds(registered),
     remoteImages: opts.remoteImages,
+    remoteElsewhere: opts.remoteImagesElsewhere,
     localImages: opts.localImages,
   };
   return fromContainer(container, opts, performance.now() - t0, images);

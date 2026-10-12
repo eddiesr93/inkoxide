@@ -265,7 +265,12 @@ describe('image requests', () => {
   it('refuses a uri outside the allowlist, redirects, and errors with the uri', async () => {
     const outside = await failure({ uri: 'https://example.com/logo.png' }, allowed());
     expect(outside.code).toBe('TEMPLATE_ERROR');
-    expect(outside.message).toContain('remoteImages allowlist');
+    expect(outside.message).toBe(
+      '<Image src={{ uri: "https://example.com/logo.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
+    );
+    expect((await failure('https://example.com/logo.png')).message).toBe(
+      '<Image src="https://example.com/logo.png">: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
+    );
     const moved = await failure({ uri: `${base}/moved` }, allowed());
     expect(moved.code).toBe('IMAGE_FETCH_FAILED');
     expect(moved.message).toBe(

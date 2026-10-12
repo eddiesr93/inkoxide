@@ -4,6 +4,9 @@ import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, envList, timerMs } f
 import type { RemoteImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
+/** Where a refused URL's message says the allowlist can also be set. */
+export const REMOTE_IMAGES_VARIABLE = 'the INKOXIDE_REMOTE_IMAGES variable';
+
 /** The remote-image policy from the options, else from `INKOXIDE_REMOTE_IMAGES`. */
 export function remotePolicy(opts: RemoteImageOptions | undefined): RemoteImageOptions | undefined {
   if (opts) return opts;

@@ -18,6 +18,7 @@ import {
   G,
   Header,
   Image,
+  type ImageSrc,
   imageSource,
   isImagePath,
   LinearGradient,
@@ -1240,6 +1241,23 @@ describe('image sources', () => {
       '<Image src={{ uri: "https://evil.example.org/a.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow, or pass the bytes.',
     );
     expect(thrown(() => images(<Image src={{ uri: '' }} />)).message).toContain('a request needs a uri');
+    const hinted = (src: ImageSrc) =>
+      thrown(() =>
+        renderTemplate(
+          <Document>
+            <Page>
+              <Image src={src} />
+            </Page>
+          </Document>,
+          { fonts, remoteImagesElsewhere: 'the INKOXIDE_REMOTE_IMAGES variable' },
+        ),
+      ).message;
+    expect(hinted('https://evil.example.org/a.png')).toBe(
+      '<Image src="https://evil.example.org/a.png">: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
+    );
+    expect(hinted({ uri: 'https://evil.example.org/a.png' })).toContain(
+      'remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable)',
+    );
   });
 
   it('lists functions and promises without calling or awaiting them', async () => {
