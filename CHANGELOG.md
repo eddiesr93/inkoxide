@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.4.1 - 2026-10-12
+
+`inkoxide` 0.4.1, `@inkoxide/tailwind` 0.2.2, `@inkoxide/react` 0.2.2 and `@inkoxide/render`
+0.4.0; `@inkoxide/schema` stays 2.2.0. Upgrading: `@inkoxide/render` exports only what its
+guide documents, and the template helpers moved to `@inkoxide/render/templates` (see
+**Changed**). SVG styles are held to a new limit (see **Security**).
+
 ### Added
 
 - `@inkoxide/render/templates`, a second entry of `@inkoxide/render` for serving templates by
