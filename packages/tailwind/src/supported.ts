@@ -163,10 +163,13 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Grid',
     utilities: '`col-span-*`, `col-start-*`, `col-end-*`, `row-span-*`, `row-start-*`, `row-end-*`',
     maps: '`gridColumn`, `gridRow`',
+    notes: 'A start and an end line replace a span, as in CSS: `col-span-3 col-start-1 col-end-3` is 1 / 3.',
     examples: {
       'col-span-2': { gridColumn: { span: 2 } },
       'col-span-full': { gridColumn: { start: 1, end: -1 } },
       'col-start-2 col-end-4': { gridColumn: { start: 2, end: 4 } },
+      'col-span-3 col-start-1 col-end-3': { gridColumn: { start: 1, end: 3 } },
+      'col-[2/span_3]': { gridColumn: { start: 2, span: 3 } },
       'row-span-3': { gridRow: { span: 3 } },
       'row-start-2': { gridRow: { start: 2 } },
     },

@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- **Grid placement:** a `gridColumn` or `gridRow` with `start`, `end` and `span` runs from
+  `start` to `end`, as in CSS; the engine used `start` and `span` and ignored `end`. In Tailwind,
+  a span after the slash is kept (`col-[2/span_3]` was one column at line 2), and
+  `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and

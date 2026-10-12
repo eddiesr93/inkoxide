@@ -126,8 +126,14 @@ fn placement(p: Option<GridPlacement>) -> Line<taffy::style::GridPlacement> {
         };
     };
     let l = |v: i16| G::from_line_index(v);
+    // Two lines fix the area, so a span next to them is ignored, as when CSS longhands set
+    // both edges after `span`.
     match (p.start, p.end, p.span) {
-        (Some(s), _, Some(n)) => Line {
+        (Some(s), Some(e), _) => Line {
+            start: l(s.0),
+            end: l(e.0),
+        },
+        (Some(s), None, Some(n)) => Line {
             start: l(s.0),
             end: G::Span(n),
         },

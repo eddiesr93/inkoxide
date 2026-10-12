@@ -167,3 +167,16 @@ describe('parseObjectPosition', () => {
     }
   });
 });
+
+describe('grid placement', () => {
+  it('keeps a span after the slash', () => {
+    expect(tw('col-[2/span_3]')).toEqual({ gridColumn: { start: 2, span: 3 } });
+    expect(tw('col-[auto/span_2]')).toEqual({ gridColumn: { span: 2 } });
+    expect(tw('row-[span_2/4]')).toEqual({ gridRow: { span: 2, end: 4 } });
+  });
+
+  it('drops a span once both lines are set, as in CSS', () => {
+    expect(tw('col-span-3 col-start-1 col-end-3')).toEqual({ gridColumn: { start: 1, end: 3 } });
+    expect(tw('row-span-2 row-end-4')).toEqual({ gridRow: { span: 2, end: 4 } });
+  });
+});

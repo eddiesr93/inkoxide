@@ -109,6 +109,19 @@ fn grid_tracks_and_spans() {
 }
 
 #[test]
+fn grid_lines_win_over_span_and_end_takes_a_span() {
+    // With both lines set, `span` is ignored (CSS: `span 5` then `1` and `3` gives 1 / 3).
+    let d = doc(
+        r#"{"type":"box","style":{"display":"grid","gridTemplateColumns":[10,10,10,10,10,10],"gridTemplateRows":[10,10]},"children":[
+            {"type":"box","style":{"gridColumn":{"start":1,"end":3,"span":5}}},
+            {"type":"box","style":{"gridRow":{"start":2},"gridColumn":{"end":5,"span":2}}}]}"#,
+    );
+    let g = layout(&d, 60.0);
+    assert_eq!(g[2], (0.0, 0.0, 20.0, 10.0));
+    assert_eq!(g[3], (20.0, 10.0, 20.0, 10.0));
+}
+
+#[test]
 fn root_min_height_lets_flex_grow_fill_the_page() {
     let d = doc(
         r#"{"type":"box","style":{"height":10}},{"type":"box","style":{"flexGrow":1}},{"type":"box","style":{"height":10}}"#,

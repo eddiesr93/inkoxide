@@ -178,19 +178,35 @@ export class Reader {
     });
   }
 
+  /** `<start> [/ <end>]`, each a line, `span <n>` or `auto`. */
   placement(value: string): GridPlacement {
     const parts = value.split('/').map((s) => s.trim());
+    if (parts.length > 2) throw this.error(`${this.prop}: ${value}`);
     const one = (s: string | undefined): GridPlacement => {
       if (s === undefined || s === 'auto') return {};
       const span = /^span\s+(\d+)$/.exec(s);
-      if (span?.[1] !== undefined) return { span: Number(span[1]) };
-      if (/^-?\d+$/.test(s)) return { start: Number(s) };
+      if (span?.[1] !== undefined) {
+        const n = Number(span[1]);
+        if (n < 1 || n > 65535) throw this.error(`${this.prop}: ${value} (a span is 1 to 65535 tracks)`);
+        return { span: n };
+      }
+      if (/^-?\d+$/.test(s)) {
+        const n = Number(s);
+        if (n === 0 || Math.abs(n) > 32767) {
+          throw this.error(
+            `${this.prop}: ${value} (a line is 1 to 32767, or negative from the end; there is no line 0)`,
+          );
+        }
+        return { start: n };
+      }
       throw this.error(`${this.prop}: ${value}`);
     };
     const a = one(parts[0]);
     const b = one(parts[1]);
     const out: GridPlacement = { ...a };
     if (b.start !== undefined) out.end = b.start;
+    // Of two spans, CSS ignores the one at the end.
+    else if (b.span !== undefined) out.span ??= b.span;
     return out;
   }
 

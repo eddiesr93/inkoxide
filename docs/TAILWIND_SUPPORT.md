@@ -42,7 +42,7 @@ that are supported and tested; each example is a unit test.
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
 | `grid-cols-N`, `grid-cols-[…]`, `grid-rows-N`, `grid-rows-[…]` | `gridTemplateColumns`, `gridTemplateRows` | `grid-cols-2` → `{"gridTemplateColumns":[{"repeat":2,"tracks":[{"min":0,"max":"1fr"}]}]}` | `grid-cols-3` is `repeat(3, minmax(0, 1fr))`, as in CSS. |
-| `col-span-*`, `col-start-*`, `col-end-*`, `row-span-*`, `row-start-*`, `row-end-*` | `gridColumn`, `gridRow` | `col-span-2` → `{"gridColumn":{"span":2}}` |  |
+| `col-span-*`, `col-start-*`, `col-end-*`, `row-span-*`, `row-start-*`, `row-end-*` | `gridColumn`, `gridRow` | `col-span-2` → `{"gridColumn":{"span":2}}` | A start and an end line replace a span, as in CSS: `col-span-3 col-start-1 col-end-3` is 1 / 3. |
 | `grid-flow-*`, `auto-cols-*`, `auto-rows-*` | `gridAutoFlow`, `gridAutoColumns`, `gridAutoRows` | `grid-flow-col` → `{"gridAutoFlow":"column"}` |  |
 | `justify-items-*`, `justify-self-*` | `justifyItems`, `justifySelf` | `justify-items-center` → `{"justifyItems":"center"}` |  |
 

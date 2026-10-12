@@ -481,7 +481,7 @@ export interface EdgesLength {
   left?: Length;
 }
 /**
- * 1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone or with `start`.
+ * 1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone, with `start` or with `end`. With both `start` and `end`, `span` is ignored.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "GridPlacement".

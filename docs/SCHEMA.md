@@ -233,7 +233,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 
 ### GridPlacement
 
-1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone or with `start`.
+1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone, with `start` or with `end`. With both `start` and `end`, `span` is ignored.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|

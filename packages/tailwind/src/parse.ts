@@ -230,6 +230,8 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         if (one.start !== undefined) p.end = one.start;
         else if (one.span !== undefined) p.span = one.span;
       }
+      // Two lines replace a span set before them (`col-span-3 col-start-1 col-end-3` is 1 / 3).
+      if (p.start !== undefined && p.end !== undefined) delete p.span;
       s[key] = p;
       return;
     }

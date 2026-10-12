@@ -7,6 +7,13 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- **`GridPlacement`** with `start`, `end` and `span` places the item between `start` and
+  `end`, and ignores `span`, as CSS does when both lines are set after a span. The engine used
+  `start` and `span` and ignored `end`. The description also says that `span` can go with `end`
+  alone, which the engine already supported.
+
 ## 2.2.0 - 2026-10-12
 
 Still document schema version 1.
