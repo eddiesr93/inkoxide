@@ -33,6 +33,9 @@ export function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions)
   });
 }
 
+/** The statuses that redirect; another 3xx (a 304) is an HTTP error like a 4xx. */
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
 /** What one download may take: the whole download's time (`Infinity` for none), and its size. */
 export interface FetchLimits {
   timeoutMs: number;
@@ -64,7 +67,7 @@ export async function fetchBytes(
   } catch (e) {
     return fail(reason(e), e);
   }
-  if (init.redirect === 'manual' && res.status >= 300 && res.status < 400) {
+  if (init.redirect === 'manual' && REDIRECTS.has(res.status)) {
     return fail(`HTTP ${res.status}, and redirects are not followed`);
   }
   if (!res.ok) return fail(`HTTP ${res.status}`);

@@ -16,6 +16,7 @@ import {
   PageBreak,
   PageNumber,
   RenderError,
+  type RenderToBufferOptions,
   renderToBuffer,
   renderToFile,
   renderToStream,
@@ -249,6 +250,27 @@ describe('renderToBuffer', () => {
     expect(err).toBeInstanceOf(RenderError);
     expect(err).toMatchObject({ code: 'TEMPLATE_ERROR' });
     expect((err as RenderError).message).toContain('only one page expected');
+  });
+
+  it('rejects a bad render option with a 400 at its path', async () => {
+    const cases: Array<[RenderToBufferOptions, string]> = [
+      [{ creationDate: 'yesterday' }, 'options.creationDate'],
+      [{ threads: 0 }, 'options.threads'],
+      [{ threads: 1000 }, 'options.threads'],
+      [{ threads: 1.5 }, 'options.threads'],
+    ];
+    for (const [opts, path] of cases) {
+      const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, opts).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RenderError);
+      expect(err).toMatchObject({
+        code: 'ENGINE_REJECTED',
+        status: 400,
+        path,
+        engineCode: 'INVALID_ARGUMENT',
+      });
+      expect((err as RenderError).message).toContain(`(at ${path})`);
+    }
+    expect(countPages(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { threads: 256 }))).toBe(1);
   });
 });
 

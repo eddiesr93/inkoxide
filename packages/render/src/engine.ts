@@ -129,10 +129,15 @@ export function version(): EngineVersion {
   return ink.version();
 }
 
-/** An engine failure as a RenderError; the pipeline adds the component at `path`. */
+/**
+ * An engine failure as a RenderError; the pipeline adds the component at `path`. A render option
+ * the engine refuses (`INVALID_ARGUMENT` at `options.threads`, `options.creationDate`) is the
+ * caller's to fix, so `ENGINE_REJECTED`; any other `INVALID_ARGUMENT` is a bug of this package.
+ */
 export function toRenderError(e: unknown): RenderError {
   if (e instanceof ink.InkoxideError) {
-    if (e.code === 'INTERNAL' || e.code === 'INVALID_ARGUMENT') {
+    const badOption = e.code === 'INVALID_ARGUMENT' && e.path.startsWith('options.');
+    if (e.code === 'INTERNAL' || (e.code === 'INVALID_ARGUMENT' && !badOption)) {
       return new RenderError('INTERNAL', `Engine error ${e.code}: ${e.message}`, {
         engineCode: e.code,
         cause: e,

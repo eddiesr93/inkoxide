@@ -97,6 +97,7 @@ beforeAll(async () => {
     else if (req.url === '/image' && req.method === 'POST') res.end(body === 'palette' ? palette : logo);
     else if (req.url === '/by-token') res.end(req.headers['x-token'] === 'palette' ? palette : logo);
     else if (req.url === '/moved') res.writeHead(302, { location: '/logo.png' }).end();
+    else if (req.url === '/unmodified') res.writeHead(304).end();
     // The headers and part of the body, then nothing more, or a dropped connection.
     else if (req.url === '/stall') res.writeHead(200).write(logo.subarray(0, 100));
     else if (req.url === '/drop') {
@@ -271,6 +272,10 @@ describe('image requests', () => {
       `Cannot fetch the image ${base}/moved: HTTP 302, and redirects are not followed.`,
     );
     expect((await failure(`${base}/moved`, allowed())).message).toContain('redirects are not followed');
+    // A 3xx that is not a redirect is an HTTP error like any other.
+    expect((await failure(`${base}/unmodified`, allowed())).message).toBe(
+      `Cannot fetch the image ${base}/unmodified: HTTP 304.`,
+    );
     expect((await failure({ uri: `${base}/gone.png` }, allowed())).message).toBe(
       `Cannot fetch the image ${base}/gone.png: HTTP 404.`,
     );
@@ -287,11 +292,37 @@ describe('image requests', () => {
     expect(dropped.message).toMatch(new RegExp(`^Cannot fetch the image ${base}/drop: .+\\.$`));
   });
 
-  it('takes Infinity and timeouts past what a timer holds', async () => {
-    for (const timeoutMs of [Infinity, 2 ** 31, 2 ** 32]) {
+  it('takes Infinity, fractions and timeouts past what a timer holds', async () => {
+    for (const timeoutMs of [Infinity, 2 ** 31, 2 ** 32, 1000.5]) {
       const opts = { remoteImages: { allow: [`${base}/`], timeoutMs } };
       expect(countPages(await render(`${base}/logo.png`, opts))).toBe(1);
     }
+  });
+
+  it('rejects a timeout or size limit that is not a number from 0, before fetching', async () => {
+    seen.length = 0;
+    for (const timeoutMs of [NaN, -1, -Infinity, '1000' as unknown as number]) {
+      const err = await failure(`${base}/logo.png`, { remoteImages: { allow: [`${base}/`], timeoutMs } });
+      expect(err).toMatchObject({
+        code: 'ENGINE_REJECTED',
+        status: 400,
+        path: 'options.remoteImages.timeoutMs',
+      });
+      expect(err.message).toBe(
+        `The render option remoteImages.timeoutMs must be a number of milliseconds from 0 (Infinity for no limit), found ${typeof timeoutMs === 'string' ? '"1000"' : timeoutMs}.`,
+      );
+    }
+    for (const maxBytes of [NaN, -1]) {
+      const err = await failure(`${base}/logo.png`, { remoteImages: { allow: [`${base}/`], maxBytes } });
+      expect(err).toMatchObject({
+        code: 'ENGINE_REJECTED',
+        status: 400,
+        path: 'options.remoteImages.maxBytes',
+      });
+    }
+    const local = await failure(logoPath, { localImages: { root: dirname(logoPath), maxBytes: NaN } });
+    expect(local).toMatchObject({ code: 'ENGINE_REJECTED', path: 'options.localImages.maxBytes' });
+    expect(seen).toEqual([]);
   });
 
   it('keeps requests with Headers instances apart', async () => {
@@ -386,9 +417,25 @@ describe('image functions and promises', () => {
     }
     const slow = () => new Promise<Uint8Array>((ok) => setTimeout(() => ok(logo), 20));
     // Past setTimeout's limit, and Infinity, mean waiting rather than failing at once.
-    for (const imageTimeoutMs of [1000, 2 ** 31, Number.MAX_SAFE_INTEGER, Infinity]) {
+    for (const imageTimeoutMs of [1000, 1000.5, 2 ** 31, Number.MAX_SAFE_INTEGER, Infinity]) {
       expect(countPages(await render(slow, { imageTimeoutMs }))).toBe(1);
     }
+  });
+
+  it('rejects an imageTimeoutMs that is not a number from 0, before calling the function', async () => {
+    let calls = 0;
+    const src = () => {
+      calls++;
+      return logo;
+    };
+    for (const imageTimeoutMs of [NaN, -1]) {
+      const err = await failure(src, { imageTimeoutMs });
+      expect(err).toMatchObject({ code: 'ENGINE_REJECTED', status: 400, path: 'options.imageTimeoutMs' });
+      expect(err.message).toBe(
+        `The render option imageTimeoutMs must be a number of milliseconds from 0 (Infinity for no limit), found ${imageTimeoutMs}.`,
+      );
+    }
+    expect(calls).toBe(0);
   });
 
   it('reads a data: URL as one written in src: base64 only, strictly', async () => {

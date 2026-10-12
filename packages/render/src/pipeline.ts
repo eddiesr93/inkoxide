@@ -26,7 +26,7 @@ import {
 import { fontsPending, loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
-import { DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
+import { checkImageLimits, DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
 import { remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
@@ -130,9 +130,11 @@ function templateTree<S extends z.ZodType>(
   data: z.output<S>,
   opts: RenderOpts = {},
 ): TreeResult {
+  // Outside the try: a bad option is not a template error.
+  const imageOptions = treeImageOptions(opts);
   try {
     return renderTemplate(createElement(t.Template, { data }), {
-      ...treeImageOptions(opts),
+      ...imageOptions,
       imageIds: Object.keys({ ...t.images, ...opts.images }),
     });
   } catch (e) {
@@ -140,8 +142,12 @@ function templateTree<S extends z.ZodType>(
   }
 }
 
-/** The image policies of a render: its options, else the environment variables and defaults. */
+/**
+ * The image policies of a render: its options, else the environment variables and defaults. A
+ * limit that is not a number from 0 throws.
+ */
 function imagePolicies(opts: RenderOpts): ImagePolicies {
+  checkImageLimits(opts);
   return {
     remote: remotePolicy(opts.remoteImages),
     local: localPolicy(opts.localImages),
@@ -374,10 +380,12 @@ export async function renderToBuffer(
 ): Promise<Uint8Array> {
   await init();
   const name = componentName(element);
+  // Outside the try: a bad option is not a template error.
+  const imageOptions = treeImageOptions(opts);
   let tree: TreeResult;
   try {
     tree = renderTemplate(element, {
-      ...treeImageOptions(opts),
+      ...imageOptions,
       imageIds: Object.keys(opts.images ?? {}),
     });
     if (opts.validate ?? !isProduction()) assertValidTree(tree);
