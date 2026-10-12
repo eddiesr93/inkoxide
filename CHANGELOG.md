@@ -15,6 +15,9 @@ All notable changes to the packages in this repository. The format follows
   and `zIndex` already were: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`,
   `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`,
   `overflow`, `opacity` and `rotate`. They passed validation and had no effect.
+- Collapsed table borders (the default `borderCollapse`) keep their `borderStyle`: dashed and
+  dotted cell borders were drawn solid. Where two borders of equal width meet, solid wins over
+  dashed and dashed over dotted, as in CSS.
 
 ## 0.5.0 - 2026-10-12
 

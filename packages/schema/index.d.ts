@@ -452,7 +452,7 @@ export interface Style {
    */
   verticalAlign?: 'top' | 'middle' | 'bottom';
   /**
-   * Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart.
+   * Tables only. `collapse`: adjacent cell borders merge into one, drawn in the winner's style and colour: the wider wins, and at equal widths solid wins over dashed and dashed over dotted. `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart.
    */
   borderCollapse?: 'collapse' | 'separate';
   /**

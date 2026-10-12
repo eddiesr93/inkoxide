@@ -15,6 +15,9 @@ version 2.
   `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`,
   `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity` and `rotate`, as
   `transform`, `transformOrigin` and `zIndex` already were.
+- **Collapsed borders:** a cell's `borderStyle` applies in a table with `borderCollapse:
+  "collapse"`; dashed and dotted borders were drawn solid. `Style.borderCollapse` says how two
+  borders that meet are merged: the wider wins, then solid over dashed over dotted.
 
 ## 2.2.0 - 2026-10-12
 

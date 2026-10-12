@@ -469,6 +469,53 @@ fn a_fixed_table_repeats_whole() {
 }
 
 #[test]
+fn collapsed_borders_keep_their_style() {
+    // Two cells with 2pt red borders. Every edge between them and around
+    // them is drawn once: dashed ones stroked with a dash, solid ones
+    // filled. At equal widths a solid border wins over a dashed one.
+    let cell = |style: &str| {
+        format!(
+            r#"{{"style":{{"borderWidth":{{"top":2,"right":2,"bottom":2,"left":2}},
+                "borderColor":{{"top":[1,0,0,1],"right":[1,0,0,1],"bottom":[1,0,0,1],"left":[1,0,0,1]}},"borderStyle":"{style}"}},
+                "children":[{{"type":"box","style":{{"height":10}}}}]}}"#
+        )
+    };
+    let table = |a: &str, b: &str| {
+        format!(
+            r#"{{"version":1,"pages":[{{"size":{{"width":200,"height":100}},"children":[
+                {{"type":"table","columns":[{{"width":50}},{{"width":50}}],"rows":[{{"cells":[{},{}]}}]}}]}}]}}"#,
+            cell(a),
+            cell(b)
+        )
+    };
+    let edges = |json: &str| {
+        render_doc(json, |pages, _| {
+            let (mut dashed, mut solid) = (0, 0);
+            for op in &pages[0].ops {
+                match op {
+                    Op::StrokePath {
+                        dash: Some(d),
+                        color,
+                        width,
+                        ..
+                    } if *color == [1.0, 0.0, 0.0, 1.0] => {
+                        assert!(close(*width, 2.0) && close(d.pattern[0], 6.0), "{op:?}");
+                        dashed += 1;
+                    }
+                    Op::FillPath { color, .. } if *color == [1.0, 0.0, 0.0, 1.0] => solid += 1,
+                    _ => {}
+                }
+            }
+            (dashed, solid)
+        })
+    };
+    // Top and bottom of each cell, and three vertical lines.
+    assert_eq!(edges(&table("dashed", "dashed")), (7, 0));
+    assert_eq!(edges(&table("dashed", "solid")), (3, 4));
+    assert_eq!(edges(&table("solid", "dashed")), (3, 4));
+}
+
+#[test]
 fn a_repeated_header_is_painted_once_per_page() {
     // A table at the top of the flow, over two pages: its header row on
     // each page once, including the first.

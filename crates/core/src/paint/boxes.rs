@@ -392,7 +392,9 @@ impl BoxPainter<'_, '_, '_, '_> {
         let Rect { x: cx, y: cy, .. } = g.content_box();
         let (ox, oy) = (cx + self.dx, cy + self.dy);
 
-        let mut fills = Vec::new();
+        // Bands to paint: (rect, colour, style, horizontal). Backgrounds
+        // and solid edges are filled, dashed and dotted edges stroked.
+        let mut fills: Vec<(Rect, Color, BorderStyle, bool)> = Vec::new();
         let first_cell = t.cells.partition_point(|c| c.row < lo);
         if t.separate {
             let cells: Vec<(usize, f32, f32)> = (first_cell..t.cells.len())
@@ -410,7 +412,8 @@ impl BoxPainter<'_, '_, '_, '_> {
             if let Part::Row(row) = self.tree.nodes[row_idx as usize].part {
                 if let Some(bg) = row.background_color.filter(|c| c[3] > 0.0) {
                     let y = oy + t.row_y[r] + shift(r);
-                    fills.push((Rect::new(ox, y, t.width, t.row_h[r] + extra(r)), bg));
+                    let rect = Rect::new(ox, y, t.width, t.row_h[r] + extra(r));
+                    fills.push((rect, bg, BorderStyle::Solid, true));
                 }
             }
         }
@@ -426,7 +429,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                     cell.w,
                     cell.h + extra(cell.row),
                 );
-                fills.push((rect, bg));
+                fills.push((rect, bg, BorderStyle::Solid, true));
             }
         }
 
@@ -435,7 +438,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         for e in t.h_edges[first_h..].iter().take_while(|e| e.line <= hi) {
             let (x, w) = (ox + t.col_x[e.col], t.col_w[e.col]);
             // The edge's band, with its top at `y`.
-            let band = |y: f32| (Rect::new(x, y, w, e.width), e.color);
+            let band = |y: f32| (Rect::new(x, y, w, e.width), e.color, e.style, true);
             let l = e.line;
             if l == 0 {
                 if visible(0) {
@@ -481,11 +484,33 @@ impl BoxPainter<'_, '_, '_, '_> {
             let h: f32 = t.row_h[e.row..e.row + e.rows].iter().sum::<f32>()
                 + (e.row..e.row + e.rows).map(extra).sum::<f32>();
             let y = oy + t.row_y[e.row] + shift(e.row);
-            fills.push((Rect::new(ox + x, y, e.width, h), e.color));
+            fills.push((Rect::new(ox + x, y, e.width, h), e.color, e.style, false));
         }
-        for (rect, color) in fills {
-            self.fill(rounded_rect(rect, &NO_RADII), color);
+        for (rect, color, style, horizontal) in fills {
+            if style == BorderStyle::Solid {
+                self.fill(rounded_rect(rect, &NO_RADII), color);
+            } else {
+                self.dashed_edge(rect, color, style, horizontal);
+            }
         }
+    }
+
+    /// A dashed or dotted collapsed edge: stroked along the middle of its
+    /// band, clipped to the band so dots do not poke out of the table.
+    fn dashed_edge(&mut self, band: Rect, color: Color, style: BorderStyle, horizontal: bool) {
+        let Rect { x, y, w, h } = band;
+        let (path, width) = if horizontal {
+            (line(x, y + h / 2.0, x + w, y + h / 2.0), h)
+        } else {
+            (line(x + w / 2.0, y, x + w / 2.0, y + h), w)
+        };
+        self.ops.push(Op::Save);
+        self.ops.push(Op::ClipPath {
+            path: rounded_rect(band, &NO_RADII),
+            rule: FillRule::NonZero,
+        });
+        self.stroke(path, color, width, style);
+        self.ops.push(Op::Restore);
     }
 
     /// Separate borders: each visible cell paints the row background, its
