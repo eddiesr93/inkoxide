@@ -26,16 +26,19 @@ function matchParen(s: string, open: number): number {
   throw new ValueError(`unbalanced parentheses in "${s}"`);
 }
 
-/** Splits on top-level commas (outside parentheses). */
+/**
+ * Splits at `sep` outside parentheses (`a, rgb(0, 0, 0)`), trimming and dropping empty parts.
+ * A `' '` separator splits at any whitespace (`1px solid rgb(0 0 0)`).
+ */
 export function splitTopLevel(s: string, sep = ','): string[] {
   const out: string[] = [];
   let depth = 0;
   let start = 0;
   for (let i = 0; i < s.length; i++) {
-    const c = s[i];
+    const c = s[i] ?? '';
     if (c === '(') depth++;
     else if (c === ')') depth--;
-    else if (depth === 0 && (sep === ' ' ? c === ' ' || c === '\t' || c === '\n' : c === sep)) {
+    else if (depth === 0 && (sep === ' ' ? /\s/.test(c) : c === sep)) {
       out.push(s.slice(start, i));
       start = i + 1;
     }
@@ -81,24 +84,24 @@ export function substituteVars(
 
 const UNIT_RE = /^(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(px|rem|em|pt|mm|cm|in|pc|%|deg|turn|rad)?/i;
 
+/** Points per absolute CSS unit. `rem` is the root font size Tailwind uses. */
+export const PT_PER_UNIT: Readonly<Record<string, number>> = {
+  pt: 1,
+  mm: 72 / 25.4,
+  cm: 720 / 25.4,
+  in: 72,
+  px: PT_PER_PX,
+  pc: 12,
+  rem: PT_PER_REM,
+};
+
 function toDim(n: number, unit: string | undefined): Dim {
-  switch ((unit ?? '').toLowerCase()) {
+  const u = (unit ?? '').toLowerCase();
+  const pt = PT_PER_UNIT[u];
+  if (pt !== undefined) return { v: n * pt, u: 'pt' };
+  switch (u) {
     case '':
       return { v: n, u: '' };
-    case 'px':
-      return { v: n * PT_PER_PX, u: 'pt' };
-    case 'rem':
-      return { v: n * PT_PER_REM, u: 'pt' };
-    case 'pt':
-      return { v: n, u: 'pt' };
-    case 'mm':
-      return { v: (n * 72) / 25.4, u: 'pt' };
-    case 'cm':
-      return { v: (n * 720) / 25.4, u: 'pt' };
-    case 'in':
-      return { v: n * 72, u: 'pt' };
-    case 'pc':
-      return { v: n * 12, u: 'pt' };
     case 'em':
       return { v: n, u: 'em' };
     case '%':
@@ -205,6 +208,44 @@ export function evalDim(value: string): Dim {
 /** Rounds away float noise (`0.25rem * 3` = 9.000000000000002 pt) so snapshots stay readable. */
 export function round(n: number): number {
   return Math.round(n * 1e6) / 1e6;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Shorthands
+
+/** The CSS `flex` keywords, as grow, shrink and basis. */
+const FLEX_KEYWORDS: Readonly<Record<string, readonly [number, number, 'auto']>> = {
+  none: [0, 0, 'auto'],
+  auto: [1, 1, 'auto'],
+  initial: [0, 1, 'auto'],
+};
+
+const NUMBER_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i;
+
+/**
+ * Splits CSS `flex` into grow, shrink and basis: a keyword (`none`, `auto`, `initial`) or
+ * `<grow> [<shrink>] [<basis>]`, where a second value that is not a number is the basis
+ * (`1 auto`). A missing shrink is 1 and a missing basis `0%`. `number` reads grow and shrink,
+ * `length` the basis.
+ */
+export function parseFlex<L>(
+  value: string,
+  number: (v: string) => number,
+  length: (v: string) => L,
+): [grow: number, shrink: number, basis: L | 'auto' | '0%'] {
+  const v = value.trim();
+  const keyword = Object.hasOwn(FLEX_KEYWORDS, v) ? FLEX_KEYWORDS[v] : undefined;
+  if (keyword) return [...keyword];
+  const [grow, second, basis] = splitTopLevel(v, ' ');
+  if (grow === undefined) throw new ValueError(`flex "${value}" is not a number or "grow shrink basis"`);
+  if (second !== undefined && basis === undefined && !NUMBER_RE.test(second)) {
+    return [number(grow), 1, length(second)];
+  }
+  return [
+    number(grow),
+    second === undefined ? 1 : number(second),
+    basis === undefined ? '0%' : length(basis),
+  ];
 }
 
 // ---------------------------------------------------------------------------------------------

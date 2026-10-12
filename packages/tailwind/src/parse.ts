@@ -1,11 +1,21 @@
 import type { GridPlacement, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
-import type { ColorValue, Len, LenPercent, ObjectPosition, TransformOp, TwStyle } from './types.ts';
+import {
+  BORDER_STYLES,
+  type ColorValue,
+  type Len,
+  type LenPercent,
+  OBJECT_FITS,
+  type ObjectPosition,
+  type TransformOp,
+  type TwStyle,
+} from './types.ts';
 import {
   type Dim,
   evalDim,
   parseColor,
+  parseFlex,
   parseFontFamily,
   round,
   splitTopLevel,
@@ -82,13 +92,13 @@ const ENUMS = {
   justifySelf: ['auto', 'flex-start', 'flex-end', 'center', 'baseline', 'stretch', 'start', 'end'],
   position: ['relative', 'absolute'],
   overflow: ['visible', 'hidden'],
-  borderStyle: ['solid', 'dashed', 'dotted'],
+  borderStyle: BORDER_STYLES,
   gridAutoFlow: ['row', 'column', 'row dense', 'column dense'],
   whiteSpace: ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],
   decorationStyle: ['solid', 'double', 'dotted', 'dashed', 'wavy'],
   direction: ['ltr', 'rtl'],
   textTransform: ['none', 'uppercase', 'lowercase', 'capitalize'],
-  objectFit: ['fill', 'contain', 'cover', 'none'],
+  objectFit: OBJECT_FITS,
 } as const;
 
 type EnumKey = keyof typeof ENUMS;
@@ -422,35 +432,13 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'justify-self':
       s.justifySelf = pick('justifySelf', prop, v);
       return;
-    case 'flex': {
-      const words = splitTopLevel(v, ' ');
-      if (v === 'none') {
-        s.flexGrow = 0;
-        s.flexShrink = 0;
-        s.flexBasis = 'auto';
-      } else if (v === 'auto') {
-        s.flexGrow = 1;
-        s.flexShrink = 1;
-        s.flexBasis = 'auto';
-      } else if (words.length === 1 && /^[\d.]+$/.test(v)) {
-        s.flexGrow = Number(v);
-        s.flexShrink = 1;
-        s.flexBasis = '0%';
-      } else {
-        const [g, second, third] = words;
-        if (g === undefined || second === undefined) throw new Unsupported(prop, `flex: ${v}`);
-        s.flexGrow = num(prop, g);
-        if (third === undefined && !/^[\d.]+$/.test(second)) {
-          // `flex: <grow> <basis>`
-          s.flexShrink = 1;
-          s.flexBasis = len(prop, second);
-        } else {
-          s.flexShrink = num(prop, second);
-          s.flexBasis = third === undefined ? '0%' : len(prop, third);
-        }
-      }
+    case 'flex':
+      [s.flexGrow, s.flexShrink, s.flexBasis] = parseFlex(
+        v,
+        (x) => num(prop, x),
+        (x) => len(prop, x),
+      );
       return;
-    }
     case 'flex-grow':
       s.flexGrow = num(prop, v);
       return;

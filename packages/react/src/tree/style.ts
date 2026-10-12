@@ -1,18 +1,22 @@
 import type { Color, Style, TransformOp } from '@inkoxide/schema';
 import {
+  BORDER_STYLES,
   type BorderStyle,
   type ColorValue,
   type LenPercent,
   type LetterSpacing,
   type LineHeight,
+  OBJECT_FITS,
   type ObjectFit,
   type ObjectPosition,
   parseColor,
+  parseFlex,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
-  PT_PER_PX,
-  PT_PER_REM,
+  PT_PER_UNIT,
+  round,
+  splitTopLevel,
   TEXT_INHERITED,
   TEXT_ONLY,
   type TextDecoration,
@@ -399,8 +403,6 @@ function computeBox(s: TwStyle, currentColor: Color, cell: boolean): Style | und
   return any ? out : undefined;
 }
 
-const round = (n: number): number => Math.round(n * 1e6) / 1e6;
-
 /** Adds the text-node properties (alignment, line height, clamping, hyphenation) to a style. */
 export function textNodeStyle(
   base: Style | undefined,
@@ -462,17 +464,6 @@ function spread<T>(
   }
 }
 
-/** Points per unit. `rem` is the root font size Tailwind uses. */
-const PT_PER: Record<string, number> = {
-  pt: 1,
-  mm: 72 / 25.4,
-  cm: 720 / 25.4,
-  in: 72,
-  px: PT_PER_PX,
-  pc: 12,
-  rem: PT_PER_REM,
-};
-
 /** What relative units resolve against, in points. */
 export interface Units {
   /** The font size, for `em`. */
@@ -494,7 +485,7 @@ export function toPt<T>(v: number | string | T, units?: Units): number | T | str
       `"${v}" is not a length (use a number of points or a unit: pt, mm, cm, in, px, pc, rem, em, vw, vh)`,
     );
   const unit = m[2];
-  let per = PT_PER[unit];
+  let per = PT_PER_UNIT[unit];
   if (per === undefined) {
     if (!units) throw new Error(`"${v}" depends on the font or page size, which is not known here`);
     per = unit === 'em' ? units.em : (unit === 'vw' ? units.page.width : units.page.height) / 100;
@@ -801,10 +792,9 @@ function overflowEllipsis(v: string): boolean {
   return v === 'ellipsis';
 }
 
-const FITS: ReadonlySet<string> = new Set(['fill', 'contain', 'cover', 'none']);
-
 function fitOf(v: string): ObjectFit {
-  if (!FITS.has(v)) throw new Error(`objectFit "${v}" is not fill, contain, cover or none`);
+  if (!(OBJECT_FITS as readonly string[]).includes(v))
+    throw new Error(`objectFit "${v}" is not fill, contain, cover or none`);
   return v as ObjectFit;
 }
 
@@ -825,28 +815,8 @@ function positionOf(v: unknown, units: Units | undefined): ObjectPosition {
   });
 }
 
-const BORDER_STYLES: ReadonlySet<string> = new Set(['solid', 'dashed', 'dotted']);
 /** CSS `thin`, `medium` and `thick`: 1px, 3px and 5px. */
 const BORDER_WIDTHS = { thin: 0.75, medium: 2.25, thick: 3.75 } as const;
-
-/** Splits a CSS value at spaces outside parentheses (`1px solid rgb(0 0 0)`). */
-function words(v: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let word = '';
-  for (const ch of v.trim()) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    if (depth === 0 && /\s/.test(ch)) {
-      if (word) out.push(word);
-      word = '';
-    } else {
-      word += ch;
-    }
-  }
-  if (word) out.push(word);
-  return out;
-}
 
 /**
  * CSS `border`: a width, a style and a colour in any order. A missing width is `medium`, a
@@ -866,8 +836,8 @@ function borderShorthand(
   let width: number | undefined;
   let style: string | undefined;
   let color: ColorValue | undefined;
-  for (const w of words(v)) {
-    if (w === 'none' || w === 'hidden' || BORDER_STYLES.has(w)) {
+  for (const w of splitTopLevel(v, ' ')) {
+    if (w === 'none' || w === 'hidden' || (BORDER_STYLES as readonly string[]).includes(w)) {
       if (style !== undefined) fail();
       style = w;
     } else if (w in BORDER_WIDTHS || /^[-+]?\.?\d/.test(w)) {
@@ -891,17 +861,13 @@ function borderShorthand(
   };
 }
 
-/** CSS `flex`: a number is `n 1 0%`; strings are `none`, `auto`, `initial` or `grow [shrink] [basis]`. */
+/** CSS `flex`: a number is `n 1 0%`; strings are read by `parseFlex`, with plain numbers for grow and shrink. */
 function flexShorthand(v: number | string, units: Units | undefined): [number, number, number | string] {
   if (typeof v === 'number') return [v, 1, '0%'];
-  const named = { none: [0, 0, 'auto'], auto: [1, 1, 'auto'], initial: [0, 1, 'auto'] } as const;
-  if (v in named) return [...named[v as keyof typeof named]];
-  const [g, s, b] = v.trim().split(/\s+/);
-  const grow = Number(g);
-  const shrink = s === undefined ? 1 : Number(s);
-  if (!Number.isFinite(grow) || !Number.isFinite(shrink)) {
-    throw new Error(`flex "${v}" is not a number or "grow shrink basis"`);
-  }
-  const basis = b === undefined ? '0%' : toPt(b, units);
-  return [grow, shrink, basis];
+  const number = (x: string): number => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) throw new Error(`flex "${v}" is not a number or "grow shrink basis"`);
+    return n;
+  };
+  return parseFlex(v, number, (b) => toPt(b, units));
 }

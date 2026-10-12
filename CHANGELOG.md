@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Changed
+
+- The `flex` shorthand reads the same in `style` and in Tailwind classes:
+  `style={{ flex: '1 auto' }}` sets grow and basis, as `flex-[1_auto]` does, and
+  `flex-[initial]` works as `flex: 'initial'` does. A lone grow in a class is rounded to six
+  decimals like every other value.
+
 ## 0.4.0 - 2026-10-12
 
 `inkoxide` 0.4.0, `@inkoxide/schema` 2.2.0, `@inkoxide/tailwind` 0.2.1, `@inkoxide/react` 0.2.1

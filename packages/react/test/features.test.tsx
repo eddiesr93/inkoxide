@@ -156,12 +156,15 @@ describe('paint styles', () => {
         <View style={{ flex: 1 }} />
         <View style={{ flex: '2 0 10mm', flexShrink: 3 }} />
         <View style={{ position: 'absolute', top: 0, right: '1cm' }} />
+        <View style={{ flex: '1 auto' }} />
       </>,
     );
-    const [a, b, c] = (r.document.pages[0].children ?? []) as BoxNode[];
+    const [a, b, c, d] = (r.document.pages[0].children ?? []) as BoxNode[];
     expect(a?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '0%' });
     expect(b?.style).toEqual({ flexGrow: 2, flexShrink: 3, flexBasis: 28.346457 });
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
+    // `<grow> <basis>`, as in Tailwind's `flex-[1_auto]`.
+    expect(d?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
     );
