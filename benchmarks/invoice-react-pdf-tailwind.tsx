@@ -4,12 +4,8 @@ import { Document, Font, Image, Page, renderToFile, Text, View } from '@react-pd
 import { createTw } from 'react-pdf-tailwind';
 
 import invoice from './invoice.json' with { type: 'json' };
+import { setUpReactPdf } from './report.tsx';
 
-const FONTS = join(import.meta.dirname, '..', 'fixtures', 'fonts');
-Font.register({
-  family: 'Inter',
-  fonts: [{ src: join(FONTS, 'Inter-Regular.ttf') }, { src: join(FONTS, 'Inter-Bold.ttf'), fontWeight: 700 }],
-});
 const tw = createTw({ fontFamily: { sans: ['Inter'] } });
 const logo = join(import.meta.dirname, 'logo.jpg');
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 });
@@ -126,6 +122,9 @@ export function Invoice(inv: typeof invoice) {
   );
 }
 
-// Run directly: writes the PDF. Imported (bench.tsx): only exports Invoice.
-if (process.argv[1] === import.meta.filename)
+// Run directly: writes the PDF, with the font setup bench.tsx uses. Imported (bench.tsx): only
+// exports Invoice.
+if (process.argv[1] === import.meta.filename) {
+  setUpReactPdf(Font);
   await renderToFile(<Invoice {...invoice} />, 'invoice-react-pdf-tailwind.pdf');
+}
