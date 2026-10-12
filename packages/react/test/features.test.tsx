@@ -300,14 +300,14 @@ describe('relative units in the style prop', () => {
   });
 
   it('reports the pattern of the unit a track was written in', () => {
-    const first = (style: Record<string, unknown>) => {
+    const firstProblem = (style: Record<string, unknown>) => {
       const [p] = tree(<View style={{ display: 'grid', ...style }} />).validate();
       return p && `${p.path}: ${p.message}`;
     };
-    expect(first({ gridTemplateColumns: ['1000001fr'] })).toBe(
+    expect(firstProblem({ gridTemplateColumns: ['1000001fr'] })).toBe(
       'pages[0].children[0].style.gridTemplateColumns[0]: must be a flexible size, a share of the free space, of at most 1000000fr, like "1fr"',
     );
-    expect(first({ gridTemplateColumns: ['20000%'] })).toBe(
+    expect(firstProblem({ gridTemplateColumns: ['20000%'] })).toBe(
       'pages[0].children[0].style.gridTemplateColumns[0]: must be a percentage within ±10000%, like "50%"',
     );
   });
@@ -515,6 +515,10 @@ describe('text features', () => {
 });
 
 describe('page filters, sizes and per-page content', () => {
+  /** The size of a page with the `size` prop `s` and the other page props `page`. */
+  const size = (s: unknown, page: Record<string, unknown> = {}) =>
+    tree(null, { page: { size: s, ...page } }).document.pages[0].size;
+
   it('passes pages through and sizes pages from presets, orientation and units', () => {
     const r = tree(<Text pages="first">first page only</Text>, {
       page: { size: 'A3', orientation: 'landscape', margin: '15mm' },
@@ -541,7 +545,6 @@ describe('page filters, sizes and per-page content', () => {
     ];
     expect(Object.keys(PAGE_SIZES).sort()).toEqual(names.sort());
     for (const { width, height } of Object.values(PAGE_SIZES)) expect(width).toBeLessThan(height);
-    const size = (s: unknown) => tree(null, { page: { size: s } }).document.pages[0].size;
     expect(size('4A0')).toEqual({ width: 4767.87, height: 6740.79 });
     expect(size('A10')).toEqual({ width: 73.7, height: 104.88 });
     expect(size('B0')).toEqual({ width: 2834.65, height: 4008.19 });
@@ -553,7 +556,6 @@ describe('page filters, sizes and per-page content', () => {
   });
 
   it('matches preset names in any case, with or without "-landscape"', () => {
-    const size = (s: unknown) => tree(null, { page: { size: s } }).document.pages[0].size;
     const letter = { width: 612, height: 792 };
     expect(size('letter')).toEqual(letter);
     expect(size('LETTER')).toEqual(letter);
@@ -563,8 +565,6 @@ describe('page filters, sizes and per-page content', () => {
   });
 
   it('sizes pages from [width, height], [width] and a bare length', () => {
-    const size = (s: unknown, page: Record<string, unknown> = {}) =>
-      tree(null, { page: { size: s, ...page } }).document.pages[0].size;
     expect(size([400, 600])).toEqual({ width: 400, height: 600 });
     expect(size(['100mm', '2in'])).toEqual({ width: 283.464567, height: 144 });
     expect(size([300])).toEqual({ width: 300, height: 300 });
