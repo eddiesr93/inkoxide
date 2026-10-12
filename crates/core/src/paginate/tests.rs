@@ -223,13 +223,7 @@ fn many_pages_of_small_boxes() {
 fn text_splits_between_lines() {
     use crate::fonts::FontSet;
     use crate::text::{RustybuzzShaper, TextCache};
-    let mut store = crate::FontStore::new();
-    let bytes = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/fonts/Inter-Regular.ttf"
-    ))
-    .unwrap();
-    store.register("Inter-Regular", bytes).unwrap();
+    let store = crate::test_fixtures::inter();
     let para = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20);
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[
@@ -278,13 +272,7 @@ fn text_splits_between_lines() {
 fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
     use crate::fonts::FontSet;
     use crate::text::{RustybuzzShaper, TextCache};
-    let mut store = crate::FontStore::new();
-    let bytes = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/fonts/Inter-Regular.ttf"
-    ))
-    .unwrap();
-    store.register("Inter-Regular", bytes).unwrap();
+    let store = crate::test_fixtures::inter();
     let para = "lorem ".repeat(words);
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[
@@ -376,13 +364,7 @@ fn horizontal_padding_narrows_measured_text() {
     // must wrap at the content width, or it overflows its box.
     use crate::fonts::FontSet;
     use crate::text::{RustybuzzShaper, TextCache};
-    let mut store = crate::FontStore::new();
-    let bytes = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/fonts/Inter-Regular.ttf"
-    ))
-    .unwrap();
-    store.register("Inter-Regular", bytes).unwrap();
+    let store = crate::test_fixtures::inter();
     let para = "lorem ".repeat(60);
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[

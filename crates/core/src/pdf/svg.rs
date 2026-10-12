@@ -798,11 +798,7 @@ mod tests {
 
     /// Image `XObject`s written for an SVG drawing `copies` copies of a PNG.
     fn images_written(copies: usize) -> usize {
-        let png = std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/images/logo.png"
-        ))
-        .unwrap();
+        let png = crate::test_fixtures::fixture("images/logo.png");
         let mut url = String::from("data:image/png,");
         for b in png {
             let _ = write!(url, "%{b:02X}");

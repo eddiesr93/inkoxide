@@ -306,11 +306,7 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> Vec<u8> {
-        std::fs::read(format!(
-            "{}/../../fixtures/fonts/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap()
+        crate::test_fixtures::fixture(&format!("fonts/{name}"))
     }
 
     #[test]

@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use super::Document;
+use crate::test_fixtures::fixture;
 use crate::{validate, FontStore, ImageStore, InputFormat};
 
 fn schema() -> serde_json::Value {
@@ -163,13 +164,13 @@ fn structs_match_schema() {
 /// `(code, path)` of each error the engine reports for `doc`. A font and an
 /// image are registered under each of `ids`.
 fn errors(doc: &str, ids: &[&str]) -> Vec<(String, String)> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
     let mut fonts = FontStore::new();
     let mut images = ImageStore::new();
     for id in ids {
-        let font = std::fs::read(dir.join("fonts/Inter-Regular.ttf")).unwrap();
-        fonts.register(*id, font).unwrap();
-        images.insert(*id, std::fs::read(dir.join("images/logo.png")).unwrap());
+        fonts
+            .register(*id, fixture("fonts/Inter-Regular.ttf"))
+            .unwrap();
+        images.insert(*id, fixture("images/logo.png"));
     }
     validate(doc.as_bytes(), InputFormat::Json, &fonts, &images)
         .into_iter()

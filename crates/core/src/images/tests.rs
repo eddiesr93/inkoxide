@@ -2,8 +2,7 @@ use super::probe::ImageFormat;
 use super::*;
 
 fn fixture(name: &str) -> Vec<u8> {
-    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/images/");
-    std::fs::read(format!("{p}{name}")).unwrap()
+    crate::test_fixtures::fixture(&format!("images/{name}"))
 }
 
 #[test]

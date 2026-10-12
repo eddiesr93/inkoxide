@@ -5,23 +5,11 @@ use super::*;
 use crate::images::{ImageCrateDecoder, ImageStore};
 use crate::paint::debug::{BORDER, CONTENT, LABEL_BG, MARGIN, PADDING};
 use crate::paint::{PathSeg, Rect};
-use crate::{FontStore, InputFormat, RenderOptions};
+use crate::test_fixtures::inter;
+use crate::{InputFormat, RenderOptions};
 
 const W: f32 = 200.0;
 const H: f32 = 100.0;
-
-/// A font store with Inter as `Inter-Regular`.
-fn inter() -> FontStore {
-    let mut store = FontStore::new();
-    let path = format!(
-        "{}/../../fixtures/fonts/Inter-Regular.ttf",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    store
-        .register("Inter-Regular", std::fs::read(path).unwrap())
-        .unwrap();
-    store
-}
 
 fn pages(json: &str) -> Vec<PageContent> {
     let store = inter();
