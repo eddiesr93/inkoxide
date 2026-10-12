@@ -3,21 +3,24 @@
 //! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`); `W`
 //! widths for used glyphs and a `ToUnicode` `CMap`.
 //!
-//! Programs are subset to the glyphs used. CIDs stay the
-//! original glyph ids, so content streams are encoded before the glyph set
-//! is known; a `CIDToGIDMap` stream maps them to the renumbered subset.
+//! With `subset_fonts` (the default), programs are subset to the glyphs
+//! used (`fonts` does the subsetting; this module compresses and writes).
+//! CIDs stay the original glyph ids, so content streams are encoded before
+//! the glyph set is known: a TrueType subset gets a `CIDToGIDMap` stream
+//! that maps them to the renumbered glyphs, and a CFF subset's charset maps
+//! them. Without subsetting, or when the subsetter rejects a font, the
+//! whole font is embedded, with CID = glyph id.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
 
-use subsetter::GlyphRemapper;
-
 use super::{deflate, RefAlloc};
+use crate::flate;
 use crate::fonts::LoadedFont;
-use crate::lru::Lru;
+use crate::lru::SharedLru;
 use crate::InkoxideError;
 
 const IDENTITY: SystemInfo<'static> = SystemInfo {
@@ -47,7 +50,7 @@ const SUBSET_BUDGET: usize = 32 << 20;
 /// Font hash and the glyph set.
 type SubsetKey = (u64, Vec<u16>);
 
-static SUBSETS: Mutex<Option<Lru<SubsetKey, Program>>> = Mutex::new(None);
+static SUBSETS: SharedLru<SubsetKey, Program> = SharedLru::new(SUBSET_BUDGET);
 
 /// Prepares the font program: a subset of `used` when `subset` is set and
 /// the subsetter accepts the font, otherwise the whole (cached) font.
@@ -58,19 +61,12 @@ pub(crate) fn program(
 ) -> Result<Program, InkoxideError> {
     if subset {
         let key = (font.data.hash, used.iter().copied().collect::<Vec<u16>>());
-        if let Some(p) = SUBSETS
-            .lock()
-            .ok()
-            .and_then(|mut g| g.as_mut().and_then(|l| l.get(&key)))
-        {
+        if let Some(p) = SUBSETS.get(&key) {
             return Ok(p);
         }
         if let Some(p) = make_subset(font, &key.1)? {
-            if let Ok(mut g) = SUBSETS.lock() {
-                let size = p.data.len() + p.cid_to_gid.as_ref().map_or(0, |m| m.len());
-                g.get_or_insert_with(|| Lru::new(SUBSET_BUDGET))
-                    .insert(key, p.clone(), size);
-            }
+            let size = p.data.len() + p.cid_to_gid.as_ref().map_or(0, |m| m.len());
+            SUBSETS.insert(key, p.clone(), size);
             return Ok(p);
         }
         tracing::warn!(
@@ -79,7 +75,7 @@ pub(crate) fn program(
         );
     }
     Ok(Program {
-        data: font.data.compressed_program(|p| deflate(p, 6))?,
+        data: font.data.compressed_program(|p| deflate(p, flate::LEVEL))?,
         length: font.data.bytes.len(),
         cid_to_gid: None,
         tag: "".into(),
@@ -88,32 +84,17 @@ pub(crate) fn program(
 
 /// `None` when the subsetter rejects the font.
 fn make_subset(font: &LoadedFont<'_>, glyphs: &[u16]) -> Result<Option<Program>, InkoxideError> {
-    if font.data.metrics.cff {
-        // CIDs stay the original glyph ids through the CFF charset.
-        let Some(cff) = crate::fonts::cff::subset_program(&font.data.bytes, glyphs) else {
-            return Ok(None);
-        };
-        return Ok(Some(Program {
-            data: deflate(&cff, 6)?.into(),
-            length: cff.len(),
-            cid_to_gid: None,
-            tag: subset_tag(font, glyphs).into(),
-        }));
-    }
-    let remapper = GlyphRemapper::new_from_glyphs_sorted(glyphs);
-    let Ok(sub) = subsetter::subset(&font.data.bytes, 0, &remapper) else {
+    let Some(sub) = font.data.subset(glyphs) else {
         return Ok(None);
     };
-    let max = glyphs.last().copied().unwrap_or(0);
-    let mut map = vec![0u8; 2 * (usize::from(max) + 1)];
-    for &g in glyphs {
-        let new = remapper.get(g).unwrap_or(0);
-        map[2 * usize::from(g)..][..2].copy_from_slice(&new.to_be_bytes());
-    }
+    let cid_to_gid = match &sub.cid_to_gid {
+        Some(map) => Some(deflate(map, flate::LEVEL)?.into()),
+        None => None,
+    };
     Ok(Some(Program {
-        data: deflate(&sub, 6)?.into(),
-        length: sub.len(),
-        cid_to_gid: Some(deflate(&map, 6)?.into()),
+        data: deflate(&sub.program, flate::LEVEL)?.into(),
+        length: sub.program.len(),
+        cid_to_gid,
         tag: subset_tag(font, glyphs).into(),
     }))
 }

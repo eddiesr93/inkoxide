@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Mutex;
 
 pub(crate) struct Lru<K, V> {
     entries: HashMap<K, Slot<V>>,
@@ -77,6 +78,44 @@ impl<K: Eq + Hash + Clone, V: Clone> Lru<K, V> {
     #[cfg(test)]
     pub fn total(&self) -> usize {
         self.total
+    }
+}
+
+/// An [`Lru`] for a `static`: created on first use, behind a lock. A
+/// poisoned lock (a panic while it was held) leaves the cache out: lookups
+/// miss and inserts are dropped.
+pub(crate) struct SharedLru<K, V> {
+    budget: usize,
+    lru: Mutex<Option<Lru<K, V>>>,
+}
+
+impl<K: Eq + Hash + Clone, V: Clone> SharedLru<K, V> {
+    pub const fn new(budget: usize) -> Self {
+        Self {
+            budget,
+            lru: Mutex::new(None),
+        }
+    }
+
+    pub fn get(&self, key: &K) -> Option<V> {
+        self.lru.lock().ok()?.as_mut()?.get(key)
+    }
+
+    /// See [`Lru::insert`].
+    pub fn insert(&self, key: K, value: V, size: usize) {
+        if let Ok(mut guard) = self.lru.lock() {
+            guard
+                .get_or_insert_with(|| Lru::new(self.budget))
+                .insert(key, value, size);
+        }
+    }
+
+    #[cfg(test)]
+    pub fn contains(&self, key: &K) -> bool {
+        self.lru
+            .lock()
+            .ok()
+            .is_some_and(|g| g.as_ref().is_some_and(|l| l.contains(key)))
     }
 }
 

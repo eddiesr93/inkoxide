@@ -7,10 +7,7 @@ mod pdfa;
 mod svg;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write as _;
 
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
 use pdf_writer::types::{
     ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageLayout,
     PageMode,
@@ -621,13 +618,8 @@ fn pdf_date(t: Timestamp) -> String {
     )
 }
 
-pub(crate) fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
-    let mut enc = ZlibEncoder::new(
-        Vec::with_capacity(data.len() / 3 + 64),
-        Compression::new(level),
-    );
-    enc.write_all(data)
-        .and_then(|()| enc.finish())
+fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
+    crate::flate::deflate(data, level)
         .map_err(|e| InkoxideError::Pdf(format!("compression failed: {e}")))
 }
 

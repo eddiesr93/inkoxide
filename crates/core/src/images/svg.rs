@@ -22,6 +22,8 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use usvg::roxmltree::{self, Document, Node, NodeId};
 
+use super::probe::{sniff, ImageFormat};
+use super::ContentKey;
 use crate::paint::Rect;
 
 /// Most elements the converted tree may contain, counting every copy made
@@ -173,8 +175,8 @@ struct Meter {
     elements: AtomicUsize,
     data_bytes: AtomicUsize,
     pixels: AtomicU64,
-    /// Raster images seen, by content hash.
-    rasters: Mutex<HashMap<u64, Vec<Arc<Vec<u8>>>>>,
+    /// Raster images seen.
+    rasters: Mutex<HashSet<ContentKey<Arc<Vec<u8>>>>>,
     /// The first limit exceeded or unsupported content met. A nested SVG
     /// that fails is left out, so this carries the error out to the
     /// outermost SVG.
@@ -194,13 +196,10 @@ impl Meter {
 
     /// Charges a raster image's pixels the first time its content is seen.
     fn charge_raster(&self, data: &Arc<Vec<u8>>, pixels: u64) -> Result<(), Reject> {
-        let hash = xxhash_rust::xxh3::xxh3_64(data);
         let mut rasters = self.rasters.lock().unwrap_or_else(PoisonError::into_inner);
-        let same = rasters.entry(hash).or_default();
-        if same.iter().any(|d| d[..] == data[..]) {
+        if !rasters.insert(ContentKey::new(data.clone())) {
             return Ok(());
         }
-        same.push(data.clone());
         if self
             .pixels
             .fetch_add(pixels, Ordering::Relaxed)
@@ -438,39 +437,15 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<Vie
     Ok((tree, ViewBox::of(doc.root_element())))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Embedded {
-    Jpeg,
-    Png,
-    Gif,
-    WebP,
-    Svg,
-}
-
-/// The raster format `data` starts like.
-fn sniff_raster(data: &[u8]) -> Option<Embedded> {
-    if data.starts_with(b"\x89PNG") {
-        Some(Embedded::Png)
-    } else if data.starts_with(&[0xFF, 0xD8]) {
-        Some(Embedded::Jpeg)
-    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
-        Some(Embedded::Gif)
-    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
-        Some(Embedded::WebP)
-    } else {
-        None
-    }
-}
-
 /// What a decoded `data:` URL holds, as the resolver reads it.
-fn embedded(mime: &str, data: &[u8]) -> Option<Embedded> {
+fn embedded(mime: &str, data: &[u8]) -> Option<ImageFormat> {
     match mime {
-        "image/jpg" | "image/jpeg" => Some(Embedded::Jpeg),
-        "image/png" => Some(Embedded::Png),
-        "image/gif" => Some(Embedded::Gif),
-        "image/webp" => Some(Embedded::WebP),
-        "image/svg+xml" => Some(Embedded::Svg),
-        "text/plain" | "" => sniff_raster(data).or(is_svg(data).then_some(Embedded::Svg)),
+        "image/jpg" | "image/jpeg" => Some(ImageFormat::Jpeg),
+        "image/png" => Some(ImageFormat::Png),
+        "image/gif" => Some(ImageFormat::Gif),
+        "image/webp" => Some(ImageFormat::WebP),
+        "image/svg+xml" => Some(ImageFormat::Svg),
+        "text/plain" | "" => sniff(data),
         _ => None,
     }
 }
@@ -509,11 +484,11 @@ fn resolve(
     at: Nesting<'_>,
 ) -> Result<Option<usvg::ImageKind>, Reject> {
     Ok(match embedded(mime, &data) {
-        Some(Embedded::Jpeg) => raster(&data, at.meter)?.then_some(usvg::ImageKind::JPEG(data)),
-        Some(Embedded::Png) => raster(&data, at.meter)?.then_some(usvg::ImageKind::PNG(data)),
-        Some(Embedded::Gif) => raster(&data, at.meter)?.then_some(usvg::ImageKind::GIF(data)),
-        Some(Embedded::WebP) => raster(&data, at.meter)?.then_some(usvg::ImageKind::WEBP(data)),
-        Some(Embedded::Svg) => {
+        Some(ImageFormat::Jpeg) => raster(&data, at.meter)?.then_some(usvg::ImageKind::JPEG(data)),
+        Some(ImageFormat::Png) => raster(&data, at.meter)?.then_some(usvg::ImageKind::PNG(data)),
+        Some(ImageFormat::Gif) => raster(&data, at.meter)?.then_some(usvg::ImageKind::GIF(data)),
+        Some(ImageFormat::WebP) => raster(&data, at.meter)?.then_some(usvg::ImageKind::WEBP(data)),
+        Some(ImageFormat::Svg) => {
             if at.level > MAX_NESTING {
                 return Err(too_deep());
             }
@@ -528,7 +503,7 @@ fn resolve(
 /// pixel limit fails the SVG, as it would on its own.
 fn raster(data: &Arc<Vec<u8>>, meter: &Meter) -> Result<bool, Reject> {
     // `probe` would parse an SVG.
-    if sniff_raster(data).is_none() {
+    if matches!(sniff(data), None | Some(ImageFormat::Svg)) {
         return Ok(false);
     }
     let info = match super::probe(data) {
@@ -633,7 +608,12 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         style_work: sheet_work,
         ..Cost::default()
     })?;
-    walk.visit(root, &mut Vec::new(), 0, depth, false)?;
+    let at = At {
+        inherited: 0,
+        depth,
+        shared: false,
+    };
+    walk.visit(root, &mut Vec::new(), at)?;
     Ok(Checked {
         cost: walk.cost,
         own: walk.own,
@@ -707,7 +687,7 @@ fn nested_cost(url: &str, level: usize, depth: usize) -> Result<Cost, Reject> {
     };
     let mime = url.mime_type();
     let mime = format!("{}/{}", mime.type_, mime.subtype);
-    if embedded(&mime, &data) != Some(Embedded::Svg) {
+    if embedded(&mime, &data) != Some(ImageFormat::Svg) {
         return Ok(Cost::default());
     }
     if level > MAX_NESTING {
@@ -839,11 +819,6 @@ fn too_large() -> Reject {
 const SHAPES: &[&str] = &[
     "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "image",
 ];
-/// Shapes `usvg` draws markers on, and the most vertices of the basic
-/// ones (path data is counted).
-const MARKED: &[&str] = &[
-    "path", "line", "polyline", "polygon", "rect", "circle", "ellipse",
-];
 const PAINT_SERVERS: &[&str] = &["linearGradient", "radialGradient", "pattern"];
 /// Attributes that are not inherited; every other one is stored again on
 /// each shape beneath it (an overestimate for the rest).
@@ -950,8 +925,8 @@ struct Info<'d> {
     inherited_bytes: usize,
     /// Work to parse its `style` (see [`MAX_STYLE_WORK`]).
     style_work: usize,
-    /// Most vertices it draws markers at.
-    vertices: usize,
+    /// Most vertices it draws markers at; `None`: it draws no markers.
+    vertices: Option<usize>,
 }
 
 impl<'d> Info<'d> {
@@ -1025,12 +1000,48 @@ impl<'d> Info<'d> {
         info.drawn.paint.extend(styled);
         info.drawn.resolve(doc, ids);
         info.refs.retain(|r| ids.contains_key(r));
-        info.vertices = match tag {
-            "path" | "line" | "polyline" | "polygon" => vertices + 2,
-            "rect" | "circle" | "ellipse" => SHAPE_VERTICES,
-            _ => 0,
-        };
+        info.vertices = marker_vertices(tag, vertices);
         Ok(info)
+    }
+}
+
+/// The most vertices element `tag` draws markers at, given the numbers in
+/// its path data or points (`counted`, arcs and closes included); `None`
+/// for elements `usvg` draws no markers on.
+fn marker_vertices(tag: &str, counted: usize) -> Option<usize> {
+    match tag {
+        "path" | "line" | "polyline" | "polygon" => Some(counted + 2),
+        "rect" | "circle" | "ellipse" => Some(SHAPE_VERTICES),
+        _ => None,
+    }
+}
+
+/// Where a [`Walk`] is, besides the chain of references the ancestors pass
+/// on to shapes.
+#[derive(Clone, Copy)]
+struct At {
+    /// Length of the attributes the ancestors pass on to shapes.
+    inherited: usize,
+    depth: usize,
+    /// Inside a paint server drawn before.
+    shared: bool,
+}
+
+impl At {
+    /// The target of a reference followed from here: it inherits nothing
+    /// (it starts a fresh chain).
+    fn fresh(self) -> Self {
+        Self {
+            inherited: 0,
+            ..self
+        }
+    }
+
+    fn deeper(self) -> Self {
+        Self {
+            depth: self.depth + 1,
+            ..self
+        }
     }
 }
 
@@ -1063,17 +1074,18 @@ struct Walk<'d, 'i, 'w> {
 
 impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
     /// Counts `n` and everything it pulls in. `chain` holds what its
-    /// ancestors pass on to shapes and `inherited` the length of their
-    /// inherited attributes; `shared` is set inside a paint server drawn
-    /// before.
+    /// ancestors pass on to shapes.
     fn visit(
         &mut self,
         n: Node<'d, 'i>,
         chain: &mut Vec<&'w Drawn<'d>>,
-        inherited: usize,
-        depth: usize,
-        shared: bool,
+        at: At,
     ) -> Result<(), Reject> {
+        let At {
+            inherited,
+            depth,
+            shared,
+        } = at;
         if depth > MAX_DEPTH {
             return Err(Reject::Limit(format!(
                 "SVG nests deeper than {MAX_DEPTH} levels"
@@ -1124,15 +1136,18 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
             self.cost.add(cost)?;
         }
         for r in &info.refs {
-            self.follow(r, false, &mut Vec::new(), 0, depth, shared)?;
+            self.follow(r, false, &mut Vec::new(), at.fresh())?;
         }
         let pushed = !info.drawn.is_empty();
         if pushed {
             chain.push(&info.drawn);
         }
-        let inherited = inherited.saturating_add(info.inherited_bytes);
+        let at = At {
+            inherited: inherited.saturating_add(info.inherited_bytes),
+            ..at
+        };
         if let Some(r) = info.link {
-            self.follow(r, true, chain, inherited, depth, shared)?;
+            self.follow(r, true, chain, at)?;
         }
         if shape {
             for i in 0..=chain.len() {
@@ -1142,23 +1157,27 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
                         let painted = self.doc.get_node(t).is_some_and(|p| {
                             PAINT_SERVERS.contains(&p.tag_name().name()) && !self.painted.insert(t)
                         });
-                        self.visit_target(t, &mut Vec::new(), 0, depth, shared || painted)?;
+                        let at = At {
+                            shared: shared || painted,
+                            ..at.fresh()
+                        };
+                        self.visit_target(t, &mut Vec::new(), at)?;
                     }
                 }
-                if MARKED.contains(&tag) {
+                if let Some(vertices) = info.vertices {
                     for r in &drawn.ends {
-                        self.follow(r, false, &mut Vec::new(), 0, depth, shared)?;
+                        self.follow(r, false, &mut Vec::new(), at.fresh())?;
                     }
                     for r in &drawn.mids {
-                        for _ in 0..info.vertices {
-                            self.follow(r, false, &mut Vec::new(), 0, depth, shared)?;
+                        for _ in 0..vertices {
+                            self.follow(r, false, &mut Vec::new(), at.fresh())?;
                         }
                     }
                 }
             }
         }
         for c in n.children().filter(Node::is_element) {
-            self.visit(c, chain, inherited, depth + 1, shared)?;
+            self.visit(c, chain, at.deeper())?;
         }
         if pushed {
             chain.pop();
@@ -1182,12 +1201,10 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         r: &str,
         first: bool,
         chain: &mut Vec<&'w Drawn<'d>>,
-        inherited: usize,
-        depth: usize,
-        shared: bool,
+        at: At,
     ) -> Result<(), Reject> {
         for t in self.targets(r, first) {
-            self.visit_target(t, chain, inherited, depth, shared)?;
+            self.visit_target(t, chain, at)?;
         }
         Ok(())
     }
@@ -1196,12 +1213,10 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         &mut self,
         t: NodeId,
         chain: &mut Vec<&'w Drawn<'d>>,
-        inherited: usize,
-        depth: usize,
-        shared: bool,
+        at: At,
     ) -> Result<(), Reject> {
         match self.doc.get_node(t) {
-            Some(t) => self.visit(t, chain, inherited, depth + 1, shared),
+            Some(t) => self.visit(t, chain, at.deeper()),
             None => Ok(()),
         }
     }

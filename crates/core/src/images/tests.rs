@@ -49,6 +49,24 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
 }
 
 #[test]
+fn converts_cmyk_jpegs_to_rgb_samples_on_request() {
+    let d = ImageCrateDecoder
+        .decode(&fixture("photo-cmyk.jpg"))
+        .unwrap();
+    assert!(matches!(
+        d.body,
+        ImageBody::Jpeg {
+            color: JpegColor::Cmyk { .. },
+            ..
+        }
+    ));
+    let rgb = d.cmyk_to_rgb().unwrap();
+    assert_eq!(rgb.len(), d.width as usize * d.height as usize * 3);
+    let png = ImageCrateDecoder.decode(&fixture("palette.png")).unwrap();
+    assert!(png.cmyk_to_rgb().is_err());
+}
+
+#[test]
 fn fit_modes() {
     let b = Rect::new(0.0, 0.0, 100.0, 50.0);
     let fit = |f| fit_rect(f, ObjectPosition::default(), b, (10.0, 10.0));
@@ -547,7 +565,7 @@ fn separate_stores_share_one_decode() {
     let a = ImageData::new(bytes.clone());
     let b = ImageData::new(bytes.to_vec().into());
     let da = a.decoded(&ImageCrateDecoder).unwrap();
-    assert!(cache::contains(a.hash));
+    assert!(cache::contains(&a.bytes, a.hash));
     let db = b.decoded(&ImageCrateDecoder).unwrap();
     assert!(Arc::ptr_eq(&da, &db));
 }

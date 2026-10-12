@@ -30,14 +30,14 @@ use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
 use super::{finite, RefAlloc};
-use crate::InkoxideError;
+use crate::images::ContentKey;
+use crate::{flate, InkoxideError};
 
 /// Most path segments one SVG may emit, copies included.
 const MAX_SEGMENTS: usize = 5_000_000;
 /// Deepest group nesting followed (usvg trees from checked input stay far
 /// below this).
 const MAX_DEPTH: u32 = 256;
-const FLATE_LEVEL: u32 = 6;
 /// Most periods of a repeated or reflected gradient written; past them it
 /// pads. Each is an entry in a stitching function.
 const MAX_PERIODS: f32 = 1000.0;
@@ -287,9 +287,9 @@ struct Svg<'a> {
     alloc: &'a mut RefAlloc,
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
-    /// Embedded raster images by content hash: the bytes (to rule out
-    /// collisions) and the image `XObject`, `None` if it did not decode.
-    images: HashMap<u64, (Arc<Vec<u8>>, Option<Ref>)>,
+    /// Embedded raster images by content: the image `XObject`, `None` if
+    /// it did not decode.
+    images: HashMap<ContentKey<Arc<Vec<u8>>>, Option<Ref>>,
     segments: usize,
     /// Passed on to embedded raster images.
     pdf_a: bool,
@@ -312,7 +312,7 @@ impl Svg<'_> {
     ) -> Res {
         let data = super::deflate(
             &std::mem::replace(&mut cv.c, Content::new()).finish(),
-            FLATE_LEVEL,
+            flate::LEVEL,
         )?;
         let mut f = self.pdf.form_xobject(id, &data);
         f.filter(Filter::FlateDecode);
@@ -832,7 +832,7 @@ impl Svg<'_> {
         self.group(&mut cv, pt.root(), Transform::identity(), depth + 1, false)?;
         let data = super::deflate(
             &std::mem::replace(&mut cv.c, Content::new()).finish(),
-            FLATE_LEVEL,
+            flate::LEVEL,
         )?;
         let id = self.next();
         let mut t = self.pdf.tiling_pattern(id, &data);
@@ -851,11 +851,9 @@ impl Svg<'_> {
 
     /// Writes an embedded raster image the first time its content is seen.
     fn raster(&mut self, data: &Arc<Vec<u8>>) -> Result<Option<Ref>, InkoxideError> {
-        let hash = xxhash_rust::xxh3::xxh3_64(data);
-        if let Some((bytes, r)) = self.images.get(&hash) {
-            if bytes[..] == data[..] {
-                return Ok(*r);
-            }
+        let key = ContentKey::new(data.clone());
+        if let Some(&r) = self.images.get(&key) {
+            return Ok(r);
         }
         let r = match crate::images::decode_embedded(data) {
             Ok(decoded) => Some(super::image::write_image(
@@ -863,7 +861,7 @@ impl Svg<'_> {
             )?),
             Err(_) => None,
         };
-        self.images.entry(hash).or_insert_with(|| (data.clone(), r));
+        self.images.insert(key, r);
         Ok(r)
     }
 

@@ -47,8 +47,11 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
 - **Changing fonts is safe mid-render.** Each render takes a snapshot of
   the registry when it starts, so `registerFont` or `unregisterFont`
   never affects a render already in progress.
-- **Unsupported fonts.** Variable fonts and CFF2 fonts are rejected with
-  `FONT_ERROR`. Register static instances instead.
+- **Unsupported fonts.** These are rejected with `FONT_ERROR`: variable
+  fonts and CFF2 fonts (register static instances instead), font
+  collections (`.ttc`; register each font as its own file), fonts with
+  neither TrueType nor embeddable CFF outlines, and fonts without a
+  Unicode `cmap`.
 
 ## Images: per render, through `options.images`
 

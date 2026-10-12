@@ -13,6 +13,7 @@
 
 mod date;
 mod error;
+mod flate;
 mod fonts;
 mod forms;
 mod images;
