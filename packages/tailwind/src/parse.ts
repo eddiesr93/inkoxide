@@ -451,14 +451,10 @@ function applyDecl(s: FlatStyle, prop: string, value: string): void {
     );
   if (m) {
     const [, family, side = '', part] = m;
+    // Per side: `border-style` itself is read in the switch above.
     if (family === 'border' && part === 'style') {
       const style = r.oneOf('borderStyle', v);
-      if (side === '') {
-        for (const sd of SIDES) delete keyed[`border${sd}Style`];
-        s.borderStyle = style;
-      } else {
-        for (const sd of sidesOf(side)) keyed[`border${sd}Style`] = style;
-      }
+      for (const sd of sidesOf(side)) keyed[`border${sd}Style`] = style;
       return;
     }
     if (family === 'border' && part === undefined) {

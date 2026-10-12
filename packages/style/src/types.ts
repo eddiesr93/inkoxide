@@ -1,14 +1,18 @@
 import type {
+  BorderStyles,
+  Color as SchemaColor,
   GridPlacement,
+  ImageNode,
   ObjectPosition,
   Style,
   TemplateTrack,
+  TextRun,
   TrackSize,
   TransformOp,
 } from '@inkoxide/schema';
 
 /** RGBA floats in [0, 1], the engine's colour format. */
-export type Color = [number, number, number, number];
+export type Color = SchemaColor;
 /** A colour, or CSS `currentColor` (resolved against the inherited text colour by the tree builder). */
 export type ColorValue = Color | 'currentColor';
 /** Points, a percentage string (`"50%"`) or `"auto"`. */
@@ -25,15 +29,16 @@ export type LineHeight = { mult: number } | { pt: number };
 export type LetterSpacing = { pt: number } | { em: number };
 
 export type TextAlign = NonNullable<Style['textAlign']>;
-export type TextDecoration = 'none' | 'underline' | 'lineThrough';
+export type TextDecoration = NonNullable<TextRun['decoration']>;
+/** Not in the schema: the tree builder transforms the text itself. */
 export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export type WhiteSpace = NonNullable<Style['whiteSpace']>;
-export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
-export type BorderStyle = (typeof BORDER_STYLES)[number];
-export type DecorationStyle = 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
-export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const;
-export type ObjectFit = (typeof OBJECT_FITS)[number];
-export type Direction = 'ltr' | 'rtl' | 'auto';
+export type BorderStyle = Extract<BorderStyles, string>;
+export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const satisfies readonly BorderStyle[];
+export type DecorationStyle = NonNullable<TextRun['decorationStyle']>;
+export type ObjectFit = NonNullable<ImageNode['fit']>;
+export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const satisfies readonly ObjectFit[];
+export type Direction = NonNullable<Style['direction']>;
 export type { ObjectPosition, TransformOp };
 
 /**
