@@ -16,14 +16,22 @@
 #   scripts/fuzz.sh                       # every target, 60 s
 #   scripts/fuzz.sh 3600                  # a one-hour run
 #   scripts/fuzz.sh 600 render_svg_tree   # one target
+#   scripts/fuzz.sh --list                # the targets, one per line
 set -euo pipefail
 cd "$(dirname "$0")/../fuzz"
+
+# Every target; the nightly workflow's matrix is read from --list.
+all=(render_tree render_json render_svg render_svg_tree register_font)
+if [[ "${1:-}" == "--list" ]]; then
+  printf '%s\n' "${all[@]}"
+  exit 0
+fi
 
 secs="${1:-60}"
 shift || true
 targets=("$@")
 if [[ ${#targets[@]} -eq 0 ]]; then
-  targets=(render_tree render_json render_svg render_svg_tree register_font)
+  targets=("${all[@]}")
 fi
 limits=(-timeout=10 -rss_limit_mb=2048)
 fuzz=(cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz)

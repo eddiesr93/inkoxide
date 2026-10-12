@@ -50,12 +50,12 @@ jobs:
       - name: Clippy
         # The fuzz crate is its own workspace; this also checks that it builds against the engine.
         run: |
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
       - name: Test
         run: |
-          cargo test --workspace
-          cargo test --manifest-path fuzz/Cargo.toml --lib
+          cargo test --workspace --locked
+          cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 
   schema:
     name: Schema
@@ -72,12 +72,6 @@ jobs:
         run: python -m pip install --quiet jsonschema
       - name: Fixtures and examples conform to the schema
         run: python scripts/check-schema.py
-      - name: Generated files are up to date
-        run: |
-          python scripts/gen-schema-doc.py --check
-          python scripts/gen-fuzz-dict.py --check
-          python scripts/fixtures/report_realistic.py >/dev/null
-          git diff --exit-code -- fixtures/docs/report-100p-realistic.json
 
   node:
     name: Node packages
@@ -115,7 +109,4 @@ jobs:
         env:
           NODE_ENV: test
       - name: Generated files are up to date
-        run: |
-          node scripts/gen-schema-types.mjs
-          pnpm exec tsx scripts/gen-tailwind-docs.ts
-          git diff --exit-code -- packages/schema/index.d.ts docs/TAILWIND_SUPPORT.md
+        run: scripts/check-generated.sh
