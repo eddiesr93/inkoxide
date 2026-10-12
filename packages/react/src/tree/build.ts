@@ -17,7 +17,7 @@ import type {
   TextNode,
   TextRun,
 } from '@inkoxide/schema';
-import { round, type TwStyle } from '@inkoxide/style';
+import { round, type FlatStyle } from '@inkoxide/style';
 import { createElement } from 'react';
 
 import { Painter } from '../canvas.ts';
@@ -183,7 +183,7 @@ class Builder {
   /** How many table cells the element being built is in. */
   private inCell = 0;
   /** The style of each element's `className`, to tell which keys came from it. */
-  private readonly classStyles = new WeakMap<Instance, TwStyle>();
+  private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
@@ -210,11 +210,11 @@ class Builder {
   }
 
   /** The element's own style: its classes, then its `style` prop. `parent` is the inherited context. */
-  private styleOf(inst: Instance, parent: TextCtx): TwStyle {
+  private styleOf(inst: Instance, parent: TextCtx): FlatStyle {
     const className = inst.props.className as string | undefined;
-    let s: TwStyle = {};
+    let s: FlatStyle = {};
     if (className?.trim()) {
-      let classes: TwStyle | string;
+      let classes: FlatStyle | string;
       try {
         classes = classStyle(className);
       } catch (e) {
@@ -282,14 +282,14 @@ class Builder {
    * Where the value of `key` in an element's own style `s` came from: its `className` (with the
    * error fields that go with a class), or its `style` prop.
    */
-  private source(inst: Instance, s: TwStyle, key: string): { fromClass: boolean; init: TemplateErrorInit } {
-    const v = this.classStyles.get(inst)?.[key as keyof TwStyle];
-    if (v === undefined || v !== s[key as keyof TwStyle])
+  private source(inst: Instance, s: FlatStyle, key: string): { fromClass: boolean; init: TemplateErrorInit } {
+    const v = this.classStyles.get(inst)?.[key as keyof FlatStyle];
+    if (v === undefined || v !== s[key as keyof FlatStyle])
       return { fromClass: false, init: { kind: 'props' } };
     return { fromClass: true, init: { kind: 'tailwind', className: inst.props.className as string } };
   }
 
-  private onlyKeys(inst: Instance, s: TwStyle, allowed: ReadonlySet<string>, hint: string): void {
+  private onlyKeys(inst: Instance, s: FlatStyle, allowed: ReadonlySet<string>, hint: string): void {
     for (const k of boxKeys(s)) {
       if (!allowed.has(k)) {
         const { fromClass, init } = this.source(inst, s, k);
@@ -299,7 +299,7 @@ class Builder {
     }
   }
 
-  private noTextOnly(inst: Instance, s: TwStyle): void {
+  private noTextOnly(inst: Instance, s: FlatStyle): void {
     const [k, ...more] = textOnlyKeys(s);
     if (k === undefined) return;
     const { fromClass, init } = this.source(inst, s, k);
@@ -519,7 +519,7 @@ class Builder {
   }
 
   /** What `em`, `vw` and `vh` in an element's length props are relative to. */
-  private units(own: TwStyle, parent: TextCtx): Units {
+  private units(own: FlatStyle, parent: TextCtx): Units {
     return { em: own.fontSize ?? parent.fontSize, page: this.pageBox };
   }
 
@@ -686,7 +686,7 @@ class Builder {
     inst: Instance,
     parent: TextCtx,
     content: Node[] = inst.children,
-    defaults: TwStyle = {},
+    defaults: FlatStyle = {},
   ): SchemaNode {
     const own = { ...defaults, ...this.styleOf(inst, parent) };
     this.noTextOnly(inst, own);
@@ -1088,8 +1088,8 @@ export function buildTree(container: Container, opts: BuildOptions): BuildResult
  * right padding = the page margin) and are centred vertically in their band
  * (the top margin for the header, the bottom one for the footer).
  */
-function bandDefaults(margin: PageSpec['margin'], key: 'header' | 'footer', own: TwStyle): TwStyle {
-  const out: TwStyle = {};
+function bandDefaults(margin: PageSpec['margin'], key: 'header' | 'footer', own: FlatStyle): FlatStyle {
+  const out: FlatStyle = {};
   if (margin?.left) out.paddingLeft = margin.left;
   if (margin?.right) out.paddingRight = margin.right;
   const band = key === 'header' ? margin?.top : margin?.bottom;
@@ -1097,7 +1097,7 @@ function bandDefaults(margin: PageSpec['margin'], key: 'header' | 'footer', own:
   const row = own.flexDirection === 'row' || own.flexDirection === 'row-reverse';
   const vertical = row ? 'alignItems' : 'justifyContent';
   const placed = ['paddingTop', 'paddingBottom', 'height', 'minHeight', vertical].some(
-    (k) => own[k as keyof TwStyle] !== undefined,
+    (k) => own[k as keyof FlatStyle] !== undefined,
   );
   if (band && !placed) {
     out.minHeight = band;

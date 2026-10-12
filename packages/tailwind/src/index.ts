@@ -1,12 +1,12 @@
-import type { TwStyle } from '@inkoxide/style';
+import type { FlatStyle } from '@inkoxide/style';
 
 import { Lru } from './cache.ts';
-import { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
+import { DEFAULT_THEME_CSS, TailwindCompiler as Compiler } from './compile.ts';
 import { mapClasses, splitClasses, type UnsupportedUtilityError } from './parse.ts';
+import * as supported from './supported.ts';
 
-export { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
+export { DEFAULT_THEME_CSS } from './compile.ts';
 export { UnsupportedUtilityError } from './parse.ts';
-export { SUPPORTED, type SupportedFamily, UNSUPPORTED } from './supported.ts';
 // The style values it shares with @inkoxide/react, from @inkoxide/style.
 export {
   BORDER_STYLES,
@@ -15,6 +15,8 @@ export {
   type ColorValue,
   type DecorationStyle,
   type Direction,
+  type FlatStyle,
+  type FlatStyleKey,
   type LenPercent,
   type Len,
   type LetterSpacing,
@@ -44,10 +46,29 @@ export {
   type WhiteSpace,
 } from '@inkoxide/style';
 
+// Exported before, but not documented: they will be removed from this entry.
+
+/**
+ * @deprecated Wraps Tailwind's unstable design-system API, and `tw()` cannot use one you load:
+ * set a theme with `initTailwind({ css })`.
+ */
+export const TailwindCompiler = Compiler;
+/** @deprecated Wraps Tailwind's unstable design-system API: set a theme with `initTailwind({ css })`. */
+export type TailwindCompiler = Compiler;
+/** @deprecated The data of docs/TAILWIND_SUPPORT.md. */
+export const SUPPORTED = supported.SUPPORTED;
+/** @deprecated The data of docs/TAILWIND_SUPPORT.md. */
+export const UNSUPPORTED = supported.UNSUPPORTED;
+/** @deprecated The data of docs/TAILWIND_SUPPORT.md. */
+export type SupportedFamily = supported.SupportedFamily;
+
 export interface TailwindOptions {
-  /** Theme CSS (`@import "tailwindcss/theme"; @theme { … }`). Defaults to the bundled theme. */
+  /**
+   * Theme CSS (`@import "tailwindcss/theme"; @theme { … }`). Defaults to `DEFAULT_THEME_CSS`, the
+   * bundled theme; extend that one to keep its font stacks, which name the bundled fonts.
+   */
   css?: string;
-  /** Directory that `@import`s in `css` resolve from. */
+  /** Directory that `@import`s in `css` resolve from (default: the tailwindcss package). */
   base?: string;
   /**
    * Throw on unsupported classes (default outside production). When false, the class is
@@ -58,13 +79,13 @@ export interface TailwindOptions {
   cacheSize?: number;
 }
 
-let compiler: TailwindCompiler | undefined;
+let compiler: Compiler | undefined;
 /** The theme load asked for last, until it settles: a later theme replaces an earlier one. */
-let loading: Promise<TailwindCompiler> | undefined;
+let loading: Promise<Compiler> | undefined;
 let strict = process.env.NODE_ENV !== 'production';
-let cache = new Lru<TwStyle>(5000);
+let cache = new Lru<FlatStyle>(5000);
 const warned = new Set<string>();
-const EMPTY: TwStyle = Object.freeze({}) as TwStyle;
+const EMPTY: FlatStyle = Object.freeze({}) as FlatStyle;
 
 /**
  * Loads Tailwind's design system once per process. Safe to call repeatedly. A call without `css`
@@ -72,11 +93,11 @@ const EMPTY: TwStyle = Object.freeze({}) as TwStyle;
  */
 export async function initTailwind(opts: TailwindOptions = {}): Promise<void> {
   if (opts.strict !== undefined) setTailwindStrict(opts.strict);
-  if (opts.cacheSize !== undefined) cache = new Lru<TwStyle>(opts.cacheSize);
+  if (opts.cacheSize !== undefined) cache = new Lru<FlatStyle>(opts.cacheSize);
   if (opts.css !== undefined || opts.base !== undefined) {
-    loading = TailwindCompiler.load(opts.css ?? DEFAULT_THEME_CSS, opts.base);
+    loading = Compiler.load(opts.css ?? DEFAULT_THEME_CSS, opts.base);
   } else if (!compiler) {
-    loading ??= TailwindCompiler.load();
+    loading ??= Compiler.load();
   }
   // Wait for the theme asked for last, including one asked for while this call waits.
   while (loading) {
@@ -111,7 +132,7 @@ function report(e: UnsupportedUtilityError): void {
  * Results are cached by the normalised string, so the hot path is one map lookup. Do not
  * mutate the returned object.
  */
-export function tw(className: string | undefined | null | false): TwStyle {
+export function tw(className: string | undefined | null | false): FlatStyle {
   if (!className) return EMPTY;
   const hit = cache.get(className);
   if (hit) return hit;

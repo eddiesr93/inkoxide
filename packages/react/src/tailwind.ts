@@ -1,6 +1,7 @@
 // `@inkoxide/tailwind` is optional: templates that style with `style` alone do not need it, and
 // it is loaded only when it is installed.
-import type { TwStyle } from '@inkoxide/style';
+import type { FlatStyle } from '@inkoxide/style';
+import { DEFAULT_SANS } from '@inkoxide/style/internal';
 
 /**
  * What is used of `@inkoxide/tailwind`. Declared here, not imported, so that the published types
@@ -9,15 +10,12 @@ import type { TwStyle } from '@inkoxide/style';
 interface Tailwind {
   initTailwind(): Promise<void>;
   isTailwindReady(): boolean;
-  tw(className: string): TwStyle;
+  tw(className: string): FlatStyle;
   UnsupportedUtilityError: abstract new (...args: never[]) => Error & { className: string };
 }
 
 /** The loaded module, `null` when it is not installed, `undefined` before `loadTailwind`. */
 let tailwind: Tailwind | null | undefined;
-
-/** The font families of a document that sets none, Tailwind's default `font-sans`. */
-const SANS = ['Inter', 'Noto Sans'];
 
 /**
  * Loads and starts `@inkoxide/tailwind` when it is installed, so that `className` works, and
@@ -57,7 +55,7 @@ function isMissing(e: unknown): boolean {
  * The style of `className`, or why there is none: the reason, to end "needs Tailwind: …". The
  * Tailwind error for an unsupported class is thrown, to report with the element.
  */
-export function classStyle(className: string): TwStyle | string {
+export function classStyle(className: string): FlatStyle | string {
   if (tailwind === null) return 'install it with `npm install @inkoxide/tailwind`';
   if (!tailwind?.isTailwindReady()) {
     return 'call `await loadTailwind()` before `renderTemplate`, or use `renderToTree`';
@@ -71,6 +69,6 @@ export function isUnsupportedClass(e: unknown): e is Error & { className: string
 }
 
 /** The font families of a document that sets none: the Tailwind theme's `font-sans`, if loaded. */
-export function defaultFamily(): string[] {
-  return (tailwind?.isTailwindReady() && tailwind.tw('font-sans').fontFamily) || SANS;
+export function defaultFamily(): readonly string[] {
+  return (tailwind?.isTailwindReady() && tailwind.tw('font-sans').fontFamily) || DEFAULT_SANS;
 }

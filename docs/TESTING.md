@@ -53,8 +53,10 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   check that each decodes to the same metrics and outlines as the `.ttf`.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool.
-- `packages/*/test` (Vitest, `pnpm test`): Tailwind class mapping, the
-  React tree builder, `renderToBuffer`, `Font.register` and error messages.
+- `packages/*/test` (Vitest, `pnpm test`): the style value readers,
+  Tailwind class mapping and `initTailwind` options, the React tree
+  builder, `renderToBuffer`, `Font.register`, error messages, and the
+  export lists of `@inkoxide/style` and `@inkoxide/render`.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict` and the report

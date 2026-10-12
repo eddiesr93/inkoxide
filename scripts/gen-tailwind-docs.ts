@@ -1,9 +1,10 @@
 /**
  * Generates docs/TAILWIND_SUPPORT.md from packages/tailwind/src/supported.ts.
- *   npx tsx scripts/gen-tailwind-docs.ts           # write
- *   npx tsx scripts/gen-tailwind-docs.ts --check   # fail when the committed file is stale (ci.sh)
+ * scripts/check-generated.sh runs it and fails when the committed file changes.
+ *
+ *   pnpm exec tsx scripts/gen-tailwind-docs.ts
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,16 +44,5 @@ md += `## Not supported\n\n| Example | Why |\n|---|---|\n`;
 for (const u of UNSUPPORTED) md += `| \`${esc(u.example)}\` | ${esc(u.why)} |\n`;
 md += `\nMissing something? [Open an issue](https://github.com/eddiesr93/inkoxide/issues) with the class and the\noutput you expect.\n`;
 
-if (process.argv.includes('--check')) {
-  let current = '';
-  try {
-    current = readFileSync(OUT, 'utf8');
-  } catch {}
-  if (current !== md) {
-    console.error('docs/TAILWIND_SUPPORT.md is stale: run npx tsx scripts/gen-tailwind-docs.ts');
-    process.exit(1);
-  }
-} else {
-  writeFileSync(OUT, md);
-  console.log(`wrote ${OUT}`);
-}
+writeFileSync(OUT, md);
+console.log(`wrote ${OUT}`);

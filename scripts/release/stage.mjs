@@ -38,31 +38,43 @@ const PACKAGES = [
     sideEffects: false,
     readme: {
       blurb:
-        'Reads CSS values into Inkoxide styles: lengths and units, colours, `flex`, transforms, ' +
-        'transform origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
+        'Reads CSS values into Inkoxide styles: units, colours, `flex`, transforms, transform ' +
+        'origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
         '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
       install: 'npm install @inkoxide/style',
       example: `import { parseColor, parseTransform, PT_PER_UNIT } from '@inkoxide/style';
 
 parseColor('#f80'); // [1, 0.533333, 0, 1]
 parseTransform('transform', 'rotate(10deg) translate(4px, 50%)'); // [{ rotate: 10 }, { translate: [3, '50%'] }]
-PT_PER_UNIT.mm; // 2.834646`,
+PT_PER_UNIT.mm; // 2.834645669291339 (72 / 25.4)`,
     },
   },
   {
+    // Not side-effect free: importing @tailwindcss/node registers module resolution hooks.
     name: 'tailwind',
-    sideEffects: false,
     readme: {
       blurb:
         'Turns Tailwind class strings into Inkoxide style objects, using the real Tailwind v4 compiler. ' +
         'Unsupported classes throw outside production and are ignored with a warning in production. ' +
         'Install it next to `@inkoxide/render` to style with `className`; without it, `style` works alone.',
       install: 'npm install @inkoxide/tailwind',
-      example: `import { initTailwind, tw } from '@inkoxide/tailwind';
+      example: `import { DEFAULT_THEME_CSS, initTailwind, setTailwindStrict, tw } from '@inkoxide/tailwind';
 
 await initTailwind(); // once per process
 const style = tw('p-4 text-lg font-bold text-slate-700');
-console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, color: […] }`,
+console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, color: […] }
+
+// Options, all optional: \`css\`, a theme (extend the bundled one: its font stacks name the
+// bundled fonts); \`base\`, the directory its @imports resolve from; \`strict\` (default: outside
+// production); and \`cacheSize\`, how many class strings are cached (default 5000).
+await initTailwind({
+  css: DEFAULT_THEME_CSS + '@theme { --color-accent: #1e4a99; }',
+  strict: true,
+  cacheSize: 10000,
+});
+setTailwindStrict(false); // log unsupported classes once instead of throwing
+tw.warm(['p-4 text-lg', 'flex gap-2']); // map known class strings ahead, e.g. at server start
+tw.cacheSize(); // 2: the class strings cached`,
     },
   },
   {

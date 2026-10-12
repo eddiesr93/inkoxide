@@ -1,14 +1,18 @@
 import type {
+  BorderStyles,
+  Color as SchemaColor,
   GridPlacement,
+  ImageNode,
   ObjectPosition,
   Style,
   TemplateTrack,
+  TextRun,
   TrackSize,
   TransformOp,
 } from '@inkoxide/schema';
 
 /** RGBA floats in [0, 1], the engine's colour format. */
-export type Color = [number, number, number, number];
+export type Color = SchemaColor;
 /** A colour, or CSS `currentColor` (resolved against the inherited text colour by the tree builder). */
 export type ColorValue = Color | 'currentColor';
 /** Points, a percentage string (`"50%"`) or `"auto"`. */
@@ -25,25 +29,28 @@ export type LineHeight = { mult: number } | { pt: number };
 export type LetterSpacing = { pt: number } | { em: number };
 
 export type TextAlign = NonNullable<Style['textAlign']>;
-export type TextDecoration = 'none' | 'underline' | 'lineThrough';
+export type TextDecoration = NonNullable<TextRun['decoration']>;
+/** Not in the schema: the tree builder transforms the text itself. */
 export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export type WhiteSpace = NonNullable<Style['whiteSpace']>;
-export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
-export type BorderStyle = (typeof BORDER_STYLES)[number];
-export type DecorationStyle = 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
-export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const;
-export type ObjectFit = (typeof OBJECT_FITS)[number];
-export type Direction = 'ltr' | 'rtl' | 'auto';
+export type BorderStyle = Extract<BorderStyles, string>;
+export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const satisfies readonly BorderStyle[];
+export type DecorationStyle = NonNullable<TextRun['decorationStyle']>;
+export type ObjectFit = NonNullable<ImageNode['fit']>;
+export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const satisfies readonly ObjectFit[];
+export type Direction = NonNullable<Style['direction']>;
 export type { ObjectPosition, TransformOp };
 
 /**
- * The style of one class string, flattened. Edges are separate keys so that `px-4 pt-2` merge
- * without allocating objects; the tree builder folds them into the schema's `{ top, right, … }`.
+ * The style of one element, flattened: what `tw()` reads from a class string and the React tree
+ * builder from a `style` prop, before it becomes the schema's style. Edges are separate keys so
+ * that `px-4 pt-2` merge without allocating objects; the tree builder folds them into the
+ * schema's `{ top, right, … }`.
  *
  * Text properties (the `TEXT_INHERITED` keys) cascade from `Page` to `View` to `Text` to nested
  * `Text`. Everything else applies to the element that carries the class only.
  */
-export interface TwStyle {
+export interface FlatStyle {
   display?: Style['display'];
   flexDirection?: Style['flexDirection'];
   flexWrap?: Style['flexWrap'];
@@ -154,7 +161,12 @@ export interface TwStyle {
   ellipsis?: boolean;
 }
 
-export type TwKey = keyof TwStyle;
+export type FlatStyleKey = keyof FlatStyle;
+
+/** @deprecated Renamed `FlatStyle`: `style` props build it too, not only Tailwind classes. */
+export type TwStyle = FlatStyle;
+/** @deprecated Renamed `FlatStyleKey`. */
+export type TwKey = FlatStyleKey;
 
 /**
  * Keys that cascade to descendants, like inherited CSS properties. The React tree builder's text
@@ -180,7 +192,7 @@ export const TEXT_INHERITED = [
   'direction',
   'orphans',
   'widows',
-] as const satisfies readonly TwKey[];
+] as const satisfies readonly FlatStyleKey[];
 
 /** Keys that only mean something on a `Text` node. */
-export const TEXT_ONLY = ['maxLines', 'ellipsis'] as const satisfies readonly TwKey[];
+export const TEXT_ONLY = ['maxLines', 'ellipsis'] as const satisfies readonly FlatStyleKey[];

@@ -1,18 +1,16 @@
 import type { GridPlacement } from '@inkoxide/schema';
 import {
+  type FlatStyle,
   parseFlex,
-  parseFontFamily,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
-  Reader,
   round,
   splitTopLevel,
-  substituteVars,
-  type TwStyle,
   UnsupportedValueError,
   ValueError,
 } from '@inkoxide/style';
+import { parseFontFamily, Reader, substituteVars } from '@inkoxide/style/internal';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
 
@@ -106,7 +104,7 @@ function sidesOf(logical: string): readonly Side[] {
 }
 
 /** Applies one resolved declaration to the style being built. */
-function applyDecl(s: TwStyle, prop: string, value: string): void {
+function applyDecl(s: FlatStyle, prop: string, value: string): void {
   const r = new Reader(prop);
   // The style by key, for the keys built from the property name (`paddingTop`, `insetLeft`).
   const keyed = s as Record<string, unknown>;
@@ -453,14 +451,10 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     );
   if (m) {
     const [, family, side = '', part] = m;
+    // Per side: `border-style` itself is read in the switch above.
     if (family === 'border' && part === 'style') {
       const style = r.oneOf('borderStyle', v);
-      if (side === '') {
-        for (const sd of SIDES) delete keyed[`border${sd}Style`];
-        s.borderStyle = style;
-      } else {
-        for (const sd of sidesOf(side)) keyed[`border${sd}Style`] = style;
-      }
+      for (const sd of sidesOf(side)) keyed[`border${sd}Style`] = style;
       return;
     }
     if (family === 'border' && part === undefined) {
@@ -492,8 +486,8 @@ export function mapClasses(
   compiler: TailwindCompiler,
   classes: string[],
   onError: (e: UnsupportedUtilityError) => void,
-): TwStyle {
-  let style: TwStyle = {};
+): FlatStyle {
+  let style: FlatStyle = {};
   const elementVars = new Map<string, string>();
   const initials = new Map<string, string>();
   const usable: string[] = [];
@@ -531,7 +525,7 @@ export function mapClasses(
       decls.some(([p, v]) => p === 'text-overflow' && v.trim() === 'ellipsis') &&
       decls.some(([p, v]) => p === 'white-space' && v.trim() === 'nowrap');
     // Apply into a scratch copy so a failing class leaves no partial result behind.
-    const next: TwStyle = { ...style };
+    const next: FlatStyle = { ...style };
     try {
       if (clamp) {
         const n = clamp[1].trim();

@@ -1,14 +1,23 @@
+import { DEFAULT_SANS } from '@inkoxide/style/internal';
+
+/** A font family as a CSS value: quoted when it has a space. */
+const cssFamily = (family: string) => (/\s/.test(family) ? `"${family}"` : family);
+
 /**
  * The default theme: Tailwind's, with font stacks that name the families registered with the
  * engine (FontRegistry in @inkoxide/react) and a small document palette. A project can pass its
  * own CSS to initTailwind({ css }); keep these families in it.
+ *
+ * The palette is deprecated: it was made for the engine fixtures, is not documented, and will be
+ * removed from the default theme. A project that uses `bg-brand`, `text-ink` and the like should
+ * set those colours in its own theme.
  *
  * A string rather than a .css file so it survives bundling.
  */
 export const DEFAULT_THEME_CSS = `@import "tailwindcss/theme";
 
 @theme {
-  --font-sans: Inter, "Noto Sans";
+  --font-sans: ${DEFAULT_SANS.map(cssFamily).join(', ')};
   --font-serif: "Noto Sans";
   --font-mono: "Roboto Mono";
   --font-display: "Inter Display", Inter;

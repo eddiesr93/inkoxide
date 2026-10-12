@@ -7,6 +7,10 @@ export const PT_PER_REM = 12;
 /** Points per CSS `px`: 1 px = 1/96 in = 0.75 pt. */
 export const PT_PER_PX = 0.75;
 
+/**
+ * A value that does not parse at all: `parseColor` and `parseFlex` throw it. Errors that name the
+ * CSS property are `UnsupportedValueError`s.
+ */
 export class ValueError extends Error {}
 
 /** A number with a unit after conversion: `pt` for every absolute length. */
@@ -293,6 +297,9 @@ export function parseColor(value: string): Color | 'currentColor' {
   const c = (x: number | undefined): number => round(Math.min(1, Math.max(0, x ?? 0)));
   return [c(rgb.r), c(rgb.g), c(rgb.b), c(rgb.alpha ?? 1)];
 }
+
+/** The font stack of text that sets no family: Tailwind's `font-sans` in the default theme. */
+export const DEFAULT_SANS: readonly string[] = ['Inter', 'Noto Sans'];
 
 /** Unquotes and splits a `font-family` stack. */
 export function parseFontFamily(value: string): string[] {

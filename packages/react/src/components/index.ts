@@ -1,5 +1,5 @@
 import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { TwStyle } from '@inkoxide/style';
+import type { FlatStyle } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 /**
@@ -77,7 +77,7 @@ type TextDecorationLine =
  * strings with a unit (`'20mm'`).
  */
 export interface StyleProp extends Omit<
-  TwStyle,
+  FlatStyle,
   | 'fontWeight'
   | 'color'
   | 'backgroundColor'
@@ -190,7 +190,7 @@ export interface StyleProp extends Omit<
   decorationThickness?: Length;
   /** CSS names for `decorationColor`, `decorationStyle` and `decorationThickness`. */
   textDecorationColor?: string | Color;
-  textDecorationStyle?: TwStyle['decorationStyle'];
+  textDecorationStyle?: FlatStyle['decorationStyle'];
   textDecorationThickness?: Length;
   /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
   textOverflow?: 'ellipsis' | 'clip';

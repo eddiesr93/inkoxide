@@ -1,16 +1,26 @@
 // Reading CSS values into Inkoxide style values, one property at a time.
-import type { GridPlacement, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
+import type { GridPlacement, Style, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
 import {
   BORDER_STYLES,
   type ColorValue,
+  type DecorationStyle,
   type Len,
   type LenPercent,
   OBJECT_FITS,
+  type ObjectFit,
   type ObjectPosition,
+  type TextTransform,
   type TransformOp,
 } from './types.ts';
 import { type Dim, evalDim, parseColor, round, splitTopLevel, ValueError } from './values.ts';
+
+/** The values `ENUMS` may list for each property: the schema's, or the tree builder's. */
+type EnumValues = { [K in keyof Style]?: readonly NonNullable<Style[K]>[] } & {
+  decorationStyle: readonly DecorationStyle[];
+  textTransform: readonly TextTransform[];
+  objectFit: readonly ObjectFit[];
+};
 
 /** The keywords each enumerated property accepts. */
 export const ENUMS = {
@@ -52,7 +62,7 @@ export const ENUMS = {
   direction: ['ltr', 'rtl'],
   textTransform: ['none', 'uppercase', 'lowercase', 'capitalize'],
   objectFit: OBJECT_FITS,
-} as const;
+} as const satisfies EnumValues;
 
 export type EnumKey = keyof typeof ENUMS;
 
@@ -71,6 +81,12 @@ export class UnsupportedValueError extends Error {
     super(detail);
   }
 }
+
+/**
+ * The length `calc(infinity * 1px)` (`rounded-full`) is read as, either sign, and the largest
+ * radius.
+ */
+const INFINITE_PT = 1e4;
 
 /** Reads the values of one CSS property: its errors name the property. */
 export class Reader {
@@ -91,9 +107,8 @@ export class Reader {
   }
 
   private dimToLen(d: Dim, value: string): Len {
-    // `calc(infinity * 1px)` (`rounded-full`): as large as a length gets here.
     if ((d.u === 'pt' || d.u === '') && Math.abs(d.v) === Number.POSITIVE_INFINITY)
-      return Math.sign(d.v) * 1e4;
+      return Math.sign(d.v) * INFINITE_PT;
     if (d.u === 'pt') return round(d.v);
     if (d.u === '%') return `${round(d.v)}%`;
     if (d.u === '' && d.v === 0) return 0;
@@ -228,7 +243,7 @@ export class Reader {
     if (v.includes('/') || splitTopLevel(v, ' ').length > 1) {
       throw this.error(`${this.prop}: ${v} (elliptical corners are not supported)`);
     }
-    return Math.min(this.points(v), 1e4);
+    return Math.min(this.points(v), INFINITE_PT);
   }
 }
 
@@ -292,16 +307,27 @@ export function parseTransform(prop: string, value: string): TransformOp[] {
   return out;
 }
 
-const ORIGIN_X: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
+/** The position keywords of each axis, as the share of the box each stands for. */
+const POSITION_X: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
   ['left', 0],
   ['center', '50%'],
   ['right', '100%'],
 ]);
-const ORIGIN_Y: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
+const POSITION_Y: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
   ['top', 0],
   ['center', '50%'],
   ['bottom', '100%'],
 ]);
+const isKeyword = (v: string) => POSITION_X.has(v) || POSITION_Y.has(v);
+/** `left` or `right`: a keyword of the x axis only (`center` is both). */
+const isOnlyX = (v: string) => v !== 'center' && POSITION_X.has(v);
+/** `top` or `bottom`. */
+const isOnlyY = (v: string) => v !== 'center' && POSITION_Y.has(v);
+
+/** Two keywords that name y first (`top left`, `center right`), which CSS takes in either order. */
+function keywordsYFirst(a: string, b: string): boolean {
+  return isKeyword(a) && isKeyword(b) && (isOnlyY(a) || isOnlyX(b)) && !isOnlyY(b) && !isOnlyX(a);
+}
 
 /** Parses `transform-origin` (keywords in either order, lengths, percentages). */
 export function parseOrigin(prop: string, value: string): [LenPercent, LenPercent] {
@@ -312,23 +338,12 @@ export function parseOrigin(prop: string, value: string): [LenPercent, LenPercen
     throw r.error(`${prop}: ${value} (no z offset)`);
   }
   let [a = 'center', b = 'center'] = parts;
-  // `top left` and `bottom 10%`: a vertical keyword first means the order is y x, and so does a
-  // horizontal one after `center` (`center left`).
-  const yFirst =
-    (ORIGIN_Y.has(a) && a !== 'center' && (parts.length === 1 || !ORIGIN_Y.has(b) || b === 'center')) ||
-    (a === 'center' && b !== 'center' && ORIGIN_X.has(b));
-  if (yFirst) {
-    if (parts.length === 1) b = 'center';
-    [a, b] = [b, a];
-  }
-  const x = ORIGIN_X.get(a) ?? r.lenPercent(a);
-  const y = ORIGIN_Y.get(b) ?? r.lenPercent(b);
+  // Unlike `object-position`, a vertical keyword may also come before a length (`bottom 10%`).
+  if (keywordsYFirst(a, b) || (isOnlyY(a) && !isKeyword(b))) [a, b] = [b, a];
+  const x = POSITION_X.get(a) ?? r.lenPercent(a);
+  const y = POSITION_Y.get(b) ?? r.lenPercent(b);
   return [x, y];
 }
-
-const POSITION_X: ReadonlySet<string> = new Set(['left', 'right']);
-const POSITION_Y: ReadonlySet<string> = new Set(['top', 'bottom']);
-const isPositionKeyword = (v: string) => v === 'center' || POSITION_X.has(v) || POSITION_Y.has(v);
 
 /**
  * Parses CSS `object-position`: one or two values, each a keyword, a length or a percentage. Two
@@ -348,13 +363,11 @@ export function parseObjectPosition(
   }
   let [a = 'center', b = 'center'] = parts;
   // Keywords alone may name y first (`top left`, or `top`, whose x is `center`).
-  if (isPositionKeyword(a) && isPositionKeyword(b) && (POSITION_Y.has(a) || POSITION_X.has(b))) {
-    [a, b] = [b, a];
-  }
-  if (POSITION_Y.has(a) || POSITION_X.has(b)) {
+  if (keywordsYFirst(a, b)) [a, b] = [b, a];
+  if (isOnlyY(a) || isOnlyX(b)) {
     throw r.error(`${prop}: ${value} (expected x then y, e.g. "left top" or "25% 75%")`);
   }
-  const x = a === 'center' || POSITION_X.has(a) ? (a as 'left' | 'center' | 'right') : length(a);
-  const y = b === 'center' || POSITION_Y.has(b) ? (b as 'top' | 'center' | 'bottom') : length(b);
+  const x = POSITION_X.has(a) ? (a as 'left' | 'center' | 'right') : length(a);
+  const y = POSITION_Y.has(b) ? (b as 'top' | 'center' | 'bottom') : length(b);
   return { x, y };
 }
