@@ -171,6 +171,21 @@ fn align_self(a: AlignSelf) -> Option<TAlignSelf> {
     })
 }
 
+/// Keeps a box at its intrinsic size where its container would stretch it
+/// (`alignItems` and `justifyItems` unset or `stretch`), unless it sets
+/// `alignSelf` or `justifySelf` itself: it sits at the start instead, as
+/// a stretched item that cannot grow does.
+pub(crate) fn keep_intrinsic_size(t: &mut Style, own: &S, parent: &S) {
+    let stretches = |a: Option<AlignItems>| matches!(a, None | Some(AlignItems::Stretch));
+    let auto = |a: Option<AlignSelf>| matches!(a, None | Some(AlignSelf::Auto));
+    if auto(own.align_self) && stretches(parent.align_items) {
+        t.align_self = Some(TAlignSelf::FLEX_START);
+    }
+    if auto(own.justify_self) && stretches(parent.justify_items) {
+        t.justify_self = Some(TAlignSelf::START);
+    }
+}
+
 /// Converts a node style. `flexDirection` defaults to `column`.
 pub(crate) fn to_taffy(s: &S) -> Style {
     let mut t = Style {

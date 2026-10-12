@@ -19,6 +19,15 @@ All notable changes to the packages in this repository. The format follows
   image's matrix.
 - `borderRadius` rounds an image's corners without `overflow: hidden`: the image is clipped to
   the rounded content box, as in CSS.
+- A select field embeds the glyphs of the common Latin range and of every option, as a text
+  field does, so a viewer can show the option picked; it embedded only those of its value.
+- The mark of a checkbox or radio button takes its size from `size`, centred in the widget; it
+  grew with the widget box.
+- A checkbox or radio button without a width or height keeps its `size` + 2 pt square where its
+  container would stretch it (as in a column, by default); it stretched across the container.
+- A radio button whose value is `Off`, or longer than 127 bytes, is no longer written with a
+  broken appearance state: such a group names its states by position and lists its values in
+  `/Opt`. A checked `Off` button showed as unselected.
 
 ## 0.5.0 - 2026-10-12
 
