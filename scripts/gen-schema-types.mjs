@@ -23,6 +23,25 @@ input.$defs.Node = { title: 'Node', oneOf: input.$defs.Node.oneOf };
 for (const def of Object.values(input.$defs)) {
   if (def.oneOf?.every((b) => b.required && !b.$ref && !b.type)) delete def.oneOf;
 }
+// "One of these objects" (a transform function, a track): TypeScript lets
+// an object literal mix the keys of a union's members, so each object
+// member forbids the others' keys (`rotate?: never`). A member that is
+// itself such a union (`TrackSize` in `TemplateTrack`) is inlined first.
+const isObject = (b) => b.type === 'object' && b.properties;
+for (const def of Object.values(input.$defs)) {
+  if (!def.oneOf) continue;
+  def.oneOf = def.oneOf.flatMap((b) => {
+    const target = b.$ref && input.$defs[b.$ref.split('/').pop()];
+    return target?.oneOf?.some(isObject) ? structuredClone(target.oneOf) : [b];
+  });
+  const objects = def.oneOf.filter(isObject);
+  if (objects.length < 2) continue;
+  for (const o of objects) {
+    for (const other of objects) {
+      for (const k of Object.keys(other.properties)) o.properties[k] ??= { tsType: 'never' };
+    }
+  }
+}
 // A `$ref` with a sibling `description` would become a new, renamed type
 // carrying that description; keep the named type and document the use.
 (function wrapRefs(v) {

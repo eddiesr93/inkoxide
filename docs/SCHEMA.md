@@ -46,7 +46,7 @@
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
 | `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
@@ -57,7 +57,7 @@
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
-| `UNKNOWN_ANCHOR` | A `#id` link names no node `id` in the document |
+| `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the flowing content (ids in headers, footers and under `display: none` are not destinations) |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -86,7 +86,7 @@ Type: `string` (min length 1, max length 256)
 
 ### Link
 
-Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+Link target. `#id` jumps to the top of the first node with that `id` in the flowing content: a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
 
 Type: `string` (min length 1, max length 2048)
 
@@ -295,13 +295,13 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. |
 | `gridTemplateColumns` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateRows` | array of [`TemplateTrack`](#templatetrack) |  |  |
-| `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. |
+| `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. At most 10000 cells (rows × columns; `OUT_OF_RANGE`). |
 | `gridAutoColumns` | array of [`TrackSize`](#tracksize) |  |  |
 | `gridAutoRows` | array of [`TrackSize`](#tracksize) |  |  |
 | `gridAutoFlow` | `"row"` \| `"column"` \| `"row dense"` \| `"column dense"` |  |  |
 | `gridColumn` | [`GridPlacement`](#gridplacement) |  |  |
 | `gridRow` | [`GridPlacement`](#gridplacement) |  |  |
-| `gridArea` | `string` |  | min length 1; Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`. |
+| `gridArea` | `string` |  | min length 1; Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`, and cannot be combined with them (`INVALID_VALUE`). |
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
@@ -313,11 +313,11 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `borderStyle` | [`BorderStyles`](#borderstyles) |  | default `"solid"` |
 | `rotate` | `number` |  | ≥ -1000000, ≤ 1000000; Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
-| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
+| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells. |
 | `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0, ≤ 100; text nodes only; multiplier of the largest run size on the line |
-| `maxLines` | `integer` |  | ≥ 1; text nodes only |
+| `maxLines` | `integer` |  | ≥ 1, ≤ 4294967295; text nodes only |
 | `ellipsis` | `boolean` |  | text nodes only; requires maxLines |
 | `hyphenate` | `boolean` |  | text nodes only |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
@@ -359,8 +359,8 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 |---|---|---|---|
 | `id` | [`Id`](#id) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
-| `colSpan` | `integer` |  | ≥ 1, default `1` |
-| `rowSpan` | `integer` |  | ≥ 1, default `1` |
+| `colSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
+| `rowSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
 | `style` | [`Style`](#style) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
 
@@ -447,7 +447,7 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
-| `headerRows` | `integer` |  | ≥ 0, default `0` |
+| `headerRows` | `integer` |  | ≥ 0, ≤ 4294967295, default `0` |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
 
 ### PageBreakNode
@@ -494,12 +494,12 @@ Fields with the same `name` are one field with several widgets (for example a fi
 |---|---|---|---|
 | `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
-| `value` | `string` |  | text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected. |
+| `value` | `string` |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
 | `options` | array of `string` |  | min items 1; select only: the choices |
 | `multiline` | `boolean` |  | default `false`; text only |
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
-| `maxLength` | `integer` |  | ≥ 1; text only; maximum number of characters |
+| `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
 | `font` | [`Id`](#id) |  | text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |

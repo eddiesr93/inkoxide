@@ -60,7 +60,7 @@ INTRO = """# Document schema v1
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
 | `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
@@ -71,7 +71,7 @@ INTRO = """# Document schema v1
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
-| `UNKNOWN_ANCHOR` | A `#id` link names no node `id` in the document |
+| `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the flowing content (ids in headers, footers and under `display: none` are not destinations) |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100

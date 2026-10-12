@@ -64,28 +64,30 @@ export type LengthPercent = number | Percent;
  * via the `definition` "TemplateTrack".
  */
 export type TemplateTrack =
-  | TrackSize
+  | TrackBreadth
+  | {
+      min: TrackBreadth;
+      max: TrackBreadth;
+      fitContent?: never;
+      repeat?: never;
+      tracks?: never;
+    }
+  | {
+      fitContent: LengthPercent;
+      min?: never;
+      max?: never;
+      repeat?: never;
+      tracks?: never;
+    }
   | {
       repeat: number | ('auto-fill' | 'auto-fit');
       /**
        * @minItems 1
        */
       tracks: [TrackSize, ...TrackSize[]];
-    };
-/**
- * Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
- *
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "TrackSize".
- */
-export type TrackSize =
-  | TrackBreadth
-  | {
-      min: TrackBreadth;
-      max: TrackBreadth;
-    }
-  | {
-      fitContent: LengthPercent;
+      min?: never;
+      max?: never;
+      fitContent?: never;
     };
 /**
  * Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
@@ -101,6 +103,24 @@ export type TrackBreadth = number | Percent | Fr | ('auto' | 'min-content' | 'ma
  * via the `definition` "Fr".
  */
 export type Fr = string;
+/**
+ * Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "TrackSize".
+ */
+export type TrackSize =
+  | TrackBreadth
+  | {
+      min: TrackBreadth;
+      max: TrackBreadth;
+      fitContent?: never;
+    }
+  | {
+      fitContent: LengthPercent;
+      min?: never;
+      max?: never;
+    };
 /**
  * One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.
  *
@@ -142,6 +162,10 @@ export type TransformOp =
        * @maxItems 2
        */
       translate: [LengthPercent, LengthPercent];
+      scale?: never;
+      rotate?: never;
+      skew?: never;
+      matrix?: never;
     }
   | {
       /**
@@ -149,9 +173,17 @@ export type TransformOp =
        * @maxItems 2
        */
       scale: [number, number];
+      translate?: never;
+      rotate?: never;
+      skew?: never;
+      matrix?: never;
     }
   | {
       rotate: number;
+      translate?: never;
+      scale?: never;
+      skew?: never;
+      matrix?: never;
     }
   | {
       /**
@@ -159,6 +191,10 @@ export type TransformOp =
        * @maxItems 2
        */
       skew: [number, number];
+      translate?: never;
+      scale?: never;
+      rotate?: never;
+      matrix?: never;
     }
   | {
       /**
@@ -166,9 +202,13 @@ export type TransformOp =
        * @maxItems 6
        */
       matrix: [number, number, number, number, number, number];
+      translate?: never;
+      scale?: never;
+      rotate?: never;
+      skew?: never;
     };
 /**
- * Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+ * Link target. `#id` jumps to the top of the first node with that `id` in the flowing content: a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Link".
@@ -182,6 +222,10 @@ export type Link = string;
  */
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
+/**
+ * A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
+ */
+export type Fr1 = string;
 
 /**
  * A fully resolved, declarative document tree rendered to PDF by the Inkoxide engine. All lengths are PDF points (1/72 in); all colours are RGBA floats in [0, 1]. Unknown properties are errors.
@@ -351,7 +395,7 @@ export interface Style {
   gridTemplateColumns?: TemplateTrack[];
   gridTemplateRows?: TemplateTrack[];
   /**
-   * Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle.
+   * Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. At most 10000 cells (rows × columns; `OUT_OF_RANGE`).
    *
    * @minItems 1
    */
@@ -362,7 +406,7 @@ export interface Style {
   gridColumn?: GridPlacement;
   gridRow?: GridPlacement;
   /**
-   * Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`.
+   * Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`, and cannot be combined with them (`INVALID_VALUE`).
    */
   gridArea?: string;
   /**
@@ -393,7 +437,7 @@ export interface Style {
    */
   transform?: TransformOp[];
   /**
-   * x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`.
+   * x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells.
    *
    * @minItems 2
    * @maxItems 2
@@ -637,7 +681,7 @@ export interface TableNode {
  * via the `definition` "ColumnSpec".
  */
 export interface ColumnSpec {
-  width: number | Fr | 'auto';
+  width: number | Fr1 | 'auto';
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -714,7 +758,7 @@ export interface Field {
   name: string;
   kind: 'text' | 'checkbox' | 'radio' | 'select';
   /**
-   * text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected.
+   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`).
    */
   value?: string;
   /**

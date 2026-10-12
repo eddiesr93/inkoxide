@@ -557,7 +557,7 @@ fn links_and_bookmarks() {
         ),
         (
             r#"{"type":"box","link":""}"#,
-            C::OutOfRange,
+            C::InvalidValue,
             "pages[0].children[1].link",
         ),
         (
@@ -567,7 +567,7 @@ fn links_and_bookmarks() {
         ),
         (
             r#"{"type":"box","bookmark":{"title":""}}"#,
-            C::OutOfRange,
+            C::InvalidValue,
             "pages[0].children[1].bookmark.title",
         ),
         (

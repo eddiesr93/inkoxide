@@ -40,6 +40,14 @@ All notable changes to the packages in this repository. The format follows
   `UNSUPPORTED_VERSION`, and a `version` that is not a number (`"1"`, `true`) is
   `INVALID_TYPE`. JSON reported `"1"` as an unsupported version, and MessagePack reported `2.5`
   as a wrong type.
+- Validation follows the schema more closely (see the
+  [schema changelog](packages/schema/CHANGELOG.md)): an integer past the engine's integer type is
+  `OUT_OF_RANGE`, not `INVALID_VALUE`; `".5%"`, `"5.%"`, `".5fr"` and `"-0fr"` are rejected, as
+  the schema rejects them; a `"0fr"` table column is `OUT_OF_RANGE`; and an empty or too long
+  `link` or bookmark `title` is `INVALID_VALUE`, like an id of the wrong length.
+- `@inkoxide/schema` types: a transform function or a grid track object takes the keys of one
+  form only, so `{ translate: [1, 2], rotate: 5 }` no longer type-checks.
+- The `inkoxide` CLI printed a validation error's code twice (`UNKNOWN_FONT UNKNOWN_FONT at …`).
 
 ## 0.5.0 - 2026-10-12
 

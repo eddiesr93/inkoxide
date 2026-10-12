@@ -122,6 +122,30 @@ const MAX_LINK: usize = 2048;
 /// Longest `Id` (node, font and image ids), in characters.
 const MAX_ID: usize = 256;
 
+// The bounds below are the schema's; `schema::parity_tests` reads each
+// from `document.v1.json` and checks that validation enforces it.
+
+/// Font weights are `1..=MAX_WEIGHT` (`FontDecl.weight`).
+pub(crate) const MAX_WEIGHT: u16 = 1000;
+/// Longest form field `name`, in characters.
+pub(crate) const MAX_FIELD_NAME: usize = 128;
+/// Largest font size of a text run or a form field, in points.
+pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
+/// Longest bookmark title, in characters.
+pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
+/// Deepest bookmark `level`.
+pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
+/// Thickest `decorationThickness`, in points.
+pub(crate) const MAX_DECORATION_THICKNESS: f32 = 100.0;
+/// Largest `letterSpacing` either way, in points.
+pub(crate) const MAX_LETTER_SPACING: f32 = 1000.0;
+/// Largest `lineHeight` multiplier.
+pub(crate) const MAX_LINE_HEIGHT: f32 = 100.0;
+/// Largest `textIndent` either way, in points.
+pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
+/// Largest `orphans` and `widows`.
+pub(crate) const MAX_ORPHANS: u32 = 100;
+
 /// Ids of the nodes that get a destination: flowing content that is
 /// displayed (not headers or footers, not under `display: none`). `node`
 /// is displayed.
@@ -226,8 +250,8 @@ impl<'a> Checker<'a> {
                     if let Some(prev) = seen.insert(f.id.as_str(), i) {
                         c.err(Code::DuplicateId, Some("id"), format!("font id `{}` is already declared at fonts[{prev}]", f.id));
                     }
-                    if !(1..=1000).contains(&f.weight) {
-                        c.err(Code::OutOfRange, Some("weight"), "font weight must be within 1..=1000");
+                    if !(1..=MAX_WEIGHT).contains(&f.weight) {
+                        c.err(Code::OutOfRange, Some("weight"), format!("font weight must be within 1..={MAX_WEIGHT}"));
                     }
                     if !c.fonts.contains(&f.id) {
                         c.err(
@@ -531,11 +555,11 @@ impl<'a> Checker<'a> {
     }
 
     fn field(&mut self, f: &Field) {
-        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > 128 {
+        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > MAX_FIELD_NAME {
             self.err(
                 Code::InvalidValue,
                 Some("name"),
-                "a field name is 1 to 128 characters, without `.`",
+                format!("a field name is 1 to {MAX_FIELD_NAME} characters, without `.`"),
             );
         }
         match self.fields.get(&f.name) {
@@ -566,9 +590,7 @@ impl<'a> Checker<'a> {
             ),
             _ => {}
         }
-        if !(f.size > 0.0 && f.size <= 1000.0) {
-            self.err(Code::OutOfRange, Some("size"), "must be within (0, 1000]");
-        }
+        self.font_size(f.size);
         if let Some(c) = &f.color {
             self.color(Some("color"), c);
         }
@@ -650,7 +672,7 @@ impl<'a> Checker<'a> {
     fn link(&mut self, link: &str) {
         if link.is_empty() || link.chars().count() > MAX_LINK {
             self.err(
-                Code::OutOfRange,
+                Code::InvalidValue,
                 Some("link"),
                 format!("a link must be 1 to {MAX_LINK} characters long"),
             );
@@ -706,15 +728,19 @@ impl<'a> Checker<'a> {
                     "bookmarks only apply to flowing content, not inside headers or footers",
                 );
             }
-            if b.title.is_empty() || b.title.chars().count() > 1024 {
+            if b.title.is_empty() || b.title.chars().count() > MAX_BOOKMARK_TITLE {
                 c.err(
-                    Code::OutOfRange,
+                    Code::InvalidValue,
                     Some("title"),
-                    "a bookmark title must be 1 to 1024 characters long",
+                    format!("a bookmark title must be 1 to {MAX_BOOKMARK_TITLE} characters long"),
                 );
             }
-            if !(1..=32).contains(&b.level) {
-                c.err(Code::OutOfRange, Some("level"), "must be within 1..=32");
+            if !(1..=MAX_BOOKMARK_LEVEL).contains(&b.level) {
+                c.err(
+                    Code::OutOfRange,
+                    Some("level"),
+                    format!("must be within 1..={MAX_BOOKMARK_LEVEL}"),
+                );
             }
         });
     }
@@ -743,19 +769,13 @@ impl<'a> Checker<'a> {
                 format!("font `{}` is not declared in `fonts`", r.font),
             );
         }
-        if !(r.size > 0.0 && r.size <= 1000.0) {
-            self.err(
-                Code::OutOfRange,
-                Some("size"),
-                "font size must be within (0, 1000]",
-            );
-        }
+        self.font_size(r.size);
         if let Some(t) = r.decoration_thickness {
-            if !(t > 0.0 && t <= 100.0) {
+            if !(t > 0.0 && t <= MAX_DECORATION_THICKNESS) {
                 self.err(
                     Code::OutOfRange,
                     Some("decorationThickness"),
-                    "must be within (0, 100]",
+                    format!("must be within (0, {MAX_DECORATION_THICKNESS}]"),
                 );
             }
         }
@@ -766,11 +786,11 @@ impl<'a> Checker<'a> {
             self.color(Some("color"), col);
         }
         if let Some(ls) = r.letter_spacing {
-            if !(ls.abs() <= 1000.0) {
+            if !(ls.abs() <= MAX_LETTER_SPACING) {
                 self.err(
                     Code::OutOfRange,
                     Some("letterSpacing"),
-                    "letter spacing must be within ±1000 points",
+                    format!("letter spacing must be within ±{MAX_LETTER_SPACING} points"),
                 );
             }
         }
@@ -886,6 +906,17 @@ impl<'a> Checker<'a> {
                 });
             }
         });
+    }
+
+    /// The `size` of a run or a form field.
+    fn font_size(&mut self, size: f32) {
+        if !(size > 0.0 && size <= MAX_FONT_SIZE) {
+            self.err(
+                Code::OutOfRange,
+                Some("size"),
+                format!("font size must be within (0, {MAX_FONT_SIZE}]"),
+            );
+        }
     }
 
     fn color(&mut self, field: Option<&str>, c: &Color) {
@@ -1101,11 +1132,11 @@ impl<'a> Checker<'a> {
             }
         }
         if let Some(lh) = s.line_height {
-            if !(lh > 0.0 && lh <= 100.0) {
+            if !(lh > 0.0 && lh <= MAX_LINE_HEIGHT) {
                 self.err(
                     Code::OutOfRange,
                     Some("lineHeight"),
-                    "must be within (0, 100]",
+                    format!("must be within (0, {MAX_LINE_HEIGHT}]"),
                 );
             }
         }
@@ -1113,17 +1144,21 @@ impl<'a> Checker<'a> {
             self.err(Code::OutOfRange, Some("maxLines"), "must be at least 1");
         }
         if s.text_indent
-            .is_some_and(|v| !v.is_finite() || v.abs() > 10_000.0)
+            .is_some_and(|v| !v.is_finite() || v.abs() > MAX_TEXT_INDENT)
         {
             self.err(
                 Code::OutOfRange,
                 Some("textIndent"),
-                "must be within [-10000, 10000]",
+                format!("must be within [-{MAX_TEXT_INDENT}, {MAX_TEXT_INDENT}]"),
             );
         }
         for (name, v) in [("orphans", s.orphans), ("widows", s.widows)] {
-            if v.is_some_and(|v| !(1..=100).contains(&v)) {
-                self.err(Code::OutOfRange, Some(name), "must be within [1, 100]");
+            if v.is_some_and(|v| !(1..=MAX_ORPHANS).contains(&v)) {
+                self.err(
+                    Code::OutOfRange,
+                    Some(name),
+                    format!("must be within [1, {MAX_ORPHANS}]"),
+                );
             }
         }
         for (name, tracks) in [

@@ -309,3 +309,291 @@ fn bounds_match_schema() {
         }
     }
 }
+
+/// Builds a document with a given value where a bound applies.
+type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
+
+/// The bounds validation names as constants are the schema's: each equals
+/// the schema's value, and the engine accepts a value at it and rejects one
+/// past it, at the value's path.
+#[test]
+#[allow(clippy::cast_precision_loss)]
+fn named_bounds_match_schema() {
+    use crate::validate::rules::{
+        MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FIELD_NAME,
+        MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT,
+        MAX_WEIGHT,
+    };
+    let s = schema();
+    let doc = |fonts: &str, child: &str| {
+        format!(r#"{{"version":1,"fonts":[{fonts}],"pages":[{{{PAGE},"children":[{child}]}}]}}"#)
+    };
+    let font = r#"{"id":"f","family":"F"}"#;
+    let text = |style: &str, run: &str| {
+        doc(
+            font,
+            &format!(
+                r#"{{"type":"text","style":{{{style}}},"runs":[{{"text":"x","font":"f","size":9{run}}}]}}"#
+            ),
+        )
+    };
+    let field = |f: &str| {
+        doc(
+            "",
+            &format!(r#"{{"type":"field","field":{{"name":"n","kind":"checkbox"{f}}}}}"#),
+        )
+    };
+    let chars = |n: f64| "x".repeat(n as usize);
+    let run = "pages[0].children[0].runs[0]";
+    let style = "pages[0].children[0].style";
+    // (schema pointer, the engine's bound, the document with a value, the
+    // first value past the bound, its code and path).
+    let cases: Vec<(&str, f64, Make, f64, &str, String)> = vec![
+        (
+            "/$defs/FontDecl/properties/weight/maximum",
+            f64::from(MAX_WEIGHT),
+            Box::new(|v| doc(&format!(r#"{{"id":"f","family":"F","weight":{v}}}"#), "")),
+            f64::from(MAX_WEIGHT) + 1.0,
+            "OUT_OF_RANGE",
+            "fonts[0].weight".into(),
+        ),
+        (
+            "/$defs/Field/properties/name/maxLength",
+            MAX_FIELD_NAME as f64,
+            Box::new(|n| {
+                doc(
+                    "",
+                    &format!(
+                        r#"{{"type":"field","field":{{"name":"{}","kind":"checkbox"}}}}"#,
+                        chars(n)
+                    ),
+                )
+            }),
+            MAX_FIELD_NAME as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.name".into(),
+        ),
+        (
+            "/$defs/TextRun/properties/size/maximum",
+            f64::from(MAX_FONT_SIZE),
+            Box::new(|v| {
+                doc(
+                    font,
+                    &format!(r#"{{"type":"text","runs":[{{"text":"x","font":"f","size":{v}}}]}}"#),
+                )
+            }),
+            f64::from(MAX_FONT_SIZE) + 0.5,
+            "OUT_OF_RANGE",
+            format!("{run}.size"),
+        ),
+        (
+            "/$defs/Field/properties/size/maximum",
+            f64::from(MAX_FONT_SIZE),
+            Box::new(|v| field(&format!(r#","size":{v}"#))),
+            f64::from(MAX_FONT_SIZE) + 0.5,
+            "OUT_OF_RANGE",
+            "pages[0].children[0].field.size".into(),
+        ),
+        (
+            "/$defs/Bookmark/properties/title/maxLength",
+            MAX_BOOKMARK_TITLE as f64,
+            Box::new(|n| {
+                doc(
+                    "",
+                    &format!(r#"{{"type":"box","bookmark":{{"title":"{}"}}}}"#, chars(n)),
+                )
+            }),
+            MAX_BOOKMARK_TITLE as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].bookmark.title".into(),
+        ),
+        (
+            "/$defs/Bookmark/properties/level/maximum",
+            f64::from(MAX_BOOKMARK_LEVEL),
+            Box::new(|v| {
+                doc(
+                    "",
+                    &format!(r#"{{"type":"box","bookmark":{{"title":"t","level":{v}}}}}"#),
+                )
+            }),
+            f64::from(MAX_BOOKMARK_LEVEL) + 1.0,
+            "OUT_OF_RANGE",
+            "pages[0].children[0].bookmark.level".into(),
+        ),
+        (
+            "/$defs/TextRun/properties/decorationThickness/maximum",
+            f64::from(MAX_DECORATION_THICKNESS),
+            Box::new(|v| text("", &format!(r#","decorationThickness":{v}"#))),
+            f64::from(MAX_DECORATION_THICKNESS) + 0.5,
+            "OUT_OF_RANGE",
+            format!("{run}.decorationThickness"),
+        ),
+        (
+            "/$defs/TextRun/properties/letterSpacing/maximum",
+            f64::from(MAX_LETTER_SPACING),
+            Box::new(|v| text("", &format!(r#","letterSpacing":{v}"#))),
+            f64::from(MAX_LETTER_SPACING) + 0.5,
+            "OUT_OF_RANGE",
+            format!("{run}.letterSpacing"),
+        ),
+        (
+            "/$defs/TextRun/properties/letterSpacing/minimum",
+            -f64::from(MAX_LETTER_SPACING),
+            Box::new(|v| text("", &format!(r#","letterSpacing":{v}"#))),
+            -f64::from(MAX_LETTER_SPACING) - 0.5,
+            "OUT_OF_RANGE",
+            format!("{run}.letterSpacing"),
+        ),
+        (
+            "/$defs/Style/properties/lineHeight/maximum",
+            f64::from(MAX_LINE_HEIGHT),
+            Box::new(|v| text(&format!(r#""lineHeight":{v}"#), "")),
+            f64::from(MAX_LINE_HEIGHT) + 0.5,
+            "OUT_OF_RANGE",
+            format!("{style}.lineHeight"),
+        ),
+        (
+            "/$defs/Style/properties/textIndent/maximum",
+            f64::from(MAX_TEXT_INDENT),
+            Box::new(|v| text(&format!(r#""textIndent":{v}"#), "")),
+            f64::from(MAX_TEXT_INDENT) + 0.5,
+            "OUT_OF_RANGE",
+            format!("{style}.textIndent"),
+        ),
+        (
+            "/$defs/Style/properties/textIndent/minimum",
+            -f64::from(MAX_TEXT_INDENT),
+            Box::new(|v| text(&format!(r#""textIndent":{v}"#), "")),
+            -f64::from(MAX_TEXT_INDENT) - 0.5,
+            "OUT_OF_RANGE",
+            format!("{style}.textIndent"),
+        ),
+        (
+            "/$defs/Style/properties/orphans/maximum",
+            f64::from(MAX_ORPHANS),
+            Box::new(|v| text(&format!(r#""orphans":{v}"#), "")),
+            f64::from(MAX_ORPHANS) + 1.0,
+            "OUT_OF_RANGE",
+            format!("{style}.orphans"),
+        ),
+        (
+            "/$defs/Style/properties/widows/maximum",
+            f64::from(MAX_ORPHANS),
+            Box::new(|v| text(&format!(r#""widows":{v}"#), "")),
+            f64::from(MAX_ORPHANS) + 1.0,
+            "OUT_OF_RANGE",
+            format!("{style}.widows"),
+        ),
+    ];
+    for (pointer, bound, make, past, code, path) in cases {
+        let stated = s
+            .pointer(pointer)
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or_else(|| panic!("the schema has no bound at {pointer}"));
+        assert_eq!(stated, bound, "{pointer}");
+        assert_eq!(errors(&make(bound), &["f"]), [], "{pointer}: {bound}");
+        assert_eq!(
+            errors(&make(past), &["f"]),
+            one(code, &path),
+            "{pointer}: {past}"
+        );
+    }
+}
+
+/// Integers past their type's range are `OUT_OF_RANGE`, like those past a
+/// bound the schema states, and the schema states the type's range where it
+/// has no tighter bound.
+#[test]
+fn integer_bounds_match_schema() {
+    let s = schema();
+    let u32_max = i64::from(u32::MAX);
+    for pointer in [
+        "/$defs/Style/properties/maxLines/maximum",
+        "/$defs/Field/properties/maxLength/maximum",
+        "/$defs/TableCell/properties/colSpan/maximum",
+        "/$defs/TableCell/properties/rowSpan/maximum",
+        "/$defs/TableNode/properties/headerRows/maximum",
+    ] {
+        assert_eq!(bound(&s, pointer), u32_max, "{pointer}");
+    }
+    let pages = "/$defs/PageFilter/oneOf/1/items";
+    assert_eq!(bound(&s, &format!("{pages}/minimum")), i64::from(i32::MIN));
+    assert_eq!(bound(&s, &format!("{pages}/maximum")), i64::from(i32::MAX));
+    assert_eq!(
+        bound(&s, "/$defs/Style/properties/zIndex/maximum"),
+        i64::from(i32::MAX)
+    );
+
+    let doc = |child: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"f","family":"F"}}],"pages":[{{{PAGE},"children":[{child}]}}]}}"#
+        )
+    };
+    let past = u32_max + 1;
+    let table = |cell: &str| {
+        format!(
+            r#"{{"type":"table","columns":[{{"width":1}}],"headerRows":0,"rows":[{{"cells":[{{{cell}}}]}}]}}"#
+        )
+    };
+    let text = |style: &str| {
+        format!(
+            r#"{{"type":"text","style":{{{style}}},"runs":[{{"text":"x","font":"f","size":9}}]}}"#
+        )
+    };
+    let p = "pages[0].children[0]";
+    for (child, path) in [
+        (
+            text(&format!(r#""maxLines":{past}"#)),
+            format!("{p}.style.maxLines"),
+        ),
+        (text(r#""orphans":-1"#), format!("{p}.style.orphans")),
+        (text(r#""widows":70000"#), format!("{p}.style.widows")),
+        (
+            format!(
+                r#"{{"type":"field","field":{{"name":"n","kind":"text","font":"f","maxLength":{past}}}}}"#
+            ),
+            format!("{p}.field.maxLength"),
+        ),
+        (
+            table(&format!(r#""colSpan":{past}"#)),
+            format!("{p}.rows[0].cells[0].colSpan"),
+        ),
+        (
+            table(r#""rowSpan":-1"#),
+            format!("{p}.rows[0].cells[0].rowSpan"),
+        ),
+        (
+            table("").replace(r#""headerRows":0"#, r#""headerRows":-1"#),
+            format!("{p}.headerRows"),
+        ),
+        (
+            r#"{"type":"box","style":{"zIndex":2147483648}}"#.into(),
+            format!("{p}.style.zIndex"),
+        ),
+        (
+            r#"{"type":"box","pages":[1,-2147483649]}"#.into(),
+            format!("{p}.pages[1]"),
+        ),
+        (
+            r#"{"type":"box","bookmark":{"title":"t","level":300}}"#.into(),
+            format!("{p}.bookmark.level"),
+        ),
+    ] {
+        assert_eq!(
+            errors(&doc(&child), &["f"]),
+            one("OUT_OF_RANGE", &path),
+            "{child}"
+        );
+    }
+    let font = |w: i64| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"f","family":"F","weight":{w}}}],"pages":[{{{PAGE}}}]}}"#
+        )
+    };
+    for w in [-1, 70_000] {
+        assert_eq!(
+            errors(&font(w), &["f"]),
+            one("OUT_OF_RANGE", "fonts[0].weight")
+        );
+    }
+}

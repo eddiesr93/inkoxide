@@ -178,7 +178,16 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   used twice (the buttons of one radio group share theirs).
 - Fonts, images and `#id` links must resolve: `UNKNOWN_FONT`,
   `FONT_NOT_REGISTERED`, `UNKNOWN_IMAGE`, `INVALID_IMAGE`,
-  `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`.
+  `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`. A `#id` link must name a node
+  in the flowing content that is displayed: an id in a header or footer,
+  or under `display: none`, is not a destination.
+- A radio button needs a non-empty `value` (`MISSING_FIELD`), and a text
+  field's `value` is at most `maxLength` characters (`OUT_OF_RANGE`).
+- `gridArea` cannot be combined with `gridRow` or `gridColumn`
+  (`INVALID_VALUE`), and `gridTemplateAreas` has at most 10000 cells
+  (`OUT_OF_RANGE`).
+- `transform`, `transformOrigin` and `zIndex` do not apply to table
+  cells (`STYLE_NOT_APPLICABLE`).
 
 ## Not part of the API
 
