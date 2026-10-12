@@ -36,10 +36,11 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
 
 /**
  * The message for a URL the remote image policy does not allow; `prop` is the `src` as written
- * (`src="https://…"`).
+ * (`src="https://…"`), and `elsewhere` another place the caller reads the allowlist from.
  */
-export function remoteRefused(prop: string): string {
-  return `<Image ${prop}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.`;
+export function remoteRefused(prop: string, elsewhere?: string): string {
+  const option = elsewhere === undefined ? 'remoteImages.allow' : `remoteImages.allow (or ${elsewhere})`;
+  return `<Image ${prop}>: this URL is not in the remoteImages allowlist. Add its origin to the option ${option}, or pass the bytes.`;
 }
 
 /**

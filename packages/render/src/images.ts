@@ -132,7 +132,10 @@ async function fetchAllowed(
 ): Promise<Uint8Array> {
   const url = typeof src === 'string' ? src : src.uri;
   if (!policy || !remoteAllowed(url, policy)) {
-    throw new RenderError('TEMPLATE_ERROR', remoteRefused(`src="${url}"`));
+    throw new RenderError(
+      'TEMPLATE_ERROR',
+      remoteRefused(`src="${url}"`, 'the INKOXIDE_REMOTE_IMAGES variable'),
+    );
   }
   return fetchImage(src, policy);
 }

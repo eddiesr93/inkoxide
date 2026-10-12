@@ -16,6 +16,13 @@ All notable changes to the packages in this repository. The format follows
 - A later `border`, `borderStyle` or `borderRadius` for every side, in a style array or over
   `className`, replaces the per-side styles and per-corner radii set before it, and a per-corner
   `borderRadius` object keeps the corners it does not name instead of setting them to 0.
+- `@inkoxide/react` errors for a style key an element does not take (`maxLines` on a `View`,
+  `padding` on a `Row` or an inline `Text`) have kind `'props'` and name the style when the key
+  comes from `style`; only a key from `className` is kind `'tailwind'`, with the class. A string
+  directly in a `Table`, `Row` or `Document` says where it belongs (a `Cell`, a `Page`) instead
+  of suggesting a `Text`, which is not allowed there either. The remote-image error of
+  `@inkoxide/react` names its own option, `remoteImages.allow`, and only `@inkoxide/render` adds
+  the `INKOXIDE_REMOTE_IMAGES` variable.
 
 ## 0.5.0 - 2026-10-12
 

@@ -583,7 +583,7 @@ stops the render with:
 
 ```
 RenderError: <View> cannot be inside <Text>. A Text contains only strings, numbers,
-<Text>, <PageNumber> and <TotalPages>.
+<Text>, <Link>, <PageNumber> and <TotalPages>.
     in View
     in Text
     in Page

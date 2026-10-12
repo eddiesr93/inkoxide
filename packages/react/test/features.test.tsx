@@ -1078,7 +1078,7 @@ describe('image sources', () => {
     expect(srcs(r)).toEqual(['request-0', 'request-0']);
     expect(r.pending).toEqual({ 'request-0': { kind: 'request', request } });
     expect(thrown(() => images(<Image src={{ uri: 'https://evil.example.org/a.png' }} />)).message).toBe(
-      '<Image src={{ uri: "https://evil.example.org/a.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
+      '<Image src={{ uri: "https://evil.example.org/a.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow, or pass the bytes.',
     );
     expect(thrown(() => images(<Image src={{ uri: '' }} />)).message).toContain('a request needs a uri');
   });

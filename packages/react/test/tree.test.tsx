@@ -497,9 +497,16 @@ describe('tables', () => {
   });
 
   it('rejects strings and foreign elements in a Table', () => {
-    expect(thrown(() => render(<Table columns={[1]}>text</Table>)).message).toContain(
-      'cannot be directly inside <Table>',
+    expect(thrown(() => render(<Table columns={[1]}>text</Table>)).message).toBe(
+      'Text "text" cannot be directly inside <Table>; put it in a <Cell> of a <Row>.',
     );
+    const inRow = () =>
+      render(
+        <Table columns={[1]}>
+          <Row>Totals</Row>
+        </Table>,
+      );
+    expect(thrown(inRow).message).toBe('Text "Totals" cannot be directly inside <Row>; put it in a <Cell>.');
     expect(
       thrown(() =>
         render(
@@ -607,6 +614,19 @@ describe('pages, images and structure', () => {
     );
   });
 
+  it('says where a string outside a Text-like element belongs', () => {
+    const doc = () => renderTemplate(<Document>Hello</Document>, { fonts });
+    expect(thrown(doc).message).toBe(
+      'Text "Hello" cannot be directly inside <Document>; put it in a <Page>.',
+    );
+    // @ts-expect-error: an Image has no children
+    const image = () => render(<Image src="logo">x</Image>);
+    expect(thrown(image).message).toBe('Text "x": <Image> cannot have children.');
+    expect(thrown(() => render(<section>x</section>)).message).toContain(
+      '<section> is not an Inkoxide component',
+    );
+  });
+
   it('rejects a View inside Text, HTML elements and two headers', () => {
     expect(
       thrown(() =>
@@ -707,6 +727,46 @@ describe('errors carry component stacks', () => {
       ),
     );
     expect(link.message).toContain('A <Link> inside <Text> is an inline run');
+  });
+
+  it('blames a style key the element does not take on its style, and a class on its className', () => {
+    const style = thrown(() => render(<View style={{ maxLines: 2 }} />));
+    expect([style.kind, style.className, style.message]).toEqual([
+      'props',
+      undefined,
+      'maxLines applies to <Text>, not <View> (from its style).',
+    ]);
+    const cls = thrown(() => render(<View className="truncate" style={{ padding: 2 }} />));
+    expect([cls.kind, cls.className]).toEqual(['tailwind', 'truncate']);
+    expect(cls.message).toBe('truncate and line-clamp-* apply to <Text>, not <View> (className="truncate").');
+
+    const row = (props: { className?: string; style?: object }) => () =>
+      render(
+        <Table columns={[1]}>
+          <Row {...props}>
+            <Cell />
+          </Row>
+        </Table>,
+      );
+    const rowStyle = thrown(row({ className: 'bg-white', style: { padding: 4 } }));
+    expect([rowStyle.kind, rowStyle.className]).toEqual(['props', undefined]);
+    expect(rowStyle.message).toBe(
+      '<Row> does not support "paddingTop" (from its style). A Row takes a background, a minimum height and text styles; style the cells instead.',
+    );
+    const rowClass = thrown(row({ className: 'p-1' }));
+    expect([rowClass.kind, rowClass.className]).toEqual(['tailwind', 'p-1']);
+    expect(rowClass.message).toContain('(from className="p-1")');
+
+    const inline = thrown(() =>
+      render(
+        <Text>
+          a <Text style={{ padding: 4 }}>b</Text>
+        </Text>,
+      ),
+    );
+    expect([inline.kind, inline.className]).toEqual(['props', undefined]);
+    expect(inline.message).toContain('only text styles apply, not "paddingTop, paddingRight');
+    expect(inline.message).toContain('(from its style)');
   });
 
   it('rejects a Link without a target and block content inside an inline Link', () => {

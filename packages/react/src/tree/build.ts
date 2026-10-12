@@ -34,7 +34,7 @@ import {
   type RenderProp,
   type Style as StyleInput,
 } from '../components/index.ts';
-import { TemplateError } from '../errors.ts';
+import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
 import { PageContext, RenderCall } from '../page.ts';
 import {
@@ -159,6 +159,8 @@ class Builder {
   private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
+  /** The style of each element's `className`, to tell which keys came from it. */
+  private readonly classStyles = new WeakMap<Instance, TwStyle>();
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
@@ -209,6 +211,7 @@ class Builder {
         });
       }
       s = classes;
+      this.classStyles.set(inst, classes);
     }
     const style = inst.props.style as StyleInput | undefined;
     if (style) {
@@ -252,29 +255,39 @@ class Builder {
     return r.id;
   }
 
+  /**
+   * Where the value of `key` in an element's own style `s` came from: its `className` (with the
+   * error fields that go with a class), or its `style` prop.
+   */
+  private source(inst: Instance, s: TwStyle, key: string): { fromClass: boolean; init: TemplateErrorInit } {
+    const v = this.classStyles.get(inst)?.[key as keyof TwStyle];
+    if (v === undefined || v !== s[key as keyof TwStyle])
+      return { fromClass: false, init: { kind: 'props' } };
+    return { fromClass: true, init: { kind: 'tailwind', className: inst.props.className as string } };
+  }
+
   private onlyKeys(inst: Instance, s: TwStyle, allowed: ReadonlySet<string>, hint: string): void {
     for (const k of boxKeys(s)) {
       if (!allowed.has(k)) {
-        this.fail(
-          inst,
-          `<${HOST_NAME[inst.type]}> does not support "${k}" (from ${inst.props.style ? 'its style or ' : ''}className="${inst.props.className ?? ''}"). ${hint}`,
-          {
-            kind: 'tailwind',
-            className: inst.props.className as string | undefined,
-          },
-        );
+        const { fromClass, init } = this.source(inst, s, k);
+        const from = fromClass ? `className="${init.className}"` : 'its style';
+        this.fail(inst, `<${HOST_NAME[inst.type]}> does not support "${k}" (from ${from}). ${hint}`, init);
       }
     }
   }
 
   private noTextOnly(inst: Instance, s: TwStyle): void {
-    const keys = textOnlyKeys(s);
-    if (keys.length > 0) {
-      this.fail(inst, `truncate and line-clamp-* apply to <Text>, not <${HOST_NAME[inst.type]}>.`, {
-        kind: 'tailwind',
-        className: inst.props.className as string | undefined,
-      });
-    }
+    const [k, ...more] = textOnlyKeys(s);
+    if (k === undefined) return;
+    const { fromClass, init } = this.source(inst, s, k);
+    const name = HOST_NAME[inst.type];
+    this.fail(
+      inst,
+      fromClass
+        ? `truncate and line-clamp-* apply to <Text>, not <${name}> (className="${init.className}").`
+        : `${[k, ...more].join(' and ')} ${more.length > 0 ? 'apply' : 'applies'} to <Text>, not <${name}> (from its style).`,
+      init,
+    );
   }
 
   build(container: Container): Document {
@@ -715,16 +728,16 @@ class Builder {
             );
           }
           const own = this.styleOf(n, ctx);
-          const box = boxKeys(own);
-          if (box.length > 0 || textOnlyKeys(own).length > 0) {
+          const bad = [...boxKeys(own), ...textOnlyKeys(own)];
+          if (bad[0] !== undefined) {
             const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
+            const { fromClass, init } = this.source(n, own, bad[0]);
             this.fail(
               n,
-              `${what} is an inline run: only text utilities apply, not "${[...box, ...textOnlyKeys(own)].join(', ')}" (className="${n.props.className ?? ''}").`,
-              {
-                kind: 'tailwind',
-                className: n.props.className as string | undefined,
-              },
+              fromClass
+                ? `${what} is an inline run: only text utilities apply, not "${bad.join(', ')}" (className="${init.className}").`
+                : `${what} is an inline run: only text styles apply, not "${bad.join(', ')}" (from its style).`,
+              init,
             );
           }
           const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
@@ -824,7 +837,7 @@ class Builder {
         r,
         rOwn,
         rowAllowed,
-        'A Row takes bg-*, min-h-* and text utilities; style the cells instead.',
+        'A Row takes a background, a minimum height and text styles; style the cells instead.',
       );
       const rctx = inherit(ctx, rOwn);
       const row: TableRow = { cells: [] };
