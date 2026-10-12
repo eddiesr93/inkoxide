@@ -1,35 +1,17 @@
 #!/usr/bin/env python3
 """Generates fixtures/docs/invoice.json (a realistic one-page invoice)."""
-import json
-import pathlib
+import common
+from common import A4, ACCENT, FONTS, box, edges, text, write
 
 INK = [0.09, 0.1, 0.13, 1]
 MUTED = [0.42, 0.45, 0.52, 1]
 LINE = [0.88, 0.89, 0.92, 1]
-ACCENT = [0.16, 0.36, 0.86, 1]
 WASH = [0.96, 0.97, 0.99, 1]
 
 
 def run(text, font="Inter-Regular", size=9, color=INK, **kw):
-    return {"text": text, "font": font, "size": size, "color": color, **kw}
-
-
-def text(*runs, **style):
-    node = {"type": "text", "runs": list(runs)}
-    if style:
-        node["style"] = style
-    return node
-
-
-def box(*children, **style):
-    node = {"type": "box", "style": style}
-    if children:
-        node["children"] = list(children)
-    return node
-
-
-def edges(v):
-    return {"top": v, "right": v, "bottom": v, "left": v}
+    """A run in this invoice's darker ink."""
+    return common.run(text, font, size, color, **kw)
 
 
 ITEMS = [
@@ -100,12 +82,9 @@ def party(label, lines):
 doc = {
     "version": 1,
     "meta": {"title": "Invoice INV-2026-0142", "author": "Inkoxide Ltd", "lang": "en"},
-    "fonts": [
-        {"id": "Inter-Regular", "family": "Inter"},
-        {"id": "Inter-Bold", "family": "Inter", "weight": 700},
-    ],
+    "fonts": FONTS,
     "pages": [{
-        "size": {"width": 595.28, "height": 841.89},
+        "size": A4,
         "margin": edges(48),
         "children": [
             box(
@@ -158,6 +137,4 @@ doc = {
     }],
 }
 
-out = pathlib.Path(__file__).resolve().parents[2] / "fixtures/docs/invoice.json"
-out.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
-print(f"wrote {out}")
+write("invoice", doc)
