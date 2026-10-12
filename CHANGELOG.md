@@ -7,12 +7,23 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- `@inkoxide/tailwind` exports `UnsupportedValueError`, which `parseTransform`, `parseOrigin` and
+  `parseObjectPosition` throw for a value the engine cannot express.
+
 ### Changed
 
 - The `flex` shorthand reads the same in `style` and in Tailwind classes:
   `style={{ flex: '1 auto' }}` sets grow and basis, as `flex-[1_auto]` does, and
   `flex-[initial]` works as `flex: 'initial'` does. A lone grow in a class is rounded to six
   decimals like every other value.
+
+### Removed
+
+- `initEngine()` takes no options: `fontsDir`, `hyphenationDir`, `faces` and `registry` were
+  undocumented and unused. Set `INKOXIDE_ASSETS_DIR` to read the fonts and hyphenation patterns
+  from another directory.
 
 ## 0.4.0 - 2026-10-12
 

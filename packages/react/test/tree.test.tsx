@@ -18,13 +18,12 @@ import {
   renderTemplate,
   Spacer,
   Table,
-  TemplateError,
   Text,
   TotalPages,
   View,
 } from '../src/index.ts';
 import { hostConfig } from '../src/reconciler/host-config.ts';
-import { registry, setup } from './helpers.ts';
+import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);
 
@@ -36,18 +35,6 @@ const render = (children: ReactNode, pageClass = 'text-[10pt]') =>
     </Document>,
     { fonts },
   );
-const body = (r: ReturnType<typeof render>) => r.document.pages[0].children ?? [];
-const first = <T,>(r: ReturnType<typeof render>) => body(r)[0] as T;
-
-function thrown(fn: () => unknown): TemplateError {
-  try {
-    fn();
-  } catch (e) {
-    if (e instanceof TemplateError) return e;
-    throw e;
-  }
-  throw new Error('expected a TemplateError');
-}
 
 describe('text inheritance and runs', () => {
   it('cascades text properties from Page through View to nested Text, flattened onto runs', () => {

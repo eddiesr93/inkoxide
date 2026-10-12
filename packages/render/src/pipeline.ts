@@ -115,7 +115,8 @@ function fromTemplateError(e: unknown, id?: string): never {
   throw new RenderError('INTERNAL', `Rendering ${what} failed: ${(e as Error).message}`, { cause: e });
 }
 
-function buildTree<S extends z.ZodType>(
+/** The tree of a template for parsed data; a template error becomes a RenderError. */
+function templateTree<S extends z.ZodType>(
   t: TemplateLike<S>,
   data: z.output<S>,
   opts: RenderOpts = {},
@@ -157,7 +158,7 @@ export function renderTree<S extends z.ZodType>(
   data: unknown,
   opts: RenderOpts = {},
 ): TreeResult {
-  const tree = buildTree(t, parseData(t, data), opts);
+  const tree = templateTree(t, parseData(t, data), opts);
   return withTemplateImages(t, tree, opts.images);
 }
 
@@ -191,7 +192,7 @@ export async function generate<S extends z.ZodType>(
   const t0 = performance.now();
   await init();
   const parsed = parseData(t, data);
-  let tree = buildTree(t, parsed, opts);
+  let tree = templateTree(t, parsed, opts);
 
   let validateMs = 0;
   if (opts.validate ?? !isProduction()) {

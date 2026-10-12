@@ -446,7 +446,11 @@ function toColor(v: string | Color): ColorValue {
   return typeof v === 'string' ? parseColor(v) : v;
 }
 
-function spread<T>(
+/**
+ * Writes an edge value, one for every side or `{ top, right, … }`, to the side keys
+ * `<prefix><Side><suffix>` (`paddingTop`, `borderLeftColor`), through `map`.
+ */
+function setEdges<T>(
   out: Record<string, unknown>,
   prefix: string,
   suffix: string,
@@ -511,7 +515,11 @@ const LENGTH_KEYS = [
   'decorationThickness',
 ] as const;
 
-function sides(
+/**
+ * Writes the axis keys (`paddingHorizontal` to Left and Right, `paddingVertical` to Top and
+ * Bottom), then the per-side keys, converting their units.
+ */
+function setAxesAndSides(
   out: Record<string, unknown>,
   prop: 'padding' | 'margin' | 'inset',
   axis: { x?: string | number; y?: string | number },
@@ -657,10 +665,10 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
   if (lineHeight !== undefined) out.lineHeight = { mult: lineHeight };
   if (letterSpacing !== undefined) out.letterSpacing = { pt: len(letterSpacing) };
   if (fontFamily !== undefined) out.fontFamily = typeof fontFamily === 'string' ? [fontFamily] : fontFamily;
-  spread(out, 'padding', '', padding, len);
-  spread(out, 'margin', '', margin, len);
+  setEdges(out, 'padding', '', padding, len);
+  setEdges(out, 'margin', '', margin, len);
   // Axis and per-side keys are more specific than the shorthand: applied after it, in that order.
-  sides(
+  setAxesAndSides(
     out,
     'padding',
     { x: paddingHorizontal, y: paddingVertical },
@@ -672,7 +680,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
     },
     units,
   );
-  sides(
+  setAxesAndSides(
     out,
     'margin',
     { x: marginHorizontal, y: marginVertical },
@@ -684,10 +692,10 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
     },
     units,
   );
-  spread(out, 'inset', '', inset, len);
-  sides(out, 'inset', {}, { Top: top, Right: right, Bottom: bottom, Left: left }, units);
-  spread(out, 'border', 'Width', borderWidth, len);
-  spread<string | Color>(out, 'border', 'Color', borderColor, toColor);
+  setEdges(out, 'inset', '', inset, len);
+  setAxesAndSides(out, 'inset', {}, { Top: top, Right: right, Bottom: bottom, Left: left }, units);
+  setEdges(out, 'border', 'Width', borderWidth, len);
+  setEdges<string | Color>(out, 'border', 'Color', borderColor, toColor);
   // Per-side keys (`borderBottomWidth`, …) arrive in `rest`; convert their units and colours here.
   for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
     const w = out[`border${side}Width`];
@@ -696,7 +704,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
     if (c !== undefined) out[`border${side}Color`] = toColor(c as string | Color);
   }
   if (typeof borderStyle === 'string') out.borderStyle = borderStyle;
-  else spread(out, 'border', 'Style', borderStyle);
+  else setEdges(out, 'border', 'Style', borderStyle);
   // The shorthand strings fill what the keys above leave unset: a side first, then `border`.
   const sideBorders = { Top: borderTop, Right: borderRight, Bottom: borderBottom, Left: borderLeft };
   for (const [side, v] of Object.entries(sideBorders)) {

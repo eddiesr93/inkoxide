@@ -33,14 +33,13 @@ import {
   Stop,
   Svg,
   Table,
-  TemplateError,
   Text,
   TextField,
   TotalPages,
   usePage,
   View,
 } from '../src/index.ts';
-import { registry, setup } from './helpers.ts';
+import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);
 
@@ -58,20 +57,8 @@ const tree = (children: ReactNode, opts: { pageCount?: number; page?: Record<str
       remoteImages: { allow: ['cdn.example.com', 'https://img.example.com/public/'] },
     },
   );
-const body = (r: ReturnType<typeof tree>) => r.document.pages[0].children ?? [];
-const first = <T,>(r: ReturnType<typeof tree>) => body(r)[0] as T;
 const decode = (data: string | undefined): string =>
   Buffer.from((data ?? '').replace(/^data:image\/svg\+xml;base64,/, ''), 'base64').toString('utf8');
-
-function thrown(fn: () => unknown): TemplateError {
-  try {
-    fn();
-  } catch (e) {
-    if (e instanceof TemplateError) return e;
-    throw e;
-  }
-  throw new Error('expected a TemplateError');
-}
 
 describe('paint styles', () => {
   it('composes translate, rotate, scale and transform in CSS order', () => {

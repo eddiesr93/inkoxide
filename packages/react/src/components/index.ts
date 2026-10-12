@@ -43,9 +43,9 @@ export const HOST = {
 export type HostType = (typeof HOST)[keyof typeof HOST];
 
 /** Component name for a host type, for error messages and component stacks. */
-export const HOST_NAME: Record<string, string> = Object.fromEntries(
+export const HOST_NAME = Object.fromEntries(
   Object.entries(HOST).map(([name, type]) => [type, name]),
-);
+) as Record<HostType, string>;
 
 type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
 

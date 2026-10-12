@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import Reconciler from 'react-reconciler';
 import { ConcurrentRoot } from 'react-reconciler/constants.js';
 
-import { HOST_NAME } from '../components/index.ts';
+import type { HostType } from '../components/index.ts';
 import { TemplateError } from '../errors.ts';
 import { hostConfig } from './host-config.ts';
-import type { Container } from './instance.ts';
+import { type Container, hostName } from './instance.ts';
 
 // oxlint-disable-next-line typescript/no-explicit-any -- the reconciler's generic host-config typing is not worth replicating.
 const reconciler = Reconciler(hostConfig as any);
@@ -21,7 +21,7 @@ export function normalizeStack(stack: string | null | undefined): string | undef
   for (const line of stack.split('\n')) {
     const m = /^\s*(?:at|in)\s+([^\s(]+)/.exec(line);
     if (!m?.[1]) continue;
-    const name = HOST_NAME[m[1]] ?? m[1];
+    const name = hostName(m[1]);
     if (names[names.length - 1] !== name) names.push(name);
   }
   return names.length ? names.map((n) => `\n    in ${n}`).join('') : undefined;
@@ -37,7 +37,7 @@ interface Captured {
  * then the container is read. Hooks and context work; Suspense does not, and effects
  * must not be relied on (their state updates never reach the document).
  */
-export function renderToInstances(element: ReactNode, parent?: string): Container {
+export function renderToInstances(element: ReactNode, parent?: HostType): Container {
   const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
   let captured: Captured | undefined;
   const onUncaughtError = (error: unknown, info: { componentStack?: string | null }) => {

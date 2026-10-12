@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { type FontFace, type FontRegistry, fonts as fontRegistry } from '@inkoxide/react';
+import { fonts } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 import { SCHEMA_VERSION } from '@inkoxide/schema';
 import * as ink from 'inkoxide';
@@ -45,22 +45,15 @@ let status: EngineStatus | undefined;
  */
 export const HYPHENATION_FILES: Readonly<Record<string, string>> = { en: 'hyph-en-us.tex' };
 
-export interface InitOptions {
-  fontsDir?: string;
-  hyphenationDir?: string;
-  faces?: readonly FontFace[];
-  registry?: FontRegistry;
-}
-
 /**
  * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Throws an
  * `INTERNAL` RenderError with the fix when fonts are missing or the engine speaks another schema
  * version.
  */
-export function initEngine(opts: InitOptions = {}): EngineStatus {
+export function initEngine(): EngineStatus {
   if (status) return status;
   try {
-    return startEngine(opts);
+    return startEngine();
   } catch (e) {
     throw startupError(e);
   }
@@ -76,7 +69,7 @@ export function startupError(e: unknown): RenderError {
   });
 }
 
-function startEngine(opts: InitOptions): EngineStatus {
+function startEngine(): EngineStatus {
   const v = ink.version();
   if (v.schema !== SCHEMA_VERSION) {
     throw new Error(
@@ -84,21 +77,19 @@ function startEngine(opts: InitOptions): EngineStatus {
         'Install matching versions of inkoxide and @inkoxide/schema.',
     );
   }
-  const registry = opts.registry ?? fontRegistry;
-  const fontsDir = opts.fontsDir ?? join(assetsDir(), 'fonts');
-  const faces = opts.faces ?? DEFAULT_FACES;
-  const { missing } = registry.loadDirectory(fontsDir, faces);
+  const fontsDir = join(assetsDir(), 'fonts');
+  const { missing } = fonts.loadDirectory(fontsDir, DEFAULT_FACES);
   const warnings: string[] = [];
-  if (registry.ids().length === 0) {
-    throw new Error(`No fonts found in ${fontsDir}. Set INKOXIDE_ASSETS_DIR or pass fontsDir.`);
+  if (fonts.ids().length === 0) {
+    throw new Error(`No fonts found in ${fontsDir}. Set INKOXIDE_ASSETS_DIR.`);
   }
   if (missing.length > 0) warnings.push(`Fonts missing from ${fontsDir}: ${missing.join(', ')}`);
-  for (const id of registry.ids()) {
-    const bytes = registry.bytes(id);
+  for (const id of fonts.ids()) {
+    const bytes = fonts.bytes(id);
     if (bytes) ink.registerFont(id, bytes);
   }
   const hyphenation: Record<string, boolean> = {};
-  const hyphDir = opts.hyphenationDir ?? join(assetsDir(), 'hyphenation');
+  const hyphDir = join(assetsDir(), 'hyphenation');
   for (const [lang, file] of Object.entries(HYPHENATION_FILES)) {
     const path = join(hyphDir, file);
     if (existsSync(path)) {
@@ -113,7 +104,7 @@ function startEngine(opts: InitOptions): EngineStatus {
     }
   }
   for (const w of warnings) console.warn(`[inkoxide] ${w}`);
-  status = { version: v, fonts: registry.ids(), hyphenation, warnings };
+  status = { version: v, fonts: fonts.ids(), hyphenation, warnings };
   return status;
 }
 
@@ -166,11 +157,6 @@ export async function renderPdf(
   } catch (e) {
     throw toRenderError(e);
   }
-}
-
-/** The problems the engine finds in a document (at most 100), without rendering. */
-export function validateWithEngine(doc: Document, images: Record<string, Uint8Array>) {
-  return ink.validate(JSON.stringify(doc), 'json', images);
 }
 
 /**
