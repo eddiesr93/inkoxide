@@ -1,6 +1,6 @@
 {
   "name": "inkoxide",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Native PDF layout and rendering engine: declarative document tree in, PDF bytes out.",
   "license": "MIT",
   "repository": {

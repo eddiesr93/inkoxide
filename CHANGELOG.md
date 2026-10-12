@@ -7,6 +7,12 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-12
+
+`inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and
+the new `@inkoxide/style` 0.1.0; `@inkoxide/schema` stays 2.2.0. Upgrading: Tailwind is optional,
+so if your templates use `className`, run `npm install @inkoxide/tailwind` (see **Changed**).
+
 ### Added
 
 - `@inkoxide/style`, the style values that `@inkoxide/react` and `@inkoxide/tailwind` share: the
