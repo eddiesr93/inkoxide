@@ -100,7 +100,10 @@ export type RenderErrorCode =
   | 'IMAGE_FETCH_FAILED'
   /** An image file could not be read (400). */
   | 'IMAGE_READ_FAILED'
-  /** A bug: an INTERNAL or INVALID_ARGUMENT engine error, or anything unexpected (500). */
+  /**
+   * The engine could not start (no fonts, mismatched versions), `renderToFile` could not write,
+   * or a bug: an INTERNAL or INVALID_ARGUMENT engine error, or anything unexpected (500).
+   */
   | 'INTERNAL';
 
 export interface DataIssue {

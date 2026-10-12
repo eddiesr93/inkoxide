@@ -1,5 +1,5 @@
 import { escapeXml } from '../canvas.ts';
-import { HOST } from '../components/index.ts';
+import { HOST, type SvgPresentation, type SvgProps } from '../components/index.ts';
 import type { Instance, Node } from '../reconciler/instance.ts';
 
 /** SVG element name of each primitive host type. */
@@ -29,8 +29,25 @@ const CAMEL_ATTRS = new Set([
   'pathLength',
 ]);
 
-/** Props of `<Svg>` that are about its box in the layout, not the drawing. */
-const BOX_PROPS = new Set(['className', 'style', 'pages', 'break', 'href', 'children', 'width', 'height']);
+/** The props `<Svg>` adds to the SVG presentation attributes, apart from its own SVG ones. */
+type SvgBoxProp = Exclude<keyof SvgProps, keyof SvgPresentation | 'viewBox' | 'preserveAspectRatio'>;
+
+/**
+ * Props of `<Svg>` that are about its box in the layout, not the drawing. Keyed by `SvgProps`, so
+ * a prop added there does not compile until it is listed here or excluded above as an SVG one.
+ */
+const BOX_KEYS: Record<SvgBoxProp, true> = {
+  width: true,
+  height: true,
+  className: true,
+  style: true,
+  pages: true,
+  break: true,
+  href: true,
+  fixed: true,
+  debug: true,
+};
+const BOX_PROPS: ReadonlySet<string> = new Set([...Object.keys(BOX_KEYS), 'children']);
 
 const attrName = (k: string): string =>
   CAMEL_ATTRS.has(k) ? k : k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);

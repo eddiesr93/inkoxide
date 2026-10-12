@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
 import { createContext, type ReactNode, useContext } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -21,6 +23,7 @@ import {
   TotalPages,
   View,
 } from '../src/index.ts';
+import { hostConfig } from '../src/reconciler/host-config.ts';
 import { registry, setup } from './helpers.ts';
 
 beforeAll(setup);
@@ -727,5 +730,12 @@ describe('errors carry component stacks', () => {
     const [problem] = r.validate();
     expect(problem?.path).toBe('pages[0].children[0].style.opacity');
     expect(problem?.componentStack).toContain('in Bad');
+  });
+});
+
+describe('renderer', () => {
+  it('reports the version of the package', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(hostConfig.rendererVersion).toBe(pkg.version);
   });
 });

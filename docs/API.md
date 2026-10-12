@@ -146,5 +146,6 @@ get the full list.
 
 ## Not part of the API
 
-- The Node `__testPanic` export is a non-enumerable test hook.
+- `InkoxideError.__testPanic` in the Node binding is a non-enumerable test hook, not a
+  module export.
 - Nothing else in the Rust crate is public: its modules are private.

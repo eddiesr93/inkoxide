@@ -12,6 +12,19 @@ All notable changes to the packages in this repository. The format follows
 - `threads: 1` runs the whole render on the calling thread (in Node, the libuv thread that
   runs it), as documented. Every one-thread render used to queue for the same worker thread,
   so concurrent renders ran one at a time.
+- Every failure of `renderToBuffer`, `renderToStream`, `renderToFile` and `init` is a
+  `RenderError`. An engine that cannot start and a PDF that `renderToFile` cannot write are
+  `INTERNAL`; a `render` prop that throws on a later pass is `TEMPLATE_ERROR`. The guide's error
+  table lists `INTERNAL`, and gives `TEMPLATE_ERROR` as the code of an invalid prop.
+- `Font.register` reads a `file:` URL given as a string (`'file:///fonts/Lora.ttf'`), not only
+  as a `URL`.
+- A font from `Font.register` that cannot be loaded no longer keeps the fonts registered with
+  it from loading. The render still fails with `INVALID_FONT`, and the next one can use them.
+- `inkoxide` no longer exports its `__testPanic` test hook, which was never public API.
+- `<Svg fixed>` and `<Svg debug>` no longer write `fixed` and `debug` attributes into the
+  drawing.
+- The `@inkoxide/react` renderer gives React its real version, from its `package.json`, instead
+  of `0.1.0`.
 
 ### Removed
 

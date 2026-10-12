@@ -216,7 +216,7 @@ export const StyleSheet = {
   },
 };
 
-/** `break="avoid"` keeps the element on one page; `"page-before"` / `"page-after"` force a break. */
+/** A CSS font weight name, for `fontWeight` in place of its number (`'bold'` is 700). */
 export type FontWeightName =
   | 'thin'
   | 'hairline'
@@ -234,6 +234,7 @@ export type FontWeightName =
   | 'heavy'
   | 'black';
 
+/** `break="avoid"` keeps the element on one page; `"page-before"` / `"page-after"` force a break. */
 export type BreakProp = 'avoid' | 'page-before' | 'page-after' | Break;
 
 export type BookmarkProp = string | { title: string; level?: number };

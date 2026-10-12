@@ -13,7 +13,7 @@ import { initTailwind } from '@inkoxide/tailwind';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
-import { countPages, type EngineStatus, initEngine, renderPdf, version } from './engine.ts';
+import { countPages, type EngineStatus, initEngine, renderPdf, startupError, version } from './engine.ts';
 import { loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
@@ -43,13 +43,16 @@ let engine: Promise<EngineStatus> | undefined;
 /**
  * Tailwind's design system, the bundled fonts and hyphenation patterns and the schema check,
  * once per process; then the fonts added with `Font.register` since the last call. Every render
- * calls it, so calling it yourself only moves that cost to startup.
+ * calls it, so calling it yourself only moves that cost to startup. A start-up failure is an
+ * `INTERNAL` RenderError; a font that cannot be loaded, `INVALID_FONT`.
  */
 export async function init(): Promise<EngineStatus> {
   engine ??= (async () => {
     await initTailwind();
     return initEngine();
-  })();
+  })().catch((e: unknown) => {
+    throw startupError(e);
+  });
   const status = await engine;
   await loadRegisteredFonts();
   return status;
@@ -98,7 +101,7 @@ export function parseData<S extends z.ZodType>(t: TemplateLike<S>, data: unknown
   return parsed.data;
 }
 
-function fromTemplateError(e: unknown, id: string): never {
+function fromTemplateError(e: unknown, id?: string): never {
   if (e instanceof TemplateError) {
     throw new RenderError(e.kind === 'schema' ? 'INVALID_TREE' : 'TEMPLATE_ERROR', e.message, {
       path: e.path,
@@ -108,7 +111,8 @@ function fromTemplateError(e: unknown, id: string): never {
       cause: e,
     });
   }
-  throw new RenderError('INTERNAL', `Rendering "${id}" failed: ${(e as Error).message}`, { cause: e });
+  const what = id === undefined ? 'the document' : `"${id}"`;
+  throw new RenderError('INTERNAL', `Rendering ${what} failed: ${(e as Error).message}`, { cause: e });
 }
 
 function buildTree<S extends z.ZodType>(
@@ -264,7 +268,11 @@ export async function renderSettled(
   while (tree.dynamic && passes < MAX_PASSES) {
     const pages = countPages(pdf);
     if (pages === tree.pageCount) break;
-    tree = tree.rebuild(pages);
+    try {
+      tree = tree.rebuild(pages);
+    } catch (e) {
+      fromTemplateError(e);
+    }
     pdf = await render(tree);
     passes++;
   }
@@ -350,13 +358,20 @@ export async function renderToBuffer(
   return pdf;
 }
 
-/** `renderToBuffer`, then writes the PDF to `path`. */
+/** `renderToBuffer`, then writes the PDF to `path`; a failed write is an `INTERNAL` RenderError. */
 export async function renderToFile(
   element: ReactElement,
   path: string,
   opts: RenderToBufferOptions = {},
 ): Promise<void> {
-  await writeFile(path, await renderToBuffer(element, opts));
+  const pdf = await renderToBuffer(element, opts);
+  try {
+    await writeFile(path, pdf);
+  } catch (e) {
+    throw new RenderError('INTERNAL', `Cannot write the PDF to ${path}: ${(e as Error).message}`, {
+      cause: e,
+    });
+  }
 }
 
 /**

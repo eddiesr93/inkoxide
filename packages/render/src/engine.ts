@@ -53,11 +53,30 @@ export interface InitOptions {
 }
 
 /**
- * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Throws
- * with the fix when fonts are missing or the engine speaks another schema version.
+ * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Throws an
+ * `INTERNAL` RenderError with the fix when fonts are missing or the engine speaks another schema
+ * version.
  */
 export function initEngine(opts: InitOptions = {}): EngineStatus {
   if (status) return status;
+  try {
+    return startEngine(opts);
+  } catch (e) {
+    throw startupError(e);
+  }
+}
+
+/** A failure to start the engine: the install or the deployment is broken, not the document. */
+export function startupError(e: unknown): RenderError {
+  if (e instanceof RenderError) return e;
+  const message = `The engine could not start: ${e instanceof Error ? e.message : String(e)}`;
+  return new RenderError('INTERNAL', message, {
+    engineCode: e instanceof ink.InkoxideError ? e.code : undefined,
+    cause: e,
+  });
+}
+
+function startEngine(opts: InitOptions): EngineStatus {
   const v = ink.version();
   if (v.schema !== SCHEMA_VERSION) {
     throw new Error(

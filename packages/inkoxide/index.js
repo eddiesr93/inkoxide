@@ -121,5 +121,6 @@ export const render = async (doc, options) => {
 export const renderSync = (doc, options) =>
   toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
 export const version = () => call(native.version, []);
-// Test hook, not public API and not in index.d.ts: a panic behind the native boundary.
-export const __testPanic = () => call(native.__testPanic, []);
+// Test hook, not public API and not in index.d.ts: a panic behind the native boundary. A
+// non-enumerable property of InkoxideError, so it is not on the module namespace.
+Object.defineProperty(InkoxideError, '__testPanic', { value: () => call(native.__testPanic, []) });

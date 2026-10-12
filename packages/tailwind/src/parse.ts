@@ -1,4 +1,4 @@
-import type { GridPlacement, Style, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
+import type { GridPlacement, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
 import type { ColorValue, Len, LenPercent, ObjectPosition, TransformOp, TwStyle } from './types.ts';
@@ -865,6 +865,3 @@ export function mapClasses(
 export function splitClasses(className: string): string[] {
   return className.split(/\s+/).filter((c) => c.length > 0);
 }
-
-/** Exposed for the schema-type tests. */
-export type { Style };

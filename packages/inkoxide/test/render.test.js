@@ -167,10 +167,25 @@ test('wrong argument types are INVALID_ARGUMENT errors', async () => {
   });
 });
 
+test('the module exports only the public API', () => {
+  assert.deepStrictEqual(Object.keys(ink).sort(), [
+    'InkoxideError',
+    'registerFont',
+    'registerHyphenationPatterns',
+    'render',
+    'renderSync',
+    'unregisterFont',
+    'unregisterHyphenationPatterns',
+    'validate',
+    'version',
+  ]);
+  assert.ok(!Object.keys(ink.InkoxideError).includes('__testPanic'));
+});
+
 test('engine failures are coded errors, never a crash', async () => {
   // A panic behind the boundary becomes INTERNAL.
   assert.throws(
-    () => ink.__testPanic(),
+    () => ink.InkoxideError.__testPanic(),
     (e) => e instanceof ink.InkoxideError && e.code === 'INTERNAL',
   );
   // Hostile input is a structured error.
