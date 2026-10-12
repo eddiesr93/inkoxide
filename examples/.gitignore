@@ -1,1 +1,3 @@
 out/
+# What running an example writes.
+*.pdf

@@ -83,4 +83,5 @@ export const sample: CertificateProps = {
   id: 'AA-2026-0815',
 };
 
-if (import.meta.main) await renderToFile(<Certificate {...sample} />, 'certificate.pdf');
+if (process.argv[1] === import.meta.filename)
+  await renderToFile(<Certificate {...sample} />, 'certificate.pdf');

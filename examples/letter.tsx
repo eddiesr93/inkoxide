@@ -61,4 +61,4 @@ export const sample: LetterProps = {
   sender: { name: 'Margaret Hamilton', title: 'Director of Engineering' },
 };
 
-if (import.meta.main) await renderToFile(<Letter {...sample} />, 'letter.pdf');
+if (process.argv[1] === import.meta.filename) await renderToFile(<Letter {...sample} />, 'letter.pdf');

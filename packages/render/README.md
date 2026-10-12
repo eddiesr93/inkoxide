@@ -131,6 +131,7 @@ An SVG logo, a table whose header repeats on every page, totals kept together an
 <summary>Source: <code>invoice.tsx</code></summary>
 
 ```tsx
+/** @jsxRuntime automatic */
 import {
   Cell,
   Circle,
@@ -314,7 +315,7 @@ export const sample: InvoiceProps = {
   taxRate: 0.08,
 };
 
-await renderToFile(<Invoice {...sample} />, 'invoice.pdf');
+renderToFile(<Invoice {...sample} />, 'invoice.pdf');
 ```
 
 </details>
@@ -329,6 +330,7 @@ Three KPI cards, a bar chart drawn with SVG, a 60-row table across three pages, 
 <summary>Source: <code>report.tsx</code></summary>
 
 ```tsx
+/** @jsxRuntime automatic */
 import {
   Cell,
   Document,
@@ -521,7 +523,7 @@ export const sample: ReportProps = {
   })),
 };
 
-await renderToFile(<Report {...sample} />, 'report.pdf');
+renderToFile(<Report {...sample} />, 'report.pdf');
 ```
 
 </details>
@@ -536,6 +538,7 @@ A landscape page, nested borders, the Inter Display face, a drawn seal and an ab
 <summary>Source: <code>certificate.tsx</code></summary>
 
 ```tsx
+/** @jsxRuntime automatic */
 import { Circle, Document, Page, Path, renderToFile, Svg, Text, View } from '@inkoxide/render';
 
 export interface CertificateProps {
@@ -621,7 +624,7 @@ export const sample: CertificateProps = {
   id: 'AA-2026-0815',
 };
 
-await renderToFile(<Certificate {...sample} />, 'certificate.pdf');
+renderToFile(<Certificate {...sample} />, 'certificate.pdf');
 ```
 
 </details>
@@ -636,6 +639,7 @@ US Letter, justified and hyphenated paragraphs, a mailto: link and a footer betw
 <summary>Source: <code>letter.tsx</code></summary>
 
 ```tsx
+/** @jsxRuntime automatic */
 import { Document, Footer, Page, renderToFile, Text, View } from '@inkoxide/render';
 
 export interface LetterProps {
@@ -699,7 +703,7 @@ export const sample: LetterProps = {
   sender: { name: 'Margaret Hamilton', title: 'Director of Engineering' },
 };
 
-await renderToFile(<Letter {...sample} />, 'letter.pdf');
+renderToFile(<Letter {...sample} />, 'letter.pdf');
 ```
 
 </details>
@@ -714,6 +718,7 @@ A CSS grid with a full-height sidebar, tags that wrap, and jobs that never split
 <summary>Source: <code>resume.tsx</code></summary>
 
 ```tsx
+/** @jsxRuntime automatic */
 import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
 
 interface Job {
@@ -872,7 +877,7 @@ export const sample: ResumeProps = {
   ],
 };
 
-await renderToFile(<Resume {...sample} />, 'resume.pdf');
+renderToFile(<Resume {...sample} />, 'resume.pdf');
 ```
 
 </details>
@@ -887,6 +892,7 @@ Text fields, a select, radio buttons and checkboxes that can be filled in any PD
 <summary>Source: <code>form.tsx</code></summary>
 
 ```tsx
+/** @jsxRuntime automatic */
 import {
   Checkbox,
   Document,
@@ -989,7 +995,7 @@ export const sample: FormProps = {
   plans: ['Starter', 'Team', 'Enterprise'],
 };
 
-await renderToFile(<Form {...sample} />, 'form.pdf');
+renderToFile(<Form {...sample} />, 'form.pdf');
 ```
 
 </details>

@@ -156,4 +156,4 @@ export const sample: ResumeProps = {
   ],
 };
 
-if (import.meta.main) await renderToFile(<Resume {...sample} />, 'resume.pdf');
+if (process.argv[1] === import.meta.filename) await renderToFile(<Resume {...sample} />, 'resume.pdf');

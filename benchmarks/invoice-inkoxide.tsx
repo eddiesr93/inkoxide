@@ -133,4 +133,5 @@ export function Invoice(inv: typeof invoice) {
 }
 
 // Run directly: writes the PDF. Imported (bench.tsx): only exports Invoice.
-if (import.meta.main) await renderToFile(<Invoice {...invoice} />, 'invoice-inkoxide.pdf');
+if (process.argv[1] === import.meta.filename)
+  await renderToFile(<Invoice {...invoice} />, 'invoice-inkoxide.pdf');

@@ -100,4 +100,4 @@ export const sample: FormProps = {
   plans: ['Starter', 'Team', 'Enterprise'],
 };
 
-if (import.meta.main) await renderToFile(<Form {...sample} />, 'form.pdf');
+if (process.argv[1] === import.meta.filename) await renderToFile(<Form {...sample} />, 'form.pdf');
