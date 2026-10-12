@@ -45,6 +45,8 @@ const pending: Pending[] = [];
 /** Faces registered through `Font.register`, by id, with the source they came from. */
 const known = new Map<string, FontSrc>();
 let loading: Promise<void> = Promise.resolve();
+/** Batches handed to `loading` that have not finished. */
+let batches = 0;
 
 function weightOf(w: FontWeight | undefined, family: string): number {
   if (w === undefined) return 400;
@@ -131,23 +133,28 @@ export const Font = {
 export function loadRegisteredFonts(): Promise<void> {
   if (pending.length === 0) return loading;
   const batch = pending.splice(0);
+  batches++;
   loading = loading.then(async () => {
     let failed: RenderError | undefined;
-    for (const f of batch) {
-      let bytes: Uint8Array;
-      try {
-        bytes = await bytesOf(f.src);
-        registerEngineFont(f.id, bytes);
-      } catch (e) {
-        known.delete(f.id);
-        failed ??= new RenderError(
-          'INVALID_FONT',
-          `Font "${f.family}" ${f.weight}${f.style === 'italic' ? ' italic' : ''} (${describe(f.src)}) could not be loaded: ${(e as Error).message}`,
-          { cause: e },
-        );
-        continue;
+    try {
+      for (const f of batch) {
+        let bytes: Uint8Array;
+        try {
+          bytes = await bytesOf(f.src);
+          registerEngineFont(f.id, bytes);
+        } catch (e) {
+          known.delete(f.id);
+          failed ??= new RenderError(
+            'INVALID_FONT',
+            `Font "${f.family}" ${f.weight}${f.style === 'italic' ? ' italic' : ''} (${describe(f.src)}) could not be loaded: ${(e as Error).message}`,
+            { cause: e },
+          );
+          continue;
+        }
+        fonts.register({ id: f.id, family: f.family, weight: f.weight, style: f.style }, bytes);
       }
-      fonts.register({ id: f.id, family: f.family, weight: f.weight, style: f.style }, bytes);
+    } finally {
+      batches--;
     }
     if (failed) throw failed;
   });
@@ -155,4 +162,9 @@ export function loadRegisteredFonts(): Promise<void> {
   const result = loading;
   loading = loading.catch(() => {});
   return result;
+}
+
+/** Whether faces registered with `Font.register` are not loaded yet (`init` loads them). */
+export function fontsPending(): boolean {
+  return pending.length > 0 || batches > 0;
 }

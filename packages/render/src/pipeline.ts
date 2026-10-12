@@ -14,8 +14,16 @@ import type { Document } from '@inkoxide/schema';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
-import { countPages, type EngineStatus, initEngine, renderPdf, startupError, version } from './engine.ts';
-import { loadRegisteredFonts } from './font.ts';
+import {
+  countPages,
+  type EngineStatus,
+  engineStatus,
+  initEngine,
+  renderPdf,
+  startupError,
+  version,
+} from './engine.ts';
+import { fontsPending, loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
 import { DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
@@ -154,13 +162,21 @@ const MAX_PASSES = 4;
 
 /**
  * Template + data → tree, without the engine (for tree snapshots and previews). `renderSettled`
- * renders it; pass both the same `opts`.
+ * renders it; pass both the same `opts`. It is synchronous, so it cannot load what `init` loads:
+ * before `init` has finished, or while fonts added with `Font.register` are not loaded, it
+ * throws an `INTERNAL` RenderError that says to call `init`.
  */
 export function renderTree<S extends z.ZodType>(
   t: TemplateLike<S>,
   data: unknown,
   opts: RenderOpts = {},
 ): TreeResult {
+  if (engineStatus() === undefined || fontsPending()) {
+    throw new RenderError(
+      'INTERNAL',
+      'renderTree needs Tailwind, the engine and the fonts loaded: call `await init()` first, and again after Font.register.',
+    );
+  }
   const tree = templateTree(t, parseData(t, data), opts);
   return withTemplateImages(t, tree, opts.images);
 }
@@ -249,6 +265,7 @@ export async function renderSettled(
   images: Record<string, Uint8Array>,
   opts: RenderOpts = {},
 ): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number; fetchMs: number }> {
+  await init();
   const registered = { ...images, ...opts.images };
   const policies = imagePolicies(opts);
   const all: Record<string, Uint8Array> = { ...registered };

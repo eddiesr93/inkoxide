@@ -16,6 +16,7 @@ import {
   Header,
   type ImageSrc,
   Image,
+  init,
   type LocalImageOptions,
   Page,
   PageBreak,
@@ -85,6 +86,8 @@ const bodyOf = async (req: IncomingMessage): Promise<string> => {
 };
 
 beforeAll(async () => {
+  // renderTree needs it; the render calls run it themselves.
+  await init();
   server = createServer(async (req, res) => {
     seen.push({ method: req.method, header: req.headers['x-token'], body: await bodyOf(req) });
     const body = seen[seen.length - 1]?.body;

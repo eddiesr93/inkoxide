@@ -21,6 +21,11 @@ All notable changes to the packages in this repository. The format follows
   host that never answered held up every render in the process for up to five minutes, or for
   good when it sent bytes slowly; now the render that loads the font fails with `INVALID_FONT`
   (`timed out after 30000 ms`). The guide lists `http:` URLs, which were already fetched.
+- `@inkoxide/render/templates`: `renderTree` called before `init()` has finished, or while fonts
+  added with `Font.register` are not loaded yet, throws an `INTERNAL` RenderError that says to
+  call `await init()`, instead of failing with `No fonts are registered`, pointing to functions
+  the package does not export, or building a tree without those fonts. `renderSettled` runs
+  `init()` itself. The guide says that `renderTree` needs `init()` first.
 
 ## 0.5.0 - 2026-10-12
 

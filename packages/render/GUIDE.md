@@ -683,7 +683,9 @@ options under the same id replaces the template's.
 - **`parseData(template, data)`** only checks the data, and returns it parsed, with the
   schema's defaults applied.
 - **`renderTree(template, data, options?)`** builds the document tree without rendering it, for
-  snapshots and previews. Its `document` is the tree, and its `images` the images it uses.
+  snapshots and previews. Its `document` is the tree, and its `images` the images it uses. It is
+  synchronous, so it cannot load what a render loads first: `await init()` before it, and again
+  after `Font.register`. Otherwise it throws an `INTERNAL` RenderError that says so.
   `renderSettled(tree, images, options?)` renders it, and renders again with the page count
   while `render` props change it; `images` are more images by id (`{}` when there are none), and
   it resolves to `{ pdf, pages, passes, tree, fetchMs }`. Pass both the same options.
@@ -699,7 +701,7 @@ above, so that every error has the same shape.
 
 The entry also exports the types of these: `TemplateLike` (a template), `GenerateOptions` (the
 options of `generate`), `RenderResult` (what `generate` resolves to), `Timings` (its `timings`),
-`TreeResult` (what `renderTree` resolves to) and `RenderOpts` (the options of `renderSettled` and
+`TreeResult` (what `renderTree` returns) and `RenderOpts` (the options of `renderSettled` and
 `renderDocument`).
 
 ## FAQ
