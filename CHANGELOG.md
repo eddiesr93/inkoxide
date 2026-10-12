@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Changed
+
+- A URL entry in `remoteImages.allow` is matched by origin and path instead of as a string
+  prefix: it allows URLs with the same scheme, host and port, and, when it has a path, that path
+  and the paths under it (`https://cdn.example.com/img` allows `/img/logo.png`, not
+  `/imgs/logo.png`). Entries such as `https://cdn.example.com/` work as before.
+
 ### Fixed
 
 - A component that suspends (`use()` of a promise, a `lazy` component) fails the render with a

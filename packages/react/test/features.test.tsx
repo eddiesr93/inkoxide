@@ -980,6 +980,33 @@ describe('remote images', () => {
     expect(remoteAllowed('https://user:pw@cdn.example.com/a.png', policy)).toBe(false);
   });
 
+  it('matches a URL entry by origin, and by path at a slash', () => {
+    const allowed = (url: string, entry: string) => remoteAllowed(url, { allow: [entry] });
+    for (const entry of [
+      'https://cdn.example.com',
+      'https://cdn.example.com/',
+      'https://CDN.example.com:443',
+    ]) {
+      expect(allowed('https://cdn.example.com/a.png', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com.evil.net/x', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com:8443/x', entry)).toBe(false);
+      expect(allowed('http://cdn.example.com/x', entry)).toBe(false);
+      expect(allowed('https://cdn.example.comx/x', entry)).toBe(false);
+    }
+    for (const entry of ['https://cdn.example.com/img', 'https://cdn.example.com/img/']) {
+      expect(allowed('https://cdn.example.com/img/a.png', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com/img/sub/a.png?v=2', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com/imgs/a.png', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com/img.png', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com/img/../secret.png', entry)).toBe(false);
+    }
+    expect(allowed('https://cdn.example.com/img', 'https://cdn.example.com/img')).toBe(true);
+    expect(allowed('http://localhost:8080/a.png', 'http://localhost:8080')).toBe(true);
+    expect(allowed('http://localhost:8081/a.png', 'http://localhost:8080')).toBe(false);
+    expect(allowed('ftp://cdn.example.com/a.png', 'ftp://cdn.example.com/')).toBe(false);
+    expect(allowed('https://cdn.example.com/a.png', 'https://')).toBe(false);
+  });
+
   it('lists allowed URLs for the caller to fetch, one id per URL', () => {
     const r = tree(
       <>

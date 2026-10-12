@@ -43,7 +43,10 @@ export interface LocalImageOptions {
 }
 
 export interface RemoteImageOptions {
-  /** URL prefixes (`'https://cdn.example.com/img/'`) or host names (`'*.example.com'`, https only). */
+  /**
+   * URLs (`'https://cdn.example.com/img/'`: that origin, and that path or one under it) or host
+   * names (`'*.example.com'`, https only).
+   */
   allow: readonly string[];
   /** Per-image timeout (default 10 000 ms). */
   timeoutMs?: number;
