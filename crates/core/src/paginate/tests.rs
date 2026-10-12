@@ -45,14 +45,6 @@ fn rect(t: &Tree<'_>, p: &Placement, i: u32) -> (f32, f32) {
     (top, top + h)
 }
 
-fn page(y: f32) -> u32 {
-    ((y + PAGED_EPS) / H).floor() as u32
-}
-
-fn page_of_bottom(y: f32) -> u32 {
-    ((y - PAGED_EPS) / H).floor().max(0.0) as u32
-}
-
 /// Every atomic leaf no taller than a page sits on exactly one page, and
 /// siblings keep document order.
 fn check_invariants(t: &Tree<'_>, p: &Placement) {
@@ -61,8 +53,8 @@ fn check_invariants(t: &Tree<'_>, p: &Placement) {
         let leaf = t.nodes[i as usize].children.is_empty();
         if leaf && bottom - top <= H + PAGED_EPS {
             assert_eq!(
-                page(top),
-                page_of_bottom(bottom).max(page(top)),
+                p.page_of(top),
+                p.page_of_bottom(bottom).max(p.page_of(top)),
                 "node {i} crosses a page boundary: {top}..{bottom}"
             );
         }
@@ -231,7 +223,7 @@ fn a_first_row_taller_than_a_page_starts_where_the_table_is() {
         let cell = t.children(row).next().unwrap();
         let first = t.children(cell).next().unwrap();
         assert_eq!(
-            page(rect(&t, &p, first).0),
+            p.page_of(rect(&t, &p, first).0),
             0,
             "{header}: the row starts on page 0"
         );
@@ -316,8 +308,8 @@ fn text_splits_between_lines() {
         assert!(top > prev_top, "lines stay in order");
         prev_top = top;
         assert_eq!(
-            page(top),
-            page_of_bottom(top + line.height),
+            p.page_of(top),
+            p.page_of_bottom(top + line.height),
             "line crosses a page: {top}"
         );
     }
@@ -351,14 +343,14 @@ fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
     let layout = cache.layout(node, cw).unwrap();
     let shifts = &p.line_shifts[2];
     if shifts.is_empty() {
-        let pg = page(rect(&tree, &p, 2).0);
+        let pg = p.page_of(rect(&tree, &p, 2).0);
         return vec![pg; layout.lines.len()];
     }
     layout
         .lines
         .iter()
         .zip(shifts)
-        .map(|(l, s)| page(cy + l.top + s))
+        .map(|(l, s)| p.page_of(cy + l.top + s))
         .collect()
 }
 
@@ -405,8 +397,8 @@ fn tables_split_between_rows_and_reserve_header_space() {
     // Every page after the first starts with 10pt reserved for the header.
     for &r in &rows[1..] {
         let (top, h) = p.paged_rect(&t, r);
-        let pg = page(top);
-        assert_eq!(pg, page_of_bottom(top + h), "row crosses a page");
+        let pg = p.page_of(top);
+        assert_eq!(pg, p.page_of_bottom(top + h), "row crosses a page");
         if pg > 0 {
             assert!(
                 top - pg as f32 * H >= 10.0 - PAGED_EPS,
@@ -676,8 +668,8 @@ fn check_lines(children: &str) -> u32 {
             let shift = shifts.get(k).copied().unwrap_or(p.shift(i));
             let top = cy + line.top + shift;
             assert_eq!(
-                page(top),
-                page_of_bottom(top + line.height),
+                p.page_of(top),
+                p.page_of_bottom(top + line.height),
                 "line {k} of node {i} crosses a page: {top}"
             );
         }

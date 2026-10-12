@@ -9,7 +9,7 @@ use crate::images::ImageSet;
 use crate::layout::{
     AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Size, TaffyLayout, Tree,
 };
-use crate::paginate::{paginate, Placement, PAGED_EPS};
+use crate::paginate::{paginate, Placement};
 use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
 use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
 use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
@@ -363,9 +363,8 @@ fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Nod
             continue;
         };
         let i = i as NodeIdx;
-        let shift = pl.line_shifts(i).get(li).copied().unwrap_or(pl.shift(i));
-        let top = content.y + lines.lines[li].top + shift;
-        let page = ((top + PAGED_EPS) / pl.page_h).floor().max(0.0) as u32;
+        let top = content.y + lines.lines[li].top + pl.line_shift(i, li);
+        let page = pl.page_of(top);
         out.push((
             node,
             page.clamp(pl.first_page(i), pl.pages.saturating_sub(1)),
