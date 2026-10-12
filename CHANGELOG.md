@@ -16,6 +16,9 @@ All notable changes to the packages in this repository. The format follows
 - **Tailwind themes:** `initTailwind({ css })` run alongside `init()` or another `initTailwind()`
   keeps its theme; whichever load finished last used to win, so the default theme could replace
   it.
+- **`flex`:** a lone length is the basis, as in CSS: `flex: '30%'` and `flex-[30%]` are
+  `1 1 30%`. The style prop rejected it and the class read it as a grow of 0.3. Grow and shrink
+  with a unit are an unsupported value.
 
 ## 0.5.0 - 2026-10-12
 

@@ -180,3 +180,15 @@ describe('grid placement', () => {
     expect(tw('row-span-2 row-end-4')).toEqual({ gridRow: { span: 2, end: 4 } });
   });
 });
+
+describe('the flex shorthand', () => {
+  it('reads a lone length as the basis, as CSS and the style prop do', () => {
+    expect(tw('flex-[30%]')).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '30%' });
+    expect(tw('flex-[2_2_10pt]')).toEqual({ flexGrow: 2, flexShrink: 2, flexBasis: 10 });
+    expect(tw('flex-[1_1_0]')).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 0 });
+  });
+
+  it('rejects grow and shrink with units', () => {
+    expect(() => tw('flex-[50%_50%]')).toThrow(/grow and shrink are numbers/);
+  });
+});

@@ -70,6 +70,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'flex-auto': { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' },
       'flex-initial': { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
       'flex-none': { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
+      'flex-[30%]': { flexGrow: 1, flexShrink: 1, flexBasis: '30%' },
     },
   },
   {

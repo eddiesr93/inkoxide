@@ -223,10 +223,11 @@ const FLEX_KEYWORDS: Readonly<Record<string, readonly [number, number, 'auto']>>
 const NUMBER_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i;
 
 /**
- * Splits CSS `flex` into grow, shrink and basis: a keyword (`none`, `auto`, `initial`) or
- * `<grow> [<shrink>] [<basis>]`, where a second value that is not a number is the basis
- * (`1 auto`). A missing shrink is 1 and a missing basis `0%`. `number` reads grow and shrink,
- * `length` the basis.
+ * Splits CSS `flex` into grow, shrink and basis, as CSS reads it: a keyword (`none`, `auto`,
+ * `initial`), or `<grow> [<shrink>]` and a basis before or after them. The basis is the value
+ * that is not a number (`30%`, `1 auto`), or the third of three numbers (`1 1 0`). A missing grow
+ * or shrink is 1 and a missing basis `0%`, so `flex: 30%` is `1 1 30%`. `number` reads grow and
+ * shrink, which must be plain numbers, and `length` the basis.
  */
 export function parseFlex<L>(
   value: string,
@@ -236,19 +237,25 @@ export function parseFlex<L>(
   const v = value.trim();
   const keyword = Object.hasOwn(FLEX_KEYWORDS, v) ? FLEX_KEYWORDS[v] : undefined;
   if (keyword) return [...keyword];
-  const [grow, second, basis] = splitTopLevel(v, ' ');
-  if (grow === undefined) throw new ValueError(`flex "${value}" is not a number or "grow shrink basis"`);
+  const parts = splitTopLevel(v, ' ');
+  const first = parts[0];
+  const last = parts.at(-1);
+  if (first === undefined || last === undefined || parts.length > 3) {
+    throw new ValueError(`flex "${value}" is not a number or "grow shrink basis"`);
+  }
+  let basis: string | undefined;
+  if (!NUMBER_RE.test(first)) basis = parts.shift();
+  else if (parts.length === 3 || !NUMBER_RE.test(last)) basis = parts.pop();
+  const [grow, shrink] = parts;
   const factor = (f: string): number => {
+    if (!NUMBER_RE.test(f)) throw new ValueError(`flex "${value}": grow and shrink are numbers`);
     const n = number(f);
     if (n < 0) throw new ValueError(`flex "${value}": grow and shrink cannot be negative`);
     return n;
   };
-  if (second !== undefined && basis === undefined && !NUMBER_RE.test(second)) {
-    return [factor(grow), 1, length(second)];
-  }
   return [
-    factor(grow),
-    second === undefined ? 1 : factor(second),
+    grow === undefined ? 1 : factor(grow),
+    shrink === undefined ? 1 : factor(shrink),
     basis === undefined ? '0%' : length(basis),
   ];
 }
