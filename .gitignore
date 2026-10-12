@@ -18,6 +18,7 @@ dist/
 /fuzz/artifacts/
 /fuzz/coverage/
 /fuzz/logs/
+/fuzz/findings/
 
 # Local tool settings
 /.claude/

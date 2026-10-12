@@ -60,9 +60,14 @@ Needs the nightly toolchain and cargo-fuzz:
 ```sh
 rustup toolchain install nightly
 cargo install cargo-fuzz
-scripts/fuzz.sh 60       # every target, 60 s each
-scripts/fuzz.sh 3600     # a one-hour run
+scripts/fuzz.sh 60                    # every target, 60 s each
+scripts/fuzz.sh 3600                  # a one-hour run
+scripts/fuzz.sh 600 render_svg_tree   # one target
 ```
+
+The targets run without a sanitizer: the core crate has no unsafe code,
+and AddressSanitizer's own memory and time would blur the hangs and
+memory use they look for.
 
 Targets (in `fuzz/`, outside the workspace):
 
@@ -101,6 +106,30 @@ cargo run --release --bin repro -- stats corpus/render_tree             # genera
 
 `scripts/ci.sh` runs a 30-second smoke per target when nightly and
 cargo-fuzz are installed and skips it otherwise.
+
+### Nightly
+
+`.github/workflows/fuzz.yml` runs every target for an hour each night,
+one job per target, with each corpus carried over from the night before
+(also on demand, from the Actions tab). Findings are security issues
+(SECURITY.md) and a run's logs and artifacts are public, so a run with
+findings fails without showing them: `scripts/fuzz-findings.sh seal`
+encrypts `fuzz/artifacts` and `fuzz/logs` to the maintainers' public key,
+`.github/fuzz-findings.pub.pem`, and the run uploads only that. A
+maintainer opens them with the private key
+(`~/.config/inkoxide/fuzz-findings.key.pem`, or `INKOXIDE_FUZZ_KEY`):
+
+```sh
+scripts/fuzz-findings.sh open RUN_ID   # into fuzz/findings/RUN_ID/fuzz-findings-TARGET/findings
+```
+
+To make a key pair (the private key never leaves your machine):
+
+```sh
+mkdir -p ~/.config/inkoxide
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out ~/.config/inkoxide/fuzz-findings.key.pem
+openssl pkey -in ~/.config/inkoxide/fuzz-findings.key.pem -pubout -out .github/fuzz-findings.pub.pem
+```
 
 ## Platform notes
 
