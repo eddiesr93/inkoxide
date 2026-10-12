@@ -8,7 +8,7 @@ mod boxes;
 pub(crate) mod debug;
 mod shapes;
 
-pub(crate) use boxes::{content_radii, paint_flow, ContentCtx, ContentPainter, FlowPart};
+pub(crate) use boxes::{content_radii, mul, paint_flow, ContentCtx, ContentPainter, FlowPart};
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
 pub(crate) use debug::{DebugBoxes, Labels as DebugLabels};
 pub(crate) use shapes::{is_square, rounded_rect};
@@ -90,15 +90,16 @@ pub(crate) enum Op {
     /// Sets the absolute fill and stroke alpha (cumulative opacity is
     /// computed by the painter; PDF `gs` does not multiply).
     SetOpacity(f32),
-    /// A clickable area (draws nothing). `rect` is in page coordinates;
-    /// transforms (rotation) do not apply to it.
+    /// A clickable area (draws nothing). `rect` is in page coordinates,
+    /// under the transform in effect: the writer makes the annotation
+    /// cover where it lands.
     Link {
         rect: Rect,
         target: Box<str>,
     },
     /// A form field widget (draws nothing here; the writer adds an
-    /// annotation with its appearance). Like links, transforms do not
-    /// apply to it.
+    /// annotation with its appearance, transformed like the content
+    /// around it).
     Field(Box<crate::forms::FieldOp>),
 }
 

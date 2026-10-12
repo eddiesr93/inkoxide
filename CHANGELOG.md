@@ -28,6 +28,9 @@ All notable changes to the packages in this repository. The format follows
 - A radio button whose value is `Off`, or longer than 127 bytes, is no longer written with a
   broken appearance state: such a group names its states by position and lists its values in
   `/Opt`. A checked `Off` button showed as unselected.
+- Links and form fields inside a box with `transform` or `rotate` are clickable where the box is
+  drawn: their areas follow the transform, and a field's appearance turns and scales with it.
+  They stayed at the untransformed position.
 
 ## 0.5.0 - 2026-10-12
 

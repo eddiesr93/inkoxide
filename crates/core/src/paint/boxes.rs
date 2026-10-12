@@ -221,20 +221,6 @@ impl BoxPainter<'_, '_, '_, '_> {
         let g = ln.geo;
         let (shift, extra) = self.mode.shifts(i);
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
-        if let Some(target) = &node.link {
-            // Only the part of the box shown on this page.
-            let (top, bottom) = match window {
-                Some(win) => win.clip(y, y + h, self.dy),
-                None => (y, y + h),
-            };
-            if bottom > top && w > 0.0 {
-                self.ops.push(Op::Link {
-                    rect: Rect::new(x, top, w, bottom - top),
-                    target: target.clone(),
-                });
-            }
-        }
-
         let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
         let transform = s.transform.as_deref().filter(|t| !t.is_empty());
         let own = if transform.is_some() || (rotate.is_some() && s.transform_origin.is_some()) {
@@ -257,6 +243,28 @@ impl BoxPainter<'_, '_, '_, '_> {
         };
         if node.debug || self.debug.all {
             self.outline(&g, shift, extra, window, own);
+        }
+        if let Some(target) = &node.link {
+            // Only the part of the box shown on this page.
+            let (top, bottom) = match window {
+                Some(win) => win.clip(y, y + h, self.dy),
+                None => (y, y + h),
+            };
+            if bottom > top && w > 0.0 {
+                let link = Op::Link {
+                    rect: Rect::new(x, top, w, bottom - top),
+                    target: target.clone(),
+                };
+                // Under the box's own transform, even when it is invisible
+                // (opacity 0 still takes clicks, as in CSS).
+                match own {
+                    Some(m) => {
+                        self.ops
+                            .extend([Op::Save, Op::Transform(m), link, Op::Restore]);
+                    }
+                    None => self.ops.push(link),
+                }
+            }
         }
 
         let opacity = s.opacity.unwrap_or(1.0);
@@ -785,7 +793,7 @@ pub(crate) fn content_radii(s: &Style, g: &Geometry) -> Radii {
 }
 
 /// `a · b`: applies `b` first, then `a` (PDF matrix order `[a b c d e f]`).
-fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
+pub(crate) fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
     [
         a[0] * b[0] + a[2] * b[1],
         a[1] * b[0] + a[3] * b[1],

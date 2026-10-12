@@ -243,11 +243,21 @@ impl Ctx<'_, '_, '_> {
         on: &str,
     ) -> Appearances {
         let (w, h) = (op.rect.w, op.rect.h);
+        // A transformed widget: its appearance turns and scales with it
+        // (widget space is y-up, layout space y-down), and the viewer fits
+        // the result to the widget's `/Rect`, which bounds it.
+        let matrix = op
+            .ctm
+            .map(|[a, b, c, d, ..]| [a, -b, -c, d, 0.0, 0.0].map(q))
+            .filter(|m| *m != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         let mut out = Vec::new();
         let mut form = |pdf: &mut Pdf, content: Vec<u8>, font: Option<FontKey>| -> Ref {
             let r = alloc.next();
             let mut x = pdf.form_xobject(r, &content);
             x.bbox(PdfRect::new(0.0, 0.0, q(w), q(h)));
+            if let Some(m) = matrix {
+                x.matrix(m);
+            }
             if let Some(key) = font {
                 if let Some(&fr) = self.font_refs.get(&key) {
                     x.resources()
@@ -298,7 +308,7 @@ impl Ctx<'_, '_, '_> {
         (page, op): (usize, &FieldOp),
         aps: &Appearances,
     ) {
-        let r = op.rect;
+        let r = op.ctm.map_or(op.rect, |m| super::bounds(m, op.rect));
         let page_h = self.pages[page].height;
         a.rect(PdfRect::new(
             q(r.x),
@@ -474,6 +484,22 @@ mod tests {
         // Asked to stretch, it stretches.
         let pdf = render(&field("radio", r#""style":{"alignSelf":"stretch"},"#));
         assert_eq!(rects(&pdf), [[0.0, 168.0, 200.0, 200.0]]);
+    }
+
+    #[test]
+    fn a_rotated_widget_turns_its_appearance() {
+        let pdf = render(
+            r#"{"type":"box","style":{"rotate":90,"width":40,"height":20},"children":[
+                 {"type":"field","style":{"width":40,"height":20},"field":{"name":"c","kind":"checkbox","checked":true}}]}"#,
+        );
+        // Turned a quarter clockwise around (20, 10): 20 wide, 40 tall.
+        assert_eq!(rects(&pdf), [[10.0, 170.0, 30.0, 210.0]]);
+        assert_eq!(pdf.matches("/Matrix [0 -1 1 0 0 0]").count(), 2, "{pdf}");
+        // Upright widgets have no matrix.
+        let pdf = render(
+            r#"{"type":"field","style":{"width":40,"height":20},"field":{"name":"c","kind":"checkbox"}}"#,
+        );
+        assert!(!pdf.contains("/Matrix"));
     }
 
     #[test]

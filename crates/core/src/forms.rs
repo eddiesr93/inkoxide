@@ -43,6 +43,9 @@ pub(crate) struct FieldOp {
     /// Glyphs embedded for editing (see `EDIT_RANGES`), and a select's
     /// options.
     pub edit_glyphs: Vec<u16>,
+    /// The transform in effect where the widget is painted (`None`:
+    /// identity); the PDF writer sets it.
+    pub ctm: Option<[f32; 6]>,
 }
 
 /// Content size of a field without explicit dimensions.
@@ -149,6 +152,7 @@ pub(crate) fn paint(
         font,
         text,
         edit_glyphs,
+        ctm: None,
     })));
 }
 
