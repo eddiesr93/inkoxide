@@ -24,6 +24,13 @@ All notable changes to the packages in this repository. The format follows
   and the paths under it (`https://cdn.example.com/img` allows `/img/logo.png`, not
   `/imgs/logo.png`). Entries such as `https://cdn.example.com/` work as before.
 
+### Deprecated
+
+- `@inkoxide/style`: `Reader`, `ENUMS`, `EnumKey`, `evalDim`, `Dim`, `substituteVars` and
+  `parseFontFamily`, which only `@inkoxide/tailwind` uses. They moved to
+  `@inkoxide/style/internal`, which is for Inkoxide's own packages and not covered by semver,
+  and will be removed from the main entry.
+
 ### Fixed
 
 - The examples in the `@inkoxide/render` README run when copied into a new project and started

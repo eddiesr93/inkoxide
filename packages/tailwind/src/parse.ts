@@ -1,18 +1,16 @@
 import type { GridPlacement } from '@inkoxide/schema';
 import {
   parseFlex,
-  parseFontFamily,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
-  Reader,
   round,
   splitTopLevel,
-  substituteVars,
   type TwStyle,
   UnsupportedValueError,
   ValueError,
 } from '@inkoxide/style';
+import { parseFontFamily, Reader, substituteVars } from '@inkoxide/style/internal';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
 

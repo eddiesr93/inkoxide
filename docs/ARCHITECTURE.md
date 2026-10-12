@@ -13,7 +13,7 @@ how the pieces fit together, for contributors.
 | `crates/node` | The napi-rs binding, published as the npm package `inkoxide`. |
 | `packages/inkoxide` | The npm package for the binding: loader, types and tests. |
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
-| `packages/style` | Style values: CSS lengths, colours and transforms read into engine styles: `@inkoxide/style`. |
+| `packages/style` | The flat style object, CSS units, and the readers of colours, `flex`, transforms and positions that React and Tailwind share: `@inkoxide/style`. |
 | `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`, optional. |
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
 | `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`. |
@@ -35,8 +35,10 @@ dependency), for `className`.
 React commits, the tree is converted into a schema v1 document: `className`
 strings go through `@inkoxide/tailwind` when it is installed (the real
 Tailwind compiler turns classes into CSS, and the CSS declarations are
-mapped to engine styles), style objects are normalised with
-`@inkoxide/style`, and fonts are resolved against the font
+mapped to engine styles), style objects are read with the readers of
+colours, `flex`, transforms and positions that `@inkoxide/style` shares
+with Tailwind (lengths have their own reader, which also takes `em`, `vw`
+and `vh`), and fonts are resolved against the font
 registry with CSS font matching. In development the tree is validated
 against the JSON Schema, and errors carry the component stack.
 

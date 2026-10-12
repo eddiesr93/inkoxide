@@ -38,15 +38,15 @@ const PACKAGES = [
     sideEffects: false,
     readme: {
       blurb:
-        'Reads CSS values into Inkoxide styles: lengths and units, colours, `flex`, transforms, ' +
-        'transform origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
+        'Reads CSS values into Inkoxide styles: units, colours, `flex`, transforms, transform ' +
+        'origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
         '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
       install: 'npm install @inkoxide/style',
       example: `import { parseColor, parseTransform, PT_PER_UNIT } from '@inkoxide/style';
 
 parseColor('#f80'); // [1, 0.533333, 0, 1]
 parseTransform('transform', 'rotate(10deg) translate(4px, 50%)'); // [{ rotate: 10 }, { translate: [3, '50%'] }]
-PT_PER_UNIT.mm; // 2.834646`,
+PT_PER_UNIT.mm; // 2.834645669291339 (72 / 25.4)`,
     },
   },
   {

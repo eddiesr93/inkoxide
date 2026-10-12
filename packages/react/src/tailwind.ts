@@ -1,6 +1,7 @@
 // `@inkoxide/tailwind` is optional: templates that style with `style` alone do not need it, and
 // it is loaded only when it is installed.
 import type { TwStyle } from '@inkoxide/style';
+import { DEFAULT_SANS } from '@inkoxide/style/internal';
 
 /**
  * What is used of `@inkoxide/tailwind`. Declared here, not imported, so that the published types
@@ -15,9 +16,6 @@ interface Tailwind {
 
 /** The loaded module, `null` when it is not installed, `undefined` before `loadTailwind`. */
 let tailwind: Tailwind | null | undefined;
-
-/** The font families of a document that sets none, Tailwind's default `font-sans`. */
-const SANS = ['Inter', 'Noto Sans'];
 
 /**
  * Loads and starts `@inkoxide/tailwind` when it is installed, so that `className` works, and
@@ -71,6 +69,6 @@ export function isUnsupportedClass(e: unknown): e is Error & { className: string
 }
 
 /** The font families of a document that sets none: the Tailwind theme's `font-sans`, if loaded. */
-export function defaultFamily(): string[] {
-  return (tailwind?.isTailwindReady() && tailwind.tw('font-sans').fontFamily) || SANS;
+export function defaultFamily(): readonly string[] {
+  return (tailwind?.isTailwindReady() && tailwind.tw('font-sans').fontFamily) || DEFAULT_SANS;
 }

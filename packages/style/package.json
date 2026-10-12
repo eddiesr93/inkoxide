@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Style values for Inkoxide: CSS lengths, colours and transforms read into the style object that @inkoxide/react and @inkoxide/tailwind build.",
+  "description": "Style values for Inkoxide: CSS units, colours and transforms read into the style object that @inkoxide/react and @inkoxide/tailwind build.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./internal": "./src/internal.ts"
   },
   "dependencies": {
     "culori": "4.0.2"
