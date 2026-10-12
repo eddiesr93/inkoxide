@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 
 import { fonts, renderTemplate } from '@inkoxide/react';
 import type { ReactNode } from 'react';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { assetsDir } from '../src/engine.ts';
 import { countPages, Document, Font, Page, RenderError, renderToBuffer, Text } from '../src/index.ts';
@@ -47,13 +47,19 @@ let base: string;
 beforeAll(async () => {
   server = createServer((req, res) => {
     if (req.url === '/Inter-Regular.ttf') res.end(readFileSync(file('Inter-Regular.ttf')));
+    else if (req.url === '/moved') res.writeHead(302, { location: '/Inter-Regular.ttf' }).end();
+    // Accepts the request and never answers.
+    else if (req.url === '/stall') return;
     else res.writeHead(404).end();
   });
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
-afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
+afterAll(() => {
+  server.closeAllConnections();
+  return new Promise<void>((ok) => server.close(() => ok()));
+});
 
 describe('Font.register', () => {
   it('adds a family from a path and resolves its weight by name', async () => {
@@ -91,10 +97,33 @@ describe('Font.register', () => {
     expect(fonts.has('File-Object-400')).toBe(true);
   });
 
-  it('fetches a font from a URL', async () => {
+  it('fetches a font from a URL, following redirects', async () => {
     Font.register({ family: 'Remote', src: `${base}/Inter-Regular.ttf` });
+    Font.register({ family: 'Remote Moved', src: `${base}/moved` });
     await renderToBuffer(<Doc family="Remote" />);
     expect(fonts.has('Remote-400')).toBe(true);
+    expect(fonts.has('Remote-Moved-400')).toBe(true);
+  });
+
+  it('gives up on a font URL that does not answer, without holding up later renders', async () => {
+    // The fetch has a 30-second limit; this test lets it pass in 200 ms.
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout(200));
+    try {
+      Font.register({ family: 'Stalled', src: `${base}/stall` });
+      const [loading, other] = await Promise.allSettled([
+        renderToBuffer(<Doc family="Stalled" />),
+        renderToBuffer(<Doc family="Brand" />),
+      ]);
+      expect(loading).toMatchObject({ status: 'rejected', reason: { code: 'INVALID_FONT' } });
+      expect((loading as PromiseRejectedResult).reason.message).toBe(
+        `Font "Stalled" 400 (${base}/stall) could not be loaded: timed out after 30000 ms`,
+      );
+      expect(other.status).toBe('fulfilled');
+    } finally {
+      spy.mockRestore();
+    }
+    await expect(renderToBuffer(<Doc family="Brand" />)).resolves.toBeInstanceOf(Uint8Array);
   });
 
   it('registers WOFF and WOFF2 fonts', async () => {
@@ -147,6 +176,53 @@ describe('Font.register', () => {
     expect(() => Font.register({ family: 'Brand', src, fontWeight: 'heavyish' as never })).toThrow(
       'not 1–1000 or a CSS weight name',
     );
+  });
+
+  it('compares byte sources by their bytes, not their length', async () => {
+    Font.register({ family: 'Same Size', src: new Uint8Array(1000).fill(1) });
+    expect(() => Font.register({ family: 'Same Size', src: new Uint8Array(1000).fill(1) })).not.toThrow();
+    expect(() => Font.register({ family: 'Same Size', src: new Uint8Array(1000).fill(2) })).toThrow(
+      'Font "Same Size" 400 is already registered from 1000 bytes.',
+    );
+    // They are not a font: the next render fails on them once.
+    await expect(renderToBuffer(<Doc family="Brand" />)).rejects.toMatchObject({ code: 'INVALID_FONT' });
+  });
+
+  it('refuses a family whose font id another family has', () => {
+    const src = file('Inter-Regular.ttf');
+    Font.register({ family: 'Id Clash', src });
+    expect(() => Font.register({ family: 'Id-Clash', src })).toThrow(
+      'Font "Id-Clash" 400 would have the font id Id-Clash-400, which "Id Clash" 400 has. Use another family name.',
+    );
+    expect(() => Font.register({ family: 'Id-Clash', src, fontStyle: 'italic' })).not.toThrow();
+  });
+
+  it('refuses a face the bundled fonts already have, and adds the faces they lack', async () => {
+    expect(() => Font.register({ family: 'Inter', src: file('RobotoMono-Regular.ttf') })).toThrow(
+      'Font "Inter" 400 is bundled (Inter-Regular). Register yours under another family name.',
+    );
+    expect(() =>
+      Font.register({ family: 'Inter', src: file('Inter-Bold.ttf'), fontWeight: 700, fontStyle: 'italic' }),
+    ).not.toThrow();
+    await renderToBuffer(<Doc family="Inter" weight={700} italic />);
+    expect(treeFonts(<Doc family="Inter" weight={700} italic />).warnings).toEqual([]);
+  });
+
+  it('refuses a src that is not a path, a URL or bytes when it is registered', async () => {
+    for (const src of [null, 42, {}]) {
+      expect(() => Font.register({ family: 'Bad Src', src: src as never })).toThrow(
+        'Font "Bad Src": src must be a path, a URL or the bytes (Uint8Array or ArrayBuffer)',
+      );
+      expect(() =>
+        Font.register({
+          family: 'Bad Src',
+          fonts: [{ src: file('Inter-Bold.ttf'), fontWeight: 700 }, { src: src as never }],
+        }),
+      ).toThrow('src must be a path');
+    }
+    // Nothing of a refused registration is kept.
+    await expect(renderToBuffer(<Doc family="Brand" />)).resolves.toBeInstanceOf(Uint8Array);
+    expect(fonts.has('Bad-Src-700')).toBe(false);
   });
 });
 

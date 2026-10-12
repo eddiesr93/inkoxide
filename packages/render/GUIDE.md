@@ -142,15 +142,24 @@ Font.register({
 
 Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lora]"`.
 
-- **Sources.** `src` is a file path, a `file:` or `https:` URL, or the bytes (`Uint8Array` or
-  `ArrayBuffer`). Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
+- **Sources.** `src` is a file path, a `file:`, `https:` or `http:` URL, or the bytes
+  (`Uint8Array` or `ArrayBuffer`). Prefer `https:`: a font fetched over `http:` can be changed on
+  the way. Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
   (`.woff2`). Variable fonts are not supported: register the static instances. Font collections
   (`.ttc`) are not supported either: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
-  registered with it still load, and later renders can use them.
-- **Weights.** Weights are numbers (100–900) or names (`'light'`, `'medium'`, `'bold'`).
-  Missing weights and styles fall back to the nearest one, as in CSS.
+  registered with it still load, and later renders can use them. A URL is fetched with a
+  30-second limit for the whole download and a 50 MiB size limit, and redirects are followed;
+  renders wait for it, so for a font over that size or from a slow host, read the bytes
+  yourself and register them.
+- **Weights.** Weights are numbers (1–1000, as in CSS) or names (`'light'`, `'medium'`,
+  `'bold'`). Missing weights and styles fall back to the nearest one, as in CSS.
+- **Faces.** A face is a family, a weight and a style. Registering one again from the same
+  source (the same path, URL or bytes) does nothing, and from another source throws. A face the
+  bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
+  name. You can add the faces they lack, such as `Inter` bold italic. Two family names that
+  differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) cannot both be registered.
 
 ## Images
 
@@ -209,7 +218,14 @@ const logo = readFileSync('logo.png');
   [template's](#serving-templates) `images`) is that image, even when it looks like a path or a
   URL. No file is read for it.
 - **Requests.** `{ uri, method, headers, body }` fetches `uri` with that method, headers and
-  body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
+  body. It follows the same rules as a URL string: the allowlist, the timeout, the size limit
+  and no redirects.
+- **Redirects.** A remote image is not followed to another URL, since that URL could be outside
+  the allowlist: a redirect fails the render with `IMAGE_FETCH_FAILED`
+  (`HTTP 302, and redirects are not followed`). Use the URL the image ends up at.
+- **Remote limits.** `remoteImages.timeoutMs` (default 10 000 ms; `Infinity` waits without a
+  limit) covers the whole download, body included, and `maxBytes` (default 20 MiB) its size. A
+  download that times out, breaks off or grows past the limit fails with `IMAGE_FETCH_FAILED`.
 - **Functions and promises.** A function is called once per render, after the tree is built and
   before the engine runs, with the other images loading in parallel; a promise is awaited
   then. Either resolves to bytes, a string or a request, read as if written in `src`. If it
@@ -564,7 +580,7 @@ All three take the same options:
 |---|---|---|
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
-| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |
@@ -648,7 +664,7 @@ apply:
 | `INVALID_TREE` | The document tree does not match the engine's schema. Checked only with `validate`, which is on outside production |
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image |
-| `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched |
+| `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
 | `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), `renderToFile` could not write the file, or a bug |
 
@@ -662,8 +678,9 @@ or the stack. Two more codes come from [templates](#serving-templates): `INVALID
 `UNKNOWN_TEMPLATE` (404).
 
 `Font.register` and `Font.registerHyphenationCallback` check their arguments when you call them
-and throw a plain `Error` straight away: a missing family name or `src`, an unknown weight, or a
-face already registered from another source.
+and throw a plain `Error` straight away: a missing family name or `src`, a `src` that is not a
+path, a URL or bytes, an unknown weight, a face already registered from another source, a face
+the bundled fonts have, or a family whose font id another family has.
 
 ## Serving templates
 
@@ -714,19 +731,28 @@ data as `data`, and `images` are its static images by id (a logo). An image pass
 options under the same id replaces the template's.
 
 - **`generate(template, data, options?)`** checks `data`, renders and resolves to
-  `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, schemaVersion,
-  engineVersion }`. `timings` has the milliseconds of each stage: `reactMs`, `treeMs`,
-  `validateMs`, `engineMs`, `fetchMs` and `totalMs`. The options are those of `renderToBuffer`.
+  `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, images, schemaVersion,
+  engineVersion }`. `timings` has the milliseconds of each stage, each counted once: `reactMs`,
+  `treeMs` (with the rebuilds for the page count), `validateMs` (0 when `validate` is off),
+  `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks and `render`
+  props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,
+  and `images` the images it was rendered with, by id: the tree names an image given as bytes,
+  a file, a URL or a function by an id it made up (`image-0`, `remote-0`), and `images` has the
+  bytes behind those ids. The options are those of `renderToBuffer`.
 - **`parseData(template, data)`** only checks the data, and returns it parsed, with the
   schema's defaults applied.
 - **`renderTree(template, data, options?)`** builds the document tree without rendering it, for
-  snapshots and previews. Its `document` is the tree, and its `images` the images it uses.
+  snapshots and previews. Its `document` is the tree, and its `images` the images it uses. It is
+  synchronous, so it cannot load what a render loads first: `await init()` before it, and again
+  after `Font.register`. Otherwise it throws an `INTERNAL` RenderError that says so.
   `renderSettled(tree, images, options?)` renders it, and renders again with the page count
   while `render` props change it; `images` are more images by id (`{}` when there are none), and
-  it resolves to `{ pdf, pages, passes, tree, fetchMs }`. Pass both the same options.
+  it resolves to `{ pdf, pages, passes, tree, images, fetchMs, treeMs }` (`treeMs`: the
+  rebuilds for the page count). Pass both the same options.
 - **`renderDocument(document, images?, options?)`** renders a document tree that is already
-  built, such as a stored `result.document` with the images it names, and resolves to
-  `{ pdf, pages, engineMs }`.
+  built, such as a stored `result.document`, and resolves to `{ pdf, pages, engineMs }`. The
+  document names its images by id, so pass their bytes in `images` or the `images` option
+  (`renderDocument(result.document, result.images)`); the other image options do not apply.
 
 Data that does not match the schema fails with `INVALID_DATA` (400) before anything renders. Its
 `issues` list every problem as `{ path, message, code }`, with readable messages:
@@ -736,7 +762,7 @@ above, so that every error has the same shape.
 
 The entry also exports the types of these: `TemplateLike` (a template), `GenerateOptions` (the
 options of `generate`), `RenderResult` (what `generate` resolves to), `Timings` (its `timings`),
-`TreeResult` (what `renderTree` resolves to) and `RenderOpts` (the options of `renderSettled` and
+`TreeResult` (what `renderTree` returns) and `RenderOpts` (the options of `renderSettled` and
 `renderDocument`).
 
 ## FAQ
@@ -757,6 +783,15 @@ Linux arm64 (glibc) and Windows x64. npm installs the right one as an optional d
 is missing if you install with `--omit=optional`, or copy `node_modules` from one platform to
 another (from macOS into a Linux Docker image, say). Run `npm install` on the platform that runs
 the code.
+
+**Every render fails with "No fonts found … Set INKOXIDE_ASSETS_DIR".**
+The bundled fonts and hyphenation patterns are files in the package's `assets/` folder
+(`node_modules/@inkoxide/render/assets`), found next to its code. When a bundler (esbuild,
+webpack) moves the code into one file, for a serverless function say, they are no longer there.
+Copy that folder into the deployment and point the `INKOXIDE_ASSETS_DIR` environment variable at
+the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyphenation/`
+(`hyph-en-us.tex`). Without the hyphenation patterns, text still renders with the engine's
+built-in ones, and `engineStatus().warnings` says so.
 
 **Do I need Tailwind installed?**
 Only to style with `className`: then `npm install @inkoxide/tailwind`. It brings the Tailwind

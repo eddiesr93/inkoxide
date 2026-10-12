@@ -19,7 +19,8 @@ Inkoxide is designed to render documents built from untrusted data:
 - Documents are validated before rendering, and page counts, nesting depth, image sizes and SVG
   complexity are limited, so hostile input fails with an error instead of exhausting memory.
 - `@inkoxide/render` does not fetch remote images unless the caller allows their origins, and
-  does not read image files unless the caller allows their folders (`localImages`). An allowed
+  does not follow a redirect from an allowed URL, since its target could be outside them. Each
+  download has a timeout and a size limit. It does not read image files unless the caller allows their folders (`localImages`). An allowed
   path must lead, symbolic links followed, to a regular file inside one of those folders and
   within the size limit; network paths are refused. Errors name the path as the template wrote
   it, and do not tell a missing file from one outside the folders.

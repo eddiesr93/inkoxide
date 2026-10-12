@@ -1,6 +1,6 @@
 import type { ImageRequest } from '@inkoxide/react';
 
-import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, envList } from './policy.ts';
+import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, envList, timerMs } from './policy.ts';
 import type { RemoteImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
@@ -13,29 +13,59 @@ export function remotePolicy(opts: RemoteImageOptions | undefined): RemoteImageO
 
 /**
  * Fetches one image from a URL or a request (already checked against the allowlist), within the
- * policy's timeout and size limit. Redirects are refused.
+ * policy's timeout and size limit. Redirects are refused: their target could be outside the
+ * allowlist.
  */
-export async function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions): Promise<Uint8Array> {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
-  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+export function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions): Promise<Uint8Array> {
   const url = typeof src === 'string' ? src : src.uri;
-  const fail = (why: string, cause?: unknown): never => {
-    throw new RenderError('IMAGE_FETCH_FAILED', `Cannot fetch the image ${url}: ${why}.`, { cause });
-  };
-  const init: RequestInit = { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) };
+  const init: RequestInit = { redirect: 'manual' };
   if (typeof src !== 'string') {
     if (src.method !== undefined) init.method = src.method;
     if (src.headers !== undefined) init.headers = src.headers;
     if (src.body !== undefined) init.body = src.body as BodyInit;
   }
+  const limits = {
+    timeoutMs: opts.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS,
+    maxBytes: opts.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES,
+  };
+  return fetchBytes(url, init, limits, (why, cause) => {
+    throw new RenderError('IMAGE_FETCH_FAILED', `Cannot fetch the image ${url}: ${why}.`, { cause });
+  });
+}
+
+/** What one download may take: the whole download's time (`Infinity` for none), and its size. */
+export interface FetchLimits {
+  timeoutMs: number;
+  maxBytes: number;
+}
+
+/**
+ * The body of `url`, within `limits`. Every failure, before or during the body, throws what
+ * `fail` makes of the reason (`HTTP 404`, `timed out after 10000 ms`). With `redirect: 'manual'`
+ * in `init`, a redirect is a failure.
+ */
+export async function fetchBytes(
+  url: string | URL,
+  init: RequestInit,
+  limits: FetchLimits,
+  fail: (why: string, cause?: unknown) => never,
+): Promise<Uint8Array> {
+  const { timeoutMs, maxBytes } = limits;
+  const ms = timerMs(timeoutMs);
+  const reason = (e: unknown): string =>
+    e instanceof Error && e.name === 'TimeoutError'
+      ? `timed out after ${timeoutMs} ms`
+      : e instanceof Error
+        ? e.message
+        : String(e);
   let res: Response;
   try {
-    res = await fetch(url, init);
+    res = await fetch(url, ms === undefined ? init : { ...init, signal: AbortSignal.timeout(ms) });
   } catch (e) {
-    return fail(
-      (e as Error).name === 'TimeoutError' ? `no answer in ${timeoutMs} ms` : (e as Error).message,
-      e,
-    );
+    return fail(reason(e), e);
+  }
+  if (init.redirect === 'manual' && res.status >= 300 && res.status < 400) {
+    return fail(`HTTP ${res.status}, and redirects are not followed`);
   }
   if (!res.ok) return fail(`HTTP ${res.status}`);
   const length = Number(res.headers.get('content-length') ?? 0);
@@ -44,15 +74,20 @@ export async function fetchImage(src: string | ImageRequest, opts: RemoteImageOp
   if (!reader) return fail('empty response');
   const chunks: Uint8Array[] = [];
   let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > maxBytes) {
-      await reader.cancel();
-      return fail(`over the ${maxBytes}-byte limit`);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) break;
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch (e) {
+    return fail(reason(e), e);
+  }
+  if (size > maxBytes) {
+    await reader.cancel();
+    return fail(`over the ${maxBytes}-byte limit`);
   }
   const bytes = new Uint8Array(size);
   let at = 0;

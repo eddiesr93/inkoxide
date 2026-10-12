@@ -111,7 +111,7 @@ export interface StyleProp extends Omit<
   | 'objectPosition'
 > {
   fontFamily?: string | string[];
-  /** 100–900, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
+  /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
   fontWeight?: number | FontWeightName;
   fontSize?: Length;
   color?: string | Color;

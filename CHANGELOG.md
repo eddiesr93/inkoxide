@@ -194,6 +194,44 @@ All notable changes to the packages in this repository. The format follows
   (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`.
 - `ClipPath` and `Defs` have exported props types, `ClipPathProps` and `DefsProps` (also from
   `@inkoxide/render`), and `ClipPath` takes `clipPathUnits`.
+- `@inkoxide/render`: a remote image that times out or drops its connection after the headers
+  fails the render with `IMAGE_FETCH_FAILED`, as one that fails before them does, instead of a
+  raw `TimeoutError` or `TypeError`. `remoteImages.timeoutMs` takes `Infinity` (no limit) and
+  values past what a timer holds, as `imageTimeoutMs` does, instead of throwing a `RangeError`.
+  A redirect from an allowed URL, still not followed, fails with
+  `HTTP 302, and redirects are not followed` instead of `fetch failed`, and the guide and
+  SECURITY.md say so.
+- `@inkoxide/render`: `Font.register` fetches a URL with a 30-second limit for the whole
+  download and a 50 MiB size limit, through the same download code as remote images. A font
+  host that never answered held up every render in the process for up to five minutes, or for
+  good when it sent bytes slowly; now the render that loads the font fails with `INVALID_FONT`
+  (`timed out after 30000 ms`). The guide lists `http:` URLs, which were already fetched.
+- `@inkoxide/render/templates`: `renderTree` called before `init()` has finished, or while fonts
+  added with `Font.register` are not loaded yet, throws an `INTERNAL` RenderError that says to
+  call `await init()`, instead of failing with `No fonts are registered`, pointing to functions
+  the package does not export, or building a tree without those fonts. `renderSettled` runs
+  `init()` itself. The guide says that `renderTree` needs `init()` first.
+- `@inkoxide/render/templates`: `renderDocument` takes images from the `images` option as well as
+  from its `images` argument, which it ignored. `generate` resolves with `images`, the images the
+  document was rendered with by id (and `renderSettled` with the same), so a stored
+  `result.document` whose images were bytes, files, URLs or functions renders again with
+  `renderDocument(result.document, result.images)`; until now the ids the tree made up for them
+  (`image-0`) failed with `UNKNOWN_IMAGE`.
+- `Font.register` tells faces apart by family, weight and style, and compares byte sources by
+  their bytes. It throws for a face the bundled fonts have (`Inter` 400 from another file was
+  accepted and never used), for a family whose font id another family has (`Brand-Two` after
+  `Brand Two` was skipped without a word), for a different font of the same byte length (was
+  ignored), and for a `src` that is not a path, a URL or bytes (`null` failed the next render
+  with a `TypeError`). A registration that throws adds none of its faces. The guide gives font
+  weights as 1–1000, the range the code accepts.
+- `@inkoxide/render`: `renderToBuffer(null)`, or a string or a number in place of an element,
+  fails with a `TEMPLATE_ERROR` RenderError instead of a `TypeError`.
+- `@inkoxide/render/templates`: `generate`'s `timings.engineMs` no longer includes the tree
+  rebuilds for the page count, and `treeMs` counts each rebuild once, so the stages add up.
+  `renderSettled` resolves with that rebuild time as `treeMs`. `GenerateOptions` is the same
+  type as `RenderToBufferOptions`.
+- `@inkoxide/render`: the start-up error for missing fonts says what `INKOXIDE_ASSETS_DIR` must
+  point to, and the guide's FAQ explains when to set it (a bundled deployment).
 
 ## 0.5.0 - 2026-10-12
 

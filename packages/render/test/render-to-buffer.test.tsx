@@ -1,11 +1,11 @@
 /** A template is a component and its data are props: one import, one call, no registry. */
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   countPages,
@@ -59,6 +59,17 @@ function Receipt({ customer, lines }: { customer: string; lines: Line[] }) {
   );
 }
 
+/** A new folder in the system's temp folder, removed after the tests. */
+const dirs: string[] = [];
+const tempDir = (): string => {
+  const dir = mkdtempSync(join(tmpdir(), 'inkoxide-'));
+  dirs.push(dir);
+  return dir;
+};
+afterAll(() => {
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+});
+
 describe('renderToBuffer', () => {
   it('renders a component with props to a PDF', async () => {
     const pdf = await renderToBuffer(<Receipt customer="Ada" lines={[{ name: 'Coffee', amount: 3.5 }]} />);
@@ -73,13 +84,27 @@ describe('renderToBuffer', () => {
   });
 
   it('writes a file', async () => {
-    const path = join(mkdtempSync(join(tmpdir(), 'inkoxide-')), 'receipt.pdf');
+    const path = join(tempDir(), 'receipt.pdf');
     await renderToFile(<Receipt customer="Ada" lines={[]} />, path);
     expect(readFileSync(path).subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
+  it('fails with a TEMPLATE_ERROR for null, a string or a number in place of an element', async () => {
+    const cases: Array<[unknown, string]> = [
+      [null, 'A template must render exactly one <Document> at the top.'],
+      [undefined, 'A template must render exactly one <Document> at the top.'],
+      ['hello', 'Text "hello" cannot be directly inside the root; wrap it in <Text>.'],
+      [42, 'Text "42" cannot be directly inside the root; wrap it in <Text>.'],
+    ];
+    for (const [element, message] of cases) {
+      const err = await renderToBuffer(element as never).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RenderError);
+      expect(err).toMatchObject({ code: 'TEMPLATE_ERROR', message });
+    }
+  });
+
   it('fails with a RenderError when the file cannot be written', async () => {
-    const path = join(mkdtempSync(join(tmpdir(), 'inkoxide-')), 'missing', 'receipt.pdf');
+    const path = join(tempDir(), 'missing', 'receipt.pdf');
     const err = await renderToFile(<Receipt customer="Ada" lines={[]} />, path).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RenderError);
     expect(err).toMatchObject({ code: 'INTERNAL', cause: { code: 'ENOENT' } });

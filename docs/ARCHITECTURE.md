@@ -41,8 +41,9 @@ registry with CSS font matching. In development the tree is validated
 against the JSON Schema, and errors carry the component stack.
 
 `@inkoxide/render` registers the bundled fonts with the engine once per
-process, renders the tree, and renders a second time when the document
-uses `render` props that need the page count.
+process, renders the tree, and, when the document uses `render` props that
+need the page count, renders again with the page count until it settles
+(at most four renders).
 
 ## Pipeline
 

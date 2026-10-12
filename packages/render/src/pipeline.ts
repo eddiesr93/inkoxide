@@ -14,8 +14,16 @@ import type { Document } from '@inkoxide/schema';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
-import { countPages, type EngineStatus, initEngine, renderPdf, startupError, version } from './engine.ts';
-import { loadRegisteredFonts } from './font.ts';
+import {
+  countPages,
+  type EngineStatus,
+  engineStatus,
+  initEngine,
+  renderPdf,
+  startupError,
+  version,
+} from './engine.ts';
+import { fontsPending, loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
 import { DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
@@ -35,10 +43,8 @@ export interface TemplateLike<S extends z.ZodType = z.ZodType> {
   images?: Record<string, Uint8Array>;
 }
 
-export interface GenerateOptions extends RenderOpts {
-  /** Validate the tree with ajv before the engine (default: outside production). */
-  validate?: boolean;
-}
+/** The options of `generate`: those of `renderToBuffer`. */
+export type GenerateOptions = RenderToBufferOptions;
 
 let engine: Promise<EngineStatus> | undefined;
 
@@ -154,13 +160,21 @@ const MAX_PASSES = 4;
 
 /**
  * Template + data → tree, without the engine (for tree snapshots and previews). `renderSettled`
- * renders it; pass both the same `opts`.
+ * renders it; pass both the same `opts`. It is synchronous, so it cannot load what `init` loads:
+ * before `init` has finished, or while fonts added with `Font.register` are not loaded, it
+ * throws an `INTERNAL` RenderError that says to call `init`.
  */
 export function renderTree<S extends z.ZodType>(
   t: TemplateLike<S>,
   data: unknown,
   opts: RenderOpts = {},
 ): TreeResult {
+  if (engineStatus() === undefined || fontsPending()) {
+    throw new RenderError(
+      'INTERNAL',
+      'renderTree needs Tailwind, the engine and the fonts loaded: call `await init()` first, and again after Font.register.',
+    );
+  }
   const tree = templateTree(t, parseData(t, data), opts);
   return withTemplateImages(t, tree, opts.images);
 }
@@ -218,11 +232,11 @@ export async function generate<S extends z.ZodType>(
   return {
     pdf,
     timings: {
-      // Rebuilds reuse the first React render; count the first build and the final rebuild.
+      // Rebuilds reuse the first React render: they count as tree time, not engine time.
       reactMs: first.timings.reactMs,
-      treeMs: first.timings.treeMs + (tree === first ? 0 : tree.timings.treeMs),
+      treeMs: first.timings.treeMs + settled.treeMs,
       validateMs,
-      engineMs: e1 - e0 - fetchMs,
+      engineMs: e1 - e0 - fetchMs - settled.treeMs,
       fetchMs,
       totalMs: e1 - t0,
     },
@@ -234,6 +248,7 @@ export async function generate<S extends z.ZodType>(
     fonts: tree.fonts,
     warnings: tree.warnings,
     document: tree.document,
+    images: settled.images,
   };
 }
 
@@ -241,14 +256,24 @@ export async function generate<S extends z.ZodType>(
  * Renders a tree; when it uses `render` props, renders again with the page count until the count
  * stops changing (at most MAX_PASSES renders). Before each render, loads the images of the tree it
  * does not have yet (a rebuild can add some) under the policies of `opts`. `images` are images by
- * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, and the
- * time spent loading images.
+ * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, the images
+ * it was rendered with by id, the time spent loading images and the time spent rebuilding the
+ * tree for the page count.
  */
 export async function renderSettled(
   first: TreeResult,
   images: Record<string, Uint8Array>,
   opts: RenderOpts = {},
-): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number; fetchMs: number }> {
+): Promise<{
+  tree: TreeResult;
+  pdf: Uint8Array;
+  pages: number;
+  passes: number;
+  images: Record<string, Uint8Array>;
+  fetchMs: number;
+  treeMs: number;
+}> {
+  await init();
   const registered = { ...images, ...opts.images };
   const policies = imagePolicies(opts);
   const all: Record<string, Uint8Array> = { ...registered };
@@ -269,14 +294,17 @@ export async function renderSettled(
   let tree = first;
   let pdf = await render(tree);
   let passes = 1;
+  let treeMs = 0;
   while (tree.dynamic && passes < MAX_PASSES) {
     const pages = countPages(pdf);
     if (pages === tree.pageCount) break;
+    const r0 = performance.now();
     try {
       tree = tree.rebuild(pages);
     } catch (e) {
       fromTemplateError(e);
     }
+    treeMs += performance.now() - r0;
     pdf = await render(tree);
     passes++;
   }
@@ -286,7 +314,7 @@ export async function renderSettled(
       `render props did not settle on a page count after ${MAX_PASSES} passes; page numbers they show may be off.`,
     );
   }
-  return { tree, pdf, pages, passes, fetchMs };
+  return { tree, pdf, pages, passes, images: all, fetchMs, treeMs };
 }
 
 /**
@@ -328,8 +356,6 @@ function locateEngineError(e: unknown, tree: TreeResult): unknown {
 }
 
 export interface RenderToBufferOptions extends RenderOpts {
-  /** Images the document refers to by id (`<Image src="logo">`). */
-  images?: Record<string, Uint8Array>;
   /** Check the tree against the engine schema first (default: outside production). */
   validate?: boolean;
 }
@@ -397,12 +423,22 @@ export async function renderToStream(
   return Readable.from([Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength)], { objectMode: false });
 }
 
+/** The name of the element's component, for errors; JavaScript callers can pass anything. */
 function componentName(element: ReactElement): string {
-  const t = element.type as string | { displayName?: string; name?: string };
-  return typeof t === 'string' ? t : (t.displayName ?? t.name ?? 'document');
+  const t = (element as { type?: unknown } | null | undefined)?.type as
+    | string
+    | { displayName?: string; name?: string }
+    | null
+    | undefined;
+  if (typeof t === 'string') return t;
+  return (t && (t.displayName ?? t.name)) || 'document';
 }
 
-/** Renders an already-built document (fixtures, benchmarks). */
+/**
+ * Renders an already-built document, such as a stored `result.document` with `result.images`.
+ * Its images are ids: `images` and `opts.images` (which wins) provide them, and the image
+ * policies of `opts` do not apply.
+ */
 export async function renderDocument(
   doc: Document,
   images: Record<string, Uint8Array> = {},
@@ -410,6 +446,6 @@ export async function renderDocument(
 ): Promise<{ pdf: Uint8Array; pages: number; engineMs: number }> {
   await init();
   const t0 = performance.now();
-  const pdf = await renderPdf(doc, opts, images);
+  const pdf = await renderPdf(doc, opts, { ...images, ...opts.images });
   return { pdf, pages: countPages(pdf), engineMs: performance.now() - t0 };
 }
