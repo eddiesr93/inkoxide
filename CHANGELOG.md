@@ -13,6 +13,9 @@ All notable changes to the packages in this repository. The format follows
   `start` to `end`, as in CSS; the engine used `start` and `span` and ignored `end`. In Tailwind,
   a span after the slash is kept (`col-[2/span_3]` was one column at line 2), and
   `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns.
+- **Tailwind themes:** `initTailwind({ css })` run alongside `init()` or another `initTailwind()`
+  keeps its theme; whichever load finished last used to win, so the default theme could replace
+  it.
 
 ## 0.5.0 - 2026-10-12
 
