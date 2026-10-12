@@ -185,13 +185,12 @@ fn percentages_compounding_past_f32_render_finite_numbers() {
 #[test]
 fn svg_numbers_that_overflow_render_finite_numbers() {
     // SVG images bring numbers of their own, which the document's bounds
-    // do not cover: a tiny viewBox scaled up to the image size, gradient
-    // coordinates and dashes past f32 (usvg reads them as f64), and a size
-    // so small that scaling it to the unit square overflows.
+    // do not cover: the smallest size and viewBox scaled up, and gradient
+    // coordinates and dashes past f32 (usvg reads them as f64).
     const NS: &str = "xmlns='http://www.w3.org/2000/svg'";
     let svgs = [
-        format!("<svg {NS} width='1e-39' height='1e-39'><rect width='1' height='1'/></svg>"),
-        format!("<svg {NS} width='100' height='100' viewBox='0 0 1e-38 1e-38'><rect width='1' height='1'/></svg>"),
+        format!("<svg {NS} width='1e-5' height='1e-5'><rect width='1' height='1'/></svg>"),
+        format!("<svg {NS} width='100000' height='100000' viewBox='0 0 1e-5 1e-5'><rect width='1e-6' height='1e-6'/></svg>"),
         format!("<svg {NS} width='100' height='100'><defs><linearGradient id='g' x1='-1e39' x2='1e39' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue' stop-opacity='0.5'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/></svg>"),
         format!("<svg {NS} width='100' height='100'><path d='M0 0 L 50 50' stroke='red' stroke-width='2' stroke-dasharray='1e39 1' stroke-dashoffset='1e39'/></svg>"),
     ];
@@ -205,4 +204,85 @@ fn svg_numbers_that_overflow_render_finite_numbers() {
     }
     let pdf = render_with(&doc(r#"{"width":200,"height":200}"#, &children), &images);
     assert_finite_tokens(&tokens(&pdf, true), 50);
+}
+
+#[test]
+fn svgs_too_small_to_scale_are_invalid_images() {
+    // The writer scales an SVG to the unit square by the inverse of its
+    // size, and its viewBox up to that size. Below 1e-5 px the scale is a
+    // number PDF readers cannot parse (qpdf treats the image as null), so
+    // such an SVG is refused where the document names it.
+    const NS: &str = "xmlns='http://www.w3.org/2000/svg'";
+    let json = doc(
+        r#"{"width":200,"height":200}"#,
+        &[r#"{"type":"image","src":"svg","style":{"width":100,"height":100}}"#.into()],
+    );
+    let mut fonts = FontStore::new();
+    fonts
+        .register("Inter-Regular", fixture("fonts/Inter-Regular.ttf"))
+        .unwrap();
+    for side in ["1e-12", "1e-20", "1e-30", "1e-39"] {
+        for svg in [
+            format!("<svg {NS} width='{side}' height='{side}'/>"),
+            format!("<svg {NS} width='100' height='100' viewBox='0 0 {side} {side}'><rect width='1' height='1'/></svg>"),
+        ] {
+            let mut images = ImageStore::new();
+            images.insert("svg", svg.as_bytes().to_vec());
+            let errors = inkoxide::validate(json.as_bytes(), InputFormat::Json, &fonts, &images);
+            let got: Vec<_> = errors
+                .iter()
+                .map(|e| (e.code.as_str(), e.path.as_str()))
+                .collect();
+            assert_eq!(got, [("INVALID_IMAGE", "pages[0].children[0].src")], "{svg}");
+            let options = RenderOptions::default();
+            assert!(
+                inkoxide::render(json.as_bytes(), InputFormat::Json, &options, &fonts, &images)
+                    .is_err(),
+                "{svg}"
+            );
+        }
+    }
+
+    // The smallest SVG and viewBox accepted, scaled up as far as the
+    // limits allow, write numbers every reader parses: integers within 32
+    // bits (pdf-writer writes digits only past 1e12, reals below it).
+    let json = doc(
+        r#"{"width":200,"height":200}"#,
+        &[
+            r#"{"type":"image","src":"small","style":{"width":100,"height":100}}"#.into(),
+            r#"{"type":"image","src":"zoomed","style":{"width":100,"height":100}}"#.into(),
+        ],
+    );
+    let mut images = ImageStore::new();
+    images.insert(
+        "small",
+        format!("<svg {NS} width='1e-5' height='1e-5'><rect width='1' height='1'/></svg>")
+            .into_bytes(),
+    );
+    images.insert(
+        "zoomed",
+        format!("<svg {NS} width='100000' height='100000' viewBox='0 0 1e-5 1e-5'><rect width='1e-6' height='1e-6'/></svg>").into_bytes(),
+    );
+    let pdf = render_with(&json, &images);
+    let tokens = tokens(&pdf, true);
+    assert_finite_tokens(&tokens, 50);
+    let big: Vec<_> = tokens
+        .iter()
+        .filter(|t| t.parse::<f64>().is_ok() && !t.contains('.') && t.parse::<i32>().is_err())
+        .collect();
+    assert!(big.is_empty(), "integers past 32 bits: {big:?}");
+    let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("smallest-svgs.pdf");
+    std::fs::write(&out, &pdf).unwrap();
+    if let Ok(o) = std::process::Command::new("qpdf")
+        .arg("--check")
+        .arg(&out)
+        .output()
+    {
+        assert!(
+            o.status.success(),
+            "qpdf --check failed:\n{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
 }

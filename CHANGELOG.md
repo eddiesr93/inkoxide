@@ -152,8 +152,9 @@ All notable changes to the packages in this repository. The format follows
 - Registering a font collection (`.ttc`) fails with `FONT_ERROR`. It was accepted, only its first
   face could be used, and with `subsetFonts: false` the whole collection was embedded where the
   PDF needs a single TrueType program.
-- An SVG image smaller than about 3e-39 px no longer makes the PDF writer output `inf` in the
-  image's matrix.
+- An SVG image whose width or height is under 0.00001 px, or whose `viewBox` width or height
+  is, fails with `INVALID_IMAGE` at its path (a nested SVG image is left out). Scaling it up
+  made the PDF writer output `inf`, or numbers too large for PDF readers, in the image's matrix.
 - `borderRadius` rounds an image's corners without `overflow: hidden`: the image is clipped to
   the rounded content box, as in CSS.
 - A select field embeds the glyphs of the common Latin range and of every option, as a text
