@@ -9,11 +9,13 @@ import { readFile } from 'node:fs/promises';
 import { type FontWeightName, fonts, fontWeightValue, type HyphenationCallback } from '@inkoxide/react';
 
 import { registerEngineFont } from './engine.ts';
+import { FONT_TIMEOUT_MS, MAX_FONT_BYTES } from './policy.ts';
+import { fetchBytes } from './remote.ts';
 import { RenderError } from './types.ts';
 
 /**
- * A TrueType, CFF OpenType, WOFF or WOFF2 font: a file path, a `file:` or `https://` URL, or its
- * bytes.
+ * A TrueType, CFF OpenType, WOFF or WOFF2 font: a file path, a `file:`, `https:` or `http:` URL,
+ * or its bytes.
  */
 export type FontSrc = string | URL | Uint8Array | ArrayBuffer;
 
@@ -66,9 +68,11 @@ async function bytesOf(src: FontSrc): Promise<Uint8Array> {
   if (src instanceof ArrayBuffer) return new Uint8Array(src);
   const url = src instanceof URL ? src : /^(?:https?|file):/i.test(src) ? new URL(src) : undefined;
   if (url && (url.protocol === 'http:' || url.protocol === 'https:')) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
+    // The URL comes from the developer, not a template, so redirects are followed.
+    const limits = { timeoutMs: FONT_TIMEOUT_MS, maxBytes: MAX_FONT_BYTES };
+    return fetchBytes(url, {}, limits, (why, cause) => {
+      throw new Error(why, { cause });
+    });
   }
   return readFile(url ?? src);
 }

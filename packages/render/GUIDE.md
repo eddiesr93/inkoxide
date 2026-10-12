@@ -132,12 +132,16 @@ Font.register({
 
 Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lora]"`.
 
-- **Sources.** `src` is a file path, a `file:` or `https:` URL, or the bytes (`Uint8Array` or
-  `ArrayBuffer`). Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
+- **Sources.** `src` is a file path, a `file:`, `https:` or `http:` URL, or the bytes
+  (`Uint8Array` or `ArrayBuffer`). Prefer `https:`: a font fetched over `http:` can be changed on
+  the way. Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
   (`.woff2`). Variable fonts are not supported: register the static instances.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
-  registered with it still load, and later renders can use them.
+  registered with it still load, and later renders can use them. A URL is fetched with a
+  30-second limit for the whole download and a 50 MiB size limit, and redirects are followed;
+  renders wait for it, so for a font over that size or from a slow host, read the bytes
+  yourself and register them.
 - **Weights.** Weights are numbers (100–900) or names (`'light'`, `'medium'`, `'bold'`).
   Missing weights and styles fall back to the nearest one, as in CSS.
 

@@ -16,6 +16,11 @@ All notable changes to the packages in this repository. The format follows
   A redirect from an allowed URL, still not followed, fails with
   `HTTP 302, and redirects are not followed` instead of `fetch failed`, and the guide and
   SECURITY.md say so.
+- `@inkoxide/render`: `Font.register` fetches a URL with a 30-second limit for the whole
+  download and a 50 MiB size limit, through the same download code as remote images. A font
+  host that never answered held up every render in the process for up to five minutes, or for
+  good when it sent bytes slowly; now the render that loads the font fails with `INVALID_FONT`
+  (`timed out after 30000 ms`). The guide lists `http:` URLs, which were already fetched.
 
 ## 0.5.0 - 2026-10-12
 

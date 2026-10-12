@@ -1,10 +1,16 @@
-/** The defaults of the image policies, and the reading of their environment variables. */
+/** The limits of loading images and fonts, and the reading of the image environment variables. */
 
 /** Largest image file or download in bytes, unless the policy says otherwise: 20 MiB. */
 export const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 /** Time for one download, and for a function or promise `src`, unless the options say otherwise. */
 export const DEFAULT_IMAGE_TIMEOUT_MS = 10_000;
+
+/** Time for one font download (`Font.register` with a URL). */
+export const FONT_TIMEOUT_MS = 30_000;
+
+/** Largest font download in bytes: 50 MiB. */
+export const MAX_FONT_BYTES = 50 * 1024 * 1024;
 
 /**
  * A timeout as a timer takes it: undefined for `Infinity` (no limit), otherwise from 0 to
