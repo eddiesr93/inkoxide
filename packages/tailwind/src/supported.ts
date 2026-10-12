@@ -1,4 +1,5 @@
 import type { FlatStyle } from '@inkoxide/style';
+import { DEFAULT_SANS } from '@inkoxide/style/internal';
 
 /**
  * The supported Tailwind subset, one entry per utility family. This table is the single source
@@ -516,7 +517,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     notes:
       'The first family of the stack that is registered wins. No serif face is bundled, so the default theme sets `font-serif` to Noto Sans: register a serif and set `--font-serif` in your theme.',
     examples: {
-      'font-sans': { fontFamily: ['Inter', 'Noto Sans'] },
+      'font-sans': { fontFamily: [...DEFAULT_SANS] },
       'font-serif': { fontFamily: ['Noto Sans'] },
       'font-mono': { fontFamily: ['Roboto Mono'] },
     },
