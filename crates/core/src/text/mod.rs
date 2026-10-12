@@ -31,6 +31,9 @@ use crate::InkoxideError;
 pub(crate) const GLYPH_SPACE: u8 = 1;
 pub(crate) const GLYPH_INVISIBLE: u8 = 2;
 
+/// Tolerance for float noise when comparing widths.
+const WIDTH_EPS: f32 = 1e-3;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Glyph {
     pub id: u16,

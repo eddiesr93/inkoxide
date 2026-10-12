@@ -3,6 +3,7 @@
 
 use super::{
     ExtraGlyph, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
+    WIDTH_EPS,
 };
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
@@ -398,7 +399,7 @@ fn decoration(
             let mut segs = vec![PathSeg::MoveTo(x, mid)];
             let mut cx = x;
             let mut up = true;
-            while cx < x + w - 1e-3 {
+            while cx < x + w - WIDTH_EPS {
                 let nx = (cx + half).min(x + w);
                 let k = (nx - cx) / half;
                 let dy = if up { -amp } else { amp } * k;

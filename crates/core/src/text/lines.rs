@@ -2,15 +2,13 @@
 
 use super::{
     BreakKind, ExtraGlyph, Line, LineLayout, ParaStyle, Prepared, GLYPH_INVISIBLE, GLYPH_SPACE,
+    WIDTH_EPS,
 };
 use crate::fonts::FontSet;
 use crate::schema::TextRun;
 
 const ELLIPSIS: char = '\u{2026}';
 const HYPHEN: char = '\u{2010}';
-
-/// Tolerance for float noise when comparing widths.
-const WIDTH_EPS: f32 = 1e-3;
 
 /// Breaks `p` into lines no wider than `max_width` (`f32::INFINITY` for
 /// max-content).

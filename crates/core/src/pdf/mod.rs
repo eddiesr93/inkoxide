@@ -29,6 +29,10 @@ use crate::InkoxideError;
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 const PAGE_TREE_FANOUT: usize = 50;
 
+/// A glyph closer than this (points) to where the previous glyph's advance
+/// puts it needs no `TJ` adjustment.
+const KERN_EPS: f32 = 1e-3;
+
 /// A painted page reduced to what the writer needs: its compressed
 /// content stream and the resources it names. Pages are encoded as soon as
 /// they are painted (in parallel), so the display lists never pile up.
@@ -698,7 +702,7 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool
                 continue;
             }
             let delta = g.x - pen;
-            if delta.abs() > 1e-3 {
+            if delta.abs() > KERN_EPS {
                 if !buf.is_empty() {
                     items.show(Str(&buf));
                     buf.clear();
