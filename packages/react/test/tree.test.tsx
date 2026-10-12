@@ -789,7 +789,25 @@ describe('errors carry component stacks', () => {
     expect(bare.message).toMatch(/^Late suspended\. Suspense, use\(\) with a promise/);
     expect(bare.componentStack).toBe('\n    in Late\n    in View\n    in Card\n    in Page\n    in Document');
     const LazyCard = lazy(async () => ({ default: Card }));
-    expect(thrown(() => render(<LazyCard p={settled} />)).message).toContain('suspended.');
+    expect(thrown(() => render(<LazyCard p={settled} />)).message).toMatch(/^A lazy component suspended\. /);
+    const Chart = Object.assign(
+      lazy(() => new Promise<{ default: typeof Card }>(() => {})),
+      { displayName: 'Chart' },
+    );
+    const lazyChart = thrown(() => render(<Chart p={settled} />));
+    expect(lazyChart.message).toMatch(/^Chart suspended\. /);
+    expect(lazyChart.componentStack).toBe('\n    in Chart\n    in Page\n    in Document');
+    const renderProp = thrown(() =>
+      render(
+        <View>
+          <Text render={() => use(settled)} />
+        </View>,
+      ),
+    );
+    expect(renderProp.message).toMatch(/^The render prop of <Text> suspended\. /);
+    expect(thrown(() => render(<View render={() => <Late p={settled} />} />)).message).toMatch(
+      /^Late suspended\. /,
+    );
 
     const pending = new Promise<string>(() => {});
     const inBoundary = thrown(() =>
