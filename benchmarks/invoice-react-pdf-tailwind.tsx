@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Document, Font, Image, Page, renderToFile, Text, View } from '@react-pdf/renderer';
@@ -122,9 +123,9 @@ export function Invoice(inv: typeof invoice) {
   );
 }
 
-// Run directly: writes the PDF, with the font setup bench.tsx uses. Imported (bench.tsx): only
-// exports Invoice.
-if (process.argv[1] === import.meta.filename) {
+// Run directly, by its path or through a symlink: writes the PDF, with the font setup bench.tsx
+// uses. Imported (bench.tsx): only exports Invoice.
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename) {
   setUpReactPdf(Font);
   await renderToFile(<Invoice {...invoice} />, 'invoice-react-pdf-tailwind.pdf');
 }

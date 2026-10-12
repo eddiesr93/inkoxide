@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import { Circle, Document, Page, Path, renderToFile, Svg, Text, View } from '@inkoxide/render';
 
 export interface CertificateProps {
@@ -83,5 +85,5 @@ export const sample: CertificateProps = {
   id: 'AA-2026-0815',
 };
 
-if (process.argv[1] === import.meta.filename)
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
   await renderToFile(<Certificate {...sample} />, 'certificate.pdf');

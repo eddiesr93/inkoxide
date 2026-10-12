@@ -144,13 +144,18 @@ for (const name of names) {
 /**
  * The example's source as it runs when copied into a new project with no setup (CommonJS, no
  * tsconfig): the JSX runtime named in a pragma, and a plain render call at the end, without the
- * guard that keeps render.ts's imports from rendering and without a top-level await.
+ * guard that keeps render.ts's imports from rendering (nor the import it needs) and without a
+ * top-level await. The guard compares real paths, so that running an example through a symlink
+ * renders it too.
  */
 function source(name: string): string {
   const code = readFileSync(join(HERE, `${name}.tsx`), 'utf8');
-  const guard = /^if \(process\.argv\[1\] === import\.meta\.filename\)\s+await (renderToFile\(.*\);)$/m;
+  const using = /^import \{ realpathSync \} from 'node:fs';\n\n/m;
+  const guard =
+    /^if \(process\.argv\[1\] && realpathSync\(process\.argv\[1\]\) === import\.meta\.filename\)\s+await (renderToFile\(.*\);)$/m;
+  if (!using.test(code)) throw new Error(`${name}.tsx does not import realpathSync on its own line`);
   if (!guard.test(code)) throw new Error(`${name}.tsx does not end with the guarded renderToFile call`);
-  return `/** @jsxRuntime automatic */\n${code.replace(guard, '$1').trimEnd()}`;
+  return `/** @jsxRuntime automatic */\n${code.replace(using, '').replace(guard, '$1').trimEnd()}`;
 }
 
 const fence = (code: string) => `\`\`\`tsx\n${code}\n\`\`\``;

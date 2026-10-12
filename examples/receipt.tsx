@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
 
 interface Line {
@@ -36,4 +38,5 @@ export const sample = {
   ],
 };
 
-if (process.argv[1] === import.meta.filename) await renderToFile(<Receipt {...sample} />, 'receipt.pdf');
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
+  await renderToFile(<Receipt {...sample} />, 'receipt.pdf');

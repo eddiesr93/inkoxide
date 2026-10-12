@@ -55,8 +55,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
   Tailwind class mapping and `initTailwind` options, the React tree
-  builder, `renderToBuffer`, `Font.register`, error messages, and the
-  export lists of `@inkoxide/style` and `@inkoxide/render`.
+  builder, `renderToBuffer`, `Font.register`, error messages, the
+  export lists of `@inkoxide/style` and `@inkoxide/render`, and the
+  examples and benchmark invoices, each run through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict` and the report

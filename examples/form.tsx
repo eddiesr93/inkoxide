@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import {
   Checkbox,
   Document,
@@ -100,4 +102,5 @@ export const sample: FormProps = {
   plans: ['Starter', 'Team', 'Enterprise'],
 };
 
-if (process.argv[1] === import.meta.filename) await renderToFile(<Form {...sample} />, 'form.pdf');
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
+  await renderToFile(<Form {...sample} />, 'form.pdf');

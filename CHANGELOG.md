@@ -65,7 +65,8 @@ All notable changes to the packages in this repository. The format follows
 - The examples in the `@inkoxide/render` README run when copied into a new project and started
   with `npx tsx`, as the README says: like the quick start, they name the JSX runtime and end in
   a plain `renderToFile` call, without a top-level await. The files in `examples/` render their
-  PDF on every Node.js 22, not only on 22.18 and later.
+  PDF on every Node.js 22, not only on 22.18 and later, also when started through a symlinked
+  path such as `/tmp` on macOS.
 - `validate` decodes the images a document uses, so an image that does not decode is
   `INVALID_IMAGE` at its path. Until now only the header was read: a corrupt or truncated PNG
   passed validation and failed the render with `IMAGE_ERROR` and no path. A JPEG is still
