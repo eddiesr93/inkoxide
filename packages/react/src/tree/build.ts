@@ -29,9 +29,6 @@ import {
   HOST,
   HOST_NAME,
   type HyphenationCallback,
-  type ImageRequest,
-  type ImageSrc,
-  type ImageSrcValue,
   type Length,
   type PageSize,
   type RenderProp,
@@ -42,6 +39,8 @@ import type { FontRegistry } from '../fonts/registry.ts';
 import { PageContext, RenderCall } from '../page.ts';
 import { type Container, componentStack, type Instance, type Node } from '../reconciler/instance.ts';
 import { renderToInstances } from '../reconciler/render.ts';
+import { ImageIds, ImageTable, type PendingImage, type RemoteImagePolicy } from './images.ts';
+import { PRESET_NAMES, presetSize } from './page-sizes.ts';
 import {
   boxKeys,
   boxStyle,
@@ -56,178 +55,9 @@ import {
   usesPatterns,
   withStyleProp,
 } from './style.ts';
-import { svgDataUrl, svgMarkup } from './svg.ts';
-
-/**
- * Page presets in points, portrait: the ISO 216 A and B series, the ISO 269 C series, RA and
- * SRA (ISO 217), the US sizes, Folio and ID-1 (ISO/IEC 7810). Millimetre sizes are rounded to
- * 0.01 pt.
- */
-export const PAGE_SIZES: Record<string, { width: number; height: number }> = {
-  '4A0': { width: 4767.87, height: 6740.79 },
-  '2A0': { width: 3370.39, height: 4767.87 },
-  A0: { width: 2383.94, height: 3370.39 },
-  A1: { width: 1683.78, height: 2383.94 },
-  A2: { width: 1190.55, height: 1683.78 },
-  A3: { width: 841.89, height: 1190.55 },
-  A4: { width: 595.28, height: 841.89 },
-  A5: { width: 419.53, height: 595.28 },
-  A6: { width: 297.64, height: 419.53 },
-  A7: { width: 209.76, height: 297.64 },
-  A8: { width: 147.4, height: 209.76 },
-  A9: { width: 104.88, height: 147.4 },
-  A10: { width: 73.7, height: 104.88 },
-  B0: { width: 2834.65, height: 4008.19 },
-  B1: { width: 2004.09, height: 2834.65 },
-  B2: { width: 1417.32, height: 2004.09 },
-  B3: { width: 1000.63, height: 1417.32 },
-  B4: { width: 708.66, height: 1000.63 },
-  B5: { width: 498.9, height: 708.66 },
-  B6: { width: 354.33, height: 498.9 },
-  B7: { width: 249.45, height: 354.33 },
-  B8: { width: 175.75, height: 249.45 },
-  B9: { width: 124.72, height: 175.75 },
-  B10: { width: 87.87, height: 124.72 },
-  C0: { width: 2599.37, height: 3676.54 },
-  C1: { width: 1836.85, height: 2599.37 },
-  C2: { width: 1298.27, height: 1836.85 },
-  C3: { width: 918.43, height: 1298.27 },
-  C4: { width: 649.13, height: 918.43 },
-  C5: { width: 459.21, height: 649.13 },
-  C6: { width: 323.15, height: 459.21 },
-  C7: { width: 229.61, height: 323.15 },
-  C8: { width: 161.57, height: 229.61 },
-  C9: { width: 113.39, height: 161.57 },
-  C10: { width: 79.37, height: 113.39 },
-  RA0: { width: 2437.8, height: 3458.27 },
-  RA1: { width: 1729.13, height: 2437.8 },
-  RA2: { width: 1218.9, height: 1729.13 },
-  RA3: { width: 864.57, height: 1218.9 },
-  RA4: { width: 609.45, height: 864.57 },
-  SRA0: { width: 2551.18, height: 3628.35 },
-  SRA1: { width: 1814.17, height: 2551.18 },
-  SRA2: { width: 1275.59, height: 1814.17 },
-  SRA3: { width: 907.09, height: 1275.59 },
-  SRA4: { width: 637.8, height: 907.09 },
-  Letter: { width: 612, height: 792 },
-  Legal: { width: 612, height: 1008 },
-  Tabloid: { width: 792, height: 1224 },
-  Executive: { width: 522, height: 756 },
-  Folio: { width: 612, height: 936 },
-  ID1: { width: 153.01, height: 242.65 },
-};
-
-/** The presets, for error messages. */
-const PRESET_NAMES =
-  '4A0, 2A0, A0–A10, B0–B10, C0–C10, RA0–RA4, SRA0–SRA4, Letter, Legal, Tabloid, Executive, Folio, ID1';
-
-/** `PAGE_SIZES` by lower-case name: preset names match in any case. */
-const PRESETS = new Map(Object.entries(PAGE_SIZES).map(([name, size]) => [name.toLowerCase(), size]));
-
-/** Which remote image URLs `<Image src>` may use; the caller fetches them (`@inkoxide/render` does). */
-export interface RemoteImagePolicy {
-  /**
-   * Allowed URL prefixes (`'https://cdn.example.com/'`) or host names, with `*.` for subdomains
-   * (`'*.example.com'`; host entries allow `https:` only).
-   */
-  allow: readonly string[];
-}
-
-/** True when `url` is allowed by the policy. */
-export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined): boolean {
-  if (!policy) return false;
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return false;
-  }
-  if (u.username || u.password) return false;
-  return policy.allow.some((entry) => {
-    if (entry.includes('://'))
-      return u.href.startsWith(entry) && (u.protocol === 'https:' || entry.startsWith('http:'));
-    if (u.protocol !== 'https:') return false;
-    const host = u.hostname.toLowerCase();
-    const e = entry.toLowerCase();
-    return e.startsWith('*.') ? host.endsWith(e.slice(1)) && host.length > e.length - 1 : host === e;
-  });
-}
-
-/**
- * True when an image `src` string is written as a file path: absolute (`/img/logo.png`,
- * `C:\img\logo.png`), relative with `./` or `../`, or a `file:` URL. Other strings are image ids,
- * so a template never reads a file by accident. Paths are files only when the caller allows them
- * (`localImages`); otherwise they are ids too.
- */
-export function isImagePath(src: string): boolean {
-  return /^(?:\.{0,2}[\\/]|[a-z]:[\\/]|file:)/i.test(src);
-}
-
-/**
- * An image the caller loads before rendering (`@inkoxide/render` does): a file, a request
- * allowed by the remote image policy, or a function or promise `src`, not yet called or awaited.
- */
-export type PendingImage =
-  | { kind: 'file'; path: string }
-  | { kind: 'request'; request: ImageRequest }
-  | { kind: 'deferred'; src: Promise<ImageSrcValue> | (() => ImageSrcValue | Promise<ImageSrcValue>) };
-
-/**
- * The ids a tree gives the images it cannot refer to by the caller's id: one per bytes, file path,
- * URL, request, function or promise. A tree and its rebuilds share one table, so an image keeps
- * its id on every pass and an id never names two images. The caller's ids are skipped, so a
- * generated id never names one of their images.
- */
-export class ImageIds {
-  private readonly ids = new Map<unknown, string>();
-  private readonly counts = new Map<string, number>();
-
-  constructor(private readonly taken: ReadonlySet<string> = new Set()) {}
-
-  /** The id of `key` (a string, or an object by identity); a new one is `${prefix}-${n}`. */
-  of(key: unknown, prefix: string): string {
-    let id = this.ids.get(key);
-    if (id === undefined) {
-      let n = this.counts.get(prefix) ?? 0;
-      while (this.taken.has(`${prefix}-${n}`)) n++;
-      this.counts.set(prefix, n + 1);
-      id = `${prefix}-${n}`;
-      this.ids.set(key, id);
-    }
-    return id;
-  }
-}
-
-/**
- * What a request sends, as a string: requests that send the same thing share an id however often
- * a template creates them. Undefined for a body that is neither a string nor bytes.
- */
-function requestKey(r: ImageRequest): string | undefined {
-  const { body } = r;
-  // Only plain header objects are compared; a `Headers` instance keeps its request apart.
-  const proto = r.headers === undefined ? null : Object.getPrototypeOf(r.headers);
-  if (proto !== null && proto !== Object.prototype) return undefined;
-  const bytes = body instanceof Uint8Array;
-  if (body !== undefined && typeof body !== 'string' && !bytes) return undefined;
-  const sent = bytes ? Array.from(body, (b) => b.toString(16).padStart(2, '0')).join('') : body;
-  const headers = Object.entries(r.headers ?? {})
-    .map(([k, v]) => [k.toLowerCase(), String(v)])
-    .sort(([a = ''], [b = '']) => (a < b ? -1 : a > b ? 1 : 0));
-  return JSON.stringify([r.uri, (r.method ?? 'GET').toUpperCase(), headers, bytes, sent ?? null]);
-}
-
-/** One view per `ArrayBuffer`, so every build passes the same bytes object for it. */
-const views = new WeakMap<ArrayBuffer, Uint8Array>();
-
-function bytesOf(src: Uint8Array | ArrayBuffer): Uint8Array {
-  if (src instanceof Uint8Array) return src;
-  let view = views.get(src);
-  if (!view) {
-    view = new Uint8Array(src);
-    views.set(src, view);
-  }
-  return view;
-}
+import { svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
+import { Hyphenator, transformText } from './text.ts';
+import { stackVariants } from './variants.ts';
 
 export interface BuildOptions {
   fonts: FontRegistry;
@@ -266,9 +96,6 @@ export interface BuildResult {
   pending: Record<string, PendingImage>;
 }
 
-const isThenable = (v: unknown): v is PromiseLike<ImageSrcValue> =>
-  typeof (v as PromiseLike<unknown> | null)?.then === 'function';
-
 type Inline = Instance | { kind: 'text'; text: string; fiber: unknown };
 
 const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
@@ -278,26 +105,6 @@ function sameColor(a: Color | undefined, b: Color | undefined): boolean {
   if (!a || !b) return false;
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
-
-function transform(text: string, how: TextCtx['textTransform'], lang: string | undefined): string {
-  switch (how) {
-    case 'uppercase':
-      return text.toLocaleUpperCase(lang);
-    case 'lowercase':
-      return text.toLocaleLowerCase(lang);
-    case 'capitalize':
-      return text.replace(
-        /(^|[\s\-\u2013\u2014(\u201e"\u00ab])(\p{L})/gu,
-        (_, pre: string, ch: string) => pre + ch.toLocaleUpperCase(lang),
-      );
-    default:
-      return text;
-  }
-}
-
-/** A word as a hyphenation callback sees it: letters, their marks, and soft hyphens. */
-const WORD = /[\p{L}\p{M}\u00AD]+/gu;
-const SHY = '\u00AD';
 
 function toBreak(b: BreakProp | undefined): Break | undefined {
   if (b === undefined) return undefined;
@@ -325,21 +132,16 @@ function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
 }
 
 class Builder {
-  readonly images: Record<string, Uint8Array> = {};
-  private readonly generated: ImageIds;
+  readonly imageTable: ImageTable;
   private readonly used = new Set<string>();
   readonly warnings: string[] = [];
   private readonly warned = new Set<string>();
   readonly origin: Map<object, Instance> | undefined;
-  readonly remote: Record<string, string> = {};
-  readonly pending: Record<string, PendingImage> = {};
-  private readonly registered: ReadonlySet<string>;
   dynamic = false;
   private docLang: string | undefined;
   /** `debug` on the `<Document>`: every page outlines its elements. */
   private debugAll = false;
-  /** Hyphenated words by callback, so each distinct word calls it once per build. */
-  private readonly hyphenatedWords = new Map<HyphenationCallback, Map<string, string>>();
+  private readonly hyphenator = new Hyphenator();
   /** The size of the page being built: what `vw` and `vh` are relative to. */
   private pageBox = { width: 0, height: 0 };
   /** Elements placed directly in a `<Page>`: the only ones that can be `fixed`. */
@@ -353,8 +155,13 @@ class Builder {
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
-    this.registered = new Set(opts.imageIds);
-    this.generated = opts.generatedIds ?? new ImageIds(this.registered);
+    const registered = new Set(opts.imageIds);
+    this.imageTable = new ImageTable({
+      registered,
+      generated: opts.generatedIds ?? new ImageIds(registered),
+      remoteImages: opts.remoteImages,
+      localImages: opts.localImages,
+    });
   }
 
   private fail(
@@ -611,11 +418,8 @@ class Builder {
       return { width: side, height: side };
     }
     if (typeof size === 'string') {
-      const [base = '', orient, ...rest] = size.toLowerCase().split('-');
-      const preset = PRESETS.get(base);
-      if (preset && rest.length === 0 && (orient === undefined || orient === 'landscape')) {
-        return orient ? { width: preset.height, height: preset.width } : { ...preset };
-      }
+      const preset = presetSize(size);
+      if (preset) return preset;
       let side: unknown;
       try {
         side = toPt(size);
@@ -654,7 +458,7 @@ class Builder {
         continue;
       }
       flush();
-      out.push(this.node(n, ctx));
+      out.push(this.blockNode(n, ctx));
     }
     flush();
     return out;
@@ -765,19 +569,21 @@ class Builder {
     return href;
   }
 
-  private node(inst: Instance, ctx: TextCtx): SchemaNode {
+  /** A block element's node, remembering the outermost fixed element while its content is built. */
+  private blockNode(inst: Instance, ctx: TextCtx): SchemaNode {
     if (this.fixedEl === undefined && isFixed(inst)) {
       this.fixedEl = HOST_NAME[inst.type];
       try {
-        return this.element(inst, ctx);
+        return this.nodeForType(inst, ctx);
       } finally {
         this.fixedEl = undefined;
       }
     }
-    return this.element(inst, ctx);
+    return this.nodeForType(inst, ctx);
   }
 
-  private element(inst: Instance, ctx: TextCtx): SchemaNode {
+  /** The node of a block element, built by the method for its type. */
+  private nodeForType(inst: Instance, ctx: TextCtx): SchemaNode {
     if (typeof inst.props.render === 'function' && (inst.type === HOST.View || inst.type === HOST.Text)) {
       return this.perPage(inst, ctx);
     }
@@ -886,13 +692,14 @@ class Builder {
       if (n.kind === 'text') {
         if (n.text === '') continue;
         // The callback sees the words as displayed, after `textTransform`.
-        const text = transform(n.text, ctx.textTransform, ctx.lang);
+        const text = transformText(n.text, ctx.textTransform, ctx.lang);
         // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
         const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : callbackOf(ctx);
         const patterns = usesPatterns(ctx);
         const hyphenate =
           patterns === para.patterns || (patterns && ctx.lang !== para.lang) ? undefined : patterns;
-        this.push(out, cb ? this.hyphenated(text, cb, owner) : text, ctx, owner, undefined, hyphenate);
+        const shown = cb ? this.hyphenator.apply(text, cb, (msg, init) => this.fail(owner, msg, init)) : text;
+        this.push(out, shown, ctx, owner, undefined, hyphenate);
         continue;
       }
       switch (n.type) {
@@ -943,46 +750,6 @@ class Builder {
           this.fail(n, `<${HOST_NAME[n.type]}> cannot be inside <Text>.`);
       }
     }
-  }
-
-  /** Joins the parts `cb` returns for each word with soft hyphens, which the engine breaks at. */
-  private hyphenated(text: string, cb: HyphenationCallback, owner: Instance): string {
-    let done = this.hyphenatedWords.get(cb);
-    if (!done) {
-      done = new Map();
-      this.hyphenatedWords.set(cb, done);
-    }
-    const cache = done;
-    return text.replace(WORD, (word) => {
-      // Soft hyphens already in a word are the author's own break points.
-      if (word.includes(SHY)) return word;
-      let out = cache.get(word);
-      if (out === undefined) {
-        out = this.syllablesOf(word, cb, owner).join(SHY);
-        cache.set(word, out);
-      }
-      return out;
-    });
-  }
-
-  private syllablesOf(word: string, cb: HyphenationCallback, owner: Instance): string[] {
-    let parts: unknown;
-    try {
-      parts = cb(word);
-    } catch (e) {
-      this.fail(owner, `hyphenationCallback threw for "${word}": ${(e as Error).message}`, {
-        kind: 'render',
-        cause: e,
-      });
-    }
-    if (!Array.isArray(parts) || parts.some((p) => typeof p !== 'string') || parts.join('') !== word) {
-      this.fail(
-        owner,
-        `hyphenationCallback returned ${JSON.stringify(parts)} for "${word}": return the parts of the word in order (["hy", "phen", "ation"]), or [word] to keep it whole.`,
-        { kind: 'props' },
-      );
-    }
-    return (parts as string[]).filter((p) => p !== '');
   }
 
   private push(
@@ -1108,72 +875,14 @@ class Builder {
     const node: ImageNode = { type: 'image' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const src = inst.props.src as ImageSrc | undefined;
-    if (src instanceof Uint8Array || src instanceof ArrayBuffer) {
-      node.src = this.generated.of(src, 'image');
-      this.images[node.src] = bytesOf(src);
-    } else if (typeof src === 'string' && this.registered.has(src)) {
-      node.src = src;
-    } else if (typeof src === 'string' && src.startsWith('data:')) {
-      node.data = src;
-    } else if (typeof src === 'string' && isImagePath(src)) {
-      // Without localImages a path, `file:` URLs included, is an image id like any other string.
-      node.src = this.opts.localImages
-        ? this.pendingId(`file\0${src}`, 'file', () => ({ kind: 'file', path: src }))
-        : src;
-    } else if (typeof src === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(src)) {
-      this.allowRemote(inst, src, `src="${src}"`);
-      node.src = this.generated.of(`remote\0${src}`, 'remote');
-      this.remote[node.src] = src;
-    } else if (typeof src === 'string' && src.length > 0) {
-      node.src = src;
-    } else if (typeof src === 'function') {
-      node.src = this.pendingId(src, 'deferred', () => ({ kind: 'deferred', src }));
-    } else if (isThenable(src)) {
-      node.src = this.pendingId(src, 'deferred', () => {
-        // Handled now, awaited by the caller: a rejection before then must not crash the process.
-        const promise = Promise.resolve(src);
-        promise.catch(() => {});
-        return { kind: 'deferred', src: promise };
-      });
-    } else if (typeof src === 'object' && src !== null) {
-      if (typeof src.uri !== 'string' || src.uri === '') {
-        this.fail(inst, '<Image src={{ uri }}>: a request needs a uri.', { kind: 'props' });
-      }
-      this.allowRemote(inst, src.uri, `src={{ uri: "${src.uri}" }}`);
-      const key = requestKey(src);
-      node.src = this.pendingId(key === undefined ? src : `request\0${key}`, 'request', () => ({
-        kind: 'request',
-        request: src,
-      }));
-    } else {
-      this.fail(
-        inst,
-        '<Image> needs a src: bytes, a data: URL, an image id, a file path, a URL, a request, or a function or promise.',
-        { kind: 'props' },
-      );
-    }
+    const src = this.imageTable.resolve(inst.props.src, (msg) => this.fail(inst, msg, { kind: 'props' }));
+    if ('data' in src) node.data = src.data;
+    else node.src = src.src;
     const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
     if (fit) node.fit = fit;
     if (own.objectPosition) node.objectPosition = own.objectPosition;
     this.flowProps(node, inst);
     return this.mark(node, inst);
-  }
-
-  private allowRemote(inst: Instance, url: string, prop: string): void {
-    if (remoteAllowed(url, this.opts.remoteImages)) return;
-    this.fail(
-      inst,
-      `<Image ${prop}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.`,
-      { kind: 'props' },
-    );
-  }
-
-  /** One id per file path, request, function or promise, however many images use it. */
-  private pendingId(key: unknown, prefix: string, image: () => PendingImage): string {
-    const id = this.generated.of(key, prefix);
-    this.pending[id] ??= image();
-    return id;
   }
 
   private field(inst: Instance, parent: TextCtx): FieldNode {
@@ -1247,7 +956,7 @@ class Builder {
       } catch (e) {
         this.fail(inst, `<Canvas> paint threw: ${(e as Error).message}`, { kind: 'render', cause: e });
       }
-      markup = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${painter.toSvgBody()}</svg>`;
+      markup = svgDocument(w, h, painter.toSvgBody());
     } else {
       markup = svgMarkup(inst, w, h, (at, msg) => this.fail(at ?? inst, msg));
     }
@@ -1283,58 +992,9 @@ class Builder {
     }
     const all = [...groups.values()];
     if (all.length === 1 && all[0]) return all[0].node;
-    // Several variants: the element's place in the layout (outer box) wraps them.
-    const wrapper: SchemaNode = { type: 'box', children: [] };
-    const outer: Style = { display: 'grid' };
-    for (const { node, pages } of all) {
-      const v = node as SchemaNode & Record<string, unknown>;
-      for (const k of ['id', 'break', 'link', 'bookmark', 'pages'] as const) {
-        if (v[k] !== undefined) (wrapper as unknown as Record<string, unknown>)[k] = v[k];
-        delete v[k];
-      }
-      // Both outlined: the wrapper holds the margins, the variant the border and padding.
-      if (v.debug === true) wrapper.debug = true;
-      const inner: Record<string, unknown> = { ...(v.style as Record<string, unknown> | undefined) };
-      for (const k of OUTER_KEYS) {
-        if (inner[k] !== undefined) (outer as Record<string, unknown>)[k] = inner[k];
-        delete inner[k];
-      }
-      inner.gridRow = { start: 1 };
-      inner.gridColumn = { start: 1 };
-      v.style = inner as Style;
-      // An own `pages` filter on the element narrows every variant.
-      v.pages = pages as [number, ...number[]];
-      wrapper.children?.push(v);
-    }
-    wrapper.style = outer;
-    return this.mark(wrapper, inst);
+    return this.mark(stackVariants(all), inst);
   }
 }
-
-/** Style keys that place an element among its siblings (kept on a per-page wrapper). */
-const OUTER_KEYS = [
-  'margin',
-  'inset',
-  'position',
-  'flexGrow',
-  'flexShrink',
-  'flexBasis',
-  'alignSelf',
-  'justifySelf',
-  'gridColumn',
-  'gridRow',
-  'width',
-  'height',
-  'minWidth',
-  'minHeight',
-  'maxWidth',
-  'maxHeight',
-  'aspectRatio',
-  'zIndex',
-  'rotate',
-  'transform',
-  'transformOrigin',
-] as const;
 
 /** Builds the schema document from rendered host instances. */
 export function buildTree(container: Container, opts: BuildOptions): BuildResult {
@@ -1342,13 +1002,13 @@ export function buildTree(container: Container, opts: BuildOptions): BuildResult
   const document = b.build(container);
   return {
     document,
-    images: b.images,
+    images: b.imageTable.images,
     fonts: b.fontIds(),
     warnings: b.warnings,
     origin: b.origin,
     dynamic: b.dynamic,
-    remote: b.remote,
-    pending: b.pending,
+    remote: b.imageTable.remote,
+    pending: b.imageTable.pending,
   };
 }
 

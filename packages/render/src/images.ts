@@ -4,10 +4,11 @@
  */
 import {
   type ImageRequest,
+  imageSource,
   type ImageSrcValue,
-  isImagePath,
   type PendingImage,
   remoteAllowed,
+  remoteRefused,
   type TreeResult,
 } from '@inkoxide/react';
 
@@ -101,20 +102,23 @@ async function resolveValue(
   const fail = (why: string): never => {
     throw new RenderError('TEMPLATE_ERROR', `An <Image src> function or promise resolved to ${why}.`);
   };
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (typeof value === 'string') {
-    const known = Object.hasOwn(registered, value) ? registered[value] : undefined;
-    if (known) return known;
-    if (value.startsWith('data:')) {
-      return dataUrlBytes(value) ?? fail('a data: URL that is not valid base64 (`data:<type>;base64,…`)');
-    }
-    if (isImagePath(value)) return readFile(value, policies.local);
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return fetchAllowed(value, policies.remote);
-    return fail(`"${value}", which is not an id in the images option, a path or a URL`);
-  }
-  if (typeof value === 'object' && value !== null && typeof (value as ImageRequest).uri === 'string') {
-    return fetchAllowed(value as ImageRequest, policies.remote);
+  const src = imageSource(value, (id) => Object.hasOwn(registered, id) && Boolean(registered[id]));
+  switch (src.kind) {
+    case 'bytes':
+      return src.bytes instanceof Uint8Array ? src.bytes : new Uint8Array(src.bytes);
+    case 'registered':
+      return registered[src.src] as Uint8Array;
+    case 'data':
+      return dataUrlBytes(src.src) ?? fail('a data: URL that is not valid base64 (`data:<type>;base64,…`)');
+    case 'path':
+      return readFile(src.src, policies.local);
+    case 'url':
+      return fetchAllowed(src.src, policies.remote);
+    case 'id':
+      return fail(`"${src.src}", which is not an id in the images option, a path or a URL`);
+    case 'request':
+      if (typeof src.request.uri === 'string') return fetchAllowed(src.request, policies.remote);
+      break;
   }
   return fail(`${describe(value)}; expected bytes, a string or a request`);
 }
@@ -128,10 +132,7 @@ async function fetchAllowed(
 ): Promise<Uint8Array> {
   const url = typeof src === 'string' ? src : src.uri;
   if (!policy || !remoteAllowed(url, policy)) {
-    throw new RenderError(
-      'TEMPLATE_ERROR',
-      `<Image src="${url}">: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.`,
-    );
+    throw new RenderError('TEMPLATE_ERROR', remoteRefused(`src="${url}"`));
   }
   return fetchImage(src, policy);
 }
