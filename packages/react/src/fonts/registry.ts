@@ -11,7 +11,10 @@ export interface FontFace {
   family: string;
   weight?: number;
   style?: 'normal' | 'italic';
-  /** File name, for `loadDirectory`. */
+  /**
+   * File name, for `loadDirectory`.
+   * @deprecated `loadDirectory` is deprecated: read the file and pass its bytes to `register`.
+   */
   file?: string;
 }
 
@@ -24,7 +27,6 @@ export interface ResolvedFont {
 }
 
 interface Face extends Required<Omit<FontFace, 'file'>> {
-  file: string | undefined;
   bytes: Uint8Array | undefined;
 }
 
@@ -47,7 +49,6 @@ export class FontRegistry {
       family: face.family,
       weight: face.weight ?? 400,
       style: face.style ?? 'normal',
-      file: face.file,
       bytes,
     };
     this.faces.push(f);
@@ -56,7 +57,11 @@ export class FontRegistry {
     return this;
   }
 
-  /** Registers every face whose `file` exists in `dir`; returns the ids of missing files. */
+  /**
+   * Registers every face whose `file` is in `dir`, skipping ids already registered, and returns
+   * the ids it registered (`loaded`) and the ids whose file it could not read (`missing`).
+   * @deprecated Read the files and pass their bytes to `register`.
+   */
   loadDirectory(dir: string, faces: readonly FontFace[]): { loaded: string[]; missing: string[] } {
     const loaded: string[] = [];
     const missing: string[] = [];
@@ -87,6 +92,7 @@ export class FontRegistry {
     return this.faces.map((f) => f.id);
   }
 
+  /** @deprecated Nothing uses it; it will be removed. */
   families(): string[] {
     return [...new Set(this.faces.map((f) => f.family))];
   }

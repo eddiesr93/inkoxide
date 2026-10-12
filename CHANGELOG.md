@@ -24,6 +24,13 @@ All notable changes to the packages in this repository. The format follows
   and the paths under it (`https://cdn.example.com/img` allows `/img/logo.png`, not
   `/imgs/logo.png`). Entries such as `https://cdn.example.com/` work as before.
 
+### Deprecated
+
+- `@inkoxide/react`: `FontRegistry.loadDirectory` and the `file` field of `FontFace` that it
+  reads. Read the font files yourself and pass their bytes to `FontRegistry.register`;
+  `@inkoxide/render` now loads its bundled fonts that way.
+- `@inkoxide/react`: `FontRegistry.families()`, which nothing uses.
+
 ### Fixed
 
 - The examples in the `@inkoxide/render` README run when copied into a new project and started

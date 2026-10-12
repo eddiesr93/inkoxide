@@ -3,11 +3,11 @@ import { setTailwindStrict } from '@inkoxide/tailwind';
 import { FontRegistry, loadTailwind, TemplateError, type TreeResult } from '../src/index.ts';
 
 export const FACES = [
-  { id: 'Inter-Regular', family: 'Inter', file: 'Inter-Regular.ttf' },
-  { id: 'Inter-Bold', family: 'Inter', weight: 700, file: 'Inter-Bold.ttf' },
-  { id: 'Inter-Italic', family: 'Inter', style: 'italic' as const, file: 'Inter-Italic.ttf' },
-  { id: 'NotoSans-Regular', family: 'Noto Sans', file: 'NotoSans-Regular.ttf' },
-  { id: 'RobotoMono-Regular', family: 'Roboto Mono', file: 'RobotoMono-Regular.ttf' },
+  { id: 'Inter-Regular', family: 'Inter' },
+  { id: 'Inter-Bold', family: 'Inter', weight: 700 },
+  { id: 'Inter-Italic', family: 'Inter', style: 'italic' as const },
+  { id: 'NotoSans-Regular', family: 'Noto Sans' },
+  { id: 'RobotoMono-Regular', family: 'Roboto Mono' },
 ];
 
 export function registry(): FontRegistry {
