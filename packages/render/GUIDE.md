@@ -31,7 +31,7 @@ take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stro
 | Component | What it is |
 |---|---|
 | `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `lang` (`"en-US"`), `creationDate` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)). |
-| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin. |
+| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |

@@ -544,6 +544,56 @@ describe('pages, images and structure', () => {
     expect(p.children).toEqual([{ type: 'spacer', style: { height: 10 } }]);
   });
 
+  it('reads percentage padding on a page as a share of the page width, on every side', () => {
+    const page = (props: { className?: string; style?: object }) =>
+      renderTemplate(
+        <Document>
+          <Page size={[400, 600]} {...props}>
+            <Header>
+              <Text>h</Text>
+            </Header>
+            <Text>x</Text>
+          </Page>
+        </Document>,
+        { fonts },
+      ).document.pages[0];
+    const all = { top: 40, right: 40, bottom: 40, left: 40 };
+    expect(page({ style: { padding: '10%' } }).margin).toEqual(all);
+    expect(page({ className: 'p-[10%]' }).margin).toEqual(all);
+    const p = page({ style: { paddingTop: '5%', paddingLeft: 12 } });
+    expect(p.margin).toEqual({ top: 20, left: 12 });
+    expect((p.header as BoxNode | undefined)?.style).toEqual({
+      padding: { left: 12 },
+      minHeight: 20,
+      justifyContent: 'center',
+    });
+  });
+
+  it('rejects a percentage minimum height on a Row, which has no table height to resolve against', () => {
+    const table = (props: { className?: string; style?: object }) => () =>
+      render(
+        <Table columns={[1]}>
+          <Row {...props}>
+            <Cell />
+          </Row>
+        </Table>,
+      );
+    const cls = thrown(table({ className: 'min-h-[10%]' }));
+    expect([cls.kind, cls.className]).toEqual(['tailwind', 'min-h-[10%]']);
+    expect(cls.message).toBe(
+      '<Row>: a minimum height of 10% (from className="min-h-[10%]") has no table height to be a percentage of; use a length.',
+    );
+    const style = thrown(table({ style: { minHeight: '10%' } }));
+    expect([style.kind, style.message]).toEqual([
+      'props',
+      '<Row>: a minimum height of 10% (from its style) has no table height to be a percentage of; use a length.',
+    ]);
+    const ok = (props: { className?: string; style?: object }) =>
+      (body(table(props)() as ReturnType<typeof render>)[0] as TableNode).rows[0]?.minHeight;
+    expect(ok({ style: { minHeight: '1cm' } })).toBe(28.346457);
+    expect(ok({ style: { minHeight: 'auto' } })).toBeUndefined();
+  });
+
   it('lines header and footer up with the page margins unless they say otherwise', () => {
     const r = renderTemplate(
       <Document>

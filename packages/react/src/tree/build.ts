@@ -372,7 +372,8 @@ class Builder {
         if (v !== undefined) spec.margin[k] = this.length(inst, v, units);
       }
     }
-    // Padding fills the sides the margin prop leaves unset.
+    // Padding fills the sides the margin prop leaves unset. A percentage is of the page width on
+    // every side, as padding is of the containing block's width in CSS.
     const pad = {
       top: own.paddingTop,
       right: own.paddingRight,
@@ -381,7 +382,9 @@ class Builder {
     };
     for (const k of ['top', 'right', 'bottom', 'left'] as const) {
       const v = pad[k];
-      if (typeof v === 'number' && spec.margin?.[k] === undefined) spec.margin = { ...spec.margin, [k]: v };
+      if (v === undefined || spec.margin?.[k] !== undefined) continue;
+      const pt = typeof v === 'number' ? v : round((Number.parseFloat(v) * size.width) / 100);
+      spec.margin = { ...spec.margin, [k]: pt };
     }
     if (own.backgroundColor !== undefined) {
       spec.background = own.backgroundColor === 'currentColor' ? ctx.color : own.backgroundColor;
@@ -843,9 +846,16 @@ class Builder {
       const row: TableRow = { cells: [] };
       if (typeof r.props.id === 'string') row.id = r.props.id;
       if (r.props.debug === true) row.debug = true;
-      const minHeight =
-        (r.props.minHeight as number | undefined) ??
-        (typeof rOwn.minHeight === 'number' ? rOwn.minHeight : undefined);
+      let minHeight = r.props.minHeight as number | undefined;
+      if (minHeight === undefined && typeof rOwn.minHeight === 'number') minHeight = rOwn.minHeight;
+      else if (minHeight === undefined && typeof rOwn.minHeight === 'string' && rOwn.minHeight !== 'auto') {
+        const { fromClass, init } = this.source(r, rOwn, 'minHeight');
+        this.fail(
+          r,
+          `<Row>: a minimum height of ${rOwn.minHeight} (from ${fromClass ? `className="${init.className}"` : 'its style'}) has no table height to be a percentage of; use a length.`,
+          init,
+        );
+      }
       if (minHeight !== undefined) row.minHeight = minHeight;
       if (rOwn.backgroundColor !== undefined) {
         row.backgroundColor = rOwn.backgroundColor === 'currentColor' ? rctx.color : rOwn.backgroundColor;

@@ -23,6 +23,10 @@ All notable changes to the packages in this repository. The format follows
   of suggesting a `Text`, which is not allowed there either. The remote-image error of
   `@inkoxide/react` names its own option, `remoteImages.allow`, and only `@inkoxide/render` adds
   the `INKOXIDE_REMOTE_IMAGES` variable.
+- Percentage padding on a `Page` (`style={{ padding: '10%' }}`, `p-[10%]`) is a share of the
+  page width on every side, as in CSS, instead of being dropped, which also left the header and
+  footer unaligned. A percentage minimum height on a `Row` (`min-h-[10%]`), which has no table
+  height to resolve against, is a template error instead of being dropped.
 
 ## 0.5.0 - 2026-10-12
 
