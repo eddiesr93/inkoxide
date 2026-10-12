@@ -279,9 +279,12 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
   head of a page.
 - **Page breaks.** `<PageBreak />`, `break="page-before"` and `break="page-after"` start a new
   page at any depth of the body, when content follows them: a break at the end adds no blank
-  page. A break before the first child of a `View` takes the `View` along. They are errors
-  inside a `flex-row`, grid or wrapping `View`, and inside or on an absolutely positioned,
-  rotated or transformed element, where they would do nothing.
+  page, and neither does one with nothing above it on its page. A break before the first child
+  of a `View` takes the `View` along. They are errors inside a `flex-row`, grid, wrapping or
+  reversed `View` and inside an absolutely positioned, rotated or transformed element, where
+  they would do nothing. On an element, `break="page-before"` and `break="page-after"` are
+  errors only when it is absolutely positioned (it is out of the flow); on a rotated or
+  transformed element they work.
 - **Keeping together.** `break="avoid"` (`wrap={false}`) moves an element to the next page whole
   when it does not fit; a `PageBreak` inside it still breaks, and the part before it moves whole.
   A `flex-row`, grid or wrapping `View` moves whole too. Taller than a page, both split: a row

@@ -698,3 +698,85 @@ fn text_in_a_row_taller_than_a_page_splits_between_lines() {
     ));
     assert!(pages >= 3);
 }
+
+#[test]
+fn a_box_holding_only_a_trailing_page_break_adds_no_page() {
+    // Nothing follows the break inside the box or after it: the box stays
+    // where it is, and its break adds no page.
+    for children in [
+        format!(
+            r#"{},{{"type":"box","children":[{{"type":"pageBreak"}}]}}"#,
+            boxes(&[10.0])
+        ),
+        format!(
+            r#"{{"type":"box","children":[{},{{"type":"box","children":[{{"type":"pageBreak"}}]}}]}}"#,
+            boxes(&[10.0])
+        ),
+        format!(
+            r#"{},{{"type":"box","style":{{"padding":{{"top":5,"bottom":5}}}},"children":[{{"type":"pageBreak"}},{{"type":"pageBreak"}}]}}"#,
+            boxes(&[10.0])
+        ),
+    ] {
+        let d = doc(&children);
+        let (t, p) = run(&d);
+        assert_eq!(p.pages, 1, "{children}");
+        check_invariants(&t, &p);
+    }
+    // Between content, such a box keeps its place and the content after it
+    // starts the next page.
+    let d = doc(&format!(
+        r#"{},{{"type":"box","children":[{{"type":"pageBreak"}}]}},{},{{"type":"box","children":[{{"type":"pageBreak"}}]}}"#,
+        boxes(&[10.0]),
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(rect(&t, &p, 2).0, 10.0);
+    assert_eq!(rect(&t, &p, 3).0, 100.0);
+    assert_eq!(p.pages, 2);
+}
+
+#[test]
+fn a_trailing_page_break_at_the_page_bottom_adds_no_page() {
+    let d = doc(&format!(r#"{},{{"type":"pageBreak"}}"#, boxes(&[H])));
+    let (_, p) = run(&d);
+    assert_eq!(p.pages, 1);
+    // A link to it goes to the foot of the last page.
+    assert_eq!(p.page_range[2], (0, 0));
+    let d = doc(&format!(
+        r#"{{"type":"box","children":[{},{{"type":"pageBreak"}}]}}"#,
+        boxes(&[H])
+    ));
+    let (_, p) = run(&d);
+    assert_eq!(p.pages, 1);
+}
+
+#[test]
+fn a_break_with_nothing_above_it_on_its_page_adds_no_page() {
+    // At the start of the flow, below a top margin.
+    for children in [
+        format!(
+            r#"{{"type":"box","style":{{"margin":{{"top":10}}}},"children":[{{"type":"pageBreak"}},{}]}}"#,
+            boxes(&[10.0])
+        ),
+        r#"{"type":"box","style":{"height":10,"margin":{"top":10}},"break":{"before":"page"}}"#
+            .to_owned(),
+        format!(
+            r#"{{"type":"box","style":{{"margin":{{"top":10}}}},"children":[{{"type":"box","style":{{"margin":{{"top":10}}}},"children":[{{"type":"pageBreak"}},{}]}}]}}"#,
+            boxes(&[10.0])
+        ),
+    ] {
+        let d = doc(&children);
+        let (t, p) = run(&d);
+        assert_eq!(p.pages, 1, "{children}");
+        assert_eq!(p.page_range[1], (0, 0), "{children}");
+        check_invariants(&t, &p);
+    }
+    // On a page whose content above it ended on the page before.
+    let d = doc(&format!(
+        r#"{},{{"type":"box","style":{{"height":10,"margin":{{"top":10}}}},"break":{{"before":"page"}}}}"#,
+        boxes(&[H])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(rect(&t, &p, 2).0, H + 10.0);
+    assert_eq!(p.pages, 2);
+}

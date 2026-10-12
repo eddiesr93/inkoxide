@@ -12,8 +12,10 @@
 //!
 //! Rules:
 //! - `break.before/after: page` and `pageBreak` nodes force a new page
-//!   when in-flow content follows them, at any depth (never an empty
-//!   page). A break before a box's first child moves the box with it.
+//!   when in-flow content follows them, at any depth, and content placed
+//!   before them is on their page (never an empty page). A break before a
+//!   box's first child moves the box with it. Zero-height nodes after the
+//!   last content (a trailing `pageBreak`) add no page.
 //! - A node whose first unbreakable piece (its *head*) does not fit in the
 //!   rest of the page moves whole to the next page, so a box never leaves
 //!   just its top border/padding behind. `minPresenceAhead` raises the head,
@@ -200,6 +202,8 @@ struct Paginator<'t, 'a, 'l> {
     /// The parent took the break before the next node placed (its first
     /// in-flow child).
     lead_taken: bool,
+    /// Paged y where the content placed so far ends (nodes with a height).
+    content_end: Option<f32>,
     out: Placement,
 }
 
@@ -217,6 +221,7 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
         pending: None,
         pending_nodes: Vec::new(),
         lead_taken: false,
+        content_end: None,
         out: Placement {
             page_h,
             pages: 1,
@@ -233,26 +238,32 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     p.out.shift_bottom[0] = p.shift;
 
     // Page ranges, bottom-up (children have larger indices than parents).
+    // Only nodes with a height make pages: a zero-height one (a trailing
+    // `pageBreak`, an empty box) at the top of a page after the last
+    // content stays at the foot of the last page instead.
     let mut last_page = 0u32;
     for i in (0..n).rev() {
         let (top, h) = p.out.paged_rect(tree, i as NodeIdx);
         let first = p.out.page_of(top);
-        let last = p.out.page_of_bottom(top + h);
-        let mut range = (first, last.max(first));
+        let last = p.out.page_of_bottom(top + h).max(first);
+        if i != 0 && h > 0.0 {
+            last_page = last_page.max(last);
+        }
+        let mut range = (first, last);
         let kids = tree.nodes[i].children.clone();
         for c in kids {
             let r = p.out.page_range[c as usize];
             range = (range.0.min(r.0), range.1.max(r.1));
         }
         p.out.page_range[i] = range;
-        if i != 0 {
-            last_page = last_page.max(range.1);
-        }
     }
     // The root's own extent (min-height = one page) counts too.
     let (rt, rh) = p.out.paged_rect(tree, 0);
     last_page = last_page.max(p.out.page_of_bottom(rt + rh));
     p.out.pages = last_page + 1;
+    for r in &mut p.out.page_range {
+        *r = (r.0.min(last_page), r.1.min(last_page));
+    }
     p.out.page_range[0] = (0, last_page);
 
     // Fixed nodes (outermost only), in the order the flow would paint
@@ -298,27 +309,32 @@ fn in_flow(tree: &Tree<'_>, c: NodeIdx) -> bool {
 
 /// Per node: whether a forced break (`pageBreak`, `break.before/after:
 /// page`) sits below it in flowing content, and whether its first in-flow
-/// child is or starts with one.
+/// child is or starts with one that in-flow content inside the node
+/// follows (a break with nothing after it is never taken).
 fn forced_breaks(tree: &Tree<'_>) -> (Vec<bool>, Vec<bool>) {
     let n = tree.nodes.len();
     let (mut forced, mut leads) = (vec![false; n], vec![false; n]);
     // Children have larger indices than parents.
     for i in (0..n).rev() {
-        let mut first = true;
-        for c in tree.children(i as NodeIdx).filter(|&c| in_flow(tree, c)) {
-            let Some(node) = tree.nodes[c as usize].node() else {
-                continue;
-            };
-            let own = matches!(node.kind, NodeKind::PageBreak)
+        let kids: Vec<(NodeIdx, &Node)> = tree
+            .children(i as NodeIdx)
+            .filter(|&c| in_flow(tree, c))
+            .filter_map(|c| tree.nodes[c as usize].node().map(|nd| (c, nd)))
+            .collect();
+        let page_break = |nd: &Node| matches!(nd.kind, NodeKind::PageBreak);
+        for &(c, node) in &kids {
+            forced[i] |= page_break(node)
                 || node.brk.before == BreakMode::Page
-                || node.brk.after == BreakMode::Page;
-            forced[i] |= own || forced[c as usize];
-            if first {
-                leads[i] = matches!(node.kind, NodeKind::PageBreak)
-                    || node.brk.before == BreakMode::Page
-                    || leads[c as usize];
-                first = false;
-            }
+                || node.brk.after == BreakMode::Page
+                || forced[c as usize];
+        }
+        if let Some(&(c, node)) = kids.first() {
+            // A leading `pageBreak` is taken by the next node that is not
+            // one; without one it is not taken at all.
+            let followed = kids[1..].iter().any(|&(_, nd)| !page_break(nd));
+            leads[i] = (page_break(node) && followed)
+                || node.brk.before == BreakMode::Page
+                || leads[c as usize];
         }
     }
     (forced, leads)
@@ -332,6 +348,13 @@ impl Paginator<'_, '_, '_> {
     fn at_page_top(&self, y: f32) -> bool {
         let r = y - self.out.page_of(y) as f32 * self.h;
         r.abs() < PAGED_EPS
+    }
+
+    /// Whether content placed so far reaches below the top of the page
+    /// holding paged `y`.
+    fn content_above(&self, y: f32) -> bool {
+        let top = self.out.page_top(self.out.page_of(y));
+        self.content_end.is_some_and(|e| e > top + PAGED_EPS)
     }
 
     /// Moves everything from paged `y` on to the next page.
@@ -556,7 +579,12 @@ impl Paginator<'_, '_, '_> {
             None => lead.then_some(g.y + self.shift),
         };
         if let Some(y) = broke {
-            self.push(y);
+            // Never an empty page: with nothing above the break on its page
+            // (at the start of the flow, below a top margin), the node
+            // starts a page already.
+            if self.content_above(y) {
+                self.push(y);
+            }
             for b in std::mem::take(&mut self.pending_nodes) {
                 self.set_subtree(b);
             }
@@ -598,6 +626,10 @@ impl Paginator<'_, '_, '_> {
 
         if node.brk.after == BreakMode::Page {
             self.pending.get_or_insert(g.y + g.h + self.shift);
+        }
+        if g.h > 0.0 {
+            let bottom = g.y + g.h + self.out.shift_bottom[i as usize];
+            self.content_end = Some(self.content_end.map_or(bottom, |e| e.max(bottom)));
         }
     }
 
