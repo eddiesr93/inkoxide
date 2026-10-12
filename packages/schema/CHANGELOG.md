@@ -31,6 +31,12 @@ version 2.
   engine reports it as `OUT_OF_RANGE` instead of `INVALID_VALUE` with a misleading message.
 - An empty or too long `link` or bookmark `title` is `INVALID_VALUE`, like an `Id` or a field
   `name` of the wrong length; it was `OUT_OF_RANGE`, which is for numbers.
+- **Forced breaks:** a `pageBreak` or `break.before/after: "page"` inside a row, grid, wrapping
+  or reversed box, or inside a positioned, rotated, transformed or fixed node, is
+  `INVALID_NODE` / `INVALID_VALUE`, and so is `before/after: "page"` on an absolutely
+  positioned node: the engine accepted them and did nothing. Forced breaks elsewhere work at any
+  depth and inside `inside: "avoid"`, and one at the end of the flow adds no page. `Break`
+  documents how rows, grids and content taller than a page split.
 
 ### Documentation
 

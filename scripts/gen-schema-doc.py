@@ -63,7 +63,7 @@ INTRO = """# Document schema v1
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays), or a forced break where it would do nothing (see `Break.before`) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
 | `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |

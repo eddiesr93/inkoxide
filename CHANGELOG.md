@@ -57,6 +57,21 @@ All notable changes to the packages in this repository. The format follows
 - `@inkoxide/schema` types: a transform function or a grid track object takes the keys of one
   form only, so `{ translate: [1, 2], rotate: 5 }` no longer type-checks.
 - The `inkoxide` CLI printed a validation error's code twice (`UNKNOWN_FONT UNKNOWN_FONT at …`).
+- A `PageBreak`, `break="page-before"` or `break="page-after"` inside a `View` that fits on the
+  page starts a new page; it was ignored. It also breaks inside `break="avoid"`
+  (`wrap={false}`), as in CSS, and a break before a `View`'s first child takes the `View` to the
+  new page instead of leaving its top padding behind. Inside a `flex-row`, grid or wrapping
+  `View`, and inside or on an absolutely positioned, rotated or transformed element, where it
+  did nothing, it is now an error.
+- A page break at the end of the content no longer adds a blank last page.
+- An absolutely positioned element of the page body written after a page break is placed from
+  the top of the body, like one written first; it moved with the break and could be cut across
+  two pages.
+- A `flex-row`, grid or wrapping `View` taller than a page splits between the lines of its
+  children, each column continuing on the next page, and a `break="avoid"` element taller than
+  a page splits like any other; both were cut through a line of text at the page edge.
+- Fixed elements in the body are painted in document order and by `zIndex`, as without `fixed`;
+  nested ones were painted in the wrong order.
 
 ## 0.5.0 - 2026-10-12
 

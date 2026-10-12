@@ -246,6 +246,15 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
   empty space, and of a box split across pages only the parts on those pages are drawn.
 - **Paragraphs.** `orphans` and `widows` keep at least that many lines together at the foot and
   head of a page.
+- **Page breaks.** `<PageBreak />`, `break="page-before"` and `break="page-after"` start a new
+  page at any depth of the body, when content follows them: a break at the end adds no blank
+  page. A break before the first child of a `View` takes the `View` along. They are errors
+  inside a `flex-row`, grid or wrapping `View`, and inside or on an absolutely positioned,
+  rotated or transformed element, where they would do nothing.
+- **Keeping together.** `break="avoid"` (`wrap={false}`) moves an element to the next page whole
+  when it does not fit; a `PageBreak` inside it still breaks, and the part before it moves whole.
+  A `flex-row`, grid or wrapping `View` moves whole too. Taller than a page, both split: a row
+  between the lines of its children, each column continuing on the next page.
 - **Content that depends on the page.** Use `render={({ pageNumber, totalPages }) => …}` on a
   `Text` or `View` in a header, a footer or a fixed element. A component rendered by a `render`
   prop can read the same numbers with the `usePage()` hook, which throws anywhere else:
@@ -748,6 +757,9 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
 - **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet.
+- **Content taller than a page.** What cannot split (an `Image`, an absolutely positioned,
+  rotated or transformed element, table rows tied by a `rowSpan`) is cut at the page edge when
+  it is taller than a page.
 - **Tailwind.** Variants (`md:`, `hover:`), shadows and gradients are not supported.
 - **Output.** The engine produces the whole PDF at once: `renderToStream` streams the finished
   file, it does not send pages while later ones are still being laid out.

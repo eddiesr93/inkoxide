@@ -10,13 +10,20 @@
 //!
 //! Rules:
 //! - `break.before/after: page` and `pageBreak` nodes force a new page
-//!   (never an empty one).
+//!   when in-flow content follows them, at any depth (never an empty
+//!   page). A break before a box's first child moves the box with it.
 //! - A node whose first unbreakable piece (its *head*) does not fit in the
 //!   rest of the page moves whole to the next page, so a box never leaves
 //!   just its top border/padding behind. `minPresenceAhead` raises the head.
-//! - Atomic nodes (`inside: avoid`, row/grid/reversed boxes, images,
-//!   spacers, positioned, rotated or fixed nodes) move
-//!   whole; taller than a page, they are sliced (with a warning).
+//! - `inside: avoid` nodes and row, grid, wrapping or reversed boxes move
+//!   whole when they fit on a page. Taller than a page, they split like
+//!   other content: a row or grid box band by band (children whose extents
+//!   overlap), each child paginating from the band top like a table cell.
+//!   A forced break inside an `inside: avoid` box wins (as in CSS); the
+//!   part before it moves whole.
+//! - Atomic nodes (images, spacers, empty boxes, positioned, rotated or
+//!   fixed nodes) move whole; taller than a page, they are sliced (with a
+//!   warning).
 //! - Column boxes split between children; text splits between lines.
 
 use crate::layout::{NodeIdx, Tree};
@@ -44,7 +51,8 @@ pub(crate) struct Placement {
     /// First and last page each node or any descendant touches.
     pub page_range: Vec<(u32, u32)>,
     /// Nodes with `break.fixed` (outermost only): painted on every page, at
-    /// their place on their first page. Overlays are not in the flow tree.
+    /// their place on their first page, in paint order. Overlays are not in
+    /// the flow tree.
     pub fixed: Vec<NodeIdx>,
 }
 
@@ -151,17 +159,34 @@ struct Paginator<'t, 'a, 'l> {
     /// Space kept free at the top of each new page (repeated table header
     /// rows while a tall row splits).
     reserve: f32,
+    /// Nodes that hold a forced break below them, in flowing content.
+    forced: Vec<bool>,
+    /// Nodes whose first in-flow descendant is (or has) a forced break.
+    leads: Vec<bool>,
+    /// Paged y of a forced break taken by the next in-flow node, and the
+    /// `pageBreak` nodes that go to the top of that node's page.
+    pending: Option<f32>,
+    pending_nodes: Vec<NodeIdx>,
+    /// The parent took the break before the next node placed (its first
+    /// in-flow child).
+    lead_taken: bool,
     out: Placement,
 }
 
 pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource) -> Placement {
     let n = tree.nodes.len();
+    let (forced, leads) = forced_breaks(tree);
     let mut p = Paginator {
         tree,
         lines,
         h: page_h,
         shift: 0.0,
         reserve: 0.0,
+        forced,
+        leads,
+        pending: None,
+        pending_nodes: Vec::new(),
+        lead_taken: false,
         out: Placement {
             page_h,
             pages: 1,
@@ -172,11 +197,9 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
             fixed: Vec::new(),
         },
     };
-    // The synthetic root is a splittable column.
-    p.out.shift_top[0] = 0.0;
-    for c in tree.children(0) {
-        p.place(c);
-    }
+    // The synthetic root is a splittable column. A forced break still
+    // pending at its end has nothing to move, so it adds no page.
+    p.place_children(0, 0.0);
     p.out.shift_bottom[0] = p.shift;
 
     // Page ranges, bottom-up (children have larger indices than parents).
@@ -202,18 +225,70 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     p.out.pages = last_page + 1;
     p.out.page_range[0] = (0, last_page);
 
-    // Fixed nodes (outermost only), in document order.
-    let mut fixed_below = vec![false; n];
-    for i in 1..n {
-        let parent = tree.nodes[i].parent as usize;
-        let is_fixed = tree.nodes[i].node.is_some_and(|nd| nd.brk.fixed);
-        if is_fixed && !fixed_below[parent] {
-            p.out.fixed.push(i as NodeIdx);
+    // Fixed nodes (outermost only), in the order the flow would paint
+    // them: depth first, siblings by `zIndex` then document order (the
+    // arena is breadth first).
+    let mut stack = vec![0];
+    while let Some(i) = stack.pop() {
+        if i != 0 && tree.nodes[i as usize].node.is_some_and(|nd| nd.brk.fixed) {
+            p.out.fixed.push(i);
+            continue;
         }
-        fixed_below[i] = fixed_below[parent] || is_fixed;
+        let mut kids: Vec<NodeIdx> = tree.children(i).collect();
+        kids.sort_by_key(|&c| {
+            tree.nodes[c as usize]
+                .node
+                .and_then(|nd| nd.style.z_index)
+                .unwrap_or(0)
+        });
+        stack.extend(kids.into_iter().rev());
     }
-    p.out.fixed.sort_unstable();
     p.out
+}
+
+/// Whether a node lays its children out side by side (row, grid, wrapping)
+/// or in reverse: as a box taller than a page, it splits band by band.
+pub(crate) fn banded(node: &Node) -> bool {
+    let s = &node.style;
+    s.display == Some(Display::Grid)
+        || matches!(
+            s.flex_direction,
+            Some(FlexDirection::Row | FlexDirection::RowReverse | FlexDirection::ColumnReverse)
+        )
+        || matches!(s.flex_wrap, Some(FlexWrap::Wrap | FlexWrap::WrapReverse))
+}
+
+/// Per node: whether a forced break (`pageBreak`, `break.before/after:
+/// page`) sits below it in flowing content, and whether its first in-flow
+/// child is or starts with one.
+fn forced_breaks(tree: &Tree<'_>) -> (Vec<bool>, Vec<bool>) {
+    let n = tree.nodes.len();
+    let (mut forced, mut leads) = (vec![false; n], vec![false; n]);
+    // Children have larger indices than parents.
+    for i in (0..n).rev() {
+        let mut first = true;
+        for c in tree.children(i as NodeIdx) {
+            let Some(node) = tree.nodes[c as usize].node else {
+                continue;
+            };
+            if node.style.position == Some(Position::Absolute)
+                || node.style.display == Some(Display::None)
+            {
+                continue;
+            }
+            let own = matches!(node.kind, NodeKind::PageBreak)
+                || node.brk.before == BreakMode::Page
+                || node.brk.after == BreakMode::Page;
+            forced[i] |= own || forced[c as usize];
+            if first {
+                leads[i] = matches!(node.kind, NodeKind::PageBreak)
+                    || node.brk.before == BreakMode::Page
+                    || leads[c as usize];
+                first = false;
+            }
+        }
+    }
+    (forced, leads)
 }
 
 impl Paginator<'_, '_, '_> {
@@ -253,34 +328,51 @@ impl Paginator<'_, '_, '_> {
         }
     }
 
-    /// Whether a node must move as one piece.
-    fn atomic(node: &Node) -> bool {
+    /// Whether node `i` must move as one piece.
+    fn atomic(&self, i: NodeIdx, node: &Node) -> bool {
         let s = &node.style;
-        if node.brk.inside == InsideMode::Avoid
-            || node.brk.fixed
+        if node.brk.fixed
             || s.position == Some(Position::Absolute)
             || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
             || s.transform.as_ref().is_some_and(|t| !t.is_empty())
         {
             return true;
         }
+        // Kept together only while that is possible.
+        let tall = self.tree.nodes[i as usize].geo.h > self.h + PAGED_EPS;
+        if node.brk.inside == InsideMode::Avoid && !tall && !self.forced[i as usize] {
+            return true;
+        }
         match &node.kind {
             NodeKind::Text { .. } | NodeKind::Table(_) => false,
-            NodeKind::Box { children } => {
-                children.is_empty()
-                    || s.display == Some(Display::Grid)
-                    || matches!(
-                        s.flex_direction,
-                        Some(
-                            FlexDirection::Row
-                                | FlexDirection::RowReverse
-                                | FlexDirection::ColumnReverse
-                        )
-                    )
-                    || matches!(s.flex_wrap, Some(FlexWrap::Wrap | FlexWrap::WrapReverse))
-            }
+            NodeKind::Box { children } => children.is_empty() || (banded(node) && !tall),
             _ => true,
         }
+    }
+
+    /// The in-flow children of `i` from top to bottom, grouped into bands:
+    /// children whose laid-out extents overlap (a flex line, a grid row and
+    /// the rows its items span).
+    fn bands(&self, i: NodeIdx) -> Vec<Vec<NodeIdx>> {
+        let geo = |c: NodeIdx| self.tree.nodes[c as usize].geo;
+        let mut kids: Vec<NodeIdx> = self.tree.children(i).filter(|&c| self.in_flow(c)).collect();
+        kids.sort_by(|&a, &b| geo(a).y.total_cmp(&geo(b).y));
+        let mut bands: Vec<Vec<NodeIdx>> = Vec::new();
+        let mut bottom = f32::NEG_INFINITY;
+        for c in kids {
+            let g = geo(c);
+            match bands.last_mut() {
+                Some(band) if g.y < bottom - PAGED_EPS => {
+                    band.push(c);
+                    bottom = bottom.max(g.y + g.h);
+                }
+                _ => {
+                    bands.push(vec![c]);
+                    bottom = g.y + g.h;
+                }
+            }
+        }
+        bands
     }
 
     /// Height from the node's top to the end of its first unbreakable
@@ -289,7 +381,7 @@ impl Paginator<'_, '_, '_> {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else { return 0.0 };
         let g = ln.geo;
-        if Self::atomic(node) {
+        if self.atomic(i, node) {
             return g.h;
         }
         match &node.kind {
@@ -321,6 +413,23 @@ impl Paginator<'_, '_, '_> {
                 };
                 (cy - g.y) + bottom
             }
+            NodeKind::Box { .. } if banded(node) => {
+                let Some(band) = self.bands(i).into_iter().next() else {
+                    return g.h;
+                };
+                let mut need = 0.0f32;
+                for c in band {
+                    let cy = self.tree.nodes[c as usize].geo.y;
+                    need = need.max((cy - g.y) + self.head(c));
+                }
+                need
+            }
+            // Kept together up to its first forced break.
+            NodeKind::Box { .. }
+                if node.brk.inside == InsideMode::Avoid && self.forced[i as usize] =>
+            {
+                self.head_to_break(i)
+            }
             NodeKind::Box { .. } => {
                 let first = self.tree.children(i).find(|&c| self.in_flow(c));
                 match first {
@@ -335,6 +444,25 @@ impl Paginator<'_, '_, '_> {
         }
     }
 
+    /// Height from the top of column box `i` to its first forced break.
+    fn head_to_break(&self, i: NodeIdx) -> f32 {
+        let g = self.tree.nodes[i as usize].geo;
+        for c in self.tree.children(i).filter(|&c| self.in_flow(c)) {
+            let ln = &self.tree.nodes[c as usize];
+            let Some(node) = ln.node else { continue };
+            if matches!(node.kind, NodeKind::PageBreak) || node.brk.before == BreakMode::Page {
+                return ln.geo.y - g.y;
+            }
+            if self.forced[c as usize] {
+                return (ln.geo.y - g.y) + self.head_to_break(c);
+            }
+            if node.brk.after == BreakMode::Page {
+                return ln.geo.y + ln.geo.h - g.y;
+            }
+        }
+        g.h
+    }
+
     /// Children that take part in pagination (not absolutely positioned,
     /// not hidden).
     fn in_flow(&self, c: NodeIdx) -> bool {
@@ -343,25 +471,55 @@ impl Paginator<'_, '_, '_> {
         })
     }
 
+    /// Places the children of column box `i` one by one. Out-of-flow
+    /// children stay with the box top, at shift `top`.
+    fn place_children(&mut self, i: NodeIdx, top: f32) {
+        let kids: Vec<NodeIdx> = self.tree.children(i).collect();
+        for c in kids {
+            if self.in_flow(c) {
+                self.place(c);
+            } else {
+                self.place_out_of_flow(c, top);
+            }
+        }
+    }
+
+    fn place_out_of_flow(&mut self, c: NodeIdx, top: f32) {
+        let s = std::mem::replace(&mut self.shift, top);
+        self.set_subtree(c);
+        self.shift = s;
+    }
+
+    /// Places an in-flow node.
     fn place(&mut self, i: NodeIdx) {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else { return };
         let g = ln.geo;
+        let atomic = self.atomic(i, node);
+        // The parent's break already moved this node to a new page.
+        let taken = std::mem::take(&mut self.lead_taken);
 
-        if node.style.display == Some(Display::None)
-            || node.style.position == Some(Position::Absolute)
-        {
-            // Positioned boxes travel with the shift at their position.
-            self.set_subtree(i);
-            return;
-        }
         if matches!(node.kind, NodeKind::PageBreak) {
-            self.push(g.y + self.shift);
             self.set_subtree(i);
+            if !taken {
+                self.pending.get_or_insert(g.y + self.shift);
+                self.pending_nodes.push(i);
+            }
             return;
         }
-        if node.brk.before == BreakMode::Page {
-            self.push(g.y + self.shift);
+        // A break before this node: one pending from the content before
+        // it, or its own (or its first child's) `before`.
+        let lead =
+            !taken && (node.brk.before == BreakMode::Page || (!atomic && self.leads[i as usize]));
+        let broke = match self.pending.take() {
+            Some(y) => Some(y),
+            None => lead.then_some(g.y + self.shift),
+        };
+        if let Some(y) = broke {
+            self.push(y);
+            for b in std::mem::take(&mut self.pending_nodes) {
+                self.set_subtree(b);
+            }
         }
 
         let top = g.y + self.shift;
@@ -371,9 +529,8 @@ impl Paginator<'_, '_, '_> {
         }
         let top = g.y + self.shift;
         let fits = top + g.h <= self.page_end(top) + PAGED_EPS;
-        let atomic = Self::atomic(node);
 
-        if fits || atomic {
+        if atomic || (fits && !self.forced[i as usize]) {
             if !fits {
                 tracing::warn!(
                     node = node.id.as_deref().unwrap_or(""),
@@ -388,20 +545,11 @@ impl Paginator<'_, '_, '_> {
             match &node.kind {
                 NodeKind::Text { .. } => self.split_text(i, node),
                 NodeKind::Table(_) => self.split_table(i),
+                NodeKind::Box { .. } if banded(node) => self.place_bands(i),
                 NodeKind::Box { .. } => {
-                    let kids: Vec<NodeIdx> = self.tree.children(i).collect();
-                    let box_shift = self.shift;
-                    for c in kids {
-                        if self.in_flow(c) {
-                            self.place(c);
-                        } else {
-                            // Out-of-flow children stay with the box top.
-                            let s = self.shift;
-                            self.shift = box_shift;
-                            self.set_subtree(c);
-                            self.shift = s;
-                        }
-                    }
+                    self.lead_taken = taken || broke.is_some();
+                    self.place_children(i, self.shift);
+                    self.lead_taken = false;
                 }
                 _ => {}
             }
@@ -409,7 +557,58 @@ impl Paginator<'_, '_, '_> {
         }
 
         if node.brk.after == BreakMode::Page {
-            self.push(g.y + g.h + self.shift);
+            self.pending.get_or_insert(g.y + g.h + self.shift);
+        }
+    }
+
+    /// Places a row, grid, wrapping or reversed box taller than a page band
+    /// by band. A band moves to the next page when the head of one of its
+    /// children does not fit; each child then paginates from the band top,
+    /// like a table cell, and the band ends below the longest. Boxes that
+    /// reach the band bottom (stretched) end with it.
+    fn place_bands(&mut self, i: NodeIdx) {
+        let box_shift = self.shift;
+        let out_of_flow: Vec<NodeIdx> = self
+            .tree
+            .children(i)
+            .filter(|&c| !self.in_flow(c))
+            .collect();
+        for c in out_of_flow {
+            self.place_out_of_flow(c, box_shift);
+        }
+        let tree = self.tree;
+        let geo = |c: NodeIdx| tree.nodes[c as usize].geo;
+        for band in self.bands(i) {
+            let top = geo(band[0]).y;
+            let bottom = band
+                .iter()
+                .map(|&c| geo(c).y + geo(c).h)
+                .fold(top, f32::max);
+            let mut need = 0.0f32;
+            for &c in &band {
+                need = need.max(geo(c).y - top + self.head(c));
+            }
+            let paged = top + self.shift;
+            if paged + need > self.page_end(paged) + PAGED_EPS {
+                self.push(paged);
+            }
+            let start = self.shift;
+            let mut end = start;
+            for &c in &band {
+                self.shift = start;
+                self.place(c);
+                end = end.max(self.shift);
+            }
+            for &c in &band {
+                let g = geo(c);
+                let is_box = tree.nodes[c as usize]
+                    .node
+                    .is_some_and(|n| matches!(n.kind, NodeKind::Box { .. }));
+                if is_box && g.y + g.h >= bottom - PAGED_EPS {
+                    self.out.shift_bottom[c as usize] = end;
+                }
+            }
+            self.shift = end;
         }
     }
 
@@ -497,17 +696,7 @@ impl Paginator<'_, '_, '_> {
         for &cell in &cells {
             self.shift = start;
             self.out.shift_top[cell as usize] = start;
-            let kids: Vec<NodeIdx> = self.tree.children(cell).collect();
-            for c in kids {
-                if self.in_flow(c) {
-                    self.place(c);
-                } else {
-                    let s = self.shift;
-                    self.shift = start;
-                    self.set_subtree(c);
-                    self.shift = s;
-                }
-            }
+            self.place_children(cell, start);
             end = end.max(self.shift);
         }
         self.reserve = reserve;

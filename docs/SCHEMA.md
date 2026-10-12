@@ -46,7 +46,7 @@
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays), or a forced break where it would do nothing (see `Break.before`) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
 | `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
@@ -224,13 +224,13 @@ A page template. Its content flows across as many physical pages as needed.
 
 ### Break
 
-Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`.
+Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`. A box laid out as a row, a grid, wrapping or reversed moves to the next page whole when it fits on one; taller than a page, it splits between its rows (children whose extents overlap), each child continuing from the row's top. Content that cannot split (an image, a positioned, rotated, transformed or fixed node, table rows tied by a row span) is cut across pages when it is taller than a page.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `before` | `"auto"` \| `"page"` |  | default `"auto"` |
-| `after` | `"auto"` \| `"page"` |  | default `"auto"` |
-| `inside` | `"auto"` \| `"avoid"` |  | default `"auto"` |
+| `before` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, or on an absolutely positioned node: there it would do nothing. |
+| `after` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page after the node when in-flow content follows it: a break at the end of the flow adds no page. Allowed where `before` is. |
+| `inside` | `"auto"` \| `"avoid"` |  | default `"auto"`; `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole. |
 | `minPresenceAhead` | [`NonNegative`](#nonnegative) |  |  |
 | `fixed` | `boolean` |  | default `false`; Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page. |
 
@@ -455,7 +455,7 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 
 ### PageBreakNode
 
-Starts a new page. Flowing content only: in a header, a footer, a table cell or a fixed overlay it is `INVALID_NODE`.
+Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, it is `INVALID_NODE`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|

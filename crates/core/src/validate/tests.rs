@@ -350,12 +350,68 @@ fn pagination_controls_do_not_apply_in_overlays() {
     // its pagination controls.
     for flowing in [
         r#"{"type":"box","break":{"fixed":true,"before":"page"}}"#,
-        r#"{"type":"box","break":{"before":"page"},"style":{"position":"absolute"},
-            "children":[{"type":"pageBreak"}]}"#,
+        r#"{"type":"box","break":{"inside":"avoid"},"style":{"position":"absolute"}}"#,
         r#"{"type":"box","children":[{"type":"box","break":{"fixed":true,"inside":"avoid"},
             "style":{"position":"absolute"}}]}"#,
     ] {
         assert_eq!(run(&doc(flowing)), vec![], "{flowing}");
+    }
+}
+
+#[test]
+fn forced_breaks_are_refused_where_they_would_do_nothing() {
+    let at = "pages[0].children[0].children[0]";
+    let in_box = |style: &str, brk: &str| {
+        doc(&format!(
+            r#"{{"type":"box"{brk},"style":{{{style}}},"children":[{{"type":"box","children":[{{"type":"pageBreak"}}]}}]}}"#
+        ))
+    };
+    for (style, brk) in [
+        (r#""flexDirection":"row""#, ""),
+        (r#""flexDirection":"column-reverse""#, ""),
+        (r#""flexWrap":"wrap""#, ""),
+        (r#""display":"grid""#, ""),
+        (r#""position":"absolute""#, ""),
+        (r#""rotate":90"#, ""),
+        (r#""transform":[{"scale":[2,2]}]"#, ""),
+        ("", r#","break":{"fixed":true}"#),
+    ] {
+        let (code, path) = one(&in_box(style, brk));
+        assert_eq!(
+            (code, path),
+            (C::InvalidNode, format!("{at}.children[0]")),
+            "{style}{brk}"
+        );
+    }
+    // `break.before/after: page` inside them, or on an absolute node.
+    for (d, path) in [
+        (
+            doc(
+                r#"{"type":"box","style":{"flexDirection":"row"},"children":[{"type":"text","break":{"before":"page"},"runs":[]}]}"#,
+            ),
+            format!("{at}.break"),
+        ),
+        (
+            doc(
+                r#"{"type":"box","style":{"display":"grid"},"children":[{"type":"box","break":{"after":"page"}}]}"#,
+            ),
+            format!("{at}.break"),
+        ),
+        (
+            doc(r#"{"type":"box","break":{"before":"page"},"style":{"position":"absolute"}}"#),
+            "pages[0].children[0].break".to_owned(),
+        ),
+    ] {
+        assert_eq!(one(&d), (C::InvalidValue, path), "{d}");
+    }
+    // A forced break wins over `inside: avoid`, and a rotated or fixed node
+    // in the flow keeps its own.
+    for ok in [
+        in_box("", r#","break":{"inside":"avoid"}"#),
+        doc(r#"{"type":"box","break":{"before":"page","after":"page"},"style":{"rotate":90}}"#),
+        doc(r#"{"type":"box","break":{"fixed":true,"after":"page"}}"#),
+    ] {
+        assert_eq!(run(&ok), vec![], "{ok}");
     }
 }
 
