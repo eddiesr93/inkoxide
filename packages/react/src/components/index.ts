@@ -238,7 +238,12 @@ export type FontWeightName =
   | 'heavy'
   | 'black';
 
-/** `break="avoid"` keeps the element on one page; `"page-before"` / `"page-after"` force a break. */
+/**
+ * `break="avoid"` keeps the element on one page; `"page-before"` / `"page-after"` start a new page
+ * when content follows. They are errors inside a `flex-row`, grid, wrapping or reversed `View` and
+ * inside an absolutely positioned, rotated or transformed element. On the element itself only
+ * absolute positioning makes them an error: on a rotated or transformed element they work.
+ */
 export type BreakProp = 'avoid' | 'page-before' | 'page-after' | Break;
 
 export type BookmarkProp = string | { title: string; level?: number };
@@ -670,6 +675,11 @@ export const Cell = host<CellProps>(HOST.Cell);
 export const PageNumber = host<Record<string, never>>(HOST.PageNumber);
 /** The total page count. Only inside `Text`. */
 export const TotalPages = host<Record<string, never>>(HOST.TotalPages);
+/**
+ * Starts a new page when content follows it, at any depth of the body. An error inside a
+ * `flex-row`, grid, wrapping or reversed `View` and inside an absolutely positioned, rotated or
+ * transformed element.
+ */
 export const PageBreak = host<PageBreakProps>(HOST.PageBreak);
 export const Spacer = host<SpacerProps>(HOST.Spacer);
 /** An interactive form field (AcroForm). */
