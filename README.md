@@ -106,9 +106,10 @@ renderToFile(
 
 <img src="packages/render/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="280">
 
-Run it with `npx tsx receipt.tsx`. The fonts (Inter, Noto Sans, Roboto Mono) and the Tailwind
-compiler ship with the package. The six documents above, with their code, are in
-[`examples/`](examples) and in the [@inkoxide/render README](packages/render/README.md).
+Run it with `npx tsx receipt.tsx`. The fonts (Inter, Noto Sans, Roboto Mono) ship with the
+package, and `@inkoxide/tailwind` brings the Tailwind compiler. The six documents above, with
+their code, are in [`examples/`](examples) and in the
+[@inkoxide/render README](packages/render/README.md).
 
 ### With JSON
 

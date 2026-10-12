@@ -17,7 +17,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `fixed` with `position: 'absolute'` (a watermark, a page border, a footer) | The same; `<Footer>` and `<Header>` line up with the page by themselves | Works directly in a `Page`. `top`, `bottom` and the other insets are measured from the content box, inside the page padding: `bottom: 30` on a page with `paddingBottom: 65` becomes `bottom: -35`. `fixed` without `position: 'absolute'`, or inside another element, throws and points to `<Header>` and `<Footer>` |
 | `<Link src="…">` | The same, or `href` on `Text` or `View`; `href="#id"` jumps to an element's `id` | Works as is; adds no colour or underline |
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
-| `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Built in |
+| `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Works with `@inkoxide/tailwind` installed: `npm install @inkoxide/tailwind` |
 | `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points |
 | `<Svg>`, `<Canvas>` | The same | No `<Text>` inside `<Svg>` yet |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
