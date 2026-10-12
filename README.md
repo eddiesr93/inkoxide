@@ -57,16 +57,10 @@ millisecond; a 98-page report with 40 tables in about 130 ms.
 npm install @inkoxide/render
 ```
 
-In a new project, make it an ES module and turn on React's automatic JSX runtime:
-
-```sh
-npm pkg set type=module
-echo '{ "compilerOptions": { "jsx": "react-jsx" } }' > tsconfig.json
-```
-
-Then save this as `receipt.tsx`:
+Save this as `receipt.tsx`:
 
 ```tsx
+/** @jsxRuntime automatic */
 import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
 
 function Receipt({ customer, lines }: { customer: string; lines: { name: string; amount: number }[] }) {
@@ -91,7 +85,7 @@ function Receipt({ customer, lines }: { customer: string; lines: { name: string;
   );
 }
 
-await renderToFile(
+renderToFile(
   <Receipt
     customer="Ada Lovelace"
     lines={[

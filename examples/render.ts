@@ -145,6 +145,13 @@ function source(name: string): string {
     .trimEnd();
 }
 
+/**
+ * The quick start as it runs in a new project with no setup (CommonJS, no tsconfig): the JSX
+ * runtime named in a pragma, and the render called without a top-level await.
+ */
+const quickstart = (code: string) =>
+  `/** @jsxRuntime automatic */\n${code.replace(/^await (renderToFile\(.*\);)$/m, '$1')}`;
+
 const fence = (code: string) => `\`\`\`tsx\n${code}\n\`\`\``;
 
 function gallery(): string {
@@ -188,7 +195,7 @@ function replaceBetween(text: string, key: string, body: string): string {
 }
 
 let readme = readFileSync(README, 'utf8');
-readme = replaceBetween(readme, 'quickstart', fence(source(QUICKSTART)));
+readme = replaceBetween(readme, 'quickstart', fence(quickstart(source(QUICKSTART))));
 readme = replaceBetween(readme, 'gallery', gallery());
 readme = replaceBetween(readme, 'examples', examples());
 writeFileSync(README, readme);
