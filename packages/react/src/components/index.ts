@@ -606,6 +606,16 @@ export interface LineProps extends SvgPresentation {
 export interface PolyProps extends SvgPresentation {
   points: string | number[];
 }
+export interface DefsProps {
+  children?: ReactNode;
+}
+export interface ClipPathProps {
+  /** Referenced as `clipPath="url(#id)"`. */
+  id: string;
+  /** What the contents' coordinates are in: the user space (default) or the clipped shape's bounding box. */
+  clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
+  children?: ReactNode;
+}
 export interface GradientProps {
   id: string;
   x1?: number | string;
@@ -670,8 +680,8 @@ export const Ellipse = host<EllipseProps>(HOST.Ellipse);
 export const Line = host<LineProps>(HOST.Line);
 export const Polyline = host<PolyProps>(HOST.Polyline);
 export const Polygon = host<PolyProps>(HOST.Polygon);
-export const Defs = host<{ children?: ReactNode }>(HOST.Defs);
-export const ClipPath = host<{ id: string; children?: ReactNode }>(HOST.ClipPath);
+export const Defs = host<DefsProps>(HOST.Defs);
+export const ClipPath = host<ClipPathProps>(HOST.ClipPath);
 export const LinearGradient = host<GradientProps>(HOST.LinearGradient);
 export const RadialGradient = host<GradientProps>(HOST.RadialGradient);
 export const Stop = host<StopProps>(HOST.Stop);

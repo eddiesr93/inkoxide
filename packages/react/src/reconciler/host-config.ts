@@ -124,6 +124,22 @@ const TEXT_PARENTS = new Set<string>([
   HOST.Page,
 ]);
 
+/** Where a string placed in `parent`, which takes no strings, belongs instead. */
+function textAdvice(parent: HostContext['parent']): string {
+  switch (parent) {
+    case 'root':
+      return 'render a <Document> with a <Page>, and put it in the page';
+    case HOST.Document:
+      return 'put it in a <Page>';
+    case HOST.Table:
+      return 'put it in a <Cell> of a <Row>';
+    case HOST.Row:
+      return 'put it in a <Cell>';
+    default:
+      return 'wrap it in <Text>';
+  }
+}
+
 const name = (type: string): string => (type === 'root' ? 'the root' : `<${hostName(type)}>`);
 
 function placementError(parent: HostContext['parent'], child: string): TemplateError {
@@ -217,8 +233,12 @@ export const hostConfig = {
       throw new TemplateError('Text inside <Svg> is not supported; place a <Text> over the drawing instead.');
     }
     if (!TEXT_PARENTS.has(ctx.parent)) {
+      const shown = `Text "${text.length > 40 ? `${text.slice(0, 40)}…` : text}"`;
+      if (ctx.parent !== 'root' && !isHostType(ctx.parent)) throw placementError('root', ctx.parent);
+      if (LEAF.has(ctx.parent))
+        throw new TemplateError(`${shown}: ${name(ctx.parent)} cannot have children.`);
       throw new TemplateError(
-        `Text "${text.length > 40 ? `${text.slice(0, 40)}…` : text}" cannot be directly inside ${name(ctx.parent)}; wrap it in <Text>.`,
+        `${shown} cannot be directly inside ${name(ctx.parent)}; ${textAdvice(ctx.parent)}.`,
       );
     }
     return { kind: 'text', text, fiber };
@@ -275,4 +295,7 @@ export const hostConfig = {
   suspendInstance: (): void => {},
   waitForCommitToBeReady: (): null => null,
   getSuspendedCommitReason: (): null => null,
+  // React calls it when it commits work it retries after a suspension; a template that suspends
+  // fails before then, but the retry can still run.
+  suspendOnActiveViewTransition: (): void => {},
 };

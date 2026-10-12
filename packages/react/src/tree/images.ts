@@ -8,8 +8,9 @@ import type { ImageRequest, ImageSrcValue } from '../components/index.ts';
 /** Which remote image URLs `<Image src>` may use; the caller fetches them (`@inkoxide/render` does). */
 export interface RemoteImagePolicy {
   /**
-   * Allowed URL prefixes (`'https://cdn.example.com/'`) or host names, with `*.` for subdomains
-   * (`'*.example.com'`; host entries allow `https:` only).
+   * Allowed URLs (`'https://cdn.example.com/img/'`: the same origin, and the entry's path or a
+   * path under it) or host names, with `*.` for subdomains (`'*.example.com'`; host entries
+   * allow `https:` only).
    */
   allow: readonly string[];
 }
@@ -25,8 +26,7 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
   }
   if (u.username || u.password) return false;
   return policy.allow.some((entry) => {
-    if (entry.includes('://'))
-      return u.href.startsWith(entry) && (u.protocol === 'https:' || entry.startsWith('http:'));
+    if (entry.includes('://')) return urlEntryAllows(entry, u);
     if (u.protocol !== 'https:') return false;
     const host = u.hostname.toLowerCase();
     const e = entry.toLowerCase();
@@ -35,11 +35,28 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
 }
 
 /**
- * The message for a URL the remote image policy does not allow; `prop` is the `src` as written
- * (`src="https://…"`).
+ * Whether a URL entry allows `u`: the same origin (scheme, host and port), and, when the entry
+ * has a path, that path or one under it (`/img` allows `/img` and `/img/a.png`, not `/imgs`).
  */
-export function remoteRefused(prop: string): string {
-  return `<Image ${prop}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.`;
+function urlEntryAllows(entry: string, u: URL): boolean {
+  let e: URL;
+  try {
+    e = new URL(entry);
+  } catch {
+    return false;
+  }
+  if ((u.protocol !== 'https:' && u.protocol !== 'http:') || e.origin !== u.origin) return false;
+  const path = e.pathname;
+  return path === '/' || u.pathname === path || u.pathname.startsWith(path.endsWith('/') ? path : `${path}/`);
+}
+
+/**
+ * The message for a URL the remote image policy does not allow; `prop` is the `src` as written
+ * (`src="https://…"`), and `elsewhere` another place the caller reads the allowlist from.
+ */
+export function remoteRefused(prop: string, elsewhere?: string): string {
+  const option = elsewhere === undefined ? 'remoteImages.allow' : `remoteImages.allow (or ${elsewhere})`;
+  return `<Image ${prop}>: this URL is not in the remoteImages allowlist. Add its origin to the option ${option}, or pass the bytes.`;
 }
 
 /**

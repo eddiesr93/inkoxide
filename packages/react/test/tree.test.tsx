@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -96,6 +96,28 @@ describe('text inheritance and runs', () => {
   it('applies locale-aware text-transform', () => {
     const r = render(<Text className="uppercase">café and naïve</Text>);
     expect(first<TextNode>(r).runs[0]?.text).toBe('CAFÉ AND NAÏVE');
+  });
+
+  it('cases text in a lang Intl does not take by the default rules', () => {
+    const doc = renderTemplate(
+      <Document lang="en_US">
+        <Page>
+          <Text style={{ textTransform: 'uppercase' }}>istanbul</Text>
+          <Text lang="!!" className="capitalize">
+            hello world
+          </Text>
+          <Text lang="tr" className="uppercase">
+            istanbul
+          </Text>
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(body(doc).map((n) => (n as TextNode).runs[0]?.text)).toEqual([
+      'ISTANBUL',
+      'Hello World',
+      'İSTANBUL',
+    ]);
   });
 
   it('supports links on nested runs and on blocks, and bookmarks', () => {
@@ -320,20 +342,31 @@ describe('hyphenation callback', () => {
     ]);
   });
 
-  it('never turns the patterns on for a run in another language', () => {
+  it('never uses the patterns for a run in another language', () => {
     const r = render(
-      <Text lang="en">
-        hello{' '}
-        <Text lang="de" hyphenate>
-          Donaudampfschifffahrt
-        </Text>{' '}
-        <Text hyphenate>documentation</Text>
-      </Text>,
+      <>
+        <Text lang="en">
+          hello{' '}
+          <Text lang="de" hyphenate>
+            Donaudampfschifffahrt
+          </Text>{' '}
+          <Text hyphenate>documentation</Text>
+        </Text>
+        <Text lang="en" hyphenate>
+          documentation <Text lang="de">Donaudampfschifffahrt</Text>
+        </Text>
+      </>,
     );
     // Runs carry no language: the paragraph's English patterns would break the German word.
-    expect(first<TextNode>(r).runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+    const [on, off] = body(r) as TextNode[];
+    expect(on?.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
       { text: 'hello Donaudampfschifffahrt ', hyphenate: undefined },
       { text: 'documentation', hyphenate: true },
+    ]);
+    expect(off?.style).toEqual({ hyphenate: true, lang: 'en' });
+    expect(off?.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+      { text: 'documentation ', hyphenate: undefined },
+      { text: 'Donaudampfschifffahrt', hyphenate: false },
     ]);
   });
 
@@ -497,9 +530,16 @@ describe('tables', () => {
   });
 
   it('rejects strings and foreign elements in a Table', () => {
-    expect(thrown(() => render(<Table columns={[1]}>text</Table>)).message).toContain(
-      'cannot be directly inside <Table>',
+    expect(thrown(() => render(<Table columns={[1]}>text</Table>)).message).toBe(
+      'Text "text" cannot be directly inside <Table>; put it in a <Cell> of a <Row>.',
     );
+    const inRow = () =>
+      render(
+        <Table columns={[1]}>
+          <Row>Totals</Row>
+        </Table>,
+      );
+    expect(thrown(inRow).message).toBe('Text "Totals" cannot be directly inside <Row>; put it in a <Cell>.');
     expect(
       thrown(() =>
         render(
@@ -551,6 +591,56 @@ describe('pages, images and structure', () => {
     expect(p.header?.type).toBe('box');
     expect(p.footer?.type).toBe('box');
     expect(p.children).toEqual([{ type: 'spacer', style: { height: 10 } }]);
+  });
+
+  it('reads percentage padding on a page as a share of the page width, on every side', () => {
+    const page = (props: { className?: string; style?: object }) =>
+      renderTemplate(
+        <Document>
+          <Page size={[400, 600]} {...props}>
+            <Header>
+              <Text>h</Text>
+            </Header>
+            <Text>x</Text>
+          </Page>
+        </Document>,
+        { fonts },
+      ).document.pages[0];
+    const all = { top: 40, right: 40, bottom: 40, left: 40 };
+    expect(page({ style: { padding: '10%' } }).margin).toEqual(all);
+    expect(page({ className: 'p-[10%]' }).margin).toEqual(all);
+    const p = page({ style: { paddingTop: '5%', paddingLeft: 12 } });
+    expect(p.margin).toEqual({ top: 20, left: 12 });
+    expect((p.header as BoxNode | undefined)?.style).toEqual({
+      padding: { left: 12 },
+      minHeight: 20,
+      justifyContent: 'center',
+    });
+  });
+
+  it('rejects a percentage minimum height on a Row, which has no table height to resolve against', () => {
+    const table = (props: { className?: string; style?: object }) => () =>
+      render(
+        <Table columns={[1]}>
+          <Row {...props}>
+            <Cell />
+          </Row>
+        </Table>,
+      );
+    const cls = thrown(table({ className: 'min-h-[10%]' }));
+    expect([cls.kind, cls.className]).toEqual(['tailwind', 'min-h-[10%]']);
+    expect(cls.message).toBe(
+      '<Row>: a minimum height of 10% (from className="min-h-[10%]") has no table height to be a percentage of; use a length.',
+    );
+    const style = thrown(table({ style: { minHeight: '10%' } }));
+    expect([style.kind, style.message]).toEqual([
+      'props',
+      '<Row>: a minimum height of 10% (from its style) has no table height to be a percentage of; use a length.',
+    ]);
+    const ok = (props: { className?: string; style?: object }) =>
+      (body(table(props)() as ReturnType<typeof render>)[0] as TableNode).rows[0]?.minHeight;
+    expect(ok({ style: { minHeight: '1cm' } })).toBe(28.346457);
+    expect(ok({ style: { minHeight: 'auto' } })).toBeUndefined();
   });
 
   it('lines header and footer up with the page margins unless they say otherwise', () => {
@@ -623,6 +713,19 @@ describe('pages, images and structure', () => {
     );
   });
 
+  it('says where a string outside a Text-like element belongs', () => {
+    const doc = () => renderTemplate(<Document>Hello</Document>, { fonts });
+    expect(thrown(doc).message).toBe(
+      'Text "Hello" cannot be directly inside <Document>; put it in a <Page>.',
+    );
+    // @ts-expect-error: an Image has no children
+    const image = () => render(<Image src="logo">x</Image>);
+    expect(thrown(image).message).toBe('Text "x": <Image> cannot have children.');
+    expect(thrown(() => render(<section>x</section>)).message).toContain(
+      '<section> is not an Inkoxide component',
+    );
+  });
+
   it('rejects a View inside Text, HTML elements and two headers', () => {
     expect(
       thrown(() =>
@@ -668,6 +771,41 @@ describe('errors carry component stacks', () => {
     expect(e.componentStack).toContain('in Broken');
   });
 
+  it('reports a component that suspends, with or without a Suspense boundary', async () => {
+    const settled = Promise.resolve('late');
+    function Late({ p }: { p: Promise<string> }) {
+      return <Text>{use(p)}</Text>;
+    }
+    function Card({ p }: { p: Promise<string> }) {
+      return (
+        <View>
+          <Text>before</Text>
+          <Late p={p} />
+        </View>
+      );
+    }
+    const bare = thrown(() => render(<Card p={settled} />));
+    expect(bare.kind).toBe('render');
+    expect(bare.message).toMatch(/^Late suspended\. Suspense, use\(\) with a promise/);
+    expect(bare.componentStack).toBe('\n    in Late\n    in View\n    in Card\n    in Page\n    in Document');
+    const LazyCard = lazy(async () => ({ default: Card }));
+    expect(thrown(() => render(<LazyCard p={settled} />)).message).toContain('suspended.');
+
+    const pending = new Promise<string>(() => {});
+    const inBoundary = thrown(() =>
+      render(
+        <Suspense fallback={<Text>loading</Text>}>
+          <Card p={pending} />
+        </Suspense>,
+      ),
+    );
+    expect(inBoundary.kind).toBe('render');
+    expect(inBoundary.message).toContain('A component inside <Suspense> suspended');
+    expect(inBoundary.componentStack).toBe('\n    in Suspense\n    in Page\n    in Document');
+    // React retries the boundary later, from a timer: that must not crash the process.
+    await new Promise((ok) => setTimeout(ok, 500));
+  });
+
   it('rejects layout utilities on inline Text', () => {
     const e = thrown(() =>
       render(
@@ -688,6 +826,125 @@ describe('errors carry component stacks', () => {
       ),
     );
     expect(link.message).toContain('A <Link> inside <Text> is an inline run');
+  });
+
+  it('rejects truncate and line clamping on a Page, Row or Spacer, as on other boxes', () => {
+    const page = (props: { className?: string; style?: object }) => () =>
+      renderTemplate(
+        <Document>
+          <Page {...props}>
+            <Text>x</Text>
+          </Page>
+        </Document>,
+        { fonts },
+      );
+    expect(thrown(page({ className: 'truncate' })).message).toBe(
+      'truncate and line-clamp-* apply to <Text>, not <Page> (className="truncate").',
+    );
+    expect(thrown(page({ style: { maxLines: 2, ellipsis: true } })).message).toBe(
+      'maxLines and ellipsis apply to <Text>, not <Page> (from its style).',
+    );
+    const row = () =>
+      render(
+        <Table columns={[1]}>
+          <Row style={{ maxLines: 1 }}>
+            <Cell />
+          </Row>
+        </Table>,
+      );
+    expect(thrown(row).message).toBe('maxLines applies to <Text>, not <Row> (from its style).');
+    const spacer = () => render(<Spacer style={{ maxLines: 1 }} />);
+    expect(thrown(spacer).message).toBe('maxLines applies to <Text>, not <Spacer> (from its style).');
+  });
+
+  it('rejects the props of a paragraph on an inline Text or Link', () => {
+    const inline =
+      (props: Record<string, unknown>, link = false) =>
+      () =>
+        render(
+          <Text>
+            a{' '}
+            {link ? (
+              <Link href="#a" {...props}>
+                b
+              </Link>
+            ) : (
+              <Text {...props}>b</Text>
+            )}
+          </Text>,
+        );
+    const cases: Record<string, unknown>[] = [
+      { id: 'terms' },
+      { bookmark: 'Terms' },
+      { pages: 'first' },
+      { render: () => 'x' },
+      { dir: 'rtl' },
+      { orphans: 2 },
+      { widows: 2 },
+      { break: 'page-before' },
+      { wrap: false },
+      { minPresenceAhead: 20 },
+    ];
+    for (const props of cases) {
+      const [key] = Object.keys(props);
+      const e = thrown(inline(props));
+      expect(e.kind).toBe('props');
+      expect(e.message).toBe(
+        `A nested <Text> is an inline run of the paragraph, so \`${key}\` has nothing to apply to. Put it on the outer <Text>, or make this text a <Text> of its own.`,
+      );
+      expect(e.componentStack).toMatch(/^\n {4}in Text\n {4}in Page/);
+    }
+    expect(thrown(inline({ id: 'x' }, true)).message).toMatch(/^A <Link> inside <Text> is an inline run/);
+    // Defaults, `debug`, and the props of a run are fine.
+    const ok = render(
+      <Text>
+        a{' '}
+        <Text wrap break={false} debug lang="de" href="#a">
+          b
+        </Text>
+      </Text>,
+    );
+    expect(first<TextNode>(ok).runs.map((r) => r.link)).toEqual([undefined, '#a']);
+  });
+
+  it('blames a style key the element does not take on its style, and a class on its className', () => {
+    const style = thrown(() => render(<View style={{ maxLines: 2 }} />));
+    expect([style.kind, style.className, style.message]).toEqual([
+      'props',
+      undefined,
+      'maxLines applies to <Text>, not <View> (from its style).',
+    ]);
+    const cls = thrown(() => render(<View className="truncate" style={{ padding: 2 }} />));
+    expect([cls.kind, cls.className]).toEqual(['tailwind', 'truncate']);
+    expect(cls.message).toBe('truncate and line-clamp-* apply to <Text>, not <View> (className="truncate").');
+
+    const row = (props: { className?: string; style?: object }) => () =>
+      render(
+        <Table columns={[1]}>
+          <Row {...props}>
+            <Cell />
+          </Row>
+        </Table>,
+      );
+    const rowStyle = thrown(row({ className: 'bg-white', style: { padding: 4 } }));
+    expect([rowStyle.kind, rowStyle.className]).toEqual(['props', undefined]);
+    expect(rowStyle.message).toBe(
+      '<Row> does not support "paddingTop" (from its style). A Row takes a background, a minimum height and text styles; style the cells instead.',
+    );
+    const rowClass = thrown(row({ className: 'p-1' }));
+    expect([rowClass.kind, rowClass.className]).toEqual(['tailwind', 'p-1']);
+    expect(rowClass.message).toContain('(from className="p-1")');
+
+    const inline = thrown(() =>
+      render(
+        <Text>
+          a <Text style={{ padding: 4 }}>b</Text>
+        </Text>,
+      ),
+    );
+    expect([inline.kind, inline.className]).toEqual(['props', undefined]);
+    expect(inline.message).toContain('only text styles apply, not "paddingTop, paddingRight');
+    expect(inline.message).toContain('(from its style)');
   });
 
   it('rejects a Link without a target and block content inside an inline Link', () => {

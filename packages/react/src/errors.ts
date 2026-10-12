@@ -4,9 +4,9 @@ export type TemplateErrorKind =
   | 'structure'
   /** An exception thrown by template code. */
   | 'render'
-  /** A class the Tailwind mapper rejects. */
+  /** A class the Tailwind mapper rejects, or one the element does not take. */
   | 'tailwind'
-  /** A prop with an invalid value (bad page size, remote image URL, …). */
+  /** A prop with an invalid value (bad page size, remote image URL, a style key the element does not take, …). */
   | 'props'
   /** The built tree does not match the engine's JSON Schema (dev only). */
   | 'schema';

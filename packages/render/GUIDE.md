@@ -25,13 +25,15 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 Components take `className`, `style` and `id`, and those with a box also take `debug`
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
 `Page` and `Canvas` have no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
-take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
-`transform`, `id`) instead of `className` and `style`.
+take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
+`transform`, `id`) instead of `className` and `style`; and a `Text` or `Link` inside a `Text`,
+a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
+`hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
 
 | Component | What it is |
 |---|---|
 | `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)). |
-| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin. |
+| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
@@ -64,7 +66,8 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
   the element's own size. A percentage height needs a parent with a set height; a child of the
   `Page` takes it of the page.
-- **Arrays.** Falsy entries are skipped and later entries win.
+- **Arrays.** Falsy entries are skipped and later entries win, over `className` too, as a
+  later CSS rule does: a later `borderRadius: 8` replaces an earlier corner's radius.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
   `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,
   `borderBottom`, `borderLeft` take CSS strings (`'1px solid #e5e7eb'`, `'2pt dashed red'`,
@@ -451,7 +454,9 @@ An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fall
 - **Hyphenation** is off by default. Turn it on per `Text` with `hyphenate` (or the class
   `hyphens-auto`); it follows the `lang` of the text or the document. US English patterns ship
   with the package and serve every English `lang`; other languages use the engine's built-in
-  patterns. A soft hyphen
+  patterns. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
+  `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
+  `hyphenationCallback`. A soft hyphen
   (`\u00AD`) in the text is always a possible break.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
   word into the parts a line may break between, for every `Text`; `[word]` keeps a word whole.
@@ -559,7 +564,7 @@ All three take the same options:
 |---|---|---|
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
-| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |
@@ -625,7 +630,7 @@ stops the render with:
 
 ```
 RenderError: <View> cannot be inside <Text>. A Text contains only strings, numbers,
-<Text>, <PageNumber> and <TotalPages>.
+<Text>, <Link>, <PageNumber> and <TotalPages>.
     in View
     in Text
     in Page
@@ -760,7 +765,9 @@ compiler, so there is no config and no CSS build. Without it, style with `style`
 **Can I use my own components and hooks?**
 Yes. A document is ordinary React: components, props, context, `.map` and conditionals all work,
 as do hooks that compute during render (`useMemo`, `useContext`). The PDF is built from that
-first render, so state updates and effects do not change it.
+first render, so state updates and effects do not change it, and nothing can wait for data:
+a component that suspends (`use()` of a promise, a `lazy` component, inside `<Suspense>` or
+not) fails the render with `TEMPLATE_ERROR`. Load the data first and pass it in as props.
 
 **How much room does a page number take?**
 Its own digits. In a header, a footer or a fixed element, the text is laid out again on every

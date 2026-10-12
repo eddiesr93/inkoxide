@@ -34,7 +34,7 @@ import {
   type RenderProp,
   type Style as StyleInput,
 } from '../components/index.ts';
-import { TemplateError } from '../errors.ts';
+import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
 import { PageContext, RenderCall } from '../page.ts';
 import {
@@ -105,6 +105,29 @@ export interface BuildResult {
 
 type Inline = Instance | { kind: 'text'; text: string; fiber: unknown };
 
+/**
+ * Props of a `Text` or `Link` that need a node of its own: an inline run inside a `Text` has
+ * none. `debug` is left out: on a run it draws nothing, as the guide says.
+ */
+const BLOCK_ONLY = [
+  'id',
+  'bookmark',
+  'pages',
+  'render',
+  'dir',
+  'orphans',
+  'widows',
+  'break',
+  'wrap',
+  'minPresenceAhead',
+] as const;
+
+/** Whether a block-only prop is set to something other than its default (`wrap`, `break={false}`). */
+function blockOnly(props: Record<string, unknown>, key: (typeof BLOCK_ONLY)[number]): boolean {
+  const v = props[key];
+  return v !== undefined && !(key === 'wrap' && v === true) && !(key === 'break' && v === false);
+}
+
 const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
 
 function sameColor(a: Color | undefined, b: Color | undefined): boolean {
@@ -159,6 +182,8 @@ class Builder {
   private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
+  /** The style of each element's `className`, to tell which keys came from it. */
+  private readonly classStyles = new WeakMap<Instance, TwStyle>();
 
   constructor(private readonly opts: BuildOptions) {
     this.origin = opts.track ? new Map() : undefined;
@@ -209,6 +234,7 @@ class Builder {
         });
       }
       s = classes;
+      this.classStyles.set(inst, classes);
     }
     const style = inst.props.style as StyleInput | undefined;
     if (style) {
@@ -252,29 +278,39 @@ class Builder {
     return r.id;
   }
 
+  /**
+   * Where the value of `key` in an element's own style `s` came from: its `className` (with the
+   * error fields that go with a class), or its `style` prop.
+   */
+  private source(inst: Instance, s: TwStyle, key: string): { fromClass: boolean; init: TemplateErrorInit } {
+    const v = this.classStyles.get(inst)?.[key as keyof TwStyle];
+    if (v === undefined || v !== s[key as keyof TwStyle])
+      return { fromClass: false, init: { kind: 'props' } };
+    return { fromClass: true, init: { kind: 'tailwind', className: inst.props.className as string } };
+  }
+
   private onlyKeys(inst: Instance, s: TwStyle, allowed: ReadonlySet<string>, hint: string): void {
     for (const k of boxKeys(s)) {
       if (!allowed.has(k)) {
-        this.fail(
-          inst,
-          `<${HOST_NAME[inst.type]}> does not support "${k}" (from ${inst.props.style ? 'its style or ' : ''}className="${inst.props.className ?? ''}"). ${hint}`,
-          {
-            kind: 'tailwind',
-            className: inst.props.className as string | undefined,
-          },
-        );
+        const { fromClass, init } = this.source(inst, s, k);
+        const from = fromClass ? `className="${init.className}"` : 'its style';
+        this.fail(inst, `<${HOST_NAME[inst.type]}> does not support "${k}" (from ${from}). ${hint}`, init);
       }
     }
   }
 
   private noTextOnly(inst: Instance, s: TwStyle): void {
-    const keys = textOnlyKeys(s);
-    if (keys.length > 0) {
-      this.fail(inst, `truncate and line-clamp-* apply to <Text>, not <${HOST_NAME[inst.type]}>.`, {
-        kind: 'tailwind',
-        className: inst.props.className as string | undefined,
-      });
-    }
+    const [k, ...more] = textOnlyKeys(s);
+    if (k === undefined) return;
+    const { fromClass, init } = this.source(inst, s, k);
+    const name = HOST_NAME[inst.type];
+    this.fail(
+      inst,
+      fromClass
+        ? `truncate and line-clamp-* apply to <Text>, not <${name}> (className="${init.className}").`
+        : `${[k, ...more].join(' and ')} ${more.length > 0 ? 'apply' : 'applies'} to <Text>, not <${name}> (from its style).`,
+      init,
+    );
   }
 
   build(container: Container): Document {
@@ -347,6 +383,7 @@ class Builder {
     }
     this.pageBox = size;
     const own = this.styleOf(inst, parent);
+    this.noTextOnly(inst, own);
     // Padding on a Page is its margin (`<Page style={{ padding: 48 }}>`).
     this.onlyKeys(
       inst,
@@ -371,7 +408,8 @@ class Builder {
         if (v !== undefined) spec.margin[k] = this.length(inst, v, units);
       }
     }
-    // Padding fills the sides the margin prop leaves unset.
+    // Padding fills the sides the margin prop leaves unset. A percentage is of the page width on
+    // every side, as padding is of the containing block's width in CSS.
     const pad = {
       top: own.paddingTop,
       right: own.paddingRight,
@@ -380,7 +418,9 @@ class Builder {
     };
     for (const k of ['top', 'right', 'bottom', 'left'] as const) {
       const v = pad[k];
-      if (typeof v === 'number' && spec.margin?.[k] === undefined) spec.margin = { ...spec.margin, [k]: v };
+      if (v === undefined || spec.margin?.[k] !== undefined) continue;
+      const pt = typeof v === 'number' ? v : round((Number.parseFloat(v) * size.width) / 100);
+      spec.margin = { ...spec.margin, [k]: pt };
     }
     if (own.backgroundColor !== undefined) {
       spec.background = own.backgroundColor === 'currentColor' ? ctx.color : own.backgroundColor;
@@ -627,6 +667,7 @@ class Builder {
       }
       case HOST.Spacer: {
         const own = this.styleOf(inst, ctx);
+        this.noTextOnly(inst, own);
         const s: Style = { ...boxStyle(own, ctx.color) };
         const units = this.units(own, ctx);
         if (inst.props.h !== undefined) s.height = this.length(inst, inst.props.h as Length, units);
@@ -692,8 +733,8 @@ class Builder {
   /**
    * Flattens inline content into runs, merging neighbours with the same resolved style. `para`
    * is whether the paragraph uses the engine's patterns, and its language; a run that differs
-   * says so itself. Runs carry no language, so a run in another language never turns the
-   * patterns on: they would be the paragraph's.
+   * says so itself. Runs carry no language, so a run in another language never uses the
+   * patterns: they would be the paragraph's.
    */
   private runs(
     nodes: readonly Inline[],
@@ -709,9 +750,8 @@ class Builder {
         const text = transformText(n.text, ctx.textTransform, ctx.lang);
         // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
         const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : callbackOf(ctx);
-        const patterns = usesPatterns(ctx);
-        const hyphenate =
-          patterns === para.patterns || (patterns && ctx.lang !== para.lang) ? undefined : patterns;
+        const patterns = usesPatterns(ctx) && ctx.lang === para.lang;
+        const hyphenate = patterns === para.patterns ? undefined : patterns;
         const shown = cb ? this.hyphenator.apply(text, cb, (msg, init) => this.fail(owner, msg, init)) : text;
         this.push(out, shown, ctx, owner, undefined, hyphenate);
         continue;
@@ -726,17 +766,25 @@ class Builder {
               { kind: 'props' },
             );
           }
-          const own = this.styleOf(n, ctx);
-          const box = boxKeys(own);
-          if (box.length > 0 || textOnlyKeys(own).length > 0) {
-            const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
+          const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
+          const prop = BLOCK_ONLY.find((k) => blockOnly(n.props, k));
+          if (prop) {
             this.fail(
               n,
-              `${what} is an inline run: only text utilities apply, not "${[...box, ...textOnlyKeys(own)].join(', ')}" (className="${n.props.className ?? ''}").`,
-              {
-                kind: 'tailwind',
-                className: n.props.className as string | undefined,
-              },
+              `${what} is an inline run of the paragraph, so \`${prop}\` has nothing to apply to. Put it on the outer <Text>, or make this text a <Text> of its own.`,
+              { kind: 'props' },
+            );
+          }
+          const own = this.styleOf(n, ctx);
+          const bad = [...boxKeys(own), ...textOnlyKeys(own)];
+          if (bad[0] !== undefined) {
+            const { fromClass, init } = this.source(n, own, bad[0]);
+            this.fail(
+              n,
+              fromClass
+                ? `${what} is an inline run: only text utilities apply, not "${bad.join(', ')}" (className="${init.className}").`
+                : `${what} is an inline run: only text styles apply, not "${bad.join(', ')}" (from its style).`,
+              init,
             );
           }
           const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
@@ -832,19 +880,27 @@ class Builder {
     for (const r of inst.children) {
       if (r.kind !== 'element') continue;
       const rOwn = this.styleOf(r, ctx);
+      this.noTextOnly(r, rOwn);
       this.onlyKeys(
         r,
         rOwn,
         rowAllowed,
-        'A Row takes bg-*, min-h-* and text utilities; style the cells instead.',
+        'A Row takes a background, a minimum height and text styles; style the cells instead.',
       );
       const rctx = inherit(ctx, rOwn);
       const row: TableRow = { cells: [] };
       if (typeof r.props.id === 'string') row.id = r.props.id;
       if (r.props.debug === true) row.debug = true;
-      const minHeight =
-        (r.props.minHeight as number | undefined) ??
-        (typeof rOwn.minHeight === 'number' ? rOwn.minHeight : undefined);
+      let minHeight = r.props.minHeight as number | undefined;
+      if (minHeight === undefined && typeof rOwn.minHeight === 'number') minHeight = rOwn.minHeight;
+      else if (minHeight === undefined && typeof rOwn.minHeight === 'string' && rOwn.minHeight !== 'auto') {
+        const { fromClass, init } = this.source(r, rOwn, 'minHeight');
+        this.fail(
+          r,
+          `<Row>: a minimum height of ${rOwn.minHeight} (from ${fromClass ? `className="${init.className}"` : 'its style'}) has no table height to be a percentage of; use a length.`,
+          init,
+        );
+      }
       if (minHeight !== undefined) row.minHeight = minHeight;
       if (rOwn.backgroundColor !== undefined) {
         row.backgroundColor = rOwn.backgroundColor === 'currentColor' ? rctx.color : rOwn.backgroundColor;

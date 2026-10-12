@@ -17,6 +17,13 @@ All notable changes to the packages in this repository. The format follows
 - `inkoxide` (Rust): `validate_without_images`, which validates a document without looking up
   its image ids, as the Node `validate` does when it is given no `images`.
 
+### Changed
+
+- A URL entry in `remoteImages.allow` is matched by origin and path instead of as a string
+  prefix: it allows URLs with the same scheme, host and port, and, when it has a path, that path
+  and the paths under it (`https://cdn.example.com/img` allows `/img/logo.png`, not
+  `/imgs/logo.png`). Entries such as `https://cdn.example.com/` work as before.
+
 ### Fixed
 
 - The examples in the `@inkoxide/render` README run when copied into a new project and started
@@ -158,6 +165,35 @@ All notable changes to the packages in this repository. The format follows
 - **Docs:** the Fonts section and the Tailwind support table say that `font-serif` is Noto Sans,
   since no serif face is bundled, and the `@inkoxide/schema` README's ajv example type-checks
   with `module: nodenext`.
+- A component that suspends (`use()` of a promise, a `lazy` component) fails the render with a
+  template error that names it, or the `<Suspense>` boundary it is in, and says that templates
+  cannot wait for data. Without a boundary the error blamed a missing `<Document>`; with one,
+  the PDF showed the fallback and the process crashed shortly afterwards.
+- A later `border`, `borderStyle` or `borderRadius` for every side, in a style array or over
+  `className`, replaces the per-side styles and per-corner radii set before it, and a per-corner
+  `borderRadius` object keeps the corners it does not name instead of setting them to 0.
+- `@inkoxide/react` errors for a style key an element does not take (`maxLines` on a `View`,
+  `padding` on a `Row` or an inline `Text`) have kind `'props'` and name the style when the key
+  comes from `style`; only a key from `className` is kind `'tailwind'`, with the class. A string
+  directly in a `Table`, `Row` or `Document` says where it belongs (a `Cell`, a `Page`) instead
+  of suggesting a `Text`, which is not allowed there either. The remote-image error of
+  `@inkoxide/react` names its own option, `remoteImages.allow`, and only `@inkoxide/render` adds
+  the `INKOXIDE_REMOTE_IMAGES` variable.
+- Percentage padding on a `Page` (`style={{ padding: '10%' }}`, `p-[10%]`) is a share of the
+  page width on every side, as in CSS, instead of being dropped, which also left the header and
+  footer unaligned. A percentage minimum height on a `Row` (`min-h-[10%]`), which has no table
+  height to resolve against, is a template error instead of being dropped.
+- A `Text` or `Link` inside a `Text` with `id`, `bookmark`, `pages`, `render`, `dir`, `orphans`,
+  `widows`, `break`, `wrap={false}` or `minPresenceAhead` is a template error that names the
+  prop; these need a paragraph of their own and were dropped. A run in another `lang` inside a
+  hyphenated paragraph is no longer hyphenated with the paragraph's patterns.
+- `textTransform` with a `lang` that JavaScript does not take as a language tag (`en_US`) cases
+  the text by the default rules instead of failing with an internal error.
+- `truncate`, `line-clamp-*`, `maxLines` and `ellipsis` on a `Page`, `Row` or `Spacer` are a
+  template error, as on other elements, instead of doing nothing; a negative numeric `flex`
+  (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`.
+- `ClipPath` and `Defs` have exported props types, `ClipPathProps` and `DefsProps` (also from
+  `@inkoxide/render`), and `ClipPath` takes `clipPathUnits`.
 
 ## 0.5.0 - 2026-10-12
 

@@ -379,8 +379,8 @@ describe('image functions and promises', () => {
     );
     const files = { localImages: { root: dirname(logoPath) } };
     expect((await failure(() => './no/such/logo.png', files)).code).toBe('IMAGE_READ_FAILED');
-    expect((await failure(async () => 'https://example.com/logo.png', allowed())).message).toContain(
-      'remoteImages allowlist',
+    expect((await failure(async () => 'https://example.com/logo.png', allowed())).message).toBe(
+      '<Image src="https://example.com/logo.png">: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
     );
     expect((await failure((() => 42) as unknown as ImageSrc)).message).toBe(
       'An <Image src> function or promise resolved to number; expected bytes, a string or a request.',

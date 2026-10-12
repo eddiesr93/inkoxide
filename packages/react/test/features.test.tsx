@@ -8,7 +8,10 @@ import {
   Cell,
   Checkbox,
   Circle,
+  ClipPath,
+  type ClipPathProps,
   Defs,
+  type DefsProps,
   Document,
   Field,
   Footer,
@@ -97,6 +100,43 @@ describe('paint styles', () => {
     });
   });
 
+  it('lets a later border style or radius for every side replace earlier per-side values', () => {
+    const r = tree(
+      <>
+        <View style={[{ borderTop: '2px solid blue' }, { border: '1px dashed red' }]} />
+        <View style={[{ borderWidth: 1, borderStyle: { top: 'dotted' } }, { borderStyle: 'dashed' }]} />
+        <View style={[{ borderRadius: { topLeft: 4 } }, { borderRadius: 8 }]} />
+        <View className="rounded-tl-lg" style={{ borderRadius: 8 }} />
+        <View
+          className="border-dotted [border-top-style:dashed]"
+          style={{ borderWidth: 1, borderStyle: 'solid' }}
+        />
+      </>,
+    );
+    const [a, b, c, d, e] = (body(r) as BoxNode[]).map((n) => n.style);
+    expect(a?.borderStyle).toBe('dashed');
+    expect(a?.borderColor?.top).toEqual(parseColor('red'));
+    expect(b?.borderStyle).toBe('dashed');
+    expect(c?.borderRadius).toBe(8);
+    expect(d?.borderRadius).toBe(8);
+    expect(e?.borderStyle).toBeUndefined();
+  });
+
+  it('keeps the corners a per-corner radius does not name', () => {
+    const r = tree(
+      <>
+        <View className="rounded-lg" style={{ borderRadius: { topLeft: 0 } }} />
+        <View style={[{ borderRadius: 6 }, { borderRadius: { topLeft: 0 } }]} />
+        <View className="px-4" style={{ padding: { top: 5 } }} />
+      </>,
+    );
+    const [a, b, c] = (body(r) as BoxNode[]).map((n) => n.style);
+    const corners = { topLeft: 0, topRight: 6, bottomRight: 6, bottomLeft: 6 };
+    expect(a?.borderRadius).toEqual(corners);
+    expect(b?.borderRadius).toEqual(corners);
+    expect(c?.padding).toEqual({ top: 5, right: 12, left: 12 });
+  });
+
   it('accepts lengths with units and CSS transform strings in the style prop', () => {
     const r = tree(
       <View
@@ -171,6 +211,11 @@ describe('paint styles', () => {
     expect(first<BoxNode>(tree(<View className="flex-[30%]" />)).style).toEqual(basis);
     // Grow and shrink are never negative, in a style or a class.
     expect(thrown(() => tree(<View style={{ flex: '-1' }} />)).message).toContain('cannot be negative');
+    const numeric = thrown(() => tree(<View style={{ flex: -1 }} />));
+    expect([numeric.kind, numeric.message]).toEqual([
+      'props',
+      'Invalid style prop on <View>: flex -1: grow and shrink cannot be negative',
+    ]);
     expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
@@ -869,6 +914,22 @@ describe('drawings', () => {
     expect(thrown(() => tree(<Rect width={1} height={1} />)).message).toContain('goes inside <Svg>');
   });
 
+  it('takes clipPathUnits on a ClipPath, typed by its exported props', () => {
+    const clip: ClipPathProps = { id: 'c', clipPathUnits: 'objectBoundingBox' };
+    const defs: DefsProps = {};
+    const r = tree(
+      <Svg width={10} height={10}>
+        <Defs {...defs}>
+          <ClipPath {...clip}>
+            <Circle cx={0.5} cy={0.5} r={0.5} />
+          </ClipPath>
+        </Defs>
+        <Rect width={10} height={10} clipPath="url(#c)" />
+      </Svg>,
+    );
+    expect(decode(first<ImageNode>(r).data)).toContain('<clipPath id="c" clipPathUnits="objectBoundingBox">');
+  });
+
   it('keeps the layout props of Svg out of the drawing', () => {
     // A fixed element takes no break, so the layout props come in two drawings.
     const r = tree(
@@ -933,6 +994,33 @@ describe('remote images', () => {
     expect(remoteAllowed('http://local.test/img/a.png', policy)).toBe(true);
     expect(remoteAllowed('http://local.test/other.png', policy)).toBe(false);
     expect(remoteAllowed('https://user:pw@cdn.example.com/a.png', policy)).toBe(false);
+  });
+
+  it('matches a URL entry by origin, and by path at a slash', () => {
+    const allowed = (url: string, entry: string) => remoteAllowed(url, { allow: [entry] });
+    for (const entry of [
+      'https://cdn.example.com',
+      'https://cdn.example.com/',
+      'https://CDN.example.com:443',
+    ]) {
+      expect(allowed('https://cdn.example.com/a.png', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com.evil.net/x', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com:8443/x', entry)).toBe(false);
+      expect(allowed('http://cdn.example.com/x', entry)).toBe(false);
+      expect(allowed('https://cdn.example.comx/x', entry)).toBe(false);
+    }
+    for (const entry of ['https://cdn.example.com/img', 'https://cdn.example.com/img/']) {
+      expect(allowed('https://cdn.example.com/img/a.png', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com/img/sub/a.png?v=2', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com/imgs/a.png', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com/img.png', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com/img/../secret.png', entry)).toBe(false);
+    }
+    expect(allowed('https://cdn.example.com/img', 'https://cdn.example.com/img')).toBe(true);
+    expect(allowed('http://localhost:8080/a.png', 'http://localhost:8080')).toBe(true);
+    expect(allowed('http://localhost:8081/a.png', 'http://localhost:8080')).toBe(false);
+    expect(allowed('ftp://cdn.example.com/a.png', 'ftp://cdn.example.com/')).toBe(false);
+    expect(allowed('https://cdn.example.com/a.png', 'https://')).toBe(false);
   });
 
   it('lists allowed URLs for the caller to fetch, one id per URL', () => {
@@ -1057,7 +1145,7 @@ describe('image sources', () => {
     expect(srcs(r)).toEqual(['request-0', 'request-0']);
     expect(r.pending).toEqual({ 'request-0': { kind: 'request', request } });
     expect(thrown(() => images(<Image src={{ uri: 'https://evil.example.org/a.png' }} />)).message).toBe(
-      '<Image src={{ uri: "https://evil.example.org/a.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the render option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
+      '<Image src={{ uri: "https://evil.example.org/a.png" }}>: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow, or pass the bytes.',
     );
     expect(thrown(() => images(<Image src={{ uri: '' }} />)).message).toContain('a request needs a uri');
   });
