@@ -1,55 +1,62 @@
-//! Reproduces a fuzz finding: `repro tree <input>` regenerates the
-//! document a `render_tree` input encodes; `repro json <input>` uses the
-//! bytes as is. Prints the document to stdout, then runs the oracle.
-//! `repro image <input>` runs the `render_svg` oracle on an image, and
-//! `repro font <input>` the `register_font` oracle on a font.
+//! Reproduces a fuzz finding:
+//!
+//! - `repro tree <input>` regenerates the document a `render_tree` input
+//!   encodes, prints it to stdout and runs the oracle on it;
+//! - `repro json <input>` does the same with the bytes as they are;
+//! - `repro image <input>` runs the `render_svg` oracle on an image;
+//! - `repro svg <input>` regenerates the SVG a `render_svg_tree` input
+//!   encodes, prints it, and runs the oracle with its time and verdict;
+//! - `repro font <input>` runs the `register_font` oracle on a font;
+//! - `repro stats <dir>` reports how many inputs of a `render_tree`
+//!   corpus make a valid document.
+
+const USAGE: &str = "usage: repro tree|json|image|svg|font <input>\n       repro stats <dir>";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let [_, mode, path] = &args[..] else {
-        eprintln!("usage: repro tree|json|image|svg|font <input>");
-        std::process::exit(2);
+        usage();
     };
-    if mode == "stats" {
-        return stats(path);
+    let read = || std::fs::read(path).expect("read input");
+    match mode.as_str() {
+        "tree" | "json" => {
+            let doc = if mode == "tree" {
+                inkoxide_fuzz::document(&read())
+            } else {
+                read()
+            };
+            println!("{}", String::from_utf8_lossy(&doc));
+            inkoxide_fuzz::check(&doc);
+            eprintln!("ok");
+        }
+        "image" => eprintln!("ok ({})", verdict(&read())),
+        "svg" => {
+            let svg = inkoxide_fuzz::svg::svg(&read());
+            println!("{}", String::from_utf8_lossy(&svg));
+            let t = std::time::Instant::now();
+            let verdict = verdict(&svg);
+            eprintln!("ok ({verdict} in {:?})", t.elapsed());
+        }
+        "font" => {
+            let registered = inkoxide_fuzz::check_font(&read());
+            eprintln!("ok ({registered} of the variants registered)");
+        }
+        "stats" => stats(path),
+        _ => usage(),
     }
-    let bytes = std::fs::read(path).expect("read input");
-    if mode == "image" {
-        let rendered = inkoxide_fuzz::check_image(&bytes);
-        return eprintln!("ok ({})", if rendered { "rendered" } else { "rejected" });
+}
+
+fn usage() -> ! {
+    eprintln!("{USAGE}");
+    std::process::exit(2);
+}
+
+/// Runs the image oracle: "rendered", or why the engine rejected it.
+fn verdict(image: &[u8]) -> String {
+    match inkoxide_fuzz::check_image(image) {
+        Ok(()) => "rendered".into(),
+        Err(e) => format!("rejected: {e}"),
     }
-    if mode == "svg" {
-        let svg = inkoxide_fuzz::svg::svg(&bytes);
-        println!("{}", String::from_utf8_lossy(&svg));
-        let t = std::time::Instant::now();
-        let rendered = inkoxide_fuzz::check_image(&svg);
-        let mut images = inkoxide::ImageStore::new();
-        images.insert("fz", svg.clone());
-        let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[{"type":"image","src":"fz"}]}]}"#;
-        let why = inkoxide::validate(
-            doc,
-            inkoxide::InputFormat::Json,
-            &inkoxide::FontStore::new(),
-            &images,
-        );
-        let verdict = if rendered {
-            "rendered".to_string()
-        } else {
-            format!("rejected: {:?}", why.first().map(|e| &e.message))
-        };
-        return eprintln!("ok ({verdict} in {:?})", t.elapsed());
-    }
-    if mode == "font" {
-        let registered = inkoxide_fuzz::check_font(&bytes);
-        return eprintln!("ok ({registered} of the variants registered)");
-    }
-    let doc = match mode.as_str() {
-        "tree" => inkoxide_fuzz::document(&bytes),
-        _ => bytes,
-    };
-    println!("{}", String::from_utf8_lossy(&doc));
-    inkoxide_fuzz::check(&doc);
-    eprintln!("ok");
 }
 
 /// `repro stats <dir>`: how many `render_tree` inputs in a corpus make a

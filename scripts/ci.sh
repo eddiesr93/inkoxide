@@ -30,6 +30,7 @@ if [[ -z "${VERAPDF:-}" ]] && command -v verapdf >/dev/null; then
 fi
 [[ -n "${VERAPDF:-}" ]] || echo "verapdf not installed; PDF/A outputs not validated"
 cargo test --workspace
+cargo test --manifest-path fuzz/Cargo.toml --lib
 
 step "node binding (packages/inkoxide)"
 if command -v node >/dev/null; then

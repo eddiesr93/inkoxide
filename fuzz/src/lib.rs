@@ -8,26 +8,38 @@ pub mod svg;
 use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
 use serde_json::{json, Map, Value};
 
+/// The fixture fonts: id, family, weight and bytes. Generated documents
+/// declare them all, and their runs pick from them.
+const FIXTURE_FONTS: &[(&str, &str, u16, &[u8])] = &[
+    (
+        "Inter-Regular",
+        "Inter",
+        400,
+        include_bytes!("../../fixtures/fonts/Inter-Regular.ttf"),
+    ),
+    (
+        "Inter-Bold",
+        "Inter",
+        700,
+        include_bytes!("../../fixtures/fonts/Inter-Bold.ttf"),
+    ),
+    (
+        "NotoSans-Regular",
+        "Noto Sans",
+        400,
+        include_bytes!("../../fixtures/fonts/NotoSans-Regular.ttf"),
+    ),
+    (
+        "RobotoMono-Regular",
+        "Roboto Mono",
+        400,
+        include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf"),
+    ),
+];
+
 pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
     let mut f = FontStore::new();
-    for (id, bytes) in [
-        (
-            "Inter-Regular",
-            &include_bytes!("../../fixtures/fonts/Inter-Regular.ttf")[..],
-        ),
-        (
-            "Inter-Bold",
-            &include_bytes!("../../fixtures/fonts/Inter-Bold.ttf")[..],
-        ),
-        (
-            "NotoSans-Regular",
-            &include_bytes!("../../fixtures/fonts/NotoSans-Regular.ttf")[..],
-        ),
-        (
-            "RobotoMono-Regular",
-            &include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf")[..],
-        ),
-    ] {
+    for &(id, _, _, bytes) in FIXTURE_FONTS {
         f.register(id, bytes.to_vec()).unwrap();
     }
     f
@@ -88,9 +100,12 @@ pub fn check(doc: &[u8]) {
 }
 
 /// Renders arbitrary bytes registered as an image (SVG or raster), drawn
-/// twice at different sizes; same oracle as [`check`]. Returns whether
-/// it rendered.
-pub fn check_image(bytes: &[u8]) -> bool {
+/// twice at different sizes; same oracle as [`check`].
+///
+/// # Errors
+///
+/// Why the engine did not render it.
+pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
     let mut images = ImageStore::new();
     images.insert("fz", bytes.to_vec());
     let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
@@ -103,7 +118,7 @@ pub fn check_image(bytes: &[u8]) -> bool {
         &images,
         bytes.len() % 2 == 1,
     )
-    .is_ok()
+    .map(|_| ())
 }
 
 /// Registers arbitrary bytes as a font, as they are and with the WOFF and
@@ -493,7 +508,7 @@ const TEXT_ONLY: &[&str] = &[
     "textIndent",
 ];
 
-const PROPS: &[&str] = &[
+const BOX_PROPS: &[&str] = &[
     "display",
     "flexDirection",
     "flexWrap",
@@ -539,14 +554,6 @@ const PROPS: &[&str] = &[
     "rotate",
     "transform",
     "transformOrigin",
-    "textAlign",
-    "lineHeight",
-    "maxLines",
-    "ellipsis",
-    "hyphenate",
-    "lang",
-    "whiteSpace",
-    "textIndent",
     "verticalAlign",
 ];
 
@@ -663,10 +670,19 @@ fn transform(s: &mut Src) -> Value {
     Value::Array(ops)
 }
 
+/// Any style property: one of [`BOX_PROPS`] or [`TEXT_ONLY`].
+fn any_prop(s: &mut Src) -> &'static str {
+    let i = s.below(BOX_PROPS.len() + TEXT_ONLY.len());
+    BOX_PROPS
+        .get(i)
+        .copied()
+        .unwrap_or_else(|| TEXT_ONLY[i - BOX_PROPS.len()])
+}
+
 fn style(s: &mut Src, text: bool) -> Value {
     let mut m = Map::new();
     for _ in 0..s.below(7) {
-        let mut p = s.pick(PROPS);
+        let mut p = any_prop(s);
         if !text && !s.chaos && TEXT_ONLY.contains(&p) {
             continue;
         }
@@ -760,13 +776,10 @@ fn run(s: &mut Src) -> Value {
     } else {
         m.insert("text".into(), json!(text(s)));
     }
-    let font = s.pick(&[
-        "Inter-Regular",
-        "Inter-Bold",
-        "NotoSans-Regular",
-        "RobotoMono-Regular",
-        "Missing",
-    ]);
+    // A fixture font, or one the document does not declare.
+    let font = FIXTURE_FONTS
+        .get(s.below(FIXTURE_FONTS.len() + 1))
+        .map_or("Missing", |f| f.0);
     m.insert("font".into(), json!(font));
     m.insert(
         "size".into(),
@@ -1066,16 +1079,29 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             json!(s.pick(&["2026-01-01T00:00:00Z", "2026-13-40T99:00:00Z", "bad"])),
         );
     }
+    let fonts: Vec<Value> = FIXTURE_FONTS
+        .iter()
+        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
+        .collect();
     let doc = json!({
         "version": 1,
         "meta": meta,
-        "fonts": [
-            {"id": "Inter-Regular", "family": "Inter"},
-            {"id": "Inter-Bold", "family": "Inter", "weight": 700},
-            {"id": "NotoSans-Regular", "family": "Noto Sans"},
-            {"id": "RobotoMono-Regular", "family": "Roboto Mono"}
-        ],
+        "fonts": fonts,
         "pages": pages,
     });
     doc.to_string().into_bytes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_image_says_why_it_did_not_render() {
+        let Err(InkoxideError::Validation(e)) = check_image(b"abc") else {
+            panic!("rendered an image that is not one");
+        };
+        assert!(e.message.contains("unsupported image format"), "{e}");
+        assert!(check_image(include_bytes!("../../fixtures/images/logo.png")).is_ok());
+    }
 }

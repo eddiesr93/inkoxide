@@ -5,5 +5,5 @@
 #![no_main]
 
 libfuzzer_sys::fuzz_target!(|data: &[u8]| {
-    inkoxide_fuzz::check_image(&inkoxide_fuzz::svg::svg(data));
+    let _ = inkoxide_fuzz::check_image(&inkoxide_fuzz::svg::svg(data));
 });

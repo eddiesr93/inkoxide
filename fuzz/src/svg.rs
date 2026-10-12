@@ -19,51 +19,59 @@ const SHAPES: &[&str] = &[
     "path", "rect", "circle", "ellipse", "line", "polyline", "polygon",
 ];
 
+/// The SVG document being written.
+struct Gen {
+    out: String,
+    /// How deep this document is nested in SVG images (0: the outer one).
+    level: usize,
+    /// Whether the document declares entities that attributes may use.
+    entities: bool,
+    /// How many more elements it may have.
+    budget: usize,
+}
+
 /// An SVG document from `data`.
 pub fn svg(data: &[u8]) -> Vec<u8> {
     let s = &mut Src::new(data);
-    let mut out = String::new();
     let entities = s.chance(40);
+    let mut g = Gen {
+        out: String::new(),
+        level: 0,
+        entities,
+        budget: 300,
+    };
     if entities {
-        doctype(s, &mut out);
+        doctype(s, &mut g.out);
     }
-    let mut budget = 300;
-    document(s, &mut out, 0, entities, &mut budget);
-    out.into_bytes()
+    document(s, &mut g);
+    g.out.into_bytes()
 }
 
-fn document(s: &mut Src, out: &mut String, level: usize, entities: bool, budget: &mut usize) {
+fn document(s: &mut Src, g: &mut Gen) {
     let (w, h) = (1 + s.below(200), 1 + s.below(200));
     let _ = write!(
-        out,
+        g.out,
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{w}" height="{h}">"#
     );
     if s.chance(60) {
-        style_sheet(s, out);
+        style_sheet(s, &mut g.out);
     }
-    while *budget > 0 && !s.exhausted() && s.chance(220) {
-        element(s, out, 0, level, entities, budget);
+    while g.budget > 0 && !s.exhausted() && s.chance(220) {
+        element(s, g, 0);
     }
-    out.push_str("</svg>");
+    g.out.push_str("</svg>");
 }
 
-fn element(
-    s: &mut Src,
-    out: &mut String,
-    depth: usize,
-    level: usize,
-    entities: bool,
-    budget: &mut usize,
-) {
-    *budget = budget.saturating_sub(1);
+fn element(s: &mut Src, g: &mut Gen, depth: usize) {
+    g.budget = g.budget.saturating_sub(1);
     let kind = s.below(10);
-    if depth > 6 || *budget == 0 || kind < 4 {
+    if depth > 6 || g.budget == 0 || kind < 4 {
         let tag = match kind {
             0 => "use",
             1 => "image",
             _ => s.pick(SHAPES),
         };
-        leaf(s, out, tag, level, entities, budget);
+        leaf(s, g, tag);
         return;
     }
     let tag = match kind {
@@ -72,14 +80,14 @@ fn element(
         6 => "filter",
         _ => s.pick(CONTAINERS),
     };
-    let _ = write!(out, "<{tag}");
-    attributes(s, out, tag, entities);
-    out.push('>');
+    let _ = write!(g.out, "<{tag}");
+    attributes(s, g, tag);
+    g.out.push('>');
     match tag {
         "linearGradient" | "radialGradient" => {
             for _ in 0..s.below(4) {
                 let _ = write!(
-                    out,
+                    g.out,
                     r#"<stop offset="{}" stop-color="{}"/>"#,
                     s.below(101) as f32 / 100.0,
                     color(s)
@@ -90,53 +98,43 @@ fn element(
             for _ in 0..=s.below(3) {
                 match s.below(4) {
                     0 => {
-                        let _ = write!(out, r##"<feImage href="#{}"/>"##, s.pick(IDS));
+                        let _ = write!(g.out, r##"<feImage href="#{}"/>"##, s.pick(IDS));
                     }
-                    1 => out.push_str(r"<feTile/>"),
+                    1 => g.out.push_str(r"<feTile/>"),
                     2 => {
-                        let _ = write!(out, r#"<feGaussianBlur stdDeviation="{}"/>"#, number(s));
+                        let _ = write!(g.out, r#"<feGaussianBlur stdDeviation="{}"/>"#, number(s));
                     }
-                    _ => out.push_str(r#"<feOffset dx="3" dy="4"/>"#),
+                    _ => g.out.push_str(r#"<feOffset dx="3" dy="4"/>"#),
                 }
             }
         }
         _ => {
             for _ in 0..s.below(5) {
-                element(s, out, depth + 1, level, entities, budget);
+                element(s, g, depth + 1);
             }
         }
     }
-    let _ = write!(out, "</{tag}>");
+    let _ = write!(g.out, "</{tag}>");
 }
 
-fn leaf(
-    s: &mut Src,
-    out: &mut String,
-    tag: &str,
-    level: usize,
-    entities: bool,
-    budget: &mut usize,
-) {
-    let _ = write!(out, "<{tag}");
-    attributes(s, out, tag, entities);
+fn leaf(s: &mut Src, g: &mut Gen, tag: &str) {
+    let _ = write!(g.out, "<{tag}");
+    attributes(s, g, tag);
     if tag == "image" {
-        out.push_str(r#" width="10" height="10""#);
-        let src = image_src(s, level, budget);
+        g.out.push_str(r#" width="10" height="10""#);
+        let src = image_src(s, g);
         let attr = if s.chance(128) { "href" } else { "xlink:href" };
-        let _ = write!(out, r#" {attr}="{src}""#);
+        let _ = write!(g.out, r#" {attr}="{src}""#);
     }
-    out.push_str("/>");
+    g.out.push_str("/>");
 }
 
 /// A `data:` URL: a nested SVG (up to five levels), a PNG header that
 /// claims a size, or a tiny real PNG.
-fn image_src(s: &mut Src, level: usize, budget: &mut usize) -> String {
+fn image_src(s: &mut Src, g: &mut Gen) -> String {
     match s.below(4) {
-        0 | 1 if level < 5 => {
-            let mut inner = String::new();
-            let mut inner_budget = (*budget).min(60);
-            document(s, &mut inner, level + 1, false, &mut inner_budget);
-            *budget = budget.saturating_sub(60 - inner_budget.min(60));
+        0 | 1 if g.level < 5 => {
+            let inner = nested(s, g);
             if s.chance(128) {
                 format!("data:image/svg+xml;base64,{}", base64(inner.as_bytes()))
             } else {
@@ -158,7 +156,23 @@ fn image_src(s: &mut Src, level: usize, budget: &mut usize) -> String {
     }
 }
 
-fn attributes(s: &mut Src, out: &mut String, tag: &str, entities: bool) {
+/// A nested SVG document, with up to 60 of the outer document's elements,
+/// which it charges for the ones it used.
+fn nested(s: &mut Src, g: &mut Gen) -> String {
+    let start = g.budget.min(60);
+    let mut inner = Gen {
+        out: String::new(),
+        level: g.level + 1,
+        entities: false,
+        budget: start,
+    };
+    document(s, &mut inner);
+    g.budget -= start - inner.budget;
+    inner.out
+}
+
+fn attributes(s: &mut Src, g: &mut Gen, tag: &str) {
+    let out = &mut g.out;
     if s.chance(150) {
         let _ = write!(out, r#" id="{}""#, s.pick(IDS));
     }
@@ -227,7 +241,7 @@ fn attributes(s: &mut Src, out: &mut String, tag: &str, entities: bool) {
             let _ = write!(out, r#" {name}="{value}""#);
         }
     }
-    if entities && s.chance(60) {
+    if g.entities && s.chance(60) {
         let _ = write!(out, r#" data-x="&e{};""#, s.below(3));
     }
 }
@@ -428,4 +442,25 @@ fn percent(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_image_charges_the_elements_it_used() {
+        // Not chaos; a 5×5 image with no style sheet and one element (a
+        // path), after which the input runs out.
+        let s = &mut Src::new(&[0, 5, 5, 255, 0, 3]);
+        let mut g = Gen {
+            out: String::new(),
+            level: 0,
+            entities: false,
+            budget: 10,
+        };
+        let inner = nested(s, &mut g);
+        assert_eq!(inner.matches("<path").count(), 1);
+        assert_eq!(g.budget, 9);
+    }
 }
