@@ -15,7 +15,7 @@ how the pieces fit together, for contributors.
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
 | `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`. |
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
-| `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`. |
+| `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`. |
 | `examples` | Example documents in React; they produce the screenshots in the READMEs. |
 | `benchmarks` | Comparisons with other PDF libraries. |
 | `fixtures` | Engine test documents, fonts, images and reference renders. |
