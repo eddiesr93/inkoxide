@@ -7,6 +7,10 @@ version 2.
 
 ## Unreleased
 
+## 2.2.0 - 2026-10-12
+
+Still document schema version 1.
+
 ### Fixed
 
 - **Engine parity:** the engine enforces every bound the schema states. An `Id` of 0 or more

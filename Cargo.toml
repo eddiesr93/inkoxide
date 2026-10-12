@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/core", "crates/cli", "crates/node"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.97"
@@ -11,7 +11,7 @@ repository = "https://github.com/eddiesr93/inkoxide"
 
 # Exact pins: upgrades are deliberate PRs.
 [workspace.dependencies]
-inkoxide = { path = "crates/core", version = "=0.3.0" }
+inkoxide = { path = "crates/core", version = "=0.4.0" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 serde_path_to_error = "=0.1.20"

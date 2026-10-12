@@ -7,6 +7,22 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-12
+
+`inkoxide` 0.4.0, `@inkoxide/schema` 2.2.0, `@inkoxide/tailwind` 0.2.1, `@inkoxide/react` 0.2.1
+and `@inkoxide/render` 0.3.0. Upgrading: documents with an empty or over-long id, an empty font
+`family`, a grid `span` of 0 or no pages now fail validation, and hyphenation patterns
+registered for a region (`en-US`) no longer serve other English text (see **Changed**).
+
+### Security
+
+- SVG images are held to their limits as the SVG converter expands them: nested SVG images and
+  every copy of them, markers at every vertex of every shape, references however they are
+  written, style sheet rules and the declarations they copy, inherited attributes and embedded
+  raster pixels all count. Entities that expand to more than 1 MiB, `href` chains that loop and
+  radii or path coordinates beyond 10⁷ are refused. A small SVG could otherwise use minutes of
+  CPU and gigabytes of memory. Each raster image in an SVG is embedded in the PDF once.
+
 ### Fixed
 
 - `threads: 1` runs the whole render on the calling thread (in Node, the libuv thread that
