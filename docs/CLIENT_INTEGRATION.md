@@ -50,8 +50,9 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
 - **Unsupported fonts.** These are rejected with `FONT_ERROR`: variable
   fonts and CFF2 fonts (register static instances instead), font
   collections (`.ttc`; register each font as its own file), fonts with
-  neither TrueType nor embeddable CFF outlines, and fonts without a
-  Unicode `cmap`.
+  neither TrueType nor embeddable CFF outlines, fonts without a
+  Unicode `cmap`, and fonts whose `GSUB` or `GPOS` lookups point to
+  missing or malformed coverage tables.
 
 ## Images: per render, through `options.images`
 
@@ -124,7 +125,8 @@ try {
 - New codes may be added in minor versions, so always handle the
   `default` case.
 - An engine panic never takes the process down: it surfaces as
-  `INTERNAL`.
+  `INTERNAL`, or as `FONT_ERROR` naming the font when the shaper panicked
+  on it.
 
 ## Threading
 

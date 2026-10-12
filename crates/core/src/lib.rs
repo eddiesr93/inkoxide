@@ -36,6 +36,9 @@ pub use images::ImageStore;
 pub use schema::SCHEMA_VERSION;
 pub use text::HyphenationStore;
 
+use std::any::Any;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use fonts::FontSet;
 use pdf::{DocumentOut, PdfSink, PdfWriterSink};
 use text::{RustybuzzShaper, TextCache, UnicodeMap};
@@ -209,7 +212,9 @@ fn validate_with(
 ///
 /// [`InkoxideError::Validation`] with the first problem [`validate`] would
 /// report, or another variant when a resource fails to load or the worker
-/// pool cannot be built.
+/// pool cannot be built. A panic inside the engine is returned as
+/// [`InkoxideError::Font`] when it happened while shaping text (naming the
+/// font), and as [`InkoxideError::Internal`] otherwise.
 pub fn render(
     doc: &[u8],
     format: InputFormat,
@@ -218,7 +223,11 @@ pub fn render(
     images: &ImageStore,
 ) -> Result<Vec<u8>, InkoxideError> {
     let _span = tracing::debug_span!("render", bytes = doc.len()).entered();
-    match options.threads {
+    // Rayon resumes a worker's panic, with its payload, in the thread that
+    // waits for it, so this also catches panics in parallel sections. The
+    // inputs are only read, and the process-wide caches recover from a
+    // lock poisoned by a panic (lru.rs, images/svg.rs).
+    catch_unwind(AssertUnwindSafe(|| match options.threads {
         None => render_inner(doc, format, options, fonts, images, true),
         // Outside a pool, rayon would use the global one: run every
         // parallel section in sequence instead, so concurrent one-thread
@@ -228,7 +237,24 @@ pub fn render(
             let pool = pool::get(n)?;
             pool.install(|| render_inner(doc, format, options, fonts, images, true))
         }
+    }))
+    .unwrap_or_else(|payload| Err(panic_error(payload.as_ref())))
+}
+
+/// The error a render returns for a panic with `payload`.
+fn panic_error(payload: &(dyn Any + Send)) -> InkoxideError {
+    if let Some(p) = payload.downcast_ref::<text::ShapingPanic>() {
+        return InkoxideError::Font(format!(
+            "font `{}`: the shaper panicked; the font's layout tables may be malformed",
+            p.font
+        ));
     }
+    let message = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("unknown cause");
+    InkoxideError::Internal(format!("the engine panicked: {message}"))
 }
 
 fn render_inner(
