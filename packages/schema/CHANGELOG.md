@@ -18,6 +18,17 @@ version 2.
 - **Collapsed borders:** a cell's `borderStyle` applies in a table with `borderCollapse:
   "collapse"`; dashed and dotted borders were drawn solid. `Style.borderCollapse` says how two
   borders that meet are merged: the wider wins, then solid over dashed over dotted.
+- **Pagination:** `Break.minPresenceAhead` is described: it counts from the node's top and
+  includes its height. On a box's first in-flow child, it and `break.before: "page"` (and a
+  `pageBreak`) move the box too, so the box no longer leaves its empty top on the page before.
+  A table whose first row is taller than a page splits that row where the table starts, instead
+  of moving to a new page. `inset` says that relative offsets count in pagination.
+- **Lengths:** a percentage height of a page child is of the page content height; it was
+  `auto`. `Length` and `LengthPercent` say what percentages resolve against: gaps against the
+  box's own content box, as in CSS.
+- **Text:** `whiteSpace` collapses only spaces, tabs and line breaks, as in CSS; other space
+  characters keep their width (they became ordinary spaces). Tabs in `pre` and `pre-wrap`
+  advance to the next multiple of 8 characters instead of becoming four spaces.
 
 ## 2.2.0 - 2026-10-12
 

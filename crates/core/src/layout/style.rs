@@ -32,6 +32,22 @@ fn lpa(l: Option<Length>, default: LengthPercentageAuto) -> LengthPercentageAuto
     }
 }
 
+/// [`to_taffy`] for a child of the page: percentage heights are of the
+/// page content height `page_h`, as in CSS, instead of an unknown flow
+/// height (which would make them `auto`).
+pub(super) fn to_taffy_on_page(s: &S, page_h: f32) -> Style {
+    let of_page = |l: Option<Length>| match l {
+        Some(Length::Percent(p)) => Some(Length::Points(p * page_h)),
+        l => l,
+    };
+    let auto = LengthPercentageAuto::auto();
+    let mut t = to_taffy(s);
+    t.size.height = dim(of_page(s.height));
+    t.min_size.height = lpa(of_page(s.min_height), auto);
+    t.max_size.height = lpa(of_page(s.max_height), auto);
+    t
+}
+
 /// A table cell's minimum height. Its `height` is one too, as in CSS:
 /// the row grows to fit the content. With both in points, the larger wins.
 pub(super) fn cell_min_height(s: &S) -> LengthPercentageAuto {

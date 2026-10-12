@@ -10,7 +10,9 @@
 - **Units.** Every length is in PDF points (1/72 in). Percentages
   (`"50%"`) are allowed only where the type says `Length` or
   `LengthPercent`; they resolve against the containing block (width for
-  padding and horizontal properties, as in CSS).
+  padding and horizontal properties, as in CSS). Gaps resolve against the
+  box's own content box, and a percentage height needs a containing block
+  with a set height: the page content box, for a child of the page.
 - **Colours.** `[r, g, b, a]` floats in `[0, 1]`, DeviceRGB.
 - **Strictness.** Unknown properties are errors (`UNKNOWN_FIELD`), as are
   properties on the wrong node type (e.g. `runs` on a `box`) and text-only
@@ -146,13 +148,13 @@ Type: `string` matching `^0*([0-9]{1,6}(\.[0-9]+)?|1000000(\.0+)?)fr$`
 
 ### Length
 
-Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto".
+Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto". A percentage height needs a containing block with a definite height, as in CSS: a child of the page takes it of the page content height; in a header or footer, or in a box whose height is not set, it is `auto`.
 
 Type: `number` or [`Percent`](#percent) or `"auto"`
 
 ### LengthPercent
 
-Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).
+Points (within ±1000000) or a percentage of the containing block's width (within ±10000%). In `gap`, `rowGap` and `columnGap`, a percentage is of the box's own content box instead, as in CSS: a column gap of its width, a row gap of its height.
 
 Type: `number` or [`Percent`](#percent)
 
@@ -228,7 +230,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 | `before` | `"auto"` \| `"page"` |  | default `"auto"` |
 | `after` | `"auto"` \| `"page"` |  | default `"auto"` |
 | `inside` | `"auto"` \| `"avoid"` |  | default `"auto"` |
-| `minPresenceAhead` | [`NonNegative`](#nonnegative) |  |  |
+| `minPresenceAhead` | [`NonNegative`](#nonnegative) |  | Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: "page"` on a first child moves the box the same way. |
 | `fixed` | `boolean` |  | default `false`; Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page. |
 
 ### GridPlacement
@@ -280,7 +282,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `flexShrink` | [`NonNegative`](#nonnegative) |  |  |
 | `flexBasis` | [`Length`](#length) |  |  |
 | `gap` | [`LengthPercent`](#lengthpercent) |  | Sets both rowGap and columnGap; either of those, when present, wins. |
-| `rowGap` | [`LengthPercent`](#lengthpercent) |  |  |
+| `rowGap` | [`LengthPercent`](#lengthpercent) |  | A percentage is of the box's own content height, as in CSS. In a box whose height is not set, it is of the height of the content without the gaps, so it adds little: use points. |
 | `columnGap` | [`LengthPercent`](#lengthpercent) |  |  |
 | `width` | [`Length`](#length) |  |  |
 | `height` | [`Length`](#length) |  |  |
@@ -292,7 +294,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `padding` | [`EdgesLengthPercent`](#edgeslengthpercent) |  |  |
 | `margin` | [`EdgesLength`](#edgeslength) |  |  |
 | `position` | `"relative"` \| `"absolute"` |  | default `"relative"` |
-| `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. |
+| `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it. |
 | `gridTemplateColumns` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateRows` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. |
@@ -321,7 +323,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `ellipsis` | `boolean` |  | text nodes only; requires maxLines |
 | `hyphenate` | `boolean` |  | text nodes only |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
-| `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. |
+| `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` expand a tab to the next multiple of 8 characters from the start of the line (CSS `tab-size: 8`). |
 | `textIndent` | `number` |  | ≥ -10000, ≤ 10000; text nodes only; indent of the first line in points (negative: hanging indent) |
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |

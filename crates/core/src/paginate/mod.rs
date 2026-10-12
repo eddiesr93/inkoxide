@@ -10,10 +10,14 @@
 //!
 //! Rules:
 //! - `break.before/after: page` and `pageBreak` nodes force a new page
-//!   (never an empty one).
+//!   (never an empty one). A box that splits between its children takes
+//!   the forced break before its first in-flow child, as in CSS.
 //! - A node whose first unbreakable piece (its *head*) does not fit in the
 //!   rest of the page moves whole to the next page, so a box never leaves
-//!   just its top border/padding behind. `minPresenceAhead` raises the head.
+//!   just its top border/padding behind. `minPresenceAhead` raises the head,
+//!   measured from the node's top; a box's head includes its first child's.
+//!   A table's head is its header rows and first row group, or only the
+//!   first lines of a first row that splits.
 //! - Atomic nodes (`inside: avoid`, row/grid/reversed boxes, images,
 //!   spacers, positioned, rotated or fixed nodes) move
 //!   whole; taller than a page, they are sliced (with a warning).
@@ -313,6 +317,16 @@ impl Paginator<'_, '_, '_> {
                 };
                 let Rect { y: cy, .. } = g.content_box();
                 let first_body = t.groups.iter().find(|r| r.start >= t.header_rows);
+                // A first row taller than a page splits inside its cells
+                // (`split_table`): only the first line of each cell counts.
+                if let Some(r) = first_body.filter(|r| {
+                    r.len() == 1 && t.row_h[r.start] + t.header_height() > self.h + PAGED_EPS
+                }) {
+                    if let Some(row) = self.tree.children(i).nth(r.start) {
+                        let ry = self.tree.nodes[row as usize].geo.y;
+                        return (ry - g.y) + self.row_head(row);
+                    }
+                }
                 let end = first_body.map_or(t.row_y.len(), |r| r.end);
                 let bottom = if end == 0 {
                     0.0
@@ -326,13 +340,50 @@ impl Paginator<'_, '_, '_> {
                 match first {
                     Some(c) => {
                         let cy = self.tree.nodes[c as usize].geo.y;
-                        (cy - g.y) + self.head(c)
+                        (cy - g.y) + self.need(c)
                     }
                     None => g.h,
                 }
             }
             _ => g.h,
         }
+    }
+
+    /// Room node `i` needs from its top to stay on the page: its head,
+    /// or its `minPresenceAhead` when taller.
+    fn need(&mut self, i: NodeIdx) -> f32 {
+        let mpa = self.tree.nodes[i as usize]
+            .node
+            .and_then(|n| n.brk.min_presence_ahead);
+        self.head(i).max(mpa.unwrap_or(0.0))
+    }
+
+    /// The first in-flow child of `i`, when `i` is a box that splits
+    /// between its children: its forced break is the box's own.
+    fn first_in_flow(&self, i: NodeIdx) -> Option<NodeIdx> {
+        let node = self.tree.nodes[i as usize].node?;
+        if !matches!(node.kind, NodeKind::Box { .. }) || Self::atomic(node) {
+            return None;
+        }
+        self.tree.children(i).find(|&c| self.in_flow(c))
+    }
+
+    /// Whether node `i` starts with a forced page break: its own, or its
+    /// first in-flow child's, which a box takes, as CSS propagates
+    /// `break-before`.
+    fn breaks_before(&self, i: NodeIdx) -> bool {
+        let Some(node) = self.tree.nodes[i as usize].node else {
+            return false;
+        };
+        node.brk.before == BreakMode::Page
+            || matches!(node.kind, NodeKind::PageBreak)
+            || self.first_in_flow(i).is_some_and(|c| self.breaks_before(c))
+    }
+
+    /// Whether the parent of node `i` already took `i`'s forced break.
+    fn break_taken(&self, i: NodeIdx) -> bool {
+        let parent = self.tree.nodes[i as usize].parent;
+        parent != i && self.first_in_flow(parent) == Some(i)
     }
 
     /// Children that take part in pagination (not absolutely positioned,
@@ -355,17 +406,16 @@ impl Paginator<'_, '_, '_> {
             self.set_subtree(i);
             return;
         }
-        if matches!(node.kind, NodeKind::PageBreak) {
+        if self.breaks_before(i) && !self.break_taken(i) {
             self.push(g.y + self.shift);
+        }
+        if matches!(node.kind, NodeKind::PageBreak) {
             self.set_subtree(i);
             return;
         }
-        if node.brk.before == BreakMode::Page {
-            self.push(g.y + self.shift);
-        }
 
         let top = g.y + self.shift;
-        let need = self.head(i).max(node.brk.min_presence_ahead.unwrap_or(0.0));
+        let need = self.need(i);
         if top + need > self.page_end(top) + PAGED_EPS {
             self.push(top);
         }

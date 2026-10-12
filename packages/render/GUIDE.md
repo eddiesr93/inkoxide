@@ -61,6 +61,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
   `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
   percentage. A page's `size` takes the units that do not depend on the font or the page.
+  Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
+  the element's own size. A percentage height needs a parent with a set height; a child of the
+  `Page` takes it of the page.
 - **Arrays.** Falsy entries are skipped and later entries win.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
   `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,

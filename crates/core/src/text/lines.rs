@@ -179,6 +179,36 @@ pub(crate) fn break_lines(
     }
 }
 
+/// Widest unbreakable piece of a paragraph, first-line indent included. A
+/// piece that ends at a hyphenation point includes the hyphen shown there.
+pub(crate) fn min_content(
+    p: &Prepared,
+    runs: &[TextRun],
+    style: &ParaStyle,
+    fonts: &FontSet<'_>,
+) -> f32 {
+    let mut min_content = 0.0f32;
+    let mut start = 0usize;
+    let ends = p
+        .breaks
+        .iter()
+        .map(|b| (b.glyph as usize, b.kind))
+        .chain(std::iter::once((p.glyphs.len(), BreakKind::Mandatory)));
+    for (end, kind) in ends {
+        let mut e = end;
+        while e > start && p.glyphs[e - 1].flags & (GLYPH_SPACE | GLYPH_INVISIBLE) != 0 {
+            e -= 1;
+        }
+        let mut w: f32 = p.glyphs[start..e].iter().map(|g| g.advance).sum();
+        if kind == BreakKind::Hyphen && e > start {
+            w += hyphen_for(p, fonts, runs, end).map_or(0.0, |h| h.advance);
+        }
+        min_content = min_content.max(w);
+        start = end;
+    }
+    min_content + style.indent.max(0.0)
+}
+
 /// The hyphen shown when breaking before glyph `at`, in the font of the
 /// glyph before it.
 fn hyphen_for(
