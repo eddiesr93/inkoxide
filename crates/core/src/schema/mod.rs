@@ -96,6 +96,44 @@ pub struct Edges<T: Default> {
     pub left: T,
 }
 
+impl<T: Default + Copy> Edges<T> {
+    /// The same value on every side.
+    pub fn all(v: T) -> Self {
+        Self {
+            top: v,
+            right: v,
+            bottom: v,
+            left: v,
+        }
+    }
+
+    /// `[top, right, bottom, left]`, for loops over the sides.
+    pub fn to_array(self) -> [T; 4] {
+        [self.top, self.right, self.bottom, self.left]
+    }
+
+    pub fn map<U: Default>(self, f: impl Fn(T) -> U) -> Edges<U> {
+        Edges {
+            top: f(self.top),
+            right: f(self.right),
+            bottom: f(self.bottom),
+            left: f(self.left),
+        }
+    }
+}
+
+impl<T: Default> From<[T; 4]> for Edges<T> {
+    /// From `[top, right, bottom, left]`.
+    fn from([top, right, bottom, left]: [T; 4]) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct PageSpec {

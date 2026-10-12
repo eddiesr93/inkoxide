@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::layout::{LayoutEngine, NoContent, TaffyLayout};
+use crate::paint::Rect;
 use crate::schema::Document;
 use crate::InputFormat;
 
@@ -247,7 +248,7 @@ fn text_splits_between_lines() {
 
     let node = tree.nodes[2].node.unwrap();
     let g = tree.nodes[2].geo;
-    let (_, cy, cw, _) = g.content_box();
+    let Rect { y: cy, w: cw, .. } = g.content_box();
     let layout = cache.layout(node, cw).unwrap();
     let shifts = &p.line_shifts[2];
     assert_eq!(
@@ -299,7 +300,7 @@ fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
         .unwrap();
     let p = paginate(&tree, H, &mut cache);
     let node = tree.nodes[2].node.unwrap();
-    let (_, cy, cw, _) = tree.nodes[2].geo.content_box();
+    let Rect { y: cy, w: cw, .. } = tree.nodes[2].geo.content_box();
     let layout = cache.layout(node, cw).unwrap();
     let shifts = &p.line_shifts[2];
     if shifts.is_empty() {
@@ -394,7 +395,7 @@ fn horizontal_padding_narrows_measured_text() {
     TaffyLayout
         .compute(&mut tree, 200.0, H, &mut cache)
         .unwrap();
-    let (_, _, cw, ch) = tree.nodes[1].geo.content_box();
+    let Rect { w: cw, h: ch, .. } = tree.nodes[1].geo.content_box();
     assert!((cw - 96.0).abs() < 0.01);
     let layout = cache.layout(tree.nodes[1].node.unwrap(), cw).unwrap();
     assert!(

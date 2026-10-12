@@ -24,6 +24,7 @@ pub(crate) use decode::{
 };
 pub(crate) use probe::{probe, ProbeError};
 
+use crate::paint::Rect;
 use crate::schema::{
     ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,
 };
@@ -248,7 +249,7 @@ impl ImageSet {
         ctx: &crate::paint::ContentCtx<'_>,
         ops: &mut Vec<crate::paint::Op>,
     ) {
-        use crate::paint::{Op, Rect};
+        use crate::paint::Op;
         let NodeKind::Image {
             fit,
             object_position,
@@ -260,15 +261,20 @@ impl ImageSet {
         let (Some(key), Some(intrinsic)) = (self.key(node), self.intrinsic(node)) else {
             return;
         };
-        let (cx, cy, cw, ch) = geo.content_box();
+        let Rect {
+            x: cx,
+            y: cy,
+            w: cw,
+            h: ch,
+        } = geo.content_box();
         if cw <= 0.0 || ch <= 0.0 {
             return;
         }
-        let bx = (cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
+        let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
         let (rect, clip) = fit_rect(*fit, *object_position, bx, intrinsic);
         ops.push(Op::Save);
         if clip {
-            ops.push(Op::ClipRect(Rect::new(bx.0, bx.1, bx.2, bx.3)));
+            ops.push(Op::ClipRect(bx));
         }
         ops.push(Op::Image {
             key,
@@ -278,23 +284,24 @@ impl ImageSet {
     }
 }
 
-/// Placement of an image inside a content box `(x, y, w, h)`: the drawn
-/// rectangle and whether it must be clipped to the box. `fit` sizes the
-/// image and `objectPosition` places it; `fill` covers the box and ignores
-/// the position.
+/// Placement of an image inside a content box: the drawn rectangle and
+/// whether it must be clipped to the box. `fit` sizes the image and
+/// `objectPosition` places it; `fill` covers the box and ignores the
+/// position.
 pub(crate) fn fit_rect(
     fit: ImageFit,
     position: ObjectPosition,
-    (x, y, w, h): (f32, f32, f32, f32),
+    bx: Rect,
     (iw, ih): (f32, f32),
-) -> ((f32, f32, f32, f32), bool) {
+) -> (Rect, bool) {
     /// Overflow below this (points) is rounding, not worth a clip.
     const EPS: f32 = 1e-3;
+    let Rect { x, y, w, h } = bx;
     if iw <= 0.0 || ih <= 0.0 {
-        return ((x, y, w, h), false);
+        return (bx, false);
     }
     let (dw, dh) = match fit {
-        ImageFit::Fill => return ((x, y, w, h), false),
+        ImageFit::Fill => return (bx, false),
         ImageFit::Contain => {
             let s = (w / iw).min(h / ih);
             (iw * s, ih * s)
@@ -312,7 +319,7 @@ pub(crate) fn fit_rect(
         || ry < y - EPS
         || rx + dw > x + w + EPS
         || ry + dh > y + h + EPS;
-    ((rx, ry, dw, dh), clip)
+    (Rect::new(rx, ry, dw, dh), clip)
 }
 
 /// Start of an image along one axis: the box's start plus the offset.
@@ -337,9 +344,10 @@ fn offset(p: LengthPercent, free: f32) -> f32 {
     }
 }
 
-/// Transform mapping the image unit square onto `(x, y, w, h)` in layout
-/// space (y down), honouring the EXIF orientation (1–8).
-pub(crate) fn image_matrix(orientation: u8, (x, y, w, h): (f32, f32, f32, f32)) -> [f32; 6] {
+/// Transform mapping the image unit square onto `rect` in layout space
+/// (y down), honouring the EXIF orientation (1–8).
+pub(crate) fn image_matrix(orientation: u8, rect: Rect) -> [f32; 6] {
+    let Rect { x, y, w, h } = rect;
     // Display coords (s, t) as affine functions of stored-pixel coords
     // (a, b), both normalised with y down: s = sa·a + sb·b + s0, likewise t.
     let (sa, sb, s0, ta, tb, t0) = match orientation {

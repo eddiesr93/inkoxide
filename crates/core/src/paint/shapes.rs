@@ -1,6 +1,7 @@
 //! Path construction: rectangles, rounded rectangles, border rings.
 
-use super::{Path, PathSeg};
+use super::{Path, PathSeg, Rect};
+use crate::schema::Edges;
 
 /// Bézier circle approximation constant.
 const KAPPA: f32 = 0.552_284_8;
@@ -39,9 +40,14 @@ pub(crate) fn is_square(radii: &Radii) -> bool {
     radii.iter().all(|&(rx, ry)| rx <= 0.0 || ry <= 0.0)
 }
 
-/// Inner radii of a ring whose edges are inset by `[top, right, bottom, left]`.
-pub(crate) fn inset_radii(radii: &Radii, inset: [f32; 4]) -> Radii {
-    let [t, r, b, l] = inset;
+/// Inner radii of a ring whose edges are inset by `inset`.
+pub(crate) fn inset_radii(radii: &Radii, inset: Edges<f32>) -> Radii {
+    let Edges {
+        top: t,
+        right: r,
+        bottom: b,
+        left: l,
+    } = inset;
     let sub = |(rx, ry): (f32, f32), dx: f32, dy: f32| ((rx - dx).max(0.0), (ry - dy).max(0.0));
     [
         sub(radii[0], l, t),
@@ -52,7 +58,8 @@ pub(crate) fn inset_radii(radii: &Radii, inset: [f32; 4]) -> Radii {
 }
 
 /// Appends a clockwise (in y-down space) rounded rectangle.
-pub(crate) fn push_rounded_rect(p: &mut Path, x: f32, y: f32, w: f32, h: f32, radii: &Radii) {
+pub(crate) fn push_rounded_rect(p: &mut Path, rect: Rect, radii: &Radii) {
+    let Rect { x, y, w, h } = rect;
     let segs = &mut p.segs;
     if is_square(radii) {
         segs.extend([
@@ -114,9 +121,9 @@ pub(crate) fn push_rounded_rect(p: &mut Path, x: f32, y: f32, w: f32, h: f32, ra
     segs.push(PathSeg::Close);
 }
 
-pub(crate) fn rounded_rect(x: f32, y: f32, w: f32, h: f32, radii: &Radii) -> Path {
+pub(crate) fn rounded_rect(rect: Rect, radii: &Radii) -> Path {
     let mut p = Path::default();
-    push_rounded_rect(&mut p, x, y, w, h, radii);
+    push_rounded_rect(&mut p, rect, radii);
     p
 }
 
@@ -145,13 +152,16 @@ mod tests {
 
     #[test]
     fn square_rect_has_four_lines() {
-        let p = rounded_rect(0.0, 0.0, 10.0, 5.0, &NO_RADII);
+        let p = rounded_rect(Rect::new(0.0, 0.0, 10.0, 5.0), &NO_RADII);
         assert_eq!(p.segs.len(), 5);
     }
 
     #[test]
     fn rounded_rect_has_four_arcs() {
-        let p = rounded_rect(0.0, 0.0, 10.0, 10.0, &uniform_radii(3.0, 10.0, 10.0));
+        let p = rounded_rect(
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            &uniform_radii(3.0, 10.0, 10.0),
+        );
         let arcs = p
             .segs
             .iter()
@@ -179,7 +189,8 @@ mod tests {
 
     #[test]
     fn inset_radii_never_negative() {
-        let r = inset_radii(&uniform_radii(4.0, 100.0, 100.0), [10.0, 1.0, 1.0, 1.0]);
+        let inset = Edges::from([10.0, 1.0, 1.0, 1.0]);
+        let r = inset_radii(&uniform_radii(4.0, 100.0, 100.0), inset);
         assert_eq!(r[0], (3.0, 0.0));
         assert_eq!(r[2], (3.0, 3.0));
     }

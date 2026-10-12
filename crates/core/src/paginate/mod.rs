@@ -20,6 +20,7 @@
 //! - Column boxes split between children; text splits between lines.
 
 use crate::layout::{NodeIdx, Tree};
+use crate::paint::Rect;
 use crate::schema::{
     BreakMode, Display, FlexDirection, FlexWrap, InsideMode, Node, NodeKind, Position,
 };
@@ -91,9 +92,12 @@ impl Placement {
         page as f32 * self.page_h
     }
 
-    /// Paged y range `[top, bottom)` shown on page `page`.
-    pub fn window(&self, page: u32) -> (f32, f32) {
-        (self.page_top(page), self.page_top(page + 1))
+    /// The paged y range shown on page `page`.
+    pub fn window(&self, page: u32) -> PageWindow {
+        PageWindow {
+            top: self.page_top(page),
+            bottom: self.page_top(page + 1),
+        }
     }
 
     /// The first page of node `i`, and where flow y `y` of the node lands
@@ -101,6 +105,29 @@ impl Placement {
     pub fn locate(&self, i: NodeIdx, y: f32) -> (u32, f32) {
         let page = self.first_page(i);
         (page, y + self.shift(i) - self.page_top(page))
+    }
+}
+
+/// The paged y range `[top, bottom)` one page shows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PageWindow {
+    pub top: f32,
+    pub bottom: f32,
+}
+
+impl PageWindow {
+    /// Whether content from paged `top`, `height` high, misses the page:
+    /// it starts below it or ends above it, give or take a hair.
+    pub fn hides(self, top: f32, height: f32) -> bool {
+        /// Overlap (points) too thin to count as being on the page.
+        const HAIR: f32 = 0.01;
+        top >= self.bottom - HAIR || top + height <= self.top + HAIR
+    }
+
+    /// The part of `top..bottom` (page coordinates) shown on the page, for
+    /// a page whose paged y 0 is at page y `dy`.
+    pub fn clip(self, top: f32, bottom: f32, dy: f32) -> (f32, f32) {
+        (top.max(self.top + dy), bottom.min(self.bottom + dy))
     }
 }
 
@@ -266,7 +293,7 @@ impl Paginator<'_, '_, '_> {
         }
         match &node.kind {
             NodeKind::Text { .. } => {
-                let (_, cy, cw, _) = g.content_box();
+                let Rect { y: cy, w: cw, .. } = g.content_box();
                 let (orphans, widows) = Self::orphans_widows(node);
                 match self.lines.lines(node, cw) {
                     // Too short to leave `orphans` and carry `widows` lines:
@@ -283,7 +310,7 @@ impl Paginator<'_, '_, '_> {
                 let Some(t) = self.tree.tables.get(&i).cloned() else {
                     return g.h;
                 };
-                let (_, cy, _, _) = g.content_box();
+                let Rect { y: cy, .. } = g.content_box();
                 let first_body = t.groups.iter().find(|r| r.start >= t.header_rows);
                 let end = first_body.map_or(t.row_y.len(), |r| r.end);
                 let bottom = if end == 0 {
@@ -501,7 +528,7 @@ impl Paginator<'_, '_, '_> {
     /// keeps `orphans` lines (CSS Fragmentation §4.4).
     fn split_text(&mut self, i: NodeIdx, node: &Node) {
         let g = self.tree.nodes[i as usize].geo;
-        let (_, cy, cw, _) = g.content_box();
+        let Rect { y: cy, w: cw, .. } = g.content_box();
         let Some(layout) = self.lines.lines(node, cw) else {
             return;
         };

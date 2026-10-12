@@ -69,8 +69,8 @@ fn borders_take_space_and_positions_are_absolute() {
         .unwrap();
     let outer = tree.nodes[1].geo;
     assert_eq!((outer.y, outer.h), (7.0, 15.0));
-    assert_eq!(outer.border, [3.0, 0.0, 0.0, 4.0]);
-    assert_eq!(outer.content_box(), (5.0, 12.0, 95.0, 10.0));
+    assert_eq!(outer.border, Edges::from([3.0, 0.0, 0.0, 4.0]));
+    assert_eq!(outer.content_box(), Rect::new(5.0, 12.0, 95.0, 10.0));
     let inner = tree.nodes[2].geo;
     assert_eq!((inner.x, inner.y, inner.w), (5.0, 12.0, 95.0));
 }

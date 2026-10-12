@@ -73,12 +73,15 @@ pub(crate) fn paint(
     fonts: &FontSet<'_>,
     ops: &mut Vec<Op>,
 ) {
-    let (cx, cy, cw, ch) = geo.content_box();
+    let Rect {
+        x: cx,
+        y: cy,
+        w: cw,
+        h: ch,
+    } = geo.content_box();
     let top = cy + ctx.shift;
-    if let Some((w0, w1)) = ctx.window {
-        if top >= w1 - 0.01 || top + ch <= w0 + 0.01 {
-            return;
-        }
+    if ctx.window.is_some_and(|w| w.hides(top, ch)) {
+        return;
     }
     let rect = Rect::new(cx + ctx.dx, top + ctx.dy, cw.max(0.0), ch.max(0.0));
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
