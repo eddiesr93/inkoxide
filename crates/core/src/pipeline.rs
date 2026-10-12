@@ -3,11 +3,12 @@
 use std::collections::HashMap;
 
 use rayon::prelude::*;
-use taffy::{AvailableSpace, Size as TSize};
 
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
-use crate::layout::{Geometry, LayoutEngine, LeafMeasure, NodeIdx, TaffyLayout, Tree};
+use crate::layout::{
+    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Size, TaffyLayout, Tree,
+};
 use crate::paginate::{paginate, Placement, PAGED_EPS};
 use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
 use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
@@ -56,9 +57,9 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     fn measure(
         &mut self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
@@ -338,9 +339,9 @@ fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Nod
             .tables
             .get(&ln.parent)
             .is_some_and(|t| i - (tree.nodes[parent].children.start as usize) < t.header_rows);
-        let fixed = ln.node.is_some_and(|n| n.brk.fixed);
+        let fixed = ln.node().is_some_and(|n| n.brk.fixed);
         repeated[i] = repeated[parent] || header_row || fixed;
-        let Some(node) = ln.node else {
+        let Some(node) = ln.node() else {
             continue;
         };
         if repeated[i] || ln.style().display == Some(Display::None) {
@@ -409,7 +410,7 @@ fn subtree_marks<'d>(
             continue;
         }
         stack.extend(tree.children(i).rev());
-        let Some(node) = ln.node else {
+        let Some(node) = ln.node() else {
             continue;
         };
         if node.id.is_none() && node.bookmark.is_none() {

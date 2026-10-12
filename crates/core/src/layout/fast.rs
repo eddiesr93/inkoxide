@@ -4,9 +4,7 @@
 //! layout is closed-form; building a Taffy tree per cell would dominate
 //! the layout of large tables. Anything else goes to Taffy.
 
-use taffy::prelude::{AvailableSpace, Size as TSize};
-
-use super::{CellSpace, Geometry, LeafMeasure, NodeIdx, SubLayout, Tree};
+use super::{AvailableSpace, CellSpace, Geometry, LeafMeasure, NodeIdx, Size, SubLayout, Tree};
 use crate::schema::{
     AlignItems, AlignSelf, Display, Edges, FlexDirection, FlexWrap, LengthPercent, NodeKind, Style,
     VerticalAlign,
@@ -24,7 +22,7 @@ pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, Edg
         return None;
     }
     let child = ln.children.start;
-    let node = tree.nodes[child as usize].node?;
+    let node = tree.nodes[child as usize].node()?;
     if !matches!(node.kind, NodeKind::Text { .. }) || !plain_item(&node.style) {
         return None;
     }
@@ -102,7 +100,7 @@ pub(super) fn cell(
         height,
         insets,
     } = space;
-    let node = tree.nodes[child as usize].node?;
+    let node = tree.nodes[child as usize].node()?;
     let edge_w = pad.right + pad.left + insets.right + insets.left;
     let edge_h = pad.top + pad.bottom + insets.top + insets.bottom;
     let (w, text) = match width {
@@ -113,22 +111,22 @@ pub(super) fn cell(
             }
             let t = leaves.measure(
                 node,
-                TSize {
+                Size {
                     width: Some(inner),
                     height: None,
                 },
-                TSize {
+                Size {
                     width: AvailableSpace::Definite(inner),
                     height: AvailableSpace::MaxContent,
                 },
             );
-            (w, TSize { width: inner, ..t })
+            (w, Size { width: inner, ..t })
         }
         mode => {
             let t = leaves.measure(
                 node,
-                TSize::NONE,
-                TSize {
+                Size::NONE,
+                Size {
                     width: mode,
                     height: AvailableSpace::MaxContent,
                 },
@@ -175,7 +173,7 @@ pub(super) fn cell(
         ));
     }
     Some(SubLayout {
-        size: TSize {
+        size: Size {
             width: w,
             height: h,
         },

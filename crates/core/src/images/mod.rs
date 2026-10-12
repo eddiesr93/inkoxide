@@ -17,13 +17,12 @@ mod tests;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, OnceLock};
 
-use taffy::{AvailableSpace, Size as TSize};
-
 pub(crate) use decode::{
     DecodedImage, ImageBody, ImageCrateDecoder, ImageDecoder, JpegColor, RawColor,
 };
 pub(crate) use probe::{probe, ProbeError};
 
+use crate::layout::{AvailableSpace, Size};
 use crate::paint::Rect;
 use crate::schema::{
     ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,
@@ -208,11 +207,11 @@ impl ImageSet {
     pub fn measure(
         &self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
         let Some((iw, ih)) = self.intrinsic(node) else {
-            return TSize::ZERO;
+            return Size::ZERO;
         };
         let ratio = if ih > 0.0 { iw / ih } else { 1.0 };
         let (w, h) = match (known.width, known.height) {
@@ -227,7 +226,7 @@ impl ImageSet {
                 _ => (iw, ih),
             },
         };
-        TSize {
+        Size {
             width: w,
             height: h,
         }

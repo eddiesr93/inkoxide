@@ -19,12 +19,10 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
-use taffy::prelude::{AvailableSpace, Size as TSize};
-
 pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
-use crate::layout::LeafMeasure;
+use crate::layout::{width_key, AvailableSpace, LeafMeasure, Size};
 use crate::schema::{Direction, Node, NodeKind, Style, TextAlign, TextRun, WhiteSpace};
 use crate::InkoxideError;
 
@@ -313,16 +311,6 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
     }
 }
 
-/// Cache key of a layout width. Exact: bucketing could round below a
-/// min-content width and change line breaks.
-fn width_key(w: f32) -> u32 {
-    if w.is_finite() {
-        w.max(0.0).to_bits()
-    } else {
-        u32::MAX
-    }
-}
-
 struct Entry {
     style: ParaStyle,
     prepared: Prepared,
@@ -399,8 +387,8 @@ impl Entry {
 /// A text leaf's size from its lines at `width`. Taffy's `known` is the
 /// border box; the width it makes available is already the content box
 /// (the known width minus padding and border).
-fn leaf_size(l: &LineLayout, known: TSize<Option<f32>>, width: f32) -> TSize<f32> {
-    TSize {
+fn leaf_size(l: &LineLayout, known: Size<Option<f32>>, width: f32) -> Size<f32> {
+    Size {
         width: known.width.unwrap_or(l.width.min(width.max(0.0))),
         height: known.height.unwrap_or(l.height),
     }
@@ -591,15 +579,15 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
     fn measure_text(
         &mut self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
         let NodeKind::Text { runs } = &node.kind else {
-            return TSize::ZERO;
+            return Size::ZERO;
         };
         self.entry(node, runs);
         let Some(entry) = self.entries.get_mut(&node_key(node)) else {
-            return TSize::ZERO;
+            return Size::ZERO;
         };
         let width = entry.width_in(available.width);
         leaf_size(&entry.layout(&self.shaper, runs, width), known, width)
@@ -610,12 +598,12 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
     fn measure(
         &mut self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
         match node.kind {
             NodeKind::Text { .. } => self.measure_text(node, known, available),
-            _ => TSize::ZERO,
+            _ => Size::ZERO,
         }
     }
 }
@@ -661,16 +649,16 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
     fn measure(
         &mut self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
         let NodeKind::Text { runs } = &node.kind else {
-            return TSize::ZERO;
+            return Size::ZERO;
         };
         let key = node_key(node);
         // Every header and footer paragraph was shaped before layout.
         let Some(shared) = self.cache.entries.get(&key) else {
-            return TSize::ZERO;
+            return Size::ZERO;
         };
         let shaper = &self.cache.shaper;
         if !shared.prepared.placeholders {

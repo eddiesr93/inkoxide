@@ -299,7 +299,7 @@ fn text_splits_between_lines() {
         .unwrap();
     let p = paginate(&tree, H, &mut cache);
 
-    let node = tree.nodes[2].node.unwrap();
+    let node = tree.nodes[2].node().unwrap();
     let g = tree.nodes[2].geo;
     let Rect { y: cy, w: cw, .. } = g.content_box();
     let layout = cache.layout(node, cw).unwrap();
@@ -346,7 +346,7 @@ fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
         .compute(&mut tree, 200.0, H, &mut cache)
         .unwrap();
     let p = paginate(&tree, H, &mut cache);
-    let node = tree.nodes[2].node.unwrap();
+    let node = tree.nodes[2].node().unwrap();
     let Rect { y: cy, w: cw, .. } = tree.nodes[2].geo.content_box();
     let layout = cache.layout(node, cw).unwrap();
     let shifts = &p.line_shifts[2];
@@ -438,7 +438,7 @@ fn horizontal_padding_narrows_measured_text() {
         .unwrap();
     let Rect { w: cw, h: ch, .. } = tree.nodes[1].geo.content_box();
     assert!((cw - 96.0).abs() < 0.01);
-    let layout = cache.layout(tree.nodes[1].node.unwrap(), cw).unwrap();
+    let layout = cache.layout(tree.nodes[1].node().unwrap(), cw).unwrap();
     assert!(
         (ch - layout.height).abs() < 0.01,
         "box {ch} vs lines {}",
@@ -663,7 +663,7 @@ fn check_lines(children: &str) -> u32 {
         .unwrap();
     let p = paginate(&tree, H, &mut cache);
     for i in 0..tree.nodes.len() as NodeIdx {
-        let Some(node) = tree.nodes[i as usize].node else {
+        let Some(node) = tree.nodes[i as usize].node() else {
             continue;
         };
         if !matches!(node.kind, NodeKind::Text { .. }) {

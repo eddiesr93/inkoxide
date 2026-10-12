@@ -20,19 +20,11 @@
 // Grid code walks parallel arrays by index; iterators would obscure it.
 #![allow(clippy::needless_range_loop)]
 
-use taffy::prelude::AvailableSpace;
-
-use super::{LayoutCtx, NodeIdx, Part, Tree};
+use super::{AvailableSpace, LayoutCtx, NodeIdx, Part, Tree};
 use crate::schema::{
     BorderCollapse, BorderStyle, Color, ColumnWidth, Edges, NodeKind, Table, BLACK,
 };
 use crate::InkoxideError;
-
-// Indices into `[top, right, bottom, left]` arrays.
-const TOP: usize = 0;
-const RIGHT: usize = 1;
-const BOTTOM: usize = 2;
-const LEFT: usize = 3;
 
 /// A cell's box, relative to the table's content box.
 #[derive(Debug, Clone)]
@@ -97,18 +89,49 @@ impl TableLayout {
     }
 }
 
+/// A cell's place in the grid.
+#[derive(Debug, Clone, Copy)]
+struct GridCell {
+    idx: NodeIdx,
+    row: usize,
+    col: usize,
+    row_span: usize,
+    col_span: usize,
+}
+
 /// Structure of a table independent of sizes: cell positions in the grid
 /// and resolved collapsed borders.
 struct Grid {
     cols: usize,
     rows: usize,
-    /// (arena idx, row, col, `row_span`, `col_span`) in document order.
-    cells: Vec<(NodeIdx, usize, usize, usize, usize)>,
+    /// In document order.
+    cells: Vec<GridCell>,
     h_edges: Vec<HEdge>,
     v_edges: Vec<VEdge>,
     /// Edge widths by slot: `h_w[line * cols + col]`, `v_w[line * rows + row]`.
     h_w: Vec<f32>,
     v_w: Vec<f32>,
+}
+
+/// A side of a cell.
+#[derive(Debug, Clone, Copy)]
+enum Side {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+impl Side {
+    /// This side's value of `[top, right, bottom, left]`.
+    fn of<T>(self, [top, right, bottom, left]: [T; 4]) -> T {
+        match self {
+            Side::Top => top,
+            Side::Right => right,
+            Side::Bottom => bottom,
+            Side::Left => left,
+        }
+    }
 }
 
 /// One cell's border on one side.
@@ -153,25 +176,31 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
                     owner[rr][cc] = Some(k);
                 }
             }
-            cells.push((cell_idx, r, c, rs, cs));
+            cells.push(GridCell {
+                idx: cell_idx,
+                row: r,
+                col: c,
+                row_span: rs,
+                col_span: cs,
+            });
             c += cs;
         }
     }
 
-    let border = |k: usize, side: usize| -> Border {
-        let s = tree.nodes[cells[k].0 as usize].style();
+    let border = |k: usize, side: Side| -> Border {
+        let s = tree.nodes[cells[k].idx as usize].style();
         Border {
-            width: s.border_width.map_or(0.0, |b| b.get(0.0)[side]),
+            width: s.border_width.map_or(0.0, |b| side.of(b.get(0.0))),
             style: s
                 .border_style
-                .map_or(BorderStyle::Solid, |b| b.sides()[side]),
-            color: s.border_color.map_or(BLACK, |b| b.get(BLACK)[side]),
+                .map_or(BorderStyle::Solid, |b| side.of(b.sides())),
+            color: s.border_color.map_or(BLACK, |b| side.of(b.get(BLACK))),
         }
     };
     // CSS conflict resolution: the wider border wins, then the higher
     // ranked style; on a full tie the later cell (document order) wins.
     let rank = |b: &Border| (b.width, style_rank(b.style));
-    let resolve = |a: Option<(usize, usize)>, b: Option<(usize, usize)>| -> Option<Border> {
+    let resolve = |a: Option<(usize, Side)>, b: Option<(usize, Side)>| -> Option<Border> {
         let ca = a.map(|(k, s)| (k, border(k, s)));
         let cb = b.map(|(k, s)| (k, border(k, s)));
         let best = match (ca, cb) {
@@ -200,7 +229,10 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
             if above.is_some() && above == below {
                 continue; // inside a row span
             }
-            if let Some(b) = resolve(above.map(|k| (k, BOTTOM)), below.map(|k| (k, TOP))) {
+            if let Some(b) = resolve(
+                above.map(|k| (k, Side::Bottom)),
+                below.map(|k| (k, Side::Top)),
+            ) {
                 h_edges.push(HEdge {
                     line,
                     col: c,
@@ -221,12 +253,15 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
             let span_rows = [left, right]
                 .iter()
                 .flatten()
-                .map(|&k| cells[k].1 + cells[k].3 - r)
+                .map(|&k| cells[k].row + cells[k].row_span - r)
                 .min()
                 .unwrap_or(1)
                 .max(1);
             if left.is_none() || left != right {
-                if let Some(b) = resolve(left.map(|k| (k, RIGHT)), right.map(|k| (k, LEFT))) {
+                if let Some(b) = resolve(
+                    left.map(|k| (k, Side::Right)),
+                    right.map(|k| (k, Side::Left)),
+                ) {
                     v_edges.push(VEdge {
                         line,
                         row: r,
@@ -264,7 +299,14 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
 }
 
 /// Collapsed border space a cell reserves: full outer edges, half inner.
-fn insets(g: &Grid, r: usize, c: usize, rs: usize, cs: usize) -> Edges<f32> {
+fn insets(g: &Grid, cell: &GridCell) -> Edges<f32> {
+    let GridCell {
+        row: r,
+        col: c,
+        row_span: rs,
+        col_span: cs,
+        ..
+    } = *cell;
     let h = |line: usize| -> f32 {
         let outer = line == 0 || line == g.rows;
         let w = g.h_w[line * g.cols + c..line * g.cols + c + cs]
@@ -298,7 +340,7 @@ pub(crate) fn compute(
     idx: NodeIdx,
     space: AvailableSpace,
 ) -> Result<TableLayout, InkoxideError> {
-    let Some(NodeKind::Table(table)) = tree.nodes[idx as usize].node.map(|n| &n.kind) else {
+    let Some(NodeKind::Table(table)) = tree.nodes[idx as usize].node().map(|n| &n.kind) else {
         return Err(InkoxideError::Internal(
             "table layout on a non-table node".into(),
         ));
@@ -315,13 +357,13 @@ pub(crate) fn compute(
     let cell_insets: Vec<Edges<f32>> = g
         .cells
         .iter()
-        .map(|&(cidx, r, c, rs, cs)| {
+        .map(|cell| {
             if separate {
-                let s = tree.nodes[cidx as usize].style();
+                let s = tree.nodes[cell.idx as usize].style();
                 s.border_width
                     .map_or(Edges::default(), |b| b.get(0.0).into())
             } else {
-                insets(&g, r, c, rs, cs)
+                insets(&g, cell)
             }
         })
         .collect();
@@ -342,8 +384,9 @@ pub(crate) fn compute(
     // (min-content, max-content) per column from single-span cells.
     let mut content = vec![(0.0f32, 0.0f32); ncols];
     if needs_content {
-        for (k, &(cidx, _, c, _, cs)) in g.cells.iter().enumerate() {
-            if cs != 1 {
+        for (k, cell) in g.cells.iter().enumerate() {
+            let (cidx, c) = (cell.idx, cell.col);
+            if cell.col_span != 1 {
                 continue;
             }
             let wants = match table.columns[c].width {
@@ -441,21 +484,22 @@ pub(crate) fn compute(
     // A spanning cell also covers the spacing between its columns/rows.
     let span_w = |c: usize, cs: usize| col_w[c..c + cs].iter().sum::<f32>() + sp * (cs - 1) as f32;
     let mut cell_h = Vec::with_capacity(g.cells.len());
-    for (k, &(cidx, r, c, rs, cs)) in g.cells.iter().enumerate() {
+    for (k, cell) in g.cells.iter().enumerate() {
         let h = ctx
             .cell_size(
                 tree,
-                cidx,
-                AvailableSpace::Definite(span_w(c, cs)),
+                cell.idx,
+                AvailableSpace::Definite(span_w(cell.col, cell.col_span)),
                 cell_insets[k],
             )?
             .height;
-        if rs == 1 {
-            row_h[r] = row_h[r].max(h);
+        if cell.row_span == 1 {
+            row_h[cell.row] = row_h[cell.row].max(h);
         }
         cell_h.push(h);
     }
-    for (k, &(_, r, _, rs, _)) in g.cells.iter().enumerate() {
+    for (k, cell) in g.cells.iter().enumerate() {
+        let (r, rs) = (cell.row, cell.row_span);
         if rs > 1 {
             let have = row_h[r..r + rs].iter().sum::<f32>() + sp * (rs - 1) as f32;
             if cell_h[k] > have {
@@ -486,15 +530,18 @@ pub(crate) fn compute(
         .cells
         .iter()
         .enumerate()
-        .map(|(k, &(cidx, r, c, rs, cs))| CellBox {
-            idx: cidx,
-            row: r,
-            row_span: rs,
-            x: col_x[c],
-            y: row_y[r] + top_gap(r),
-            w: span_w(c, cs),
-            h: content_h[r..r + rs].iter().sum::<f32>() + sp * (rs - 1) as f32,
-            insets: cell_insets[k],
+        .map(|(k, cell)| {
+            let (r, rs) = (cell.row, cell.row_span);
+            CellBox {
+                idx: cell.idx,
+                row: r,
+                row_span: rs,
+                x: col_x[cell.col],
+                y: row_y[r] + top_gap(r),
+                w: span_w(cell.col, cell.col_span),
+                h: content_h[r..r + rs].iter().sum::<f32>() + sp * (rs - 1) as f32,
+                insets: cell_insets[k],
+            }
         })
         .collect();
 

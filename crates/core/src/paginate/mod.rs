@@ -233,14 +233,14 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     // arena is breadth first).
     let mut stack = vec![0];
     while let Some(i) = stack.pop() {
-        if i != 0 && tree.nodes[i as usize].node.is_some_and(|nd| nd.brk.fixed) {
+        if i != 0 && tree.nodes[i as usize].node().is_some_and(|nd| nd.brk.fixed) {
             p.out.fixed.push(i);
             continue;
         }
         let mut kids: Vec<NodeIdx> = tree.children(i).collect();
         kids.sort_by_key(|&c| {
             tree.nodes[c as usize]
-                .node
+                .node()
                 .and_then(|nd| nd.style.z_index)
                 .unwrap_or(0)
         });
@@ -271,7 +271,7 @@ fn forced_breaks(tree: &Tree<'_>) -> (Vec<bool>, Vec<bool>) {
     for i in (0..n).rev() {
         let mut first = true;
         for c in tree.children(i as NodeIdx) {
-            let Some(node) = tree.nodes[c as usize].node else {
+            let Some(node) = tree.nodes[c as usize].node() else {
                 continue;
             };
             if node.style.position == Some(Position::Absolute)
@@ -382,7 +382,7 @@ impl Paginator<'_, '_, '_> {
     /// piece.
     fn head(&mut self, i: NodeIdx) -> f32 {
         let ln = &self.tree.nodes[i as usize];
-        let Some(node) = ln.node else { return 0.0 };
+        let Some(node) = ln.node() else { return 0.0 };
         let g = ln.geo;
         if self.atomic(i, node) {
             return g.h;
@@ -462,7 +462,7 @@ impl Paginator<'_, '_, '_> {
         let g = self.tree.nodes[i as usize].geo;
         for c in self.tree.children(i).filter(|&c| self.in_flow(c)) {
             let ln = &self.tree.nodes[c as usize];
-            let Some(node) = ln.node else { continue };
+            let Some(node) = ln.node() else { continue };
             if matches!(node.kind, NodeKind::PageBreak) || node.brk.before == BreakMode::Page {
                 return ln.geo.y - g.y;
             }
@@ -480,7 +480,7 @@ impl Paginator<'_, '_, '_> {
     /// or its `minPresenceAhead` when taller.
     fn need(&mut self, i: NodeIdx) -> f32 {
         let mpa = self.tree.nodes[i as usize]
-            .node
+            .node()
             .and_then(|n| n.brk.min_presence_ahead);
         self.head(i).max(mpa.unwrap_or(0.0))
     }
@@ -488,7 +488,7 @@ impl Paginator<'_, '_, '_> {
     /// Children that take part in pagination (not absolutely positioned,
     /// not hidden).
     fn in_flow(&self, c: NodeIdx) -> bool {
-        self.tree.nodes[c as usize].node.is_some_and(|n| {
+        self.tree.nodes[c as usize].node().is_some_and(|n| {
             n.style.position != Some(Position::Absolute) && n.style.display != Some(Display::None)
         })
     }
@@ -515,7 +515,7 @@ impl Paginator<'_, '_, '_> {
     /// Places an in-flow node.
     fn place(&mut self, i: NodeIdx) {
         let ln = &self.tree.nodes[i as usize];
-        let Some(node) = ln.node else { return };
+        let Some(node) = ln.node() else { return };
         let g = ln.geo;
         let atomic = self.atomic(i, node);
         // The parent's break already moved this node to a new page.
@@ -624,7 +624,7 @@ impl Paginator<'_, '_, '_> {
             for &c in &band {
                 let g = geo(c);
                 let is_box = tree.nodes[c as usize]
-                    .node
+                    .node()
                     .is_some_and(|n| matches!(n.kind, NodeKind::Box { .. }));
                 if is_box && g.y + g.h >= bottom - PAGED_EPS {
                     self.out.shift_bottom[c as usize] = end;

@@ -183,7 +183,7 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
 impl BoxPainter<'_, '_, '_, '_> {
     fn node(&mut self, i: NodeIdx) {
         let ln = &self.tree.nodes[i as usize];
-        let Some(node) = ln.node else {
+        let Some(node) = ln.node() else {
             // Rows and cells: the table paints their backgrounds and borders.
             if !self.mode.shows(i) {
                 return;
@@ -777,7 +777,7 @@ impl BoxPainter<'_, '_, '_, '_> {
 
 fn z_index(tree: &Tree<'_>, j: NodeIdx) -> i32 {
     tree.nodes[j as usize]
-        .node
+        .node()
         .and_then(|n| n.style.z_index)
         .unwrap_or(0)
 }
