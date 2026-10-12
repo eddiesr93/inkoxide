@@ -484,8 +484,8 @@ All three take the same options:
 anyway; call it at server startup so the first request does not wait (about 150 ms).
 
 **Concurrency.** A render runs on Node's thread pool, so many can run at once. `threads` sets
-how many cores one render uses. Node's `UV_THREADPOOL_SIZE` (default 4) caps how many renders run
-at the same time.
+how many cores one render uses; with `threads: 1` each render stays on its own pool thread.
+Node's `UV_THREADPOOL_SIZE` (default 4) caps how many renders run at the same time.
 
 ## Errors
 

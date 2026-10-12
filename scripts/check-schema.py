@@ -2,7 +2,7 @@
 """Validates every fixtures/docs/*.json, and every ```json block in
 packages/schema/EXAMPLES.md, against packages/schema/document.v1.json.
 
-Together with crates/core/tests/schema_parity.rs this keeps the JSON Schema
+Together with crates/core/src/schema/parity_tests.rs this keeps the JSON Schema
 (the contract) and the Rust structs in agreement.
 Requires: pip install jsonschema
 """

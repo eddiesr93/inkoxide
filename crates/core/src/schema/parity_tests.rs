@@ -6,7 +6,8 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use inkoxide::{FontStore, ImageStore, InputFormat};
+use super::Document;
+use crate::{validate, FontStore, ImageStore, InputFormat};
 
 fn schema() -> serde_json::Value {
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/schema/document.v1.json");
@@ -30,7 +31,7 @@ fn schema_props(schema: &serde_json::Value, def: Option<&str>) -> BTreeSet<Strin
 /// names serde reports as expected at that position.
 fn struct_fields(template: &str) -> BTreeSet<String> {
     let doc = template.replace('@', r#""zzUnknown":0,"#);
-    let errs = inkoxide::validate(
+    let errs = validate(
         doc.as_bytes(),
         InputFormat::Json,
         &FontStore::new(),
@@ -40,7 +41,9 @@ fn struct_fields(template: &str) -> BTreeSet<String> {
     assert_eq!(errs[0].code.as_str(), "UNKNOWN_FIELD", "{doc}: {errs:#?}");
     // The structured message is shortened; the raw serde one lists fields:
     // "unknown field `zzUnknown`, expected one of `a`, `b`".
-    let msg = inkoxide::debug_raw_parse_error(doc.as_bytes()).expect("expected a parse error");
+    let msg = serde_json::from_slice::<Document>(doc.as_bytes())
+        .expect_err("expected a parse error")
+        .to_string();
     let tail = msg
         .split("expected")
         .nth(1)

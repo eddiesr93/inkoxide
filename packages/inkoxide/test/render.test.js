@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { readdirSync, readFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +63,21 @@ test('render does not block the event loop', async () => {
   await Promise.all([1, 2, 3, 4].map(() => ink.render(doc)));
   clearInterval(timer);
   assert.ok(ticks > 0, 'the event loop was blocked');
+});
+
+test('threads: 1 renders run side by side', { skip: availableParallelism() < 2 }, async () => {
+  const doc = fixture('docs/table-split-header-repeat.json');
+  const opts = { threads: 1 };
+  await ink.render(doc, opts);
+  const time = async (f) => {
+    const t = performance.now();
+    await f();
+    return performance.now() - t;
+  };
+  const one = await time(() => ink.render(doc, opts));
+  const four = await time(() => Promise.all([1, 2, 3, 4].map(() => ink.render(doc, opts))));
+  // On one shared thread, four renders would take four times as long as one.
+  assert.ok(four < 3 * one, `4 concurrent renders: ${four.toFixed(0)} ms, 1: ${one.toFixed(0)} ms`);
 });
 
 test('validation errors are structured', async () => {

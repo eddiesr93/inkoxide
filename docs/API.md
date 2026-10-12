@@ -35,7 +35,7 @@ string, which is read as UTF-8 JSON.
 | `compress` / `with_compress` | `compress` | `true` | Flate-compress page content streams |
 | `compression_level` / `with_compression_level` | `compressionLevel` | `6` | Flate level 0–9 (Node: other values are `INVALID_ARGUMENT`) |
 | `creation_date` / `with_creation_date` | `creationDate` | none | RFC 3339 timestamp; overrides `meta.creationDate`. With neither, no date is written |
-| `threads` / `with_threads` | `threads` | all cores | Worker threads for this render; `1` stays on the calling thread |
+| `threads` / `with_threads` | `threads` | all cores | Worker threads for this render. `1` runs it on the calling thread (in Node, its libuv thread) with no parallelism inside, so concurrent renders do not wait for each other; a larger number uses a pool of that size, shared by renders that ask for the same number |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
@@ -146,6 +146,5 @@ get the full list.
 
 ## Not part of the API
 
-- `inkoxide::debug_raw_parse_error` is `#[doc(hidden)]` test support.
 - The Node `__testPanic` export is a non-enumerable test hook.
-- Everything else in the crate is `pub(crate)`.
+- Nothing else in the Rust crate is public: its modules are private.

@@ -88,7 +88,7 @@ fn painted(json: &str) -> Vec<Vec<Painted>> {
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
     let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, _) = run(&doc, &fonts, &mut text, &images, Ok).unwrap();
+    let (pages, _) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
     pages
         .iter()
         .map(|page| {
@@ -360,7 +360,7 @@ fn render_doc<R>(json: &str, f: impl FnOnce(&[PageContent], &Marks<'_>) -> R) ->
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts), None);
     let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(&doc, &fonts, &mut text, &images, Ok).unwrap();
+    let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
     f(&pages, &marks)
 }
 

@@ -152,13 +152,16 @@ fn layout_fixed<'a>(
     Ok(tree)
 }
 
-/// Lays out and paginates every page template, then paints the pages in
-/// parallel, handing each to `encode` as soon as it is painted.
+/// Lays out and paginates every page template, then paints the pages,
+/// handing each to `encode` as soon as it is painted. With `parallel`,
+/// shaping and painting run on the current rayon pool; without it, on the
+/// calling thread alone.
 pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
     images: &ImageSet,
+    parallel: bool,
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
 ) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
@@ -170,7 +173,7 @@ pub(crate) fn run<'d, T: Send>(
             collect_texts(n, &mut texts);
         }
     }
-    text.prepare_all(&texts);
+    text.prepare_all(&texts, parallel);
     drop(texts);
 
     let mut laid = Vec::with_capacity(doc.pages.len());
@@ -230,17 +233,24 @@ pub(crate) fn run<'d, T: Send>(
         .flat_map(|l| (0..l.placement.pages).map(move |k| (l, k)))
         .collect();
     let text: &Cache<'_, '_, '_> = text;
-    let pages = jobs
-        .par_iter()
-        .enumerate()
-        .map(|(i, &(l, k))| {
-            let numbers = PageNumbers {
-                current: i as u32 + 1,
-                total,
-            };
-            encode(paint_page(l, k, numbers, fonts, text, images)?)
-        })
-        .collect::<Result<_, _>>()?;
+    let page = |(i, &(l, k)): (usize, &(&Laid<'_>, u32))| {
+        let numbers = PageNumbers {
+            current: i as u32 + 1,
+            total,
+        };
+        encode(paint_page(l, k, numbers, fonts, text, images)?)
+    };
+    let pages = if parallel {
+        jobs.par_iter()
+            .enumerate()
+            .map(page)
+            .collect::<Result<_, _>>()?
+    } else {
+        jobs.iter()
+            .enumerate()
+            .map(page)
+            .collect::<Result<_, _>>()?
+    };
     Ok((pages, marks))
 }
 

@@ -7,6 +7,8 @@
 
 mod areas;
 mod de;
+#[cfg(test)]
+mod parity_tests;
 
 pub use areas::{is_area_name, parse_areas};
 

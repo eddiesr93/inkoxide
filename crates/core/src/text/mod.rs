@@ -430,10 +430,11 @@ fn node_key(n: &Node) -> usize {
 
 impl TextCache<'_, RustybuzzShaper<'_, '_>> {
     /// Shapes `nodes` (text nodes in document order) ahead of layout, in
-    /// parallel. Each worker has its own shaper; glyph-to-Unicode maps are
-    /// merged in document order, keeping the first mapping of each glyph,
-    /// so the result does not depend on the thread count.
-    pub fn prepare_all(&mut self, nodes: &[&Node]) {
+    /// parallel on the current rayon pool unless `parallel` is false. Each
+    /// worker has its own shaper; glyph-to-Unicode maps are merged in
+    /// document order, keeping the first mapping of each glyph, so the
+    /// result does not depend on the thread count.
+    pub fn prepare_all(&mut self, nodes: &[&Node], parallel: bool) {
         const MIN_CHUNK: usize = 64;
         let todo: Vec<&Node> = nodes
             .iter()
@@ -441,7 +442,11 @@ impl TextCache<'_, RustybuzzShaper<'_, '_>> {
             .filter(|n| matches!(n.kind, NodeKind::Text { .. }))
             .filter(|n| !self.entries.contains_key(&node_key(n)))
             .collect();
-        let threads = rayon::current_num_threads();
+        let threads = if parallel {
+            rayon::current_num_threads()
+        } else {
+            1
+        };
         if threads <= 1 || todo.len() < 2 * MIN_CHUNK {
             for n in todo {
                 if let NodeKind::Text { runs } = &n.kind {
