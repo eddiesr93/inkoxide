@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   parseColor,
   parseFlex,
+  parseObjectPosition,
   parseOrigin,
   parseTransform,
-  Reader,
+  PT_PER_UNIT,
   UnsupportedValueError,
+  ValueError,
 } from '../src/index.ts';
+import { evalDim, parseFontFamily, Reader, substituteVars } from '../src/internal.ts';
 
 describe('Reader.placement', () => {
   it('reads both halves of a grid placement', () => {
@@ -106,5 +109,87 @@ describe('parseOrigin', () => {
     for (const bad of ['left toString', 'constructor', 'valueOf top', 'center __proto__']) {
       expect(() => origin(bad), bad).toThrow(UnsupportedValueError);
     }
+  });
+});
+
+describe('parseObjectPosition', () => {
+  const position = (v: string) => parseObjectPosition('object-position', v);
+
+  it('takes two keywords in either order, and otherwise x first', () => {
+    expect(position('top left')).toEqual({ x: 'left', y: 'top' });
+    expect(position('center right')).toEqual({ x: 'right', y: 'center' });
+    expect(position('top')).toEqual({ x: 'center', y: 'top' });
+    expect(position('25% 75%')).toEqual({ x: '25%', y: '75%' });
+    expect(position('left 10pt')).toEqual({ x: 'left', y: 10 });
+  });
+
+  it('rejects y before x when a value is not a keyword, unlike transform-origin', () => {
+    expect(parseOrigin('transform-origin', 'bottom 10%')).toEqual(['10%', '100%']);
+    for (const bad of ['bottom 10%', '10% left', 'left right', 'top bottom', 'right 10px bottom 5px']) {
+      expect(() => position(bad), bad).toThrow(UnsupportedValueError);
+    }
+  });
+});
+
+describe('evalDim', () => {
+  it('converts absolute units to points and evaluates calc()', () => {
+    expect(evalDim('1in')).toEqual({ v: 72, u: 'pt' });
+    expect(evalDim('4px')).toEqual({ v: 3, u: 'pt' });
+    expect(evalDim('calc(100% - 10%)')).toEqual({ v: 90, u: '%' });
+    expect(evalDim('calc(2 * (1rem + 1pt))')).toEqual({ v: 26, u: 'pt' });
+    expect(evalDim('0.5turn')).toEqual({ v: 180, u: 'deg' });
+    expect(evalDim('1.5em')).toEqual({ v: 1.5, u: 'em' });
+  });
+
+  it('throws ValueError for what it cannot evaluate', () => {
+    for (const bad of ['1pt + 1%', '2pt * 3pt', '1vw', 'calc(1pt', 'abc']) {
+      expect(() => evalDim(bad), bad).toThrow(ValueError);
+    }
+  });
+});
+
+describe('substituteVars', () => {
+  const vars: Record<string, string> = { '--a': '1pt', '--b': 'var(--a) solid', '--loop': 'var(--loop)' };
+  const lookup = (name: string) => vars[name];
+
+  it('resolves var() recursively, with fallbacks', () => {
+    expect(substituteVars('var(--b)', lookup)).toBe('1pt solid');
+    expect(substituteVars('calc(var(--a) * 2)', lookup)).toBe('calc(1pt * 2)');
+    expect(substituteVars('var(--none, var(--a))', lookup)).toBe('1pt');
+    expect(substituteVars('no vars', lookup)).toBe('no vars');
+  });
+
+  it('throws ValueError for a var() it cannot resolve, or one that refers to itself', () => {
+    expect(() => substituteVars('var(--none)', lookup)).toThrow(ValueError);
+    expect(() => substituteVars('var(--loop)', lookup)).toThrow(/too deep/);
+  });
+});
+
+describe('errors', () => {
+  it('are ValueError from the value readers, and UnsupportedValueError from the property readers', () => {
+    expect(() => parseColor('nonsense')).toThrow(ValueError);
+    expect(() => parseFlex('1 2 3 4', Number, String)).toThrow(ValueError);
+    const r = new Reader('color');
+    expect(() => r.color('nonsense')).toThrow(UnsupportedValueError);
+    expect(() => r.color('nonsense')).toThrow(/^color: nonsense/);
+    expect(() => new Reader('display').oneOf('display', 'block')).toThrow(
+      'display: block (supported: flex, grid, none)',
+    );
+  });
+});
+
+describe('units and fonts', () => {
+  it('converts units to points', () => {
+    expect(PT_PER_UNIT.mm).toBeCloseTo(2.834646, 6);
+    expect(PT_PER_UNIT.px).toBe(0.75);
+    expect(PT_PER_UNIT.rem).toBe(12);
+  });
+
+  it('unquotes a font-family stack', () => {
+    expect(parseFontFamily('Inter, "Noto Sans", \'Roboto Mono\'')).toEqual([
+      'Inter',
+      'Noto Sans',
+      'Roboto Mono',
+    ]);
   });
 });
