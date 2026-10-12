@@ -186,7 +186,7 @@ pub(crate) fn run<'d, T: Send>(
         let m = spec.margin;
         let content_w = spec.size.width - m.left - m.right;
         let content_h = spec.size.height - m.top - m.bottom;
-        let mut flow = Tree::build_from(spec.children.iter().filter(|n| !is_overlay(n)));
+        let mut flow = Tree::build(spec.children.iter().filter(|n| !is_overlay(n)));
         let mut leaves = Leaves { text, images };
         TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
         let header = spec

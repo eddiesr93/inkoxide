@@ -127,6 +127,7 @@ fn round_to(v: f32, per: f32) -> f32 {
     }
 }
 
+/// Hands out object numbers in order, from 1.
 struct RefAlloc(i32);
 
 impl RefAlloc {
@@ -245,7 +246,7 @@ impl PdfSink for PdfWriterSink {
         for ((key, glyphs), program) in used.iter().zip(&programs) {
             let r = font::write_font(
                 &mut pdf,
-                &mut || alloc.next(),
+                &mut alloc,
                 doc.fonts.get(*key),
                 program,
                 glyphs,
@@ -262,12 +263,7 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in &mut image_refs {
-            *r = image::write_image(
-                &mut pdf,
-                &mut || alloc.next(),
-                doc.images.get(*key),
-                self.pdf_a,
-            )?;
+            *r = image::write_image(&mut pdf, &mut alloc, doc.images.get(*key), self.pdf_a)?;
         }
 
         // Link annotations, numbered in page order.

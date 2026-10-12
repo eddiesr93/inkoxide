@@ -15,7 +15,7 @@ use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
 
 use subsetter::GlyphRemapper;
 
-use super::deflate;
+use super::{deflate, RefAlloc};
 use crate::fonts::LoadedFont;
 use crate::lru::Lru;
 use crate::InkoxideError;
@@ -139,18 +139,18 @@ fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
 /// Writes all objects of one font; returns the Type0 font reference.
 pub(crate) fn write_font(
     pdf: &mut Pdf,
-    next_ref: &mut dyn FnMut() -> Ref,
+    alloc: &mut RefAlloc,
     font: &LoadedFont<'_>,
     program: &Program,
     used: &BTreeSet<u16>,
     unicode: Option<&BTreeMap<u16, String>>,
 ) -> Ref {
-    let type0 = next_ref();
-    let cid = next_ref();
-    let descriptor = next_ref();
-    let file = next_ref();
-    let cmap_ref = next_ref();
-    let map_ref = program.cid_to_gid.as_ref().map(|_| next_ref());
+    let type0 = alloc.next();
+    let cid = alloc.next();
+    let descriptor = alloc.next();
+    let file = alloc.next();
+    let cmap_ref = alloc.next();
+    let map_ref = program.cid_to_gid.as_ref().map(|_| alloc.next());
 
     let m = &font.data.metrics;
     let to_1000 = 1000.0 / m.units_per_em;

@@ -713,7 +713,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             },
-            crate::schema::ImageSource::Inline(data) => match crate::images::decode_inline(data) {
+            crate::schema::ImageSource::Inline(data) => match crate::images::base64::decode(data) {
                 Err(e) => self.err(Code::InvalidImage, Some("data"), e),
                 Ok(bytes) => {
                     if let Err(e) = crate::images::probe(&bytes) {

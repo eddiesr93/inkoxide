@@ -5,18 +5,19 @@
 
 use pdf_writer::{Filter, Pdf, Ref};
 
+use super::RefAlloc;
 use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 
 pub(crate) fn write_image(
     pdf: &mut Pdf,
-    alloc: &mut dyn FnMut() -> Ref,
+    alloc: &mut RefAlloc,
     img: &DecodedImage,
     pdf_a: bool,
 ) -> Result<Ref, crate::InkoxideError> {
     if let ImageBody::Svg(tree) = &img.body {
         return super::svg::write_svg(pdf, alloc, tree, pdf_a);
     }
-    let id = alloc();
+    let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);
     match &img.body {
         ImageBody::Jpeg {
@@ -62,7 +63,7 @@ pub(crate) fn write_image(
             alpha,
         } => {
             let mask = alpha.as_ref().map(|a| {
-                let m = alloc();
+                let m = alloc.next();
                 let mut x = pdf.image_xobject(m, a);
                 x.width(w).height(h).bits_per_component(8);
                 x.filter(Filter::FlateDecode);

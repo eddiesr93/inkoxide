@@ -27,7 +27,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::finite;
+use super::{finite, RefAlloc};
 use crate::InkoxideError;
 
 /// Most path segments one SVG may emit, copies included.
@@ -41,7 +41,7 @@ const FLATE_LEVEL: u32 = 6;
 /// square (y up), like an image `XObject`.
 pub(crate) fn write_svg(
     pdf: &mut Pdf,
-    alloc: &mut dyn FnMut() -> Ref,
+    alloc: &mut RefAlloc,
     tree: &usvg::Tree,
     pdf_a: bool,
 ) -> Result<Ref, InkoxideError> {
@@ -57,7 +57,7 @@ pub(crate) fn write_svg(
     };
     let mut cv = Canvas::new();
     s.group(&mut cv, tree.root(), Transform::identity(), 0, false)?;
-    let id = (s.alloc)();
+    let id = s.alloc.next();
     s.write_form(
         id,
         cv,
@@ -201,7 +201,7 @@ fn simple_clip(clip: &usvg::ClipPath) -> Option<(tiny_skia_path::Path, usvg::Fil
 
 struct Svg<'a> {
     pdf: &'a mut Pdf,
-    alloc: &'a mut dyn FnMut() -> Ref,
+    alloc: &'a mut RefAlloc,
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
     /// Embedded raster images by content hash: the bytes (to rule out
@@ -216,7 +216,7 @@ type Res = Result<(), InkoxideError>;
 
 impl Svg<'_> {
     fn next(&mut self) -> Ref {
-        (self.alloc)()
+        self.alloc.next()
     }
 
     fn write_form(
@@ -792,8 +792,9 @@ impl Svg<'_> {
 mod tests {
     use std::fmt::Write as _;
 
-    use pdf_writer::{Pdf, Ref};
+    use pdf_writer::Pdf;
 
+    use super::RefAlloc;
     use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
 
     /// Image `XObject`s written for an SVG drawing `copies` copies of a PNG.
@@ -811,12 +812,7 @@ mod tests {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();
-        let mut next = 0;
-        let mut alloc = || {
-            next += 1;
-            Ref::new(next)
-        };
-        super::write_svg(&mut pdf, &mut alloc, &tree, false).unwrap();
+        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, false).unwrap();
         let out = pdf.finish();
         out.windows(15).filter(|w| w == b"/Subtype /Image").count()
     }

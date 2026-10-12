@@ -5,7 +5,7 @@
 //! the headers are read. PNG is decoded behind [`ImageDecoder`] and
 //! written as Flate-compressed samples plus an optional alpha `SMask`.
 
-mod base64;
+pub(crate) mod base64;
 mod cache;
 mod decode;
 mod probe;
@@ -367,10 +367,4 @@ pub(crate) fn image_matrix(orientation: u8, rect: Rect) -> [f32; 6] {
 /// cache.
 pub(crate) fn decode_embedded(bytes: &[u8]) -> Result<Arc<DecodedImage>, String> {
     ImageData::new(bytes.into()).decoded(&ImageCrateDecoder)
-}
-
-/// Decodes inline base64 image data (an optional `data:…;base64,` prefix
-/// is accepted).
-pub(crate) fn decode_inline(data: &str) -> Result<Vec<u8>, String> {
-    base64::decode(data)
 }
