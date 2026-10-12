@@ -1,15 +1,13 @@
 //! Text nodes → `Op::Text` (plus decorations), with alignment,
 //! justification and page-number placeholders.
 
-use super::{
-    ExtraGlyph, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
-    WIDTH_EPS,
-};
+use super::prepare::number_glyphs;
+use super::{ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
 use crate::paint::{ContentCtx, ContentPainter, Dash, Op, Path, PathSeg, Rect, TextGlyph, TextOp};
 use crate::schema::{
-    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextRun, BLACK,
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, BLACK,
 };
 
 /// Page numbers substituted for placeholders on the page being painted.
@@ -19,10 +17,20 @@ pub(crate) struct PageNumbers {
     pub total: u32,
 }
 
+impl PageNumbers {
+    /// The number placeholder `ph` shows.
+    pub fn of(self, ph: Placeholder) -> u32 {
+        match ph {
+            Placeholder::PageNumber => self.current,
+            Placeholder::TotalPages => self.total,
+        }
+    }
+}
+
 pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     pub cache: &'c TextCache<'s, S>,
     /// The page's own layouts of paragraphs with placeholders, when
-    /// painting a header or footer laid out for this page.
+    /// painting a header, footer or overlay laid out for this page.
     pub page: Option<&'c PageText<'c, 's, S>>,
     pub fonts: &'f FontSet<'a>,
     pub numbers: PageNumbers,
@@ -46,10 +54,11 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
         let Some((layout, prepared, style)) = paragraph else {
             return;
         };
-        let para = Paragraph {
+        let para = Para {
             prepared,
             runs,
-            align: style.align,
+            style,
+            fonts: self.fonts,
         };
         for (li, line) in layout.lines.iter().enumerate() {
             let shift = ctx.line_shifts.get(li).copied().unwrap_or(ctx.shift);
@@ -59,28 +68,13 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
                 continue;
             }
             let content = Rect::new(cx + ctx.dx, top - line.top + ctx.dy, cw, ch);
-            paint_line(
-                line,
-                &para,
-                content,
-                self.fonts,
-                self.numbers,
-                ctx.opacity,
-                ops,
-            );
+            paint_line(line, &para, content, self.numbers, ctx.opacity, ops);
         }
     }
 
     fn numbers(&self) -> PageNumbers {
         self.numbers
     }
-}
-
-/// What every line of a paragraph is painted with.
-struct Paragraph<'p> {
-    prepared: &'p Prepared,
-    runs: &'p [TextRun],
-    align: TextAlign,
 }
 
 /// One output glyph sequence in a single run/font.
@@ -96,17 +90,17 @@ struct Piece {
 /// the page, placed for this line (a split paragraph shifts its lines).
 fn paint_line(
     line: &Line,
-    para: &Paragraph<'_>,
+    para: &Para<'_>,
     content: Rect,
-    fonts: &FontSet<'_>,
     numbers: PageNumbers,
     opacity: f32,
     ops: &mut Vec<Op>,
 ) {
-    let Paragraph {
+    let Para {
         prepared: p,
         runs,
-        align,
+        style,
+        fonts,
     } = *para;
     let Rect {
         x: cx,
@@ -122,7 +116,7 @@ fn paint_line(
         (i, false) => (cx + i, cw - i),
         (i, true) => (cx, cw - i),
     };
-    let align = match align {
+    let align = match style.align {
         TextAlign::Start if rtl => TextAlign::Right,
         TextAlign::Start => TextAlign::Left,
         TextAlign::End if rtl => TextAlign::Left,
@@ -131,10 +125,7 @@ fn paint_line(
     };
 
     // Justification: spread the free space over the spaces of the line.
-    let spaces = p.glyphs[s..e]
-        .iter()
-        .filter(|g| g.flags & GLYPH_SPACE != 0)
-        .count();
+    let spaces = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
     let justify_extra =
         if align == TextAlign::Justify && !line.forced && spaces > 0 && line.ellipsis.is_none() {
             ((cw - line.width) / spaces as f32).max(0.0)
@@ -168,21 +159,13 @@ fn paint_line(
             width: 0.0,
         };
         if let Some(ph) = run.placeholder.filter(|_| p.placeholders) {
-            let n = match ph {
-                Placeholder::PageNumber => numbers.current,
-                Placeholder::TotalPages => numbers.total,
-            };
-            let font = fonts.get(seg.font);
-            let scale = font.scale(run.size);
-            let ls = run.letter_spacing.unwrap_or(0.0);
-            for c in n.to_string().chars() {
-                let gid = font.glyph(c).unwrap_or(0);
+            for (id, advance) in number_glyphs(fonts.get(seg.font), run, numbers.of(ph)) {
                 piece.glyphs.push(TextGlyph {
-                    id: gid,
+                    id,
                     x: piece.width,
                     y_offset: 0.0,
                 });
-                piece.width += font.advance(gid) * scale + ls;
+                piece.width += advance;
             }
         } else {
             let slice = &p.glyphs[a..b];
@@ -192,7 +175,7 @@ fn paint_line(
                 Box::new(slice.iter())
             };
             for g in visual {
-                if g.flags & GLYPH_INVISIBLE == 0 {
+                if !g.is_invisible() {
                     piece.glyphs.push(TextGlyph {
                         id: g.id,
                         x: piece.width + g.x_offset,
@@ -200,7 +183,7 @@ fn paint_line(
                     });
                 }
                 piece.width += g.advance;
-                if g.flags & GLYPH_SPACE != 0 {
+                if g.is_space() {
                     piece.width += justify_extra;
                 }
             }
@@ -228,14 +211,15 @@ fn paint_line(
             TextAlign::Right => free,
         };
     let baseline = cy + line.top + line.ascent;
-    // Link areas of the line, adjacent pieces of one target merged.
+    // Link areas of the line, adjacent pieces of one target merged
+    // (adjacent pieces abut exactly).
     let mut links: Vec<(f32, f32, &str)> = Vec::new();
 
     for piece in pieces {
         let run = &runs[piece.run as usize];
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
-                Some((_, x1, t)) if *t == target && (*x1 - x).abs() < 0.01 => {
+                Some((_, x1, t)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {
                     *x1 = x + piece.width;
                 }
                 _ => links.push((x, x + piece.width, target)),
@@ -259,8 +243,9 @@ fn paint_line(
             }));
         }
         if let Some(dec) = run.decoration.filter(|d| *d != Decoration::None) {
-            let m = &fonts.get(piece.font).data.metrics;
-            let scale = run.size / m.units_per_em;
+            let font = fonts.get(piece.font);
+            let m = &font.data.metrics;
+            let scale = font.scale(run.size);
             let (pos, thick) = match dec {
                 Decoration::Underline => (m.underline_position, m.underline_thickness),
                 _ => (m.strikeout_position, m.strikeout_thickness),

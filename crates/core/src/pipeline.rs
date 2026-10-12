@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 
 use rayon::prelude::*;
-use taffy::{AvailableSpace, Size as TSize};
 
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
-use crate::layout::{Geometry, LayoutEngine, LeafMeasure, NodeIdx, TaffyLayout, Tree};
-use crate::paginate::{paginate, Placement, PAGED_EPS};
+use crate::layout::{
+    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Size, TaffyLayout, Tree,
+};
+use crate::paginate::{paginate, Placement};
 use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
 use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
 use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
@@ -56,9 +57,9 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     fn measure(
         &mut self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
@@ -334,9 +335,9 @@ fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Nod
             .tables
             .get(&ln.parent)
             .is_some_and(|t| i - (tree.nodes[parent].children.start as usize) < t.header_rows);
-        let fixed = ln.node.is_some_and(|n| n.brk.fixed);
+        let fixed = ln.node().is_some_and(|n| n.brk.fixed);
         repeated[i] = repeated[parent] || header_row || fixed;
-        let Some(node) = ln.node else {
+        let Some(node) = ln.node() else {
             continue;
         };
         if repeated[i] || ln.style().display == Some(Display::None) {
@@ -358,9 +359,8 @@ fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Nod
             continue;
         };
         let i = i as NodeIdx;
-        let shift = pl.line_shifts(i).get(li).copied().unwrap_or(pl.shift(i));
-        let top = content.y + lines.lines[li].top + shift;
-        let page = ((top + PAGED_EPS) / pl.page_h).floor().max(0.0) as u32;
+        let top = content.y + lines.lines[li].top + pl.line_shift(i, li);
+        let page = pl.page_of(top);
         out.push((
             node,
             page.clamp(pl.first_page(i), pl.pages.saturating_sub(1)),
@@ -405,7 +405,7 @@ fn subtree_marks<'d>(
             continue;
         }
         stack.extend(tree.children(i).rev());
-        let Some(node) = ln.node else {
+        let Some(node) = ln.node() else {
             continue;
         };
         if node.id.is_none() && node.bookmark.is_none() {

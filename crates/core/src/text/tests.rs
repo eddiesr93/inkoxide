@@ -137,8 +137,8 @@ fn min_content_includes_the_hyphen() {
     let min = cache
         .measure(
             node,
-            TSize::NONE,
-            TSize {
+            Size::NONE,
+            Size {
                 width: AvailableSpace::MinContent,
                 height: AvailableSpace::MaxContent,
             },
@@ -223,7 +223,13 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
         current: 7,
         total: 1234,
     };
-    let filled = cache.shaper.fill_numbers(p, runs, numbers);
+    let paragraph = |prepared| Para {
+        prepared,
+        runs,
+        style,
+        fonts: &fonts,
+    };
+    let filled = prepare::fill_numbers(&paragraph(p), numbers);
     assert!(!filled.placeholders);
     assert_eq!(filled.text, "Page 7 of 1234");
     let pieces: Vec<&str> = filled
@@ -238,13 +244,11 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
     }
 
     // As wide as the numbers written out, and wrapped like them.
-    let one_line = cache
-        .shaper
-        .break_lines(&filled, runs, style, f32::INFINITY);
+    let one_line = lines::break_lines(&paragraph(&filled), f32::INFINITY);
     let written = lines(&doc(&para("Page 7 of 1234", "")), &s, 500.0).1;
     assert!((one_line.width - written.width).abs() < 0.01);
     let narrow = lines(&doc(&para("Page 7 of", "")), &s, 500.0).1.width + 1.0;
-    let wrapped = cache.shaper.break_lines(&filled, runs, style, narrow);
+    let wrapped = lines::break_lines(&paragraph(&filled), narrow);
     assert_eq!(line_texts(&filled, &wrapped), ["Page 7 of", "1234"]);
 }
 
@@ -264,79 +268,4 @@ fn empty_text_has_no_height() {
     let s = store();
     let (_, l) = lines(&doc(&para("   ", "")), &s, 100.0);
     assert_eq!(l.height, 0.0);
-}
-
-/// The closed-form cell layout (layout/fast.rs) must match Taffy exactly.
-#[test]
-fn simple_cell_fast_path_matches_taffy() {
-    let store = crate::test_fixtures::fonts(&[
-        "Inter-Regular",
-        "Inter-Bold",
-        "Inter-Italic",
-        "NotoSans-Regular",
-        "RobotoMono-Regular",
-    ]);
-    let cell = |style: &str, text: &str| {
-        format!(
-            r#"{{"style":{{{style}}},"children":[{{"type":"text","style":{{"maxLines":2,"ellipsis":true}},"runs":[{{"text":"{text}","font":"Inter-Regular","size":9}}]}}]}}"#
-        )
-    };
-    let synthetic = format!(
-        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":400,"height":800}},"children":[
-            {{"type":"table","columns":[{{"width":"auto"}},{{"width":"1fr"}},{{"width":60}}],"rows":[
-              {{"minHeight":40,"cells":[{a},{b},{c}]}},
-              {{"cells":[{d},{e},{f}]}}]}}]}}]}}"#,
-        a = cell(
-            r#""padding":{"top":2,"left":4},"verticalAlign":"middle","borderWidth":{"bottom":2}"#,
-            "Short"
-        ),
-        b = cell(
-            r#""verticalAlign":"bottom","padding":{"right":6}"#,
-            "A longer cell that wraps over more than two lines so that the ellipsis cuts it"
-        ),
-        c = cell("", "Fixed-width column"),
-        d = cell(
-            r#""padding":{"top":1,"right":1,"bottom":1,"left":1},"borderWidth":{"top":1,"right":3,"bottom":1,"left":1}"#,
-            "x"
-        ),
-        e = cell(
-            r#""backgroundColor":[1,0,0,1]"#,
-            "Hyphenation-less wordsthatareverylongindeed"
-        ),
-        f = cell(r#""verticalAlign":"middle""#, ""),
-    );
-    let mut docs = vec![synthetic.into_bytes()];
-    for f in ["table-basic", "table-split-header-repeat", "invoice"] {
-        docs.push(crate::test_fixtures::fixture(&format!("docs/{f}.json")));
-    }
-    for json in docs {
-        let d = crate::validate::parse(&json, InputFormat::Json).unwrap();
-        let fonts = FontSet::load(&d, &store).unwrap();
-        let spec = &d.pages[0];
-        let w = spec.size.width - spec.margin.left - spec.margin.right;
-        let run = |fast: bool| {
-            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
-            let mut tree = crate::layout::Tree::build(&spec.children);
-            crate::layout::compute_tree(&mut tree, w, 0.0, &mut cache, fast).unwrap();
-            tree.nodes.iter().map(|n| n.geo).collect::<Vec<_>>()
-        };
-        let (fast, slow) = (run(true), run(false));
-        assert_eq!(fast.len(), slow.len());
-        for (i, (a, b)) in fast.iter().zip(&slow).enumerate() {
-            let close = |x: f32, y: f32| (x - y).abs() < 1e-3;
-            let sides_close = |x: crate::schema::Edges<f32>, y: crate::schema::Edges<f32>| {
-                x.to_array()
-                    .into_iter()
-                    .zip(y.to_array())
-                    .all(|(x, y)| close(x, y))
-            };
-            let same = close(a.x, b.x)
-                && close(a.y, b.y)
-                && close(a.w, b.w)
-                && close(a.h, b.h)
-                && sides_close(a.border, b.border)
-                && sides_close(a.padding, b.padding);
-            assert!(same, "node {i}: fast {a:?} vs taffy {b:?}");
-        }
-    }
 }

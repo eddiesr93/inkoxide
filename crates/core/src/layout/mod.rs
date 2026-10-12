@@ -4,8 +4,10 @@
 //! occupy a contiguous index range. Tables appear in the arena as
 //! table → rows → cells → cell content. Taffy computes flex/grid boxes;
 //! tables are Taffy leaves sized by our own algorithm (`table.rs`), and
-//! each cell is laid out as its own small Taffy subtree. Taffy trees are
-//! dropped afterwards; the rest of the pipeline only reads the arena.
+//! each cell is laid out as its own small Taffy subtree, or in closed form
+//! for simple text cells (`fast.rs`). Taffy trees are dropped afterwards;
+//! the rest of the pipeline only reads the arena. Taffy's types stay in
+//! this module: leaves are measured with [`Size`] and [`AvailableSpace`].
 
 // Grid code walks parallel arrays by index; iterators would obscure it.
 #![allow(clippy::needless_range_loop)]
@@ -18,7 +20,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
-use taffy::prelude::{AvailableSpace, NodeId as TaffyId, Size as TSize, TaffyTree};
+use taffy::prelude::{NodeId as TaffyId, Size as TSize, TaffyTree};
 use taffy::{LayoutInput, LayoutOutput};
 
 pub(crate) use table::TableLayout;
@@ -61,10 +63,81 @@ impl Geometry {
     }
 }
 
+/// A width and a height.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct Size<T> {
+    pub width: T,
+    pub height: T,
+}
+
+impl Size<f32> {
+    pub const ZERO: Self = Self {
+        width: 0.0,
+        height: 0.0,
+    };
+}
+
+impl Size<Option<f32>> {
+    pub const NONE: Self = Self {
+        width: None,
+        height: None,
+    };
+}
+
+impl<T> From<TSize<T>> for Size<T> {
+    fn from(s: TSize<T>) -> Self {
+        Self {
+            width: s.width,
+            height: s.height,
+        }
+    }
+}
+
+impl<T> From<Size<T>> for TSize<T> {
+    fn from(s: Size<T>) -> Self {
+        Self {
+            width: s.width,
+            height: s.height,
+        }
+    }
+}
+
+/// The space a leaf is measured in, along one axis.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum AvailableSpace {
+    /// A definite size, in points.
+    Definite(f32),
+    /// The narrowest the content can be.
+    MinContent,
+    /// The size the content takes unconstrained.
+    MaxContent,
+}
+
+impl From<taffy::AvailableSpace> for AvailableSpace {
+    fn from(a: taffy::AvailableSpace) -> Self {
+        match a {
+            taffy::AvailableSpace::Definite(w) => Self::Definite(w),
+            taffy::AvailableSpace::MinContent => Self::MinContent,
+            taffy::AvailableSpace::MaxContent => Self::MaxContent,
+        }
+    }
+}
+
+impl From<AvailableSpace> for taffy::AvailableSpace {
+    fn from(a: AvailableSpace) -> Self {
+        match a {
+            AvailableSpace::Definite(w) => Self::Definite(w),
+            AvailableSpace::MinContent => Self::MinContent,
+            AvailableSpace::MaxContent => Self::MaxContent,
+        }
+    }
+}
+
 /// What an arena node stands for.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Part<'a> {
-    /// The synthetic root (the page content box, or a header/footer band).
+    /// The synthetic root (the page content box, or the box a header,
+    /// footer or overlay is laid out in).
     Root,
     Node(&'a Node),
     /// A table row.
@@ -74,8 +147,6 @@ pub(crate) enum Part<'a> {
 
 #[derive(Debug)]
 pub(crate) struct LNode<'a> {
-    /// The document node, when this is one (not a root, row or cell).
-    pub node: Option<&'a Node>,
     pub part: Part<'a>,
     pub parent: NodeIdx,
     pub children: Range<NodeIdx>,
@@ -83,6 +154,14 @@ pub(crate) struct LNode<'a> {
 }
 
 impl<'a> LNode<'a> {
+    /// The document node, when this is one (not a root, row or cell).
+    pub fn node(&self) -> Option<&'a Node> {
+        match self.part {
+            Part::Node(n) => Some(n),
+            _ => None,
+        }
+    }
+
     pub fn style(&self) -> &'a Style {
         static DEFAULT: std::sync::OnceLock<Style> = std::sync::OnceLock::new();
         match self.part {
@@ -93,7 +172,7 @@ impl<'a> LNode<'a> {
     }
 
     pub fn is_table(&self) -> bool {
-        matches!(self.node.map(|n| &n.kind), Some(NodeKind::Table(_)))
+        matches!(self.node().map(|n| &n.kind), Some(NodeKind::Table(_)))
     }
 }
 
@@ -110,17 +189,12 @@ impl<'a> Tree<'a> {
     pub fn build(root_children: impl IntoIterator<Item = &'a Node>) -> Self {
         let mut root_children = Some(root_children.into_iter());
         let mut nodes = vec![LNode {
-            node: None,
             part: Part::Root,
             parent: 0,
             children: 0..0,
             geo: Geometry::default(),
         }];
         let new = |part: Part<'a>, parent: usize| LNode {
-            node: match part {
-                Part::Node(n) => Some(n),
-                _ => None,
-            },
             part,
             parent: parent as NodeIdx,
             children: 0..0,
@@ -157,7 +231,7 @@ impl<'a> Tree<'a> {
         }
     }
 
-    /// Builds the arena for a single node (header/footer).
+    /// Builds the arena for a single node (a header, footer or overlay).
     pub fn build_single(node: &'a Node) -> Self {
         Self::build(std::slice::from_ref(node))
     }
@@ -173,9 +247,9 @@ pub(crate) trait LeafMeasure {
     fn measure(
         &mut self,
         node: &Node,
-        known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32>;
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+    ) -> Size<f32>;
 }
 
 /// Leaves with no intrinsic content (empty boxes, spacers, page breaks).
@@ -184,12 +258,13 @@ pub(crate) struct NoContent;
 
 #[cfg(test)]
 impl LeafMeasure for NoContent {
-    fn measure(&mut self, _: &Node, _: TSize<Option<f32>>, _: TSize<AvailableSpace>) -> TSize<f32> {
-        TSize::ZERO
+    fn measure(&mut self, _: &Node, _: Size<Option<f32>>, _: Size<AvailableSpace>) -> Size<f32> {
+        Size::ZERO
     }
 }
 
-/// Dependency firewall around the flex/grid engine.
+/// Dependency firewall around the flex/grid engine: neither it nor
+/// [`LeafMeasure`] names a Taffy type.
 pub(crate) trait LayoutEngine {
     /// Lays out `tree` in a column of the given `width` and unbounded
     /// height (at least `min_height`, so `flexGrow` can fill a short page),
@@ -244,25 +319,44 @@ pub(crate) struct CellSpace {
 pub(crate) struct LayoutCtx<'m> {
     pub leaves: &'m mut dyn LeafMeasure,
     /// Table layouts by (table node, width key).
-    tables: HashMap<(NodeIdx, u32), Arc<TableLayout>>,
-    /// Cell sizes by (cell node, width key, height key).
-    cells: HashMap<(NodeIdx, u32), TSize<f32>>,
+    tables: HashMap<(NodeIdx, SpaceKey), Arc<TableLayout>>,
+    /// Cell sizes by (cell node, width key); insets are fixed per cell
+    /// within a table.
+    cells: HashMap<(NodeIdx, SpaceKey), Size<f32>>,
     /// Closed-form layout of simple cells (`fast.rs`); off only in tests.
     pub fast_cells: bool,
 }
 
-fn space_key(a: AvailableSpace) -> u32 {
+/// Cache key of a layout width. Exact: bucketing could round below a
+/// min-content width and change line breaks.
+pub(crate) fn width_key(w: f32) -> u32 {
+    if w.is_finite() {
+        w.max(0.0).to_bits()
+    } else {
+        u32::MAX
+    }
+}
+
+/// Cache key of an available width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SpaceKey {
+    Definite(u32),
+    MinContent,
+    MaxContent,
+}
+
+fn space_key(a: AvailableSpace) -> SpaceKey {
     match a {
-        AvailableSpace::Definite(w) => w.max(0.0).to_bits() & !3,
-        AvailableSpace::MinContent => 1,
-        AvailableSpace::MaxContent => 2,
+        AvailableSpace::Definite(w) => SpaceKey::Definite(width_key(w)),
+        AvailableSpace::MinContent => SpaceKey::MinContent,
+        AvailableSpace::MaxContent => SpaceKey::MaxContent,
     }
 }
 
 /// Result of laying out a subtree: geometry relative to the subtree root's
 /// top-left corner, for the root and each descendant (tables are leaves).
 pub(crate) struct SubLayout {
-    pub size: TSize<f32>,
+    pub size: Size<f32>,
     pub geos: Vec<(NodeIdx, Geometry)>,
 }
 
@@ -332,7 +426,7 @@ impl<'m> LayoutCtx<'m> {
                     matches!(&n.kind, NodeKind::Field(f)
                         if matches!(f.kind, FieldKind::Checkbox | FieldKind::Radio))
                 };
-                if ln.node.is_some_and(button) {
+                if ln.node().is_some_and(button) {
                     let parent = tree.nodes[ln.parent as usize].style();
                     style::keep_intrinsic_size(&mut s, ln.style(), parent);
                 }
@@ -346,12 +440,13 @@ impl<'m> LayoutCtx<'m> {
             ids[k] = id;
         }
 
+        let width = match mode {
+            RootMode::Flow { width, .. } => AvailableSpace::Definite(width),
+            RootMode::Cell(space) => space.width,
+        };
         let available = TSize {
-            width: match mode {
-                RootMode::Flow { width, .. } => AvailableSpace::Definite(width),
-                RootMode::Cell(space) => space.width,
-            },
-            height: AvailableSpace::MaxContent,
+            width: width.into(),
+            height: taffy::AvailableSpace::MaxContent,
         };
         let nodes = &tree.nodes;
         taffy
@@ -375,12 +470,19 @@ impl<'m> LayoutCtx<'m> {
                         inputs,
                         style,
                         |_, _| 0.0,
-                        |known, available| match nodes[idx as usize].node {
-                            Some(n) if matches!(n.kind, NodeKind::Table(_)) => {
-                                self.table_size(tree, idx, known, available)
+                        |known, available| {
+                            let available = Size {
+                                width: available.width.into(),
+                                height: available.height.into(),
+                            };
+                            match nodes[idx as usize].node() {
+                                Some(n) if matches!(n.kind, NodeKind::Table(_)) => {
+                                    self.table_size(tree, idx, available)
+                                }
+                                Some(n) => self.leaves.measure(n, known.into(), available),
+                                None => Size::ZERO,
                             }
-                            Some(n) => self.leaves.measure(n, known, available),
-                            None => TSize::ZERO,
+                            .into()
                         },
                     )
                 },
@@ -388,7 +490,7 @@ impl<'m> LayoutCtx<'m> {
             .map_err(layout_err)?;
 
         let root_layout = taffy.layout(ids[0]).map_err(layout_err)?;
-        let size = root_layout.size;
+        let size = root_layout.size.into();
         let mut geos = Vec::new();
         if collect {
             // Positions are relative to the parent; accumulate from the root.
@@ -436,19 +538,18 @@ impl<'m> LayoutCtx<'m> {
         &mut self,
         tree: &Tree<'_>,
         idx: NodeIdx,
-        _known: TSize<Option<f32>>,
-        available: TSize<AvailableSpace>,
-    ) -> TSize<f32> {
-        // `known` is the border box; `available` is already the content
-        // box (Taffy subtracts padding and border from a known width).
+        available: Size<AvailableSpace>,
+    ) -> Size<f32> {
+        // `available` is already the content box (Taffy subtracts padding
+        // and border from a known width).
         match self.table(tree, idx, available.width) {
-            Ok(t) => TSize {
+            Ok(t) => Size {
                 width: t.width,
                 height: t.height,
             },
             Err(e) => {
                 tracing::warn!("table layout failed: {e}");
-                TSize::ZERO
+                Size::ZERO
             }
         }
     }
@@ -476,7 +577,7 @@ impl<'m> LayoutCtx<'m> {
         idx: NodeIdx,
         width: AvailableSpace,
         insets: Edges<f32>,
-    ) -> Result<TSize<f32>, InkoxideError> {
+    ) -> Result<Size<f32>, InkoxideError> {
         let key = (idx, space_key(width));
         if let Some(s) = self.cells.get(&key) {
             return Ok(*s);
@@ -561,7 +662,7 @@ impl LayoutEngine for TaffyLayout {
 
 /// [`TaffyLayout::compute`], with the simple-cell fast path switchable so
 /// tests can check it against Taffy.
-pub(crate) fn compute_tree(
+fn compute_tree(
     tree: &mut Tree<'_>,
     width: f32,
     min_height: f32,

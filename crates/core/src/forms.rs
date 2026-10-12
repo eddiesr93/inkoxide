@@ -1,10 +1,8 @@
 //! Interactive form fields (`AcroForm`): intrinsic size and the
 //! widget ops painting hands to the PDF writer.
 
-use taffy::{AvailableSpace, Size as TSize};
-
 use crate::fonts::{FontKey, FontSet};
-use crate::layout::Geometry;
+use crate::layout::{AvailableSpace, Geometry, Size};
 use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};
 use crate::schema::{Field, FieldKind, BLACK};
 
@@ -51,10 +49,10 @@ pub(crate) struct FieldOp {
 }
 
 /// Content size of a field without explicit dimensions.
-pub(crate) fn measure(f: &Field, available: TSize<AvailableSpace>) -> TSize<f32> {
+pub(crate) fn measure(f: &Field, available: Size<AvailableSpace>) -> Size<f32> {
     let line = f.size * LINE_HEIGHT;
     match f.kind {
-        FieldKind::Text | FieldKind::Select => TSize {
+        FieldKind::Text | FieldKind::Select => Size {
             width: match available.width {
                 AvailableSpace::Definite(w) => w.min(DEFAULT_WIDTH),
                 _ => DEFAULT_WIDTH,
@@ -65,7 +63,7 @@ pub(crate) fn measure(f: &Field, available: TSize<AvailableSpace>) -> TSize<f32>
                 line + 2.0 * PAD
             },
         },
-        FieldKind::Checkbox | FieldKind::Radio => TSize {
+        FieldKind::Checkbox | FieldKind::Radio => Size {
             width: f.size + PAD,
             height: f.size + PAD,
         },

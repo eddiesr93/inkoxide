@@ -1,12 +1,14 @@
 //! Pagination: slices a flow laid out in one unbounded column into pages.
 //!
-//! One layout pass, no re-layout: pagination walks the flow in document
-//! order and accumulates a vertical **shift** whenever content has to move
-//! to the next page. Every node records the shift at its top and at its
-//! bottom (they differ only for nodes split across pages); split
-//! paragraphs record a shift per line. A node's position in *paged space*
-//! is its layout position plus its shift; page `k` shows paged space
-//! `[k·H, (k+1)·H)`.
+//! Pagination itself never lays content out again: it walks the flow in
+//! document order and accumulates a vertical **shift** whenever content
+//! has to move to the next page. Every node records the shift at its top
+//! and at its bottom (they differ only for nodes split across pages);
+//! split paragraphs record a shift per line. A node's position in *paged
+//! space* is its layout position plus its shift; page `k` shows paged
+//! space `[k·H, (k+1)·H)`. The pipeline may lay out and paginate a flow
+//! again when the page numbers its text shows change its layout
+//! (`pipeline::number_flows`).
 //!
 //! Rules:
 //! - `break.before/after: page` and `pageBreak` nodes force a new page
@@ -24,10 +26,15 @@
 //!   overlap), each child paginating from the band top like a table cell.
 //!   A forced break inside an `inside: avoid` box wins (as in CSS); the
 //!   part before it moves whole.
-//! - Atomic nodes (images, spacers, empty boxes, positioned, rotated or
-//!   fixed nodes) move whole; taller than a page, they are sliced (with a
-//!   warning).
+//! - Atomic nodes (images, spacers, form fields, empty boxes, and
+//!   positioned, rotated, transformed or fixed nodes) move whole; taller
+//!   than a page, they are sliced (with a warning).
 //! - Column boxes split between children; text splits between lines.
+//! - Tables split between row groups (rows tied by row spans). A group
+//!   that does not fit moves to the next page, below room kept for the
+//!   repeated header rows. A single row taller than a page splits inside
+//!   its cells: each cell's content paginates like a column from the row
+//!   top, and the row ends below the longest cell.
 
 use crate::layout::{NodeIdx, Tree};
 use crate::paint::Rect;
@@ -97,6 +104,26 @@ impl Placement {
     /// [`Placement::shift`]).
     pub fn line_shifts(&self, i: NodeIdx) -> &[f32] {
         &self.line_shifts[i as usize]
+    }
+
+    /// Shift of line `line` of text node `i` into paged space.
+    pub fn line_shift(&self, i: NodeIdx, line: usize) -> f32 {
+        self.line_shifts(i)
+            .get(line)
+            .copied()
+            .unwrap_or(self.shift(i))
+    }
+
+    /// Page holding paged `y` (a top exactly on a page boundary belongs
+    /// to the page below).
+    pub fn page_of(&self, y: f32) -> u32 {
+        ((y + PAGED_EPS) / self.page_h).floor().max(0.0) as u32
+    }
+
+    /// Page holding the content that ends at paged `y` (a bottom exactly on
+    /// a page boundary belongs to the page above).
+    pub fn page_of_bottom(&self, y: f32) -> u32 {
+        ((y - PAGED_EPS) / self.page_h).floor().max(0.0) as u32
     }
 
     /// Paged y of the top of page `page`.
@@ -209,8 +236,8 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     let mut last_page = 0u32;
     for i in (0..n).rev() {
         let (top, h) = p.out.paged_rect(tree, i as NodeIdx);
-        let first = p.page_of(top);
-        let last = p.page_of_bottom(top + h);
+        let first = p.out.page_of(top);
+        let last = p.out.page_of_bottom(top + h);
         let mut range = (first, last.max(first));
         let kids = tree.nodes[i].children.clone();
         for c in kids {
@@ -224,7 +251,7 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     }
     // The root's own extent (min-height = one page) counts too.
     let (rt, rh) = p.out.paged_rect(tree, 0);
-    last_page = last_page.max(p.page_of_bottom(rt + rh));
+    last_page = last_page.max(p.out.page_of_bottom(rt + rh));
     p.out.pages = last_page + 1;
     p.out.page_range[0] = (0, last_page);
 
@@ -233,14 +260,14 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     // arena is breadth first).
     let mut stack = vec![0];
     while let Some(i) = stack.pop() {
-        if i != 0 && tree.nodes[i as usize].node.is_some_and(|nd| nd.brk.fixed) {
+        if i != 0 && tree.nodes[i as usize].node().is_some_and(|nd| nd.brk.fixed) {
             p.out.fixed.push(i);
             continue;
         }
         let mut kids: Vec<NodeIdx> = tree.children(i).collect();
         kids.sort_by_key(|&c| {
             tree.nodes[c as usize]
-                .node
+                .node()
                 .and_then(|nd| nd.style.z_index)
                 .unwrap_or(0)
         });
@@ -261,6 +288,14 @@ pub(crate) fn banded(node: &Node) -> bool {
         || matches!(s.flex_wrap, Some(FlexWrap::Wrap | FlexWrap::WrapReverse))
 }
 
+/// Whether node `c` takes part in pagination (not absolutely positioned,
+/// not hidden).
+fn in_flow(tree: &Tree<'_>, c: NodeIdx) -> bool {
+    tree.nodes[c as usize].node().is_some_and(|n| {
+        n.style.position != Some(Position::Absolute) && n.style.display != Some(Display::None)
+    })
+}
+
 /// Per node: whether a forced break (`pageBreak`, `break.before/after:
 /// page`) sits below it in flowing content, and whether its first in-flow
 /// child is or starts with one.
@@ -270,15 +305,10 @@ fn forced_breaks(tree: &Tree<'_>) -> (Vec<bool>, Vec<bool>) {
     // Children have larger indices than parents.
     for i in (0..n).rev() {
         let mut first = true;
-        for c in tree.children(i as NodeIdx) {
-            let Some(node) = tree.nodes[c as usize].node else {
+        for c in tree.children(i as NodeIdx).filter(|&c| in_flow(tree, c)) {
+            let Some(node) = tree.nodes[c as usize].node() else {
                 continue;
             };
-            if node.style.position == Some(Position::Absolute)
-                || node.style.display == Some(Display::None)
-            {
-                continue;
-            }
             let own = matches!(node.kind, NodeKind::PageBreak)
                 || node.brk.before == BreakMode::Page
                 || node.brk.after == BreakMode::Page;
@@ -295,22 +325,12 @@ fn forced_breaks(tree: &Tree<'_>) -> (Vec<bool>, Vec<bool>) {
 }
 
 impl Paginator<'_, '_, '_> {
-    fn page_of(&self, y: f32) -> u32 {
-        ((y + PAGED_EPS) / self.h).floor().max(0.0) as u32
-    }
-
-    /// Page holding the content that ends at paged `y` (a bottom exactly on
-    /// a page boundary belongs to the page above).
-    fn page_of_bottom(&self, y: f32) -> u32 {
-        ((y - PAGED_EPS) / self.h).floor().max(0.0) as u32
-    }
-
     fn page_end(&self, y: f32) -> f32 {
-        (self.page_of(y) + 1) as f32 * self.h
+        (self.out.page_of(y) + 1) as f32 * self.h
     }
 
     fn at_page_top(&self, y: f32) -> bool {
-        let r = y - self.page_of(y) as f32 * self.h;
+        let r = y - self.out.page_of(y) as f32 * self.h;
         r.abs() < PAGED_EPS
     }
 
@@ -382,7 +402,7 @@ impl Paginator<'_, '_, '_> {
     /// piece.
     fn head(&mut self, i: NodeIdx) -> f32 {
         let ln = &self.tree.nodes[i as usize];
-        let Some(node) = ln.node else { return 0.0 };
+        let Some(node) = ln.node() else { return 0.0 };
         let g = ln.geo;
         if self.atomic(i, node) {
             return g.h;
@@ -443,16 +463,13 @@ impl Paginator<'_, '_, '_> {
             {
                 self.head_to_break(i)
             }
-            NodeKind::Box { .. } => {
-                let first = self.tree.children(i).find(|&c| self.in_flow(c));
-                match first {
-                    Some(c) => {
-                        let cy = self.tree.nodes[c as usize].geo.y;
-                        (cy - g.y) + self.need(c)
-                    }
-                    None => g.h,
+            NodeKind::Box { .. } => match self.first_in_flow(i) {
+                Some(c) => {
+                    let cy = self.tree.nodes[c as usize].geo.y;
+                    (cy - g.y) + self.need(c)
                 }
-            }
+                None => g.h,
+            },
             _ => g.h,
         }
     }
@@ -462,7 +479,7 @@ impl Paginator<'_, '_, '_> {
         let g = self.tree.nodes[i as usize].geo;
         for c in self.tree.children(i).filter(|&c| self.in_flow(c)) {
             let ln = &self.tree.nodes[c as usize];
-            let Some(node) = ln.node else { continue };
+            let Some(node) = ln.node() else { continue };
             if matches!(node.kind, NodeKind::PageBreak) || node.brk.before == BreakMode::Page {
                 return ln.geo.y - g.y;
             }
@@ -480,17 +497,18 @@ impl Paginator<'_, '_, '_> {
     /// or its `minPresenceAhead` when taller.
     fn need(&mut self, i: NodeIdx) -> f32 {
         let mpa = self.tree.nodes[i as usize]
-            .node
+            .node()
             .and_then(|n| n.brk.min_presence_ahead);
         self.head(i).max(mpa.unwrap_or(0.0))
     }
 
-    /// Children that take part in pagination (not absolutely positioned,
-    /// not hidden).
     fn in_flow(&self, c: NodeIdx) -> bool {
-        self.tree.nodes[c as usize].node.is_some_and(|n| {
-            n.style.position != Some(Position::Absolute) && n.style.display != Some(Display::None)
-        })
+        in_flow(self.tree, c)
+    }
+
+    /// The first child of `i` that takes part in pagination.
+    fn first_in_flow(&self, i: NodeIdx) -> Option<NodeIdx> {
+        self.tree.children(i).find(|&c| self.in_flow(c))
     }
 
     /// Places the children of column box `i` one by one. Out-of-flow
@@ -515,7 +533,7 @@ impl Paginator<'_, '_, '_> {
     /// Places an in-flow node.
     fn place(&mut self, i: NodeIdx) {
         let ln = &self.tree.nodes[i as usize];
-        let Some(node) = ln.node else { return };
+        let Some(node) = ln.node() else { return };
         let g = ln.geo;
         let atomic = self.atomic(i, node);
         // The parent's break already moved this node to a new page.
@@ -624,7 +642,7 @@ impl Paginator<'_, '_, '_> {
             for &c in &band {
                 let g = geo(c);
                 let is_box = tree.nodes[c as usize]
-                    .node
+                    .node()
                     .is_some_and(|n| matches!(n.kind, NodeKind::Box { .. }));
                 if is_box && g.y + g.h >= bottom - PAGED_EPS {
                     self.out.shift_bottom[c as usize] = end;
@@ -665,7 +683,7 @@ impl Paginator<'_, '_, '_> {
                 // A group that lands exactly at the top of a later page
                 // (without being pushed) also needs room for the header.
                 let at_new_page =
-                    self.at_page_top(top) && self.page_of(top) > self.page_of(table_top);
+                    self.at_page_top(top) && self.out.page_of(top) > self.out.page_of(table_top);
                 if overflows || at_new_page {
                     let to_next = if overflows {
                         self.page_end(top) - top
@@ -699,7 +717,7 @@ impl Paginator<'_, '_, '_> {
         let cells: Vec<NodeIdx> = self.tree.children(row).collect();
         let mut need = 0.0f32;
         for cell in cells {
-            if let Some(c) = self.tree.children(cell).find(|&c| self.in_flow(c)) {
+            if let Some(c) = self.first_in_flow(cell) {
                 let cy = self.tree.nodes[c as usize].geo.y;
                 need = need.max(cy - row_y + self.head(c));
             }
@@ -758,7 +776,7 @@ impl Paginator<'_, '_, '_> {
                 top + lines[k].height > self.page_end(top) + PAGED_EPS && !self.at_page_top(top);
             // A line that lands exactly on a later page top breaks too.
             let new_page = k > chunk
-                && self.page_of(top) > self.page_of(cy + lines[k - 1].top + shifts[k - 1]);
+                && self.out.page_of(top) > self.out.page_of(cy + lines[k - 1].top + shifts[k - 1]);
             if overflows || new_page {
                 let wanted = n.saturating_sub(widows);
                 if wanted < k && wanted >= chunk + orphans {
