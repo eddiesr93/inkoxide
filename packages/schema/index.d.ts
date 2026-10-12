@@ -502,14 +502,23 @@ export interface EdgesColor {
   left?: Color;
 }
 /**
- * Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`.
+ * Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`. A box laid out as a row, a grid, wrapping or reversed moves to the next page whole when it fits on one; taller than a page, it splits between its rows (children whose extents overlap), each child continuing from the row's top. Content that cannot split (an image, a positioned, rotated, transformed or fixed node, table rows tied by a row span) is cut across pages when it is taller than a page.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Break".
  */
 export interface Break {
+  /**
+   * `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, or on an absolutely positioned node: there it would do nothing.
+   */
   before?: 'auto' | 'page';
+  /**
+   * `page` starts a new page after the node when in-flow content follows it: a break at the end of the flow adds no page. Allowed where `before` is.
+   */
   after?: 'auto' | 'page';
+  /**
+   * `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole.
+   */
   inside?: 'auto' | 'avoid';
   minPresenceAhead?: NonNegative;
   /**
@@ -663,7 +672,7 @@ export interface TableCell {
   children?: Node[];
 }
 /**
- * Starts a new page. Flowing content only: in a header, a footer, a table cell or a fixed overlay it is `INVALID_NODE`.
+ * Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, it is `INVALID_NODE`.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "PageBreakNode".

@@ -8,10 +8,10 @@ use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
-    is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, ColumnWidth,
-    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, ObjectPosition,
-    OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
-    SCHEMA_VERSION,
+    is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
+    ColumnWidth, Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind,
+    ObjectPosition, OptEdges, PageSpec, Position, RepeatCount, Style, Table, TextRun, TrackBreadth,
+    TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -130,12 +130,19 @@ fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
     }
 }
 
+/// Error message for a forced page break in [`Ctx::Whole`].
+const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node";
+
 /// Where a node sits; some node types are only valid in the flow.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Ctx {
     /// A child of the page: in the flow, or an overlay.
     Page,
     Flow,
+    /// In flowing content that does not split at forced breaks: inside a
+    /// row, grid, wrapping or reversed box, or inside a positioned,
+    /// rotated, transformed or fixed node.
+    Whole,
     /// In a header or footer.
     Fixed,
     /// In an overlay: a fixed, absolutely positioned page child, laid out
@@ -396,7 +403,7 @@ impl<'a> Checker<'a> {
             }
             Ctx::Page => Ctx::Flow,
             ctx => {
-                if ctx != Ctx::Flow && node.brk != Break::default() {
+                if !matches!(ctx, Ctx::Flow | Ctx::Whole) && node.brk != Break::default() {
                     let message = if ctx == Ctx::Overlay {
                         "pagination controls do not apply inside a fixed, absolutely positioned page child: it is painted whole on every page"
                     } else {
@@ -406,6 +413,28 @@ impl<'a> Checker<'a> {
                 }
                 ctx
             }
+        };
+        let absolute = node.style.position == Some(Position::Absolute);
+        let forced = node.brk.before == BreakMode::Page || node.brk.after == BreakMode::Page;
+        if forced && (ctx == Ctx::Whole || (ctx == Ctx::Flow && absolute)) {
+            let message = if ctx == Ctx::Whole {
+                WHOLE
+            } else {
+                "a forced page break does nothing on an absolutely positioned node: it is out of the flow"
+            };
+            self.err(Code::InvalidValue, Some("break"), message);
+        }
+        // Inside these, forced breaks would do nothing.
+        let inner = if ctx == Ctx::Flow
+            && (absolute
+                || node.brk.fixed
+                || node.style.rotate.is_some_and(|r| r % 360.0 != 0.0)
+                || node.style.transform.as_ref().is_some_and(|t| !t.is_empty())
+                || crate::paginate::banded(node))
+        {
+            Ctx::Whole
+        } else {
+            ctx
         };
         if let Some(crate::schema::PageFilter::List(list)) = node.pages.as_deref() {
             if list.is_empty() || list.contains(&0) {
@@ -424,7 +453,7 @@ impl<'a> Checker<'a> {
         }
 
         match &node.kind {
-            NodeKind::Box { children } => self.children(Some(&node.style), children, ctx),
+            NodeKind::Box { children } => self.children(Some(&node.style), children, inner),
             NodeKind::Text { runs } => {
                 self.at("runs", |c| {
                     for (i, r) in runs.iter().enumerate() {
@@ -451,7 +480,9 @@ impl<'a> Checker<'a> {
             }
             NodeKind::Table(t) => self.table(t),
             NodeKind::PageBreak => {
-                if ctx != Ctx::Flow {
+                if ctx == Ctx::Whole {
+                    self.err(Code::InvalidNode, None, WHOLE);
+                } else if ctx != Ctx::Flow {
                     self.err(
                         Code::InvalidNode,
                         None,

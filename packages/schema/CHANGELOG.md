@@ -7,6 +7,15 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- **Forced breaks:** a `pageBreak` or `break.before/after: "page"` inside a row, grid, wrapping
+  or reversed box, or inside a positioned, rotated, transformed or fixed node, is
+  `INVALID_NODE` / `INVALID_VALUE`, and so is `before/after: "page"` on an absolutely
+  positioned node: the engine accepted them and did nothing. Forced breaks elsewhere work at any
+  depth and inside `inside: "avoid"`, and one at the end of the flow adds no page. `Break`
+  documents how rows, grids and content taller than a page split.
+
 ## 2.2.0 - 2026-10-12
 
 Still document schema version 1.
