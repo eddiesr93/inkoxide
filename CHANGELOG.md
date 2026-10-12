@@ -9,6 +9,17 @@ All notable changes to the packages in this repository. The format follows
 
 ### Fixed
 
+- A `PageBreak`, `break="page-before"` or `break="page-after"` inside a `View` that fits on the
+  page starts a new page; it was ignored. It also breaks inside `break="avoid"`
+  (`wrap={false}`), as in CSS, and a break before a `View`'s first child takes the `View` to the
+  new page instead of leaving its top padding behind.
+- A page break at the end of the content no longer adds a blank last page.
+- An absolutely positioned element of the page body written after a page break is placed from
+  the top of the body, like one written first; it moved with the break and could be cut across
+  two pages.
+- A `flex-row`, grid or wrapping `View` taller than a page splits between the lines of its
+  children, each column continuing on the next page, and a `break="avoid"` element taller than
+  a page splits like any other; both were cut through a line of text at the page edge.
 - Fixed elements in the body are painted in document order and by `zIndex`, as without `fixed`;
   nested ones were painted in the wrong order.
 

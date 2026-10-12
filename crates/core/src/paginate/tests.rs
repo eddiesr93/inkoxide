@@ -388,6 +388,118 @@ fn horizontal_padding_narrows_measured_text() {
 }
 
 #[test]
+fn forced_breaks_inside_a_box_that_fits_start_a_page() {
+    for inner in [
+        r#"{"type":"box","style":{"height":10}},{"type":"pageBreak"},{"type":"box","style":{"height":10}}"#,
+        r#"{"type":"box","style":{"height":10},"break":{"after":"page"}},{"type":"box","style":{"height":10}}"#,
+        r#"{"type":"box","style":{"height":10}},{"type":"box","style":{"height":10},"break":{"before":"page"}}"#,
+        r#"{"type":"box","style":{"height":10}},{"type":"box","children":[{"type":"pageBreak"}]},{"type":"box","style":{"height":10}}"#,
+    ] {
+        // A forced break wins over `inside: avoid`, as in CSS.
+        for brk in ["", r#","break":{"inside":"avoid"}"#] {
+            let d = doc(&format!(r#"{{"type":"box"{brk},"children":[{inner}]}}"#));
+            let (t, p) = run(&d);
+            assert_eq!(p.pages, 2, "{brk} {inner}");
+            let last = t.children(1).last().unwrap();
+            assert_eq!(rect(&t, &p, last).0, 100.0, "{brk} {inner}");
+            check_invariants(&t, &p);
+        }
+    }
+}
+
+#[test]
+fn keep_together_box_with_a_forced_break_keeps_its_first_part_together() {
+    // 70 pt on page 0 leaves 30: the 40 pt before the break moves whole.
+    let d = doc(&format!(
+        r#"{},{{"type":"box","break":{{"inside":"avoid"}},"children":[{},{{"type":"pageBreak"}},{}]}}"#,
+        boxes(&[70.0]),
+        boxes(&[20.0, 20.0]),
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    let kids: Vec<u32> = t.children(2).collect();
+    assert_eq!(rect(&t, &p, 2).0, 100.0);
+    assert_eq!(rect(&t, &p, kids[1]).0, 120.0);
+    assert_eq!(rect(&t, &p, kids[3]).0, 200.0);
+    assert_eq!(p.pages, 3);
+}
+
+#[test]
+fn a_break_before_the_first_child_moves_its_box() {
+    // The box's top padding goes with its first child, not alone on page 0.
+    for first in [
+        r#"{"type":"box","style":{"height":10},"break":{"before":"page"}}"#,
+        r#"{"type":"pageBreak"},{"type":"box","style":{"height":10}}"#,
+        r#"{"type":"box","children":[{"type":"box","style":{"height":10},"break":{"before":"page"}}]}"#,
+    ] {
+        let d = doc(&format!(
+            r#"{},{{"type":"box","style":{{"padding":{{"top":5}}}},"children":[{first},{}]}}"#,
+            boxes(&[10.0]),
+            boxes(&[10.0])
+        ));
+        let (t, p) = run(&d);
+        assert_eq!(rect(&t, &p, 2).0, 100.0, "{first}");
+        assert_eq!(p.page_range[2], (1, 1), "{first}");
+        assert_eq!(p.pages, 2, "{first}");
+    }
+    // After a pending break, too: one new page, not two.
+    let d = doc(&format!(
+        r#"{{"type":"box","style":{{"height":10}},"break":{{"after":"page"}}}},{{"type":"box","style":{{"padding":{{"top":5}}}},"children":[{{"type":"pageBreak"}},{}]}}"#,
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(rect(&t, &p, 2).0, 100.0);
+    assert_eq!(p.pages, 2);
+}
+
+#[test]
+fn a_page_break_marks_the_top_of_the_next_page() {
+    // A link to a `pageBreak`'s id goes to the page it starts.
+    let d = doc(&format!(
+        r#"{},{{"type":"pageBreak"}},{}"#,
+        boxes(&[10.0]),
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(rect(&t, &p, 2).0, 100.0);
+    assert_eq!(p.first_page(2), 1);
+}
+
+#[test]
+fn a_trailing_forced_break_adds_no_page() {
+    for children in [
+        format!(r#"{},{{"type":"pageBreak"}}"#, boxes(&[10.0])),
+        r#"{"type":"box","style":{"height":10},"break":{"after":"page"}}"#.to_owned(),
+        format!(
+            r#"{{"type":"box","children":[{},{{"type":"pageBreak"}}]}}"#,
+            boxes(&[10.0])
+        ),
+        format!(
+            r#"{},{{"type":"box","break":{{"inside":"avoid"}},"children":[{}]}},{{"type":"pageBreak"}},{{"type":"box","style":{{"position":"absolute","height":5,"width":5}}}}"#,
+            boxes(&[10.0]),
+            boxes(&[10.0])
+        ),
+    ] {
+        let d = doc(&children);
+        let (_, p) = run(&d);
+        assert_eq!(p.pages, 1, "{children}");
+    }
+}
+
+#[test]
+fn absolute_page_children_stay_at_the_flow_top() {
+    let abs = r#"{"type":"box","style":{"position":"absolute","inset":{"top":5},"height":10,"width":10}}"#;
+    let d = doc(&format!(
+        r#"{},{{"type":"pageBreak"}},{},{abs}"#,
+        boxes(&[10.0]),
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(rect(&t, &p, 4), (5.0, 15.0));
+    assert_eq!(p.page_range[4], (0, 0));
+}
+
+#[test]
 fn fixed_nodes_are_collected_in_paint_order() {
     let fixed = |z: i32| {
         format!(
@@ -413,4 +525,125 @@ fn fixed_nodes_are_collected_in_paint_order() {
     ));
     let (_, p) = run(&d);
     assert_eq!(p.fixed, vec![3, 2]);
+}
+
+#[test]
+fn keep_together_box_taller_than_a_page_splits_between_children() {
+    let d = doc(&format!(
+        r#"{{"type":"box","break":{{"inside":"avoid"}},"children":[{}]}}"#,
+        boxes(&[40.0, 40.0, 40.0, 40.0])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(p.pages, 2);
+    check_invariants(&t, &p);
+}
+
+#[test]
+fn row_and_grid_boxes_taller_than_a_page_split_by_rows() {
+    let column = |hs: &[f32]| format!(r#"{{"type":"box","children":[{}]}}"#, boxes(hs));
+    for style in [
+        r#""flexDirection":"row""#,
+        r#""flexDirection":"row-reverse""#,
+        r#""flexDirection":"row","flexWrap":"wrap""#,
+        r#""display":"grid","gridTemplateColumns":["1fr","1fr"]"#,
+    ] {
+        let d = doc(&format!(
+            r#"{},{{"type":"box","style":{{{style}}},"children":[{},{}]}},{}"#,
+            boxes(&[30.0]),
+            column(&[40.0, 40.0, 40.0]),
+            column(&[30.0, 30.0, 30.0, 30.0, 30.0]),
+            boxes(&[10.0])
+        ));
+        let (t, p) = run(&d);
+        // The row starts on page 0, below the first box.
+        assert_eq!(rect(&t, &p, 2).0, 30.0, "{style}");
+        check_invariants(&t, &p);
+        // The row ends below its longer column, and the next box follows it.
+        let (_, row_bottom) = rect(&t, &p, 2);
+        let tall = t.children(2).find(|&c| t.children(c).count() == 5).unwrap();
+        let last = t.children(tall).last().unwrap();
+        assert!(row_bottom >= rect(&t, &p, last).1 - PAGED_EPS, "{style}");
+        assert!(rect(&t, &p, 3).0 >= row_bottom - PAGED_EPS, "{style}");
+        // Both columns are stretched to the row and end with it.
+        for c in t.children(2) {
+            assert_eq!(rect(&t, &p, c).1, row_bottom, "{style}");
+        }
+    }
+    // A grid's second row starts below the first row's longer cell.
+    let d = doc(&format!(
+        r#"{{"type":"box","style":{{"display":"grid","gridTemplateColumns":["1fr","1fr"]}},"children":[{},{},{},{}]}}"#,
+        column(&[40.0, 40.0, 40.0]),
+        column(&[10.0]),
+        boxes(&[10.0]),
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    check_invariants(&t, &p);
+    let kids: Vec<u32> = t.children(1).collect();
+    let first_row_bottom = rect(&t, &p, kids[0]).1;
+    assert!(first_row_bottom > H);
+    assert_eq!(rect(&t, &p, kids[2]).0, first_row_bottom);
+    assert_eq!(rect(&t, &p, kids[3]).0, first_row_bottom);
+}
+
+/// Lays out and paginates `children` with text, checks that every line of
+/// every paragraph sits on one page, and returns the page count.
+fn check_lines(children: &str) -> u32 {
+    use crate::fonts::FontSet;
+    use crate::text::{RustybuzzShaper, TextCache};
+    let store = crate::test_fixtures::inter();
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[{children}]}}]}}"#
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 200.0, H, &mut cache)
+        .unwrap();
+    let p = paginate(&tree, H, &mut cache);
+    for i in 0..tree.nodes.len() as NodeIdx {
+        let Some(node) = tree.nodes[i as usize].node else {
+            continue;
+        };
+        if !matches!(node.kind, NodeKind::Text { .. }) {
+            continue;
+        }
+        let Rect { y: cy, w: cw, .. } = tree.nodes[i as usize].geo.content_box();
+        let layout = cache.layout(node, cw).unwrap();
+        let shifts = p.line_shifts(i);
+        for (k, line) in layout.lines.iter().enumerate() {
+            let shift = shifts.get(k).copied().unwrap_or(p.shift(i));
+            let top = cy + line.top + shift;
+            assert_eq!(
+                page(top),
+                page_of_bottom(top + line.height),
+                "line {k} of node {i} crosses a page: {top}"
+            );
+        }
+    }
+    p.pages
+}
+
+#[test]
+fn text_in_a_row_taller_than_a_page_splits_between_lines() {
+    let text = |words: usize, brk: &str| {
+        format!(
+            r#"{{"type":"text"{brk},"style":{{"flexGrow":1,"flexBasis":0}},"runs":[{{"text":"{}","font":"Inter-Regular","size":10}}]}}"#,
+            "lorem ".repeat(words)
+        )
+    };
+    let pages = check_lines(&format!(
+        r#"{{"type":"box","style":{{"height":30}}}},{{"type":"box","style":{{"flexDirection":"row"}},"children":[{},{}]}}"#,
+        text(120, ""),
+        text(60, "")
+    ));
+    assert!(pages >= 3);
+    // Taller than a page, a paragraph with `inside: avoid` splits too.
+    let pages = check_lines(&format!(
+        r#"{{"type":"box","style":{{"height":30}}}},{}"#,
+        text(120, r#","break":{"inside":"avoid"}"#)
+    ));
+    assert!(pages >= 3);
 }
