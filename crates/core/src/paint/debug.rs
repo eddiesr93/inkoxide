@@ -9,7 +9,8 @@
 
 use std::collections::HashMap;
 
-use super::{FillRule, Op, Path, PathSeg, Rect};
+use super::shapes::{push_rounded_rect, NO_RADII};
+use super::{with_alpha, FillRule, Op, Path, PathSeg, Rect};
 use crate::schema::{Color, Edges};
 
 /// Margin: orange, like browser developer tools.
@@ -173,32 +174,12 @@ pub(crate) fn page_box(width: f32, height: f32, margin: Edges<f32>) -> DebugBox 
     }
 }
 
-/// `r` grown by `e` (shrunk where negative).
-fn outset(r: Rect, e: Edges<f32>) -> Rect {
-    Rect::new(
-        r.x - e.left,
-        r.y - e.top,
-        (r.w + e.left + e.right).max(0.0),
-        (r.h + e.top + e.bottom).max(0.0),
-    )
-}
-
-fn rect_path(p: &mut Path, r: Rect) {
-    p.segs.extend([
-        PathSeg::MoveTo(r.x, r.y),
-        PathSeg::LineTo(r.x + r.w, r.y),
-        PathSeg::LineTo(r.x + r.w, r.y + r.h),
-        PathSeg::LineTo(r.x, r.y + r.h),
-        PathSeg::Close,
-    ]);
-}
-
 /// Fills the area between `outer` and `inner`.
 fn ring(outer: Rect, inner: Rect, color: Color, ops: &mut Vec<Op>) {
     let mut path = Path::default();
-    rect_path(&mut path, outer);
-    rect_path(&mut path, inner);
-    with_alpha(color[3], ops, |ops| {
+    push_rounded_rect(&mut path, outer, &NO_RADII);
+    push_rounded_rect(&mut path, inner, &NO_RADII);
+    with_alpha(ops, 1.0, color[3], |ops| {
         ops.push(Op::FillPath {
             path,
             color,
@@ -207,24 +188,13 @@ fn ring(outer: Rect, inner: Rect, color: Color, ops: &mut Vec<Op>) {
     });
 }
 
-fn with_alpha(alpha: f32, ops: &mut Vec<Op>, f: impl FnOnce(&mut Vec<Op>)) {
-    if alpha >= 1.0 {
-        f(ops);
-        return;
-    }
-    ops.push(Op::Save);
-    ops.push(Op::SetOpacity(alpha));
-    f(ops);
-    ops.push(Op::Restore);
-}
-
 fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Labels) {
     let border = b.rect;
-    let padding = outset(border, b.border.map(|v| -v));
-    let content = outset(padding, b.padding.map(|v| -v));
+    let padding = border.inset(b.border);
+    let content = padding.inset(b.padding);
     let any = |e: Edges<f32>| e.to_array().iter().any(|v| *v != 0.0);
     if any(b.margin) {
-        ring(outset(border, b.margin), border, MARGIN, ops);
+        ring(border.outset(b.margin), border, MARGIN, ops);
     }
     if any(b.border) {
         ring(border, padding, BORDER, ops);
@@ -233,7 +203,7 @@ fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Labels) {
         ring(padding, content, PADDING, ops);
     }
     let mut path = Path::default();
-    rect_path(&mut path, content);
+    push_rounded_rect(&mut path, content, &NO_RADII);
     ops.push(Op::StrokePath {
         path,
         color: CONTENT,
@@ -381,7 +351,7 @@ fn label(x: f32, y: f32, text: &str, ops: &mut Vec<Op>) {
     }
     let (w, h) = label_size(text);
     let bg = Rect::new(x, y, w, h);
-    with_alpha(LABEL_BG[3], ops, |ops| {
+    with_alpha(ops, 1.0, LABEL_BG[3], |ops| {
         ops.push(Op::FillRect {
             rect: bg,
             color: LABEL_BG,

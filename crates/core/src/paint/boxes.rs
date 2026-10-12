@@ -5,7 +5,7 @@ use super::debug::{DebugBox, DebugBoxes};
 use super::shapes::{
     corner_radii, inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII,
 };
-use super::{Dash, FillRule, Op, Path, Rect};
+use super::{with_alpha, Dash, FillRule, Op, Path, Rect};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, NodeIdx, Part, Tree};
 use crate::paginate::{PageWindow, Placement, PAGED_EPS};
@@ -223,24 +223,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
         let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
         let transform = s.transform.as_deref().filter(|t| !t.is_empty());
-        let own = if transform.is_some() || (rotate.is_some() && s.transform_origin.is_some()) {
-            Some(box_transform(s, x, y, w, h))
-        } else {
-            rotate.map(|deg| {
-                let (sin, cos) = deg.to_radians().sin_cos();
-                let (cx, cy) = (x + w / 2.0, y + h / 2.0);
-                // translate(c) · rotate · translate(-c); y-down, so positive
-                // angles turn clockwise like CSS.
-                [
-                    cos,
-                    sin,
-                    -sin,
-                    cos,
-                    cx - cos * cx + sin * cy,
-                    cy - sin * cx - cos * cy,
-                ]
-            })
-        };
+        let own = (transform.is_some() || rotate.is_some()).then(|| box_transform(s, x, y, w, h));
         if node.debug || self.debug.all {
             self.outline(&g, shift, extra, window, own);
         }
@@ -295,16 +278,9 @@ impl BoxPainter<'_, '_, '_, '_> {
         self.borders(s, g.border, border_box, &radii);
 
         if clip {
-            let b = g.border;
-            let inner = inset_radii(&radii, b);
-            let padding_box = Rect::new(
-                x + b.left,
-                y + b.top,
-                (w - b.right - b.left).max(0.0),
-                (h - b.top - b.bottom).max(0.0),
-            );
+            let inner = inset_radii(&radii, g.border);
             self.ops.push(Op::ClipPath {
-                path: rounded_rect(padding_box, &inner),
+                path: rounded_rect(border_box.inset(g.border), &inner),
                 rule: FillRule::NonZero,
             });
         }
@@ -405,10 +381,9 @@ impl BoxPainter<'_, '_, '_, '_> {
         let mut fills: Vec<(Rect, Color, BorderStyle, bool)> = Vec::new();
         let first_cell = t.cells.partition_point(|c| c.row < lo);
         if t.separate {
-            let cells: Vec<(usize, f32, f32)> = (first_cell..t.cells.len())
+            let cells: Vec<usize> = (first_cell..t.cells.len())
                 .take_while(|&k| t.cells[k].row < hi)
                 .filter(|&k| visible(t.cells[k].row))
-                .map(|k| (k, shift(t.cells[k].row), extra(t.cells[k].row)))
                 .collect();
             self.separate_cells(t, &rows, &cells, ox, oy);
             return;
@@ -523,18 +498,18 @@ impl BoxPainter<'_, '_, '_, '_> {
 
     /// Separate borders: each visible cell paints the row background, its
     /// own background and its own borders, with its `borderRadius`.
-    /// `cells`: (index into `t.cells`, row shift, row growth) of the
-    /// visible cells.
+    /// `cells`: the visible cells, as indices into `t.cells`.
     fn separate_cells(
         &mut self,
         t: &TableLayout,
         rows: &[NodeIdx],
-        cells: &[(usize, f32, f32)],
+        cells: &[usize],
         ox: f32,
         oy: f32,
     ) {
-        for &(k, shift, extra) in cells {
+        for &k in cells {
             let cell = &t.cells[k];
+            let (shift, extra) = self.mode.shifts(rows[cell.row]);
             let style = self.tree.nodes[cell.idx as usize].style();
             let rect = Rect::new(ox + cell.x, oy + cell.y + shift, cell.w, cell.h + extra);
             let radii = radii(style, rect.w, rect.h);
@@ -588,25 +563,13 @@ impl BoxPainter<'_, '_, '_, '_> {
     }
 
     fn fill(&mut self, path: Path, color: Color) {
-        self.with_alpha(color[3], |ops| {
-            ops.push(Op::FillPath {
-                path,
-                color,
-                rule: FillRule::NonZero,
-            });
-        });
+        self.fill_with(path, color, FillRule::NonZero);
     }
 
-    /// Runs `f` with the colour's alpha folded into the current opacity.
-    fn with_alpha(&mut self, alpha: f32, f: impl FnOnce(&mut Vec<Op>)) {
-        if alpha >= 1.0 {
-            f(self.ops);
-            return;
-        }
-        self.ops.push(Op::Save);
-        self.ops.push(Op::SetOpacity(self.opacity * alpha));
-        f(self.ops);
-        self.ops.push(Op::Restore);
+    fn fill_with(&mut self, path: Path, color: Color, rule: FillRule) {
+        with_alpha(self.ops, self.opacity, color[3], |ops| {
+            ops.push(Op::FillPath { path, color, rule });
+        });
     }
 
     /// Borders of `widths` around the border box `rect`, whose height is
@@ -622,15 +585,17 @@ impl BoxPainter<'_, '_, '_, '_> {
         let colors: [Color; 4] = s.border_color.map_or([BLACK; 4], |c| c.get(BLACK));
         let [bt, br, bb, bl] = side_w;
         let inner_radii = inset_radii(radii, widths);
-        let ix = x + bl;
-        let iy = y + bt;
-        let iw = (w - bl - br).max(0.0);
-        let ih = (h - bt - bb).max(0.0);
+        let inner = rect.inset(widths);
+        let Rect {
+            x: ix,
+            y: iy,
+            w: iw,
+            h: ih,
+        } = inner;
 
         // The ring between the border box and the padding box.
         let mut ring = rounded_rect(rect, radii);
-        ring.segs
-            .extend(rounded_rect(Rect::new(ix, iy, iw, ih), &inner_radii).segs);
+        ring.segs.extend(rounded_rect(inner, &inner_radii).segs);
 
         let active: Vec<usize> = (0..4).filter(|&k| side_w[k] > 0.0).collect();
         let same_color = active.windows(2).all(|p| colors[p[0]] == colors[p[1]]);
@@ -649,15 +614,16 @@ impl BoxPainter<'_, '_, '_, '_> {
             [(r, b), (x, b), (ix, ib), (ir, ib)],
             [(x, b), (x, y), (ix, iy), (ix, ib)],
         ];
+        // The line along the middle of each side, for dashes and dots.
+        let mid = |k: usize| match k {
+            0 => line(x, y + bt / 2.0, r, y + bt / 2.0),
+            1 => line(r - br / 2.0, y, r - br / 2.0, b),
+            2 => line(r, b - bb / 2.0, x, b - bb / 2.0),
+            _ => line(x + bl / 2.0, b, x + bl / 2.0, y),
+        };
         let square = crate::paint::shapes::is_square(radii);
 
         if mixed {
-            let mid = [
-                line(x, y + bt / 2.0, r, y + bt / 2.0),
-                line(r - br / 2.0, y, r - br / 2.0, b),
-                line(r, b - bb / 2.0, x, b - bb / 2.0),
-                line(x + bl / 2.0, b, x + bl / 2.0, y),
-            ];
             self.ops.push(Op::Save);
             self.ops.push(Op::ClipPath {
                 path: ring,
@@ -665,46 +631,23 @@ impl BoxPainter<'_, '_, '_, '_> {
             });
             for &k in &active {
                 if styles[k] == BorderStyle::Solid {
-                    let color = colors[k];
-                    let path = polygon(&sides[k]);
-                    self.with_alpha(color[3], |ops| {
-                        ops.push(Op::FillPath {
-                            path,
-                            color,
-                            rule: FillRule::NonZero,
-                        });
-                    });
+                    self.fill(polygon(&sides[k]), colors[k]);
                 } else {
-                    self.stroke(mid[k].clone(), colors[k], side_w[k], styles[k]);
+                    self.stroke(mid(k), colors[k], side_w[k], styles[k]);
                 }
             }
             self.ops.push(Op::Restore);
             return;
         }
         if style == BorderStyle::Solid && same_color && (active.len() == 4 || !square) {
-            let color = colors[active[0]];
-            self.with_alpha(color[3], |ops| {
-                ops.push(Op::FillPath {
-                    path: ring,
-                    color,
-                    rule: FillRule::EvenOdd,
-                });
-            });
+            self.fill_with(ring, colors[active[0]], FillRule::EvenOdd);
             return;
         }
         if style == BorderStyle::Solid && square {
             // No ring needed: avoids hairline seams where the outer and
             // inner edges of a zero-width side coincide.
             for &k in &active {
-                let color = colors[k];
-                let path = polygon(&sides[k]);
-                self.with_alpha(color[3], |ops| {
-                    ops.push(Op::FillPath {
-                        path,
-                        color,
-                        rule: FillRule::NonZero,
-                    });
-                });
+                self.fill(polygon(&sides[k]), colors[k]);
             }
             return;
         }
@@ -717,24 +660,10 @@ impl BoxPainter<'_, '_, '_, '_> {
         if style == BorderStyle::Solid {
             // Rounded, several colours: trapezoids cut by the ring clip.
             for &k in &active {
-                let color = colors[k];
-                let path = polygon(&sides[k]);
-                self.with_alpha(color[3], |ops| {
-                    ops.push(Op::FillPath {
-                        path,
-                        color,
-                        rule: FillRule::NonZero,
-                    });
-                });
+                self.fill(polygon(&sides[k]), colors[k]);
             }
         } else {
             // Dashed / dotted: stroke along the middle of each side.
-            let mid = [
-                line(x, y + bt / 2.0, r, y + bt / 2.0),
-                line(r - br / 2.0, y, r - br / 2.0, b),
-                line(r, b - bb / 2.0, x, b - bb / 2.0),
-                line(x + bl / 2.0, b, x + bl / 2.0, y),
-            ];
             let uniform =
                 active.len() == 4 && side_w.windows(2).all(|p| p[0] == p[1]) && same_color;
             if uniform && !square {
@@ -745,7 +674,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 self.stroke(path, colors[0], bt, style);
             } else {
                 for &k in &active {
-                    self.stroke(mid[k].clone(), colors[k], side_w[k], style);
+                    self.stroke(mid(k), colors[k], side_w[k], style);
                 }
             }
         }
@@ -764,7 +693,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 round_cap: true,
             }),
         };
-        self.with_alpha(color[3], |ops| {
+        with_alpha(self.ops, self.opacity, color[3], |ops| {
             ops.push(Op::StrokePath {
                 path,
                 color,

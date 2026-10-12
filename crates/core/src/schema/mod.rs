@@ -142,15 +142,6 @@ impl<T: Default + Copy> Edges<T> {
     pub fn to_array(self) -> [T; 4] {
         [self.top, self.right, self.bottom, self.left]
     }
-
-    pub fn map<U: Default>(self, f: impl Fn(T) -> U) -> Edges<U> {
-        Edges {
-            top: f(self.top),
-            right: f(self.right),
-            bottom: f(self.bottom),
-            left: f(self.left),
-        }
-    }
 }
 
 impl<T: Default> From<[T; 4]> for Edges<T> {
