@@ -8,13 +8,16 @@ use super::shapes::{
 use super::{Dash, FillRule, Op, Path, Rect};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, NodeIdx, Part, Tree};
-use crate::paginate::Placement;
+use crate::paginate::{PageWindow, Placement, PAGED_EPS};
 use crate::schema::{
-    BorderRadius, BorderStyle, BorderStyles, Color, Display, LengthPercent, Node, Overflow, Style,
-    TransformOp,
+    BorderRadius, BorderStyle, BorderStyles, Color, Display, Edges, LengthPercent, Node, Overflow,
+    Style, TransformOp, BLACK,
 };
+use crate::text::PageNumbers;
 
-const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
+/// Row shifts closer than this (points) are equal: no page break falls
+/// between the rows.
+const SHIFT_EPS: f32 = 1e-3;
 
 /// What a leaf painter needs to know about the node it paints.
 pub(crate) struct ContentCtx<'p> {
@@ -27,7 +30,7 @@ pub(crate) struct ContentCtx<'p> {
     /// Per-line shifts of a split paragraph (empty: use `shift`).
     pub line_shifts: &'p [f32],
     /// Paged y range shown on this page (`None`: everything).
-    pub window: Option<(f32, f32)>,
+    pub window: Option<PageWindow>,
     /// Cumulative opacity in effect; content with its own alpha multiplies it.
     pub opacity: f32,
 }
@@ -35,6 +38,11 @@ pub(crate) struct ContentCtx<'p> {
 /// Paints leaf content (text, images, tables) inside a node's content box.
 pub(crate) trait ContentPainter {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>);
+
+    /// The physical page number and the page count of the page painted:
+    /// placeholders show them, and nodes shown on some pages only are
+    /// painted by them.
+    fn numbers(&self) -> PageNumbers;
 }
 
 /// Which part of a flow to paint.
@@ -49,69 +57,129 @@ pub(crate) enum FlowPart<'p> {
 }
 
 /// Paints part of `tree`. `dx`/`dy` translate flow (or paged) coordinates
-/// to page coordinates; `numbers` is the physical page number and the
-/// page count, for nodes shown on some pages only. The boxes of elements
-/// with `debug` (of all, with `debug.all`) go to `debug`.
-#[allow(clippy::too_many_arguments)]
+/// to page coordinates. The boxes of elements with `debug` (of all, with
+/// `debug.all`) go to `debug`.
 pub(crate) fn paint_flow(
     tree: &Tree<'_>,
     part: FlowPart<'_>,
     dx: f32,
     dy: f32,
-    numbers: (u32, u32),
     content: &mut dyn ContentPainter,
     ops: &mut Vec<Op>,
     debug: &mut DebugBoxes,
 ) {
-    let (placement, page, fixed_only) = match part {
-        FlowPart::All => (None, 0, false),
-        FlowPart::Page { placement, page } => (Some(placement), page, false),
-        FlowPart::Fixed { placement, page } => (Some(placement), page, true),
+    let mode = match part {
+        FlowPart::All => Mode::Unpaged,
+        FlowPart::Page { placement, page } => Mode::Paged { placement, page },
+        FlowPart::Fixed { placement, page } => Mode::Fixed { placement, page },
     };
     let mut p = BoxPainter {
         tree,
-        placement,
-        page,
+        mode,
         dx,
         dy,
-        override_shift: None,
-        numbers,
         opacity: 1.0,
         ctm: None,
         content,
         ops,
         debug,
     };
-    match (fixed_only, placement) {
-        (true, Some(pl)) => {
+    match mode {
+        Mode::Fixed { placement, page } => {
             // Fixed nodes keep their position relative to their first page.
-            let h = pl.page_h;
-            for &i in &pl.fixed {
-                let first = pl.page_range[i as usize].0;
+            let h = placement.page_h;
+            for &i in &placement.fixed {
+                let first = placement.first_page(i);
                 p.dy = dy + (page as f32 - first as f32) * h;
-                p.placement = Some(pl);
-                p.node(i, true);
+                p.node(i);
             }
         }
         _ => {
             for c in paint_order(tree, 0) {
-                p.node(c, false);
+                p.node(c);
             }
+        }
+    }
+}
+
+/// How the nodes of a flow map onto the page being painted.
+#[derive(Clone, Copy)]
+enum Mode<'p> {
+    /// Unpaginated (headers, footers, overlays): every node, unshifted.
+    Unpaged,
+    /// Page `page` of a paginated flow: the nodes on it, shifted into paged
+    /// space, without the fixed nodes.
+    Paged { placement: &'p Placement, page: u32 },
+    /// The fixed nodes of a paginated flow, repeated on page `page`:
+    /// shifted as on their first page, and not cut to the page.
+    Fixed { placement: &'p Placement, page: u32 },
+    /// The header rows of a table, repeated at `shift` (paged space),
+    /// ignoring pagination.
+    Header { shift: f32 },
+}
+
+impl<'p> Mode<'p> {
+    /// The placement and page of a paginated flow.
+    fn paged(self) -> Option<(&'p Placement, u32)> {
+        match self {
+            Mode::Paged { placement, page } | Mode::Fixed { placement, page } => {
+                Some((placement, page))
+            }
+            Mode::Unpaged | Mode::Header { .. } => None,
+        }
+    }
+
+    /// Whether node `i` is on this page (fixed nodes aside).
+    fn shows(self, i: NodeIdx) -> bool {
+        match self {
+            Mode::Paged { placement, page } => placement.on_page(i, page),
+            _ => true,
+        }
+    }
+
+    /// Whether table row `i` is on this page. Unlike [`Mode::shows`], this
+    /// also filters the rows of a fixed table.
+    fn shows_row(self, i: NodeIdx) -> bool {
+        match self.paged() {
+            Some((pl, page)) => pl.on_page(i, page),
+            None => true,
+        }
+    }
+
+    /// Paged y range shown on this page (`None`: everything).
+    fn window(self) -> Option<PageWindow> {
+        match self {
+            Mode::Paged { placement, page } => Some(placement.window(page)),
+            _ => None,
+        }
+    }
+
+    /// Shift of node `i` into paged space, and its growth from being split
+    /// across pages.
+    fn shifts(self, i: NodeIdx) -> (f32, f32) {
+        match self {
+            Mode::Unpaged => (0.0, 0.0),
+            Mode::Paged { placement, .. } | Mode::Fixed { placement, .. } => {
+                (placement.shift(i), placement.growth(i))
+            }
+            Mode::Header { shift } => (shift, 0.0),
+        }
+    }
+
+    /// Per-line shifts of a split paragraph `i` (empty: use its shift).
+    fn line_shifts(self, i: NodeIdx) -> &'p [f32] {
+        match self.paged() {
+            Some((pl, _)) => pl.line_shifts(i),
+            None => &[],
         }
     }
 }
 
 struct BoxPainter<'t, 'a, 'c, 'p> {
     tree: &'t Tree<'a>,
-    placement: Option<&'p Placement>,
-    page: u32,
+    mode: Mode<'p>,
     dx: f32,
     dy: f32,
-    /// Paints a subtree at a fixed shift, ignoring pagination (repeated
-    /// table header rows).
-    override_shift: Option<f32>,
-    /// Physical page number and page count.
-    numbers: (u32, u32),
     /// Cumulative opacity of the ancestors.
     opacity: f32,
     /// Transform in effect (`None`: identity), for `debug` outlines.
@@ -122,18 +190,12 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
 }
 
 impl BoxPainter<'_, '_, '_, '_> {
-    fn node(&mut self, i: NodeIdx, as_fixed: bool) {
+    fn node(&mut self, i: NodeIdx) {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else {
             // Rows and cells: the table paints their backgrounds and borders.
-            let paged = matches!(
-                (self.placement, self.override_shift, as_fixed),
-                (Some(_), None, false)
-            );
-            if let (Some(pl), true) = (self.placement, paged) {
-                if !pl.on_page(i, self.page) {
-                    return;
-                }
+            if !self.mode.shows(i) {
+                return;
             }
             let debug = match ln.part {
                 Part::Row(r) => r.debug,
@@ -141,15 +203,11 @@ impl BoxPainter<'_, '_, '_, '_> {
                 _ => false,
             };
             if debug || self.debug.all {
-                let window = self.placement.filter(|_| paged).map(|pl| {
-                    let h = pl.page_h;
-                    (self.page as f32 * h, (self.page + 1) as f32 * h)
-                });
-                let (shift, extra) = self.shifts(i);
-                self.outline(&ln.geo, shift, extra, window, None);
+                let (shift, extra) = self.mode.shifts(i);
+                self.outline(&ln.geo, shift, extra, self.mode.window(), None);
             }
             for c in self.tree.children(i) {
-                self.node(c, as_fixed);
+                self.node(c);
             }
             return;
         };
@@ -158,34 +216,29 @@ impl BoxPainter<'_, '_, '_, '_> {
             return;
         }
         if let Some(f) = &node.pages {
-            if !f.shows(self.numbers.0, self.numbers.1) {
+            let n = self.content.numbers();
+            if !f.shows(n.current, n.total) {
                 return;
             }
         }
-        let window = match self.placement {
-            Some(_) if self.override_shift.is_some() => None,
-            Some(pl) if !as_fixed => {
-                // Fixed nodes are painted by the fixed pass on every page.
-                if node.brk.fixed || !pl.on_page(i, self.page) {
-                    return;
-                }
-                let h = pl.page_h;
-                Some((self.page as f32 * h, (self.page + 1) as f32 * h))
-            }
-            _ => None,
-        };
+        // Fixed nodes are painted by the fixed pass on every page.
+        let fixed_here = node.brk.fixed && matches!(self.mode, Mode::Paged { .. });
+        if fixed_here || !self.mode.shows(i) {
+            return;
+        }
+        let window = self.mode.window();
         let g = ln.geo;
-        let (shift, extra) = self.shifts(i);
+        let (shift, extra) = self.mode.shifts(i);
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
         if let Some(target) = &node.link {
             // Only the part of the box shown on this page.
             let (top, bottom) = match window {
-                Some((w0, w1)) => (y.max(w0 + self.dy), (y + h).min(w1 + self.dy)),
+                Some(win) => win.clip(y, y + h, self.dy),
                 None => (y, y + h),
             };
             if bottom > top && w > 0.0 {
                 self.ops.push(Op::Link {
-                    rect: super::Rect::new(x, top, w, bottom - top),
+                    rect: Rect::new(x, top, w, bottom - top),
                     target: target.clone(),
                 });
             }
@@ -235,23 +288,24 @@ impl BoxPainter<'_, '_, '_, '_> {
             self.ctm = Some(self.ctm.map_or(m, |c| mul(c, m)));
         }
 
+        let border_box = Rect::new(x, y, w, h);
         let radii = radii(s, w, h);
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
-            self.fill(rounded_rect(x, y, w, h, &radii), bg);
+            self.fill(rounded_rect(border_box, &radii), bg);
         }
-        self.borders(s, g.border, w, x, y, h, &radii);
+        self.borders(s, g.border, border_box, &radii);
 
         if clip {
             let b = g.border;
             let inner = inset_radii(&radii, b);
+            let padding_box = Rect::new(
+                x + b.left,
+                y + b.top,
+                (w - b.right - b.left).max(0.0),
+                (h - b.top - b.bottom).max(0.0),
+            );
             self.ops.push(Op::ClipPath {
-                path: rounded_rect(
-                    x + b[3],
-                    y + b[0],
-                    (w - b[1] - b[3]).max(0.0),
-                    (h - b[0] - b[2]).max(0.0),
-                    &inner,
-                ),
+                path: rounded_rect(padding_box, &inner),
                 rule: FillRule::NonZero,
             });
         }
@@ -266,10 +320,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             dx: self.dx,
             dy: self.dy,
             shift,
-            line_shifts: match (self.override_shift, self.placement) {
-                (None, Some(pl)) => pl.line_shifts[i as usize].as_slice(),
-                _ => &[][..],
-            },
+            line_shifts: self.mode.line_shifts(i),
             window,
             opacity: self.opacity,
         };
@@ -277,11 +328,11 @@ impl BoxPainter<'_, '_, '_, '_> {
         let tree = self.tree;
         if has_z(tree, i) {
             for c in paint_order(tree, i) {
-                self.node(c, as_fixed);
+                self.node(c);
             }
         } else {
             for c in tree.children(i) {
-                self.node(c, as_fixed);
+                self.node(c);
             }
         }
         if let Some(t) = &table {
@@ -295,19 +346,6 @@ impl BoxPainter<'_, '_, '_, '_> {
         self.ctm = outer_ctm;
     }
 
-    /// Shift of node `i` into paged space, and its growth from being split
-    /// across pages.
-    fn shifts(&self, i: NodeIdx) -> (f32, f32) {
-        match (self.override_shift, self.placement) {
-            (Some(o), _) => (o, 0.0),
-            (None, Some(pl)) => {
-                let st = pl.shift_top[i as usize];
-                (st, pl.shift_bottom[i as usize] - st)
-            }
-            (None, None) => (0.0, 0.0),
-        }
-    }
-
     /// Records the boxes of a node for its `debug` outline. `window` is the
     /// paged range shown on this page; `own` the node's own transform.
     fn outline(
@@ -315,10 +353,11 @@ impl BoxPainter<'_, '_, '_, '_> {
         g: &Geometry,
         shift: f32,
         extra: f32,
-        window: Option<(f32, f32)>,
+        window: Option<PageWindow>,
         own: Option<[f32; 6]>,
     ) {
         let y = g.y + shift + self.dy;
+        let bottom = y + g.h + extra;
         let ctm = match (self.ctm, own) {
             (Some(c), Some(m)) => Some(mul(c, m)),
             (c, m) => c.or(m),
@@ -330,41 +369,11 @@ impl BoxPainter<'_, '_, '_, '_> {
             margin: g.margin,
             size: [g.w, g.h],
             shown: match window {
-                Some((top, bottom)) => (
-                    y.max(top + self.dy),
-                    (y + g.h + extra).min(bottom + self.dy),
-                ),
-                None => (y, y + g.h + extra),
+                Some(win) => win.clip(y, bottom, self.dy),
+                None => (y, bottom),
             },
             ctm,
         });
-    }
-
-    /// Shift of table row `r` (paged space).
-    fn row_shift(&self, rows: &[NodeIdx], r: usize) -> f32 {
-        match (self.override_shift, self.placement) {
-            (Some(o), _) => o,
-            (None, Some(pl)) => pl.shift_top[rows[r] as usize],
-            (None, None) => 0.0,
-        }
-    }
-
-    /// Growth of table row `r` from splitting it across pages.
-    fn row_extra(&self, rows: &[NodeIdx], r: usize) -> f32 {
-        match (self.override_shift, self.placement) {
-            (None, Some(pl)) => {
-                let i = rows[r] as usize;
-                pl.shift_bottom[i] - pl.shift_top[i]
-            }
-            _ => 0.0,
-        }
-    }
-
-    fn row_visible(&self, rows: &[NodeIdx], r: usize) -> bool {
-        match (self.override_shift, self.placement) {
-            (None, Some(pl)) => pl.on_page(rows[r], self.page),
-            _ => true,
-        }
     }
 
     /// Row and cell backgrounds and collapsed borders of the rows on this
@@ -372,14 +381,12 @@ impl BoxPainter<'_, '_, '_, '_> {
     fn table_body(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
         let n = rows.len();
-        let range = if self.override_shift.is_some() {
-            0..t.header_rows
-        } else {
-            0..n
-        };
+        let mode = self.mode;
+        let header_pass = matches!(mode, Mode::Header { .. });
+        let range = if header_pass { 0..t.header_rows } else { 0..n };
         // Rows on this page. Only `lo..hi` is scanned below, so painting a
         // long table costs O(rows on the page), not O(rows) per page.
-        let in_page = |r: usize| range.contains(&r) && self.row_visible(&rows, r);
+        let in_page = |r: usize| range.contains(&r) && mode.shows_row(rows[r]);
         let lo = range.clone().find(|&r| in_page(r)).unwrap_or(n);
         let hi = range
             .clone()
@@ -387,11 +394,11 @@ impl BoxPainter<'_, '_, '_, '_> {
             .find(|&r| in_page(r))
             .map_or(lo, |r| r + 1);
         let visible = |r: usize| r >= lo && r < hi && in_page(r);
-        let shift = |r: usize| self.row_shift(&rows, r);
-        let extra = |r: usize| self.row_extra(&rows, r);
+        let shift = |r: usize| mode.shifts(rows[r]).0;
+        let extra = |r: usize| mode.shifts(rows[r]).1;
         // Shift of the bottom of row `r`.
         let bshift = |r: usize| shift(r) + extra(r);
-        let (cx, cy, _, _) = g.content_box();
+        let Rect { x: cx, y: cy, .. } = g.content_box();
         let (ox, oy) = (cx + self.dx, cy + self.dy);
 
         let mut fills = Vec::new();
@@ -411,13 +418,8 @@ impl BoxPainter<'_, '_, '_, '_> {
             }
             if let Part::Row(row) = self.tree.nodes[row_idx as usize].part {
                 if let Some(bg) = row.background_color.filter(|c| c[3] > 0.0) {
-                    fills.push((
-                        ox,
-                        oy + t.row_y[r] + shift(r),
-                        t.width,
-                        t.row_h[r] + extra(r),
-                        bg,
-                    ));
+                    let y = oy + t.row_y[r] + shift(r);
+                    fills.push((Rect::new(ox, y, t.width, t.row_h[r] + extra(r)), bg));
                 }
             }
         }
@@ -427,59 +429,44 @@ impl BoxPainter<'_, '_, '_, '_> {
             }
             let style = self.tree.nodes[cell.idx as usize].style();
             if let Some(bg) = style.background_color.filter(|c| c[3] > 0.0) {
-                fills.push((
+                let rect = Rect::new(
                     ox + cell.x,
                     oy + cell.y + shift(cell.row),
                     cell.w,
                     cell.h + extra(cell.row),
-                    bg,
-                ));
+                );
+                fills.push((rect, bg));
             }
         }
 
-        let repeating_header = t.header_rows > 0 && self.override_shift.is_none();
+        let repeating_header = t.header_rows > 0 && !header_pass;
         let first_h = t.h_edges.partition_point(|e| e.line < lo);
         for e in t.h_edges[first_h..].iter().take_while(|e| e.line <= hi) {
             let (x, w) = (ox + t.col_x[e.col], t.col_w[e.col]);
+            // The edge's band, with its top at `y`.
+            let band = |y: f32| (Rect::new(x, y, w, e.width), e.color);
             let l = e.line;
             if l == 0 {
                 if visible(0) {
-                    fills.push((x, oy + shift(0), w, e.width, e.color));
+                    fills.push(band(oy + shift(0)));
                 }
             } else if l == n {
                 if visible(n - 1) {
-                    fills.push((
-                        x,
-                        oy + t.row_y[n - 1] + t.row_h[n - 1] - e.width + bshift(n - 1),
-                        w,
-                        e.width,
-                        e.color,
-                    ));
+                    let bottom = oy + t.row_y[n - 1] + t.row_h[n - 1];
+                    fills.push(band(bottom - e.width + bshift(n - 1)));
                 }
-            } else if (bshift(l - 1) - shift(l)).abs() < 1e-3 {
+            } else if (bshift(l - 1) - shift(l)).abs() < SHIFT_EPS {
                 if visible(l - 1) || visible(l) {
-                    fills.push((
-                        x,
-                        oy + t.row_y[l] - e.width / 2.0 + shift(l),
-                        w,
-                        e.width,
-                        e.color,
-                    ));
+                    fills.push(band(oy + t.row_y[l] - e.width / 2.0 + shift(l)));
                 }
             } else {
                 // The line falls on a page break: close the fragment above,
                 // and open the one below unless a repeated header does.
                 if visible(l - 1) {
-                    fills.push((
-                        x,
-                        oy + t.row_y[l] - e.width + bshift(l - 1),
-                        w,
-                        e.width,
-                        e.color,
-                    ));
+                    fills.push(band(oy + t.row_y[l] - e.width + bshift(l - 1)));
                 }
                 if visible(l) && !(repeating_header && l > t.header_rows) {
-                    fills.push((x, oy + t.row_y[l] + shift(l), w, e.width, e.color));
+                    fills.push(band(oy + t.row_y[l] + shift(l)));
                 }
             }
         }
@@ -502,16 +489,11 @@ impl BoxPainter<'_, '_, '_, '_> {
             };
             let h: f32 = t.row_h[e.row..e.row + e.rows].iter().sum::<f32>()
                 + (e.row..e.row + e.rows).map(extra).sum::<f32>();
-            fills.push((
-                ox + x,
-                oy + t.row_y[e.row] + shift(e.row),
-                e.width,
-                h,
-                e.color,
-            ));
+            let y = oy + t.row_y[e.row] + shift(e.row);
+            fills.push((Rect::new(ox + x, y, e.width, h), e.color));
         }
-        for (x, y, w, h, color) in fills {
-            self.fill(rounded_rect(x, y, w, h, &NO_RADII), color);
+        for (rect, color) in fills {
+            self.fill(rounded_rect(rect, &NO_RADII), color);
         }
     }
 
@@ -530,52 +512,51 @@ impl BoxPainter<'_, '_, '_, '_> {
         for &(k, shift, extra) in cells {
             let cell = &t.cells[k];
             let style = self.tree.nodes[cell.idx as usize].style();
-            let (x, y, w, h) = (ox + cell.x, oy + cell.y + shift, cell.w, cell.h + extra);
-            let radii = radii(style, w, h);
+            let rect = Rect::new(ox + cell.x, oy + cell.y + shift, cell.w, cell.h + extra);
+            let radii = radii(style, rect.w, rect.h);
             let row_bg = match self.tree.nodes[rows[cell.row] as usize].part {
                 Part::Row(row) => row.background_color,
                 _ => None,
             };
             for bg in [row_bg, style.background_color].into_iter().flatten() {
                 if bg[3] > 0.0 {
-                    self.fill(rounded_rect(x, y, w, h, &radii), bg);
+                    self.fill(rounded_rect(rect, &radii), bg);
                 }
             }
-            self.borders(style, cell.insets, w, x, y, h, &radii);
+            self.borders(style, cell.insets, rect, &radii);
         }
     }
 
     /// On continuation pages, repaints the header rows at the top of the
     /// page, above the first body row (which pagination pushed down).
     fn repeat_header(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
-        let (Some(pl), None) = (self.placement, self.override_shift) else {
+        let Some((pl, page)) = self.mode.paged() else {
             return;
         };
         if t.header_rows == 0 {
             return;
         }
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
-        let page_top = self.page as f32 * pl.page_h;
+        let page_top = pl.page_top(page);
         // First body row on this page, if it starts below a reserved header.
-        let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], self.page))
-        else {
+        let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], page)) else {
             return;
         };
-        let (_, cy, _, _) = g.content_box();
-        let fr = rows[first] as usize;
-        let first_top = cy + t.row_y[first] + pl.shift_top[fr];
+        let Rect { y: cy, .. } = g.content_box();
+        let fr = rows[first];
+        let first_top = cy + t.row_y[first] + pl.shift(fr);
         // A row split across pages continues below a repeated header.
-        let continued = pl.page_range[fr].0 < self.page && pl.shift_bottom[fr] > pl.shift_top[fr];
-        if !continued && (first_top - (page_top + t.header_height())).abs() > crate::paginate::EPS {
+        let continued = pl.first_page(fr) < page && pl.is_split(fr);
+        if !continued && (first_top - (page_top + t.header_height())).abs() > PAGED_EPS {
             return;
         }
         let shift = page_top - (cy + t.row_y[0]);
-        self.override_shift = Some(shift);
+        let outer = std::mem::replace(&mut self.mode, Mode::Header { shift });
         self.table_body(i, g, t);
         for &r in &rows[..t.header_rows] {
-            self.node(r, false);
+            self.node(r);
         }
-        self.override_shift = None;
+        self.mode = outer;
     }
 
     fn fill(&mut self, path: Path, color: Color) {
@@ -600,24 +581,18 @@ impl BoxPainter<'_, '_, '_, '_> {
         self.ops.push(Op::Restore);
     }
 
-    /// `h` is the painted (paged) height, which can exceed the laid-out
-    /// height when the box is split across pages.
-    #[allow(clippy::too_many_arguments)]
-    fn borders(
-        &mut self,
-        s: &Style,
-        widths: [f32; 4],
-        w: f32,
-        x: f32,
-        y: f32,
-        h: f32,
-        radii: &Radii,
-    ) {
-        if widths.iter().all(|w| *w <= 0.0) {
+    /// Borders of `widths` around the border box `rect`, whose height is
+    /// the painted (paged) one: it can exceed the laid-out height when the
+    /// box is split across pages.
+    fn borders(&mut self, s: &Style, widths: Edges<f32>, rect: Rect, radii: &Radii) {
+        let Rect { x, y, w, h } = rect;
+        // Per side, in the order of `colors` and `styles`.
+        let side_w = widths.to_array();
+        if side_w.iter().all(|w| *w <= 0.0) {
             return;
         }
         let colors: [Color; 4] = s.border_color.map_or([BLACK; 4], |c| c.get(BLACK));
-        let [bt, br, bb, bl] = widths;
+        let [bt, br, bb, bl] = side_w;
         let inner_radii = inset_radii(radii, widths);
         let ix = x + bl;
         let iy = y + bt;
@@ -625,11 +600,11 @@ impl BoxPainter<'_, '_, '_, '_> {
         let ih = (h - bt - bb).max(0.0);
 
         // The ring between the border box and the padding box.
-        let mut ring = rounded_rect(x, y, w, h, radii);
+        let mut ring = rounded_rect(rect, radii);
         ring.segs
-            .extend(rounded_rect(ix, iy, iw, ih, &inner_radii).segs);
+            .extend(rounded_rect(Rect::new(ix, iy, iw, ih), &inner_radii).segs);
 
-        let active: Vec<usize> = (0..4).filter(|&k| widths[k] > 0.0).collect();
+        let active: Vec<usize> = (0..4).filter(|&k| side_w[k] > 0.0).collect();
         let same_color = active.windows(2).all(|p| colors[p[0]] == colors[p[1]]);
         let styles = s
             .border_style
@@ -672,7 +647,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                         });
                     });
                 } else {
-                    self.stroke(mid[k].clone(), colors[k], widths[k], styles[k]);
+                    self.stroke(mid[k].clone(), colors[k], side_w[k], styles[k]);
                 }
             }
             self.ops.push(Op::Restore);
@@ -733,15 +708,16 @@ impl BoxPainter<'_, '_, '_, '_> {
                 line(x + bl / 2.0, b, x + bl / 2.0, y),
             ];
             let uniform =
-                active.len() == 4 && widths.windows(2).all(|p| p[0] == p[1]) && same_color;
+                active.len() == 4 && side_w.windows(2).all(|p| p[0] == p[1]) && same_color;
             if uniform && !square {
                 let half = bt / 2.0;
-                let mid_radii = inset_radii(radii, [half; 4]);
-                let path = rounded_rect(x + half, y + half, w - bt, h - bt, &mid_radii);
+                let mid_radii = inset_radii(radii, Edges::all(half));
+                let middle = Rect::new(x + half, y + half, w - bt, h - bt);
+                let path = rounded_rect(middle, &mid_radii);
                 self.stroke(path, colors[0], bt, style);
             } else {
                 for &k in &active {
-                    self.stroke(mid[k].clone(), colors[k], widths[k], style);
+                    self.stroke(mid[k].clone(), colors[k], side_w[k], style);
                 }
             }
         }

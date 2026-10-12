@@ -80,6 +80,10 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
             _ => self.text.paint(node, geo, ctx, ops),
         }
     }
+
+    fn numbers(&self) -> PageNumbers {
+        self.text.numbers()
+    }
 }
 
 /// One page template after layout and pagination.
@@ -266,11 +270,7 @@ fn collect_marks<'d>(l: &Laid<'d>, first: u32, out: &mut Marks<'d>) {
         if let Some((_, o)) = overlays.next_if(|(i, _)| *i == k) {
             subtree_marks(l, &o.tree, 1, first, |_, y| (0, y), out);
         } else if let Some(c) = flow_nodes.next() {
-            let at = |i: NodeIdx, y: f32| {
-                let page = pl.page_range[i as usize].0;
-                (page, y + pl.shift_top[i as usize] - page as f32 * pl.page_h)
-            };
-            subtree_marks(l, flow, c, first, at, out);
+            subtree_marks(l, flow, c, first, |i, y| pl.locate(i, y), out);
         }
     }
 }
@@ -376,7 +376,6 @@ fn paint_page(
             color: bg,
         });
     }
-    let nums = (numbers.current, numbers.total);
     // Headers, footers and overlays with page numbers, laid out for this
     // page.
     let mut page_text = PageText::new(text, numbers);
@@ -419,16 +418,7 @@ fn paint_page(
                           debug: &mut DebugBoxes| {
         for &i in which {
             let tree = overlays_here[i].as_ref().unwrap_or(&l.overlays[i].1.tree);
-            paint::paint_flow(
-                tree,
-                FlowPart::All,
-                m.left,
-                m.top,
-                nums,
-                painter,
-                ops,
-                debug,
-            );
+            paint::paint_flow(tree, FlowPart::All, m.left, m.top, painter, ops, debug);
         }
     };
     painter.text.page = Some(&page_text);
@@ -451,7 +441,6 @@ fn paint_page(
         },
         m.left,
         dy,
-        nums,
         &mut painter,
         &mut page.ops,
         &mut debug,
@@ -467,7 +456,6 @@ fn paint_page(
             },
             m.left,
             dy,
-            nums,
             &mut painter,
             &mut page.ops,
             &mut debug,
@@ -481,7 +469,6 @@ fn paint_page(
             FlowPart::All,
             0.0,
             0.0,
-            nums,
             &mut painter,
             &mut page.ops,
             &mut debug,
@@ -494,7 +481,6 @@ fn paint_page(
             FlowPart::All,
             0.0,
             ph - fh,
-            nums,
             &mut painter,
             &mut page.ops,
             &mut debug,
@@ -503,7 +489,7 @@ fn paint_page(
 
     let mut labels = paint::DebugLabels::default();
     if spec.debug {
-        let page_box = paint::debug_page_box(pw, ph, [m.top, m.right, m.bottom, m.left]);
+        let page_box = paint::debug_page_box(pw, ph, m);
         paint::draw_debug(std::slice::from_ref(&page_box), &mut page.ops, &mut labels);
     }
     paint::draw_debug(&under_boxes, &mut page.ops, &mut labels);

@@ -6,15 +6,15 @@
 
 use taffy::prelude::{AvailableSpace, Size as TSize};
 
-use super::{Geometry, LeafMeasure, NodeIdx, SubLayout, Tree};
+use super::{CellSpace, Geometry, LeafMeasure, NodeIdx, SubLayout, Tree};
 use crate::schema::{
-    AlignItems, AlignSelf, Display, FlexDirection, FlexWrap, LengthPercent, NodeKind, Style,
+    AlignItems, AlignSelf, Display, Edges, FlexDirection, FlexWrap, LengthPercent, NodeKind, Style,
     VerticalAlign,
 };
 
-/// The text child of cell `idx` and the cell's padding `[t, r, b, l]`,
-/// when the cell qualifies.
-pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, [f32; 4])> {
+/// The text child of cell `idx` and the cell's padding, when the cell
+/// qualifies.
+pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, Edges<f32>)> {
     let ln = &tree.nodes[idx as usize];
     if ln.children.len() != 1 {
         return None;
@@ -41,16 +41,20 @@ pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, [f3
     if !container_ok {
         return None;
     }
-    let mut pad = [0.0f32; 4];
-    if let Some(p) = &s.padding {
-        for (k, v) in [p.top, p.right, p.bottom, p.left].into_iter().enumerate() {
-            match v {
-                None => {}
-                Some(LengthPercent::Points(x)) => pad[k] = x.max(0.0),
-                Some(LengthPercent::Percent(_)) => return None,
-            }
-        }
-    }
+    let side = |v: Option<LengthPercent>| match v {
+        None => Some(0.0),
+        Some(LengthPercent::Points(x)) => Some(x.max(0.0)),
+        Some(LengthPercent::Percent(_)) => None,
+    };
+    let pad = match &s.padding {
+        Some(p) => Edges {
+            top: side(p.top)?,
+            right: side(p.right)?,
+            bottom: side(p.bottom)?,
+            left: side(p.left)?,
+        },
+        None => Edges::default(),
+    };
     Some((child, pad))
 }
 
@@ -80,21 +84,23 @@ fn plain_item(s: &Style) -> bool {
 
 /// Lays out a qualifying cell. `None` when the closed form does not hold
 /// (content taller than a fixed height, or narrower than the box edges).
-#[allow(clippy::too_many_arguments)]
 pub(super) fn cell(
     tree: &Tree<'_>,
     idx: NodeIdx,
     child: NodeIdx,
-    pad: [f32; 4],
+    pad: Edges<f32>,
     leaves: &mut dyn LeafMeasure,
-    width: AvailableSpace,
-    height: Option<f32>,
-    insets: [f32; 4],
+    space: CellSpace,
     collect: bool,
 ) -> Option<SubLayout> {
+    let CellSpace {
+        width,
+        height,
+        insets,
+    } = space;
     let node = tree.nodes[child as usize].node?;
-    let edge_w = pad[1] + pad[3] + insets[1] + insets[3];
-    let edge_h = pad[0] + pad[2] + insets[0] + insets[2];
+    let edge_w = pad.right + pad.left + insets.right + insets.left;
+    let edge_h = pad.top + pad.bottom + insets.top + insets.bottom;
     let (w, text) = match width {
         AvailableSpace::Definite(w) => {
             let inner = w - edge_w;
@@ -150,14 +156,14 @@ pub(super) fn cell(
                 h,
                 border: insets,
                 padding: pad,
-                margin: [0.0; 4],
+                margin: Edges::default(),
             },
         ));
         geos.push((
             child,
             Geometry {
-                x: insets[3] + pad[3],
-                y: insets[0] + pad[0] + dy,
+                x: insets.left + pad.left,
+                y: insets.top + pad.top + dy,
                 w: text.width,
                 h: text.height,
                 ..Default::default()

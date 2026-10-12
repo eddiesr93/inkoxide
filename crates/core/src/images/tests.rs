@@ -51,12 +51,21 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
 
 #[test]
 fn fit_modes() {
-    let b = (0.0, 0.0, 100.0, 50.0);
+    let b = Rect::new(0.0, 0.0, 100.0, 50.0);
     let fit = |f| fit_rect(f, ObjectPosition::default(), b, (10.0, 10.0));
     assert_eq!(fit(ImageFit::Fill), (b, false));
-    assert_eq!(fit(ImageFit::Contain), ((25.0, 0.0, 50.0, 50.0), false));
-    assert_eq!(fit(ImageFit::Cover), ((0.0, -25.0, 100.0, 100.0), true));
-    assert_eq!(fit(ImageFit::None), ((45.0, 20.0, 10.0, 10.0), false));
+    assert_eq!(
+        fit(ImageFit::Contain),
+        (Rect::new(25.0, 0.0, 50.0, 50.0), false)
+    );
+    assert_eq!(
+        fit(ImageFit::Cover),
+        (Rect::new(0.0, -25.0, 100.0, 100.0), true)
+    );
+    assert_eq!(
+        fit(ImageFit::None),
+        (Rect::new(45.0, 20.0, 10.0, 10.0), false)
+    );
 }
 
 /// An `objectPosition` from its JSON form.
@@ -107,25 +116,31 @@ fn object_position_keywords_are_fractions_of_the_free_space() {
 #[test]
 fn object_position_places_contain_cover_and_none() {
     // A 100 × 50 box at (10, 20) and a square image.
-    let b = (10.0, 20.0, 100.0, 50.0);
+    let b = Rect::new(10.0, 20.0, 100.0, 50.0);
     let at = |fit, json: &str| fit_rect(fit, pos(json), b, (10.0, 10.0));
 
     // contain: 50 × 50, free space 50 across and none down.
     let contain = |json| at(ImageFit::Contain, json);
     assert_eq!(
         contain(r#"{"x":"left"}"#),
-        ((10.0, 20.0, 50.0, 50.0), false)
+        (Rect::new(10.0, 20.0, 50.0, 50.0), false)
     );
     assert_eq!(
         contain(r#"{"x":"center"}"#),
-        ((35.0, 20.0, 50.0, 50.0), false)
+        (Rect::new(35.0, 20.0, 50.0, 50.0), false)
     );
     assert_eq!(
         contain(r#"{"x":"right"}"#),
-        ((60.0, 20.0, 50.0, 50.0), false)
+        (Rect::new(60.0, 20.0, 50.0, 50.0), false)
     );
-    assert_eq!(contain(r#"{"x":"20%"}"#), ((20.0, 20.0, 50.0, 50.0), false));
-    assert_eq!(contain(r#"{"x":5}"#), ((15.0, 20.0, 50.0, 50.0), false));
+    assert_eq!(
+        contain(r#"{"x":"20%"}"#),
+        (Rect::new(20.0, 20.0, 50.0, 50.0), false)
+    );
+    assert_eq!(
+        contain(r#"{"x":5}"#),
+        (Rect::new(15.0, 20.0, 50.0, 50.0), false)
+    );
     assert_eq!(
         contain(r#"{"y":"top"}"#),
         contain(r#"{"y":"bottom"}"#),
@@ -134,17 +149,26 @@ fn object_position_places_contain_cover_and_none() {
 
     // cover: 100 × 100, 50 to spare down; always clipped.
     let cover = |json| at(ImageFit::Cover, json);
-    assert_eq!(cover(r#"{"y":"top"}"#), ((10.0, 20.0, 100.0, 100.0), true));
+    assert_eq!(
+        cover(r#"{"y":"top"}"#),
+        (Rect::new(10.0, 20.0, 100.0, 100.0), true)
+    );
     assert_eq!(
         cover(r#"{"y":"center"}"#),
-        ((10.0, -5.0, 100.0, 100.0), true)
+        (Rect::new(10.0, -5.0, 100.0, 100.0), true)
     );
     assert_eq!(
         cover(r#"{"y":"bottom"}"#),
-        ((10.0, -30.0, 100.0, 100.0), true)
+        (Rect::new(10.0, -30.0, 100.0, 100.0), true)
     );
-    assert_eq!(cover(r#"{"y":"10%"}"#), ((10.0, 15.0, 100.0, 100.0), true));
-    assert_eq!(cover(r#"{"y":-10}"#), ((10.0, 10.0, 100.0, 100.0), true));
+    assert_eq!(
+        cover(r#"{"y":"10%"}"#),
+        (Rect::new(10.0, 15.0, 100.0, 100.0), true)
+    );
+    assert_eq!(
+        cover(r#"{"y":-10}"#),
+        (Rect::new(10.0, 10.0, 100.0, 100.0), true)
+    );
     assert_eq!(
         cover(r#"{"x":"left"}"#),
         cover(r#"{"x":"right"}"#),
@@ -155,29 +179,32 @@ fn object_position_places_contain_cover_and_none() {
     let none = |json| at(ImageFit::None, json);
     assert_eq!(
         none(r#"{"x":"left","y":"top"}"#),
-        ((10.0, 20.0, 10.0, 10.0), false)
+        (Rect::new(10.0, 20.0, 10.0, 10.0), false)
     );
     assert_eq!(
         none(r#"{"x":"right","y":"top"}"#),
-        ((100.0, 20.0, 10.0, 10.0), false)
+        (Rect::new(100.0, 20.0, 10.0, 10.0), false)
     );
     assert_eq!(
         none(r#"{"x":"left","y":"bottom"}"#),
-        ((10.0, 60.0, 10.0, 10.0), false)
+        (Rect::new(10.0, 60.0, 10.0, 10.0), false)
     );
     assert_eq!(
         none(r#"{"x":"right","y":"bottom"}"#),
-        ((100.0, 60.0, 10.0, 10.0), false)
+        (Rect::new(100.0, 60.0, 10.0, 10.0), false)
     );
     assert_eq!(
         none(r#"{"x":"center","y":"center"}"#),
-        ((55.0, 40.0, 10.0, 10.0), false)
+        (Rect::new(55.0, 40.0, 10.0, 10.0), false)
     );
     assert_eq!(
         none(r#"{"x":"25%","y":"75%"}"#),
-        ((32.5, 50.0, 10.0, 10.0), false)
+        (Rect::new(32.5, 50.0, 10.0, 10.0), false)
     );
-    assert_eq!(none(r#"{"x":12,"y":4}"#), ((22.0, 24.0, 10.0, 10.0), false));
+    assert_eq!(
+        none(r#"{"x":12,"y":4}"#),
+        (Rect::new(22.0, 24.0, 10.0, 10.0), false)
+    );
 
     // fill: the box, wherever the position says.
     for json in [r#"{"x":"right","y":"bottom"}"#, r#"{"x":-30,"y":"200%"}"#] {
@@ -187,7 +214,7 @@ fn object_position_places_contain_cover_and_none() {
 
 #[test]
 fn an_image_placed_past_its_box_is_clipped() {
-    let b = (0.0, 0.0, 100.0, 50.0);
+    let b = Rect::new(0.0, 0.0, 100.0, 50.0);
     let none = |json: &str| fit_rect(ImageFit::None, pos(json), b, (10.0, 10.0)).1;
     // Inside the box, edges included.
     for json in [
@@ -211,7 +238,7 @@ fn an_image_placed_past_its_box_is_clipped() {
     }
     // A contained image moved off its centre line by a length.
     let contain = fit_rect(ImageFit::Contain, pos(r#"{"y":5}"#), b, (10.0, 10.0));
-    assert_eq!(contain, ((25.0, 5.0, 50.0, 50.0), true));
+    assert_eq!(contain, (Rect::new(25.0, 5.0, 50.0, 50.0), true));
     // An image larger than the box is clipped wherever it sits.
     for json in [r#"{"x":"left","y":"top"}"#, r#"{"x":"right","y":"bottom"}"#] {
         assert!(
@@ -242,9 +269,7 @@ fn painted(node: &str) -> (Xywh, Option<Xywh>) {
         y: 20.0,
         w: 100.0,
         h: 100.0,
-        border: [0.0; 4],
-        padding: [0.0; 4],
-        margin: [0.0; 4],
+        ..Default::default()
     };
     let ctx = ContentCtx {
         dx: 0.0,
@@ -385,15 +410,15 @@ fn an_overflowing_object_position_is_centred_not_infinite() {
     use crate::schema::LengthPercent::Percent;
     // Validation keeps percentages within ±10000 %; without it, a huge one
     // times the free space overflows f32.
-    let b = (0.0, 0.0, 100.0, 50.0);
+    let b = Rect::new(0.0, 0.0, 100.0, 50.0);
     let at = |x, y| fit_rect(ImageFit::Cover, ObjectPosition { x, y }, b, (10.0, 10.0));
     let centred = fit_rect(ImageFit::Cover, ObjectPosition::default(), b, (10.0, 10.0));
     for y in [Percent(f32::MAX), Percent(-f32::MAX)] {
         assert_eq!(at(Percent(0.5), y), centred, "{y:?}");
     }
     // Only the overflowing axis falls back.
-    let ((rx, ry, ..), _) = at(Percent(0.0), Percent(f32::MAX));
-    assert_eq!((rx, ry), (0.0, (centred.0).1));
+    let (Rect { x: rx, y: ry, .. }, _) = at(Percent(0.0), Percent(f32::MAX));
+    assert_eq!((rx, ry), (0.0, centred.0.y));
 }
 
 /// The operands of every `cm` and `re` operator in an uncompressed PDF.
@@ -468,7 +493,7 @@ fn corner(m: [f32; 6], a: f32, b: f32) -> (f32, f32) {
 
 #[test]
 fn orientation_matrices_move_the_top_left_pixel() {
-    let r = (10.0, 20.0, 100.0, 50.0);
+    let r = Rect::new(10.0, 20.0, 100.0, 50.0);
     let tl = |o| corner(image_matrix(o, r), 0.0, 0.0);
     assert_eq!(tl(1), (10.0, 20.0));
     assert_eq!(tl(2), (110.0, 20.0));

@@ -6,7 +6,7 @@ use taffy::{AvailableSpace, Size as TSize};
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::Geometry;
 use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};
-use crate::schema::{Field, FieldKind};
+use crate::schema::{Field, FieldKind, BLACK};
 
 /// Inner padding between the widget edge and its text, points.
 const PAD: f32 = 2.0;
@@ -73,12 +73,15 @@ pub(crate) fn paint(
     fonts: &FontSet<'_>,
     ops: &mut Vec<Op>,
 ) {
-    let (cx, cy, cw, ch) = geo.content_box();
+    let Rect {
+        x: cx,
+        y: cy,
+        w: cw,
+        h: ch,
+    } = geo.content_box();
     let top = cy + ctx.shift;
-    if let Some((w0, w1)) = ctx.window {
-        if top >= w1 - 0.01 || top + ch <= w0 + 0.01 {
-            return;
-        }
+    if ctx.window.is_some_and(|w| w.hides(top, ch)) {
+        return;
     }
     let rect = Rect::new(cx + ctx.dx, top + ctx.dy, cw.max(0.0), ch.max(0.0));
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
@@ -89,7 +92,7 @@ pub(crate) fn paint(
         let m = &lf.data.metrics;
         let scale = lf.scale(f.size);
         let (asc, desc) = (m.ascender * scale, -m.descender * scale);
-        let color = f.color.unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        let color = f.color.unwrap_or(BLACK);
         let shown = match (f.kind, f.password) {
             (FieldKind::Text | FieldKind::Select, false) => f.value.as_deref().unwrap_or(""),
             _ => "",

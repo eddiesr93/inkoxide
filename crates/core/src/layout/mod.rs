@@ -23,7 +23,8 @@ use taffy::{LayoutInput, LayoutOutput};
 
 pub(crate) use table::TableLayout;
 
-use crate::schema::{Node, NodeKind, Style, TableCell, TableRow, VerticalAlign};
+use crate::paint::Rect;
+use crate::schema::{Edges, Node, NodeKind, Style, TableCell, TableRow, VerticalAlign};
 use crate::InkoxideError;
 
 pub(crate) type NodeIdx = u32;
@@ -36,25 +37,24 @@ pub(crate) struct Geometry {
     pub y: f32,
     pub w: f32,
     pub h: f32,
-    /// Border widths `[top, right, bottom, left]` as resolved by layout.
-    pub border: [f32; 4],
-    /// Padding `[top, right, bottom, left]` as resolved by layout.
-    pub padding: [f32; 4],
-    /// Margins `[top, right, bottom, left]` as resolved by layout (`auto`
-    /// included). Only `debug` outlines read them.
-    pub margin: [f32; 4],
+    /// Border widths as resolved by layout.
+    pub border: Edges<f32>,
+    /// Padding as resolved by layout.
+    pub padding: Edges<f32>,
+    /// Margins as resolved by layout (`auto` included). Only `debug`
+    /// outlines read them.
+    pub margin: Edges<f32>,
 }
 
 impl Geometry {
-    /// Content box `(x, y, w, h)`.
-    pub fn content_box(&self) -> (f32, f32, f32, f32) {
-        let [t, r, b, l] = self.border;
-        let [pt, pr, pb, pl] = self.padding;
-        (
-            self.x + l + pl,
-            self.y + t + pt,
-            (self.w - l - r - pl - pr).max(0.0),
-            (self.h - t - b - pt - pb).max(0.0),
+    /// The border box less border and padding.
+    pub fn content_box(&self) -> Rect {
+        let (b, p) = (self.border, self.padding);
+        Rect::new(
+            self.x + b.left + p.left,
+            self.y + b.top + p.top,
+            (self.w - b.left - b.right - p.left - p.right).max(0.0),
+            (self.h - b.top - b.bottom - p.top - p.bottom).max(0.0),
         )
     }
 
@@ -220,19 +220,33 @@ fn layout_err(e: taffy::TaffyError) -> InkoxideError {
     InkoxideError::Layout(e.to_string())
 }
 
+fn edges(r: taffy::geometry::Rect<f32>) -> Edges<f32> {
+    Edges {
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+        left: r.left,
+    }
+}
+
 /// How the root of a subtree layout is sized.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum RootMode {
     /// The synthetic flow root: a column of fixed width.
     Flow { width: f32, min_height: f32 },
-    /// A table cell: `width` is its border-box width (or a content-sizing
-    /// mode), `height` its final border-box height when known. `insets`
-    /// are the collapsed border widths reserved inside the cell.
-    Cell {
-        width: AvailableSpace,
-        height: Option<f32>,
-        insets: [f32; 4],
-    },
+    /// A table cell.
+    Cell(CellSpace),
+}
+
+/// The space a table gives one of its cells.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CellSpace {
+    /// Border-box width, or a content-sizing mode.
+    pub width: AvailableSpace,
+    /// Final border-box height, when known.
+    pub height: Option<f32>,
+    /// Collapsed border widths reserved inside the cell.
+    pub insets: Edges<f32>,
 }
 
 /// Shared state of one layout run: leaf measurement plus table caches.
@@ -279,27 +293,9 @@ impl<'m> LayoutCtx<'m> {
         mode: RootMode,
         collect: bool,
     ) -> Result<SubLayout, InkoxideError> {
-        if let (
-            true,
-            RootMode::Cell {
-                width,
-                height,
-                insets,
-            },
-        ) = (self.fast_cells, mode)
-        {
+        if let (true, RootMode::Cell(space)) = (self.fast_cells, mode) {
             if let Some((child, pad)) = fast::simple_cell(tree, root) {
-                if let Some(sub) = fast::cell(
-                    tree,
-                    root,
-                    child,
-                    pad,
-                    self.leaves,
-                    width,
-                    height,
-                    insets,
-                    collect,
-                ) {
+                if let Some(sub) = fast::cell(tree, root, child, pad, self.leaves, space, collect) {
                     return Ok(sub);
                 }
             }
@@ -345,7 +341,7 @@ impl<'m> LayoutCtx<'m> {
         let available = TSize {
             width: match mode {
                 RootMode::Flow { width, .. } => AvailableSpace::Definite(width),
-                RootMode::Cell { width, .. } => width,
+                RootMode::Cell(space) => space.width,
             },
             height: AvailableSpace::MaxContent,
         };
@@ -417,14 +413,9 @@ impl<'m> LayoutCtx<'m> {
                         y,
                         w: l.size.width,
                         h: l.size.height,
-                        border: [l.border.top, l.border.right, l.border.bottom, l.border.left],
-                        padding: [
-                            l.padding.top,
-                            l.padding.right,
-                            l.padding.bottom,
-                            l.padding.left,
-                        ],
-                        margin: [l.margin.top, l.margin.right, l.margin.bottom, l.margin.left],
+                        border: edges(l.border),
+                        padding: edges(l.padding),
+                        margin: edges(l.margin),
                     },
                 ));
             }
@@ -476,23 +467,19 @@ impl<'m> LayoutCtx<'m> {
         tree: &Tree<'_>,
         idx: NodeIdx,
         width: AvailableSpace,
-        insets: [f32; 4],
+        insets: Edges<f32>,
     ) -> Result<TSize<f32>, InkoxideError> {
         let key = (idx, space_key(width));
         if let Some(s) = self.cells.get(&key) {
             return Ok(*s);
         }
+        let space = CellSpace {
+            width,
+            height: None,
+            insets,
+        };
         let s = self
-            .layout_subtree(
-                tree,
-                idx,
-                RootMode::Cell {
-                    width,
-                    height: None,
-                    insets,
-                },
-                false,
-            )?
+            .layout_subtree(tree, idx, RootMode::Cell(space), false)?
             .size;
         self.cells.insert(key, s);
         Ok(s)
@@ -515,15 +502,15 @@ fn root_style(ln: &LNode<'_>, mode: RootMode) -> taffy::Style {
             },
             ..Default::default()
         },
-        RootMode::Cell {
+        RootMode::Cell(CellSpace {
             width,
             height,
             insets,
-        } => {
+        }) => {
             let mut s = style::to_taffy(ln.style());
             // Collapsed borders are reserved as Taffy borders (the table
             // paints them).
-            let [t, r, b, l] = insets.map(LengthPercentage::length);
+            let [t, r, b, l] = insets.to_array().map(LengthPercentage::length);
             s.border = taffy::geometry::Rect {
                 top: t,
                 right: r,
@@ -584,7 +571,12 @@ pub(crate) fn compute_tree(
     while i < tree.nodes.len() {
         if tree.nodes[i].is_table() {
             let idx = i as NodeIdx;
-            let (cx, cy, cw, _) = tree.nodes[i].geo.content_box();
+            let Rect {
+                x: cx,
+                y: cy,
+                w: cw,
+                ..
+            } = tree.nodes[i].geo.content_box();
             let layout = ctx.table(tree, idx, AvailableSpace::Definite(cw))?;
             let rows: Vec<NodeIdx> = tree.children(idx).collect();
             for (ri, &row) in rows.iter().enumerate() {
@@ -597,16 +589,12 @@ pub(crate) fn compute_tree(
                 };
             }
             for cell in &layout.cells {
-                let sub = ctx.layout_subtree(
-                    tree,
-                    cell.idx,
-                    RootMode::Cell {
-                        width: AvailableSpace::Definite(cell.w),
-                        height: Some(cell.h),
-                        insets: cell.insets,
-                    },
-                    true,
-                )?;
+                let space = CellSpace {
+                    width: AvailableSpace::Definite(cell.w),
+                    height: Some(cell.h),
+                    insets: cell.insets,
+                };
+                let sub = ctx.layout_subtree(tree, cell.idx, RootMode::Cell(space), true)?;
                 let (ox, oy) = (cx + cell.x, cy + cell.y);
                 for (n, g) in sub.geos {
                     tree.nodes[n as usize].geo = g.offset(ox, oy);

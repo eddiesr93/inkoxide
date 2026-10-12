@@ -20,14 +20,16 @@
 //! - Column boxes split between children; text splits between lines.
 
 use crate::layout::{NodeIdx, Tree};
+use crate::paint::Rect;
 use crate::schema::{
     BreakMode, Display, FlexDirection, FlexWrap, InsideMode, Node, NodeKind, Position,
 };
 use crate::text::{LineLayout, TextCache, TextShaper};
 
-/// Float tolerance in points. Paged coordinates of long documents reach
-/// ~10⁶ pt, where one f32 step is ~0.06 pt; 0.1 pt is still invisible.
-pub(crate) const EPS: f32 = 0.1;
+/// Float tolerance in paged space, points. Paged coordinates of long
+/// documents reach ~10⁶ pt, where one f32 step is ~0.06 pt; 0.1 pt is
+/// still invisible.
+pub(crate) const PAGED_EPS: f32 = 0.1;
 
 /// Result of paginating one flow.
 #[derive(Debug, Clone)]
@@ -58,6 +60,75 @@ impl Placement {
     pub fn on_page(&self, i: NodeIdx, page: u32) -> bool {
         let (a, b) = self.page_range[i as usize];
         a <= page && page <= b
+    }
+
+    /// First page node `i` or any descendant touches.
+    pub fn first_page(&self, i: NodeIdx) -> u32 {
+        self.page_range[i as usize].0
+    }
+
+    /// Shift of node `i` into paged space (at its top).
+    pub fn shift(&self, i: NodeIdx) -> f32 {
+        self.shift_top[i as usize]
+    }
+
+    /// Growth of node `i` from being split across pages.
+    pub fn growth(&self, i: NodeIdx) -> f32 {
+        self.shift_bottom[i as usize] - self.shift_top[i as usize]
+    }
+
+    /// Whether node `i` is split across pages.
+    pub fn is_split(&self, i: NodeIdx) -> bool {
+        self.shift_bottom[i as usize] > self.shift_top[i as usize]
+    }
+
+    /// Per-line shifts of node `i`, a split paragraph (empty: use
+    /// [`Placement::shift`]).
+    pub fn line_shifts(&self, i: NodeIdx) -> &[f32] {
+        &self.line_shifts[i as usize]
+    }
+
+    /// Paged y of the top of page `page`.
+    pub fn page_top(&self, page: u32) -> f32 {
+        page as f32 * self.page_h
+    }
+
+    /// The paged y range shown on page `page`.
+    pub fn window(&self, page: u32) -> PageWindow {
+        PageWindow {
+            top: self.page_top(page),
+            bottom: self.page_top(page + 1),
+        }
+    }
+
+    /// The first page of node `i`, and where flow y `y` of the node lands
+    /// on it, from the page's top.
+    pub fn locate(&self, i: NodeIdx, y: f32) -> (u32, f32) {
+        let page = self.first_page(i);
+        (page, y + self.shift(i) - self.page_top(page))
+    }
+}
+
+/// The paged y range `[top, bottom)` one page shows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PageWindow {
+    pub top: f32,
+    pub bottom: f32,
+}
+
+impl PageWindow {
+    /// Whether content from paged `top`, `height` high, misses the page:
+    /// it starts below it or ends above it, give or take a hair.
+    pub fn hides(self, top: f32, height: f32) -> bool {
+        /// Overlap (points) too thin to count as being on the page.
+        const HAIR: f32 = 0.01;
+        top >= self.bottom - HAIR || top + height <= self.top + HAIR
+    }
+
+    /// The part of `top..bottom` (page coordinates) shown on the page, for
+    /// a page whose paged y 0 is at page y `dy`.
+    pub fn clip(self, top: f32, bottom: f32, dy: f32) -> (f32, f32) {
+        (top.max(self.top + dy), bottom.min(self.bottom + dy))
     }
 }
 
@@ -147,13 +218,13 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
 
 impl Paginator<'_, '_, '_> {
     fn page_of(&self, y: f32) -> u32 {
-        ((y + EPS) / self.h).floor().max(0.0) as u32
+        ((y + PAGED_EPS) / self.h).floor().max(0.0) as u32
     }
 
     /// Page holding the content that ends at paged `y` (a bottom exactly on
     /// a page boundary belongs to the page above).
     fn page_of_bottom(&self, y: f32) -> u32 {
-        ((y - EPS) / self.h).floor().max(0.0) as u32
+        ((y - PAGED_EPS) / self.h).floor().max(0.0) as u32
     }
 
     fn page_end(&self, y: f32) -> f32 {
@@ -162,7 +233,7 @@ impl Paginator<'_, '_, '_> {
 
     fn at_page_top(&self, y: f32) -> bool {
         let r = y - self.page_of(y) as f32 * self.h;
-        r.abs() < EPS
+        r.abs() < PAGED_EPS
     }
 
     /// Moves everything from paged `y` on to the next page.
@@ -223,7 +294,7 @@ impl Paginator<'_, '_, '_> {
         }
         match &node.kind {
             NodeKind::Text { .. } => {
-                let (_, cy, cw, _) = g.content_box();
+                let Rect { y: cy, w: cw, .. } = g.content_box();
                 let (orphans, widows) = Self::orphans_widows(node);
                 match self.lines.lines(node, cw) {
                     // Too short to leave `orphans` and carry `widows` lines:
@@ -240,7 +311,7 @@ impl Paginator<'_, '_, '_> {
                 let Some(t) = self.tree.tables.get(&i).cloned() else {
                     return g.h;
                 };
-                let (_, cy, _, _) = g.content_box();
+                let Rect { y: cy, .. } = g.content_box();
                 let first_body = t.groups.iter().find(|r| r.start >= t.header_rows);
                 let end = first_body.map_or(t.row_y.len(), |r| r.end);
                 let bottom = if end == 0 {
@@ -295,11 +366,11 @@ impl Paginator<'_, '_, '_> {
 
         let top = g.y + self.shift;
         let need = self.head(i).max(node.brk.min_presence_ahead.unwrap_or(0.0));
-        if top + need > self.page_end(top) + EPS {
+        if top + need > self.page_end(top) + PAGED_EPS {
             self.push(top);
         }
         let top = g.y + self.shift;
-        let fits = top + g.h <= self.page_end(top) + EPS;
+        let fits = top + g.h <= self.page_end(top) + PAGED_EPS;
         let atomic = Self::atomic(node);
 
         if fits || atomic {
@@ -362,10 +433,11 @@ impl Paginator<'_, '_, '_> {
             let top = g_top + self.shift;
             let is_header = group.end <= t.header_rows;
             // A single row taller than a page splits inside its cells.
-            let splits = !is_header && group.len() == 1 && g_h + header_h > self.h + EPS;
-            if !is_header && (top - fresh_start).abs() > EPS {
-                let mut overflows = top + g_h > self.page_end(top) + EPS && !self.at_page_top(top);
-                if splits && top + self.row_head(first) <= self.page_end(top) + EPS {
+            let splits = !is_header && group.len() == 1 && g_h + header_h > self.h + PAGED_EPS;
+            if !is_header && (top - fresh_start).abs() > PAGED_EPS {
+                let mut overflows =
+                    top + g_h > self.page_end(top) + PAGED_EPS && !self.at_page_top(top);
+                if splits && top + self.row_head(first) <= self.page_end(top) + PAGED_EPS {
                     // It starts here if the first line of every cell fits.
                     overflows = false;
                 }
@@ -387,7 +459,7 @@ impl Paginator<'_, '_, '_> {
                 self.split_row(first, header_h);
                 continue;
             }
-            if !is_header && g_h + header_h > self.h + EPS {
+            if !is_header && g_h + header_h > self.h + PAGED_EPS {
                 tracing::warn!(
                     height = g_h,
                     "rows tied by a row span taller than a page are sliced"
@@ -458,7 +530,7 @@ impl Paginator<'_, '_, '_> {
     /// keeps `orphans` lines (CSS Fragmentation §4.4).
     fn split_text(&mut self, i: NodeIdx, node: &Node) {
         let g = self.tree.nodes[i as usize].geo;
-        let (_, cy, cw, _) = g.content_box();
+        let Rect { y: cy, w: cw, .. } = g.content_box();
         let Some(layout) = self.lines.lines(node, cw) else {
             return;
         };
@@ -472,7 +544,7 @@ impl Paginator<'_, '_, '_> {
         while k < n {
             let top = cy + lines[k].top + self.shift;
             let overflows =
-                top + lines[k].height > self.page_end(top) + EPS && !self.at_page_top(top);
+                top + lines[k].height > self.page_end(top) + PAGED_EPS && !self.at_page_top(top);
             // A line that lands exactly on a later page top breaks too.
             let new_page = k > chunk
                 && self.page_of(top) > self.page_of(cy + lines[k - 1].top + shifts[k - 1]);

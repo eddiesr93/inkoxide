@@ -8,10 +8,8 @@ use crate::fonts::FontSet;
 use crate::layout::Geometry;
 use crate::paint::{ContentCtx, ContentPainter, Dash, Op, Path, PathSeg, Rect, TextGlyph, TextOp};
 use crate::schema::{
-    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextRun,
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextRun, BLACK,
 };
-
-const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
 /// Page numbers substituted for placeholders on the page being painted.
 #[derive(Debug, Clone, Copy)]
@@ -38,7 +36,12 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
         let NodeKind::Text { runs } = &node.kind else {
             return;
         };
-        let (cx, cy, cw, _) = geo.content_box();
+        let Rect {
+            x: cx,
+            y: cy,
+            w: cw,
+            h: ch,
+        } = geo.content_box();
         let paragraph = self
             .page
             .and_then(|page| page.paragraph(node, cw))
@@ -46,23 +49,23 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
         let Some((layout, prepared, style)) = paragraph else {
             return;
         };
+        let para = Paragraph {
+            prepared,
+            runs,
+            align: style.align,
+        };
         for (li, line) in layout.lines.iter().enumerate() {
             let shift = ctx.line_shifts.get(li).copied().unwrap_or(ctx.shift);
             // Line top in paged space; only lines on this page are painted.
             let top = cy + line.top + shift;
-            if let Some((w0, w1)) = ctx.window {
-                if top >= w1 - 0.01 || top + line.height <= w0 + 0.01 {
-                    continue;
-                }
+            if ctx.window.is_some_and(|w| w.hides(top, line.height)) {
+                continue;
             }
+            let content = Rect::new(cx + ctx.dx, top - line.top + ctx.dy, cw, ch);
             paint_line(
                 line,
-                prepared,
-                runs,
-                style.align,
-                cx + ctx.dx,
-                top - line.top + ctx.dy,
-                cw,
+                &para,
+                content,
                 self.fonts,
                 self.numbers,
                 ctx.opacity,
@@ -70,6 +73,17 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
             );
         }
     }
+
+    fn numbers(&self) -> PageNumbers {
+        self.numbers
+    }
+}
+
+/// What every line of a paragraph is painted with.
+struct Paragraph<'p> {
+    prepared: &'p Prepared,
+    runs: &'p [TextRun],
+    align: TextAlign,
 }
 
 /// One output glyph sequence in a single run/font.
@@ -81,20 +95,28 @@ struct Piece {
     width: f32,
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Paints one line of `para`. `content` is the paragraph's content box on
+/// the page, placed for this line (a split paragraph shifts its lines).
 fn paint_line(
     line: &Line,
-    p: &Prepared,
-    runs: &[TextRun],
-    align: TextAlign,
-    cx: f32,
-    cy: f32,
-    cw: f32,
+    para: &Paragraph<'_>,
+    content: Rect,
     fonts: &FontSet<'_>,
     numbers: PageNumbers,
     opacity: f32,
     ops: &mut Vec<Op>,
 ) {
+    let Paragraph {
+        prepared: p,
+        runs,
+        align,
+    } = *para;
+    let Rect {
+        x: cx,
+        y: cy,
+        w: cw,
+        ..
+    } = content;
     let (s, e) = (line.start as usize, line.end as usize);
     let rtl = p.rtl;
     // The indent narrows the line box on its start side.
@@ -253,7 +275,8 @@ fn paint_line(
             let y = baseline - pos * scale;
             let dcolor = run.decoration_color.unwrap_or(color);
             let style = run.decoration_style.unwrap_or(DecorationStyle::Solid);
-            decoration(ops, style, x, y, piece_width, thick, dcolor, opacity, alpha);
+            let rect = Rect::new(x, y, piece_width, thick);
+            decoration(ops, style, rect, dcolor, opacity, alpha);
         }
         if alpha < 1.0 {
             ops.push(Op::Restore);
@@ -312,21 +335,18 @@ fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
     }
 }
 
-/// Draws a text decoration whose top edge is at `y`. `alpha` is the
-/// opacity in effect for the run's colour; the decoration colour's own
-/// alpha replaces the run's.
-#[allow(clippy::too_many_arguments)]
+/// Draws a text decoration in `rect`: its top edge, length and thickness.
+/// `alpha` is the opacity in effect for the run's colour; the decoration
+/// colour's own alpha replaces the run's.
 fn decoration(
     ops: &mut Vec<Op>,
     style: DecorationStyle,
-    x: f32,
-    y: f32,
-    w: f32,
-    thick: f32,
+    rect: Rect,
     color: Color,
     opacity: f32,
     alpha: f32,
 ) {
+    let Rect { x, y, w, h: thick } = rect;
     let own = color[3] * opacity;
     let swap = (own - alpha).abs() > f32::EPSILON;
     if swap {
@@ -346,16 +366,10 @@ fn decoration(
         segs: vec![PathSeg::MoveTo(x, y), PathSeg::LineTo(x + w, y)],
     };
     match style {
-        DecorationStyle::Solid => ops.push(Op::FillRect {
-            rect: Rect::new(x, y, w, thick),
-            color,
-        }),
+        DecorationStyle::Solid => ops.push(Op::FillRect { rect, color }),
         DecorationStyle::Double => {
             // Two strokes of the thickness, one thickness apart.
-            ops.push(Op::FillRect {
-                rect: Rect::new(x, y, w, thick),
-                color,
-            });
+            ops.push(Op::FillRect { rect, color });
             ops.push(Op::FillRect {
                 rect: Rect::new(x, y + 2.0 * thick, w, thick),
                 color,

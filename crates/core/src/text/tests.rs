@@ -313,12 +313,18 @@ fn simple_cell_fast_path_matches_taffy() {
         assert_eq!(fast.len(), slow.len());
         for (i, (a, b)) in fast.iter().zip(&slow).enumerate() {
             let close = |x: f32, y: f32| (x - y).abs() < 1e-3;
+            let sides_close = |x: crate::schema::Edges<f32>, y: crate::schema::Edges<f32>| {
+                x.to_array()
+                    .into_iter()
+                    .zip(y.to_array())
+                    .all(|(x, y)| close(x, y))
+            };
             let same = close(a.x, b.x)
                 && close(a.y, b.y)
                 && close(a.w, b.w)
                 && close(a.h, b.h)
-                && a.border.iter().zip(&b.border).all(|(x, y)| close(*x, *y))
-                && a.padding.iter().zip(&b.padding).all(|(x, y)| close(*x, *y));
+                && sides_close(a.border, b.border)
+                && sides_close(a.padding, b.padding);
             assert!(same, "node {i}: fast {a:?} vs taffy {b:?}");
         }
     }

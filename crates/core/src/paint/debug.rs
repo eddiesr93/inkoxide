@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use super::{FillRule, Op, Path, PathSeg, Rect};
-use crate::schema::Color;
+use crate::schema::{Color, Edges};
 
 /// Margin: orange, like browser developer tools.
 pub(crate) const MARGIN: Color = [0.96, 0.62, 0.26, 0.3];
@@ -37,10 +37,9 @@ pub(crate) struct DebugBox {
     /// Border box as painted on this page (a split box: its painted
     /// height, sliced by the page clip).
     pub rect: Rect,
-    /// `[top, right, bottom, left]`.
-    pub border: [f32; 4],
-    pub padding: [f32; 4],
-    pub margin: [f32; 4],
+    pub border: Edges<f32>,
+    pub padding: Edges<f32>,
+    pub margin: Edges<f32>,
     /// Laid-out border-box size, for the label.
     pub size: [f32; 2],
     /// Top and bottom of the part of the border box shown on this page,
@@ -156,12 +155,17 @@ pub(crate) fn draw(boxes: &[DebugBox], ops: &mut Vec<Op>, labels: &mut Labels) {
 }
 
 /// The page's own boxes: its margins and content area, with its size.
-pub(crate) fn page_box(width: f32, height: f32, margin: [f32; 4]) -> DebugBox {
-    let [t, r, b, l] = margin;
+pub(crate) fn page_box(width: f32, height: f32, margin: Edges<f32>) -> DebugBox {
+    let m = margin;
     DebugBox {
-        rect: Rect::new(l, t, width - l - r, height - t - b),
-        border: [0.0; 4],
-        padding: [0.0; 4],
+        rect: Rect::new(
+            m.left,
+            m.top,
+            width - m.left - m.right,
+            height - m.top - m.bottom,
+        ),
+        border: Edges::default(),
+        padding: Edges::default(),
         margin,
         size: [width, height],
         shown: (0.0, height),
@@ -169,14 +173,13 @@ pub(crate) fn page_box(width: f32, height: f32, margin: [f32; 4]) -> DebugBox {
     }
 }
 
-/// `r` grown by `[top, right, bottom, left]` (shrunk when negative).
-fn outset(r: Rect, e: [f32; 4]) -> Rect {
-    let [t, right, b, l] = e;
+/// `r` grown by `e` (shrunk where negative).
+fn outset(r: Rect, e: Edges<f32>) -> Rect {
     Rect::new(
-        r.x - l,
-        r.y - t,
-        (r.w + l + right).max(0.0),
-        (r.h + t + b).max(0.0),
+        r.x - e.left,
+        r.y - e.top,
+        (r.w + e.left + e.right).max(0.0),
+        (r.h + e.top + e.bottom).max(0.0),
     )
 }
 
@@ -219,7 +222,7 @@ fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Labels) {
     let border = b.rect;
     let padding = outset(border, b.border.map(|v| -v));
     let content = outset(padding, b.padding.map(|v| -v));
-    let any = |e: [f32; 4]| e.iter().any(|v| *v != 0.0);
+    let any = |e: Edges<f32>| e.to_array().iter().any(|v| *v != 0.0);
     if any(b.margin) {
         ring(outset(border, b.margin), border, MARGIN, ops);
     }
@@ -418,9 +421,9 @@ mod tests {
         draw(
             &[DebugBox {
                 rect: Rect::new(10.0, 10.0, 50.0, 20.0),
-                border: [0.0; 4],
-                padding: [2.0; 4],
-                margin: [0.0; 4],
+                border: Edges::default(),
+                padding: Edges::all(2.0),
+                margin: Edges::default(),
                 size: [50.0, 20.0],
                 shown: (10.0, 30.0),
                 ctm: None,

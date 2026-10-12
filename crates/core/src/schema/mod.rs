@@ -22,6 +22,9 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// RGBA, each component in [0, 1].
 pub type Color = [f32; 4];
 
+/// The default colour of text, borders and form fields.
+pub const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Document {
@@ -94,6 +97,44 @@ pub struct Edges<T: Default> {
     pub bottom: T,
     #[serde(default)]
     pub left: T,
+}
+
+impl<T: Default + Copy> Edges<T> {
+    /// The same value on every side.
+    pub fn all(v: T) -> Self {
+        Self {
+            top: v,
+            right: v,
+            bottom: v,
+            left: v,
+        }
+    }
+
+    /// `[top, right, bottom, left]`, for loops over the sides.
+    pub fn to_array(self) -> [T; 4] {
+        [self.top, self.right, self.bottom, self.left]
+    }
+
+    pub fn map<U: Default>(self, f: impl Fn(T) -> U) -> Edges<U> {
+        Edges {
+            top: f(self.top),
+            right: f(self.right),
+            bottom: f(self.bottom),
+            left: f(self.left),
+        }
+    }
+}
+
+impl<T: Default> From<[T; 4]> for Edges<T> {
+    /// From `[top, right, bottom, left]`.
+    fn from([top, right, bottom, left]: [T; 4]) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

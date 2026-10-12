@@ -21,10 +21,8 @@
 use taffy::prelude::AvailableSpace;
 
 use super::{LayoutCtx, NodeIdx, Part, Tree};
-use crate::schema::{BorderCollapse, Color, ColumnWidth, NodeKind, Table};
+use crate::schema::{BorderCollapse, Color, ColumnWidth, Edges, NodeKind, Table, BLACK};
 use crate::InkoxideError;
-
-const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
 // Indices into `[top, right, bottom, left]` arrays.
 const TOP: usize = 0;
@@ -42,8 +40,8 @@ pub(crate) struct CellBox {
     pub y: f32,
     pub w: f32,
     pub h: f32,
-    /// Collapsed border space reserved inside the cell `[t, r, b, l]`.
-    pub insets: [f32; 4],
+    /// Collapsed border space reserved inside the cell.
+    pub insets: Edges<f32>,
 }
 
 /// A resolved border on a horizontal grid line, spanning one column.
@@ -239,7 +237,7 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
 }
 
 /// Collapsed border space a cell reserves: full outer edges, half inner.
-fn insets(g: &Grid, r: usize, c: usize, rs: usize, cs: usize) -> [f32; 4] {
+fn insets(g: &Grid, r: usize, c: usize, rs: usize, cs: usize) -> Edges<f32> {
     let h = |line: usize| -> f32 {
         let outer = line == 0 || line == g.rows;
         let w = g.h_w[line * g.cols + c..line * g.cols + c + cs]
@@ -264,7 +262,7 @@ fn insets(g: &Grid, r: usize, c: usize, rs: usize, cs: usize) -> [f32; 4] {
             w / 2.0
         }
     };
-    [h(r), v(c + cs), h(r + rs), v(c)]
+    Edges::from([h(r), v(c + cs), h(r + rs), v(c)])
 }
 
 pub(crate) fn compute(
@@ -287,13 +285,14 @@ pub(crate) fn compute(
         0.0
     };
     let g = grid(tree, idx, table, separate);
-    let cell_insets: Vec<[f32; 4]> = g
+    let cell_insets: Vec<Edges<f32>> = g
         .cells
         .iter()
         .map(|&(cidx, r, c, rs, cs)| {
             if separate {
                 let s = tree.nodes[cidx as usize].style();
-                s.border_width.map_or([0.0; 4], |b| b.get(0.0))
+                s.border_width
+                    .map_or(Edges::default(), |b| b.get(0.0).into())
             } else {
                 insets(&g, r, c, rs, cs)
             }

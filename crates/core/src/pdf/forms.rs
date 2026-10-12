@@ -12,7 +12,7 @@ use super::{font_name, q, set_fill, show_text, EncodedPage, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::FieldOp;
 use crate::paint::PathSeg;
-use crate::schema::FieldKind;
+use crate::schema::{FieldKind, BLACK};
 
 /// What the catalog's `/AcroForm` needs.
 pub(super) struct Form {
@@ -166,7 +166,7 @@ fn field_entries(f: &mut FieldWriter<'_>, name: &str, widgets: &[(usize, &FieldO
 
 /// `/DA`: font, size and colour viewers use for edited text.
 fn default_appearance(op: &FieldOp) -> String {
-    let c = op.field.color.unwrap_or([0.0, 0.0, 0.0, 1.0]);
+    let c = op.field.color.unwrap_or(BLACK);
     let font = op.font.map_or_else(|| "F0".to_string(), font_name);
     format!(
         "/{font} {} Tf {} {} {} rg",
@@ -230,7 +230,7 @@ impl Ctx<'_, '_, '_> {
                     _ => "Yes".to_string(),
                 };
                 let mut c = Content::new();
-                set_fill(&mut c, &op.field.color.unwrap_or([0.0, 0.0, 0.0, 1.0]));
+                set_fill(&mut c, &op.field.color.unwrap_or(BLACK));
                 let segs = if op.field.kind == FieldKind::Radio {
                     dot(w, h)
                 } else {
