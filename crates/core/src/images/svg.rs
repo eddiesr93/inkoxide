@@ -72,6 +72,12 @@ const MAX_NESTING: usize = 4;
 const MAX_XML_NODES: u32 = 1_000_000;
 /// Largest intrinsic size, in CSS pixels per side.
 const MAX_SIDE: f32 = 100_000.0;
+/// Smallest intrinsic size, in CSS pixels per side, and smallest `viewBox`
+/// side, in user units: `1 / MAX_SIDE`. The PDF writer scales the SVG to
+/// the unit square by the inverse of its size, and its `viewBox` up to
+/// that size, so these bound the scale (at most `MAX_SIDE / MIN_SIDE`,
+/// 1e10) to numbers PDF readers parse.
+const MIN_SIDE: f32 = 1e-5;
 
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
@@ -434,7 +440,20 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<Vie
             "SVG is {w}×{h} px; at most {MAX_SIDE} px per side"
         )));
     }
-    Ok((tree, ViewBox::of(doc.root_element())))
+    if w < MIN_SIDE || h < MIN_SIDE {
+        return Err(Reject::Invalid(format!(
+            "SVG is {w}×{h} px; at least {MIN_SIDE} px per side"
+        )));
+    }
+    let view_box = ViewBox::of(doc.root_element());
+    if let Some([.., vw, vh]) = view_box.map(|v| v.rect) {
+        if vw < MIN_SIDE || vh < MIN_SIDE {
+            return Err(Reject::Invalid(format!(
+                "SVG viewBox is {vw}×{vh}; at least {MIN_SIDE} per side"
+            )));
+        }
+    }
+    Ok((tree, view_box))
 }
 
 /// What a decoded `data:` URL holds, as the resolver reads it.
@@ -1258,6 +1277,33 @@ mod tests {
         assert_eq!((t.size().width(), t.size().height()), (20.0, 10.0));
         assert!(is_svg(b"\xEF\xBB\xBF  <?xml version=\"1.0\"?><svg/>"));
         assert!(!is_svg(b"\x89PNG"));
+    }
+
+    #[test]
+    fn refuses_sizes_and_view_boxes_too_small_to_scale() {
+        let root = |attrs: &str| format!(r#"<svg xmlns="{SVG_NS}" {attrs}/>"#);
+        for side in ["1e-6", "1e-12", "1e-20", "1e-30", "1e-39"] {
+            for attrs in [
+                format!(r#"width="{side}" height="10""#),
+                format!(r#"width="10" height="{side}""#),
+                format!(r#"viewBox="0 0 {side} 10""#),
+                format!(r#"width="10" height="10" viewBox="0 0 10 {side}""#),
+            ] {
+                let e = rejected(&root(&attrs));
+                assert!(e.contains("at least"), "{attrs}: {e}");
+                // Nested, it is left out, as an invalid SVG is.
+                let t = parse(image_of(&root(&attrs), 1, 0).as_bytes()).unwrap().0;
+                assert_eq!(nested_images(t.root()), (0, 0), "{attrs}");
+            }
+        }
+        // The smallest and largest sizes are accepted.
+        let t = parse(root(r#"width="1e-5" height="100000""#).as_bytes())
+            .unwrap()
+            .0;
+        assert_eq!((t.size().width(), t.size().height()), (MIN_SIDE, MAX_SIDE));
+        parse(root(r#"width="100000" height="1" viewBox="0 0 1e-5 1e-5""#).as_bytes()).unwrap();
+        let e = rejected(&root(r#"width="100001" height="10""#));
+        assert!(e.contains("at most"), "{e}");
     }
 
     #[test]
