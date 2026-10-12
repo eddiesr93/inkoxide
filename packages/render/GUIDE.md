@@ -142,8 +142,13 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   30-second limit for the whole download and a 50 MiB size limit, and redirects are followed;
   renders wait for it, so for a font over that size or from a slow host, read the bytes
   yourself and register them.
-- **Weights.** Weights are numbers (100–900) or names (`'light'`, `'medium'`, `'bold'`).
-  Missing weights and styles fall back to the nearest one, as in CSS.
+- **Weights.** Weights are numbers (1–1000, as in CSS) or names (`'light'`, `'medium'`,
+  `'bold'`). Missing weights and styles fall back to the nearest one, as in CSS.
+- **Faces.** A face is a family, a weight and a style. Registering one again from the same
+  source (the same path, URL or bytes) does nothing, and from another source throws. A face the
+  bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
+  name. You can add the faces they lack, such as `Inter` bold italic. Two family names that
+  differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) cannot both be registered.
 
 ## Images
 
@@ -625,8 +630,9 @@ or the stack. Two more codes come from [templates](#serving-templates): `INVALID
 `UNKNOWN_TEMPLATE` (404).
 
 `Font.register` and `Font.registerHyphenationCallback` check their arguments when you call them
-and throw a plain `Error` straight away: a missing family name or `src`, an unknown weight, or a
-face already registered from another source.
+and throw a plain `Error` straight away: a missing family name or `src`, a `src` that is not a
+path, a URL or bytes, an unknown weight, a face already registered from another source, a face
+the bundled fonts have, or a family whose font id another family has.
 
 ## Serving templates
 

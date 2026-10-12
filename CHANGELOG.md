@@ -32,6 +32,13 @@ All notable changes to the packages in this repository. The format follows
   `result.document` whose images were bytes, files, URLs or functions renders again with
   `renderDocument(result.document, result.images)`; until now the ids the tree made up for them
   (`image-0`) failed with `UNKNOWN_IMAGE`.
+- `Font.register` tells faces apart by family, weight and style, and compares byte sources by
+  their bytes. It throws for a face the bundled fonts have (`Inter` 400 from another file was
+  accepted and never used), for a family whose font id another family has (`Brand-Two` after
+  `Brand Two` was skipped without a word), for a different font of the same byte length (was
+  ignored), and for a `src` that is not a path, a URL or bytes (`null` failed the next render
+  with a `TypeError`). A registration that throws adds none of its faces. The guide gives font
+  weights as 1–1000, the range the code accepts.
 
 ## 0.5.0 - 2026-10-12
 

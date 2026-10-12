@@ -177,6 +177,53 @@ describe('Font.register', () => {
       'not 1–1000 or a CSS weight name',
     );
   });
+
+  it('compares byte sources by their bytes, not their length', async () => {
+    Font.register({ family: 'Same Size', src: new Uint8Array(1000).fill(1) });
+    expect(() => Font.register({ family: 'Same Size', src: new Uint8Array(1000).fill(1) })).not.toThrow();
+    expect(() => Font.register({ family: 'Same Size', src: new Uint8Array(1000).fill(2) })).toThrow(
+      'Font "Same Size" 400 is already registered from 1000 bytes.',
+    );
+    // They are not a font: the next render fails on them once.
+    await expect(renderToBuffer(<Doc family="Brand" />)).rejects.toMatchObject({ code: 'INVALID_FONT' });
+  });
+
+  it('refuses a family whose font id another family has', () => {
+    const src = file('Inter-Regular.ttf');
+    Font.register({ family: 'Id Clash', src });
+    expect(() => Font.register({ family: 'Id-Clash', src })).toThrow(
+      'Font "Id-Clash" 400 would have the font id Id-Clash-400, which "Id Clash" 400 has. Use another family name.',
+    );
+    expect(() => Font.register({ family: 'Id-Clash', src, fontStyle: 'italic' })).not.toThrow();
+  });
+
+  it('refuses a face the bundled fonts already have, and adds the faces they lack', async () => {
+    expect(() => Font.register({ family: 'Inter', src: file('RobotoMono-Regular.ttf') })).toThrow(
+      'Font "Inter" 400 is bundled (Inter-Regular). Register yours under another family name.',
+    );
+    expect(() =>
+      Font.register({ family: 'Inter', src: file('Inter-Bold.ttf'), fontWeight: 700, fontStyle: 'italic' }),
+    ).not.toThrow();
+    await renderToBuffer(<Doc family="Inter" weight={700} italic />);
+    expect(treeFonts(<Doc family="Inter" weight={700} italic />).warnings).toEqual([]);
+  });
+
+  it('refuses a src that is not a path, a URL or bytes when it is registered', async () => {
+    for (const src of [null, 42, {}]) {
+      expect(() => Font.register({ family: 'Bad Src', src: src as never })).toThrow(
+        'Font "Bad Src": src must be a path, a URL or the bytes (Uint8Array or ArrayBuffer)',
+      );
+      expect(() =>
+        Font.register({
+          family: 'Bad Src',
+          fonts: [{ src: file('Inter-Bold.ttf'), fontWeight: 700 }, { src: src as never }],
+        }),
+      ).toThrow('src must be a path');
+    }
+    // Nothing of a refused registration is kept.
+    await expect(renderToBuffer(<Doc family="Brand" />)).resolves.toBeInstanceOf(Uint8Array);
+    expect(fonts.has('Bad-Src-700')).toBe(false);
+  });
 });
 
 describe('Font.registerHyphenationCallback', () => {
