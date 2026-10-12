@@ -47,10 +47,9 @@ const SHAPE_VERTICES: usize = 300;
 /// Vertices per number in path data with arcs: an arc takes seven numbers
 /// and becomes at most about 50 curves.
 const ARC_VERTICES_PER_NUMBER: usize = 10;
-/// Most style parsing work, in declarations × bytes for each `style`
-/// attribute and sheet, counting every copy: the CSS parser `usvg` uses
-/// scans the text from its start again for each declaration.
-const MAX_STYLE_WORK: usize = 2_000_000_000;
+/// Most style parsing work (see [`css_work`]) over every `style` attribute
+/// and sheet, counting every copy: a few tenths of a second.
+const MAX_STYLE_WORK: usize = 200_000_000;
 /// Most style sheet matching work, counting every copy: `usvg` matches
 /// every selector against each element it copies, and a selector with `k`
 /// descendant or sibling combinators may try `depthᵏ` ancestors.
@@ -448,7 +447,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
     let mut deepest = 1;
     let mut sheet = Drawn::default();
     let mut selectors: Vec<usize> = Vec::new();
-    let (mut sheet_len, mut sheet_declarations, mut sheet_values) = (0, 0, 0);
+    let (mut sheet_work, mut sheet_values) = (0usize, 0);
     for n in root.descendants().filter(Node::is_element) {
         let d = n
             .parent_element()
@@ -468,8 +467,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         if name == "style" {
             let mut rest = Vec::new();
             for t in n.descendants().filter_map(|d| d.text()) {
-                sheet_len += t.len();
-                sheet_declarations += t.matches(':').count();
+                sheet_work = sheet_work.saturating_add(css_work(t));
                 for block in t.split('}') {
                     let (selector, body) = block.split_once('{').unwrap_or(("", block));
                     selectors.extend(selector.split(',').map(combinators));
@@ -509,7 +507,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         active: Vec::new(),
     };
     walk.cost.add(Cost {
-        style_work: sheet_len.saturating_mul(sheet_declarations),
+        style_work: sheet_work,
         ..Cost::default()
     })?;
     walk.visit(root, &mut Vec::new(), 0, depth, false)?;
@@ -642,6 +640,24 @@ fn url_refs(v: &str) -> impl Iterator<Item = &str> {
         };
         (!link.is_empty() && !link.contains(['"', '\''])).then_some(link)
     })
+}
+
+/// Work for the CSS parser `usvg` uses to read a `style` attribute or
+/// sheet. Each time it fails to read a name, which happens at least once
+/// per declaration, after every unitless number and on `#` before a digit,
+/// it scans the text from its start to report a line and column: the sum
+/// of those offsets. Counting every `:`, `#` and digit run overestimates.
+fn css_work(css: &str) -> usize {
+    let bytes = css.as_bytes();
+    let fails = |&(i, &c): &(usize, &u8)| {
+        matches!(c, b':' | b'#')
+            || (c.is_ascii_digit() && !bytes.get(i + 1).is_some_and(u8::is_ascii_digit))
+    };
+    bytes
+        .iter()
+        .enumerate()
+        .filter(fails)
+        .fold(0, |sum, (i, _)| sum.saturating_add(i))
 }
 
 /// `property: value` pairs in a style attribute or style sheet.
@@ -840,7 +856,7 @@ impl<'d> Info<'d> {
             }
             match name {
                 "style" => {
-                    info.style_work = v.len().saturating_mul(v.matches(':').count());
+                    info.style_work = css_work(v);
                     for (p, value) in declarations(v) {
                         let prop = p.trim().to_ascii_lowercase();
                         if matches!(prop.as_str(), "r" | "rx" | "ry" | "d")
@@ -1375,6 +1391,14 @@ mod tests {
         let long = "fill:none;".repeat(100_000);
         let e = rejected(&svg(&format!(r#"<g style="{long}"/>"#)));
         assert!(e.contains("too long"), "{e}");
+        // It also scans after every unitless number, in sheets too.
+        let dashes = format!("stroke-dasharray:{}", "1 ".repeat(40_000));
+        let e = rejected(&svg(&format!(r#"<rect style="{dashes}"/>"#)));
+        assert!(e.contains("too long"), "{e}");
+        let e = rejected(&svg(&format!("<style>rect{{{dashes}}}</style><rect/>")));
+        assert!(e.contains("too long"), "{e}");
+        let dashes = format!("stroke-dasharray:{}", "1 ".repeat(1_000));
+        parse(svg(&format!(r#"<rect style="{dashes}"/>"#)).as_bytes()).unwrap();
         let style = "fill:none;".repeat(100);
         let doc = |copies| {
             let uses = r##"<use href="#a"/>"##.repeat(copies);

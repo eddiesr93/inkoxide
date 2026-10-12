@@ -55,6 +55,13 @@ All notable changes to the packages in this repository. The format follows
   (`flex-[-1]`) is an unsupported value where the class or style is read, not a schema error
   later.
 
+### Security
+
+- SVG style attributes and sheets are held to a limit on what the CSS parser does with every
+  unitless number and `#` as well as every declaration: it scans the text from its start each
+  time, so a style with a long `stroke-dasharray` used seconds to minutes of CPU. Found by a
+  new structure-aware SVG fuzz target (`render_svg_tree`).
+
 ### Fixed
 
 - A table with `break: { fixed: true }` in the flow repeats whole on every page: its row and
