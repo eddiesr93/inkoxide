@@ -1,8 +1,9 @@
 //! `debug` outlines through layout, pagination and paint: which boxes are
 //! outlined on which page, and that nothing else changes.
 
+use super::tests::render_with;
 use super::*;
-use crate::images::{ImageCrateDecoder, ImageStore};
+use crate::images::ImageStore;
 use crate::paint::debug::{BORDER, CONTENT, LABEL_BG, MARGIN, PADDING};
 use crate::paint::{PathSeg, Rect};
 use crate::test_fixtures::inter;
@@ -12,12 +13,7 @@ const W: f32 = 200.0;
 const H: f32 = 100.0;
 
 fn pages(json: &str) -> Vec<PageContent> {
-    let store = inter();
-    let doc = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
-    let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
-    let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    run(&doc, &fonts, &mut text, &images, true, Ok).unwrap().0
+    render_with(&inter(), json, |pages, _, _| pages)
 }
 
 /// One page of `W × H` with `page` properties and `children`.
@@ -430,21 +426,18 @@ fn debug_output_is_deterministic_and_thread_count_independent() {
 fn debug_adds_no_text_links_or_fields() {
     let store = inter();
     let paint = |json: &str| {
-        let doc = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
-        let fonts = FontSet::load(&doc, &store).unwrap();
-        let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
-        let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-        let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
-        let kept: Vec<Vec<Op>> = pages
-            .into_iter()
-            .map(|p| {
-                p.ops
-                    .into_iter()
-                    .filter(|op| matches!(op, Op::Text(_) | Op::Link { .. } | Op::Field(_)))
-                    .collect()
-            })
-            .collect();
-        (kept, format!("{marks:?}"))
+        render_with(&store, json, |pages, marks, _| {
+            let kept: Vec<Vec<Op>> = pages
+                .into_iter()
+                .map(|p| {
+                    p.ops
+                        .into_iter()
+                        .filter(|op| matches!(op, Op::Text(_) | Op::Link { .. } | Op::Field(_)))
+                        .collect()
+                })
+                .collect();
+            (kept, format!("{marks:?}"))
+        })
     };
     let (plain, plain_marks) = paint(&rich(""));
     let (debug, debug_marks) = paint(&rich(r#","debug":true"#));

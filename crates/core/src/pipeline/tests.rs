@@ -1,5 +1,6 @@
-//! Headers and footers with page numbers, through layout, pagination and
-//! paint.
+//! Pages through layout, pagination and paint: headers, footers and flow
+//! text with page numbers, overlays, fixed nodes and tables, z-order, and
+//! the destinations of ids and bookmarks.
 
 use super::*;
 use crate::images::{ImageCrateDecoder, ImageStore};
@@ -73,14 +74,29 @@ struct Painted {
     digit: Option<char>,
 }
 
-/// The glyphs painted on every page.
-fn painted(json: &str) -> Vec<Vec<Painted>> {
-    let store = store();
+/// Parses `json` and runs it through layout, pagination and paint with
+/// the fonts of `store` and no images, then runs `f` on the painted pages,
+/// the marks and the fonts.
+pub(super) fn render_with<R>(
+    store: &FontStore,
+    json: &str,
+    f: impl FnOnce(Vec<PageContent>, &Marks<'_>, &FontSet<'_>) -> R,
+) -> R {
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
-    let fonts = FontSet::load(&doc, &store).unwrap();
+    let fonts = FontSet::load(&doc, store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, _) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
+    let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
+    f(pages, &marks, &fonts)
+}
+
+/// The glyphs painted on every page.
+fn painted(json: &str) -> Vec<Vec<Painted>> {
+    render_with(&store(), json, |pages, _, fonts| glyphs(&pages, fonts))
+}
+
+/// The glyphs painted on each of `pages`.
+fn glyphs(pages: &[PageContent], fonts: &FontSet<'_>) -> Vec<Vec<Painted>> {
     pages
         .iter()
         .map(|page| {
@@ -347,13 +363,7 @@ fn red_box(extra: &str, style: &str) -> String {
 
 /// Runs `f` on the painted pages and the marks of a document.
 fn render_doc<R>(json: &str, f: impl FnOnce(&[PageContent], &Marks<'_>) -> R) -> R {
-    let store = store();
-    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
-    let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
-    let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
-    f(&pages, &marks)
+    render_with(&store(), json, |pages, marks, _| f(&pages, marks))
 }
 
 type Bounds = (f32, f32, f32, f32);
@@ -566,13 +576,7 @@ fn overlays_take_no_space() {
 #[test]
 fn overlays_show_the_page_they_are_on() {
     let pages = 12;
-    let numbers = n_of_m(
-        r#""position":"absolute","inset":{"bottom":0,"right":0}"#,
-        "Inter-Regular",
-        "",
-        ["Page ", " of "],
-        None,
-    );
+    let numbers = page_n_of_m(r#""position":"absolute","inset":{"bottom":0,"right":0}"#);
     let overlay = numbers.replacen(r#""type":"text""#, &format!(r#""type":"text"{FIXED}"#), 1);
     let json = with_fixed(pages, &overlay);
     for (k, numbers) in painted_numbers(&json).iter().enumerate() {
@@ -656,13 +660,8 @@ fn overlays_with_a_negative_z_index_are_painted_under_the_flow() {
         ]
     );
     // Under the flow, an overlay still shows the page it is on.
-    let numbers = n_of_m(
-        r#""position":"absolute","inset":{"bottom":0,"right":0},"zIndex":-1"#,
-        "Inter-Regular",
-        "",
-        ["Page ", " of "],
-        None,
-    );
+    let numbers =
+        page_n_of_m(r#""position":"absolute","inset":{"bottom":0,"right":0},"zIndex":-1"#);
     let overlay = numbers.replacen(r#""type":"text""#, &format!(r#""type":"text"{FIXED}"#), 1);
     for (k, numbers) in painted_numbers(&with_fixed(3, &overlay)).iter().enumerate() {
         assert_eq!(numbers, &[(k + 1).to_string(), "3".to_owned()]);
@@ -742,13 +741,7 @@ fn page_numbers_can_bring_flow_text_back_a_page() {
     // 13 pt are left at the foot of the page. "Page 999 of 999" takes two
     // lines in 70 pt and moves on to a second page; "Page 1 of 1" takes
     // one and fits.
-    let text = n_of_m(
-        r#""width":70"#,
-        "Inter-Regular",
-        "",
-        ["Page ", " of "],
-        None,
-    );
+    let text = page_n_of_m(r#""width":70"#);
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
             "pages":[{{"size":{{"width":{W},"height":{H}}},
@@ -768,7 +761,7 @@ fn page_numbers_can_bring_flow_text_back_a_page() {
 
 #[test]
 fn repeated_flow_text_shows_each_page_s_numbers() {
-    let numbers = n_of_m("", "Inter-Regular", "", ["Page ", " of "], None);
+    let numbers = page_n_of_m("");
     // A fixed node in the flow is painted on every page.
     let fixed = numbers.replacen(r#""type":"text""#, &format!(r#""type":"text"{FIXED}"#), 1);
     let pages = painted_numbers(&with_fixed(3, &fixed));

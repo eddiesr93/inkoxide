@@ -1,17 +1,10 @@
 use crate::{validate, FontStore, ImageStore, InputFormat, ValidationCode as C, ValidationError};
 
-use crate::test_fixtures::inter as fonts;
+use crate::test_fixtures::{fixture, inter as fonts};
 
 fn run(doc: &str) -> Vec<ValidationError> {
     let mut images = ImageStore::new();
-    images.insert(
-        "logo",
-        std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/images/logo.png"
-        ))
-        .unwrap(),
-    );
+    images.insert("logo", fixture("images/logo.png"));
     validate(doc.as_bytes(), InputFormat::Json, &fonts(), &images)
 }
 
