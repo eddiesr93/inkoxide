@@ -8,14 +8,16 @@ use super::shapes::{
 use super::{Dash, FillRule, Op, Path, Rect};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, NodeIdx, Part, Tree};
-use crate::paginate::{PageWindow, Placement};
+use crate::paginate::{PageWindow, Placement, PAGED_EPS};
 use crate::schema::{
     BorderRadius, BorderStyle, BorderStyles, Color, Display, Edges, LengthPercent, Node, Overflow,
-    Style, TransformOp,
+    Style, TransformOp, BLACK,
 };
 use crate::text::PageNumbers;
 
-const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
+/// Row shifts closer than this (points) are equal: no page break falls
+/// between the rows.
+const SHIFT_EPS: f32 = 1e-3;
 
 /// What a leaf painter needs to know about the node it paints.
 pub(crate) struct ContentCtx<'p> {
@@ -453,7 +455,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                     let bottom = oy + t.row_y[n - 1] + t.row_h[n - 1];
                     fills.push(band(bottom - e.width + bshift(n - 1)));
                 }
-            } else if (bshift(l - 1) - shift(l)).abs() < 1e-3 {
+            } else if (bshift(l - 1) - shift(l)).abs() < SHIFT_EPS {
                 if visible(l - 1) || visible(l) {
                     fills.push(band(oy + t.row_y[l] - e.width / 2.0 + shift(l)));
                 }
@@ -545,7 +547,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         let first_top = cy + t.row_y[first] + pl.shift(fr);
         // A row split across pages continues below a repeated header.
         let continued = pl.first_page(fr) < page && pl.is_split(fr);
-        if !continued && (first_top - (page_top + t.header_height())).abs() > crate::paginate::EPS {
+        if !continued && (first_top - (page_top + t.header_height())).abs() > PAGED_EPS {
             return;
         }
         let shift = page_top - (cy + t.row_y[0]);

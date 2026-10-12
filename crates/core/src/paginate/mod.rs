@@ -26,9 +26,10 @@ use crate::schema::{
 };
 use crate::text::{LineLayout, TextCache, TextShaper};
 
-/// Float tolerance in points. Paged coordinates of long documents reach
-/// ~10⁶ pt, where one f32 step is ~0.06 pt; 0.1 pt is still invisible.
-pub(crate) const EPS: f32 = 0.1;
+/// Float tolerance in paged space, points. Paged coordinates of long
+/// documents reach ~10⁶ pt, where one f32 step is ~0.06 pt; 0.1 pt is
+/// still invisible.
+pub(crate) const PAGED_EPS: f32 = 0.1;
 
 /// Result of paginating one flow.
 #[derive(Debug, Clone)]
@@ -217,13 +218,13 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
 
 impl Paginator<'_, '_, '_> {
     fn page_of(&self, y: f32) -> u32 {
-        ((y + EPS) / self.h).floor().max(0.0) as u32
+        ((y + PAGED_EPS) / self.h).floor().max(0.0) as u32
     }
 
     /// Page holding the content that ends at paged `y` (a bottom exactly on
     /// a page boundary belongs to the page above).
     fn page_of_bottom(&self, y: f32) -> u32 {
-        ((y - EPS) / self.h).floor().max(0.0) as u32
+        ((y - PAGED_EPS) / self.h).floor().max(0.0) as u32
     }
 
     fn page_end(&self, y: f32) -> f32 {
@@ -232,7 +233,7 @@ impl Paginator<'_, '_, '_> {
 
     fn at_page_top(&self, y: f32) -> bool {
         let r = y - self.page_of(y) as f32 * self.h;
-        r.abs() < EPS
+        r.abs() < PAGED_EPS
     }
 
     /// Moves everything from paged `y` on to the next page.
@@ -365,11 +366,11 @@ impl Paginator<'_, '_, '_> {
 
         let top = g.y + self.shift;
         let need = self.head(i).max(node.brk.min_presence_ahead.unwrap_or(0.0));
-        if top + need > self.page_end(top) + EPS {
+        if top + need > self.page_end(top) + PAGED_EPS {
             self.push(top);
         }
         let top = g.y + self.shift;
-        let fits = top + g.h <= self.page_end(top) + EPS;
+        let fits = top + g.h <= self.page_end(top) + PAGED_EPS;
         let atomic = Self::atomic(node);
 
         if fits || atomic {
@@ -432,10 +433,11 @@ impl Paginator<'_, '_, '_> {
             let top = g_top + self.shift;
             let is_header = group.end <= t.header_rows;
             // A single row taller than a page splits inside its cells.
-            let splits = !is_header && group.len() == 1 && g_h + header_h > self.h + EPS;
-            if !is_header && (top - fresh_start).abs() > EPS {
-                let mut overflows = top + g_h > self.page_end(top) + EPS && !self.at_page_top(top);
-                if splits && top + self.row_head(first) <= self.page_end(top) + EPS {
+            let splits = !is_header && group.len() == 1 && g_h + header_h > self.h + PAGED_EPS;
+            if !is_header && (top - fresh_start).abs() > PAGED_EPS {
+                let mut overflows =
+                    top + g_h > self.page_end(top) + PAGED_EPS && !self.at_page_top(top);
+                if splits && top + self.row_head(first) <= self.page_end(top) + PAGED_EPS {
                     // It starts here if the first line of every cell fits.
                     overflows = false;
                 }
@@ -457,7 +459,7 @@ impl Paginator<'_, '_, '_> {
                 self.split_row(first, header_h);
                 continue;
             }
-            if !is_header && g_h + header_h > self.h + EPS {
+            if !is_header && g_h + header_h > self.h + PAGED_EPS {
                 tracing::warn!(
                     height = g_h,
                     "rows tied by a row span taller than a page are sliced"
@@ -542,7 +544,7 @@ impl Paginator<'_, '_, '_> {
         while k < n {
             let top = cy + lines[k].top + self.shift;
             let overflows =
-                top + lines[k].height > self.page_end(top) + EPS && !self.at_page_top(top);
+                top + lines[k].height > self.page_end(top) + PAGED_EPS && !self.at_page_top(top);
             // A line that lands exactly on a later page top breaks too.
             let new_page = k > chunk
                 && self.page_of(top) > self.page_of(cy + lines[k - 1].top + shifts[k - 1]);

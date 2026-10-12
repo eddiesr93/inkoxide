@@ -21,10 +21,8 @@
 use taffy::prelude::AvailableSpace;
 
 use super::{LayoutCtx, NodeIdx, Part, Tree};
-use crate::schema::{BorderCollapse, Color, ColumnWidth, Edges, NodeKind, Table};
+use crate::schema::{BorderCollapse, Color, ColumnWidth, Edges, NodeKind, Table, BLACK};
 use crate::InkoxideError;
-
-const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
 // Indices into `[top, right, bottom, left]` arrays.
 const TOP: usize = 0;

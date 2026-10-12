@@ -295,7 +295,7 @@ pub(crate) fn fit_rect(
     (iw, ih): (f32, f32),
 ) -> (Rect, bool) {
     /// Overflow below this (points) is rounding, not worth a clip.
-    const EPS: f32 = 1e-3;
+    const CLIP_EPS: f32 = 1e-3;
     let Rect { x, y, w, h } = bx;
     if iw <= 0.0 || ih <= 0.0 {
         return (bx, false);
@@ -313,12 +313,12 @@ pub(crate) fn fit_rect(
         ImageFit::None => (iw, ih),
     };
     let (rx, ry) = (place(x, position.x, w - dw), place(y, position.y, h - dh));
-    let clip = dw > w + EPS
-        || dh > h + EPS
-        || rx < x - EPS
-        || ry < y - EPS
-        || rx + dw > x + w + EPS
-        || ry + dh > y + h + EPS;
+    let clip = dw > w + CLIP_EPS
+        || dh > h + CLIP_EPS
+        || rx < x - CLIP_EPS
+        || ry < y - CLIP_EPS
+        || rx + dw > x + w + CLIP_EPS
+        || ry + dh > y + h + CLIP_EPS;
     (Rect::new(rx, ry, dw, dh), clip)
 }
 

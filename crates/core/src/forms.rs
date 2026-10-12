@@ -6,7 +6,7 @@ use taffy::{AvailableSpace, Size as TSize};
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::Geometry;
 use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};
-use crate::schema::{Field, FieldKind};
+use crate::schema::{Field, FieldKind, BLACK};
 
 /// Inner padding between the widget edge and its text, points.
 const PAD: f32 = 2.0;
@@ -92,7 +92,7 @@ pub(crate) fn paint(
         let m = &lf.data.metrics;
         let scale = lf.scale(f.size);
         let (asc, desc) = (m.ascender * scale, -m.descender * scale);
-        let color = f.color.unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        let color = f.color.unwrap_or(BLACK);
         let shown = match (f.kind, f.password) {
             (FieldKind::Text | FieldKind::Select, false) => f.value.as_deref().unwrap_or(""),
             _ => "",

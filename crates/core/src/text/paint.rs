@@ -8,10 +8,8 @@ use crate::fonts::FontSet;
 use crate::layout::Geometry;
 use crate::paint::{ContentCtx, ContentPainter, Dash, Op, Path, PathSeg, Rect, TextGlyph, TextOp};
 use crate::schema::{
-    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextRun,
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextRun, BLACK,
 };
-
-const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
 /// Page numbers substituted for placeholders on the page being painted.
 #[derive(Debug, Clone, Copy)]

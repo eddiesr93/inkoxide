@@ -22,6 +22,9 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// RGBA, each component in [0, 1].
 pub type Color = [f32; 4];
 
+/// The default colour of text, borders and form fields.
+pub const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Document {

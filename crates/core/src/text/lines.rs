@@ -10,7 +10,7 @@ const ELLIPSIS: char = '\u{2026}';
 const HYPHEN: char = '\u{2010}';
 
 /// Tolerance for float noise when comparing widths.
-const EPS: f32 = 1e-3;
+const WIDTH_EPS: f32 = 1e-3;
 
 /// Breaks `p` into lines no wider than `max_width` (`f32::INFINITY` for
 /// max-content).
@@ -68,7 +68,7 @@ pub(crate) fn break_lines(
         } else {
             0.0
         };
-        let fits = width(start, pos) + extra <= limit + EPS;
+        let fits = width(start, pos) + extra <= limit + WIDTH_EPS;
         if fits {
             if kind == BreakKind::Mandatory {
                 raw.push((start, pos, kind));
@@ -104,7 +104,7 @@ pub(crate) fn break_lines(
                 let mut end = start + 1;
                 while end < pos
                     && (p.glyphs[end].cluster == p.glyphs[end - 1].cluster
-                        || width(start, end + 1) <= limit + EPS)
+                        || width(start, end + 1) <= limit + WIDTH_EPS)
                 {
                     end += 1;
                 }
@@ -160,7 +160,7 @@ pub(crate) fn break_lines(
         if style.ellipsis {
             if let Some(last) = lines.last_mut() {
                 let limit = max_width - last.indent;
-                if truncated || last.width > limit + EPS {
+                if truncated || last.width > limit + WIDTH_EPS {
                     apply_ellipsis(last, p, runs, fonts, limit, &prefix);
                 }
             }
@@ -222,7 +222,7 @@ fn apply_ellipsis(
     let ell_w = font.advance(gid) * font.scale(size) * f32::from(count);
     let mut e = line.end as usize;
     while e > s
-        && (prefix[e] - prefix[s] + ell_w > max_width + EPS
+        && (prefix[e] - prefix[s] + ell_w > max_width + WIDTH_EPS
             || p.glyphs[e - 1].flags & GLYPH_SPACE != 0)
     {
         e -= 1;

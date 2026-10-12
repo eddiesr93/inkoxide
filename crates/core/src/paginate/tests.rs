@@ -46,11 +46,11 @@ fn rect(t: &Tree<'_>, p: &Placement, i: u32) -> (f32, f32) {
 }
 
 fn page(y: f32) -> u32 {
-    ((y + EPS) / H).floor() as u32
+    ((y + PAGED_EPS) / H).floor() as u32
 }
 
 fn page_of_bottom(y: f32) -> u32 {
-    ((y - EPS) / H).floor().max(0.0) as u32
+    ((y - PAGED_EPS) / H).floor().max(0.0) as u32
 }
 
 /// Every atomic leaf no taller than a page sits on exactly one page, and
@@ -59,7 +59,7 @@ fn check_invariants(t: &Tree<'_>, p: &Placement) {
     for i in 1..t.nodes.len() as u32 {
         let (top, bottom) = rect(t, p, i);
         let leaf = t.nodes[i as usize].children.is_empty();
-        if leaf && bottom - top <= H + EPS {
+        if leaf && bottom - top <= H + PAGED_EPS {
             assert_eq!(
                 page(top),
                 page_of_bottom(bottom).max(page(top)),
@@ -71,7 +71,7 @@ fn check_invariants(t: &Tree<'_>, p: &Placement) {
         let kids: Vec<u32> = t.children(i).collect();
         for w in kids.windows(2) {
             assert!(
-                rect(t, p, w[0]).0 <= rect(t, p, w[1]).0 + EPS,
+                rect(t, p, w[0]).0 <= rect(t, p, w[1]).0 + PAGED_EPS,
                 "order broken at {w:?}"
             );
         }
@@ -362,7 +362,7 @@ fn tables_split_between_rows_and_reserve_header_space() {
         assert_eq!(pg, page_of_bottom(top + h), "row crosses a page");
         if pg > 0 {
             assert!(
-                top - pg as f32 * H >= 10.0 - EPS,
+                top - pg as f32 * H >= 10.0 - PAGED_EPS,
                 "row {r} overlaps the repeated header at {top}"
             );
         }
