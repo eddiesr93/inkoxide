@@ -67,16 +67,18 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     }
 }
 
-/// Leaf painting: text and images.
+/// Leaf painting: text through `T`, images and form fields.
 struct Content<'x, T: ContentPainter> {
     text: T,
     images: &'x ImageSet,
+    fonts: &'x FontSet<'x>,
 }
 
 impl<T: ContentPainter> ContentPainter for Content<'_, T> {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
+            NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             _ => self.text.paint(node, geo, ctx, ops),
         }
     }
@@ -387,6 +389,7 @@ fn paint_page(
             numbers,
         },
         images,
+        fonts,
     };
 
     // `debug` outlines, drawn over everything once the page is painted.
