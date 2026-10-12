@@ -4,12 +4,11 @@ import {
   initTailwind,
   parseColor,
   parseObjectPosition,
-  SUPPORTED,
   setTailwindStrict,
   tw,
-  UNSUPPORTED,
   UnsupportedUtilityError,
 } from '../src/index.ts';
+import { SUPPORTED, UNSUPPORTED } from '../src/supported.ts';
 
 beforeAll(async () => {
   await initTailwind();

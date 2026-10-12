@@ -12,8 +12,9 @@ const BRAND = DEFAULT_THEME_CSS.replace(
 async function fresh() {
   vi.resetModules();
   const mod = await import('../src/index.ts');
-  const load = mod.TailwindCompiler.load.bind(mod.TailwindCompiler);
-  vi.spyOn(mod.TailwindCompiler, 'load').mockImplementation(async (css, base) => {
+  const { TailwindCompiler } = await import('../src/compile.ts');
+  const load = TailwindCompiler.load.bind(TailwindCompiler);
+  vi.spyOn(TailwindCompiler, 'load').mockImplementation(async (css, base) => {
     const compiler = await load(css, base);
     if (css === undefined) await new Promise((resolve) => setTimeout(resolve, 50));
     return compiler;

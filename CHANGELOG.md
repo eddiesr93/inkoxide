@@ -23,6 +23,10 @@ All notable changes to the packages in this repository. The format follows
   prefix: it allows URLs with the same scheme, host and port, and, when it has a path, that path
   and the paths under it (`https://cdn.example.com/img` allows `/img/logo.png`, not
   `/imgs/logo.png`). Entries such as `https://cdn.example.com/` work as before.
+- The published `@inkoxide/tailwind` no longer declares `"sideEffects": false`: importing it
+  loads `@tailwindcss/node`, which registers Node module resolution hooks.
+- The `@inkoxide/tailwind` README documents `DEFAULT_THEME_CSS`, every `initTailwind` option,
+  `setTailwindStrict`, `tw.warm` and `tw.cacheSize`.
 
 ### Deprecated
 
@@ -33,6 +37,13 @@ All notable changes to the packages in this repository. The format follows
 - `TwStyle` and `TwKey` (from `@inkoxide/style` and `@inkoxide/tailwind`) are renamed
   `FlatStyle` and `FlatStyleKey`: `style` props build this style too, not only classes. The old
   names stay as aliases for now.
+- `@inkoxide/tailwind`: `TailwindCompiler`, which wraps Tailwind's unstable design-system API
+  and which `tw()` cannot use (set a theme with `initTailwind({ css })`), and `SUPPORTED`,
+  `UNSUPPORTED` and `SupportedFamily`, the data of the Tailwind support table. They will be
+  removed from the package's exports.
+- The default Tailwind theme's colours `ink`, `ink-muted`, `brand`, `field`, `field-line`,
+  `rule` and `head` (`bg-brand`, `text-ink`, …), made for the engine's test documents, will be
+  removed from it. Set them in your own theme (`initTailwind({ css })`) to keep using them.
 
 ### Fixed
 
