@@ -284,10 +284,22 @@ class Builder {
     }
     const p = root.props;
     const meta: Meta = {};
-    for (const k of ['title', 'author', 'subject', 'keywords', 'creator', 'lang', 'creationDate'] as const) {
+    for (const k of [
+      'title',
+      'author',
+      'subject',
+      'keywords',
+      'creator',
+      'producer',
+      'lang',
+      'creationDate',
+    ] as const) {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
+    // Checked against the schema's values with the rest of the document.
+    if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
+    if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
     this.docLang = meta.lang;
     this.debugAll = p.debug === true;
     const family = this.opts.defaultFamily ?? defaultFamily();

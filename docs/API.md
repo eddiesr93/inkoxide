@@ -19,6 +19,7 @@ versions; removing or renaming any of them is a major version.
 | Images | `ImageStore::insert(id, bytes)`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
 | Validate | `validate(doc, format, &fonts, &images) -> Vec<ValidationError>` | `validate(doc, format?, images?): ValidationError[]` |
+| Validate without the images | `validate_without_images(doc, format, &fonts) -> Vec<ValidationError>` | `validate(doc, format?)`, with no `images` |
 | Render | `render(doc, format, &options, &fonts, &images) -> Result<Vec<u8>, InkoxideError>` | `render(doc, options?): Promise<Uint8Array>` (libuv pool) |
 | Render, blocking | (same `render`) | `renderSync(doc, options?): Uint8Array` |
 | Input format | `InputFormat::Json` (default), `InputFormat::MessagePack` | `options.format` / `format`: `'json'` (default) or `'msgpack'` |
@@ -33,9 +34,9 @@ string, which is read as UTF-8 JSON.
 | Rust field / setter | Node option | Default | Meaning |
 |---|---|---|---|
 | `compress` / `with_compress` | `compress` | `true` | Flate-compress page content streams |
-| `compression_level` / `with_compression_level` | `compressionLevel` | `6` | Flate level 0–9 (Node: other values are `INVALID_ARGUMENT`) |
-| `creation_date` / `with_creation_date` | `creationDate` | none | RFC 3339 timestamp; overrides `meta.creationDate`. With neither, no date is written |
-| `threads` / `with_threads` | `threads` | all cores | Worker threads for this render. `1` runs it on the calling thread (in Node, its libuv thread) with no parallelism inside, so concurrent renders do not wait for each other; a larger number uses a pool of that size, shared by renders that ask for the same number |
+| `compression_level` / `with_compression_level` | `compressionLevel` | `6` | Flate level 0–9 (Rust: a larger level is 9; Node: other values, fractions included, are `INVALID_ARGUMENT`) |
+| `creation_date` / `with_creation_date` | `creationDate` | none | RFC 3339 timestamp; overrides `meta.creationDate`. With neither, no date is written. Another string fails the render: `INVALID_VALUE` at `options.creationDate` in Rust, `INVALID_ARGUMENT` in Node |
+| `threads` / `with_threads` | `threads` | all cores | Worker threads for this render. `1` runs it on the calling thread (in Node, its libuv thread) with no parallelism inside, so concurrent renders do not wait for each other; a larger number uses a pool of that size, shared by renders that ask for the same number and kept for the life of the process. A pool has at most 256 threads. Rust: `0` is `1`, and a number above 256 uses the 256-thread pool; Node: an integer from 1 to 256, other values are `INVALID_ARGUMENT` |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
@@ -126,9 +127,9 @@ Handle unknown codes, because new ones may be added in minor versions.
 
 | Code | Rust | Node | When |
 |---|---|---|---|
-| `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md) |
+| `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded |
-| `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be decoded or embedded |
+| `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
@@ -149,8 +150,17 @@ The fields of a Node error are:
 - `name`: always `'InkoxideError'`.
 
 `render` reports only the first validation problem; call `validate` to
-get the others. `validate` returns at most 100 problems. It reads the
-document's structure first, and a problem found there (input that does
+get the others. `validate` returns at most 100 problems. It decodes the
+images the document uses, so an image that would fail the render is
+`INVALID_IMAGE` at its path (the decode is cached for the render). A JPEG
+is embedded without decoding: its structure is checked (it must be
+complete, and baseline or progressive), but corrupt compressed data
+inside a complete JPEG is not found. Without images (Node `validate`
+with no `images`, Rust `validate_without_images`), image ids are not
+looked up and everything else is checked. An empty result means the
+document is valid; `render` can still fail on an option, on the page
+limit (`LAYOUT_ERROR`), or on a font that cannot be shaped or embedded
+(`FONT_ERROR`). `validate` reads the document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the
 reader rejects) is returned alone, as the rest cannot be checked.
 
@@ -168,7 +178,16 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   used twice (the buttons of one radio group share theirs).
 - Fonts, images and `#id` links must resolve: `UNKNOWN_FONT`,
   `FONT_NOT_REGISTERED`, `UNKNOWN_IMAGE`, `INVALID_IMAGE`,
-  `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`.
+  `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`. A `#id` link must name a node
+  in the flowing content that is displayed: an id in a header or footer,
+  or under `display: none`, is not a destination.
+- A radio button needs a non-empty `value` (`MISSING_FIELD`), and a text
+  field's `value` is at most `maxLength` characters (`OUT_OF_RANGE`).
+- `gridArea` cannot be combined with `gridRow` or `gridColumn`
+  (`INVALID_VALUE`), and `gridTemplateAreas` has at most 10000 cells
+  (`OUT_OF_RANGE`).
+- `transform`, `transformOrigin` and `zIndex` do not apply to table
+  cells (`STYLE_NOT_APPLICABLE`).
 
 ## Not part of the API
 

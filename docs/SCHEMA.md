@@ -41,23 +41,23 @@
 
 | Code | Meaning |
 |---|---|
-| `PARSE_ERROR` | Input is not well-formed JSON |
+| `PARSE_ERROR` | Input is not well-formed JSON or MessagePack |
 | `UNSUPPORTED_VERSION` | `version` is not `1` |
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
 | `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
-| `INVALID_IMAGE` | Image data cannot be decoded |
+| `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
 | `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
-| `UNKNOWN_ANCHOR` | A `#id` link names no node `id` in the document |
+| `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the flowing content (ids in headers, footers and under `display: none` are not destinations) |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -86,7 +86,7 @@ Type: `string` (min length 1, max length 256)
 
 ### Link
 
-Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+Link target. `#id` jumps to the top of the first node with that `id` in the flowing content: a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
 
 Type: `string` (min length 1, max length 2048)
 
@@ -114,8 +114,11 @@ Type: `boolean` (default `false`)
 | `subject` | `string` |  |  |
 | `keywords` | `string` |  |  |
 | `creator` | `string` |  |  |
+| `producer` | `string` |  | The PDF producer, written to the PDF Info dictionary (and to the XMP metadata of PDF/A). Default `Inkoxide <version>`. |
 | `lang` | `string` |  | BCP-47 language tag of the document, e.g. "en" or "en-GB". |
-| `creationDate` | `string` |  | RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
+| `creationDate` | `string` |  | format `date-time`; RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
+| `pageMode` | `"useNone"` \| `"useOutlines"` \| `"useThumbs"` \| `"fullScreen"` |  | What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) or the pages full screen (`fullScreen`). Default: `useOutlines` when the document has bookmarks, else `useNone`. |
+| `pageLayout` | `"singlePage"` \| `"oneColumn"` \| `"twoColumnLeft"` \| `"twoColumnRight"` \| `"twoPageLeft"` \| `"twoPageRight"` |  | How the viewer lays out the pages: one at a time (`singlePage`), one scrolling column (`oneColumn`), two scrolling columns with odd pages on the left or right (`twoColumnLeft`, `twoColumnRight`), or two pages at a time with odd pages on the left or right (`twoPageLeft`, `twoPageRight`). Default: the viewer's own setting. |
 
 ### FontDecl
 
@@ -148,19 +151,19 @@ Type: `string` matching `^0*([0-9]{1,6}(\.[0-9]+)?|1000000(\.0+)?)fr$`
 
 Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto".
 
-Type: `number` or [`Percent`](#percent) or `"auto"`
+Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent) or `"auto"`
 
 ### LengthPercent
 
 Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).
 
-Type: `number` or [`Percent`](#percent)
+Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent)
 
 ### Color
 
 [r, g, b, a], each in [0, 1].
 
-Type: array of `number` (min items 4)
+Type: array of `number` (each ≥ 0, ≤ 1) (exactly 4 items)
 
 ### Size
 
@@ -245,7 +248,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 
 Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
 
-Type: [`TrackBreadth`](#trackbreadth) or `{min: …}` ([`TrackBreadth`](#trackbreadth)) or `{fitContent: …}` ([`LengthPercent`](#lengthpercent))
+Type: [`TrackBreadth`](#trackbreadth) or `{min, max}` (`min`: [`TrackBreadth`](#trackbreadth); `max`: [`TrackBreadth`](#trackbreadth)) or `{fitContent}` (`fitContent`: [`LengthPercent`](#lengthpercent))
 
 ### BorderRadius
 
@@ -261,9 +264,9 @@ Type: `"solid"` \| `"dashed"` \| `"dotted"` or object with `top`, `right`, `bott
 
 ### TransformOp
 
-One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.
+One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, `rotate` and matrix entries are within ±1000000; `skew` angles are within (−90, 90).
 
-Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale: …}` (array of `number`) or `{rotate: …}` (`number`) or `{skew: …}` (array of `number`) or `{matrix: …}` (array of `number`)
+Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (exactly 2 items)) or `{scale}` (`scale`: array of `number` (each ≥ -1000000, ≤ 1000000) (exactly 2 items)) or `{rotate}` (`rotate`: `number` (≥ -1000000, ≤ 1000000)) or `{skew}` (`skew`: array of `number` (each > -90, < 90) (exactly 2 items)) or `{matrix}` (`matrix`: array of `number` (each ≥ -1000000, ≤ 1000000) (exactly 6 items))
 
 ### Style
 
@@ -295,13 +298,13 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. |
 | `gridTemplateColumns` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateRows` | array of [`TemplateTrack`](#templatetrack) |  |  |
-| `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. |
+| `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. At most 10000 cells (rows × columns; `OUT_OF_RANGE`). |
 | `gridAutoColumns` | array of [`TrackSize`](#tracksize) |  |  |
 | `gridAutoRows` | array of [`TrackSize`](#tracksize) |  |  |
 | `gridAutoFlow` | `"row"` \| `"column"` \| `"row dense"` \| `"column dense"` |  |  |
 | `gridColumn` | [`GridPlacement`](#gridplacement) |  |  |
 | `gridRow` | [`GridPlacement`](#gridplacement) |  |  |
-| `gridArea` | `string` |  | min length 1; Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`. |
+| `gridArea` | `string` |  | min length 1; Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`, and cannot be combined with them (`INVALID_VALUE`). |
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
@@ -313,11 +316,11 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `borderStyle` | [`BorderStyles`](#borderstyles) |  | default `"solid"` |
 | `rotate` | `number` |  | ≥ -1000000, ≤ 1000000; Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
-| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. |
+| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | exactly 2 items; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells. |
 | `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0, ≤ 100; text nodes only; multiplier of the largest run size on the line |
-| `maxLines` | `integer` |  | ≥ 1; text nodes only |
+| `maxLines` | `integer` |  | ≥ 1, ≤ 4294967295; text nodes only |
 | `ellipsis` | `boolean` |  | text nodes only; requires maxLines |
 | `hyphenate` | `boolean` |  | text nodes only |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
@@ -351,7 +354,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `width` | `number` or [`Fr`](#fr) or `"auto"` | yes |  |
+| `width` | `number` (> 0, ≤ 1000000) or [`Fr`](#fr) (not matching `^0+(\.0+)?fr$`) or `"auto"` | yes |  |
 
 ### TableCell
 
@@ -359,8 +362,8 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 |---|---|---|---|
 | `id` | [`Id`](#id) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
-| `colSpan` | `integer` |  | ≥ 1, default `1` |
-| `rowSpan` | `integer` |  | ≥ 1, default `1` |
+| `colSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
+| `rowSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
 | `style` | [`Style`](#style) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
 
@@ -431,8 +434,8 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `x` | `"left"` \| `"center"` \| `"right"` or `number` or [`Percent`](#percent) |  | default `"center"` |
-| `y` | `"top"` \| `"center"` \| `"bottom"` or `number` or [`Percent`](#percent) |  | default `"center"` |
+| `x` | `"left"` \| `"center"` \| `"right"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
+| `y` | `"top"` \| `"center"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
 
 ### TableNode
 
@@ -447,7 +450,7 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
-| `headerRows` | `integer` |  | ≥ 0, default `0` |
+| `headerRows` | `integer` |  | ≥ 0, ≤ 4294967295, default `0` |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
 
 ### PageBreakNode
@@ -494,12 +497,12 @@ Fields with the same `name` are one field with several widgets (for example a fi
 |---|---|---|---|
 | `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
-| `value` | `string` |  | text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected. |
+| `value` | `string` |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
 | `options` | array of `string` |  | min items 1; select only: the choices |
 | `multiline` | `boolean` |  | default `false`; text only |
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
-| `maxLength` | `integer` |  | ≥ 1; text only; maximum number of characters |
+| `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
 | `font` | [`Id`](#id) |  | text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
@@ -510,16 +513,16 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
 
-Type: `number` or [`Percent`](#percent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
+Type: `number` (≥ 0, ≤ 1000000) or [`Percent`](#percent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
 
 ### TemplateTrack
 
 Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
 
-Type: [`TrackSize`](#tracksize) or `{repeat: …}` (`integer` or `"auto-fill"` \| `"auto-fit"`)
+Type: [`TrackSize`](#tracksize) or `{repeat, tracks}` (`repeat`: `integer` (≥ 1, ≤ 1000) or `"auto-fill"` \| `"auto-fit"`; `tracks`: array of [`TrackSize`](#tracksize) (min items 1))
 
 ### PageFilter
 
 Pages that show the node, by physical page number (as the `pageNumber` placeholder). The node keeps its place in the layout on every page; it is only painted on the matching ones.
 
-Type: `"first"` \| `"last"` \| `"notFirst"` \| `"notLast"` \| `"odd"` \| `"even"` or array of `integer`
+Type: `"first"` \| `"last"` \| `"notFirst"` \| `"notLast"` \| `"odd"` \| `"even"` or array of `integer` (each ≥ -2147483648, ≤ 2147483647, ≠ 0) (min items 1)

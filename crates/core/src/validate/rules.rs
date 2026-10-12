@@ -3,15 +3,17 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
+use crate::images::{ImageCrateDecoder, ImageData};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, ColumnWidth,
-    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, ObjectPosition,
-    OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
-    SCHEMA_VERSION,
+    Document, Field, FieldKind, GridTrack, ImageSource, Length, LengthPercent, Node, NodeKind,
+    ObjectPosition, OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth,
+    TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -77,10 +79,12 @@ impl From<TrackBreadth> for Len {
     }
 }
 
+/// Checks `doc`. Without `images`, image ids are not looked up (inline
+/// `data` is still checked).
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
-    images: &ImageStore,
+    images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
         path: String::with_capacity(128),
@@ -102,7 +106,7 @@ struct Checker<'a> {
     errors: Vec<ValidationError>,
     declared: BTreeSet<&'a str>,
     fonts: &'a FontStore,
-    images: &'a ImageStore,
+    images: Option<&'a ImageStore>,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -117,6 +121,30 @@ const MAX_LINK: usize = 2048;
 
 /// Longest `Id` (node, font and image ids), in characters.
 const MAX_ID: usize = 256;
+
+// The bounds below are the schema's; `schema::parity_tests` reads each
+// from `document.v1.json` and checks that validation enforces it.
+
+/// Font weights are `1..=MAX_WEIGHT` (`FontDecl.weight`).
+pub(crate) const MAX_WEIGHT: u16 = 1000;
+/// Longest form field `name`, in characters.
+pub(crate) const MAX_FIELD_NAME: usize = 128;
+/// Largest font size of a text run or a form field, in points.
+pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
+/// Longest bookmark title, in characters.
+pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
+/// Deepest bookmark `level`.
+pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
+/// Thickest `decorationThickness`, in points.
+pub(crate) const MAX_DECORATION_THICKNESS: f32 = 100.0;
+/// Largest `letterSpacing` either way, in points.
+pub(crate) const MAX_LETTER_SPACING: f32 = 1000.0;
+/// Largest `lineHeight` multiplier.
+pub(crate) const MAX_LINE_HEIGHT: f32 = 100.0;
+/// Largest `textIndent` either way, in points.
+pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
+/// Largest `orphans` and `widows`.
+pub(crate) const MAX_ORPHANS: u32 = 100;
 
 /// Ids of the nodes that get a destination: flowing content that is
 /// displayed (not headers or footers, not under `display: none`). `node`
@@ -222,8 +250,8 @@ impl<'a> Checker<'a> {
                     if let Some(prev) = seen.insert(f.id.as_str(), i) {
                         c.err(Code::DuplicateId, Some("id"), format!("font id `{}` is already declared at fonts[{prev}]", f.id));
                     }
-                    if !(1..=1000).contains(&f.weight) {
-                        c.err(Code::OutOfRange, Some("weight"), "font weight must be within 1..=1000");
+                    if !(1..=MAX_WEIGHT).contains(&f.weight) {
+                        c.err(Code::OutOfRange, Some("weight"), format!("font weight must be within 1..={MAX_WEIGHT}"));
                     }
                     if !c.fonts.contains(&f.id) {
                         c.err(
@@ -464,29 +492,40 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn image_source(&mut self, source: &crate::schema::ImageSource) {
-        match source {
-            crate::schema::ImageSource::Ref(id) if !self.id(Some("src"), id) => {} // reported by `id`
-            crate::schema::ImageSource::Ref(id) => match self.images.get(id) {
-                None => self.err(
-                    Code::UnknownImage,
-                    Some("src"),
-                    format!("image `{id}` was not provided in the render options"),
-                ),
-                Some(data) => {
-                    if let Err(e) = crate::images::probe(&data.bytes) {
-                        self.err(probe_code(&e), Some("src"), format!("image `{id}`: {e}"));
-                    }
+    /// An image's bytes must decode: its header first, which is cheap and
+    /// tells a too large image apart, then the image itself. The decode is
+    /// cached, so the render that follows reuses it.
+    fn image_source(&mut self, source: &ImageSource) {
+        let (field, data, id) = match source {
+            ImageSource::Ref(id) if !self.id(Some("src"), id) => return, // reported by `id`
+            ImageSource::Ref(id) => {
+                let Some(images) = self.images else { return };
+                let Some(data) = images.get(id) else {
+                    self.err(
+                        Code::UnknownImage,
+                        Some("src"),
+                        format!("image `{id}` was not provided in the render options"),
+                    );
+                    return;
+                };
+                ("src", data.clone(), Some(id))
+            }
+            ImageSource::Inline(b64) => match crate::images::base64::decode(b64) {
+                Ok(bytes) => ("data", Arc::new(ImageData::new(bytes.into())), None),
+                Err(e) => {
+                    self.err(Code::InvalidImage, Some("data"), e);
+                    return;
                 }
             },
-            crate::schema::ImageSource::Inline(data) => match crate::images::base64::decode(data) {
-                Err(e) => self.err(Code::InvalidImage, Some("data"), e),
-                Ok(bytes) => {
-                    if let Err(e) = crate::images::probe(&bytes) {
-                        self.err(probe_code(&e), Some("data"), e.to_string());
-                    }
-                }
-            },
+        };
+        let message = |e: &dyn std::fmt::Display| match id {
+            Some(id) => format!("image `{id}`: {e}"),
+            None => e.to_string(),
+        };
+        if let Err(e) = crate::images::probe(&data.bytes) {
+            self.err(probe_code(&e), Some(field), message(&e));
+        } else if let Err(e) = data.decoded(&ImageCrateDecoder) {
+            self.err(Code::InvalidImage, Some(field), message(&e));
         }
     }
 
@@ -516,11 +555,11 @@ impl<'a> Checker<'a> {
     }
 
     fn field(&mut self, f: &Field) {
-        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > 128 {
+        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > MAX_FIELD_NAME {
             self.err(
                 Code::InvalidValue,
                 Some("name"),
-                "a field name is 1 to 128 characters, without `.`",
+                format!("a field name is 1 to {MAX_FIELD_NAME} characters, without `.`"),
             );
         }
         match self.fields.get(&f.name) {
@@ -551,9 +590,7 @@ impl<'a> Checker<'a> {
             ),
             _ => {}
         }
-        if !(f.size > 0.0 && f.size <= 1000.0) {
-            self.err(Code::OutOfRange, Some("size"), "must be within (0, 1000]");
-        }
+        self.font_size(f.size);
         if let Some(c) = &f.color {
             self.color(Some("color"), c);
         }
@@ -635,7 +672,7 @@ impl<'a> Checker<'a> {
     fn link(&mut self, link: &str) {
         if link.is_empty() || link.chars().count() > MAX_LINK {
             self.err(
-                Code::OutOfRange,
+                Code::InvalidValue,
                 Some("link"),
                 format!("a link must be 1 to {MAX_LINK} characters long"),
             );
@@ -691,15 +728,19 @@ impl<'a> Checker<'a> {
                     "bookmarks only apply to flowing content, not inside headers or footers",
                 );
             }
-            if b.title.is_empty() || b.title.chars().count() > 1024 {
+            if b.title.is_empty() || b.title.chars().count() > MAX_BOOKMARK_TITLE {
                 c.err(
-                    Code::OutOfRange,
+                    Code::InvalidValue,
                     Some("title"),
-                    "a bookmark title must be 1 to 1024 characters long",
+                    format!("a bookmark title must be 1 to {MAX_BOOKMARK_TITLE} characters long"),
                 );
             }
-            if !(1..=32).contains(&b.level) {
-                c.err(Code::OutOfRange, Some("level"), "must be within 1..=32");
+            if !(1..=MAX_BOOKMARK_LEVEL).contains(&b.level) {
+                c.err(
+                    Code::OutOfRange,
+                    Some("level"),
+                    format!("must be within 1..={MAX_BOOKMARK_LEVEL}"),
+                );
             }
         });
     }
@@ -728,19 +769,13 @@ impl<'a> Checker<'a> {
                 format!("font `{}` is not declared in `fonts`", r.font),
             );
         }
-        if !(r.size > 0.0 && r.size <= 1000.0) {
-            self.err(
-                Code::OutOfRange,
-                Some("size"),
-                "font size must be within (0, 1000]",
-            );
-        }
+        self.font_size(r.size);
         if let Some(t) = r.decoration_thickness {
-            if !(t > 0.0 && t <= 100.0) {
+            if !(t > 0.0 && t <= MAX_DECORATION_THICKNESS) {
                 self.err(
                     Code::OutOfRange,
                     Some("decorationThickness"),
-                    "must be within (0, 100]",
+                    format!("must be within (0, {MAX_DECORATION_THICKNESS}]"),
                 );
             }
         }
@@ -751,11 +786,11 @@ impl<'a> Checker<'a> {
             self.color(Some("color"), col);
         }
         if let Some(ls) = r.letter_spacing {
-            if !(ls.abs() <= 1000.0) {
+            if !(ls.abs() <= MAX_LETTER_SPACING) {
                 self.err(
                     Code::OutOfRange,
                     Some("letterSpacing"),
-                    "letter spacing must be within ±1000 points",
+                    format!("letter spacing must be within ±{MAX_LETTER_SPACING} points"),
                 );
             }
         }
@@ -871,6 +906,17 @@ impl<'a> Checker<'a> {
                 });
             }
         });
+    }
+
+    /// The `size` of a run or a form field.
+    fn font_size(&mut self, size: f32) {
+        if !(size > 0.0 && size <= MAX_FONT_SIZE) {
+            self.err(
+                Code::OutOfRange,
+                Some("size"),
+                format!("font size must be within (0, {MAX_FONT_SIZE}]"),
+            );
+        }
     }
 
     fn color(&mut self, field: Option<&str>, c: &Color) {
@@ -1086,11 +1132,11 @@ impl<'a> Checker<'a> {
             }
         }
         if let Some(lh) = s.line_height {
-            if !(lh > 0.0 && lh <= 100.0) {
+            if !(lh > 0.0 && lh <= MAX_LINE_HEIGHT) {
                 self.err(
                     Code::OutOfRange,
                     Some("lineHeight"),
-                    "must be within (0, 100]",
+                    format!("must be within (0, {MAX_LINE_HEIGHT}]"),
                 );
             }
         }
@@ -1098,17 +1144,21 @@ impl<'a> Checker<'a> {
             self.err(Code::OutOfRange, Some("maxLines"), "must be at least 1");
         }
         if s.text_indent
-            .is_some_and(|v| !v.is_finite() || v.abs() > 10_000.0)
+            .is_some_and(|v| !v.is_finite() || v.abs() > MAX_TEXT_INDENT)
         {
             self.err(
                 Code::OutOfRange,
                 Some("textIndent"),
-                "must be within [-10000, 10000]",
+                format!("must be within [-{MAX_TEXT_INDENT}, {MAX_TEXT_INDENT}]"),
             );
         }
         for (name, v) in [("orphans", s.orphans), ("widows", s.widows)] {
-            if v.is_some_and(|v| !(1..=100).contains(&v)) {
-                self.err(Code::OutOfRange, Some(name), "must be within [1, 100]");
+            if v.is_some_and(|v| !(1..=MAX_ORPHANS).contains(&v)) {
+                self.err(
+                    Code::OutOfRange,
+                    Some(name),
+                    format!("must be within [1, {MAX_ORPHANS}]"),
+                );
             }
         }
         for (name, tracks) in [

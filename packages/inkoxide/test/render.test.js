@@ -167,6 +167,71 @@ test('wrong argument types are INVALID_ARGUMENT errors', async () => {
   });
 });
 
+test('out-of-range numeric options are INVALID_ARGUMENT, not converted', async () => {
+  const doc = fixture('docs/invoice.json');
+  const rejected = (option) => (e) => {
+    assert.ok(e instanceof ink.InkoxideError, `${e}`);
+    assert.strictEqual(e.code, 'INVALID_ARGUMENT');
+    assert.strictEqual(e.path, `options.${option}`);
+    return true;
+  };
+  for (const threads of [0, -1, 1.5, 257, 100000, NaN, Infinity, 2 ** 32 + 1]) {
+    assert.throws(() => ink.renderSync(doc, { threads }), rejected('threads'), `threads: ${threads}`);
+    await assert.rejects(ink.render(doc, { threads }), rejected('threads'), `threads: ${threads}`);
+  }
+  for (const compressionLevel of [-1, 10, 9.9, NaN, 2 ** 32 + 3]) {
+    assert.throws(
+      () => ink.renderSync(doc, { compressionLevel }),
+      rejected('compressionLevel'),
+      `compressionLevel: ${compressionLevel}`,
+    );
+  }
+  assert.ok(ink.renderSync(doc, { threads: 256, compressionLevel: 0 }).length > 0);
+  // A bad creation date is the caller's argument too, not a document problem.
+  assert.throws(() => ink.renderSync(doc, { creationDate: 'yesterday' }), rejected('creationDate'));
+});
+
+test('validate without images still finds the problems after many image references', () => {
+  const children = Array.from({ length: 100 }, () => ({ type: 'image', src: 'logo' }));
+  children.push({ type: 'text', runs: [{ text: 'x', font: 'nope', size: 10 }] });
+  const doc = JSON.stringify({ version: 1, pages: [{ size: { width: 100, height: 100 }, children }] });
+  const font = [['UNKNOWN_FONT', 'pages[0].children[100].runs[0].font']];
+  assert.deepStrictEqual(
+    ink.validate(doc).map((e) => [e.code, e.path]),
+    font,
+  );
+  assert.deepStrictEqual(
+    ink.validate(doc, 'json', { logo: images.logo }).map((e) => [e.code, e.path]),
+    font,
+  );
+});
+
+test('validate reports images that do not decode', () => {
+  const doc = JSON.stringify({
+    version: 1,
+    pages: [{ size: { width: 100, height: 100 }, children: [{ type: 'image', src: 'logo' }] }],
+  });
+  const cut = { logo: images.logo.subarray(0, 60) };
+  assert.deepStrictEqual(
+    ink.validate(doc, 'json', cut).map((e) => [e.code, e.path]),
+    [['INVALID_IMAGE', 'pages[0].children[0].src']],
+  );
+  assert.throws(
+    () => ink.renderSync(doc, { images: cut }),
+    (e) => e.code === 'INVALID_IMAGE' && e.path === 'pages[0].children[0].src',
+  );
+});
+
+test('an error has only the documented own enumerable properties', () => {
+  try {
+    ink.renderSync('{');
+    assert.fail('expected an error');
+  } catch (e) {
+    assert.deepStrictEqual(Object.keys(e), ['name', 'code', 'path']);
+    assert.ok(typeof e.message === 'string' && e.message.length > 0);
+  }
+});
+
 test('the module exports only the public API', () => {
   assert.deepStrictEqual(Object.keys(ink).sort(), [
     'InkoxideError',

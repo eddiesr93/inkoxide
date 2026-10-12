@@ -54,7 +54,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Stage | Module | What it does |
 |---|---|---|
 | Parse | `validate` (`parse`), `schema` | JSON or MessagePack into the typed structs of `schema` (hand-written deserialisers in `schema/de.rs`); serde errors become validation errors with their path and code |
-| Validate | `validate` (`check`) | Semantic checks: font ids, image ids, anchors, value ranges |
+| Validate | `validate` (`check`) | Semantic checks: font ids, image ids (images must decode), anchors, value ranges |
 | Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding, CFF programs (`fonts/cff.rs`); Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
@@ -68,6 +68,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 
 ```rust
 pub fn validate(doc: &[u8], format: InputFormat, fonts: &FontStore, images: &ImageStore) -> Vec<ValidationError>;
+pub fn validate_without_images(doc: &[u8], format: InputFormat, fonts: &FontStore) -> Vec<ValidationError>;
 pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &FontStore, images: &ImageStore)
     -> Result<Vec<u8>, InkoxideError>;
 ```

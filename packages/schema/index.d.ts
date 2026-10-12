@@ -64,28 +64,30 @@ export type LengthPercent = number | Percent;
  * via the `definition` "TemplateTrack".
  */
 export type TemplateTrack =
-  | TrackSize
+  | TrackBreadth
+  | {
+      min: TrackBreadth;
+      max: TrackBreadth;
+      fitContent?: never;
+      repeat?: never;
+      tracks?: never;
+    }
+  | {
+      fitContent: LengthPercent;
+      min?: never;
+      max?: never;
+      repeat?: never;
+      tracks?: never;
+    }
   | {
       repeat: number | ('auto-fill' | 'auto-fit');
       /**
        * @minItems 1
        */
       tracks: [TrackSize, ...TrackSize[]];
-    };
-/**
- * Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
- *
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "TrackSize".
- */
-export type TrackSize =
-  | TrackBreadth
-  | {
-      min: TrackBreadth;
-      max: TrackBreadth;
-    }
-  | {
-      fitContent: LengthPercent;
+      min?: never;
+      max?: never;
+      fitContent?: never;
     };
 /**
  * Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
@@ -101,6 +103,24 @@ export type TrackBreadth = number | Percent | Fr | ('auto' | 'min-content' | 'ma
  * via the `definition` "Fr".
  */
 export type Fr = string;
+/**
+ * Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "TrackSize".
+ */
+export type TrackSize =
+  | TrackBreadth
+  | {
+      min: TrackBreadth;
+      max: TrackBreadth;
+      fitContent?: never;
+    }
+  | {
+      fitContent: LengthPercent;
+      min?: never;
+      max?: never;
+    };
 /**
  * One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.
  *
@@ -130,7 +150,7 @@ export type BorderStyles =
       left?: 'solid' | 'dashed' | 'dotted';
     };
 /**
- * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.
+ * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, `rotate` and matrix entries are within ±1000000; `skew` angles are within (−90, 90).
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TransformOp".
@@ -142,6 +162,10 @@ export type TransformOp =
        * @maxItems 2
        */
       translate: [LengthPercent, LengthPercent];
+      scale?: never;
+      rotate?: never;
+      skew?: never;
+      matrix?: never;
     }
   | {
       /**
@@ -149,9 +173,17 @@ export type TransformOp =
        * @maxItems 2
        */
       scale: [number, number];
+      translate?: never;
+      rotate?: never;
+      skew?: never;
+      matrix?: never;
     }
   | {
       rotate: number;
+      translate?: never;
+      scale?: never;
+      skew?: never;
+      matrix?: never;
     }
   | {
       /**
@@ -159,6 +191,10 @@ export type TransformOp =
        * @maxItems 2
        */
       skew: [number, number];
+      translate?: never;
+      scale?: never;
+      rotate?: never;
+      matrix?: never;
     }
   | {
       /**
@@ -166,9 +202,13 @@ export type TransformOp =
        * @maxItems 6
        */
       matrix: [number, number, number, number, number, number];
+      translate?: never;
+      scale?: never;
+      rotate?: never;
+      skew?: never;
     };
 /**
- * Link target. `#id` jumps to the top of the first node with that `id` (`UNKNOWN_ANCHOR` if none); anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+ * Link target. `#id` jumps to the top of the first node with that `id` in the flowing content: a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Link".
@@ -182,6 +222,10 @@ export type Link = string;
  */
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
+/**
+ * A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
+ */
+export type Fr1 = string;
 
 /**
  * A fully resolved, declarative document tree rendered to PDF by the Inkoxide engine. All lengths are PDF points (1/72 in); all colours are RGBA floats in [0, 1]. Unknown properties are errors.
@@ -213,6 +257,10 @@ export interface Meta {
   keywords?: string;
   creator?: string;
   /**
+   * The PDF producer, written to the PDF Info dictionary (and to the XMP metadata of PDF/A). Default `Inkoxide <version>`.
+   */
+  producer?: string;
+  /**
    * BCP-47 language tag of the document, e.g. "en" or "en-GB".
    */
   lang?: string;
@@ -220,6 +268,20 @@ export interface Meta {
    * RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic).
    */
   creationDate?: string;
+  /**
+   * What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) or the pages full screen (`fullScreen`). Default: `useOutlines` when the document has bookmarks, else `useNone`.
+   */
+  pageMode?: 'useNone' | 'useOutlines' | 'useThumbs' | 'fullScreen';
+  /**
+   * How the viewer lays out the pages: one at a time (`singlePage`), one scrolling column (`oneColumn`), two scrolling columns with odd pages on the left or right (`twoColumnLeft`, `twoColumnRight`), or two pages at a time with odd pages on the left or right (`twoPageLeft`, `twoPageRight`). Default: the viewer's own setting.
+   */
+  pageLayout?:
+    | 'singlePage'
+    | 'oneColumn'
+    | 'twoColumnLeft'
+    | 'twoColumnRight'
+    | 'twoPageLeft'
+    | 'twoPageRight';
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -351,7 +413,7 @@ export interface Style {
   gridTemplateColumns?: TemplateTrack[];
   gridTemplateRows?: TemplateTrack[];
   /**
-   * Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle.
+   * Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. At most 10000 cells (rows × columns; `OUT_OF_RANGE`).
    *
    * @minItems 1
    */
@@ -362,7 +424,7 @@ export interface Style {
   gridColumn?: GridPlacement;
   gridRow?: GridPlacement;
   /**
-   * Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`.
+   * Name of an area in the parent's `gridTemplateAreas`; replaces `gridRow` and `gridColumn`, and cannot be combined with them (`INVALID_VALUE`).
    */
   gridArea?: string;
   /**
@@ -393,7 +455,7 @@ export interface Style {
    */
   transform?: TransformOp[];
   /**
-   * x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`.
+   * x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells.
    *
    * @minItems 2
    * @maxItems 2
@@ -637,7 +699,7 @@ export interface TableNode {
  * via the `definition` "ColumnSpec".
  */
 export interface ColumnSpec {
-  width: number | Fr | 'auto';
+  width: number | Fr1 | 'auto';
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -714,7 +776,7 @@ export interface Field {
   name: string;
   kind: 'text' | 'checkbox' | 'radio' | 'select';
   /**
-   * text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected.
+   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`).
    */
   value?: string;
   /**

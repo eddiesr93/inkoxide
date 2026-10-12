@@ -34,7 +34,9 @@ macro_rules! validation_codes {
 validation_codes! {
     /// The input is not well-formed JSON / `MessagePack`.
     ParseError = "PARSE_ERROR",
-    /// `version` is missing or not supported by this engine.
+    /// `version` is a number other than 1. A missing `version` is
+    /// [`MissingField`](Self::MissingField), and one that is not a number
+    /// [`InvalidType`](Self::InvalidType).
     UnsupportedVersion = "UNSUPPORTED_VERSION",
     /// A property the schema does not define.
     UnknownField = "UNKNOWN_FIELD",
@@ -57,7 +59,8 @@ validation_codes! {
     FontNotRegistered = "FONT_NOT_REGISTERED",
     /// An image `src` is not present in the render-time image map.
     UnknownImage = "UNKNOWN_IMAGE",
-    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
+    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG, or do
+    /// not decode. A JPEG is not decoded: its structure is checked.
     InvalidImage = "INVALID_IMAGE",
     /// An image has more than 50 million pixels (width × height).
     ImageTooLarge = "IMAGE_TOO_LARGE",

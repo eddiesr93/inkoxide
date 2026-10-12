@@ -12,7 +12,7 @@ use serde::Deserialize;
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
     Field, ImageFit, ImageSource, Node, NodeKind, ObjectPosition, OptEdges, PageFilter,
-    PagePattern, Style, Table, TableRow, TextRun,
+    PagePattern, Style, Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -78,9 +78,18 @@ pub const MAX_REPEAT: u16 = 1000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GridLine(pub i16);
 
+/// The number of a percentage (`"-12.5%"`) or a flexible size (`"2fr"`),
+/// written as the schema's `Percent` and `Fr` patterns allow: digits, then
+/// optionally `.` and more digits; a percentage may start with `-`.
 fn parse_suffixed(s: &str, suffix: &str) -> Option<f32> {
     let n = s.strip_suffix(suffix)?;
-    if n.is_empty() || n.starts_with('+') || n.contains(['e', 'E']) {
+    let unsigned = match suffix {
+        "%" => n.strip_prefix('-').unwrap_or(n),
+        _ => n,
+    };
+    let (int, frac) = unsigned.split_once('.').unwrap_or((unsigned, "0"));
+    let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
+    if !(digits(int) && digits(frac)) {
         return None;
     }
     n.parse::<f32>().ok().filter(|v| v.is_finite())
@@ -250,11 +259,48 @@ impl<'de> Deserialize<'de> for PageFilter {
                     .map(PageFilter::Pattern)
             }
             fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<PageFilter, A::Error> {
-                Vec::<i32>::deserialize(de::value::SeqAccessDeserializer::new(seq))
-                    .map(|v| PageFilter::List(v.into_boxed_slice()))
+                Vec::<Int<i32>>::deserialize(de::value::SeqAccessDeserializer::new(seq))
+                    .map(|v| PageFilter::List(v.into_iter().map(|i| i.0).collect()))
             }
         }
         d.deserialize_any(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for TransformOp {
+    /// An object with exactly one key. serde's externally tagged enum
+    /// reports a second key, or none, as malformed input with no path.
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = TransformOp;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a transform function: an object with one key")
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<TransformOp, A::Error> {
+                const ONE_KEY: &str = "[INVALID_VALUE] a transform function is an object with exactly one key: `translate`, `scale`, `rotate`, `skew` or `matrix`";
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom(ONE_KEY));
+                };
+                let op = match key.as_str() {
+                    "translate" => TransformOp::Translate(map.next_value()?),
+                    "scale" => TransformOp::Scale(map.next_value()?),
+                    "rotate" => TransformOp::Rotate(map.next_value()?),
+                    "skew" => TransformOp::Skew(map.next_value()?),
+                    "matrix" => TransformOp::Matrix(map.next_value()?),
+                    _ => {
+                        return Err(de::Error::custom(format_args!(
+                            "[INVALID_VALUE] unknown transform function `{key}`, expected `translate`, `scale`, `rotate`, `skew` or `matrix`"
+                        )))
+                    }
+                };
+                if map.next_key::<de::IgnoredAny>()?.is_some() {
+                    return Err(de::Error::custom(ONE_KEY));
+                }
+                Ok(op)
+            }
+        }
+        d.deserialize_map(V)
     }
 }
 
@@ -267,7 +313,6 @@ fn breadth_str(s: &str) -> Option<TrackBreadth> {
         "min-content" => Some(TrackBreadth::MinContent),
         "max-content" => Some(TrackBreadth::MaxContent),
         _ => parse_suffixed(s, "fr")
-            .filter(|v| *v >= 0.0)
             .map(TrackBreadth::Fr)
             .or_else(|| parse_suffixed(s, "%").map(|p| TrackBreadth::Percent(p / 100.0))),
     }
@@ -416,6 +461,46 @@ impl<'de> Deserialize<'de> for GridLine {
     }
 }
 
+/// An integer of type `T`, read as any integer: one past `T`'s range is
+/// `OUT_OF_RANGE`, like one past a bound the schema states (serde would
+/// call it `INVALID_VALUE`). The schema states `T`'s range where it has no
+/// tighter bound.
+struct Int<T>(T);
+
+impl<'de, T: TryFrom<i128>> Deserialize<'de> for Int<T> {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl Visitor<'_> for V {
+            type Value = i128;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("an integer")
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<i128, E> {
+                Ok(v.into())
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<i128, E> {
+                Ok(v.into())
+            }
+        }
+        let v = d.deserialize_i64(V)?;
+        T::try_from(v)
+            .map(Int)
+            .map_err(|_| de::Error::custom(format_args!("[OUT_OF_RANGE] {v} is out of range")))
+    }
+}
+
+/// `deserialize_with` for an integer field: see [`Int`].
+pub(super) fn int<'de, D: Deserializer<'de>, T: TryFrom<i128>>(d: D) -> Result<T, D::Error> {
+    Int::deserialize(d).map(|i| i.0)
+}
+
+/// [`int`] for an optional field (with `#[serde(default)]`).
+pub(super) fn opt_int<'de, D: Deserializer<'de>, T: TryFrom<i128>>(
+    d: D,
+) -> Result<Option<T>, D::Error> {
+    Option::<Int<T>>::deserialize(d).map(|o| o.map(|i| i.0))
+}
+
 /// `deserialize_with` for [`super::GridPlacement::span`]: at least one track.
 pub(super) fn grid_span<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u16>, D::Error> {
     let Some(v) = Option::<i64>::deserialize(d)? else {
@@ -445,14 +530,15 @@ impl TryFrom<RawColumnWidth> for ColumnWidth {
                 "[OUT_OF_RANGE] column width must be a positive number, found {v}"
             )),
             RawColumnWidth::Str(s) if s == "auto" => Ok(ColumnWidth::Auto),
-            RawColumnWidth::Str(s) => parse_suffixed(&s, "fr")
-                .filter(|v| *v > 0.0)
-                .map(ColumnWidth::Fr)
-                .ok_or_else(|| {
-                    format!(
-                        "[INVALID_VALUE] column width must be points, \"<n>fr\" or \"auto\", found \"{s}\""
-                    )
-                }),
+            RawColumnWidth::Str(s) => match parse_suffixed(&s, "fr") {
+                Some(v) if v > 0.0 => Ok(ColumnWidth::Fr(v)),
+                Some(_) => Err(format!(
+                    "[OUT_OF_RANGE] column width must be positive, found \"{s}\""
+                )),
+                None => Err(format!(
+                    "[INVALID_VALUE] column width must be points, \"<n>fr\" or \"auto\", found \"{s}\""
+                )),
+            },
         }
     }
 }
@@ -492,6 +578,7 @@ pub struct RawNode {
     fit: Option<ImageFit>,
     object_position: Option<ObjectPosition>,
     columns: Option<Vec<ColumnSpec>>,
+    #[serde(default, deserialize_with = "opt_int")]
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
     field: Option<Box<Field>>,

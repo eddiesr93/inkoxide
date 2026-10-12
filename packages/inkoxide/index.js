@@ -49,7 +49,6 @@ export class InkoxideError extends Error {
     this.name = 'InkoxideError';
     this.code = code;
     this.path = path;
-    this.detail = message;
   }
 }
 

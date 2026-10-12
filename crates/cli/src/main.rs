@@ -14,7 +14,8 @@ use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
 use inkoxide::{
-    FontStore, HyphenationStore, ImageStore, InputFormat, RenderOptions, ValidationError,
+    FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, RenderOptions,
+    ValidationError,
 };
 
 #[derive(Parser)]
@@ -75,7 +76,8 @@ enum Cmd {
         /// Resolution for --png-dir.
         #[arg(long, default_value_t = 72)]
         dpi: u32,
-        /// Worker threads (default: all cores).
+        /// Worker threads (default: all cores; 0 and 1 render on the calling
+        /// thread; a pool has at most 256).
         #[arg(long)]
         threads: Option<usize>,
     },
@@ -95,7 +97,8 @@ enum Cmd {
         res: Resources,
         #[arg(long, default_value_t = 30)]
         iterations: u32,
-        /// Worker threads (default: all cores).
+        /// Worker threads (default: all cores; 0 and 1 render on the calling
+        /// thread; a pool has at most 256).
         #[arg(long)]
         threads: Option<usize>,
     },
@@ -225,7 +228,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             {
                 Ok(pdf) => pdf,
                 Err(e) => {
-                    eprintln!("{} {e}", e.code());
+                    eprintln!("{}", describe(&e));
                     return Ok(ExitCode::from(1));
                 }
             };
@@ -259,14 +262,14 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             let cold = Instant::now();
             let (fonts, images) = load_resources(&res)?;
             inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
-                .map_err(|e| format!("{} {e}", e.code()))?;
+                .map_err(|e| describe(&e))?;
             let cold = cold.elapsed();
             let mut times = Vec::with_capacity(iterations as usize);
             let mut size = 0;
             for _ in 0..iterations.max(1) {
                 let start = Instant::now();
                 let pdf = inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
-                    .map_err(|e| format!("{} {e}", e.code()))?;
+                    .map_err(|e| describe(&e))?;
                 times.push(start.elapsed());
                 size = pdf.len();
             }
@@ -297,6 +300,15 @@ fn format_of(doc: &Path, res: &Resources) -> InputFormat {
     }
 }
 
+/// A failed render as one line, led by its code. A validation error's own
+/// text already starts with the code.
+fn describe(e: &InkoxideError) -> String {
+    match e {
+        InkoxideError::Validation(v) => v.to_string(),
+        other => format!("{} {other}", other.code()),
+    }
+}
+
 fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
@@ -314,4 +326,24 @@ fn rasterise(pdf: &Path, dir: &Path, dpi: u32) -> Result<(), String> {
         return Err(format!("pdftoppm failed with {status}"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_print_their_code_once() {
+        let e = inkoxide::render(
+            br#"{"version":1,"pages":[{"size":{"width":10,"height":10}}],"zz":1}"#,
+            InputFormat::Json,
+            &RenderOptions::default(),
+            &FontStore::new(),
+            &ImageStore::new(),
+        )
+        .unwrap_err();
+        assert_eq!(describe(&e), "UNKNOWN_FIELD at zz: unknown field `zz`");
+        let e = InkoxideError::Font("bad".into());
+        assert_eq!(describe(&e), "FONT_ERROR font error: bad");
+    }
 }

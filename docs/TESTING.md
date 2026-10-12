@@ -23,8 +23,11 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   accepted nesting on a small stack).
 - `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
   the properties the JSON Schema declares, and validation enforces the
-  schema's bounds of ids, font families, `pages` and grid placements,
-  read from the schema.
+  schema's bounds, read from the schema: ids, font families, `pages`,
+  grid placements, every bound `validate/rules.rs` names as a constant,
+  and the integer limits the schema states.
+- `packages/inkoxide/test/schema-parity.test.js`: ajv with the schema and
+  the engine accept the same percentages, `fr` sizes and integers.
 - `crates/core/tests/threads.rs`: concurrent one-thread renders each run
   on their calling thread, at the same time.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.

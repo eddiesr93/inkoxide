@@ -46,8 +46,36 @@ pub struct Meta {
     pub subject: Option<String>,
     pub keywords: Option<String>,
     pub creator: Option<String>,
+    /// Default `Inkoxide <version>`.
+    pub producer: Option<String>,
     pub lang: Option<String>,
     pub creation_date: Option<String>,
+    /// Default: `useOutlines` when the document has bookmarks.
+    pub page_mode: Option<PageMode>,
+    /// Default: not written (the viewer's choice).
+    pub page_layout: Option<PageLayout>,
+}
+
+/// What the viewer shows when it opens the document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageMode {
+    UseNone,
+    UseOutlines,
+    UseThumbs,
+    FullScreen,
+}
+
+/// How the viewer lays out the pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageLayout {
+    SinglePage,
+    OneColumn,
+    TwoColumnLeft,
+    TwoColumnRight,
+    TwoPageLeft,
+    TwoPageRight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -65,7 +93,7 @@ pub struct FontDecl {
     /// Descriptive only (checked to be non-empty); the engine selects fonts
     /// by `id`.
     pub family: String,
-    #[serde(default = "default_weight")]
+    #[serde(default = "default_weight", deserialize_with = "de::int")]
     pub weight: u16,
     #[serde(default)]
     #[expect(
@@ -297,7 +325,7 @@ pub struct Bookmark {
     pub title: String,
     /// Nesting level, 1 = top; an entry nests under the nearest earlier
     /// entry of a lower level.
-    #[serde(default = "one_u8")]
+    #[serde(default = "one_u8", deserialize_with = "de::int")]
     pub level: u8,
 }
 
@@ -345,6 +373,7 @@ pub struct Field {
     pub multiline: bool,
     #[serde(default)]
     pub password: bool,
+    #[serde(default, deserialize_with = "de::opt_int")]
     pub max_length: Option<u32>,
     #[serde(default)]
     pub read_only: bool,
@@ -471,9 +500,9 @@ pub struct TableCell {
     /// Draws the cell's boxes over the page.
     #[serde(default)]
     pub debug: bool,
-    #[serde(default = "one")]
+    #[serde(default = "one", deserialize_with = "de::int")]
     pub col_span: u32,
-    #[serde(default = "one")]
+    #[serde(default = "one", deserialize_with = "de::int")]
     pub row_span: u32,
     #[serde(default)]
     pub style: NodeStyle,
@@ -651,9 +680,9 @@ impl BorderStyles {
 }
 
 /// One transform function. Lengths are points or percentages of the
-/// node's own border box; angles are degrees.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// node's own border box; angles are degrees. Read from an object with
+/// exactly one key (`de.rs`).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TransformOp {
     Translate([LengthPercent; 2]),
     Scale([f32; 2]),
@@ -809,11 +838,13 @@ pub struct Style {
     /// the centre.
     pub transform_origin: Option<[LengthPercent; 2]>,
     /// Paint order among siblings (stable; default 0).
+    #[serde(default, deserialize_with = "de::opt_int")]
     pub z_index: Option<i32>,
 
     // Text (text nodes only)
     pub text_align: Option<TextAlign>,
     pub line_height: Option<f32>,
+    #[serde(default, deserialize_with = "de::opt_int")]
     pub max_lines: Option<u32>,
     pub ellipsis: Option<bool>,
     pub hyphenate: Option<bool>,
@@ -823,8 +854,10 @@ pub struct Style {
     pub text_indent: Option<f32>,
     pub direction: Option<Direction>,
     /// Minimum lines left before a page break inside the paragraph.
+    #[serde(default, deserialize_with = "de::opt_int")]
     pub orphans: Option<u32>,
     /// Minimum lines carried after a page break inside the paragraph.
+    #[serde(default, deserialize_with = "de::opt_int")]
     pub widows: Option<u32>,
 
     // Table cells only

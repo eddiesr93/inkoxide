@@ -59,6 +59,11 @@ fn json_string(s: &str) -> String {
 
 fn from_engine(e: InkoxideError) -> Error {
     match &e {
+        // A bad option (`creationDate`) is the caller's argument, not the
+        // document.
+        InkoxideError::Validation(v) if v.path.starts_with("options.") => {
+            invalid_arg(&v.path, &v.message)
+        }
         InkoxideError::Validation(v) => engine_error(v.code.as_str(), &v.path, &v.message),
         other => engine_error(other.code(), "", &other.to_string()),
     }
@@ -73,6 +78,22 @@ fn catch_panic<T>(f: impl FnOnce() -> T) -> Result<T> {
 
 fn invalid_arg(path: &str, message: &str) -> Error {
     engine_error("INVALID_ARGUMENT", path, message)
+}
+
+/// Largest `threads`: the engine's own cap on a pool size.
+const MAX_THREADS: u32 = 256;
+
+/// A JS number that must be an integer within `min..=max` (NaN, fractions
+/// and infinities are not).
+fn integer(path: &str, v: f64, min: u32, max: u32) -> Result<u32> {
+    if v.fract() == 0.0 && (f64::from(min)..=f64::from(max)).contains(&v) {
+        Ok(v as u32)
+    } else {
+        Err(invalid_arg(
+            path,
+            &format!("must be an integer from {min} to {max}, found {v}"),
+        ))
+    }
 }
 
 fn fonts_snapshot() -> FontStore {
@@ -103,12 +124,15 @@ pub struct RenderOptions {
     pub format: Option<String>,
     /// Flate-compress content streams (default `true`).
     pub compress: Option<bool>,
-    /// Flate level 0–9 used when `compress` is set (default 6).
-    pub compression_level: Option<u32>,
+    /// Flate level 0–9 used when `compress` is set (default 6). A JS number
+    /// (not `u32`, which napi would wrap and truncate), checked in
+    /// [`RenderJob::new`].
+    pub compression_level: Option<f64>,
     /// RFC 3339 timestamp; a fixed value gives byte-identical output.
     pub creation_date: Option<String>,
-    /// Worker threads for this render (default: all cores).
-    pub threads: Option<u32>,
+    /// Worker threads for this render (default: all cores); 1 to
+    /// [`MAX_THREADS`]. A JS number, as `compression_level`.
+    pub threads: Option<f64>,
     /// Embed only the glyphs used (default `true`).
     pub subset_fonts: Option<bool>,
     /// Write PDF/A-2b (default `false`).
@@ -155,20 +179,11 @@ impl RenderJob {
                 core.compress = c;
             }
             if let Some(level) = o.compression_level {
-                if level > 9 {
-                    return Err(invalid_arg(
-                        "options.compressionLevel",
-                        "must be between 0 and 9",
-                    ));
-                }
-                core.compression_level = level;
+                core.compression_level = integer("options.compressionLevel", level, 0, 9)?;
             }
             core.creation_date = o.creation_date;
             if let Some(t) = o.threads {
-                if t == 0 {
-                    return Err(invalid_arg("options.threads", "must be at least 1"));
-                }
-                core.threads = Some(t as usize);
+                core.threads = Some(integer("options.threads", t, 1, MAX_THREADS)? as usize);
             }
             if let Some(s) = o.subset_fonts {
                 core.subset_fonts = s;
@@ -267,15 +282,19 @@ pub fn validate(
     let format = input_format(format.as_deref())?;
     let bytes = doc_bytes(doc);
     let fonts = fonts_snapshot();
-    let mut store = ImageStore::new();
-    let check_images = images.is_some();
-    for (id, b) in images.unwrap_or_default() {
-        store.insert(id, b.to_vec());
-    }
-    let errors = catch_panic(|| inkoxide::validate(&bytes, format, &fonts, &store))?;
+    let store = images.map(|images| {
+        let mut store = ImageStore::new();
+        for (id, b) in images {
+            store.insert(id, b.to_vec());
+        }
+        store
+    });
+    let errors = catch_panic(|| match &store {
+        Some(store) => inkoxide::validate(&bytes, format, &fonts, store),
+        None => inkoxide::validate_without_images(&bytes, format, &fonts),
+    })?;
     Ok(errors
         .into_iter()
-        .filter(|e| check_images || e.code != inkoxide::ValidationCode::UnknownImage)
         .map(|e| ValidationError {
             code: e.code.as_str().to_string(),
             path: e.path,

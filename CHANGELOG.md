@@ -7,12 +7,56 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- Document metadata `producer`, `pageMode` and `pageLayout` (`meta` in the document, props of
+  `<Document>`): the PDF producer (default `Inkoxide <version>`), what the viewer shows when it
+  opens the PDF (no panel, the bookmarks, thumbnails or full screen; by default the bookmarks
+  when there are any, as before), and how it lays out the pages (one or two pages, or one or two
+  scrolling columns).
+- `inkoxide` (Rust): `validate_without_images`, which validates a document without looking up
+  its image ids, as the Node `validate` does when it is given no `images`.
+
 ### Fixed
 
 - The examples in the `@inkoxide/render` README run when copied into a new project and started
   with `npx tsx`, as the README says: like the quick start, they name the JSX runtime and end in
   a plain `renderToFile` call, without a top-level await. The files in `examples/` render their
   PDF on every Node.js 22, not only on 22.18 and later.
+- `validate` decodes the images a document uses, so an image that does not decode is
+  `INVALID_IMAGE` at its path. Until now only the header was read: a corrupt or truncated PNG
+  passed validation and failed the render with `IMAGE_ERROR` and no path. A JPEG is still
+  embedded without decoding, but its structure is checked: a JPEG cut short, or coded in a way
+  PDF readers cannot show (lossless, hierarchical or arithmetic), is `INVALID_IMAGE`. The decode
+  is cached, so the render that follows does not decode again.
+- Node: `validate` without `images` found nothing past 100 image references. It counted the
+  `UNKNOWN_IMAGE` errors it then dropped against the 100-error cap; it now skips the image
+  lookups instead.
+- Node: `threads` and `compressionLevel` that are not integers in range (`threads` 1–256,
+  `compressionLevel` 0–9) are `INVALID_ARGUMENT`. They were converted: `threads: -1` started a
+  256-thread pool, and `1.5`, `NaN` or `2 ** 32 + 3` were truncated or wrapped. An invalid
+  `creationDate` is `INVALID_ARGUMENT` too, like every other bad option, not the document code
+  `INVALID_VALUE`.
+- Node: `InkoxideError` no longer has an undocumented `detail` property (the same text as
+  `message`).
+- Rust: the `RenderOptions::threads` docs state that a pool has at most 256 threads and that
+  `Some(0)` renders on the calling thread, as `Some(1)` does.
+- A transform function with two keys or none (`{ translate: [1, 2], rotate: 5 }`, `{}`), and an
+  array with more items than its fixed length (a five-item colour, a three-item
+  `transformOrigin`), are `INVALID_VALUE` at their path. They were `PARSE_ERROR` ("not
+  well-formed JSON") with no path.
+- JSON and MessagePack report a bad `version` alike: a number other than 1 (`2`, `2.5`) is
+  `UNSUPPORTED_VERSION`, and a `version` that is not a number (`"1"`, `true`) is
+  `INVALID_TYPE`. JSON reported `"1"` as an unsupported version, and MessagePack reported `2.5`
+  as a wrong type.
+- Validation follows the schema more closely (see the
+  [schema changelog](packages/schema/CHANGELOG.md)): an integer past the engine's integer type is
+  `OUT_OF_RANGE`, not `INVALID_VALUE`; `".5%"`, `"5.%"`, `".5fr"` and `"-0fr"` are rejected, as
+  the schema rejects them; a `"0fr"` table column is `OUT_OF_RANGE`; and an empty or too long
+  `link` or bookmark `title` is `INVALID_VALUE`, like an id of the wrong length.
+- `@inkoxide/schema` types: a transform function or a grid track object takes the keys of one
+  form only, so `{ translate: [1, 2], rotate: 5 }` no longer type-checks.
+- The `inkoxide` CLI printed a validation error's code twice (`UNKNOWN_FONT UNKNOWN_FONT at …`).
 
 ## 0.5.0 - 2026-10-12
 

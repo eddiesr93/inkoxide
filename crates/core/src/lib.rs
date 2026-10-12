@@ -79,7 +79,9 @@ pub struct RenderOptions {
     /// Worker threads for shaping, page painting and compression. `None`
     /// uses rayon's global pool (all cores, shared by every render in the
     /// process). `Some(n)` uses a pool of `n` threads, shared by every
-    /// render that asks for `n`. `Some(1)` runs the whole render on the
+    /// render that asks for `n`, and kept for the life of the process.
+    /// Pools are at most 256 threads: a larger `n` uses the 256-thread
+    /// pool. `Some(1)` (and `Some(0)`) runs the whole render on the
     /// calling thread with no parallelism inside it, so concurrent
     /// one-thread renders run side by side on their own threads.
     pub threads: Option<usize>,
@@ -160,14 +162,38 @@ impl RenderOptions {
     }
 }
 
-/// Validates a document against the schema and the registered resources.
-/// Returns every problem found (capped at 100); empty means renderable.
+/// Validates a document against the schema and the registered resources:
+/// every font must be registered, and every image must exist and decode.
+/// Returns every problem found (capped at 100). Empty means the document
+/// is valid; [`render`] can still fail on the options, on the page limit,
+/// or when a font cannot be shaped or embedded.
 #[must_use]
 pub fn validate(
     doc: &[u8],
     format: InputFormat,
     fonts: &FontStore,
     images: &ImageStore,
+) -> Vec<ValidationError> {
+    validate_with(doc, format, fonts, Some(images))
+}
+
+/// [`validate`] for when the images are not at hand: image ids (`src`) are
+/// not looked up, so a missing or undecodable image is not reported.
+/// Inline images (`data`) are checked as in [`validate`].
+#[must_use]
+pub fn validate_without_images(
+    doc: &[u8],
+    format: InputFormat,
+    fonts: &FontStore,
+) -> Vec<ValidationError> {
+    validate_with(doc, format, fonts, None)
+}
+
+fn validate_with(
+    doc: &[u8],
+    format: InputFormat,
+    fonts: &FontStore,
+    images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
         Ok(d) => validate::check(&d, fonts, images),
@@ -213,7 +239,10 @@ fn render_inner(
     parallel: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
     let document = validate::parse(doc, format)?;
-    if let Some(first) = validate::check(&document, fonts, images).into_iter().next() {
+    if let Some(first) = validate::check(&document, fonts, Some(images))
+        .into_iter()
+        .next()
+    {
         return Err(first.into());
     }
 

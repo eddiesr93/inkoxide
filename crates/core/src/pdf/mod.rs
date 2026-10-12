@@ -12,7 +12,8 @@ use std::io::Write as _;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use pdf_writer::types::{
-    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageMode,
+    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageLayout,
+    PageMode,
 };
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
 use rayon::prelude::*;
@@ -22,7 +23,7 @@ use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet};
 use crate::paint::{FillRule, Op, PageContent, PathSeg, Rect, TextOp};
 use crate::pipeline::{Dest, Marks};
-use crate::schema::{Color, Meta};
+use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
@@ -349,12 +350,37 @@ impl PdfSink for PdfWriterSink {
         }
         if let Some(root) = outline {
             cat.outlines(root);
-            cat.page_mode(PageMode::UseOutlines);
+        }
+        // By default a document with bookmarks opens with them shown.
+        let mode = match doc.meta.page_mode {
+            None if outline.is_some() => Some(PageMode::UseOutlines),
+            None => None,
+            Some(schema::PageMode::UseNone) => Some(PageMode::UseNone),
+            Some(schema::PageMode::UseOutlines) => Some(PageMode::UseOutlines),
+            Some(schema::PageMode::UseThumbs) => Some(PageMode::UseThumbs),
+            Some(schema::PageMode::FullScreen) => Some(PageMode::FullScreen),
+        };
+        if let Some(mode) = mode {
+            cat.page_mode(mode);
+        }
+        if let Some(layout) = doc.meta.page_layout {
+            cat.page_layout(match layout {
+                schema::PageLayout::SinglePage => PageLayout::SinglePage,
+                schema::PageLayout::OneColumn => PageLayout::OneColumn,
+                schema::PageLayout::TwoColumnLeft => PageLayout::TwoColumnLeft,
+                schema::PageLayout::TwoColumnRight => PageLayout::TwoColumnRight,
+                schema::PageLayout::TwoPageLeft => PageLayout::TwoPageLeft,
+                schema::PageLayout::TwoPageRight => PageLayout::TwoPageRight,
+            });
         }
         if let Some(lang) = &doc.meta.lang {
             cat.lang(TextStr(lang));
         }
-        let producer = concat!("Inkoxide ", env!("CARGO_PKG_VERSION"));
+        let producer = doc
+            .meta
+            .producer
+            .as_deref()
+            .unwrap_or(concat!("Inkoxide ", env!("CARGO_PKG_VERSION")));
         if self.pdf_a {
             let metadata = alloc.next();
             let profile = alloc.next();
@@ -411,7 +437,7 @@ impl PdfSink for PdfWriterSink {
         if let Some(v) = &m.creator {
             inf.creator(TextStr(&text(v)));
         }
-        inf.producer(TextStr(producer));
+        inf.producer(TextStr(&text(producer)));
         if let Some(t) = doc.creation_date {
             inf.creation_date(pdf_date(t));
         }
@@ -892,5 +918,52 @@ mod tests {
             out.contains("0 0 0 1 0 340282350000000000000000000000000000000 cm"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn meta_sets_the_producer_page_mode_and_page_layout() {
+        let render = |meta: &str, bookmark: bool, pdf_a: bool| {
+            let child = if bookmark {
+                r#"{"type":"box","bookmark":{"title":"A"}}"#
+            } else {
+                ""
+            };
+            let doc = format!(
+                r#"{{"version":1,"meta":{meta},"pages":[{{"size":{{"width":10,"height":10}},"children":[{child}]}}]}}"#
+            );
+            let options = crate::RenderOptions::default().with_pdf_a(pdf_a);
+            let pdf = crate::render(
+                doc.as_bytes(),
+                crate::InputFormat::Json,
+                &options,
+                &crate::FontStore::new(),
+                &crate::ImageStore::new(),
+            )
+            .unwrap();
+            String::from_utf8_lossy(&pdf).into_owned()
+        };
+        // By default, bookmarks open with the outline shown, and the
+        // layout is the viewer's.
+        let plain = render("{}", false, false);
+        assert!(!plain.contains("/PageMode") && !plain.contains("/PageLayout"));
+        let producer = concat!("/Producer (Inkoxide ", env!("CARGO_PKG_VERSION"), ")");
+        assert!(plain.contains(producer), "{plain}");
+        assert!(render("{}", true, false).contains("/PageMode /UseOutlines"));
+        assert!(render(r#"{"pageMode":"useNone"}"#, true, false).contains("/PageMode /UseNone"));
+
+        let set = render(
+            r#"{"producer":"Acme Reports","pageMode":"fullScreen","pageLayout":"twoPageLeft"}"#,
+            false,
+            true,
+        );
+        for part in [
+            "/PageMode /FullScreen",
+            "/PageLayout /TwoPageLeft",
+            "/Producer (Acme Reports)",
+            "<pdf:Producer>Acme Reports</pdf:Producer>",
+        ] {
+            assert!(set.contains(part), "{part}");
+        }
+        assert!(!set.contains("Inkoxide"));
     }
 }

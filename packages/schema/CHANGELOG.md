@@ -7,6 +7,50 @@ version 2.
 
 ## Unreleased
 
+### Added
+
+- `Meta.producer`, `Meta.pageMode` and `Meta.pageLayout`: the PDF producer (default
+  `Inkoxide <version>`), what the viewer shows when it opens the document (`useNone`,
+  `useOutlines`, `useThumbs`, `fullScreen`; default `useOutlines` when the document has
+  bookmarks, else `useNone`, as before), and how it lays out the pages (`singlePage`,
+  `oneColumn`, `twoColumnLeft`, `twoColumnRight`, `twoPageLeft`, `twoPageRight`; default: not
+  set). All optional; documents without them render as before.
+
+### Fixed
+
+- **Engine parity:** integers are bounded as the schema states. An integer past the engine's own
+  integer type (`weight: 70000`, `level: 300`, `orphans: -1`, `maxLines: 5000000000`) is
+  `OUT_OF_RANGE`, like one past a bound the schema states; it was `INVALID_VALUE`. The schema
+  states those limits where it had none: `maxLines`, `Field.maxLength`, `colSpan`, `rowSpan` and
+  `headerRows` are at most 4294967295, and `pages` numbers are within ±2147483647 (from
+  -2147483648). The engine already rejected larger values.
+- **Engine parity:** percentages and flexible sizes are read exactly as the `Percent` and `Fr`
+  patterns state. The engine accepted `".5%"`, `"5.%"`, `".5fr"` and `"-0fr"`, which the
+  schema rejects; they are `INVALID_VALUE`. A table column of `"0fr"` is rejected by both now:
+  the schema states that an fr column width is positive, as a width in points is, and the
+  engine reports it as `OUT_OF_RANGE` instead of `INVALID_VALUE` with a misleading message.
+- An empty or too long `link` or bookmark `title` is `INVALID_VALUE`, like an `Id` or a field
+  `name` of the wrong length; it was `OUT_OF_RANGE`, which is for numbers.
+
+### Documentation
+
+- **Descriptions:** the schema describes rules the engine already applied. A radio button needs
+  a non-empty `value` (`MISSING_FIELD`); a text field's `value` is at most `maxLength`
+  characters; `gridArea` cannot be combined with `gridRow` or `gridColumn`;
+  `gridTemplateAreas` has at most 10000 cells; `transformOrigin` does not apply to table cells;
+  a `#id` link must name a displayed node in the flowing content, not one in a header or footer
+  or under `display: none`.
+- **`TransformOp`:** the description said angles are within ±1000000; `skew` angles are within
+  (−90, 90), as the schema's own bounds and the engine already required.
+- **SCHEMA.md** states every bound of the schema: `maxItems` and `exclusiveMaximum` (an array of
+  a fixed length reads "exactly N items"), the bounds of array items and of `oneOf` branches,
+  and every required key of an inline object (`TrackSize` is `{min, max}`, not `{min: …}`). Its
+  table of validation codes is checked against the engine's, and `PARSE_ERROR` covers
+  MessagePack too.
+- **Types:** a `TransformOp`, `TrackSize` or `TemplateTrack` object forbids the keys of the
+  other forms (`rotate?: never` beside `translate`), so `{ translate: [1, 2], rotate: 5 }` no
+  longer type-checks; validation always rejected it.
+
 ## 2.2.0 - 2026-10-12
 
 Still document schema version 1.
