@@ -7,8 +7,9 @@
 //! - Group opacity, blend modes, masks and clip paths that are not a
 //!   single path go through transparency groups and soft masks. A clip
 //!   path that is one path becomes a plain `W n` clip.
-//! - Embedded JPEG/PNG images reuse the raster image writer; nested SVGs
-//!   are drawn inline.
+//! - Embedded JPEG/PNG images reuse the raster image writer, once per
+//!   distinct image however many copies draw it; nested SVGs are drawn
+//!   inline.
 //! - Filters are not supported: filtered elements are left out.
 //!
 //! Patterns and shadings are positioned relative to the form they are used
@@ -16,6 +17,7 @@
 //! and reset for every new form.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use pdf_writer::types::{
     BlendMode, ColorSpaceOperand, FunctionShadingType, LineCapStyle, LineJoinStyle, MaskType,
@@ -49,6 +51,7 @@ pub(crate) fn write_svg(
         pdf,
         alloc,
         alphas: HashMap::new(),
+        images: HashMap::new(),
         segments: 0,
         pdf_a,
     };
@@ -201,6 +204,9 @@ struct Svg<'a> {
     alloc: &'a mut dyn FnMut() -> Ref,
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
+    /// Embedded raster images by content hash: the bytes (to rule out
+    /// collisions) and the image `XObject`, `None` if it did not decode.
+    images: HashMap<u64, (Arc<Vec<u8>>, Option<Ref>)>,
     segments: usize,
     /// Passed on to embedded raster images.
     pdf_a: bool,
@@ -729,6 +735,24 @@ impl Svg<'_> {
         Ok(id)
     }
 
+    /// Writes an embedded raster image the first time its content is seen.
+    fn raster(&mut self, data: &Arc<Vec<u8>>) -> Result<Option<Ref>, InkoxideError> {
+        let hash = xxhash_rust::xxh3::xxh3_64(data);
+        if let Some((bytes, r)) = self.images.get(&hash) {
+            if bytes[..] == data[..] {
+                return Ok(*r);
+            }
+        }
+        let r = match crate::images::decode_embedded(data) {
+            Ok(decoded) => Some(super::image::write_image(
+                self.pdf, self.alloc, &decoded, self.pdf_a,
+            )?),
+            Err(_) => None,
+        };
+        self.images.entry(hash).or_insert_with(|| (data.clone(), r));
+        Ok(r)
+    }
+
     fn image(&mut self, cv: &mut Canvas, img: &usvg::Image, ts: Transform, depth: u32) -> Res {
         if !img.is_visible() {
             return Ok(());
@@ -739,10 +763,9 @@ impl Svg<'_> {
             usvg::ImageKind::JPEG(data) | usvg::ImageKind::PNG(data) => {
                 // An image that cannot be decoded is left out, like
                 // other formats.
-                let Ok(decoded) = crate::images::decode_embedded(data) else {
+                let Some(r) = self.raster(data)? else {
                     return Ok(());
                 };
-                let r = super::image::write_image(self.pdf, self.alloc, &decoded, self.pdf_a)?;
                 cv.c.save_state();
                 cv.c.transform([w, 0.0, 0.0, -h, 0.0, h]);
                 cv.draw_xobject(r);
@@ -762,5 +785,50 @@ impl Svg<'_> {
             _ => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Write as _;
+
+    use pdf_writer::{Pdf, Ref};
+
+    use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
+
+    /// Image `XObject`s written for an SVG drawing `copies` copies of a PNG.
+    fn images_written(copies: usize) -> usize {
+        let png = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/images/logo.png"
+        ))
+        .unwrap();
+        let mut url = String::from("data:image/png,");
+        for b in png {
+            let _ = write!(url, "%{b:02X}");
+        }
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><defs><image id="i" width="4" height="4" href="{url}"/></defs>{}</svg>"#,
+            r##"<use href="#i"/>"##.repeat(copies)
+        );
+        let ImageBody::Svg(tree) = ImageCrateDecoder.decode(svg.as_bytes()).unwrap().body else {
+            panic!("not an SVG");
+        };
+        let mut pdf = Pdf::new();
+        let mut next = 0;
+        let mut alloc = || {
+            next += 1;
+            Ref::new(next)
+        };
+        super::write_svg(&mut pdf, &mut alloc, &tree, false).unwrap();
+        let out = pdf.finish();
+        out.windows(15).filter(|w| w == b"/Subtype /Image").count()
+    }
+
+    #[test]
+    fn writes_each_embedded_image_once() {
+        let once = images_written(1);
+        assert!(once > 0);
+        assert_eq!(images_written(5), once);
     }
 }
