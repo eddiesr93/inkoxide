@@ -32,8 +32,12 @@ pub(crate) enum ImageBody {
         samples: Vec<u8>,
         alpha: Option<Vec<u8>>,
     },
-    /// A parsed SVG, written as a Form `XObject` with vector content.
-    Svg(Arc<usvg::Tree>),
+    /// A parsed SVG, written as a Form `XObject` with vector content, and
+    /// its root `viewBox`.
+    Svg {
+        tree: Arc<usvg::Tree>,
+        view_box: Option<super::svg::ViewBox>,
+    },
 }
 
 #[derive(Debug)]
@@ -50,7 +54,7 @@ impl DecodedImage {
     /// Size as displayed in CSS pixels (orientations 5–8 swap the axes;
     /// SVG keeps its fractional size).
     pub fn display_size(&self) -> (f32, f32) {
-        if let ImageBody::Svg(tree) = &self.body {
+        if let ImageBody::Svg { tree, .. } = &self.body {
             let s = tree.size();
             return (s.width(), s.height());
         }
@@ -75,13 +79,16 @@ const IMAGE_FLATE_LEVEL: u32 = 6;
 impl ImageDecoder for ImageCrateDecoder {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String> {
         if super::svg::is_svg(bytes) {
-            let tree = super::svg::parse(bytes)?;
+            let (tree, view_box) = super::svg::parse(bytes)?;
             let s = tree.size();
             return Ok(DecodedImage {
                 width: s.width().ceil() as u32,
                 height: s.height().ceil() as u32,
                 orientation: 1,
-                body: ImageBody::Svg(Arc::new(tree)),
+                body: ImageBody::Svg {
+                    tree: Arc::new(tree),
+                    view_box,
+                },
             });
         }
         let info = probe(bytes)?;

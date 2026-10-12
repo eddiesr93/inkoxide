@@ -22,6 +22,8 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use usvg::roxmltree::{self, Document, Node, NodeId};
 
+use crate::paint::Rect;
+
 /// Most elements the converted tree may contain, counting every copy made
 /// by `use`, markers and `url(#…)` references, nested SVG images included.
 const MAX_EXPANDED: usize = 250_000;
@@ -211,8 +213,110 @@ impl Meter {
     }
 }
 
-/// Parses an SVG document into a `usvg` tree.
-pub(crate) fn parse(bytes: &[u8]) -> Result<usvg::Tree, String> {
+/// The root `viewBox` of an SVG and how it fits a viewport of another
+/// shape (`preserveAspectRatio`). `usvg` folds both into the tree's root
+/// transform for the SVG's own size, so they are read here.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ViewBox {
+    /// `x`, `y`, width and height (both > 0), in user units.
+    pub rect: [f32; 4],
+    /// Where the `viewBox` sits in spare room, as a fraction of it per
+    /// axis (`xMin` 0, `xMid` 0.5, `xMax` 1); `None` stretches it
+    /// (`none`).
+    pub align: Option<(f32, f32)>,
+    /// `slice` (cover the viewport) rather than `meet` (fit inside it).
+    pub slice: bool,
+}
+
+impl ViewBox {
+    /// Reads the root element's `viewBox` and `preserveAspectRatio`.
+    /// `None` without a usable `viewBox`.
+    fn of(svg: Node<'_, '_>) -> Option<Self> {
+        let v: Vec<f32> = svg
+            .attribute("viewBox")?
+            .split(|c: char| c.is_ascii_whitespace() || c == ',')
+            .filter(|s| !s.is_empty())
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .ok()?;
+        let &[x, y, w, h] = v.as_slice() else {
+            return None;
+        };
+        if !(v.iter().all(|n| n.is_finite()) && w > 0.0 && h > 0.0) {
+            return None;
+        }
+        let mut words = svg
+            .attribute("preserveAspectRatio")
+            .unwrap_or("")
+            .split_ascii_whitespace()
+            .skip_while(|&w| w == "defer");
+        let align = match words.next() {
+            Some("none") => None,
+            Some(a) if a.len() == 8 && a.starts_with('x') && a[4..].starts_with('Y') => {
+                let frac = |s: &str| match s {
+                    "Min" => Some(0.0),
+                    "Mid" => Some(0.5),
+                    "Max" => Some(1.0),
+                    _ => None,
+                };
+                // An invalid value is the default, `xMidYMid meet`.
+                let Some(pair) = frac(&a[1..4]).zip(frac(&a[5..8])) else {
+                    return Some(Self::new([x, y, w, h], Some((0.5, 0.5)), false));
+                };
+                Some(pair)
+            }
+            _ => Some((0.5, 0.5)),
+        };
+        Some(Self::new(
+            [x, y, w, h],
+            align,
+            words.next() == Some("slice"),
+        ))
+    }
+
+    fn new(rect: [f32; 4], align: Option<(f32, f32)>, slice: bool) -> Self {
+        Self { rect, align, slice }
+    }
+
+    /// The part of `size` (the viewport, from the origin) the `viewBox`
+    /// covers.
+    fn fit(&self, (x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+        let [_, _, vw, vh] = self.rect;
+        let Some((ax, ay)) = self.align else {
+            return (x, y, w, h);
+        };
+        let (sx, sy) = (w / vw, h / vh);
+        let s = if self.slice { sx.max(sy) } else { sx.min(sy) };
+        let (fw, fh) = (vw * s, vh * s);
+        (x + ax * (w - fw), y + ay * (h - fh), fw, fh)
+    }
+
+    /// Where to draw an SVG of `size` so that its `viewBox` fits `bx`, the
+    /// SVG's viewport there (as CSS draws an SVG image with `object-fit:
+    /// fill`), and whether to clip to `bx`.
+    pub fn place(&self, size: (f32, f32), bx: Rect) -> (Rect, bool) {
+        /// Overflow below this (points) is rounding, not worth a clip.
+        const CLIP_EPS: f32 = 1e-3;
+        let (w, h) = size;
+        let (fx, fy, fw, fh) = self.fit((0.0, 0.0, w, h));
+        let (tx, ty, tw, th) = self.fit((bx.x, bx.y, bx.w, bx.h));
+        let (sx, sy) = (tw / fw, th / fh);
+        let r = Rect::new(tx - fx * sx, ty - fy * sy, w * sx, h * sy);
+        let rect = if [r.x, r.y, r.w, r.h].iter().all(|v| v.is_finite()) {
+            r
+        } else {
+            bx
+        };
+        let clip = rect.x < bx.x - CLIP_EPS
+            || rect.y < bx.y - CLIP_EPS
+            || rect.x + rect.w > bx.x + bx.w + CLIP_EPS
+            || rect.y + rect.h > bx.y + bx.h + CLIP_EPS;
+        (rect, clip)
+    }
+}
+
+/// Parses an SVG document into a `usvg` tree, with its root `viewBox`.
+pub(crate) fn parse(bytes: &[u8]) -> Result<(usvg::Tree, Option<ViewBox>), String> {
     let meter = Meter::default();
     let at = Nesting {
         meter: &meter,
@@ -298,7 +402,7 @@ fn check_entities(text: &str) -> Result<(), Reject> {
     Ok(())
 }
 
-fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<usvg::Tree, Reject> {
+fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<ViewBox>), Reject> {
     let doc = parse_xml(bytes)?;
     let checked = check(&doc, at.level, at.depth)?;
     at.meter.charge(checked.own, 0)?;
@@ -328,7 +432,7 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<usvg::Tree, Reject> {
             "SVG is {w}×{h} px; at most {MAX_SIDE} px per side"
         )));
     }
-    Ok(tree)
+    Ok((tree, ViewBox::of(doc.root_element())))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -399,7 +503,7 @@ fn resolve(
             if at.level > MAX_NESTING {
                 return Err(too_deep());
             }
-            Some(usvg::ImageKind::SVG(parse_nested(&data, at)?))
+            Some(usvg::ImageKind::SVG(parse_nested(&data, at)?.0))
         }
         None => None,
     })
@@ -1114,7 +1218,9 @@ mod tests {
 
     #[test]
     fn parses_and_sizes() {
-        let t = parse(svg(r#"<rect width="5" height="5" fill="red"/>"#).as_bytes()).unwrap();
+        let t = parse(svg(r#"<rect width="5" height="5" fill="red"/>"#).as_bytes())
+            .unwrap()
+            .0;
         assert_eq!((t.size().width(), t.size().height()), (20.0, 10.0));
         assert!(is_svg(b"\xEF\xBB\xBF  <?xml version=\"1.0\"?><svg/>"));
         assert!(!is_svg(b"\x89PNG"));
@@ -1161,10 +1267,76 @@ mod tests {
     }
 
     #[test]
+    fn a_view_box_fits_the_box_it_fills_like_css() {
+        let view_box = |attrs: &str| {
+            let doc = format!(r#"<svg xmlns="{SVG_NS}" {attrs}/>"#);
+            ViewBox::of(Document::parse(&doc).unwrap().root_element())
+        };
+        assert_eq!(view_box(r#"width="10" height="10""#), None);
+        assert_eq!(view_box(r#"viewBox="0 0 0 10""#), None);
+        let vb = view_box(r#"viewBox="0,0 100 100""#).unwrap();
+        assert_eq!((vb.align, vb.slice), (Some((0.5, 0.5)), false));
+        let bx = Rect::new(10.0, 20.0, 100.0, 40.0);
+        let near = |(r, clip): (Rect, bool), want: [f32; 4], clipped: bool| {
+            let got = [r.x, r.y, r.w, r.h];
+            let close = got.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3);
+            assert!(close && clip == clipped, "{got:?} {clip}, want {want:?}");
+        };
+        // A square drawing in a wide box: a 40 pt square, centred.
+        near(
+            vb.place((100.0, 100.0), bx),
+            [40.0, 20.0, 40.0, 40.0],
+            false,
+        );
+        let place = |attrs: &str, size| view_box(attrs).unwrap().place(size, bx);
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="xMinYMax""#,
+                (100.0, 100.0),
+            ),
+            [10.0, 20.0, 40.0, 40.0],
+            false,
+        );
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="none""#,
+                (100.0, 100.0),
+            ),
+            [10.0, 20.0, 100.0, 40.0],
+            false,
+        );
+        // slice covers the box: 100 × 100, the middle 40 shown.
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="defer xMidYMid slice""#,
+                (100.0, 100.0),
+            ),
+            [10.0, -10.0, 100.0, 100.0],
+            true,
+        );
+        // An SVG whose size is wider than its viewBox: the viewBox, not the
+        // size, fits the box.
+        near(
+            place(r#"viewBox="0 0 100 100""#, (200.0, 100.0)),
+            [20.0, 20.0, 80.0, 40.0],
+            false,
+        );
+        // An invalid value is the default.
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="xFooYMin""#,
+                (100.0, 100.0),
+            ),
+            [40.0, 20.0, 40.0, 40.0],
+            false,
+        );
+    }
+
+    #[test]
     fn ignores_files() {
         let t =
             parse(svg(r#"<image href="/etc/passwd" width="5" height="5"/>"#).as_bytes()).unwrap();
-        assert!(t.root().children().is_empty());
+        assert!(t.0.root().children().is_empty());
     }
 
     /// `doc` as a percent-encoded `data:` URL, which nests without escaping.
@@ -1248,7 +1420,7 @@ mod tests {
         assert!(e.contains("too complex"), "{e}");
 
         // A few copies fit.
-        let t = parse(image_of(&inner, 3, 0).as_bytes()).unwrap();
+        let t = parse(image_of(&inner, 3, 0).as_bytes()).unwrap().0;
         assert_eq!(nested_images(t.root()), (3, 1));
     }
 
@@ -1274,7 +1446,7 @@ mod tests {
         let doc = chain(MAX_NESTING, groups);
         let t = std::thread::Builder::new()
             .stack_size(2 << 20)
-            .spawn(move || parse(doc.as_bytes()).unwrap())
+            .spawn(move || parse(doc.as_bytes()).unwrap().0)
             .unwrap()
             .join()
             .unwrap();

@@ -14,7 +14,7 @@ pub(crate) fn write_image(
     img: &DecodedImage,
     pdf_a: bool,
 ) -> Result<Ref, crate::InkoxideError> {
-    if let ImageBody::Svg(tree) = &img.body {
+    if let ImageBody::Svg { tree, .. } = &img.body {
         return super::svg::write_svg(pdf, alloc, tree, pdf_a);
     }
     let id = alloc.next();
@@ -81,7 +81,7 @@ pub(crate) fn write_image(
                 x.s_mask(m);
             }
         }
-        ImageBody::Svg(_) => unreachable!("handled above"),
+        ImageBody::Svg { .. } => unreachable!("handled above"),
     }
     Ok(id)
 }

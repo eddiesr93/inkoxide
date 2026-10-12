@@ -68,7 +68,7 @@ pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, ProbeError> {
         probe_webp(bytes)?
     } else if super::svg::is_svg(bytes) {
         // No header to read: parsing is the only real check.
-        let size = super::svg::parse(bytes)?.size();
+        let size = super::svg::parse(bytes)?.0.size();
         return Ok(ImageInfo {
             format: ImageFormat::Svg,
             width: size.width().ceil() as u32,

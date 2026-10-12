@@ -808,7 +808,8 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><defs><image id="i" width="4" height="4" href="{url}"/></defs>{}</svg>"#,
             r##"<use href="#i"/>"##.repeat(copies)
         );
-        let ImageBody::Svg(tree) = ImageCrateDecoder.decode(svg.as_bytes()).unwrap().body else {
+        let ImageBody::Svg { tree, .. } = ImageCrateDecoder.decode(svg.as_bytes()).unwrap().body
+        else {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();

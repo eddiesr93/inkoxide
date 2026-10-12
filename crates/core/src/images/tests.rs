@@ -410,8 +410,16 @@ fn raster_and_svg_images_follow_their_object_position() {
             (10.0, 20.0, 300.0, 180.0),
             true,
         ),
-        // fill ignores objectPosition.
-        ("chart", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
+        // fill ignores objectPosition. The box is the chart's viewport,
+        // which its viewBox (xMidYMid meet) fits: 100 × 60, centred.
+        ("photo", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
+        (
+            "chart",
+            "fill",
+            r#"{"x":"right","y":"bottom"}"#,
+            (10.0, 40.0, 100.0, 60.0),
+            false,
+        ),
     ] {
         let (r, clip) = image(src, fit, position);
         assert!(near(r, rect), "{src} {fit} {position}: {r:?}");

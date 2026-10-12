@@ -263,7 +263,16 @@ impl ImageSet {
             return;
         }
         let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
-        let (rect, clip) = fit_rect(*fit, *object_position, bx, intrinsic);
+        let (rect, clip) = match (&self.get(key).body, fit) {
+            // The box is the SVG's viewport, which its `viewBox` fits.
+            (
+                ImageBody::Svg {
+                    view_box: Some(vb), ..
+                },
+                ImageFit::Fill,
+            ) => vb.place(intrinsic, bx),
+            _ => fit_rect(*fit, *object_position, bx, intrinsic),
+        };
         // `borderRadius` rounds the image without `overflow: hidden`.
         let radii = crate::paint::content_radii(&node.style, geo);
         ops.push(Op::Save);

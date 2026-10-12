@@ -159,8 +159,10 @@ const logo = readFileSync('logo.png');
 ```
 
 - **Fit and position.** `fit` (or `objectFit`, or `object-contain`, `object-cover`,
-  `object-fill`, `object-none`) sizes the image in its box: `fill` (the default) stretches it,
-  `contain` shows all of it, `cover` fills the box, `none` keeps its own size (96 dpi). With
+  `object-fill`, `object-none`) sizes the image in its box: `fill` (the default) stretches it
+  (an SVG with a `viewBox` is not stretched: as in CSS, the box becomes its viewport, and its
+  `preserveAspectRatio`, by default centred and whole, fits the drawing in), `contain` shows all
+  of it, `cover` fills the box, `none` keeps its own size (96 dpi). With
   `contain`, `cover` and `none`, the image is centred unless `objectPosition` places it, as CSS
   `object-position` does: one or two values, each a keyword (`left`, `center`, `right`, `top`,
   `bottom`, in either order when both are keywords), a length or a percentage (`'25% 75%'`

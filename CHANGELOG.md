@@ -31,6 +31,10 @@ All notable changes to the packages in this repository. The format follows
 - Links and form fields inside a box with `transform` or `rotate` are clickable where the box is
   drawn: their areas follow the transform, and a field's appearance turns and scales with it.
   They stayed at the untransformed position.
+- An SVG with a `viewBox` drawn with `fit: fill` (the default) into a box of another shape keeps
+  its proportions, as in CSS: the box becomes its viewport, and its `preserveAspectRatio`
+  (centred and whole by default) places the drawing. It was stretched to the box, so an `<Svg>`
+  given `width: '100%'` came out squashed.
 
 ## 0.5.0 - 2026-10-12
 
