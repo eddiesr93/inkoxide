@@ -269,7 +269,7 @@ ${r.install}
 \`\`\`js
 ${r.example}
 \`\`\`
-${r.extra ?? ''}
+
 ## Licence
 
 MIT

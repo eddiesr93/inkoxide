@@ -1,6 +1,6 @@
 import { initTailwind, setTailwindStrict } from '@inkoxide/tailwind';
 
-import { FontRegistry } from '../src/index.ts';
+import { FontRegistry, TemplateError, type TreeResult } from '../src/index.ts';
 
 export const FACES = [
   { id: 'Inter-Regular', family: 'Inter', file: 'Inter-Regular.ttf' },
@@ -19,4 +19,20 @@ export function registry(): FontRegistry {
 export async function setup(): Promise<void> {
   await initTailwind();
   setTailwindStrict(true);
+}
+
+/** The nodes of the first page. */
+export const body = (r: TreeResult) => r.document.pages[0].children ?? [];
+/** The first node of the first page. */
+export const first = <T>(r: TreeResult) => body(r)[0] as T;
+
+/** The TemplateError that `fn` throws. */
+export function thrown(fn: () => unknown): TemplateError {
+  try {
+    fn();
+  } catch (e) {
+    if (e instanceof TemplateError) return e;
+    throw e;
+  }
+  throw new Error('expected a TemplateError');
 }

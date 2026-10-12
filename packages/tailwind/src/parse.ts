@@ -1,11 +1,21 @@
 import type { GridPlacement, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
-import type { ColorValue, Len, LenPercent, ObjectPosition, TransformOp, TwStyle } from './types.ts';
+import {
+  BORDER_STYLES,
+  type ColorValue,
+  type Len,
+  type LenPercent,
+  OBJECT_FITS,
+  type ObjectPosition,
+  type TransformOp,
+  type TwStyle,
+} from './types.ts';
 import {
   type Dim,
   evalDim,
   parseColor,
+  parseFlex,
   parseFontFamily,
   round,
   splitTopLevel,
@@ -82,86 +92,16 @@ const ENUMS = {
   justifySelf: ['auto', 'flex-start', 'flex-end', 'center', 'baseline', 'stretch', 'start', 'end'],
   position: ['relative', 'absolute'],
   overflow: ['visible', 'hidden'],
-  borderStyle: ['solid', 'dashed', 'dotted'],
+  borderStyle: BORDER_STYLES,
   gridAutoFlow: ['row', 'column', 'row dense', 'column dense'],
   whiteSpace: ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],
   decorationStyle: ['solid', 'double', 'dotted', 'dashed', 'wavy'],
   direction: ['ltr', 'rtl'],
   textTransform: ['none', 'uppercase', 'lowercase', 'capitalize'],
-  objectFit: ['fill', 'contain', 'cover', 'none'],
+  objectFit: OBJECT_FITS,
 } as const;
 
 type EnumKey = keyof typeof ENUMS;
-
-/** Reports a declaration the engine cannot express. */
-class Unsupported extends Error {
-  constructor(
-    readonly property: string,
-    readonly detail: string,
-  ) {
-    super(detail);
-  }
-}
-
-function pick<K extends EnumKey>(key: K, prop: string, value: string): (typeof ENUMS)[K][number] {
-  const v = value.trim() as (typeof ENUMS)[K][number];
-  if (!(ENUMS[key] as readonly string[]).includes(v)) {
-    throw new Unsupported(prop, `${prop}: ${value} (supported: ${ENUMS[key].join(', ')})`);
-  }
-  return v;
-}
-
-function dimToLen(d: Dim, prop: string, value: string): Len {
-  if (d.u === 'pt') return round(d.v);
-  if (d.u === '%') return `${round(d.v)}%`;
-  if (d.u === '' && d.v === 0) return 0;
-  if (d.u === '' && !Number.isFinite(d.v)) return 1e4;
-  throw new Unsupported(prop, `${prop}: ${value} (expected a length in pt/px/rem or a percentage)`);
-}
-
-function len(prop: string, value: string): Len {
-  const v = value.trim();
-  if (v === 'auto') return 'auto';
-  try {
-    const d = evalDim(v);
-    const out = dimToLen(d, prop, v);
-    return typeof out === 'number' && out > 1e4 ? 1e4 : out;
-  } catch (e) {
-    if (e instanceof Unsupported) throw e;
-    throw new Unsupported(prop, `${prop}: ${value} (${(e as Error).message})`);
-  }
-}
-
-function lenPercent(prop: string, value: string): LenPercent {
-  const l = len(prop, value);
-  if (l === 'auto') throw new Unsupported(prop, `${prop}: auto is not allowed here`);
-  return l;
-}
-
-function points(prop: string, value: string): number {
-  const l = len(prop, value);
-  if (typeof l !== 'number') throw new Unsupported(prop, `${prop}: ${value} (expected an absolute length)`);
-  return l;
-}
-
-function num(prop: string, value: string): number {
-  try {
-    const d = evalDim(value);
-    if (d.u === '%') return round(d.v / 100);
-    if (d.u !== '') throw new ValueError(`unexpected unit ${d.u}`);
-    return round(d.v);
-  } catch (e) {
-    throw new Unsupported(prop, `${prop}: ${value} (${(e as Error).message})`);
-  }
-}
-
-function color(prop: string, value: string): ColorValue {
-  try {
-    return parseColor(value);
-  } catch (e) {
-    throw new Unsupported(prop, `${prop}: ${value} (${(e as Error).message})`);
-  }
-}
 
 /** Expands a 1-4 value CSS edge shorthand into [top, right, bottom, left]. */
 function edges(value: string): [string, string, string, string] {
@@ -171,120 +111,215 @@ function edges(value: string): [string, string, string, string] {
   return [a, b, c, d];
 }
 
-function breadth(prop: string, v: string): TrackBreadth {
-  if (/^\d+(\.\d+)?fr$/.test(v)) return v;
-  if (v === 'auto' || v === 'min-content' || v === 'max-content') return v;
-  const l = len(prop, v);
-  if (l === 'auto') return 'auto';
-  return l;
-}
-
-function trackSize(prop: string, v: string): TrackSize {
-  const mm = /^minmax\((.*)\)$/.exec(v);
-  if (mm?.[1] !== undefined) {
-    const [lo, hi] = splitTopLevel(mm[1]);
-    if (lo === undefined || hi === undefined) throw new Unsupported(prop, `${prop}: bad minmax() in ${v}`);
-    return { min: breadth(prop, lo), max: breadth(prop, hi) };
+/**
+ * A CSS value the engine cannot express. `parseTransform`, `parseOrigin` and
+ * `parseObjectPosition` throw it; `tw()` reports it as an `UnsupportedUtilityError`.
+ */
+export class UnsupportedValueError extends Error {
+  override readonly name = 'UnsupportedValueError';
+  constructor(
+    /** The CSS property (or style key) whose value is not supported. */
+    readonly property: string,
+    /** What is wrong, usually `<property>: <value> (<why>)`. */
+    readonly detail: string,
+  ) {
+    super(detail);
   }
-  const fc = /^fit-content\((.*)\)$/.exec(v);
-  if (fc?.[1] !== undefined) return { fitContent: lenPercent(prop, fc[1]) };
-  return breadth(prop, v);
 }
 
-function tracks(prop: string, value: string): TemplateTrack[] {
-  if (value.trim() === 'none') throw new Unsupported(prop, `${prop}: none`);
-  return splitTopLevel(value, ' ').map((t): TemplateTrack => {
-    const rep = /^repeat\((.*)\)$/.exec(t);
-    if (rep?.[1] !== undefined) {
-      const [count, ...rest] = splitTopLevel(rep[1]);
-      const inner = splitTopLevel(rest.join(','), ' ').map((x) => trackSize(prop, x));
-      if (count === undefined || inner.length === 0) throw new Unsupported(prop, `${prop}: bad repeat()`);
-      const n = count === 'auto-fill' || count === 'auto-fit' ? count : Number(count);
-      if (typeof n === 'number' && !Number.isInteger(n)) throw new Unsupported(prop, `${prop}: bad repeat()`);
-      return { repeat: n, tracks: inner as [TrackSize, ...TrackSize[]] };
+/** Reads the values of one CSS property: its errors name the property. */
+class Reader {
+  constructor(readonly prop: string) {}
+
+  /** The error for a value of this property, to throw. */
+  error(detail: string): UnsupportedValueError {
+    return new UnsupportedValueError(this.prop, detail);
+  }
+
+  /** The value, when it is one of the keywords `ENUMS[key]` lists. */
+  oneOf<K extends EnumKey>(key: K, value: string): (typeof ENUMS)[K][number] {
+    const v = value.trim() as (typeof ENUMS)[K][number];
+    if (!(ENUMS[key] as readonly string[]).includes(v)) {
+      throw this.error(`${this.prop}: ${value} (supported: ${ENUMS[key].join(', ')})`);
     }
-    return trackSize(prop, t);
-  });
-}
+    return v;
+  }
 
-function placement(prop: string, value: string): GridPlacement {
-  const parts = value.split('/').map((s) => s.trim());
-  const one = (s: string | undefined): GridPlacement => {
-    if (s === undefined || s === 'auto') return {};
-    const span = /^span\s+(\d+)$/.exec(s);
-    if (span?.[1] !== undefined) return { span: Number(span[1]) };
-    if (/^-?\d+$/.test(s)) return { start: Number(s) };
-    throw new Unsupported(prop, `${prop}: ${value}`);
-  };
-  const a = one(parts[0]);
-  const b = one(parts[1]);
-  const out: GridPlacement = { ...a };
-  if (b.start !== undefined) out.end = b.start;
-  return out;
-}
+  private dimToLen(d: Dim, value: string): Len {
+    if (d.u === 'pt') return round(d.v);
+    if (d.u === '%') return `${round(d.v)}%`;
+    if (d.u === '' && d.v === 0) return 0;
+    if (d.u === '' && !Number.isFinite(d.v)) return 1e4;
+    throw this.error(`${this.prop}: ${value} (expected a length in pt/px/rem or a percentage)`);
+  }
 
-function angle(prop: string, value: string): number {
-  const d = evalDim(value);
-  if (d.u === 'deg' || (d.u === '' && d.v === 0)) return round(d.v);
-  throw new Unsupported(prop, `${prop}: ${value} (expected an angle)`);
-}
+  len(value: string): Len {
+    const v = value.trim();
+    if (v === 'auto') return 'auto';
+    try {
+      const d = evalDim(v);
+      const out = this.dimToLen(d, v);
+      return typeof out === 'number' && out > 1e4 ? 1e4 : out;
+    } catch (e) {
+      if (e instanceof UnsupportedValueError) throw e;
+      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
+    }
+  }
 
-function integer(prop: string, value: string, min: number): number {
-  const n = num(prop, value);
-  if (!Number.isInteger(n) || n < min)
-    throw new Unsupported(prop, `${prop}: ${value} (expected an integer ≥ ${min})`);
-  return n;
+  lenPercent(value: string): LenPercent {
+    const l = this.len(value);
+    if (l === 'auto') throw this.error(`${this.prop}: auto is not allowed here`);
+    return l;
+  }
+
+  points(value: string): number {
+    const l = this.len(value);
+    if (typeof l !== 'number') throw this.error(`${this.prop}: ${value} (expected an absolute length)`);
+    return l;
+  }
+
+  num(value: string): number {
+    try {
+      const d = evalDim(value);
+      if (d.u === '%') return round(d.v / 100);
+      if (d.u !== '') throw new ValueError(`unexpected unit ${d.u}`);
+      return round(d.v);
+    } catch (e) {
+      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
+    }
+  }
+
+  color(value: string): ColorValue {
+    try {
+      return parseColor(value);
+    } catch (e) {
+      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
+    }
+  }
+
+  private breadth(v: string): TrackBreadth {
+    if (/^\d+(\.\d+)?fr$/.test(v)) return v;
+    if (v === 'auto' || v === 'min-content' || v === 'max-content') return v;
+    const l = this.len(v);
+    if (l === 'auto') return 'auto';
+    return l;
+  }
+
+  trackSize(v: string): TrackSize {
+    const mm = /^minmax\((.*)\)$/.exec(v);
+    if (mm?.[1] !== undefined) {
+      const [lo, hi] = splitTopLevel(mm[1]);
+      if (lo === undefined || hi === undefined) throw this.error(`${this.prop}: bad minmax() in ${v}`);
+      return { min: this.breadth(lo), max: this.breadth(hi) };
+    }
+    const fc = /^fit-content\((.*)\)$/.exec(v);
+    if (fc?.[1] !== undefined) return { fitContent: this.lenPercent(fc[1]) };
+    return this.breadth(v);
+  }
+
+  tracks(value: string): TemplateTrack[] {
+    if (value.trim() === 'none') throw this.error(`${this.prop}: none`);
+    return splitTopLevel(value, ' ').map((t): TemplateTrack => {
+      const rep = /^repeat\((.*)\)$/.exec(t);
+      if (rep?.[1] !== undefined) {
+        const [count, ...rest] = splitTopLevel(rep[1]);
+        const inner = splitTopLevel(rest.join(','), ' ').map((x) => this.trackSize(x));
+        if (count === undefined || inner.length === 0) throw this.error(`${this.prop}: bad repeat()`);
+        const n = count === 'auto-fill' || count === 'auto-fit' ? count : Number(count);
+        if (typeof n === 'number' && !Number.isInteger(n)) throw this.error(`${this.prop}: bad repeat()`);
+        return { repeat: n, tracks: inner as [TrackSize, ...TrackSize[]] };
+      }
+      return this.trackSize(t);
+    });
+  }
+
+  placement(value: string): GridPlacement {
+    const parts = value.split('/').map((s) => s.trim());
+    const one = (s: string | undefined): GridPlacement => {
+      if (s === undefined || s === 'auto') return {};
+      const span = /^span\s+(\d+)$/.exec(s);
+      if (span?.[1] !== undefined) return { span: Number(span[1]) };
+      if (/^-?\d+$/.test(s)) return { start: Number(s) };
+      throw this.error(`${this.prop}: ${value}`);
+    };
+    const a = one(parts[0]);
+    const b = one(parts[1]);
+    const out: GridPlacement = { ...a };
+    if (b.start !== undefined) out.end = b.start;
+    return out;
+  }
+
+  angle(value: string): number {
+    const d = evalDim(value);
+    if (d.u === 'deg' || (d.u === '' && d.v === 0)) return round(d.v);
+    throw this.error(`${this.prop}: ${value} (expected an angle)`);
+  }
+
+  integer(value: string, min: number): number {
+    const n = this.num(value);
+    if (!Number.isInteger(n) || n < min)
+      throw this.error(`${this.prop}: ${value} (expected an integer ≥ ${min})`);
+    return n;
+  }
+
+  radius(v: string): number {
+    if (v.includes('/') || splitTopLevel(v, ' ').length > 1) {
+      throw this.error(`${this.prop}: ${v} (elliptical corners are not supported)`);
+    }
+    return Math.min(this.points(v), 1e4);
+  }
 }
 
 /** Parses a CSS transform function list (`skewX(12deg) translate(2pt, 50%)`). */
 export function parseTransform(prop: string, value: string): TransformOp[] {
+  const r = new Reader(prop);
   const out: TransformOp[] = [];
   for (const fn of splitTopLevel(value, ' ')) {
     const m = /^([a-zA-Z0-9]+)\((.*)\)$/.exec(fn);
-    if (!m?.[1] || m[2] === undefined) throw new Unsupported(prop, `${prop}: ${value}`);
+    if (!m?.[1] || m[2] === undefined) throw r.error(`${prop}: ${value}`);
     const name = m[1];
     const args = splitTopLevel(m[2]);
     const [a = '0', b] = args;
     switch (name) {
       case 'translate':
-        out.push({ translate: [lenPercent(prop, a), lenPercent(prop, b ?? '0')] });
+        out.push({ translate: [r.lenPercent(a), r.lenPercent(b ?? '0')] });
         break;
       case 'translateX':
-        out.push({ translate: [lenPercent(prop, a), 0] });
+        out.push({ translate: [r.lenPercent(a), 0] });
         break;
       case 'translateY':
-        out.push({ translate: [0, lenPercent(prop, a)] });
+        out.push({ translate: [0, r.lenPercent(a)] });
         break;
       case 'scale':
-        out.push({ scale: [num(prop, a), num(prop, b ?? a)] });
+        out.push({ scale: [r.num(a), r.num(b ?? a)] });
         break;
       case 'scaleX':
-        out.push({ scale: [num(prop, a), 1] });
+        out.push({ scale: [r.num(a), 1] });
         break;
       case 'scaleY':
-        out.push({ scale: [1, num(prop, a)] });
+        out.push({ scale: [1, r.num(a)] });
         break;
       case 'rotate':
       case 'rotateZ':
-        out.push({ rotate: angle(prop, a) });
+        out.push({ rotate: r.angle(a) });
         break;
       case 'skew':
-        out.push({ skew: [angle(prop, a), angle(prop, b ?? '0')] });
+        out.push({ skew: [r.angle(a), r.angle(b ?? '0')] });
         break;
       case 'skewX':
-        out.push({ skew: [angle(prop, a), 0] });
+        out.push({ skew: [r.angle(a), 0] });
         break;
       case 'skewY':
-        out.push({ skew: [0, angle(prop, a)] });
+        out.push({ skew: [0, r.angle(a)] });
         break;
       case 'matrix': {
-        const n = args.map((x) => num(prop, x));
-        if (n.length !== 6) throw new Unsupported(prop, `${prop}: matrix() takes 6 numbers`);
+        const n = args.map((x) => r.num(x));
+        if (n.length !== 6) throw r.error(`${prop}: matrix() takes 6 numbers`);
         out.push({ matrix: n as [number, number, number, number, number, number] });
         break;
       }
       default:
-        throw new Unsupported(prop, `${prop}: ${name}() (3D transforms and perspective are not supported)`);
+        throw r.error(`${prop}: ${name}() (3D transforms and perspective are not supported)`);
     }
   }
   return out;
@@ -295,10 +330,11 @@ const ORIGIN_Y: Record<string, LenPercent> = { top: 0, center: '50%', bottom: '1
 
 /** Parses `transform-origin` (keywords in either order, lengths, percentages). */
 export function parseOrigin(prop: string, value: string): [LenPercent, LenPercent] {
+  const r = new Reader(prop);
   const parts = splitTopLevel(value, ' ');
-  if (parts.length === 0 || parts.length > 3) throw new Unsupported(prop, `${prop}: ${value}`);
+  if (parts.length === 0 || parts.length > 3) throw r.error(`${prop}: ${value}`);
   if (parts.length === 3 && parts[2] !== '0' && parts[2] !== '0px') {
-    throw new Unsupported(prop, `${prop}: ${value} (no z offset)`);
+    throw r.error(`${prop}: ${value} (no z offset)`);
   }
   let [a = 'center', b = 'center'] = parts;
   // `top left` and `bottom 10%`: a vertical keyword first means the order is y x.
@@ -306,8 +342,8 @@ export function parseOrigin(prop: string, value: string): [LenPercent, LenPercen
     if (parts.length === 1) b = 'center';
     [a, b] = [b, a];
   }
-  const x = ORIGIN_X[a] ?? lenPercent(prop, a);
-  const y = ORIGIN_Y[b] ?? lenPercent(prop, b);
+  const x = ORIGIN_X[a] ?? r.lenPercent(a);
+  const y = ORIGIN_Y[b] ?? r.lenPercent(b);
   return [x, y];
 }
 
@@ -324,11 +360,12 @@ const isPositionKeyword = (v: string) => v === 'center' || POSITION_X.has(v) || 
 export function parseObjectPosition(
   prop: string,
   value: string,
-  length: (v: string) => LenPercent = (v) => lenPercent(prop, v),
+  length: (v: string) => LenPercent = (v) => new Reader(prop).lenPercent(v),
 ): ObjectPosition {
+  const r = new Reader(prop);
   const parts = splitTopLevel(value, ' ');
   if (parts.length === 0 || parts.length > 2) {
-    throw new Unsupported(prop, `${prop}: ${value} (one or two values; edge offsets are not supported)`);
+    throw r.error(`${prop}: ${value} (one or two values; edge offsets are not supported)`);
   }
   let [a = 'center', b = 'center'] = parts;
   // Keywords alone may name y first (`top left`, or `top`, whose x is `center`).
@@ -336,7 +373,7 @@ export function parseObjectPosition(
     [a, b] = [b, a];
   }
   if (POSITION_Y.has(a) || POSITION_X.has(b)) {
-    throw new Unsupported(prop, `${prop}: ${value} (expected x then y, e.g. "left top" or "25% 75%")`);
+    throw r.error(`${prop}: ${value} (expected x then y, e.g. "left top" or "25% 75%")`);
   }
   const x = a === 'center' || POSITION_X.has(a) ? (a as 'left' | 'center' | 'right') : length(a);
   const y = b === 'center' || POSITION_Y.has(b) ? (b as 'top' | 'center' | 'bottom') : length(b);
@@ -354,13 +391,6 @@ const CORNERS: Record<string, 'TopLeft' | 'TopRight' | 'BottomRight' | 'BottomLe
   'end-end': 'BottomRight',
   'end-start': 'BottomLeft',
 };
-
-function radius(prop: string, v: string): number {
-  if (v.includes('/') || splitTopLevel(v, ' ').length > 1) {
-    throw new Unsupported(prop, `${prop}: ${v} (elliptical corners are not supported)`);
-  }
-  return Math.min(points(prop, v), 1e4);
-}
 
 const SIDES = ['Top', 'Right', 'Bottom', 'Left'] as const;
 type Side = (typeof SIDES)[number];
@@ -388,143 +418,120 @@ function sidesOf(logical: string): readonly Side[] {
   }
 }
 
-type W = Record<string, unknown>;
-
 /** Applies one resolved declaration to the style being built. */
 function applyDecl(s: TwStyle, prop: string, value: string): void {
-  const w = s as W;
+  const r = new Reader(prop);
+  // The style by key, for the keys built from the property name (`paddingTop`, `insetLeft`).
+  const keyed = s as Record<string, unknown>;
   const v = value.trim();
   switch (prop) {
     case 'display':
-      s.display = pick('display', prop, v);
+      s.display = r.oneOf('display', v);
       return;
     case 'flex-direction':
-      s.flexDirection = pick('flexDirection', prop, v);
+      s.flexDirection = r.oneOf('flexDirection', v);
       return;
     case 'flex-wrap':
-      s.flexWrap = pick('flexWrap', prop, v);
+      s.flexWrap = r.oneOf('flexWrap', v);
       return;
     case 'justify-content':
-      s.justifyContent = pick('justifyContent', prop, v);
+      s.justifyContent = r.oneOf('justifyContent', v);
       return;
     case 'align-items':
-      s.alignItems = pick('alignItems', prop, v);
+      s.alignItems = r.oneOf('alignItems', v);
       return;
     case 'align-self':
-      s.alignSelf = pick('alignSelf', prop, v);
+      s.alignSelf = r.oneOf('alignSelf', v);
       return;
     case 'align-content':
-      s.alignContent = pick('alignContent', prop, v);
+      s.alignContent = r.oneOf('alignContent', v);
       return;
     case 'justify-items':
-      s.justifyItems = pick('justifyItems', prop, v);
+      s.justifyItems = r.oneOf('justifyItems', v);
       return;
     case 'justify-self':
-      s.justifySelf = pick('justifySelf', prop, v);
+      s.justifySelf = r.oneOf('justifySelf', v);
       return;
-    case 'flex': {
-      const words = splitTopLevel(v, ' ');
-      if (v === 'none') {
-        s.flexGrow = 0;
-        s.flexShrink = 0;
-        s.flexBasis = 'auto';
-      } else if (v === 'auto') {
-        s.flexGrow = 1;
-        s.flexShrink = 1;
-        s.flexBasis = 'auto';
-      } else if (words.length === 1 && /^[\d.]+$/.test(v)) {
-        s.flexGrow = Number(v);
-        s.flexShrink = 1;
-        s.flexBasis = '0%';
-      } else {
-        const [g, second, third] = words;
-        if (g === undefined || second === undefined) throw new Unsupported(prop, `flex: ${v}`);
-        s.flexGrow = num(prop, g);
-        if (third === undefined && !/^[\d.]+$/.test(second)) {
-          // `flex: <grow> <basis>`
-          s.flexShrink = 1;
-          s.flexBasis = len(prop, second);
-        } else {
-          s.flexShrink = num(prop, second);
-          s.flexBasis = third === undefined ? '0%' : len(prop, third);
-        }
-      }
+    case 'flex':
+      [s.flexGrow, s.flexShrink, s.flexBasis] = parseFlex(
+        v,
+        (x) => r.num(x),
+        (x) => r.len(x),
+      );
       return;
-    }
     case 'flex-grow':
-      s.flexGrow = num(prop, v);
+      s.flexGrow = r.num(v);
       return;
     case 'flex-shrink':
-      s.flexShrink = num(prop, v);
+      s.flexShrink = r.num(v);
       return;
     case 'flex-basis':
-      s.flexBasis = len(prop, v);
+      s.flexBasis = r.len(v);
       return;
     case 'gap': {
-      const [r, c = r] = splitTopLevel(v, ' ');
-      s.rowGap = lenPercent(prop, r ?? v);
-      s.columnGap = lenPercent(prop, c ?? v);
+      const [row, column = row] = splitTopLevel(v, ' ');
+      s.rowGap = r.lenPercent(row ?? v);
+      s.columnGap = r.lenPercent(column ?? v);
       return;
     }
     case 'row-gap':
-      s.rowGap = lenPercent(prop, v);
+      s.rowGap = r.lenPercent(v);
       return;
     case 'column-gap':
-      s.columnGap = lenPercent(prop, v);
+      s.columnGap = r.lenPercent(v);
       return;
     case 'width':
     case 'height':
     case 'min-width':
     case 'min-height': {
       const key = prop.replace(/-(\w)/, (_, c: string) => c.toUpperCase());
-      w[key] = len(prop, v);
+      keyed[key] = r.len(v);
       return;
     }
     case 'max-width':
     case 'max-height': {
       const key = prop === 'max-width' ? 'maxWidth' : 'maxHeight';
-      if (v === 'none') delete w[key];
-      else w[key] = len(prop, v);
+      if (v === 'none') delete keyed[key];
+      else keyed[key] = r.len(v);
       return;
     }
     case 'aspect-ratio': {
       const [a, b] = v.split('/').map((x) => x.trim());
-      if (a === undefined || a === 'auto') throw new Unsupported(prop, `aspect-ratio: ${v}`);
-      s.aspectRatio = round(num(prop, a) / (b === undefined ? 1 : num(prop, b)));
+      if (a === undefined || a === 'auto') throw r.error(`aspect-ratio: ${v}`);
+      s.aspectRatio = round(r.num(a) / (b === undefined ? 1 : r.num(b)));
       return;
     }
     case 'position':
       if (v.trim() === 'fixed') {
-        throw new Unsupported(
-          prop,
+        throw r.error(
           `position: fixed (supported: relative, absolute; to repeat an element on every page, give it the fixed prop and position: absolute)`,
         );
       }
-      s.position = pick('position', prop, v);
+      s.position = r.oneOf('position', v);
       return;
     case 'overflow':
-      s.overflow = pick('overflow', prop, v === 'clip' ? 'hidden' : v);
+      s.overflow = r.oneOf('overflow', v === 'clip' ? 'hidden' : v);
       return;
     case 'grid-template-columns':
-      s.gridTemplateColumns = tracks(prop, v);
+      s.gridTemplateColumns = r.tracks(v);
       return;
     case 'grid-template-rows':
-      s.gridTemplateRows = tracks(prop, v);
+      s.gridTemplateRows = r.tracks(v);
       return;
     case 'grid-auto-columns':
-      s.gridAutoColumns = splitTopLevel(v, ' ').map((t) => trackSize(prop, t));
+      s.gridAutoColumns = splitTopLevel(v, ' ').map((t) => r.trackSize(t));
       return;
     case 'grid-auto-rows':
-      s.gridAutoRows = splitTopLevel(v, ' ').map((t) => trackSize(prop, t));
+      s.gridAutoRows = splitTopLevel(v, ' ').map((t) => r.trackSize(t));
       return;
     case 'grid-auto-flow':
-      s.gridAutoFlow = pick('gridAutoFlow', prop, v);
+      s.gridAutoFlow = r.oneOf('gridAutoFlow', v);
       return;
     case 'grid-column':
-      s.gridColumn = placement(prop, v);
+      s.gridColumn = r.placement(v);
       return;
     case 'grid-row':
-      s.gridRow = placement(prop, v);
+      s.gridRow = r.placement(v);
       return;
     case 'grid-column-start':
     case 'grid-column-end':
@@ -532,7 +539,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'grid-row-end': {
       const key = prop.startsWith('grid-column') ? 'gridColumn' : 'gridRow';
       const p: GridPlacement = { ...s[key] };
-      const one = placement(prop, v);
+      const one = r.placement(v);
       if (prop.endsWith('start')) {
         delete p.start;
         Object.assign(p, one);
@@ -545,16 +552,15 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       return;
     }
     case 'background-color':
-      s.backgroundColor = color(prop, v);
+      s.backgroundColor = r.color(v);
       return;
     case 'opacity':
-      s.opacity = num(prop, v);
+      s.opacity = r.num(v);
       return;
     case 'border-radius': {
-      if (v.includes('/'))
-        throw new Unsupported(prop, `border-radius: ${v} (elliptical corners are not supported)`);
-      const [tl, tr, br, bl] = edges(v).map((x) => radius(prop, x)) as [number, number, number, number];
-      for (const c of Object.values(CORNERS)) delete w[`border${c}Radius`];
+      if (v.includes('/')) throw r.error(`border-radius: ${v} (elliptical corners are not supported)`);
+      const [tl, tr, br, bl] = edges(v).map((x) => r.radius(x)) as [number, number, number, number];
+      for (const c of Object.values(CORNERS)) delete keyed[`border${c}Radius`];
       if (tl === tr && tr === br && br === bl) s.borderRadius = tl;
       else {
         delete s.borderRadius;
@@ -569,16 +575,16 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     }
     case 'border-style': {
       if (v === 'none') {
-        for (const sd of SIDES) w[`border${sd}Width`] = 0;
+        for (const sd of SIDES) keyed[`border${sd}Width`] = 0;
         return;
       }
-      for (const sd of SIDES) delete w[`border${sd}Style`];
-      s.borderStyle = pick('borderStyle', prop, v);
+      for (const sd of SIDES) delete keyed[`border${sd}Style`];
+      s.borderStyle = r.oneOf('borderStyle', v);
       return;
     }
     case 'z-index':
       if (v === 'auto') delete s.zIndex;
-      else s.zIndex = integer(prop, v, Number.MIN_SAFE_INTEGER);
+      else s.zIndex = r.integer(v, Number.MIN_SAFE_INTEGER);
       return;
     case 'translate': {
       if (v === 'none') {
@@ -586,8 +592,8 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         return;
       }
       const [x = '0', y = '0', z] = splitTopLevel(v, ' ');
-      if (z !== undefined && evalDim(z).v !== 0) throw new Unsupported(prop, `translate: ${v} (no z axis)`);
-      s.translate = [lenPercent(prop, x), lenPercent(prop, y)];
+      if (z !== undefined && evalDim(z).v !== 0) throw r.error(`translate: ${v} (no z axis)`);
+      s.translate = [r.lenPercent(x), r.lenPercent(y)];
       return;
     }
     case 'scale': {
@@ -596,7 +602,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         return;
       }
       const [x = '1', y = x] = splitTopLevel(v, ' ');
-      s.scale = [num(prop, x), num(prop, y)];
+      s.scale = [r.num(x), r.num(y)];
       return;
     }
     case 'transform':
@@ -607,58 +613,57 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       s.transformOrigin = parseOrigin(prop, v);
       return;
     case 'object-fit':
-      s.objectFit = pick('objectFit', prop, v);
+      s.objectFit = r.oneOf('objectFit', v);
       return;
     case 'object-position':
       s.objectPosition = parseObjectPosition(prop, v);
       return;
     case 'text-decoration-color': {
-      const c = color(prop, v);
+      const c = r.color(v);
       if (c === 'currentColor') delete s.decorationColor;
       else s.decorationColor = c;
       return;
     }
     case 'text-decoration-thickness':
       if (v === 'auto' || v === 'from-font') delete s.decorationThickness;
-      else s.decorationThickness = points(prop, v);
+      else s.decorationThickness = r.points(v);
       return;
     case 'text-decoration-style':
-      s.decorationStyle = pick('decorationStyle', prop, v);
+      s.decorationStyle = r.oneOf('decorationStyle', v);
       return;
     case 'text-indent':
-      s.textIndent = points(prop, v);
+      s.textIndent = r.points(v);
       return;
     case 'direction':
-      s.direction = pick('direction', prop, v);
+      s.direction = r.oneOf('direction', v);
       return;
     case 'orphans':
-      s.orphans = integer(prop, v, 1);
+      s.orphans = r.integer(v, 1);
       return;
     case 'widows':
-      s.widows = integer(prop, v, 1);
+      s.widows = r.integer(v, 1);
       return;
     case 'border-collapse':
-      if (v !== 'collapse' && v !== 'separate') throw new Unsupported(prop, `border-collapse: ${v}`);
+      if (v !== 'collapse' && v !== 'separate') throw r.error(`border-collapse: ${v}`);
       s.borderCollapse = v;
       return;
     case 'border-spacing': {
       const [x, y = x] = splitTopLevel(v, ' ');
-      if (x === undefined || (y !== undefined && y !== x && points(prop, y) !== points(prop, x))) {
-        throw new Unsupported(prop, `border-spacing: ${v} (one value for both axes)`);
+      if (x === undefined || (y !== undefined && y !== x && r.points(y) !== r.points(x))) {
+        throw r.error(`border-spacing: ${v} (one value for both axes)`);
       }
-      s.borderSpacing = points(prop, x);
+      s.borderSpacing = r.points(x);
       return;
     }
     case 'vertical-align':
-      if (v !== 'top' && v !== 'middle' && v !== 'bottom')
-        throw new Unsupported(prop, `vertical-align: ${v}`);
+      if (v !== 'top' && v !== 'middle' && v !== 'bottom') throw r.error(`vertical-align: ${v}`);
       s.verticalAlign = v;
       return;
     case 'background-image':
-      throw new Unsupported(prop, 'gradients and background images are not supported (use bg-<colour>)');
+      throw r.error('gradients and background images are not supported (use bg-<colour>)');
     case 'rotate': {
       const d = evalDim(v);
-      if (d.u !== 'deg') throw new Unsupported(prop, `rotate: ${v}`);
+      if (d.u !== 'deg') throw r.error(`rotate: ${v}`);
       s.rotate = round(d.v);
       return;
     }
@@ -666,19 +671,19 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       s.fontFamily = parseFontFamily(v);
       return;
     case 'font-weight':
-      s.fontWeight = num(prop, v);
+      s.fontWeight = r.num(v);
       return;
     case 'font-style':
       if (v === 'normal') s.fontStyle = 'normal';
       else if (v === 'italic' || v.startsWith('oblique')) s.fontStyle = 'italic';
-      else throw new Unsupported(prop, `font-style: ${v}`);
+      else throw r.error(`font-style: ${v}`);
       return;
     case 'font-size':
-      s.fontSize = points(prop, v);
+      s.fontSize = r.points(v);
       return;
     case 'color': {
-      const c = color(prop, v);
-      if (c === 'currentColor') throw new Unsupported(prop, 'color: currentColor');
+      const c = r.color(v);
+      if (c === 'currentColor') throw r.error('color: currentColor');
       s.color = c;
       return;
     }
@@ -692,7 +697,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       else if (d.u === '%') s.lineHeight = { mult: round(d.v / 100) };
       else if (d.u === 'em') s.lineHeight = { mult: round(d.v) };
       else if (d.u === 'pt') s.lineHeight = { pt: round(d.v) };
-      else throw new Unsupported(prop, `line-height: ${v}`);
+      else throw r.error(`line-height: ${v}`);
       return;
     }
     case 'letter-spacing': {
@@ -703,25 +708,25 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       const d = evalDim(v);
       if (d.u === 'em') s.letterSpacing = { em: round(d.v) };
       else if (d.u === 'pt' || (d.u === '' && d.v === 0)) s.letterSpacing = { pt: round(d.v) };
-      else throw new Unsupported(prop, `letter-spacing: ${v}`);
+      else throw r.error(`letter-spacing: ${v}`);
       return;
     }
     case 'text-align':
       if (v === 'left' || v === 'center' || v === 'right' || v === 'justify' || v === 'start' || v === 'end')
         s.textAlign = v;
-      else throw new Unsupported(prop, `text-align: ${v}`);
+      else throw r.error(`text-align: ${v}`);
       return;
     case 'text-decoration-line':
       if (v === 'underline') s.textDecoration = 'underline';
       else if (v === 'line-through') s.textDecoration = 'lineThrough';
       else if (v === 'none') s.textDecoration = 'none';
-      else throw new Unsupported(prop, `text-decoration-line: ${v}`);
+      else throw r.error(`text-decoration-line: ${v}`);
       return;
     case 'text-transform':
-      s.textTransform = pick('textTransform', prop, v);
+      s.textTransform = r.oneOf('textTransform', v);
       return;
     case 'white-space':
-      s.whiteSpace = pick('whiteSpace', prop, v);
+      s.whiteSpace = r.oneOf('whiteSpace', v);
       return;
     case 'hyphens':
       s.hyphenate = v === 'auto';
@@ -732,13 +737,13 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'right':
     case 'bottom':
     case 'left':
-      w[`inset${prop[0]?.toUpperCase()}${prop.slice(1)}`] = len(prop, v);
+      keyed[`inset${prop[0]?.toUpperCase()}${prop.slice(1)}`] = r.len(v);
       return;
   }
 
   const corner = /^border-([a-z]+-[a-z]+)-radius$/.exec(prop);
   if (corner?.[1] && CORNERS[corner[1]]) {
-    w[`border${CORNERS[corner[1]]}Radius`] = radius(prop, v);
+    keyed[`border${CORNERS[corner[1]]}Radius`] = r.radius(v);
     return;
   }
 
@@ -750,33 +755,33 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
   if (m) {
     const [, family, side = '', part] = m;
     if (family === 'border' && part === 'style') {
-      const style = pick('borderStyle', prop, v);
+      const style = r.oneOf('borderStyle', v);
       if (side === '') {
-        for (const sd of SIDES) delete w[`border${sd}Style`];
+        for (const sd of SIDES) delete keyed[`border${sd}Style`];
         s.borderStyle = style;
       } else {
-        for (const sd of sidesOf(side)) w[`border${sd}Style`] = style;
+        for (const sd of sidesOf(side)) keyed[`border${sd}Style`] = style;
       }
       return;
     }
     if (family === 'border' && part === undefined) {
-      throw new Unsupported(prop, `${prop}: ${v} (use border width and colour utilities)`);
+      throw r.error(`${prop}: ${v} (use border width and colour utilities)`);
     }
-    if (family !== 'border' && part !== undefined) throw new Unsupported(prop, `${prop}: ${v}`);
+    if (family !== 'border' && part !== undefined) throw r.error(`${prop}: ${v}`);
     const values = side === '' ? edges(v) : null;
     const key = family === 'border' ? (part === 'width' ? 'Width' : 'Color') : '';
     for (const sd of sidesOf(side)) {
       const raw = values ? (values[SIDES.indexOf(sd)] ?? v) : v;
-      if (family === 'padding') w[`padding${sd}`] = lenPercent(prop, raw);
-      else if (family === 'margin') w[`margin${sd}`] = len(prop, raw);
-      else if (family === 'inset') w[`inset${sd}`] = len(prop, raw);
-      else if (key === 'Width') w[`border${sd}Width`] = points(prop, raw);
-      else w[`border${sd}Color`] = color(prop, raw);
+      if (family === 'padding') keyed[`padding${sd}`] = r.lenPercent(raw);
+      else if (family === 'margin') keyed[`margin${sd}`] = r.len(raw);
+      else if (family === 'inset') keyed[`inset${sd}`] = r.len(raw);
+      else if (key === 'Width') keyed[`border${sd}Width`] = r.points(raw);
+      else keyed[`border${sd}Color`] = r.color(raw);
     }
     return;
   }
 
-  throw new Unsupported(prop, `the CSS property "${prop}" has no Inkoxide equivalent`);
+  throw r.error(`the CSS property "${prop}" has no Inkoxide equivalent`);
 }
 
 /**
@@ -835,7 +840,7 @@ export function mapClasses(
           delete next.maxLines;
           delete next.ellipsis;
         } else {
-          next.maxLines = num('-webkit-line-clamp', n);
+          next.maxLines = new Reader('-webkit-line-clamp').num(n);
           next.ellipsis = true;
         }
       } else if (ellipsis) {
@@ -846,14 +851,15 @@ export function mapClasses(
         if (prop.startsWith('--')) continue;
         if (clamp && (prop === 'overflow' || prop === 'display' || prop.startsWith('-webkit-'))) continue;
         if (ellipsis && (prop === 'overflow' || prop === 'text-overflow' || prop === 'white-space')) continue;
-        if (prop === 'text-overflow') throw new Unsupported(prop, `text-overflow: ${raw} (use truncate)`);
+        if (prop === 'text-overflow')
+          throw new UnsupportedValueError(prop, `text-overflow: ${raw} (use truncate)`);
         // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
         const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
         applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup));
       }
       style = next;
     } catch (e) {
-      if (e instanceof Unsupported) onError(new UnsupportedUtilityError(cls, e.detail, e.property));
+      if (e instanceof UnsupportedValueError) onError(new UnsupportedUtilityError(cls, e.detail, e.property));
       else if (e instanceof ValueError) onError(new UnsupportedUtilityError(cls, e.message));
       else throw e;
     }

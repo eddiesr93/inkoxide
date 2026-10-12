@@ -132,7 +132,10 @@ function track(
   return { doc: r.document, origin: r.origin ?? new Map() };
 }
 
-/** The document tree of a template element (the simple API). */
+/**
+ * The document tree of a template element (the simple API). Building is synchronous; the
+ * function stays `async` so that a template error is a rejected promise, not a throw.
+ */
 export async function renderToTree(element: ReactNode, opts: TreeOptions = {}): Promise<Document> {
   return renderTemplate(element, opts).document;
 }

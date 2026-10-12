@@ -19,6 +19,8 @@ All notable changes to the packages in this repository. The format follows
   `className`, `engineCode` and `issues` and its JSON form, the exported types, the `Document`
   props `creator`, `creationDate` and `fallbackFonts`, and `pages` on elements of the page
   body, with negative page numbers counting from the end.
+- `@inkoxide/tailwind` exports `UnsupportedValueError`, which `parseTransform`, `parseOrigin` and
+  `parseObjectPosition` throw for a value the engine cannot express.
 
 ### Changed
 
@@ -40,6 +42,10 @@ All notable changes to the packages in this repository. The format follows
     are read from.
   - The deprecated aliases `StudioError` and `StudioErrorCode` are removed; use `RenderError`
     and `RenderErrorCode`.
+- The `flex` shorthand reads the same in `style` and in Tailwind classes:
+  `style={{ flex: '1 auto' }}` sets grow and basis, as `flex-[1_auto]` does, and
+  `flex-[initial]` works as `flex: 'initial'` does. A lone grow in a class is rounded to six
+  decimals like every other value.
 
 ## 0.4.0 - 2026-10-12
 

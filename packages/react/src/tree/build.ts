@@ -17,7 +17,7 @@ import type {
   TextNode,
   TextRun,
 } from '@inkoxide/schema';
-import { type TwStyle, tw, UnsupportedUtilityError } from '@inkoxide/tailwind';
+import { round, type TwStyle, tw, UnsupportedUtilityError } from '@inkoxide/tailwind';
 import { createElement } from 'react';
 
 import { Painter } from '../canvas.ts';
@@ -996,7 +996,7 @@ class Builder {
     const font = this.font(ctx, owner);
     const size = ctx.fontSize;
     const ls = ctx.letterSpacing;
-    const letterSpacing = ls === undefined ? 0 : 'em' in ls ? Math.round(ls.em * size * 1e6) / 1e6 : ls.pt;
+    const letterSpacing = ls === undefined ? 0 : 'em' in ls ? round(ls.em * size) : ls.pt;
     const decoration = ctx.textDecoration === 'none' ? undefined : ctx.textDecoration;
     const decoColor = decoration ? ctx.decorationColor : undefined;
     const decoThickness = decoration ? ctx.decorationThickness : undefined;

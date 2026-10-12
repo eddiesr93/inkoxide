@@ -53,7 +53,7 @@ describe('engine start-up', () => {
       expect(err).toBeInstanceOf(RenderError);
       expect(err).toMatchObject({ code: 'INTERNAL', status: 500 });
       expect((err as RenderError).message).toBe(
-        `The engine could not start: No fonts found in ${join(empty, 'fonts')}. Set INKOXIDE_ASSETS_DIR or pass fontsDir.`,
+        `The engine could not start: No fonts found in ${join(empty, 'fonts')}. Set INKOXIDE_ASSETS_DIR.`,
       );
     }
   });

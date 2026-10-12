@@ -28,9 +28,11 @@ export type TextAlign = NonNullable<Style['textAlign']>;
 export type TextDecoration = 'none' | 'underline' | 'lineThrough';
 export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export type WhiteSpace = NonNullable<Style['whiteSpace']>;
-export type BorderStyle = 'solid' | 'dashed' | 'dotted';
+export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
+export type BorderStyle = (typeof BORDER_STYLES)[number];
 export type DecorationStyle = 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
-export type ObjectFit = 'fill' | 'contain' | 'cover' | 'none';
+export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const;
+export type ObjectFit = (typeof OBJECT_FITS)[number];
 export type Direction = 'ltr' | 'rtl' | 'auto';
 export type { ObjectPosition, TransformOp };
 

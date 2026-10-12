@@ -3,13 +3,24 @@ import { createRequire } from 'node:module';
 import { createContext } from 'react';
 import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants.js';
 
-import { HOST, HOST_NAME } from '../components/index.ts';
+import { HOST, type HostType } from '../components/index.ts';
 import { TemplateError } from '../errors.ts';
-import type { Container, Instance, Node, TextInstance } from './instance.ts';
+import {
+  type Container,
+  hostName,
+  type Instance,
+  isHostType,
+  type Node,
+  type TextInstance,
+} from './instance.ts';
 
 interface HostContext {
-  /** Host type of the nearest host ancestor (`'root'` at the top). */
-  parent: string;
+  /**
+   * Host type of the nearest host ancestor (`'root'` at the top). React asks for the context of an
+   * element's children before it creates the element, so this can be an unknown type (`div`):
+   * its children fail first, against it.
+   */
+  parent: HostType | 'root' | (string & {});
 }
 
 /** This package's version: its package.json is two levels up from `src/reconciler` and `dist/reconciler`. */
@@ -69,7 +80,7 @@ const LEAF = new Set<string>([
 ]);
 
 /** Which host types may appear directly inside which. Strings: see TEXT_PARENTS. */
-function allowed(parent: string, child: string): boolean {
+function allowed(parent: HostContext['parent'], child: HostType): boolean {
   switch (parent) {
     case 'root':
       return child === HOST.Document;
@@ -113,10 +124,10 @@ const TEXT_PARENTS = new Set<string>([
   HOST.Page,
 ]);
 
-const name = (type: string): string => (type === 'root' ? 'the root' : `<${HOST_NAME[type] ?? type}>`);
+const name = (type: string): string => (type === 'root' ? 'the root' : `<${hostName(type)}>`);
 
-function placementError(parent: string, child: string): TemplateError {
-  if (!HOST_NAME[child]) {
+function placementError(parent: HostContext['parent'], child: string): TemplateError {
+  if (!isHostType(child)) {
     return new TemplateError(
       `<${child}> is not an Inkoxide component. Templates use only @inkoxide/react components (View, Text, Table, …), not HTML elements.`,
     );
@@ -197,7 +208,7 @@ export const hostConfig = {
     ctx: HostContext,
     fiber: unknown,
   ) {
-    if (!allowed(ctx.parent, type)) throw placementError(ctx.parent, type);
+    if (!isHostType(type) || !allowed(ctx.parent, type)) throw placementError(ctx.parent, type);
     const instance: Instance = { kind: 'element', type, props, children: [], fiber };
     return instance;
   },

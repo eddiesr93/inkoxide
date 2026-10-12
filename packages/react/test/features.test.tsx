@@ -33,14 +33,13 @@ import {
   Stop,
   Svg,
   Table,
-  TemplateError,
   Text,
   TextField,
   TotalPages,
   usePage,
   View,
 } from '../src/index.ts';
-import { registry, setup } from './helpers.ts';
+import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);
 
@@ -58,20 +57,8 @@ const tree = (children: ReactNode, opts: { pageCount?: number; page?: Record<str
       remoteImages: { allow: ['cdn.example.com', 'https://img.example.com/public/'] },
     },
   );
-const body = (r: ReturnType<typeof tree>) => r.document.pages[0].children ?? [];
-const first = <T,>(r: ReturnType<typeof tree>) => body(r)[0] as T;
 const decode = (data: string | undefined): string =>
   Buffer.from((data ?? '').replace(/^data:image\/svg\+xml;base64,/, ''), 'base64').toString('utf8');
-
-function thrown(fn: () => unknown): TemplateError {
-  try {
-    fn();
-  } catch (e) {
-    if (e instanceof TemplateError) return e;
-    throw e;
-  }
-  throw new Error('expected a TemplateError');
-}
 
 describe('paint styles', () => {
   it('composes translate, rotate, scale and transform in CSS order', () => {
@@ -156,12 +143,15 @@ describe('paint styles', () => {
         <View style={{ flex: 1 }} />
         <View style={{ flex: '2 0 10mm', flexShrink: 3 }} />
         <View style={{ position: 'absolute', top: 0, right: '1cm' }} />
+        <View style={{ flex: '1 auto' }} />
       </>,
     );
-    const [a, b, c] = (r.document.pages[0].children ?? []) as BoxNode[];
+    const [a, b, c, d] = (r.document.pages[0].children ?? []) as BoxNode[];
     expect(a?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '0%' });
     expect(b?.style).toEqual({ flexGrow: 2, flexShrink: 3, flexBasis: 28.346457 });
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
+    // `<grow> <basis>`, as in Tailwind's `flex-[1_auto]`.
+    expect(d?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
     );
