@@ -442,7 +442,7 @@ describe('fonts', () => {
   it('falls back to the nearest weight with a warning', () => {
     const r = render(<Text className="font-semibold">a</Text>);
     expect(first<TextNode>(r).runs[0]?.font).toBe('Inter-Bold');
-    expect(r.warnings[0]).toContain('Inter 600');
+    expect(r.warnings[0]).toBe('Font "Inter 600" is not registered; using Inter-Bold (Text in Page).');
   });
 
   it('declares only the fonts the document uses, plus the fallback font', () => {

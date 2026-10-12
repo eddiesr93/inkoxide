@@ -15,6 +15,7 @@ import {
   G,
   Header,
   Image,
+  imageSource,
   isImagePath,
   LinearGradient,
   Link,
@@ -963,6 +964,22 @@ describe('image sources', () => {
       'data:image/png;base64,',
     ])
       expect(isImagePath(p)).toBe(false);
+  });
+
+  it('sorts a src the same way for templates and resolved values', () => {
+    const kind = (src: unknown) => imageSource(src, (id) => id === './logo.png').kind;
+    expect(kind('./logo.png')).toBe('registered');
+    expect(kind('./other.png')).toBe('path');
+    expect(kind('data:image/png;base64,')).toBe('data');
+    expect(kind('https://cdn.example.com/a.png')).toBe('url');
+    expect(kind('logo')).toBe('id');
+    expect(kind('')).toBe('id');
+    expect(kind(new Uint8Array(1))).toBe('bytes');
+    expect(kind(new ArrayBuffer(1))).toBe('bytes');
+    expect(kind(() => 'logo')).toBe('function');
+    expect(kind(Promise.resolve('logo'))).toBe('promise');
+    expect(kind({ uri: 'https://cdn.example.com/a.png' })).toBe('request');
+    expect(kind(undefined)).toBe('none');
   });
 
   it('lists file paths and file URLs to load, one id per path; other strings stay ids', () => {

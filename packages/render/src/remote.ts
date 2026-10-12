@@ -1,18 +1,14 @@
 import type { ImageRequest } from '@inkoxide/react';
 
+import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, envList } from './policy.ts';
 import type { RemoteImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
 /** The remote-image policy from the options, else from `INKOXIDE_REMOTE_IMAGES`. */
 export function remotePolicy(opts: RemoteImageOptions | undefined): RemoteImageOptions | undefined {
   if (opts) return opts;
-  const env = process.env.INKOXIDE_REMOTE_IMAGES;
-  if (!env) return undefined;
-  const allow = env
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  return allow.length > 0 ? { allow } : undefined;
+  const allow = envList('INKOXIDE_REMOTE_IMAGES', ',');
+  return allow ? { allow } : undefined;
 }
 
 /**
@@ -20,8 +16,8 @@ export function remotePolicy(opts: RemoteImageOptions | undefined): RemoteImageO
  * policy's timeout and size limit. Redirects are refused.
  */
 export async function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions): Promise<Uint8Array> {
-  const timeoutMs = opts.timeoutMs ?? 10_000;
-  const maxBytes = opts.maxBytes ?? 20 * 1024 * 1024;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
   const url = typeof src === 'string' ? src : src.uri;
   const fail = (why: string, cause?: unknown): never => {
     throw new RenderError('IMAGE_FETCH_FAILED', `Cannot fetch the image ${url}: ${why}.`, { cause });

@@ -56,11 +56,8 @@ function nameOf(f: FiberLike): string | undefined {
   return t?.displayName ?? t?.name ?? undefined;
 }
 
-/**
- * The component stack of a host instance, innermost first, in React's own format
- * (`\n    in Text\n    in Field\n    in Template`).
- */
-export function componentStack(node: { fiber: unknown } | undefined): string {
+/** The components above a host instance, innermost first: its own name, then its parents'. */
+export function componentNames(node: { fiber: unknown } | undefined): string[] {
   let f = node?.fiber as FiberLike | null | undefined;
   const names: string[] = [];
   while (f) {
@@ -68,5 +65,23 @@ export function componentStack(node: { fiber: unknown } | undefined): string {
     if (n && names[names.length - 1] !== n) names.push(n);
     f = f.return;
   }
+  return names;
+}
+
+/**
+ * The component stack of a host instance, innermost first, in React's own format
+ * (`\n    in Text\n    in Field\n    in Template`).
+ */
+export function componentStack(node: { fiber: unknown } | undefined): string {
+  return formatStack(componentNames(node));
+}
+
+/** Component names, innermost first, as a stack in React's format. */
+export function formatStack(names: readonly string[]): string {
   return names.map((n) => `\n    in ${n}`).join('');
+}
+
+/** The innermost component of a stack in React's format: `Text` for `\n    in Text\n    in Field`. */
+export function innermostComponent(stack: string | undefined): string | undefined {
+  return stack?.split('\n')[1]?.trim().replace(/^in /, '');
 }

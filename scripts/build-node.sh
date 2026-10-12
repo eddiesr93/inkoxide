@@ -15,14 +15,7 @@ else
   cargo build -p inkoxide-node
 fi
 
-triple=$(node -e '
-  const { platform, arch } = process;
-  let t = `${platform}-${arch}`;
-  if (platform === "linux") {
-    const r = process.report.getReport();
-    t += r.header.glibcVersionRuntime ? "-gnu" : "-musl";
-  } else if (platform === "win32") t += "-msvc";
-  console.log(t);')
+triple=$(node scripts/platforms.mjs --host)
 case "$(uname -s)" in
   Darwin) lib=libinkoxide_node.dylib ;;
   MINGW*|MSYS*|CYGWIN*) lib=inkoxide_node.dll ;;

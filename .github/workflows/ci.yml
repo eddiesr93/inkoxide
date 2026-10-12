@@ -33,9 +33,9 @@ jobs:
           persist-credentials: false
       - name: Install Rust
         # The version and components come from rust-toolchain.toml.
-        run: |
-          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
-            --profile minimal --component rustfmt,clippy --no-self-update
+        uses: ./.github/actions/install-rust
+        with:
+          components: rustfmt,clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install qpdf
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends qpdf
@@ -78,9 +78,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust
-        run: |
-          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
-            --profile minimal --no-self-update
+        uses: ./.github/actions/install-rust
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

@@ -4,7 +4,7 @@
 #   scripts/release/publish.sh            # publish
 #   scripts/release/publish.sh --dry-run  # stage and run npm publish --dry-run
 #
-# Order: tailwind, react, render (each depends only on the ones before it).
+# Order: stage.mjs --list (tailwind, react, render; each depends only on the ones before it).
 # A name@version already on the registry is skipped, so a failed run can simply be repeated.
 # Auth: in GitHub Actions, npm trusted publishing (OIDC, with provenance); locally, the user
 # `npm login` set up, with 2FA in the browser.
@@ -27,7 +27,11 @@ for arg in "$@"; do
 done
 
 registry="https://registry.npmjs.org/"
-packages=(tailwind react render)
+# In stage.mjs's order. Read loops, not mapfile: macOS ships bash 3.2.
+packages=()
+while IFS= read -r line; do
+  [[ -n $line ]] && packages+=("$line")
+done < <(node scripts/release/stage.mjs --list)
 
 if [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
   echo "publish: GitHub Actions; npm uses trusted publishing"
@@ -41,24 +45,14 @@ fi
 
 node scripts/release/stage.mjs
 
-# Prints "yes" when name@version is on the registry, "no" on a 404; fails on anything else.
+# Prints "yes" when name@version is on the registry, "no" when it is not; fails on anything else.
 published() {
-  local spec="$1" out
-  if out="$(npm view "$spec" version --registry "$registry" 2>&1)"; then
-    [[ -n "$out" ]] && echo yes || echo no
-  elif grep -q 'E404' <<<"$out"; then
-    echo no
-  else
-    echo "publish: npm view $spec failed:" >&2
-    echo "$out" >&2
-    return 1
-  fi
+  node scripts/release/registry.mjs "$1"
 }
 
 # Every registry dependency of the staged packages (the engine packages in particular) must
 # already be published, or the published packages could not be installed.
 missing_deps=0
-# A read loop, not mapfile: macOS ships bash 3.2.
 deps=()
 while IFS= read -r line; do
   [[ -n $line ]] && deps+=("$line")

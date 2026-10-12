@@ -84,8 +84,22 @@ export function svgMarkup(
   fail: (inst: Instance | undefined, msg: string) => never,
 ): string {
   const body = inst.children.map((c) => element(c, fail, inst)).join('');
-  const viewBox = inst.props.viewBox === undefined ? ` viewBox="0 0 ${width} ${height}"` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"${viewBox}${attrs(inst.props, BOX_PROPS)}>${body}</svg>`;
+  return svgDocument(width, height, body, inst.props.viewBox !== undefined, attrs(inst.props, BOX_PROPS));
+}
+
+/**
+ * An SVG document of `width` × `height` points around `body` (`<Svg>` and `<Canvas>`). Its view
+ * box is the same size unless `ownViewBox` says `attrs`, the root's other attributes, set one.
+ */
+export function svgDocument(
+  width: number,
+  height: number,
+  body: string,
+  ownViewBox = false,
+  attrs = '',
+): string {
+  const viewBox = ownViewBox ? '' : ` viewBox="0 0 ${width} ${height}"`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"${viewBox}${attrs}>${body}</svg>`;
 }
 
 /** A `data:` URL for SVG markup. */

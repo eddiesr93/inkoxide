@@ -3,9 +3,10 @@ import type { ReactNode } from 'react';
 
 import { TemplateError } from './errors.ts';
 import { fonts as defaultFonts, type FontRegistry } from './fonts/index.ts';
-import { type Container, componentStack, type Instance } from './reconciler/instance.ts';
+import { type Container, componentStack, innermostComponent, type Instance } from './reconciler/instance.ts';
 import { renderToInstances } from './reconciler/render.ts';
-import { type BuildResult, buildTree, ImageIds, type RemoteImagePolicy } from './tree/build.ts';
+import { type BuildResult, buildTree } from './tree/build.ts';
+import { ImageIds, type RemoteImagePolicy } from './tree/images.ts';
 import { locate } from './tree/locate.ts';
 import { type SchemaProblem, validateTree } from './tree/validate.ts';
 
@@ -14,14 +15,18 @@ export * from './components/index.ts';
 export { TemplateError, type TemplateErrorKind } from './errors.ts';
 export * from './fonts/index.ts';
 export { usePage } from './page.ts';
+export { innermostComponent } from './reconciler/instance.ts';
 export {
+  type ImageSource,
+  imageSource,
   isImagePath,
-  PAGE_SIZES,
   type PendingImage,
   type RemoteImagePolicy,
   remoteAllowed,
-} from './tree/build.ts';
+  remoteRefused,
+} from './tree/images.ts';
 export { parsePath } from './tree/locate.ts';
+export { PAGE_SIZES } from './tree/page-sizes.ts';
 export { weightOf as fontWeightValue } from './tree/style.ts';
 export { type SchemaProblem, validateTree } from './tree/validate.ts';
 
@@ -104,7 +109,7 @@ function fromContainer(
     if (!inst) return undefined;
     const stack = componentStack(inst);
     return {
-      component: stack.split('\n')[1]?.trim().replace(/^in /, '') ?? inst.type,
+      component: innermostComponent(stack) ?? inst.type,
       componentStack: stack,
     };
   };
