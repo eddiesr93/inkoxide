@@ -595,8 +595,13 @@ All three take the same options:
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
 | `creationDate` | none | RFC 3339 timestamp written to the PDF. Without it, the same input gives byte-identical output. |
-| `threads` | all cores | How many cores one render spreads its pages over |
+| `threads` | all cores | How many cores one render spreads its pages over: an integer from 1 to 256 |
 | `validate` | outside production | Check the document tree first, for clearer errors |
+
+A bad option fails the render with `ENGINE_REJECTED` at its path (`options.threads`,
+`options.remoteImages.timeoutMs`): a `creationDate` that is not RFC 3339, a `threads` that is
+not an integer from 1 to 256, or a timeout or `maxBytes` that is not a number from 0 (NaN, a
+negative number, a string). A fractional timeout is rounded up to a whole millisecond.
 
 **`Font.register({ family, src })`** adds a font family, from a path, a URL or bytes. See
 [Fonts](#fonts).
@@ -672,7 +677,7 @@ apply:
 | `TEMPLATE_ERROR` | A component used in the wrong place, a prop with an invalid value (a bad `Page` `size`, a `Link` without `href`), an unknown class or style key, a component or `render` prop that throws, or an image `src` that cannot be used: a URL outside `remoteImages`, a path while `localImages` is off (from a function), or a function or promise that fails or does not settle in `imageTimeoutMs` |
 | `INVALID_TREE` | The document tree does not match the engine's schema. Checked only with `validate`, which is on outside production |
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
-| `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image |
+| `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image, or a render option is out of range (`path` is `options.threads`, `options.creationDate`, …) |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
 | `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), `renderToFile` could not write the file, or a bug |

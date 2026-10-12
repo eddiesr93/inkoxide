@@ -79,7 +79,17 @@ All notable changes to the packages in this repository. The format follows
   `compressionLevel` 0–9) are `INVALID_ARGUMENT`. They were converted: `threads: -1` started a
   256-thread pool, and `1.5`, `NaN` or `2 ** 32 + 3` were truncated or wrapped. An invalid
   `creationDate` is `INVALID_ARGUMENT` too, like every other bad option, not the document code
-  `INVALID_VALUE`.
+  `INVALID_VALUE`. `@inkoxide/render` reports a bad `threads` or `creationDate` as
+  `ENGINE_REJECTED` (400) at the option's path (`options.threads`); `threads: 0` was an
+  `INTERNAL` error (500).
+- `@inkoxide/render`: `imageTimeoutMs`, `remoteImages.timeoutMs` and the `maxBytes` of
+  `remoteImages` and `localImages` must be numbers from 0 (`Infinity` included); another value
+  fails the render with `ENGINE_REJECTED` at its path before any image loads. A NaN or negative
+  timeout failed every image at once, and a NaN `maxBytes` lifted the limit. A fractional
+  timeout is rounded up to a whole millisecond: `remoteImages.timeoutMs: 1.5` failed every
+  remote image with a `RangeError` message.
+- `@inkoxide/render`: a remote image answered with a 3xx status that is not a redirect (`304`)
+  fails with `HTTP 304`, not `HTTP 304, and redirects are not followed`.
 - Node: `InkoxideError` no longer has an undocumented `detail` property (the same text as
   `message`).
 - Rust: the `RenderOptions::threads` docs state that a pool has at most 256 threads and that

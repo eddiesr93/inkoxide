@@ -1,9 +1,15 @@
 import type { Document } from '@inkoxide/schema';
 
 export interface RenderOpts {
-  /** RFC 3339 timestamp written to the PDF; omit for deterministic output. */
+  /**
+   * RFC 3339 timestamp written to the PDF; omit for deterministic output. Another string fails
+   * the render with `ENGINE_REJECTED` at `options.creationDate`.
+   */
   creationDate?: string;
-  /** Engine worker threads for this render (default: all cores). */
+  /**
+   * Engine worker threads for this render (default: all cores): an integer from 1 to 256.
+   * Another value fails the render with `ENGINE_REJECTED` at `options.threads`.
+   */
   threads?: number;
   /** Flate-compress content streams (default true). */
   compress?: boolean;
@@ -28,7 +34,10 @@ export interface RenderOpts {
    * without either, no file is read and a path in `src` is an image id like any other string.
    */
   localImages?: LocalImageOptions;
-  /** How long a function or promise `<Image src>` may take to settle (default 10 000 ms). */
+  /**
+   * How long a function or promise `<Image src>` may take to settle (default 10 000 ms;
+   * `Infinity` for no limit). A number from 0; a fraction is rounded up to a whole ms.
+   */
   imageTimeoutMs?: number;
 }
 
@@ -38,7 +47,7 @@ export interface LocalImageOptions {
    * the first; any path must lead, symbolic links followed, to a file inside one of them.
    */
   root: string | readonly string[];
-  /** Largest accepted file in bytes (default 20 MiB). */
+  /** Largest accepted file in bytes, from 0 (default 20 MiB). */
   maxBytes?: number;
 }
 
@@ -48,9 +57,12 @@ export interface RemoteImageOptions {
    * names (`'*.example.com'`, https only).
    */
   allow: readonly string[];
-  /** Per-image timeout for the whole download (default 10 000 ms; `Infinity` for none). */
+  /**
+   * Per-image timeout for the whole download (default 10 000 ms; `Infinity` for none). A number
+   * from 0; a fraction is rounded up to a whole ms.
+   */
   timeoutMs?: number;
-  /** Largest accepted image in bytes (default 20 MiB). */
+  /** Largest accepted image in bytes, from 0 (default 20 MiB). */
   maxBytes?: number;
 }
 
@@ -108,7 +120,10 @@ export type RenderErrorCode =
   | 'TEMPLATE_ERROR'
   /** The built tree does not match the engine schema (400). */
   | 'INVALID_TREE'
-  /** The engine rejected the document: fonts, images, tables, layout (400). */
+  /**
+   * The engine rejected the document (fonts, images, tables, layout), or a render option is out
+   * of range, with its `path` (`options.threads`) (400).
+   */
   | 'ENGINE_REJECTED'
   /** A font added with `Font.register` could not be read, fetched or parsed (400). */
   | 'INVALID_FONT'
@@ -118,7 +133,8 @@ export type RenderErrorCode =
   | 'IMAGE_READ_FAILED'
   /**
    * The engine could not start (no fonts, mismatched versions), `renderToFile` could not write,
-   * or a bug: an INTERNAL or INVALID_ARGUMENT engine error, or anything unexpected (500).
+   * or a bug: an INTERNAL engine error, an INVALID_ARGUMENT one that is not about a render
+   * option, or anything unexpected (500).
    */
   | 'INTERNAL';
 
