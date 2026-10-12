@@ -269,3 +269,104 @@ fn empty_text_has_no_height() {
     let (_, l) = lines(&doc(&para("   ", "")), &s, 100.0);
     assert_eq!(l.height, 0.0);
 }
+
+/// Per line, where each glyph that follows a tab starts, from the start of
+/// the line.
+fn after_tabs(d: &Document, store: &FontStore) -> Vec<Vec<f32>> {
+    let fonts = FontSet::load(d, store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let layout = (*cache.layout(node, f32::INFINITY).unwrap()).clone();
+    let (p, _) = cache.prepared(node).unwrap();
+    let char_at = |i: usize| p.text[p.glyphs[i].cluster as usize..].chars().next();
+    layout
+        .lines
+        .iter()
+        .map(|line| {
+            let mut x = 0.0;
+            let mut xs = Vec::new();
+            for i in line.start as usize..line.end as usize {
+                if i > line.start as usize
+                    && char_at(i - 1) == Some('\t')
+                    && char_at(i) != Some('\t')
+                {
+                    xs.push(x);
+                }
+                x += p.glyphs[i].advance;
+            }
+            xs
+        })
+        .collect()
+}
+
+#[test]
+fn tabs_advance_to_stops_eight_spaces_apart() {
+    let s = store();
+    let pre = |text: &str, ws: &str| doc(&para(text, &format!(r#""whiteSpace":"{ws}""#)));
+    let width = |text: &str| lines(&pre(text, "pre"), &s, 500.0).1.width;
+    let stop = width("        x") - width("x");
+    for ws in ["pre", "pre-wrap"] {
+        let xs = after_tabs(&pre(r"a\tx\nabc\tx\nWWW\tx\na\tb\tx\n\t\tx", ws), &s);
+        // Columns line up in a proportional font: the stops are 8 spaces
+        // of the font apart from the start of each line, not 8 characters.
+        let expected = [
+            vec![stop],
+            vec![stop],
+            vec![2.0 * stop],
+            vec![stop, 2.0 * stop],
+            vec![2.0 * stop],
+        ];
+        assert_eq!(xs.len(), expected.len(), "{ws}: {xs:?}");
+        for (got, want) in xs.iter().zip(&expected) {
+            assert_eq!(got.len(), want.len(), "{ws}: {xs:?}");
+            for (g, w) in got.iter().zip(want) {
+                assert!((g - w).abs() < 1e-3, "{ws}: {xs:?}, stops {stop} apart");
+            }
+        }
+    }
+    // Text ending less than half a `0` before a stop goes on to the next.
+    let half_zero = width("0") / 2.0;
+    let mut near = String::from("i");
+    while width(&near) <= stop - half_zero {
+        near.push('i');
+    }
+    assert!(width(&near) < stop, "{near}");
+    let xs = after_tabs(&pre(&format!(r"{near}\tx"), "pre"), &s);
+    assert!((xs[0][0] - 2.0 * stop).abs() < 1e-3, "{xs:?}");
+}
+
+#[test]
+fn tabs_after_page_numbers_keep_their_stop() {
+    let s = store();
+    let d = doc(r#"{"type":"text","style":{"whiteSpace":"pre"},"runs":[
+            {"placeholder":"pageNumber","font":"Inter-Regular","size":10},
+            {"text":"\tx","font":"Inter-Regular","size":10}]}"#);
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let NodeKind::Text { runs } = &node.kind else {
+        unreachable!()
+    };
+    cache.layout(node, 500.0);
+    let (p, style) = cache.prepared(node).unwrap();
+    let para = Para {
+        prepared: p,
+        runs,
+        style,
+        fonts: &fonts,
+    };
+    let x_after_tab = |p: &Prepared| {
+        let tab = p.glyphs.iter().position(Glyph::is_tab).unwrap();
+        p.glyphs[..=tab].iter().map(|g| g.advance).sum::<f32>()
+    };
+    let stand_in = x_after_tab(p);
+    let filled = prepare::fill_numbers(
+        &para,
+        PageNumbers {
+            current: 7,
+            total: 9,
+        },
+    );
+    assert_eq!(filled.text, "7\tx");
+    assert!((x_after_tab(&filled) - stand_in).abs() < 1e-3);
+}

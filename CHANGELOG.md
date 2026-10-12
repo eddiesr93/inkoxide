@@ -137,9 +137,9 @@ All notable changes to the packages in this repository. The format follows
 - Text collapses only spaces, tabs and line breaks, as in CSS. Thin, em, figure, ideographic and
   other space characters keep their own width, and the non-breaking ones no longer allow a line
   break.
-- Tabs in `pre` and `pre-wrap` text advance to the next tab stop, every 8 characters from the
-  start of the line (CSS `tab-size: 8`), so tab-separated columns line up. Each tab was four
-  spaces.
+- Tabs in `pre` and `pre-wrap` text advance to the next tab stop, as CSS `tab-size: 8`: stops are
+  8 spaces of the font apart from the start of the line, so tab-separated columns line up in any
+  font. Each tab was four spaces.
 - A box sized to the min-content width of hyphenated text leaves room for the hyphen; the
   hyphen was drawn outside it.
 - The docs say how `minPresenceAhead`, percentage gaps and relative `top`/`left` offsets work,

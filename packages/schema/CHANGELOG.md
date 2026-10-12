@@ -57,7 +57,7 @@ version 2.
   box's own content box, as in CSS.
 - **Text:** `whiteSpace` collapses only spaces, tabs and line breaks, as in CSS; other space
   characters keep their width (they became ordinary spaces). Tabs in `pre` and `pre-wrap`
-  advance to the next multiple of 8 characters instead of becoming four spaces.
+  advance to the next tab stop, 8 spaces of the font apart, instead of becoming four spaces.
 - **`GridPlacement`** with `start`, `end` and `span` places the item between `start` and
   `end`, and ignores `span`, as CSS does when both lines are set after a span. The engine used
   `start` and `span` and ignored `end`. The description also says that `span` can go with `end`

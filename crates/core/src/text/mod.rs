@@ -28,6 +28,7 @@ use crate::InkoxideError;
 
 const GLYPH_SPACE: u8 = 1;
 const GLYPH_INVISIBLE: u8 = 2;
+const GLYPH_TAB: u8 = 4;
 
 /// Tolerance for float noise when comparing widths.
 const WIDTH_EPS: f32 = 1e-3;
@@ -54,6 +55,11 @@ impl Glyph {
     /// Drawn with no ink (a newline, a soft hyphen, a control character).
     pub fn is_invisible(&self) -> bool {
         self.flags & GLYPH_INVISIBLE != 0
+    }
+
+    /// A tab: invisible, as wide as the way to the next tab stop.
+    pub fn is_tab(&self) -> bool {
+        self.flags & GLYPH_TAB != 0
     }
 }
 
