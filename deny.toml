@@ -7,7 +7,8 @@ all-features = false
 version = 2
 yanked = "deny"
 # Unmaintained (not vulnerable) shaping/parsing crates, isolated behind the
-# TextShaper trait and the fonts module. Both are replaced together by harfrust and read-fonts.
+# TextShaper trait (rustybuzz in text/prepare.rs) and the fonts module
+# (ttf-parser in fonts/). Both are replaced together by harfrust and read-fonts.
 ignore = [
   { id = "RUSTSEC-2026-0206", reason = "rustybuzz unmaintained; only text/prepare.rs uses it; harfrust migration" },
   { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained; only fonts/ uses it; read-fonts migration" },

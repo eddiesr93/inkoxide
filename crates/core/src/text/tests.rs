@@ -34,7 +34,7 @@ fn para(text: &str, style: &str) -> String {
 /// the layout.
 fn lines(d: &Document, store: &FontStore, width: f32) -> (Vec<String>, LineLayout) {
     let fonts = FontSet::load(d, store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout(node, width).unwrap()).clone();
     let (p, _) = cache.prepared(node).unwrap();
@@ -153,7 +153,7 @@ fn falls_back_for_missing_glyphs() {
     let fonts = FontSet::load(&d, &s).unwrap();
     let inter = fonts.key("Inter-Regular").unwrap();
     let noto = fonts.key("NotoSans-Regular").unwrap();
-    let mut shaper = RustybuzzShaper::new(&fonts);
+    let mut shaper = RustybuzzShaper::new(&fonts).unwrap();
     let crate::schema::NodeKind::Text { runs } = &d.pages[0].children[0].kind else {
         panic!()
     };
@@ -193,7 +193,7 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
         run(r#""placeholder":"totalPages""#),
     ));
     let fonts = FontSet::load(&d, &s).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let node = &d.pages[0].children[0];
     let NodeKind::Text { runs } = &node.kind else {
         unreachable!()
@@ -304,7 +304,7 @@ fn simple_cell_fast_path_matches_taffy() {
         let spec = &d.pages[0];
         let w = spec.size.width - spec.margin.left - spec.margin.right;
         let run = |fast: bool| {
-            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts), None);
+            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
             let mut tree = crate::layout::Tree::build(&spec.children);
             crate::layout::compute_tree(&mut tree, w, 0.0, &mut cache, fast).unwrap();
             tree.nodes.iter().map(|n| n.geo).collect::<Vec<_>>()

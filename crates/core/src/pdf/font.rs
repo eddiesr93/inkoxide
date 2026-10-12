@@ -79,7 +79,7 @@ pub(crate) fn program(
         );
     }
     Ok(Program {
-        data: font.data.compressed()?,
+        data: font.data.compressed_program(|p| deflate(p, 6))?,
         length: font.data.bytes.len(),
         cid_to_gid: None,
         tag: "".into(),
@@ -90,7 +90,7 @@ pub(crate) fn program(
 fn make_subset(font: &LoadedFont<'_>, glyphs: &[u16]) -> Result<Option<Program>, InkoxideError> {
     if font.data.metrics.cff {
         // CIDs stay the original glyph ids through the CFF charset.
-        let Some(cff) = super::cff::subset_program(&font.data.bytes, glyphs) else {
+        let Some(cff) = crate::fonts::cff::subset_program(&font.data.bytes, glyphs) else {
             return Ok(None);
         };
         return Ok(Some(Program {

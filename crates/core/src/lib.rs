@@ -235,7 +235,7 @@ fn render_inner(
     let hyphenator = text::ResolvedHyphenator {
         store: &options.hyphenation,
     };
-    let mut shaper = RustybuzzShaper::new(&font_set);
+    let mut shaper = RustybuzzShaper::new(&font_set)?;
     shaper.hyphenator = &hyphenator;
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
     let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;

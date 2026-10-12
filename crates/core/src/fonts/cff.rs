@@ -9,7 +9,7 @@
 //! in place and the charset is appended at the end.
 
 /// The `CFF ` table of an OpenType font.
-pub(crate) fn cff_table(otf: &[u8]) -> Option<&[u8]> {
+fn cff_table(otf: &[u8]) -> Option<&[u8]> {
     let u16_at = |p: usize| Some(u16::from_be_bytes(otf.get(p..p + 2)?.try_into().ok()?));
     let u32_at = |p: usize| Some(u32::from_be_bytes(otf.get(p..p + 4)?.try_into().ok()?));
     let n = usize::from(u16_at(4)?);
@@ -26,7 +26,7 @@ pub(crate) fn cff_table(otf: &[u8]) -> Option<&[u8]> {
 
 /// The whole font as a CID-keyed CFF with CID = glyph id: `subsetter`
 /// keeping every glyph in order. `None` if the font cannot be converted.
-pub(crate) fn full_program(otf: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn full_program(otf: &[u8]) -> Option<Vec<u8>> {
     let n = ttf_parser::Face::parse(otf, 0).ok()?.number_of_glyphs();
     let glyphs: Vec<u16> = (0..n).collect();
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&glyphs);
@@ -137,7 +137,7 @@ fn charset_operand(cff: &[u8]) -> Option<usize> {
 /// Replaces the charset of a CID-keyed CFF: glyph `i + 1` gets CID
 /// `cids[i]` (glyph 0 is always CID 0). `None` if the font does not have
 /// the layout `subsetter` writes.
-pub(crate) fn set_charset(cff: &mut Vec<u8>, cids: &[u16]) -> Option<()> {
+fn set_charset(cff: &mut Vec<u8>, cids: &[u16]) -> Option<()> {
     let at = charset_operand(cff)?;
     let offset = i32::try_from(cff.len()).ok()?;
     cff.get_mut(at..at + 4)?

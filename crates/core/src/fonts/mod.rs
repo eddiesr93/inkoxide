@@ -1,10 +1,16 @@
-//! Font registry, metrics and the per-render font set.
+//! Font registry, metrics, the per-render font set and the font programs
+//! PDFs embed.
 //!
 //! Fonts are registered explicitly (no system font discovery: determinism).
 //! Registration decodes WOFF and WOFF2 files to the font they wrap, then
 //! parses and validates the font once; per render, the fonts a document
-//! declares are wrapped in shaping faces (`FontSet`).
+//! declares are parsed again for glyph lookups and advances (`FontSet`).
+//!
+//! The font-parsing library (ttf-parser) stays in this module: the rest of
+//! the engine sees glyph ids, advances and [`FontMetrics`]. Shaping faces
+//! belong to `text`, which builds them from [`FontData`]'s bytes.
 
+pub(crate) mod cff;
 mod woff;
 
 use std::collections::BTreeMap;
@@ -46,9 +52,8 @@ pub struct FontData {
     /// xxh3 of `bytes`: the font's identity in process-wide caches.
     pub(crate) hash: u64,
     pub(crate) metrics: FontMetrics,
-    /// Flate-compressed font program (`FontFile2`, or the CID-keyed CFF
-    /// for `FontFile3`), computed on first use and
-    /// shared by every later render.
+    /// Compressed whole font program (see [`FontData::compressed_program`]),
+    /// computed on first use and shared by every later render.
     compressed: OnceLock<Arc<[u8]>>,
 }
 
@@ -68,7 +73,7 @@ impl FontData {
             ));
         }
         let cff = tables.glyf.is_none();
-        if cff && (tables.cff.is_none() || crate::pdf::cff::full_program(&bytes).is_none()) {
+        if cff && (tables.cff.is_none() || cff::full_program(&bytes).is_none()) {
             return Err(err(
                 "font has neither TrueType (glyf) nor embeddable CFF outlines",
             ));
@@ -78,9 +83,6 @@ impl FontData {
             .is_none_or(|c| !c.subtables.into_iter().any(|s| s.is_unicode()))
         {
             return Err(err("font has no Unicode cmap"));
-        }
-        if rustybuzz::Face::from_slice(&bytes, 0).is_none() {
-            return Err(err("font cannot be loaded for shaping"));
         }
 
         let upem = f32::from(face.units_per_em());
@@ -131,17 +133,23 @@ impl FontData {
         })
     }
 
-    pub(crate) fn compressed(&self) -> Result<Arc<[u8]>, InkoxideError> {
+    /// The whole font program (`FontFile2`, or the CID-keyed CFF for
+    /// `FontFile3`), passed through `compress` on first use; later calls,
+    /// in this render or another, return that first result.
+    pub(crate) fn compressed_program(
+        &self,
+        compress: impl FnOnce(&[u8]) -> Result<Vec<u8>, InkoxideError>,
+    ) -> Result<Arc<[u8]>, InkoxideError> {
         if let Some(c) = self.compressed.get() {
             return Ok(c.clone());
         }
         let data: Arc<[u8]> = if self.metrics.cff {
             // Checked at registration.
-            let program = crate::pdf::cff::full_program(&self.bytes)
+            let program = cff::full_program(&self.bytes)
                 .ok_or_else(|| InkoxideError::Internal("CFF conversion failed".into()))?;
-            crate::pdf::deflate(&program, 6)?.into()
+            compress(&program)?.into()
         } else {
-            crate::pdf::deflate(&self.bytes, 6)?.into()
+            compress(&self.bytes)?.into()
         };
         Ok(self.compressed.get_or_init(|| data).clone())
     }
@@ -225,9 +233,10 @@ impl FontStore {
 /// order); also its PDF resource number.
 pub(crate) type FontKey = u16;
 
+/// A registered font parsed for one render: its `cmap` and advances.
 pub(crate) struct LoadedFont<'a> {
     pub data: &'a FontData,
-    pub face: rustybuzz::Face<'a>,
+    face: ttf_parser::Face<'a>,
 }
 
 impl LoadedFont<'_> {
@@ -250,7 +259,7 @@ impl LoadedFont<'_> {
     }
 }
 
-/// The fonts of one document, ready for shaping.
+/// The fonts of one document, parsed once per render.
 pub(crate) struct FontSet<'a> {
     pub fonts: Vec<LoadedFont<'a>>,
     by_id: BTreeMap<&'a str, FontKey>,
@@ -266,9 +275,8 @@ impl<'a> FontSet<'a> {
             let data = store.get(&decl.id).ok_or_else(|| {
                 InkoxideError::Internal(format!("font `{}` vanished after validation", decl.id))
             })?;
-            let face = rustybuzz::Face::from_slice(&data.bytes, 0).ok_or_else(|| {
-                InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id))
-            })?;
+            let face = ttf_parser::Face::parse(&data.bytes, 0)
+                .map_err(|_| InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id)))?;
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
             fonts.push(LoadedFont { data, face });
         }
@@ -321,10 +329,11 @@ mod tests {
         let mut s = FontStore::new();
         s.register("Bold", fixture("InterDisplay-Bold.otf"))
             .unwrap();
-        let m = &s.get("Bold").unwrap().metrics;
-        assert!(m.cff);
-        assert_eq!(m.weight, 700);
-        assert!(!s.get("Bold").unwrap().compressed().unwrap().is_empty());
+        let bold = s.get("Bold").unwrap();
+        assert!(bold.metrics.cff);
+        assert_eq!(bold.metrics.weight, 700);
+        let program = bold.compressed_program(|p| Ok(p.to_vec())).unwrap();
+        assert!(!program.is_empty());
     }
 
     /// Drawing commands with their coordinates.
@@ -369,7 +378,7 @@ mod tests {
         let (a, b) = (s.get("plain").unwrap(), s.get("web").unwrap());
         assert_eq!(format!("{:?}", a.metrics), format!("{:?}", b.metrics));
         assert_eq!(glyphs(&a.bytes), glyphs(&b.bytes));
-        assert!(!b.compressed().unwrap().is_empty());
+        assert!(!b.compressed_program(|p| Ok(p.to_vec())).unwrap().is_empty());
     }
 
     #[test]
