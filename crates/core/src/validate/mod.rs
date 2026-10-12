@@ -572,6 +572,23 @@ impl<'a> Checker<'a> {
         });
     }
 
+    /// Reports the properties of `style` that only tables take, for a
+    /// node or cell that is not a table.
+    fn table_only(&mut self, style: &Style) {
+        for (p, set) in [
+            ("borderCollapse", style.border_collapse.is_some()),
+            ("borderSpacing", style.border_spacing.is_some()),
+        ] {
+            if set {
+                self.err(
+                    Code::StyleNotApplicable,
+                    Some(p),
+                    format!("`{p}` only applies to tables"),
+                );
+            }
+        }
+    }
+
     fn node(&mut self, node: &Node, ctx: Ctx) {
         if self.errors.len() >= MAX_ERRORS {
             return;
@@ -581,21 +598,9 @@ impl<'a> Checker<'a> {
         }
         let is_text = matches!(node.kind, NodeKind::Text { .. });
         self.at("style", false, |c| c.style(&node.style, is_text, false));
-        let table_style = [
-            ("borderCollapse", node.style.border_collapse.is_some()),
-            ("borderSpacing", node.style.border_spacing.is_some()),
-        ];
         let is_table = matches!(node.kind, NodeKind::Table(_));
-        for (p, set) in table_style {
-            if set && !is_table {
-                self.at("style", false, |c| {
-                    c.err(
-                        Code::StyleNotApplicable,
-                        Some(p),
-                        format!("`{p}` only applies to tables"),
-                    );
-                });
-            }
+        if !is_table {
+            self.at("style", false, |c| c.table_only(&node.style));
         }
         if is_table
             && node.style.border_spacing.is_some()
@@ -1079,18 +1084,7 @@ impl<'a> Checker<'a> {
                                 col += span;
                                 c.at("style", false, |c| {
                                     c.style(&cell.style, false, true);
-                                    for (p, set) in [
-                                        ("borderCollapse", cell.style.border_collapse.is_some()),
-                                        ("borderSpacing", cell.style.border_spacing.is_some()),
-                                    ] {
-                                        if set {
-                                            c.err(
-                                                Code::StyleNotApplicable,
-                                                Some(p),
-                                                format!("`{p}` only applies to tables"),
-                                            );
-                                        }
-                                    }
+                                    c.table_only(&cell.style);
                                 });
                                 c.children(Some(&cell.style), &cell.children, Ctx::Cell);
                             });
