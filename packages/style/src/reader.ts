@@ -10,10 +10,20 @@ import {
   OBJECT_FITS,
   type ObjectFit,
   type ObjectPosition,
+  type TextDecoration,
   type TextTransform,
   type TransformOp,
 } from './types.ts';
-import { type Dim, evalDim, parseColor, round, splitTopLevel, ValueError } from './values.ts';
+import {
+  type Dim,
+  evalDim,
+  parseColor,
+  round,
+  splitTopLevel,
+  type Units,
+  UNITS_UNKNOWN,
+  ValueError,
+} from './values.ts';
 
 /** The values `ENUMS` may list for each property: the schema's, or the tree builder's. */
 type EnumValues = { [K in keyof Style]?: readonly NonNullable<Style[K]>[] } & {
@@ -88,9 +98,15 @@ export class UnsupportedValueError extends Error {
  */
 const INFINITE_PT = 1e4;
 
-/** Reads the values of one CSS property: its errors name the property. */
+/**
+ * Reads the values of one CSS property: its errors name the property. Lengths take `em`, `vw` and
+ * `vh` against `units`; without them, those lengths are errors.
+ */
 export class Reader {
-  constructor(readonly prop: string) {}
+  constructor(
+    readonly prop: string,
+    readonly units?: Units,
+  ) {}
 
   /** The error for a value of this property, to throw. */
   error(detail: string): UnsupportedValueError {
@@ -112,13 +128,20 @@ export class Reader {
     if (d.u === 'pt') return round(d.v);
     if (d.u === '%') return `${round(d.v)}%`;
     if (d.u === '' && d.v === 0) return 0;
-    throw this.error(`${this.prop}: ${value} (expected a length in pt/px/rem or a percentage)`);
+    if (d.u === 'em') throw this.error(`${this.prop}: ${value} (${UNITS_UNKNOWN})`);
+    throw this.error(
+      `${this.prop}: ${value} (expected a length in pt, mm, cm, in, px, pc, rem, em, vw or vh, or a percentage)`,
+    );
   }
 
+  /**
+   * A length (`12pt`, `5 mm`, `2EM`, `1e1pt`, `calc(10pt + 1em)`) in points, a percentage or
+   * `auto`: one reader for `style` props and classes.
+   */
   len(value: string): Len {
     const v = value.trim();
     if (v === 'auto') return 'auto';
-    return this.dimToLen(this.dim(v), v);
+    return this.dimToLen(this.evaluate(v, false), v);
   }
 
   lenPercent(value: string): LenPercent {
@@ -129,14 +152,22 @@ export class Reader {
 
   points(value: string): number {
     const l = this.len(value);
-    if (typeof l !== 'number') throw this.error(`${this.prop}: ${value} (expected an absolute length)`);
+    if (l === 'auto') throw this.error(`${this.prop}: auto is not allowed here`);
+    if (typeof l !== 'number') throw this.error(`${this.prop}: ${value} (a percentage is not allowed here)`);
     return l;
   }
 
-  /** The value evaluated (`calc()` included), with its unit. */
+  /**
+   * The value evaluated (`calc()` included), with its unit. `em` stays `em`, for a line height or
+   * letter spacing relative to the text it applies to.
+   */
   dim(value: string): Dim {
+    return this.evaluate(value, true);
+  }
+
+  private evaluate(value: string, keepEm: boolean): Dim {
     try {
-      return evalDim(value);
+      return evalDim(value, this.units, keepEm);
     } catch (e) {
       if (!(e instanceof ValueError)) throw e;
       throw this.error(`${this.prop}: ${value} (${e.message})`);
@@ -239,6 +270,19 @@ export class Reader {
     return n;
   }
 
+  /**
+   * CSS `text-decoration-line`. A run has one line, so both lines (`underline line-through`)
+   * draw the line-through.
+   */
+  decorationLine(value: string): TextDecoration {
+    const lines = new Set(value.trim().split(/\s+/));
+    const known = ['none', 'underline', 'line-through'];
+    if ([...lines].some((l) => !known.includes(l)) || (lines.has('none') && lines.size > 1)) {
+      throw this.error(`${this.prop}: ${value} (supported: none, underline, line-through, or both lines)`);
+    }
+    return lines.has('line-through') ? 'lineThrough' : lines.has('underline') ? 'underline' : 'none';
+  }
+
   radius(v: string): number {
     if (v.includes('/') || splitTopLevel(v, ' ').length > 1) {
       throw this.error(`${this.prop}: ${v} (elliptical corners are not supported)`);
@@ -247,9 +291,12 @@ export class Reader {
   }
 }
 
-/** Parses a CSS transform function list (`skewX(12deg) translate(2pt, 50%)`). */
-export function parseTransform(prop: string, value: string): TransformOp[] {
-  const r = new Reader(prop);
+/**
+ * Parses a CSS transform function list (`skewX(12deg) translate(2pt, 50%)`). Lengths take `em`,
+ * `vw` and `vh` against `units`.
+ */
+export function parseTransform(prop: string, value: string, units?: Units): TransformOp[] {
+  const r = new Reader(prop, units);
   const skew = (v: string): number => {
     const a = r.angle(v);
     if (a <= -90 || a >= 90) throw r.error(`${prop}: ${value} (a skew angle is between -90deg and 90deg)`);
@@ -329,9 +376,12 @@ function keywordsYFirst(a: string, b: string): boolean {
   return isKeyword(a) && isKeyword(b) && (isOnlyY(a) || isOnlyX(b)) && !isOnlyY(b) && !isOnlyX(a);
 }
 
-/** Parses `transform-origin` (keywords in either order, lengths, percentages). */
-export function parseOrigin(prop: string, value: string): [LenPercent, LenPercent] {
-  const r = new Reader(prop);
+/**
+ * Parses `transform-origin` (keywords in either order, lengths, percentages). Lengths take `em`,
+ * `vw` and `vh` against `units`.
+ */
+export function parseOrigin(prop: string, value: string, units?: Units): [LenPercent, LenPercent] {
+  const r = new Reader(prop, units);
   const parts = splitTopLevel(value, ' ');
   if (parts.length === 0 || parts.length > 3) throw r.error(`${prop}: ${value}`);
   if (parts.length === 3 && parts[2] !== '0' && parts[2] !== '0px') {

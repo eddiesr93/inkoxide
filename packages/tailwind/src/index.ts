@@ -2,11 +2,11 @@ import type { FlatStyle } from '@inkoxide/style';
 
 import { Lru } from './cache.ts';
 import { DEFAULT_THEME_CSS, TailwindCompiler as Compiler } from './compile.ts';
-import { mapClasses, splitClasses, type UnsupportedUtilityError } from './parse.ts';
+import { mapClasses, splitClasses, type TwUnits, type UnsupportedUtilityError } from './parse.ts';
 import * as supported from './supported.ts';
 
 export { DEFAULT_THEME_CSS } from './compile.ts';
-export { UnsupportedUtilityError } from './parse.ts';
+export { type TwUnits, UnsupportedUtilityError } from './parse.ts';
 // The style values it shares with @inkoxide/react, from @inkoxide/style.
 export {
   BORDER_STYLES,
@@ -42,6 +42,7 @@ export {
   type TransformOp,
   type TwKey,
   type TwStyle,
+  type Units,
   UnsupportedValueError,
   type WhiteSpace,
 } from '@inkoxide/style';
@@ -128,11 +129,13 @@ function report(e: UnsupportedUtilityError): void {
 }
 
 /**
- * The engine style for a class string. Synchronous; call `initTailwind()` once first.
- * Results are cached by the normalised string, so the hot path is one map lookup. Do not
- * mutate the returned object.
+ * The engine style for a class string. Synchronous; call `initTailwind()` once first. `units` are
+ * what `em`, `vw` and `vh` in arbitrary values (`w-[2em]`, `h-[10vh]`) resolve against; without
+ * them such a value is unsupported. Results are cached by the normalised string (and, for a style
+ * that depends on them, by the units), so the hot path is one map lookup. Do not mutate the
+ * returned object.
  */
-export function tw(className: string | undefined | null | false): FlatStyle {
+export function tw(className: string | undefined | null | false, units?: TwUnits): FlatStyle {
   if (!className) return EMPTY;
   const hit = cache.get(className);
   if (hit) return hit;
@@ -141,7 +144,19 @@ export function tw(className: string | undefined | null | false): FlatStyle {
   const key = classes.join(' ');
   let style = key === className ? undefined : cache.get(key);
   if (!style) {
-    style = classes.length === 0 ? EMPTY : mapClasses(compiler, classes, report);
+    // A style that depends on the units is cached under them, never under the classes alone.
+    const unitsKey = units
+      ? `${key}\n${units.parentFontSize} ${units.fontSize} ${units.page.width} ${units.page.height}`
+      : `${key}\n`;
+    const relative = cache.get(unitsKey);
+    if (relative) return relative;
+    const mapped =
+      classes.length === 0 ? { style: EMPTY, relative: false } : mapClasses(compiler, classes, report, units);
+    if (mapped.relative) {
+      cache.set(unitsKey, mapped.style);
+      return mapped.style;
+    }
+    style = mapped.style;
     cache.set(key, style);
   }
   cache.set(className, style);

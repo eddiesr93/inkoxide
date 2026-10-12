@@ -7,10 +7,11 @@ import {
   parseTransform,
   round,
   splitTopLevel,
+  type Units,
   UnsupportedValueError,
   ValueError,
 } from '@inkoxide/style';
-import { parseFontFamily, Reader, substituteVars } from '@inkoxide/style/internal';
+import { parseFontFamily, Reader, substituteVars, UNITS_UNKNOWN } from '@inkoxide/style/internal';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
 
@@ -103,9 +104,9 @@ function sidesOf(logical: string): readonly Side[] {
   }
 }
 
-/** Applies one resolved declaration to the style being built. */
-function applyDecl(s: FlatStyle, prop: string, value: string): void {
-  const r = new Reader(prop);
+/** Applies one resolved declaration to the style being built, with its lengths in `units`. */
+function applyDecl(s: FlatStyle, prop: string, value: string, units: Units): void {
+  const r = new Reader(prop, units);
   // The style by key, for the keys built from the property name (`paddingTop`, `insetLeft`).
   const keyed = s as Record<string, unknown>;
   const v = value.trim();
@@ -300,16 +301,16 @@ function applyDecl(s: FlatStyle, prop: string, value: string): void {
     }
     case 'transform':
       if (v === 'none' || v === '') delete s.transform;
-      else s.transform = parseTransform(prop, v);
+      else s.transform = parseTransform(prop, v, units);
       return;
     case 'transform-origin':
-      s.transformOrigin = parseOrigin(prop, v);
+      s.transformOrigin = parseOrigin(prop, v, units);
       return;
     case 'object-fit':
       s.objectFit = r.oneOf('objectFit', v);
       return;
     case 'object-position':
-      s.objectPosition = parseObjectPosition(prop, v);
+      s.objectPosition = parseObjectPosition(prop, v, (x) => r.lenPercent(x));
       return;
     case 'text-decoration-color': {
       const c = r.color(v);
@@ -414,10 +415,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string): void {
       else throw r.error(`text-align: ${v}`);
       return;
     case 'text-decoration-line':
-      if (v === 'underline') s.textDecoration = 'underline';
-      else if (v === 'line-through') s.textDecoration = 'lineThrough';
-      else if (v === 'none') s.textDecoration = 'none';
-      else throw r.error(`text-decoration-line: ${v}`);
+      s.textDecoration = r.decorationLine(v);
       return;
     case 'text-transform':
       s.textTransform = r.oneOf('textTransform', v);
@@ -477,17 +475,29 @@ function applyDecl(s: FlatStyle, prop: string, value: string): void {
   throw r.error(`the CSS property "${prop}" has no Inkoxide equivalent`);
 }
 
+/** What `em`, `vw` and `vh` in a class string's values resolve against, in points. */
+export interface TwUnits {
+  /** The inherited font size: `em` in `text-[…]`, and in other values unless the element sets one. */
+  parentFontSize: number;
+  /** The element's font size when its `style` sets it, which wins over the classes' own. */
+  fontSize?: number | undefined;
+  /** The page size, for `vw` and `vh` (1% of the width and height). */
+  page: { width: number; height: number };
+}
+
 /**
  * Maps a list of classes to one style, resolving CSS custom properties the way a browser would
  * for a single element: `--tw-*` values set by any class on the element, then `@property`
  * initial values, then the theme. Conflicts are settled by Tailwind's own stylesheet order.
+ * `relative` tells whether the style depends on `units` (a value in `em`, `vw` or `vh`); without
+ * `units`, such a value is an error.
  */
 export function mapClasses(
   compiler: TailwindCompiler,
   classes: string[],
   onError: (e: UnsupportedUtilityError) => void,
-): FlatStyle {
-  let style: FlatStyle = {};
+  units?: TwUnits,
+): { style: FlatStyle; relative: boolean } {
   const elementVars = new Map<string, string>();
   const initials = new Map<string, string>();
   const usable: string[] = [];
@@ -515,6 +525,47 @@ export function mapClasses(
   const lookup = (name: string): string | undefined =>
     elementVars.get(name) ?? initials.get(name) ?? compiler.themeValue(name);
 
+  // Read on use, to tell a style that depends on the units from one that can be cached alone.
+  let relative = false;
+  let ownEm = false;
+  const unitsOf = (em: () => number, own: boolean): Units => ({
+    get em() {
+      relative = true;
+      ownEm ||= own;
+      if (!units) throw new ValueError(UNITS_UNKNOWN);
+      return em();
+    },
+    get page() {
+      relative = true;
+      if (!units) throw new ValueError(UNITS_UNKNOWN);
+      return units.page;
+    },
+  });
+  const parentEm = () => units?.parentFontSize ?? 0;
+  const fontUnits = unitsOf(parentEm, false);
+  const apply = (em: () => number): FlatStyle =>
+    applyClasses(compiler, ordered, lookup, onError, (prop) =>
+      prop === 'font-size' ? fontUnits : unitsOf(em, true),
+    );
+
+  let style = apply(() => units?.fontSize ?? parentEm());
+  // `em` is the element's font size, which a class may set after the lengths that use it.
+  const classSize = style.fontSize;
+  if (units && ownEm && units.fontSize === undefined && classSize !== undefined && classSize !== parentEm()) {
+    style = apply(() => classSize);
+  }
+  return { style, relative };
+}
+
+/** Applies the declarations of `ordered` classes, each with the units `unitsFor` its property. */
+function applyClasses(
+  compiler: TailwindCompiler,
+  ordered: string[],
+  lookup: (name: string) => string | undefined,
+  onError: (e: UnsupportedUtilityError) => void,
+  unitsFor: (prop: string) => Units,
+): FlatStyle {
+  let style: FlatStyle = {};
   for (const cls of ordered) {
     const r = compiler.candidate(cls);
     if (!r.ok) continue;
@@ -549,7 +600,7 @@ export function mapClasses(
         // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
         const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
         try {
-          applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup));
+          applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup), unitsFor(prop));
         } catch (e) {
           // A value that does not parse at all (`var()` with no value, five edges): name the property.
           if (e instanceof ValueError)

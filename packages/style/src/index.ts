@@ -1,6 +1,7 @@
 // Style values for Inkoxide: the flat style object that @inkoxide/react builds from `style` props
 // and @inkoxide/tailwind from classes, the CSS units, and the readers of the values both take
-// alike: colours, `flex`, transforms, transform origins and object positions.
+// alike: lengths (`calc()`, `em`, `vw` and `vh` included), keywords, colours, `flex`,
+// transforms, transform origins and object positions.
 import * as internal from './internal.ts';
 
 export { parseObjectPosition, parseOrigin, parseTransform, UnsupportedValueError } from './reader.ts';
@@ -13,6 +14,7 @@ export {
   parseFlex,
   round,
   splitTopLevel,
+  type Units,
   ValueError,
 } from './values.ts';
 

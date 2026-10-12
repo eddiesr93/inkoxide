@@ -38,7 +38,7 @@ const PACKAGES = [
     sideEffects: false,
     readme: {
       blurb:
-        'Reads CSS values into Inkoxide styles: units, colours, `flex`, transforms, transform ' +
+        'Reads CSS values into Inkoxide styles: lengths, colours, `flex`, transforms, transform ' +
         'origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
         '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
       install: 'npm install @inkoxide/style',
@@ -63,6 +63,10 @@ PT_PER_UNIT.mm; // 2.834645669291339 (72 / 25.4)`,
 await initTailwind(); // once per process
 const style = tw('p-4 text-lg font-bold text-slate-700');
 console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, color: […] }
+
+// \`em\`, \`vw\` and \`vh\` in arbitrary values resolve against the units you give, in points:
+// the inherited font size (and the element's, when something else sets it) and the page size.
+tw('w-[2em] h-[10vh]', { parentFontSize: 12, page: { width: 595.28, height: 841.89 } }); // { width: 24, height: 84.189 }
 
 // Options, all optional: \`css\`, a theme (extend the bundled one: its font stacks name the
 // bundled fonts); \`base\`, the directory its @imports resolve from; \`strict\` (default: outside

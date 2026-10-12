@@ -73,6 +73,54 @@ describe('lengths', () => {
   it('are kept above 10000pt in a transform', () => {
     expect(parseTransform('transform', 'translate(20000pt, 0)')).toEqual([{ translate: [20000, 0] }]);
   });
+
+  it('take units in any case, exponents, a space before the unit and calc()', () => {
+    const r = new Reader('width');
+    expect(['5PX', '1e1pt', '5 pt', 'calc(10pt + 2pt)', '50%', '0', 'auto'].map((v) => r.len(v))).toEqual([
+      3.75,
+      10,
+      5,
+      12,
+      '50%',
+      0,
+      'auto',
+    ]);
+    expect(() => r.len('3ex')).toThrow('width: 3ex (unsupported unit "ex")');
+    expect(() => r.len('1e999pt')).toThrow('width: 1e999pt (too large a number)');
+  });
+
+  it('take em, vw and vh in the units given, and fail without them', () => {
+    const units = { em: 10, page: { width: 600, height: 800 } };
+    const r = new Reader('width', units);
+    expect(['2em', '10vw', '10vh', 'calc(1em + 2pt)'].map((v) => r.len(v))).toEqual([20, 60, 80, 12]);
+    expect(parseTransform('transform', 'translate(1em, 10vw)', units)).toEqual([{ translate: [10, 60] }]);
+    expect(parseOrigin('transform-origin', '1em 10vh', units)).toEqual([10, 80]);
+    for (const v of ['2em', '10vw']) {
+      expect(() => new Reader('width').len(v)).toThrow(
+        `width: ${v} (depends on the font or page size, which is not known here)`,
+      );
+    }
+    // A line height or letter spacing in `em` stays relative to its text.
+    expect(r.dim('1.5em')).toEqual({ v: 1.5, u: 'em' });
+  });
+
+  it('are absolute where the property takes no percentage or auto', () => {
+    const r = new Reader('fontSize');
+    expect(() => r.points('50%')).toThrow('fontSize: 50% (a percentage is not allowed here)');
+    expect(() => r.points('auto')).toThrow('fontSize: auto is not allowed here');
+  });
+});
+
+describe('Reader.decorationLine', () => {
+  it('reads one line or both, which draw the line-through', () => {
+    const r = new Reader('text-decoration-line');
+    expect(
+      ['none', 'underline', 'line-through', 'underline line-through'].map((v) => r.decorationLine(v)),
+    ).toEqual(['none', 'underline', 'lineThrough', 'lineThrough']);
+    for (const bad of ['overline', 'none underline', 'lineThrough']) {
+      expect(() => r.decorationLine(bad), bad).toThrow(/^text-decoration-line: /);
+    }
+  });
 });
 
 describe('skew', () => {
@@ -139,6 +187,7 @@ describe('evalDim', () => {
     expect(evalDim('calc(2 * (1rem + 1pt))')).toEqual({ v: 26, u: 'pt' });
     expect(evalDim('0.5turn')).toEqual({ v: 180, u: 'deg' });
     expect(evalDim('1.5em')).toEqual({ v: 1.5, u: 'em' });
+    expect(evalDim('1.5em', { em: 10, page: { width: 0, height: 0 } })).toEqual({ v: 15, u: 'pt' });
   });
 
   it('throws ValueError for what it cannot evaluate', () => {

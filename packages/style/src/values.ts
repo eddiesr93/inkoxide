@@ -19,6 +19,17 @@ export interface Dim {
   u: 'pt' | '%' | 'em' | 'deg' | '';
 }
 
+/** What the relative units of a length resolve against, in points. */
+export interface Units {
+  /** The font size, for `em`: the element's own, or the inherited one in `fontSize` itself. */
+  em: number;
+  /** The page size, for `vw` and `vh` (1% of the width and height). */
+  page: { width: number; height: number };
+}
+
+/** Why `em`, `vw` or `vh` cannot be read without `Units`. */
+export const UNITS_UNKNOWN = 'depends on the font or page size, which is not known here';
+
 /** Finds the index of the `)` matching the `(` at `open`. */
 function matchParen(s: string, open: number): number {
   let depth = 0;
@@ -86,7 +97,9 @@ export function substituteVars(
 // ---------------------------------------------------------------------------------------------
 // calc() evaluation
 
-const UNIT_RE = /^(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(px|rem|em|pt|mm|cm|in|pc|%|deg|turn|rad)?/i;
+// Units in any case (`5PX`), and after a space (`5 pt`), as the `style` prop has always read them.
+const UNIT_RE =
+  /^(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(?:\s*(px|rem|em|pt|mm|cm|in|pc|vw|vh|%|deg|turn|rad))?/i;
 
 /** Points per absolute CSS unit. `rem` is the root font size Tailwind uses. */
 export const PT_PER_UNIT: Readonly<Record<string, number>> = {
@@ -99,15 +112,31 @@ export const PT_PER_UNIT: Readonly<Record<string, number>> = {
   rem: PT_PER_REM,
 };
 
-function toDim(n: number, unit: string | undefined): Dim {
-  const u = (unit ?? '').toLowerCase();
+/** How `CalcParser` reads relative units: against `units`, and `em` kept as `em` with `keepEm`. */
+interface Relative {
+  units: Units | undefined;
+  keepEm: boolean;
+}
+
+function toDim(n: number, unit: string | undefined, rel: Relative): Dim {
+  const d = unitDim(n, (unit ?? '').toLowerCase(), rel);
+  // A number past the float range (`1e999pt`): only `infinity` is infinite.
+  if (!Number.isFinite(d.v)) throw new ValueError('too large a number');
+  return d;
+}
+
+function unitDim(n: number, u: string, { units, keepEm }: Relative): Dim {
   const pt = PT_PER_UNIT[u];
   if (pt !== undefined) return { v: n * pt, u: 'pt' };
   switch (u) {
     case '':
       return { v: n, u: '' };
     case 'em':
-      return { v: n, u: 'em' };
+      return units && !keepEm ? { v: n * units.em, u: 'pt' } : { v: n, u: 'em' };
+    case 'vw':
+    case 'vh':
+      if (!units) throw new ValueError(UNITS_UNKNOWN);
+      return { v: (n * (u === 'vw' ? units.page.width : units.page.height)) / 100, u: 'pt' };
     case '%':
       return { v: n, u: '%' };
     case 'deg':
@@ -117,13 +146,16 @@ function toDim(n: number, unit: string | undefined): Dim {
     case 'rad':
       return { v: (n * 180) / Math.PI, u: 'deg' };
     default:
-      throw new ValueError(`unsupported unit "${unit}"`);
+      throw new ValueError(`unsupported unit "${u}"`);
   }
 }
 
 class CalcParser {
   private i = 0;
-  constructor(private readonly s: string) {}
+  constructor(
+    private readonly s: string,
+    private readonly rel: Relative,
+  ) {}
 
   parse(): Dim {
     const d = this.expr();
@@ -166,7 +198,7 @@ class CalcParser {
     if (rest.startsWith('calc(') || rest.startsWith('(')) {
       const open = this.i + (rest.startsWith('calc(') ? 4 : 0);
       const close = matchParen(this.s, open);
-      const inner = new CalcParser(this.s.slice(open + 1, close)).parse();
+      const inner = new CalcParser(this.s.slice(open + 1, close), this.rel).parse();
       this.i = close + 1;
       return inner;
     }
@@ -182,7 +214,9 @@ class CalcParser {
     const m = UNIT_RE.exec(rest);
     if (!m || m[1] === undefined) throw new ValueError(`cannot evaluate "${this.s}"`);
     this.i += m[0].length;
-    return toDim(Number(m[1]), m[2]);
+    const unit = /^[a-z]+/i.exec(this.s.slice(this.i));
+    if (unit) throw new ValueError(`unsupported unit "${m[2] ?? ''}${unit[0]}"`);
+    return toDim(Number(m[1]), m[2], this.rel);
   }
 }
 
@@ -204,9 +238,13 @@ function div(a: Dim, b: Dim): Dim {
   return { v: a.v / b.v, u: a.u };
 }
 
-/** Evaluates a length-like CSS value (`0.25rem`, `calc(1 / 2 * 100%)`, `11pt`, `1.5`). */
-export function evalDim(value: string): Dim {
-  return new CalcParser(value.trim()).parse();
+/**
+ * Evaluates a length-like CSS value (`0.25rem`, `calc(1 / 2 * 100%)`, `11pt`, `1.5`). With
+ * `units`, `vw`, `vh` and (unless `keepEm`) `em` become points; without, `em` stays `em` and `vw`
+ * and `vh` throw.
+ */
+export function evalDim(value: string, units?: Units, keepEm = false): Dim {
+  return new CalcParser(value.trim(), { units, keepEm }).parse();
 }
 
 /** Rounds away float noise (`0.25rem * 3` = 9.000000000000002 pt) so snapshots stay readable. */

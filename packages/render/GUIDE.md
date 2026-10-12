@@ -62,7 +62,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
 - **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px`
   (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
   `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
-  percentage. A page's `size` takes the units that do not depend on the font or the page.
+  percentage. `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
+  other. A class's arbitrary value (`w-[…]`) takes the same syntax and reads the same. A page's
+  `size` takes the units that do not depend on the font or the page.
   Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
   the element's own size. A percentage height needs a parent with a set height; a child of the
   `Page` takes it of the page.

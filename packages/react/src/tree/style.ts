@@ -3,23 +3,21 @@ import {
   BORDER_STYLES,
   type BorderStyle,
   type ColorValue,
-  type LenPercent,
-  OBJECT_FITS,
-  type ObjectFit,
   type ObjectPosition,
   parseColor,
   parseFlex,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
-  PT_PER_UNIT,
   round,
   splitTopLevel,
   TEXT_INHERITED,
   TEXT_ONLY,
   type TextDecoration,
   type FlatStyle,
+  type Units,
 } from '@inkoxide/style';
+import { Reader } from '@inkoxide/style/internal';
 
 import type { Edges, HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
 
@@ -447,51 +445,35 @@ function setEdges<T>(
   }
 }
 
-/** What relative units resolve against, in points. */
-export interface Units {
-  /** The font size, for `em`. */
-  em: number;
-  /** The page size, for `vw` and `vh` (1% of the width and height). */
-  page: { width: number; height: number };
-}
-
 /**
- * Points from a length: a number, or a string with a unit (`'20mm'`). Percentages and `auto`
- * pass through. `em`, `vw` and `vh` need `units`.
+ * A length of the style key `prop`: a number is points, and a string is read as a class's value
+ * is (`'20mm'`, `'5PX'`, `'calc(100% - 10pt)'`), with `em`, `vw` and `vh` in `units`. `kind` is
+ * what the key takes: `len` a length, a percentage or `auto`, `lenPercent` no `auto`, and
+ * `points` neither. Other values pass through, for validation to report.
  */
-export function toPt<T>(v: number | string | T, units?: Units): number | T | string {
-  if (typeof v !== 'string') return v;
-  if (v === 'auto' || /^-?(\d+\.?\d*|\.\d+)%$/.test(v)) return v;
-  const m = /^(-?(?:\d+\.?\d*|\.\d+))\s*(pt|mm|cm|in|px|pc|rem|em|vw|vh)$/.exec(v.trim());
-  if (!m?.[1] || !m[2])
-    throw new Error(
-      `"${v}" is not a length (use a number of points or a unit: pt, mm, cm, in, px, pc, rem, em, vw, vh)`,
-    );
-  const unit = m[2];
-  let per = PT_PER_UNIT[unit];
-  if (per === undefined) {
-    if (!units) throw new Error(`"${v}" depends on the font or page size, which is not known here`);
-    per = unit === 'em' ? units.em : (unit === 'vw' ? units.page.width : units.page.height) / 100;
-  }
-  const pt = round(Number(m[1]) * per);
-  if (!Number.isFinite(pt)) throw new Error(`"${v}" is too large a length`);
-  return pt;
+function lengthOf<T>(kind: 'len' | 'lenPercent' | 'points', prop: string, v: T, units?: Units) {
+  return typeof v === 'string' ? new Reader(prop, units)[kind](v) : v;
 }
 
+/** Points from a length prop (`12`, `'20mm'`); `em`, `vw` and `vh` need `units`. */
+export function toPt(prop: string, v: number | string, units?: Units): number {
+  return typeof v === 'number' ? v : new Reader(prop, units).points(v);
+}
+
+/** The keys that take one length, and what kind: see `lengthOf`. */
 const LENGTH_KEYS = [
-  'fontSize',
-  'width',
-  'height',
-  'minWidth',
-  'minHeight',
-  'maxWidth',
-  'maxHeight',
-  'flexBasis',
-  'rowGap',
-  'columnGap',
-  'borderSpacing',
-  'textIndent',
-  'decorationThickness',
+  ['width', 'len'],
+  ['height', 'len'],
+  ['minWidth', 'len'],
+  ['minHeight', 'len'],
+  ['maxWidth', 'len'],
+  ['maxHeight', 'len'],
+  ['flexBasis', 'len'],
+  ['rowGap', 'lenPercent'],
+  ['columnGap', 'lenPercent'],
+  ['borderSpacing', 'points'],
+  ['textIndent', 'points'],
+  ['decorationThickness', 'points'],
 ] as const;
 
 /**
@@ -505,8 +487,10 @@ function setAxesAndSides(
   each: Record<'Top' | 'Right' | 'Bottom' | 'Left', string | number | undefined>,
   units: Units | undefined,
 ): void {
+  // Padding takes no `auto`.
+  const kind = prop === 'padding' ? 'lenPercent' : 'len';
   const set = (side: string, v: string | number | undefined) => {
-    if (v !== undefined) out[`${prop}${side}`] = v === 'auto' ? 'auto' : toPt(v, units);
+    if (v !== undefined) out[`${prop}${side}`] = lengthOf(kind, `${prop}${side}`, v, units);
   };
   set('Left', axis.x);
   set('Right', axis.x);
@@ -526,15 +510,10 @@ export function withStyleProp(
   parentSize: number,
   page: Units['page'],
 ): FlatStyle {
-  const list = (Array.isArray(style) ? style : [style]).filter((p): p is StyleProp => !!p);
+  const list = styleList(style);
   const outer: Units = { em: parentSize, page };
   // The font size comes first: `em` in every other length depends on it.
-  let em = base.fontSize ?? parentSize;
-  for (const p of list) {
-    const size = toPt(p.fontSize, outer);
-    if (typeof size === 'number') em = size;
-  }
-  const units: Units = { em, page };
+  const units: Units = { em: styleFontSize(style, parentSize, page) ?? base.fontSize ?? parentSize, page };
   let s = base;
   for (const p of list) s = over(s, fromStyleProp(p, units, outer));
   for (const [key, v] of Object.entries(s)) {
@@ -542,6 +521,24 @@ export function withStyleProp(
     if (bad !== undefined) throw new Error(`${key}: ${bad} is not a finite number`);
   }
   return s;
+}
+
+function styleList(style: StyleInput): StyleProp[] {
+  return (Array.isArray(style) ? style : [style]).filter((p): p is StyleProp => !!p);
+}
+
+/** The font size a `style` prop sets, in points: `em` in it is `parentSize`. */
+export function styleFontSize(
+  style: StyleInput,
+  parentSize: number,
+  page: Units['page'],
+): number | undefined {
+  let size: number | undefined;
+  for (const p of styleList(style)) {
+    const v = lengthOf('points', 'fontSize', p.fontSize, { em: parentSize, page });
+    if (typeof v === 'number') size = v;
+  }
+  return size;
 }
 
 /** Keys for every side or corner at once, and the per-side or per-corner keys they replace. */
@@ -582,7 +579,6 @@ function nonFinite(v: unknown): number | undefined {
  * (the parent's font size is its `em`); `units` resolve everything else.
  */
 export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): FlatStyle {
-  const len = (v: number | string) => toPt(v, units);
   const {
     color,
     backgroundColor,
@@ -645,11 +641,11 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   out.decorationStyle ??= textDecorationStyle;
   out.decorationThickness ??= textDecorationThickness;
   if (textOverflow !== undefined) out.ellipsis ??= overflowEllipsis(textOverflow);
-  if (objectFit !== undefined) out.objectFit = fitOf(objectFit);
+  if (objectFit !== undefined) out.objectFit = new Reader('objectFit').oneOf('objectFit', String(objectFit));
   if (objectPosition !== undefined) out.objectPosition = positionOf(objectPosition, units);
-  for (const k of LENGTH_KEYS)
-    if (out[k] !== undefined) out[k] = toPt(out[k] as string, k === 'fontSize' ? fontUnits : units);
-  if (gap !== undefined) out.rowGap = out.columnGap = len(gap);
+  if (out.fontSize !== undefined) out.fontSize = lengthOf('points', 'fontSize', out.fontSize, fontUnits);
+  for (const [k, kind] of LENGTH_KEYS) if (out[k] !== undefined) out[k] = lengthOf(kind, k, out[k], units);
+  if (gap !== undefined) out.rowGap = out.columnGap = lengthOf('lenPercent', 'gap', gap, units);
   if (color !== undefined) {
     const c = toColor(color);
     if (c !== 'currentColor') out.color = c;
@@ -661,10 +657,11 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     if (c !== 'currentColor') out.decorationColor = c;
   }
   if (lineHeight !== undefined) out.lineHeight = { mult: lineHeight };
-  if (letterSpacing !== undefined) out.letterSpacing = { pt: len(letterSpacing) };
+  if (letterSpacing !== undefined)
+    out.letterSpacing = { pt: lengthOf('points', 'letterSpacing', letterSpacing, units) };
   if (fontFamily !== undefined) out.fontFamily = typeof fontFamily === 'string' ? [fontFamily] : fontFamily;
-  setEdges(out, 'padding', '', padding, len);
-  setEdges(out, 'margin', '', margin, len);
+  setEdges(out, 'padding', '', padding, (v) => lengthOf('lenPercent', 'padding', v, units));
+  setEdges(out, 'margin', '', margin, (v) => lengthOf('len', 'margin', v, units));
   // Axis and per-side keys are more specific than the shorthand: applied after it, in that order.
   setAxesAndSides(
     out,
@@ -690,14 +687,14 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     },
     units,
   );
-  setEdges(out, 'inset', '', inset, len);
+  setEdges(out, 'inset', '', inset, (v) => lengthOf('len', 'inset', v, units));
   setAxesAndSides(out, 'inset', {}, { Top: top, Right: right, Bottom: bottom, Left: left }, units);
-  setEdges(out, 'border', 'Width', borderWidth, len);
+  setEdges(out, 'border', 'Width', borderWidth, (v) => lengthOf('points', 'borderWidth', v, units));
   setEdges<string | Color>(out, 'border', 'Color', borderColor, toColor);
   // Per-side keys (`borderBottomWidth`, …) arrive in `rest`; convert their units and colours here.
   for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
     const w = out[`border${side}Width`];
-    if (w !== undefined) out[`border${side}Width`] = len(w as string | number);
+    if (w !== undefined) out[`border${side}Width`] = lengthOf('points', `border${side}Width`, w, units);
     const c = out[`border${side}Color`];
     if (c !== undefined) out[`border${side}Color`] = toColor(c as string | Color);
   }
@@ -721,21 +718,25 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     }
     if (b.style !== undefined) out.borderStyle ??= b.style;
   }
+  const radius = (v: number | string) =>
+    typeof v === 'string' ? new Reader('borderRadius', units).radius(v) : v;
   if (typeof borderRadius === 'object') {
     const r = borderRadius;
-    if (r.topLeft !== undefined) out.borderTopLeftRadius = len(r.topLeft);
-    if (r.topRight !== undefined) out.borderTopRightRadius = len(r.topRight);
-    if (r.bottomRight !== undefined) out.borderBottomRightRadius = len(r.bottomRight);
-    if (r.bottomLeft !== undefined) out.borderBottomLeftRadius = len(r.bottomLeft);
+    if (r.topLeft !== undefined) out.borderTopLeftRadius = radius(r.topLeft);
+    if (r.topRight !== undefined) out.borderTopRightRadius = radius(r.topRight);
+    if (r.bottomRight !== undefined) out.borderBottomRightRadius = radius(r.bottomRight);
+    if (r.bottomLeft !== undefined) out.borderBottomLeftRadius = radius(r.bottomLeft);
   } else if (borderRadius !== undefined) {
-    out.borderRadius = len(borderRadius);
+    out.borderRadius = radius(borderRadius);
   }
-  if (translate !== undefined) out.translate = translate.map(len);
-  if (typeof transform === 'string') out.transform = parseTransform('transform', transform);
+  if (translate !== undefined)
+    out.translate = translate.map((v) => lengthOf('lenPercent', 'translate', v, units));
+  if (typeof transform === 'string') out.transform = parseTransform('transform', transform, units);
   else if (transform !== undefined) out.transform = transform;
   if (typeof transformOrigin === 'string')
-    out.transformOrigin = parseOrigin('transformOrigin', transformOrigin);
-  else if (transformOrigin !== undefined) out.transformOrigin = transformOrigin.map(len);
+    out.transformOrigin = parseOrigin('transformOrigin', transformOrigin, units);
+  else if (transformOrigin !== undefined)
+    out.transformOrigin = transformOrigin.map((v) => lengthOf('lenPercent', 'transformOrigin', v, units));
   for (const k of Object.keys(out)) {
     if (out[k] === undefined) delete out[k];
     else if (!KNOWN_KEYS.has(k)) throw new Error(`unknown style property "${k}"`);
@@ -778,19 +779,9 @@ const KNOWN_KEYS: ReadonlySet<string> = new Set([
   'objectPosition',
 ]);
 
-/** CSS `text-decoration-line`. A run has one line, so both lines draw the line-through. */
+/** CSS `text-decoration-line`, and `lineThrough`, the schema's spelling of `line-through`. */
 function decorationLine(v: string): TextDecoration {
-  const lines = new Set(
-    v
-      .trim()
-      .split(/\s+/)
-      .map((l) => (l === 'lineThrough' ? 'line-through' : l)),
-  );
-  const known = ['none', 'underline', 'line-through'];
-  if ([...lines].some((l) => !known.includes(l)) || (lines.has('none') && lines.size > 1)) {
-    throw new Error(`textDecoration "${v}" is not none, underline, line-through or "underline line-through"`);
-  }
-  return lines.has('line-through') ? 'lineThrough' : lines.has('underline') ? 'underline' : 'none';
+  return new Reader('textDecoration').decorationLine(String(v).replace(/\blineThrough\b/g, 'line-through'));
 }
 
 function overflowEllipsis(v: string): boolean {
@@ -798,27 +789,13 @@ function overflowEllipsis(v: string): boolean {
   return v === 'ellipsis';
 }
 
-function fitOf(v: string): ObjectFit {
-  if (!(OBJECT_FITS as readonly string[]).includes(v))
-    throw new Error(`objectFit "${v}" is not fill, contain, cover or none`);
-  return v as ObjectFit;
-}
-
 /** CSS `object-position`: one or two keywords, lengths (in the style units) or percentages. */
 function positionOf(v: unknown, units: Units | undefined): ObjectPosition {
   if (typeof v !== 'string') {
     throw new Error(`objectPosition must be a CSS string such as 'left top' or '25% 75%', not ${typeof v}`);
   }
-  return parseObjectPosition('objectPosition', v, (part) => {
-    if (part === '0') return 0;
-    try {
-      const pt = toPt(part, units);
-      if (pt !== 'auto') return pt as LenPercent;
-    } catch (e) {
-      throw new Error(`objectPosition: ${v} (${(e as Error).message})`);
-    }
-    throw new Error(`objectPosition: ${v} (auto is not a position)`);
-  });
+  const r = new Reader('objectPosition', units);
+  return parseObjectPosition('objectPosition', v, (part) => r.lenPercent(part));
 }
 
 /** CSS `thin`, `medium` and `thick`: 1px, 3px and 5px. */
@@ -847,9 +824,14 @@ function borderShorthand(
       if (style !== undefined) fail();
       style = w;
     } else if (w in BORDER_WIDTHS || /^[-+]?\.?\d/.test(w)) {
-      const pt = w in BORDER_WIDTHS ? BORDER_WIDTHS[w as keyof typeof BORDER_WIDTHS] : toPt(w, units);
-      if (width !== undefined || typeof pt !== 'number' || pt < 0) fail();
-      width = pt as number;
+      let pt: number | undefined;
+      try {
+        pt = w in BORDER_WIDTHS ? BORDER_WIDTHS[w as keyof typeof BORDER_WIDTHS] : toPt(key, w, units);
+      } catch {
+        fail();
+      }
+      if (width !== undefined || pt === undefined || pt < 0) fail();
+      width = pt;
     } else {
       if (color !== undefined) fail();
       try {
@@ -878,5 +860,5 @@ function flexShorthand(v: number | string, units: Units | undefined): [number, n
     if (!Number.isFinite(n)) throw new Error(`flex "${v}" is not a number or "grow shrink basis"`);
     return n;
   };
-  return parseFlex(v, number, (b) => toPt(b, units));
+  return parseFlex(v, number, (b) => lengthOf('len', 'flex', b, units));
 }

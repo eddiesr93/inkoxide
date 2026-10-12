@@ -225,6 +225,52 @@ describe('arbitrary lengths', () => {
   it('cap an infinite radius', () => {
     expect(tw('rounded-full')).toEqual({ borderRadius: 1e4 });
   });
+
+  it('take units in any case, exponents and a space before the unit, as the style prop does', () => {
+    expect(tw('w-[5PX]')).toEqual({ width: 3.75 });
+    expect(tw('w-[1e1pt]')).toEqual({ width: 10 });
+    expect(tw('w-[5_pt]')).toEqual({ width: 5 });
+    expect(errorOf('w-[3ex]').reason).toBe('width: 3ex (unsupported unit "ex")');
+  });
+});
+
+describe('em, vw and vh', () => {
+  const page = { width: 600, height: 800 };
+
+  it('resolve against the units given, and fail without them', () => {
+    const units = { parentFontSize: 10, page };
+    expect(tw('w-[2em] h-[10vh]', units)).toEqual({ width: 20, height: 80 });
+    expect(tw('w-[calc(1em+2pt)] translate-x-[10vw]', units)).toEqual({ width: 12, translate: [60, 0] });
+    expect(errorOf('w-[2em]').reason).toBe(
+      'width: 2em (depends on the font or page size, which is not known here)',
+    );
+    expect(errorOf('h-[10vh]').property).toBe('height');
+  });
+
+  it('take the element’s font size, the inherited one in text-[…], and a style’s over the classes’', () => {
+    expect(tw('text-[2em] w-[1em]', { parentFontSize: 10, page })).toEqual({ fontSize: 20, width: 20 });
+    expect(tw('w-[2em] text-[15pt]', { parentFontSize: 10, page })).toEqual({ fontSize: 15, width: 30 });
+    expect(tw('w-[2em] text-[15pt]', { parentFontSize: 10, fontSize: 12, page })).toEqual({
+      fontSize: 15,
+      width: 24,
+    });
+  });
+
+  it('are cached by the units, and other classes by the class string alone', () => {
+    expect(tw('w-[1em]', { parentFontSize: 10, page })).toEqual({ width: 10 });
+    expect(tw('w-[1em]', { parentFontSize: 11, page })).toEqual({ width: 11 });
+    expect(tw('w-[1em]', { parentFontSize: 10, page })).toEqual({ width: 10 });
+    const fixed = tw('w-[7pt]', { parentFontSize: 10, page });
+    expect(tw('w-[7pt]')).toBe(fixed);
+    expect(tw('w-[7pt]', { parentFontSize: 11, page })).toBe(fixed);
+  });
+
+  it('keep line height and letter spacing relative to the text', () => {
+    expect(tw('leading-[2em] tracking-[0.1em]', { parentFontSize: 10, page })).toEqual({
+      lineHeight: { mult: 2 },
+      letterSpacing: { em: 0.1 },
+    });
+  });
 });
 
 describe('values out of the range the engine takes', () => {

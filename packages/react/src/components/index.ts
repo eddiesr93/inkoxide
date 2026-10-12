@@ -55,8 +55,11 @@ export type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
  * `'1.5cm'`, `'1in'`, `'12pt'`, `'16px'`, `'1pc'` = 12pt, `'1rem'` = 12pt as in Tailwind).
  */
 export type AbsoluteLength = number | `${number}${'pt' | 'mm' | 'cm' | 'in' | 'px' | 'pc' | 'rem'}`;
-/** A length, or one relative to the font size (`'1.5em'`) or the page width or height (`'50vw'`, `'10vh'`). */
-export type Length = AbsoluteLength | `${number}${'em' | 'vw' | 'vh'}`;
+/**
+ * A length, or one relative to the font size (`'1.5em'`) or the page width or height (`'50vw'`,
+ * `'10vh'`), or a CSS `calc()` of them (`'calc(10mm + 1em)'`).
+ */
+export type Length = AbsoluteLength | `${number}${'em' | 'vw' | 'vh'}` | `calc(${string})`;
 /** A length or a percentage of the containing block. */
 export type LengthPercent = Length | `${number}%`;
 export type LengthAuto = LengthPercent | 'auto';

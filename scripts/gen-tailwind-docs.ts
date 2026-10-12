@@ -26,6 +26,9 @@ that are supported and tested; each example is a unit test.
 
 - Lengths are points: **1rem = 12pt**, **1px = 0.75pt**. \`p-4\` is 12pt,
   \`text-base\` 12pt. Use arbitrary values for exact sizes: \`text-[10.5pt]\`, \`p-[5pt_7pt]\`.
+- Arbitrary lengths read as in the \`style\` prop: any absolute unit, \`calc()\`, and \`em\`
+  (the element's font size; in \`text-[…]\`, the inherited one), \`vw\` and \`vh\` (1% of the
+  page's width and height): \`w-[2em]\`, \`h-[10vh]\`.
 - Arbitrary values (\`[…]\`) work for every supported property.
 - In development an unsupported class throws, naming the class and the CSS property; in
   production it is logged once and ignored.

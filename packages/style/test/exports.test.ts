@@ -31,7 +31,15 @@ const MAIN_VALUES = [
 /** Deprecated in the main entry: they moved to `@inkoxide/style/internal`. */
 const DEPRECATED = ['ENUMS', 'Reader', 'evalDim', 'parseFontFamily', 'substituteVars'];
 
-const INTERNAL_VALUES = ['DEFAULT_SANS', 'ENUMS', 'Reader', 'evalDim', 'parseFontFamily', 'substituteVars'];
+const INTERNAL_VALUES = [
+  'DEFAULT_SANS',
+  'ENUMS',
+  'Reader',
+  'UNITS_UNKNOWN',
+  'evalDim',
+  'parseFontFamily',
+  'substituteVars',
+];
 
 const sorted = (names: string[]) => [...names].sort();
 

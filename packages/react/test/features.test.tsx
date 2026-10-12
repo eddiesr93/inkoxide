@@ -35,6 +35,7 @@ import {
   Select,
   Spacer,
   Stop,
+  type StyleProp,
   Svg,
   Table,
   Text,
@@ -154,7 +155,9 @@ describe('paint styles', () => {
       transform: [{ rotate: 10 }, { translate: [0, 2] }],
       transformOrigin: ['100%', '100%'],
     });
-    expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain('not a length');
+    expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain(
+      'width: 3ex (unsupported unit "ex")',
+    );
     // Keywords in either order; names of Object.prototype are not keywords.
     const centerLeft = tree(<View style={{ transformOrigin: 'center left', rotate: 10 }} />);
     expect(first<BoxNode>(centerLeft).style?.transformOrigin).toEqual([0, '50%']);
@@ -261,7 +264,7 @@ describe('relative units in the style prop', () => {
     expect(first<BoxNode>(r).style).toEqual({ width: 420.945, height: 59.528 });
     expect(r.document.pages[0].margin).toEqual({ top: 29.764, left: 10 });
     expect(thrown(() => tree(null, { page: { size: { width: '50vw', height: 100 } } })).message).toContain(
-      '"50vw" depends on the font or page size',
+      'size: 50vw (depends on the font or page size',
     );
   });
 
@@ -270,7 +273,7 @@ describe('relative units in the style prop', () => {
     for (const unit of ['mm', 'vw', 'em'] as const) {
       const width = `${huge}${unit}` as `${number}${typeof unit}`;
       expect(thrown(() => tree(<View style={{ width }} />)).message).toContain(
-        `"${huge}${unit}" is too large a length`,
+        `width: ${huge}${unit} (too large a number)`,
       );
     }
     expect(thrown(() => tree(<View style={{ width: 100 / 0 }} />)).message).toBe(
@@ -280,6 +283,9 @@ describe('relative units in the style prop', () => {
       'marginTop: NaN is not a finite number',
     );
     expect(thrown(() => tree(<View style={{ transform: `rotate(${huge}deg)` }} />)).message).toContain(
+      `transform: ${huge}deg (too large a number)`,
+    );
+    expect(thrown(() => tree(<View style={{ transform: [{ rotate: 1 / 0 }] }} />)).message).toContain(
       'transform: Infinity is not a finite number',
     );
   });
@@ -310,6 +316,66 @@ describe('relative units in the style prop', () => {
     expect(firstProblem({ gridTemplateColumns: ['20000%'] })).toBe(
       'pages[0].children[0].style.gridTemplateColumns[0]: must be a percentage within ±10000%, like "50%"',
     );
+  });
+});
+
+describe('lengths in style and className', () => {
+  /** The style of a View with the length `v` as its width, from `style` and from `w-[…]`. */
+  const widths = (v: string, own: { style?: StyleProp; className?: string } = {}) => {
+    const style = { ...own.style, width: v } as StyleProp;
+    const className = `${own.className ?? ''} w-[${v.replaceAll(' ', '_')}]`;
+    return [
+      first<BoxNode>(tree(<View className={own.className} style={style} />)).style,
+      first<BoxNode>(tree(<View className={className} style={own.style} />)).style,
+    ];
+  };
+
+  it('read the same strings alike', () => {
+    const lengths = {
+      '5PX': 3.75,
+      '1e1pt': 10,
+      'calc(10pt + 2pt)': 12,
+      '5 pt': 5,
+      '2em': 20,
+      '10vw': 59.528,
+      '50%': '50%',
+    };
+    for (const [v, width] of Object.entries(lengths)) {
+      const [fromStyle, fromClass] = widths(v);
+      expect(fromStyle, v).toEqual({ width });
+      expect(fromClass, v).toEqual({ width });
+    }
+    for (const bad of ['3ex', 'calc(100% - 10pt)']) {
+      const fromStyle = thrown(() => widths(bad)[0]).message;
+      const fromClass = thrown(() => tree(<View className={`w-[${bad.replaceAll(' ', '_')}]`} />)).message;
+      expect(fromStyle, bad).toContain(`width: ${bad} (`);
+      expect(fromClass, bad).toContain(`width: ${bad} (`);
+    }
+  });
+
+  it('take em of the font size, the inherited one in fontSize, and the style’s over the class’s', () => {
+    for (const [own, width] of [
+      [{ style: { fontSize: '2em' } }, 40],
+      [{ className: 'text-[2em]' }, 40],
+      [{ className: 'text-[15pt]', style: { fontSize: '1.2em' } }, 24],
+    ] as const) {
+      expect(widths('2em', own), JSON.stringify(own)).toEqual([
+        expect.objectContaining({ width }),
+        expect.objectContaining({ width }),
+      ]);
+    }
+    const sizes = (body(tree(<Text style={{ fontSize: '2em' }}>a</Text>)) as TextNode[]).concat(
+      body(tree(<Text className="text-[2em]">a</Text>)) as TextNode[],
+    );
+    expect(sizes.map((t) => t.runs[0]?.size)).toEqual([20, 20]);
+  });
+
+  it('take em, vw and vh in a transform string', () => {
+    const r = tree(<View style={{ transform: 'translate(1em, 10vh)', transformOrigin: '1em 0' }} />);
+    expect(first<BoxNode>(r).style).toEqual({
+      transform: [{ translate: [10, 84.189] }],
+      transformOrigin: [10, 0],
+    });
   });
 });
 
@@ -383,7 +449,7 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(c).not.toHaveProperty('decoration');
     expect(
       thrown(() => tree(<Text style={{ textDecoration: 'overline' as never }}>x</Text>)).message,
-    ).toContain('textDecoration "overline" is not');
+    ).toContain('textDecoration: overline (supported: none, underline, line-through, or both lines)');
   });
 
   it('maps textOverflow to ellipsis', () => {
@@ -418,7 +484,7 @@ describe('CSS names and shorthands in the style prop', () => {
     );
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectFit: 'scale-down' as never }} />)).message,
-    ).toContain('objectFit "scale-down" is not fill, contain, cover or none');
+    ).toContain('objectFit: scale-down (supported: fill, contain, cover, none)');
   });
 
   it('maps objectPosition and object-* classes to the image objectPosition', () => {
@@ -596,7 +662,9 @@ describe('page filters, sizes and per-page content', () => {
     }
     expect(thrown(() => tree(null, { page: { size: [] } })).message).toContain('[width, height] or [width]');
     expect(thrown(() => tree(null, { page: { size: [1, 2, 3] } })).message).toContain('not 3 values');
-    expect(thrown(() => tree(null, { page: { size: ['10'] } })).message).toContain('"10" is not a length');
+    expect(thrown(() => tree(null, { page: { size: ['10'] } })).message).toContain(
+      'size: 10 (expected a length',
+    );
     // A page has no font size or page to be relative to, and the types say so.
     expect(thrown(() => tree(null, { page: { size: '10em' } })).message).toContain(
       'Unknown page size "10em"',

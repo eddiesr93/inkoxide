@@ -29,6 +29,15 @@ All notable changes to the packages in this repository. The format follows
   loads `@tailwindcss/node`, which registers Node module resolution hooks.
 - The `@inkoxide/tailwind` README documents `DEFAULT_THEME_CSS`, every `initTailwind` option,
   `setTailwindStrict`, `tw.warm` and `tw.cacheSize`.
+- Lengths in `style` and in classes take the same syntax, read by one reader in
+  `@inkoxide/style`. `style` now takes `calc()` (`'calc(10mm + 1em)'`), units in any case
+  (`'5PX'`) and exponents (`'1e1pt'`), and `em`, `vw` and `vh` in a `transform` or
+  `transformOrigin` string. Classes now take `em`, `vw` and `vh` (`w-[2em]`, `h-[10vh]`; `tw()`
+  takes the font and page sizes as a second argument) and a space before the unit
+  (`w-[5_pt]`). A number too large for a float (`'1e999pt'`) is an error in both, and `style`
+  length errors name the property (`width: 3ex (unsupported unit "ex")`). `textDecoration` and
+  `objectFit` in `style` are read as their classes are, and `text-decoration-line` in a class
+  takes both lines (`underline line-through`), as `style` does.
 
 ### Deprecated
 

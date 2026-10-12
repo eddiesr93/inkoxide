@@ -1,6 +1,6 @@
 // `@inkoxide/tailwind` is optional: templates that style with `style` alone do not need it, and
 // it is loaded only when it is installed.
-import type { FlatStyle } from '@inkoxide/style';
+import type { FlatStyle, Units } from '@inkoxide/style';
 import { DEFAULT_SANS } from '@inkoxide/style/internal';
 
 /**
@@ -10,8 +10,17 @@ import { DEFAULT_SANS } from '@inkoxide/style/internal';
 interface Tailwind {
   initTailwind(): Promise<void>;
   isTailwindReady(): boolean;
-  tw(className: string): FlatStyle;
+  tw(className: string, units?: ClassUnits): FlatStyle;
   UnsupportedUtilityError: abstract new (...args: never[]) => Error & { className: string };
+}
+
+/** What `em`, `vw` and `vh` in a class resolve against: `@inkoxide/tailwind`'s `TwUnits`. */
+export interface ClassUnits {
+  /** The inherited font size: `em` in `text-[…]`, and in other values unless the element sets one. */
+  parentFontSize: number;
+  /** The element's font size when its `style` sets it, which wins over the classes' own. */
+  fontSize: number | undefined;
+  page: Units['page'];
 }
 
 /** The loaded module, `null` when it is not installed, `undefined` before `loadTailwind`. */
@@ -55,12 +64,12 @@ function isMissing(e: unknown): boolean {
  * The style of `className`, or why there is none: the reason, to end "needs Tailwind: …". The
  * Tailwind error for an unsupported class is thrown, to report with the element.
  */
-export function classStyle(className: string): FlatStyle | string {
+export function classStyle(className: string, units: ClassUnits): FlatStyle | string {
   if (tailwind === null) return 'install it with `npm install @inkoxide/tailwind`';
   if (!tailwind?.isTailwindReady()) {
     return 'call `await loadTailwind()` before `renderTemplate`, or use `renderToTree`';
   }
-  return tailwind.tw(className);
+  return tailwind.tw(className, units);
 }
 
 /** Whether `e` is Tailwind's error for a class it cannot map. */

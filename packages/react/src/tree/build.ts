@@ -18,7 +18,7 @@ import type {
   TextNode,
   TextRun,
 } from '@inkoxide/schema';
-import { round, type FlatStyle } from '@inkoxide/style';
+import { round, type FlatStyle, type Units } from '@inkoxide/style';
 import { createElement } from 'react';
 
 import { Painter } from '../canvas.ts';
@@ -58,9 +58,9 @@ import {
   resolveColor,
   type TextCtx,
   textNodeStyle,
+  styleFontSize,
   textOnlyKeys,
   toPt,
-  type Units,
   usesPatterns,
   withStyleProp,
 } from './style.ts';
@@ -204,11 +204,24 @@ class Builder {
   /** The element's own style: its classes, then its `style` prop. `parent` is the inherited context. */
   private styleOf(inst: Instance, parent: TextCtx): FlatStyle {
     const className = inst.props.className as string | undefined;
+    const style = inst.props.style as StyleInput | undefined;
+    const invalidStyle = (e: unknown): never =>
+      this.fail(inst, `Invalid style prop on <${HOST_NAME[inst.type]}>: ${(e as Error).message}`, {
+        kind: 'props',
+        cause: e,
+      });
     let s: FlatStyle = {};
     if (className?.trim()) {
+      // `em` in the classes is the element's font size, which its `style` may set.
+      let fontSize: number | undefined;
+      try {
+        fontSize = style && styleFontSize(style, parent.fontSize, this.pageBox);
+      } catch (e) {
+        invalidStyle(e);
+      }
       let classes: FlatStyle | string;
       try {
-        classes = classStyle(className);
+        classes = classStyle(className, { parentFontSize: parent.fontSize, fontSize, page: this.pageBox });
       } catch (e) {
         if (isUnsupportedClass(e)) {
           this.fail(inst, `${e.message}. In className="${className}" on <${HOST_NAME[inst.type]}>.`, {
@@ -228,15 +241,11 @@ class Builder {
       s = classes;
       this.classStyles.set(inst, classes);
     }
-    const style = inst.props.style as StyleInput | undefined;
     if (style) {
       try {
         s = withStyleProp(s, style, parent.fontSize, this.pageBox);
       } catch (e) {
-        this.fail(inst, `Invalid style prop on <${HOST_NAME[inst.type]}>: ${(e as Error).message}`, {
-          kind: 'props',
-          cause: e,
-        });
+        invalidStyle(e);
       }
     }
     if ((s.position as string | undefined) === 'fixed') {
@@ -390,13 +399,13 @@ class Builder {
       | Partial<Record<'top' | 'right' | 'bottom' | 'left', Length>>
       | undefined;
     if (typeof m === 'number' || typeof m === 'string') {
-      const v = this.length(inst, m, units);
+      const v = this.length(inst, 'margin', m, units);
       spec.margin = { top: v, right: v, bottom: v, left: v };
     } else if (m) {
       spec.margin = {};
       for (const k of ['top', 'right', 'bottom', 'left'] as const) {
         const v = m[k];
-        if (v !== undefined) spec.margin[k] = this.length(inst, v, units);
+        if (v !== undefined) spec.margin[k] = this.length(inst, 'margin', v, units);
       }
     }
     // Padding fills the sides the margin prop leaves unset. A percentage is of the page width on
@@ -455,11 +464,11 @@ class Builder {
           kind: 'props',
         });
       }
-      const width = this.length(inst, w);
-      return { width, height: h === undefined ? width : this.length(inst, h) };
+      const width = this.length(inst, 'size', w);
+      return { width, height: h === undefined ? width : this.length(inst, 'size', h) };
     }
     if (typeof size === 'number') {
-      const side = this.length(inst, size);
+      const side = this.length(inst, 'size', size);
       return { width: side, height: side };
     }
     if (typeof size === 'string') {
@@ -467,7 +476,7 @@ class Builder {
       if (preset) return preset;
       let side: unknown;
       try {
-        side = toPt(size);
+        side = toPt('size', size);
       } catch {
         // Not a length either: unknown name.
       }
@@ -478,7 +487,7 @@ class Builder {
         { kind: 'props' },
       );
     }
-    return { width: this.length(inst, size.width), height: this.length(inst, size.height) };
+    return { width: this.length(inst, 'size', size.width), height: this.length(inst, 'size', size.height) };
   }
 
   /** Block children; runs of bare strings become one anonymous text node. */
@@ -514,20 +523,13 @@ class Builder {
     return { em: own.fontSize ?? parent.fontSize, page: this.pageBox };
   }
 
-  /** Points from a length prop (`12`, `'20mm'`); `em`, `vw` and `vh` need `units`. */
-  private length(inst: Instance, v: Length, units?: Units): number {
-    let out: unknown;
+  /** Points from the length prop `prop` (`12`, `'20mm'`); `em`, `vw` and `vh` need `units`. */
+  private length(inst: Instance, prop: string, v: Length, units?: Units): number {
     try {
-      out = toPt(v, units);
+      return toPt(prop, v, units);
     } catch (e) {
-      this.fail(inst, `<${HOST_NAME[inst.type]}>: ${(e as Error).message}.`, { kind: 'props' });
+      return this.fail(inst, `<${HOST_NAME[inst.type]}>: ${(e as Error).message}.`, { kind: 'props' });
     }
-    if (typeof out !== 'number') {
-      this.fail(inst, `<${HOST_NAME[inst.type]}>: "${String(v)}" must be an absolute length.`, {
-        kind: 'props',
-      });
-    }
-    return out;
   }
 
   /**
@@ -663,8 +665,8 @@ class Builder {
         this.noTextOnly(inst, own);
         const s: Style = { ...boxStyle(own, ctx.color) };
         const units = this.units(own, ctx);
-        if (inst.props.h !== undefined) s.height = this.length(inst, inst.props.h as Length, units);
-        if (inst.props.w !== undefined) s.width = this.length(inst, inst.props.w as Length, units);
+        if (inst.props.h !== undefined) s.height = this.length(inst, 'h', inst.props.h as Length, units);
+        if (inst.props.w !== undefined) s.width = this.length(inst, 'w', inst.props.w as Length, units);
         const n: SchemaNode = { type: 'spacer' };
         if (Object.keys(s).length > 0) n.style = s;
         this.flowProps(n, inst);
@@ -1003,8 +1005,8 @@ class Builder {
       this.fail(inst, `<${name}> needs width and height.`, { kind: 'props' });
     }
     const units = this.units(own, ctx);
-    const w = this.length(inst, p.width as Length, units);
-    const h = this.length(inst, p.height as Length, units);
+    const w = this.length(inst, 'width', p.width as Length, units);
+    const h = this.length(inst, 'height', p.height as Length, units);
     let markup: string;
     if (inst.type === HOST.Canvas) {
       const paint = p.paint as ((painter: Painter, w: number, h: number) => void) | undefined;
