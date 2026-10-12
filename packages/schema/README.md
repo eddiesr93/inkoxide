@@ -39,7 +39,7 @@ that breaks either rule.
 ## Client-side validation (ajv)
 
 ```ts
-import Ajv2020 from 'ajv/dist/2020.js';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { schema, enginePath } from '@inkoxide/schema';
 
 const validate = new Ajv2020({ discriminator: true, strict: false, validateFormats: false }).compile(schema);

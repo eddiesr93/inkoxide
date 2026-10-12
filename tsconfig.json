@@ -18,6 +18,8 @@
     "types": ["node"]
   },
   "include": [
+    "packages/style/src",
+    "packages/style/test",
     "packages/tailwind/src",
     "packages/tailwind/test",
     "packages/react/src",

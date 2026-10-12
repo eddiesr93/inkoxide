@@ -70,6 +70,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'flex-auto': { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' },
       'flex-initial': { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
       'flex-none': { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
+      'flex-[30%]': { flexGrow: 1, flexShrink: 1, flexBasis: '30%' },
     },
   },
   {
@@ -163,10 +164,13 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Grid',
     utilities: '`col-span-*`, `col-start-*`, `col-end-*`, `row-span-*`, `row-start-*`, `row-end-*`',
     maps: '`gridColumn`, `gridRow`',
+    notes: 'A start and an end line replace a span, as in CSS: `col-span-3 col-start-1 col-end-3` is 1 / 3.',
     examples: {
       'col-span-2': { gridColumn: { span: 2 } },
       'col-span-full': { gridColumn: { start: 1, end: -1 } },
       'col-start-2 col-end-4': { gridColumn: { start: 2, end: 4 } },
+      'col-span-3 col-start-1 col-end-3': { gridColumn: { start: 1, end: 3 } },
+      'col-[2/span_3]': { gridColumn: { start: 2, span: 3 } },
       'row-span-3': { gridRow: { span: 3 } },
       'row-start-2': { gridRow: { start: 2 } },
     },
@@ -178,6 +182,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     examples: {
       'grid-flow-col': { gridAutoFlow: 'column' },
       'grid-flow-row-dense': { gridAutoFlow: 'row dense' },
+      'grid-flow-dense': { gridAutoFlow: 'row dense' },
       'auto-rows-fr': { gridAutoRows: [{ min: 0, max: '1fr' }] },
       'auto-cols-auto': { gridAutoColumns: ['auto'] },
     },
@@ -308,6 +313,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'rotate-45': { rotate: 45 },
       '-rotate-12': { rotate: -12 },
       'rotate-[30deg]': { rotate: 30 },
+      'rotate-45 rotate-none': {},
     },
   },
   {
@@ -506,9 +512,11 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Text',
     utilities: '`font-sans`, `font-serif`, `font-mono`, `font-display`, `font-[…]`',
     maps: 'run `font` (through the FontRegistry)',
-    notes: 'The first family of the stack that is registered wins.',
+    notes:
+      'The first family of the stack that is registered wins. No serif face is bundled, so the default theme sets `font-serif` to Noto Sans: register a serif and set `--font-serif` in your theme.',
     examples: {
       'font-sans': { fontFamily: ['Inter', 'Noto Sans'] },
+      'font-serif': { fontFamily: ['Noto Sans'] },
       'font-mono': { fontFamily: ['Roboto Mono'] },
     },
   },

@@ -167,3 +167,102 @@ describe('parseObjectPosition', () => {
     }
   });
 });
+
+describe('grid placement', () => {
+  it('keeps a span after the slash', () => {
+    expect(tw('col-[2/span_3]')).toEqual({ gridColumn: { start: 2, span: 3 } });
+    expect(tw('col-[auto/span_2]')).toEqual({ gridColumn: { span: 2 } });
+    expect(tw('row-[span_2/4]')).toEqual({ gridRow: { span: 2, end: 4 } });
+  });
+
+  it('drops a span once both lines are set, as in CSS', () => {
+    expect(tw('col-span-3 col-start-1 col-end-3')).toEqual({ gridColumn: { start: 1, end: 3 } });
+    expect(tw('row-span-2 row-end-4')).toEqual({ gridRow: { span: 2, end: 4 } });
+  });
+});
+
+describe('the flex shorthand', () => {
+  it('reads a lone length as the basis, as CSS and the style prop do', () => {
+    expect(tw('flex-[30%]')).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '30%' });
+    expect(tw('flex-[2_2_10pt]')).toEqual({ flexGrow: 2, flexShrink: 2, flexBasis: 10 });
+    expect(tw('flex-[1_1_0]')).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 0 });
+  });
+
+  it('rejects grow and shrink with units', () => {
+    expect(() => tw('flex-[50%_50%]')).toThrow(/grow and shrink are numbers/);
+  });
+});
+
+/** The error `tw(cls)` throws. */
+function errorOf(cls: string): UnsupportedUtilityError {
+  try {
+    tw(cls);
+  } catch (e) {
+    expect(e).toBeInstanceOf(UnsupportedUtilityError);
+    return e as UnsupportedUtilityError;
+  }
+  return expect.unreachable(`${cls} did not throw`);
+}
+
+describe('errors name the CSS property', () => {
+  it('for values that do not evaluate, edges and var()', () => {
+    expect(errorOf('leading-[abc]').property).toBe('line-height');
+    expect(errorOf('tracking-[abc]').property).toBe('letter-spacing');
+    expect(errorOf('rotate-[abc]').property).toBe('rotate');
+    expect(errorOf('translate-[1pt_2pt_abc]').property).toBe('translate');
+    expect(errorOf('p-[1pt_2pt_3pt_4pt_5pt]').property).toBe('padding');
+    expect(errorOf('m-[var(--nope)]').property).toBe('margin');
+    expect(errorOf('leading-[abc]').message).toContain('line-height: abc');
+  });
+});
+
+describe('arbitrary lengths', () => {
+  it('are not clamped', () => {
+    expect(tw('w-[20000pt]')).toEqual({ width: 20000 });
+    expect(tw('h-[12000pt]')).toEqual({ height: 12000 });
+    expect(tw('-mt-[20000pt]')).toEqual({ marginTop: -20000 });
+  });
+
+  it('cap an infinite radius', () => {
+    expect(tw('rounded-full')).toEqual({ borderRadius: 1e4 });
+  });
+});
+
+describe('values out of the range the engine takes', () => {
+  it('fail where the class is read, naming the property', () => {
+    expect(errorOf('line-clamp-0').property).toBe('-webkit-line-clamp');
+    expect(errorOf('line-clamp-[2.5]').property).toBe('-webkit-line-clamp');
+    expect(errorOf('opacity-[1.5]').property).toBe('opacity');
+    expect(errorOf('col-span-0').property).toBe('grid-column');
+    expect(errorOf('aspect-[0]').property).toBe('aspect-ratio');
+    expect(errorOf('skew-x-[90deg]').property).toBe('transform');
+  });
+});
+
+describe('unsupported-class reasons', () => {
+  it('suggest gap only for classes that style children', () => {
+    expect(errorOf('space-x-2').reason).toContain('use gap');
+    expect(errorOf('container').reason).toMatch(/^media queries have no meaning in a PDF/);
+    expect(errorOf('placeholder-red-500').reason).not.toContain('gap');
+  });
+});
+
+describe('strict mode', () => {
+  it('checks class strings cached while it was off', () => {
+    setTailwindStrict(false);
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      expect(tw('p-1 shadow-xl')).toEqual({
+        paddingTop: 3,
+        paddingRight: 3,
+        paddingBottom: 3,
+        paddingLeft: 3,
+      });
+    } finally {
+      console.warn = warn;
+      setTailwindStrict(true);
+    }
+    expect(() => tw('p-1 shadow-xl')).toThrow(UnsupportedUtilityError);
+  });
+});

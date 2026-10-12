@@ -115,6 +115,18 @@ describe('paint styles', () => {
       transformOrigin: ['100%', '100%'],
     });
     expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain('not a length');
+    // Keywords in either order; names of Object.prototype are not keywords.
+    const centerLeft = tree(<View style={{ transformOrigin: 'center left', rotate: 10 }} />);
+    expect(first<BoxNode>(centerLeft).style?.transformOrigin).toEqual([0, '50%']);
+    expect(
+      thrown(() => tree(<View style={{ transformOrigin: 'left toString', rotate: 10 }} />)).message,
+    ).toContain('transformOrigin: toString');
+    expect(
+      thrown(() => tree(<Text style={{ fontWeight: 'constructor' as never }}>x</Text>)).message,
+    ).toContain('CSS weight name');
+    // Colour keywords are case-insensitive.
+    const clear = tree(<View style={{ backgroundColor: 'Transparent' }} />);
+    expect(first<BoxNode>(clear).style?.backgroundColor).toEqual([0, 0, 0, 0]);
   });
 
   it('accepts the wrap, break and minPresenceAhead aliases and weight names', () => {
@@ -153,6 +165,10 @@ describe('paint styles', () => {
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
     // `<grow> <basis>`, as in Tailwind's `flex-[1_auto]`.
     expect(d?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
+    // A lone basis is `1 1 <basis>`, as in CSS, in a style and a class.
+    const basis = { flexGrow: 1, flexShrink: 1, flexBasis: '30%' };
+    expect(first<BoxNode>(tree(<View style={{ flex: '30%' }} />)).style).toEqual(basis);
+    expect(first<BoxNode>(tree(<View className="flex-[30%]" />)).style).toEqual(basis);
     // Grow and shrink are never negative, in a style or a class.
     expect(thrown(() => tree(<View style={{ flex: '-1' }} />)).message).toContain('cannot be negative');
     expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');

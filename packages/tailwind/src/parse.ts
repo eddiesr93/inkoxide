@@ -1,6 +1,5 @@
 import type { GridPlacement } from '@inkoxide/schema';
 import {
-  evalDim,
   parseFlex,
   parseFontFamily,
   parseObjectPosition,
@@ -39,7 +38,13 @@ function problemReason(p: CandidateProblem): string {
     case 'variant':
       return `variants and media queries have no meaning in a PDF (${p.detail})`;
     case 'selector':
-      return `it styles other elements (${p.detail}); use gap instead of space-x/y and divide-*`;
+      if (p.detail.startsWith('@media')) return `media queries have no meaning in a PDF (${p.detail})`;
+      if (p.detail.startsWith('@')) return `at-rules have no meaning in a PDF (${p.detail})`;
+      // `space-x-*` and `divide-*` style the element's children.
+      if (/[>+~]/.test(p.detail)) {
+        return `it styles other elements (${p.detail}); use gap instead of space-x/y and divide-*`;
+      }
+      return `it styles a part of the element that a PDF does not have (${p.detail})`;
   }
 }
 
@@ -180,7 +185,9 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'aspect-ratio': {
       const [a, b] = v.split('/').map((x) => x.trim());
       if (a === undefined || a === 'auto') throw r.error(`aspect-ratio: ${v}`);
-      s.aspectRatio = round(r.num(a) / (b === undefined ? 1 : r.num(b)));
+      const ratio = round(r.num(a) / (b === undefined ? 1 : r.num(b)));
+      if (!(ratio > 0 && ratio <= 1e6)) throw r.error(`aspect-ratio: ${v} (a ratio above 0)`);
+      s.aspectRatio = ratio;
       return;
     }
     case 'position':
@@ -207,7 +214,8 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       s.gridAutoRows = splitTopLevel(v, ' ').map((t) => r.trackSize(t));
       return;
     case 'grid-auto-flow':
-      s.gridAutoFlow = r.oneOf('gridAutoFlow', v);
+      // `dense` alone is `row dense`.
+      s.gridAutoFlow = r.oneOf('gridAutoFlow', v === 'dense' ? 'row dense' : v);
       return;
     case 'grid-column':
       s.gridColumn = r.placement(v);
@@ -230,15 +238,20 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         if (one.start !== undefined) p.end = one.start;
         else if (one.span !== undefined) p.span = one.span;
       }
+      // Two lines replace a span set before them (`col-span-3 col-start-1 col-end-3` is 1 / 3).
+      if (p.start !== undefined && p.end !== undefined) delete p.span;
       s[key] = p;
       return;
     }
     case 'background-color':
       s.backgroundColor = r.color(v);
       return;
-    case 'opacity':
-      s.opacity = r.num(v);
+    case 'opacity': {
+      const n = r.num(v);
+      if (n < 0 || n > 1) throw r.error(`opacity: ${v} (between 0 and 1, or 0% and 100%)`);
+      s.opacity = n;
       return;
+    }
     case 'border-radius': {
       if (v.includes('/')) throw r.error(`border-radius: ${v} (elliptical corners are not supported)`);
       const [tl, tr, br, bl] = edges(v).map((x) => r.radius(x)) as [number, number, number, number];
@@ -274,7 +287,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         return;
       }
       const [x = '0', y = '0', z] = splitTopLevel(v, ' ');
-      if (z !== undefined && evalDim(z).v !== 0) throw r.error(`translate: ${v} (no z axis)`);
+      if (z !== undefined && r.dim(z).v !== 0) throw r.error(`translate: ${v} (no z axis)`);
       s.translate = [r.lenPercent(x), r.lenPercent(y)];
       return;
     }
@@ -344,7 +357,11 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'background-image':
       throw r.error('gradients and background images are not supported (use bg-<colour>)');
     case 'rotate': {
-      const d = evalDim(v);
+      if (v === 'none') {
+        delete s.rotate;
+        return;
+      }
+      const d = r.dim(v);
       if (d.u !== 'deg') throw r.error(`rotate: ${v}`);
       s.rotate = round(d.v);
       return;
@@ -374,7 +391,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         delete s.lineHeight;
         return;
       }
-      const d = evalDim(v);
+      const d = r.dim(v);
       if (d.u === '') s.lineHeight = { mult: round(d.v) };
       else if (d.u === '%') s.lineHeight = { mult: round(d.v / 100) };
       else if (d.u === 'em') s.lineHeight = { mult: round(d.v) };
@@ -387,7 +404,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         s.letterSpacing = { pt: 0 };
         return;
       }
-      const d = evalDim(v);
+      const d = r.dim(v);
       if (d.u === 'em') s.letterSpacing = { em: round(d.v) };
       else if (d.u === 'pt' || (d.u === '' && d.v === 0)) s.letterSpacing = { pt: round(d.v) };
       else throw r.error(`letter-spacing: ${v}`);
@@ -522,7 +539,7 @@ export function mapClasses(
           delete next.maxLines;
           delete next.ellipsis;
         } else {
-          next.maxLines = new Reader('-webkit-line-clamp').num(n);
+          next.maxLines = new Reader('-webkit-line-clamp').integer(n, 1);
           next.ellipsis = true;
         }
       } else if (ellipsis) {
@@ -537,7 +554,14 @@ export function mapClasses(
           throw new UnsupportedValueError(prop, `text-overflow: ${raw} (use truncate)`);
         // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
         const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
-        applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup));
+        try {
+          applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup));
+        } catch (e) {
+          // A value that does not parse at all (`var()` with no value, five edges): name the property.
+          if (e instanceof ValueError)
+            throw new UnsupportedValueError(prop, `${prop}: ${raw} (${e.message})`);
+          throw e;
+        }
       }
       style = next;
     } catch (e) {

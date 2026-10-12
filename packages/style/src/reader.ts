@@ -91,24 +91,19 @@ export class Reader {
   }
 
   private dimToLen(d: Dim, value: string): Len {
+    // `calc(infinity * 1px)` (`rounded-full`): as large as a length gets here.
+    if ((d.u === 'pt' || d.u === '') && Math.abs(d.v) === Number.POSITIVE_INFINITY)
+      return Math.sign(d.v) * 1e4;
     if (d.u === 'pt') return round(d.v);
     if (d.u === '%') return `${round(d.v)}%`;
     if (d.u === '' && d.v === 0) return 0;
-    if (d.u === '' && !Number.isFinite(d.v)) return 1e4;
     throw this.error(`${this.prop}: ${value} (expected a length in pt/px/rem or a percentage)`);
   }
 
   len(value: string): Len {
     const v = value.trim();
     if (v === 'auto') return 'auto';
-    try {
-      const d = evalDim(v);
-      const out = this.dimToLen(d, v);
-      return typeof out === 'number' && out > 1e4 ? 1e4 : out;
-    } catch (e) {
-      if (e instanceof UnsupportedValueError) throw e;
-      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
-    }
+    return this.dimToLen(this.dim(v), v);
   }
 
   lenPercent(value: string): LenPercent {
@@ -123,15 +118,21 @@ export class Reader {
     return l;
   }
 
-  num(value: string): number {
+  /** The value evaluated (`calc()` included), with its unit. */
+  dim(value: string): Dim {
     try {
-      const d = evalDim(value);
-      if (d.u === '%') return round(d.v / 100);
-      if (d.u !== '') throw new ValueError(`unexpected unit ${d.u}`);
-      return round(d.v);
+      return evalDim(value);
     } catch (e) {
-      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
+      if (!(e instanceof ValueError)) throw e;
+      throw this.error(`${this.prop}: ${value} (${e.message})`);
     }
+  }
+
+  num(value: string): number {
+    const d = this.dim(value);
+    if (d.u === '%') return round(d.v / 100);
+    if (d.u !== '') throw this.error(`${this.prop}: ${value} (unexpected unit ${d.u})`);
+    return round(d.v);
   }
 
   color(value: string): ColorValue {
@@ -178,24 +179,40 @@ export class Reader {
     });
   }
 
+  /** `<start> [/ <end>]`, each a line, `span <n>` or `auto`. */
   placement(value: string): GridPlacement {
     const parts = value.split('/').map((s) => s.trim());
+    if (parts.length > 2) throw this.error(`${this.prop}: ${value}`);
     const one = (s: string | undefined): GridPlacement => {
       if (s === undefined || s === 'auto') return {};
       const span = /^span\s+(\d+)$/.exec(s);
-      if (span?.[1] !== undefined) return { span: Number(span[1]) };
-      if (/^-?\d+$/.test(s)) return { start: Number(s) };
+      if (span?.[1] !== undefined) {
+        const n = Number(span[1]);
+        if (n < 1 || n > 65535) throw this.error(`${this.prop}: ${value} (a span is 1 to 65535 tracks)`);
+        return { span: n };
+      }
+      if (/^-?\d+$/.test(s)) {
+        const n = Number(s);
+        if (n === 0 || Math.abs(n) > 32767) {
+          throw this.error(
+            `${this.prop}: ${value} (a line is 1 to 32767, or negative from the end; there is no line 0)`,
+          );
+        }
+        return { start: n };
+      }
       throw this.error(`${this.prop}: ${value}`);
     };
     const a = one(parts[0]);
     const b = one(parts[1]);
     const out: GridPlacement = { ...a };
     if (b.start !== undefined) out.end = b.start;
+    // Of two spans, CSS ignores the one at the end.
+    else if (b.span !== undefined) out.span ??= b.span;
     return out;
   }
 
   angle(value: string): number {
-    const d = evalDim(value);
+    const d = this.dim(value);
     if (d.u === 'deg' || (d.u === '' && d.v === 0)) return round(d.v);
     throw this.error(`${this.prop}: ${value} (expected an angle)`);
   }
@@ -218,6 +235,11 @@ export class Reader {
 /** Parses a CSS transform function list (`skewX(12deg) translate(2pt, 50%)`). */
 export function parseTransform(prop: string, value: string): TransformOp[] {
   const r = new Reader(prop);
+  const skew = (v: string): number => {
+    const a = r.angle(v);
+    if (a <= -90 || a >= 90) throw r.error(`${prop}: ${value} (a skew angle is between -90deg and 90deg)`);
+    return a;
+  };
   const out: TransformOp[] = [];
   for (const fn of splitTopLevel(value, ' ')) {
     const m = /^([a-zA-Z0-9]+)\((.*)\)$/.exec(fn);
@@ -249,13 +271,13 @@ export function parseTransform(prop: string, value: string): TransformOp[] {
         out.push({ rotate: r.angle(a) });
         break;
       case 'skew':
-        out.push({ skew: [r.angle(a), r.angle(b ?? '0')] });
+        out.push({ skew: [skew(a), skew(b ?? '0')] });
         break;
       case 'skewX':
-        out.push({ skew: [r.angle(a), 0] });
+        out.push({ skew: [skew(a), 0] });
         break;
       case 'skewY':
-        out.push({ skew: [0, r.angle(a)] });
+        out.push({ skew: [0, skew(a)] });
         break;
       case 'matrix': {
         const n = args.map((x) => r.num(x));
@@ -270,8 +292,16 @@ export function parseTransform(prop: string, value: string): TransformOp[] {
   return out;
 }
 
-const ORIGIN_X: Record<string, LenPercent> = { left: 0, center: '50%', right: '100%' };
-const ORIGIN_Y: Record<string, LenPercent> = { top: 0, center: '50%', bottom: '100%' };
+const ORIGIN_X: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
+  ['left', 0],
+  ['center', '50%'],
+  ['right', '100%'],
+]);
+const ORIGIN_Y: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
+  ['top', 0],
+  ['center', '50%'],
+  ['bottom', '100%'],
+]);
 
 /** Parses `transform-origin` (keywords in either order, lengths, percentages). */
 export function parseOrigin(prop: string, value: string): [LenPercent, LenPercent] {
@@ -282,13 +312,17 @@ export function parseOrigin(prop: string, value: string): [LenPercent, LenPercen
     throw r.error(`${prop}: ${value} (no z offset)`);
   }
   let [a = 'center', b = 'center'] = parts;
-  // `top left` and `bottom 10%`: a vertical keyword first means the order is y x.
-  if (a in ORIGIN_Y && a !== 'center' && (parts.length === 1 || !(b in ORIGIN_Y) || b === 'center')) {
+  // `top left` and `bottom 10%`: a vertical keyword first means the order is y x, and so does a
+  // horizontal one after `center` (`center left`).
+  const yFirst =
+    (ORIGIN_Y.has(a) && a !== 'center' && (parts.length === 1 || !ORIGIN_Y.has(b) || b === 'center')) ||
+    (a === 'center' && b !== 'center' && ORIGIN_X.has(b));
+  if (yFirst) {
     if (parts.length === 1) b = 'center';
     [a, b] = [b, a];
   }
-  const x = ORIGIN_X[a] ?? r.lenPercent(a);
-  const y = ORIGIN_Y[b] ?? r.lenPercent(b);
+  const x = ORIGIN_X.get(a) ?? r.lenPercent(a);
+  const y = ORIGIN_Y.get(b) ?? r.lenPercent(b);
   return [x, y];
 }
 

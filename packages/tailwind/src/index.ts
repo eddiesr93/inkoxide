@@ -59,24 +59,39 @@ export interface TailwindOptions {
 }
 
 let compiler: TailwindCompiler | undefined;
+/** The theme load asked for last, until it settles: a later theme replaces an earlier one. */
 let loading: Promise<TailwindCompiler> | undefined;
 let strict = process.env.NODE_ENV !== 'production';
 let cache = new Lru<TwStyle>(5000);
 const warned = new Set<string>();
 const EMPTY: TwStyle = Object.freeze({}) as TwStyle;
 
-/** Loads Tailwind's design system once per process. Safe to call repeatedly. */
+/**
+ * Loads Tailwind's design system once per process. Safe to call repeatedly. A call without `css`
+ * or `base` keeps the theme loaded or being loaded, so it can run alongside one that sets a theme.
+ */
 export async function initTailwind(opts: TailwindOptions = {}): Promise<void> {
-  if (opts.strict !== undefined) strict = opts.strict;
+  if (opts.strict !== undefined) setTailwindStrict(opts.strict);
   if (opts.cacheSize !== undefined) cache = new Lru<TwStyle>(opts.cacheSize);
   if (opts.css !== undefined || opts.base !== undefined) {
-    compiler = await TailwindCompiler.load(opts.css ?? DEFAULT_THEME_CSS, opts.base);
-    cache.clear();
-    return;
+    loading = TailwindCompiler.load(opts.css ?? DEFAULT_THEME_CSS, opts.base);
+  } else if (!compiler) {
+    loading ??= TailwindCompiler.load();
   }
-  if (compiler) return;
-  loading ??= TailwindCompiler.load();
-  compiler = await loading;
+  // Wait for the theme asked for last, including one asked for while this call waits.
+  while (loading) {
+    const load = loading;
+    try {
+      const loaded = await load;
+      if (loading !== load) continue;
+      compiler = loaded;
+      loading = undefined;
+      cache.clear();
+    } catch (e) {
+      if (loading === load) loading = undefined;
+      throw e;
+    }
+  }
 }
 
 export function isTailwindReady(): boolean {
@@ -122,5 +137,7 @@ tw.cacheSize = (): number => cache.size;
 
 /** Switches strict mode at runtime (for tests). */
 export function setTailwindStrict(value: boolean): void {
+  // Cached styles skipped the classes they could not map, so check them again.
+  if (value !== strict) cache.clear();
   strict = value;
 }

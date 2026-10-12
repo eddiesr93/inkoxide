@@ -133,6 +133,31 @@ All notable changes to the packages in this repository. The format follows
 - An SVG fails with `INVALID_IMAGE` when an SVG image nested in it has text, as it does with text
   of its own, and when an image embedded in it is over 50 megapixels; both were left out
   silently. The guide lists what SVG drawing does not support.
+- **Grid placement:** a `gridColumn` or `gridRow` with `start`, `end` and `span` runs from
+  `start` to `end`, as in CSS; the engine used `start` and `span` and ignored `end`. In Tailwind,
+  a span after the slash is kept (`col-[2/span_3]` was one column at line 2), and
+  `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns.
+- **Tailwind themes:** `initTailwind({ css })` run alongside `init()` or another `initTailwind()`
+  keeps its theme; whichever load finished last used to win, so the default theme could replace
+  it.
+- **`flex`:** a lone length is the basis, as in CSS: `flex: '30%'` and `flex-[30%]` are
+  `1 1 30%`. The style prop rejected it and the class read it as a grow of 0.3. Grow and shrink
+  with a unit are an unsupported value.
+- **Reading values:** an unsupported Tailwind value always names the CSS property
+  (`leading-[abc]`, `rotate-[abc]`, `p-[1pt_2pt_3pt_4pt_5pt]`, `m-[var(--nope)]`), and
+  `parseTransform` throws `UnsupportedValueError` for a bad angle (`rotate(1grad)`).
+  `rotate-none` works, and lengths above 10000pt are no longer cut to 10000pt (`h-[12000pt]`).
+- **Tailwind mapping:** a class or style value outside what the engine takes fails where it is
+  read, naming the class: `line-clamp-0`, `line-clamp-[2.5]`, `opacity-[1.5]`, `col-span-0`,
+  `aspect-[0]` and a skew of ±90deg or more. `grid-flow-dense` works. Switching strict mode on
+  checks class strings cached while it was off. Only selector problems that style children
+  suggest `gap`; `container` says that media queries have no meaning in a PDF.
+- **Style values:** `transformOrigin: 'center left'` and `'center right'` work, and names such
+  as `toString` are not taken as keywords by `transformOrigin` or `fontWeight`. Colour keywords
+  are case-insensitive (`'Transparent'`).
+- **Docs:** the Fonts section and the Tailwind support table say that `font-serif` is Noto Sans,
+  since no serif face is bundled, and the `@inkoxide/schema` README's ajv example type-checks
+  with `module: nodenext`.
 
 ## 0.5.0 - 2026-10-12
 

@@ -116,6 +116,10 @@ Four families ship with the package, so nothing needs registering:
 `font-semibold` and other weights without a face of their own use the nearest one (bold), as in
 CSS.
 
+No serif face ships with the package, so `font-serif` sets Noto Sans. For serif text, register
+a serif family and use it with `fontFamily` or `font-[…]`, or set `--font-serif` in the theme you
+pass to `initTailwind({ css })` from `@inkoxide/tailwind`.
+
 Add your own fonts with `Font.register`:
 
 ```ts

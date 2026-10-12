@@ -57,6 +57,16 @@ version 2.
 - **Text:** `whiteSpace` collapses only spaces, tabs and line breaks, as in CSS; other space
   characters keep their width (they became ordinary spaces). Tabs in `pre` and `pre-wrap`
   advance to the next multiple of 8 characters instead of becoming four spaces.
+- **`GridPlacement`** with `start`, `end` and `span` places the item between `start` and
+  `end`, and ignores `span`, as CSS does when both lines are set after a span. The engine used
+  `start` and `span` and ignored `end`. The description also says that `span` can go with `end`
+  alone, which the engine already supported.
+- **Page numbers in flow text** (engine 0.5.0): a `placeholder` run in a page's flow is laid
+  out with the digits of the page it lands on, as in headers and footers, and the flow is
+  paginated again when those digits move it. Until then flow text kept the width of a
+  three-digit stand-in, so a box sized by its text was too wide for a short number and a number
+  of four digits or more could overflow. Text painted on several pages (a fixed node, a table's
+  header rows) keeps the stand-in width.
 
 ### Documentation
 
