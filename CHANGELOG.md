@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- Fixed elements in the body are painted in document order and by `zIndex`, as without `fixed`;
+  nested ones were painted in the wrong order.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and

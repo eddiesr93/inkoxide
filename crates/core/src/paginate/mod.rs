@@ -44,7 +44,8 @@ pub(crate) struct Placement {
     /// First and last page each node or any descendant touches.
     pub page_range: Vec<(u32, u32)>,
     /// Nodes with `break.fixed` (outermost only): painted on every page, at
-    /// their place on their first page. Overlays are not in the flow tree.
+    /// their place on their first page, in paint order. Overlays are not in
+    /// the flow tree.
     pub fixed: Vec<NodeIdx>,
 }
 
@@ -202,17 +203,24 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
     p.out.pages = last_page + 1;
     p.out.page_range[0] = (0, last_page);
 
-    // Fixed nodes (outermost only), in document order.
-    let mut fixed_below = vec![false; n];
-    for i in 1..n {
-        let parent = tree.nodes[i].parent as usize;
-        let is_fixed = tree.nodes[i].node.is_some_and(|nd| nd.brk.fixed);
-        if is_fixed && !fixed_below[parent] {
-            p.out.fixed.push(i as NodeIdx);
+    // Fixed nodes (outermost only), in the order the flow would paint
+    // them: depth first, siblings by `zIndex` then document order (the
+    // arena is breadth first).
+    let mut stack = vec![0];
+    while let Some(i) = stack.pop() {
+        if i != 0 && tree.nodes[i as usize].node.is_some_and(|nd| nd.brk.fixed) {
+            p.out.fixed.push(i);
+            continue;
         }
-        fixed_below[i] = fixed_below[parent] || is_fixed;
+        let mut kids: Vec<NodeIdx> = tree.children(i).collect();
+        kids.sort_by_key(|&c| {
+            tree.nodes[c as usize]
+                .node
+                .and_then(|nd| nd.style.z_index)
+                .unwrap_or(0)
+        });
+        stack.extend(kids.into_iter().rev());
     }
-    p.out.fixed.sort_unstable();
     p.out
 }
 

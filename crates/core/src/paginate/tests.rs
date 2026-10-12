@@ -386,3 +386,31 @@ fn horizontal_padding_narrows_measured_text() {
         layout.height
     );
 }
+
+#[test]
+fn fixed_nodes_are_collected_in_paint_order() {
+    let fixed = |z: i32| {
+        format!(
+            r#"{{"type":"box","break":{{"fixed":true}},"style":{{"position":"absolute","zIndex":{z},"height":10,"width":10}}}}"#
+        )
+    };
+    // Document order, depth first: the nested one comes first.
+    let d = doc(&format!(
+        r#"{{"type":"box","children":[{{"type":"box","children":[{}]}}]}},{{"type":"box","children":[{}]}}"#,
+        fixed(0),
+        fixed(0)
+    ));
+    let (t, p) = run(&d);
+    let deep = t.children(t.children(1).next().unwrap()).next().unwrap();
+    let shallow = t.children(2).next().unwrap();
+    assert!(shallow < deep, "arena order is breadth first");
+    assert_eq!(p.fixed, vec![deep, shallow]);
+    // Then by `zIndex` among siblings, as the flow paints them.
+    let d = doc(&format!(
+        r#"{{"type":"box","children":[{},{}]}}"#,
+        fixed(1),
+        fixed(0)
+    ));
+    let (_, p) = run(&d);
+    assert_eq!(p.fixed, vec![3, 2]);
+}
