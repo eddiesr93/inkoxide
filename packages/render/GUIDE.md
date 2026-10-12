@@ -137,7 +137,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
 
 - **Sources.** `src` is a file path, a `file:` or `https:` URL, or the bytes (`Uint8Array` or
   `ArrayBuffer`). Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
-  (`.woff2`). Variable fonts are not supported: register the static instances.
+  (`.woff2`). Variable fonts are not supported: register the static instances. Font collections
+  (`.ttc`) are not supported either: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
   registered with it still load, and later renders can use them.
@@ -161,8 +162,10 @@ const logo = readFileSync('logo.png');
 ```
 
 - **Fit and position.** `fit` (or `objectFit`, or `object-contain`, `object-cover`,
-  `object-fill`, `object-none`) sizes the image in its box: `fill` (the default) stretches it,
-  `contain` shows all of it, `cover` fills the box, `none` keeps its own size (96 dpi). With
+  `object-fill`, `object-none`) sizes the image in its box: `fill` (the default) stretches it
+  (an SVG with a `viewBox` is not stretched: as in CSS, the box becomes its viewport, and its
+  `preserveAspectRatio`, by default centred and whole, fits the drawing in), `contain` shows all
+  of it, `cover` fills the box, `none` keeps its own size (96 dpi). With
   `contain`, `cover` and `none`, the image is centred unless `objectPosition` places it, as CSS
   `object-position` does: one or two values, each a keyword (`left`, `center`, `right`, `top`,
   `bottom`, in either order when both are keywords), a length or a percentage (`'25% 75%'`
@@ -487,6 +490,15 @@ The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`)
 `<Svg>` is not supported yet. `Canvas` draws in code with a pdfkit-style painter. An SVG file
 can also go straight into `<Image src={svgBytes} />`.
 
+In an SVG, whether in `<Svg>` or an image file:
+
+- **Text** (`<text>`) fails the render with `INVALID_IMAGE`, in a nested SVG image too: convert
+  text to outlines (paths) in your design tool.
+- **Filters** (`filter`: drop shadows, blurs) are not applied: the element is drawn without them.
+- **Images** inside the SVG must be embedded as `data:` URLs (JPEG, PNG, GIF, WebP or SVG).
+  Links to files or URLs are left out, and an embedded image over 50 megapixels fails the
+  render.
+
 ## Forms
 
 ```tsx
@@ -762,7 +774,9 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
-- **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet.
+- **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet. SVG filters are not
+  applied, and an SVG only shows images embedded as `data:` URLs (see
+  [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, an absolutely positioned,
   rotated or transformed element, table rows tied by a `rowSpan`) is cut at the page edge when
   it is taller than a page.

@@ -6,8 +6,8 @@
 //! clones paint servers, clip paths and masks per element, so a small file
 //! can describe a huge tree.
 //!
-//! Nothing is read from disk: `href`s to files are ignored and only
-//! `data:` URLs are resolved. The checks count a nested SVG image once per
+//! Nothing is read from disk: `href`s to files and URLs are ignored and
+//! only `data:` URLs are resolved. The checks count a nested SVG image once per
 //! copy, its own nested images included. `usvg` resolves the URL again
 //! for most copies, so the resolver also counts what it actually decodes,
 //! in one [`Meter`] for the whole SVG.
@@ -21,6 +21,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use usvg::roxmltree::{self, Document, Node, NodeId};
+
+use crate::paint::Rect;
 
 /// Most elements the converted tree may contain, counting every copy made
 /// by `use`, markers and `url(#…)` references, nested SVG images included.
@@ -79,17 +81,19 @@ pub(crate) fn is_svg(bytes: &[u8]) -> bool {
     start.is_some_and(|i| b[i] == b'<')
 }
 
-/// Why an SVG was rejected. A limit fails the outermost SVG; anything else
-/// only leaves a nested SVG out, as `usvg` does.
+/// Why an SVG was rejected. A limit or unsupported content fails the
+/// outermost SVG, so a nested SVG fails as it would on its own; anything
+/// else only leaves a nested SVG out, as `usvg` does.
 enum Reject {
     Limit(String),
+    Unsupported(String),
     Invalid(String),
 }
 
 impl Reject {
     fn message(self) -> String {
         match self {
-            Reject::Limit(e) | Reject::Invalid(e) => e,
+            Reject::Limit(e) | Reject::Unsupported(e) | Reject::Invalid(e) => e,
         }
     }
 }
@@ -171,8 +175,9 @@ struct Meter {
     pixels: AtomicU64,
     /// Raster images seen, by content hash.
     rasters: Mutex<HashMap<u64, Vec<Arc<Vec<u8>>>>>,
-    /// The first limit exceeded. A nested SVG that fails is left out, so
-    /// this carries the error out to the outermost SVG.
+    /// The first limit exceeded or unsupported content met. A nested SVG
+    /// that fails is left out, so this carries the error out to the
+    /// outermost SVG.
     error: OnceLock<String>,
 }
 
@@ -211,8 +216,110 @@ impl Meter {
     }
 }
 
-/// Parses an SVG document into a `usvg` tree.
-pub(crate) fn parse(bytes: &[u8]) -> Result<usvg::Tree, String> {
+/// The root `viewBox` of an SVG and how it fits a viewport of another
+/// shape (`preserveAspectRatio`). `usvg` folds both into the tree's root
+/// transform for the SVG's own size, so they are read here.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ViewBox {
+    /// `x`, `y`, width and height (both > 0), in user units.
+    pub rect: [f32; 4],
+    /// Where the `viewBox` sits in spare room, as a fraction of it per
+    /// axis (`xMin` 0, `xMid` 0.5, `xMax` 1); `None` stretches it
+    /// (`none`).
+    pub align: Option<(f32, f32)>,
+    /// `slice` (cover the viewport) rather than `meet` (fit inside it).
+    pub slice: bool,
+}
+
+impl ViewBox {
+    /// Reads the root element's `viewBox` and `preserveAspectRatio`.
+    /// `None` without a usable `viewBox`.
+    fn of(svg: Node<'_, '_>) -> Option<Self> {
+        let v: Vec<f32> = svg
+            .attribute("viewBox")?
+            .split(|c: char| c.is_ascii_whitespace() || c == ',')
+            .filter(|s| !s.is_empty())
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .ok()?;
+        let &[x, y, w, h] = v.as_slice() else {
+            return None;
+        };
+        if !(v.iter().all(|n| n.is_finite()) && w > 0.0 && h > 0.0) {
+            return None;
+        }
+        let mut words = svg
+            .attribute("preserveAspectRatio")
+            .unwrap_or("")
+            .split_ascii_whitespace()
+            .skip_while(|&w| w == "defer");
+        let align = match words.next() {
+            Some("none") => None,
+            Some(a) if a.len() == 8 && a.starts_with('x') && a[4..].starts_with('Y') => {
+                let frac = |s: &str| match s {
+                    "Min" => Some(0.0),
+                    "Mid" => Some(0.5),
+                    "Max" => Some(1.0),
+                    _ => None,
+                };
+                // An invalid value is the default, `xMidYMid meet`.
+                let Some(pair) = frac(&a[1..4]).zip(frac(&a[5..8])) else {
+                    return Some(Self::new([x, y, w, h], Some((0.5, 0.5)), false));
+                };
+                Some(pair)
+            }
+            _ => Some((0.5, 0.5)),
+        };
+        Some(Self::new(
+            [x, y, w, h],
+            align,
+            words.next() == Some("slice"),
+        ))
+    }
+
+    fn new(rect: [f32; 4], align: Option<(f32, f32)>, slice: bool) -> Self {
+        Self { rect, align, slice }
+    }
+
+    /// The part of `size` (the viewport, from the origin) the `viewBox`
+    /// covers.
+    fn fit(&self, (x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+        let [_, _, vw, vh] = self.rect;
+        let Some((ax, ay)) = self.align else {
+            return (x, y, w, h);
+        };
+        let (sx, sy) = (w / vw, h / vh);
+        let s = if self.slice { sx.max(sy) } else { sx.min(sy) };
+        let (fw, fh) = (vw * s, vh * s);
+        (x + ax * (w - fw), y + ay * (h - fh), fw, fh)
+    }
+
+    /// Where to draw an SVG of `size` so that its `viewBox` fits `bx`, the
+    /// SVG's viewport there (as CSS draws an SVG image with `object-fit:
+    /// fill`), and whether to clip to `bx`.
+    pub fn place(&self, size: (f32, f32), bx: Rect) -> (Rect, bool) {
+        /// Overflow below this (points) is rounding, not worth a clip.
+        const CLIP_EPS: f32 = 1e-3;
+        let (w, h) = size;
+        let (fx, fy, fw, fh) = self.fit((0.0, 0.0, w, h));
+        let (tx, ty, tw, th) = self.fit((bx.x, bx.y, bx.w, bx.h));
+        let (sx, sy) = (tw / fw, th / fh);
+        let r = Rect::new(tx - fx * sx, ty - fy * sy, w * sx, h * sy);
+        let rect = if [r.x, r.y, r.w, r.h].iter().all(|v| v.is_finite()) {
+            r
+        } else {
+            bx
+        };
+        let clip = rect.x < bx.x - CLIP_EPS
+            || rect.y < bx.y - CLIP_EPS
+            || rect.x + rect.w > bx.x + bx.w + CLIP_EPS
+            || rect.y + rect.h > bx.y + bx.h + CLIP_EPS;
+        (rect, clip)
+    }
+}
+
+/// Parses an SVG document into a `usvg` tree, with its root `viewBox`.
+pub(crate) fn parse(bytes: &[u8]) -> Result<(usvg::Tree, Option<ViewBox>), String> {
     let meter = Meter::default();
     let at = Nesting {
         meter: &meter,
@@ -298,7 +405,7 @@ fn check_entities(text: &str) -> Result<(), Reject> {
     Ok(())
 }
 
-fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<usvg::Tree, Reject> {
+fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<ViewBox>), Reject> {
     let doc = parse_xml(bytes)?;
     let checked = check(&doc, at.level, at.depth)?;
     at.meter.charge(checked.own, 0)?;
@@ -328,14 +435,31 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<usvg::Tree, Reject> {
             "SVG is {w}×{h} px; at most {MAX_SIDE} px per side"
         )));
     }
-    Ok(tree)
+    Ok((tree, ViewBox::of(doc.root_element())))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Embedded {
     Jpeg,
     Png,
+    Gif,
+    WebP,
     Svg,
+}
+
+/// The raster format `data` starts like.
+fn sniff_raster(data: &[u8]) -> Option<Embedded> {
+    if data.starts_with(b"\x89PNG") {
+        Some(Embedded::Png)
+    } else if data.starts_with(&[0xFF, 0xD8]) {
+        Some(Embedded::Jpeg)
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        Some(Embedded::Gif)
+    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
+        Some(Embedded::WebP)
+    } else {
+        None
+    }
 }
 
 /// What a decoded `data:` URL holds, as the resolver reads it.
@@ -343,18 +467,10 @@ fn embedded(mime: &str, data: &[u8]) -> Option<Embedded> {
     match mime {
         "image/jpg" | "image/jpeg" => Some(Embedded::Jpeg),
         "image/png" => Some(Embedded::Png),
+        "image/gif" => Some(Embedded::Gif),
+        "image/webp" => Some(Embedded::WebP),
         "image/svg+xml" => Some(Embedded::Svg),
-        "text/plain" | "" => {
-            if data.starts_with(b"\x89PNG") {
-                Some(Embedded::Png)
-            } else if data.starts_with(&[0xFF, 0xD8]) {
-                Some(Embedded::Jpeg)
-            } else if is_svg(data) {
-                Some(Embedded::Svg)
-            } else {
-                None
-            }
-        }
+        "text/plain" | "" => sniff_raster(data).or(is_svg(data).then_some(Embedded::Svg)),
         _ => None,
     }
 }
@@ -365,9 +481,9 @@ fn too_deep() -> Reject {
     ))
 }
 
-/// `data:` URLs inside an SVG: JPEG and PNG are kept for the PDF writer,
-/// nested SVGs are parsed at `at` with the same limits, other formats are
-/// dropped. Everything is charged to the meter, every time.
+/// `data:` URLs inside an SVG: JPEG, PNG, GIF and WebP are kept for the PDF
+/// writer, nested SVGs are parsed at `at` with the same limits, other
+/// formats are dropped. Everything is charged to the meter, every time.
 fn resolve_data(mime: &str, data: Arc<Vec<u8>>, at: Nesting<'_>) -> Option<usvg::ImageKind> {
     // Over a limit: the SVG fails anyway, so skip the remaining copies.
     if at.meter.error.get().is_some() {
@@ -379,7 +495,7 @@ fn resolve_data(mime: &str, data: Arc<Vec<u8>>, at: Nesting<'_>) -> Option<usvg:
         .and_then(|()| resolve(mime, data, at));
     match kind {
         Ok(kind) => kind,
-        Err(Reject::Limit(e)) => {
+        Err(Reject::Limit(e) | Reject::Unsupported(e)) => {
             let _ = at.meter.error.set(e);
             None
         }
@@ -395,25 +511,32 @@ fn resolve(
     Ok(match embedded(mime, &data) {
         Some(Embedded::Jpeg) => raster(&data, at.meter)?.then_some(usvg::ImageKind::JPEG(data)),
         Some(Embedded::Png) => raster(&data, at.meter)?.then_some(usvg::ImageKind::PNG(data)),
+        Some(Embedded::Gif) => raster(&data, at.meter)?.then_some(usvg::ImageKind::GIF(data)),
+        Some(Embedded::WebP) => raster(&data, at.meter)?.then_some(usvg::ImageKind::WEBP(data)),
         Some(Embedded::Svg) => {
             if at.level > MAX_NESTING {
                 return Err(too_deep());
             }
-            Some(usvg::ImageKind::SVG(parse_nested(&data, at)?))
+            Some(usvg::ImageKind::SVG(parse_nested(&data, at)?.0))
         }
         None => None,
     })
 }
 
 /// Reads a raster image's header and charges its pixels. `false` leaves
-/// out what the PDF writer could not decode either.
+/// out what the PDF writer could not decode either; an image over the
+/// pixel limit fails the SVG, as it would on its own.
 fn raster(data: &Arc<Vec<u8>>, meter: &Meter) -> Result<bool, Reject> {
-    // `probe` would parse an SVG; only JPEG and PNG are drawn.
-    if !(data.starts_with(b"\x89PNG") || data.starts_with(&[0xFF, 0xD8])) {
+    // `probe` would parse an SVG.
+    if sniff_raster(data).is_none() {
         return Ok(false);
     }
-    let Ok(info) = super::probe(data) else {
-        return Ok(false);
+    let info = match super::probe(data) {
+        Ok(info) => info,
+        Err(super::ProbeError::TooLarge(e)) => {
+            return Err(Reject::Limit(format!("SVG image: {e}")));
+        }
+        Err(super::ProbeError::Invalid(_)) => return Ok(false),
     };
     meter.charge_raster(data, u64::from(info.width) * u64::from(info.height))?;
     Ok(true)
@@ -460,7 +583,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         }
         let name = n.tag_name().name();
         if is_svg_ns(n) && name == "text" && n.descendants().any(|d| has_text(&d)) {
-            return Err(Reject::Invalid(
+            return Err(Reject::Unsupported(
                 "SVG <text> is not supported; convert the text to outlines (paths)".into(),
             ));
         }
@@ -1114,7 +1237,9 @@ mod tests {
 
     #[test]
     fn parses_and_sizes() {
-        let t = parse(svg(r#"<rect width="5" height="5" fill="red"/>"#).as_bytes()).unwrap();
+        let t = parse(svg(r#"<rect width="5" height="5" fill="red"/>"#).as_bytes())
+            .unwrap()
+            .0;
         assert_eq!((t.size().width(), t.size().height()), (20.0, 10.0));
         assert!(is_svg(b"\xEF\xBB\xBF  <?xml version=\"1.0\"?><svg/>"));
         assert!(!is_svg(b"\x89PNG"));
@@ -1129,6 +1254,24 @@ mod tests {
         assert!(parse(b"<svg").is_err());
         assert!(parse(b"<html/>").is_err());
         assert!(parse(&[0xFF, 0xFE, 0x3C]).is_err());
+        // Nested, text fails the SVG too, rather than leaving the image out.
+        let e = rejected(&image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0));
+        assert!(e.contains("<text>"), "{e}");
+    }
+
+    #[test]
+    fn an_embedded_raster_over_the_pixel_limit_fails_the_svg() {
+        // A PNG header of 10000 × 10000 pixels: probing reads no further.
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        png.extend(10_000u32.to_be_bytes());
+        png.extend(10_000u32.to_be_bytes());
+        png.extend([8, 2, 0, 0, 0, 0, 0, 0, 0]);
+        let body = format!(
+            r#"<image width="4" height="4" href="{}"/>"#,
+            url_of("image/png", &png)
+        );
+        let e = rejected(&svg(&body));
+        assert!(e.contains("megapixels"), "{e}");
     }
 
     #[test]
@@ -1161,10 +1304,76 @@ mod tests {
     }
 
     #[test]
+    fn a_view_box_fits_the_box_it_fills_like_css() {
+        let view_box = |attrs: &str| {
+            let doc = format!(r#"<svg xmlns="{SVG_NS}" {attrs}/>"#);
+            ViewBox::of(Document::parse(&doc).unwrap().root_element())
+        };
+        assert_eq!(view_box(r#"width="10" height="10""#), None);
+        assert_eq!(view_box(r#"viewBox="0 0 0 10""#), None);
+        let vb = view_box(r#"viewBox="0,0 100 100""#).unwrap();
+        assert_eq!((vb.align, vb.slice), (Some((0.5, 0.5)), false));
+        let bx = Rect::new(10.0, 20.0, 100.0, 40.0);
+        let near = |(r, clip): (Rect, bool), want: [f32; 4], clipped: bool| {
+            let got = [r.x, r.y, r.w, r.h];
+            let close = got.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3);
+            assert!(close && clip == clipped, "{got:?} {clip}, want {want:?}");
+        };
+        // A square drawing in a wide box: a 40 pt square, centred.
+        near(
+            vb.place((100.0, 100.0), bx),
+            [40.0, 20.0, 40.0, 40.0],
+            false,
+        );
+        let place = |attrs: &str, size| view_box(attrs).unwrap().place(size, bx);
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="xMinYMax""#,
+                (100.0, 100.0),
+            ),
+            [10.0, 20.0, 40.0, 40.0],
+            false,
+        );
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="none""#,
+                (100.0, 100.0),
+            ),
+            [10.0, 20.0, 100.0, 40.0],
+            false,
+        );
+        // slice covers the box: 100 × 100, the middle 40 shown.
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="defer xMidYMid slice""#,
+                (100.0, 100.0),
+            ),
+            [10.0, -10.0, 100.0, 100.0],
+            true,
+        );
+        // An SVG whose size is wider than its viewBox: the viewBox, not the
+        // size, fits the box.
+        near(
+            place(r#"viewBox="0 0 100 100""#, (200.0, 100.0)),
+            [20.0, 20.0, 80.0, 40.0],
+            false,
+        );
+        // An invalid value is the default.
+        near(
+            place(
+                r#"viewBox="0 0 100 100" preserveAspectRatio="xFooYMin""#,
+                (100.0, 100.0),
+            ),
+            [40.0, 20.0, 40.0, 40.0],
+            false,
+        );
+    }
+
+    #[test]
     fn ignores_files() {
         let t =
             parse(svg(r#"<image href="/etc/passwd" width="5" height="5"/>"#).as_bytes()).unwrap();
-        assert!(t.root().children().is_empty());
+        assert!(t.0.root().children().is_empty());
     }
 
     /// `doc` as a percent-encoded `data:` URL, which nests without escaping.
@@ -1248,7 +1457,7 @@ mod tests {
         assert!(e.contains("too complex"), "{e}");
 
         // A few copies fit.
-        let t = parse(image_of(&inner, 3, 0).as_bytes()).unwrap();
+        let t = parse(image_of(&inner, 3, 0).as_bytes()).unwrap().0;
         assert_eq!(nested_images(t.root()), (3, 1));
     }
 
@@ -1274,7 +1483,7 @@ mod tests {
         let doc = chain(MAX_NESTING, groups);
         let t = std::thread::Builder::new()
             .stack_size(2 << 20)
-            .spawn(move || parse(doc.as_bytes()).unwrap())
+            .spawn(move || parse(doc.as_bytes()).unwrap().0)
             .unwrap()
             .join()
             .unwrap();

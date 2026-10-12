@@ -2,15 +2,17 @@
 //!
 //! - Paths keep their geometry; quadratic segments become cubics.
 //! - Solid paints are RGB colours; gradients are axial/radial shading
-//!   patterns, with a luminosity soft mask when stop opacities vary;
-//!   patterns are coloured tiling patterns.
+//!   patterns, with a luminosity soft mask when stop opacities vary, and a
+//!   function that repeats or mirrors the stops over what is painted for
+//!   `spreadMethod` `repeat` and `reflect`; patterns are coloured tiling
+//!   patterns.
 //! - Group opacity, blend modes, masks and clip paths that are not a
 //!   single path go through transparency groups and soft masks. A clip
 //!   path that is one path becomes a plain `W n` clip.
-//! - Embedded JPEG/PNG images reuse the raster image writer, once per
-//!   distinct image however many copies draw it; nested SVGs are drawn
+//! - Embedded JPEG/PNG/GIF/WebP images reuse the raster image writer, once
+//!   per distinct image however many copies draw it; nested SVGs are drawn
 //!   inline.
-//! - Filters are not supported: filtered elements are left out.
+//! - Filters are not supported: filtered elements are drawn without them.
 //!
 //! Patterns and shadings are positioned relative to the form they are used
 //! in, so the transform from the current form's space is tracked (`ts`)
@@ -36,6 +38,9 @@ const MAX_SEGMENTS: usize = 5_000_000;
 /// below this).
 const MAX_DEPTH: u32 = 256;
 const FLATE_LEVEL: u32 = 6;
+/// Most periods of a repeated or reflected gradient written; past them it
+/// pads. Each is an entry in a stitching function.
+const MAX_PERIODS: f32 = 1000.0;
 
 /// Writes `tree` as a Form `XObject` mapping the SVG viewport onto the unit
 /// square (y up), like an image `XObject`.
@@ -62,7 +67,7 @@ pub(crate) fn write_svg(
         id,
         cv,
         Rect::new(0.0, 0.0, w, h),
-        Some([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0]),
+        Some([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0].map(finite)),
         false,
     )?;
     Ok(id)
@@ -152,6 +157,84 @@ impl Canvas {
 /// [`super::finite`].
 fn matrix(t: Transform) -> [f32; 6] {
     [t.sx, t.ky, t.kx, t.sy, t.tx, t.ty].map(finite)
+}
+
+/// A gradient's shading geometry: axial (`[x1 y1 x2 y2]`) or radial
+/// (`[fx fy fr cx cy r]`) coordinates at parameters 0 and 1.
+type Geometry = (FunctionShadingType, Vec<f32>);
+
+/// The parameter range a repeated or reflected gradient covers (whole
+/// periods), and whether it mirrors every other period.
+#[derive(Clone, Copy)]
+struct Periods {
+    from: f32,
+    to: f32,
+    reflect: bool,
+}
+
+impl Periods {
+    /// The periods of `geometry` that cover `bbox` (the painted area, in
+    /// the space `gt` maps the gradient into); `None` pads (`spreadMethod`
+    /// `pad`, or a range that cannot be bounded).
+    fn cover(
+        spread: usvg::SpreadMethod,
+        (kind, c): &Geometry,
+        gt: Transform,
+        bbox: Rect,
+    ) -> Option<Self> {
+        let reflect = match spread {
+            usvg::SpreadMethod::Pad => return None,
+            usvg::SpreadMethod::Reflect => true,
+            usvg::SpreadMethod::Repeat => false,
+        };
+        let inv = gt.invert()?;
+        let mut corners = [
+            Point::from_xy(bbox.x1, bbox.y1),
+            Point::from_xy(bbox.x2, bbox.y1),
+            Point::from_xy(bbox.x1, bbox.y2),
+            Point::from_xy(bbox.x2, bbox.y2),
+        ];
+        inv.map_points(&mut corners);
+        let (lo, hi) = if *kind == FunctionShadingType::Axial {
+            let (dx, dy) = (c[2] - c[0], c[3] - c[1]);
+            let len2 = dx * dx + dy * dy;
+            if len2 <= 0.0 {
+                return None;
+            }
+            let t = |p: &Point| ((p.x - c[0]) * dx + (p.y - c[1]) * dy) / len2;
+            let ts = corners.iter().map(t);
+            (
+                ts.clone().fold(f32::MAX, f32::min),
+                ts.fold(f32::MIN, f32::max),
+            )
+        } else {
+            // The circle at t has centre f + t·(c − f) and radius
+            // fr + t·(r − fr): it holds a point at distance d from the
+            // focus once fr + t·(r − fr) ≥ d + t·|c − f|.
+            let (fx, fy, fr, cx, cy, r) = (c[0], c[1], c[2], c[3], c[4], c[5]);
+            let grow = r - fr - (cx - fx).hypot(cy - fy);
+            if grow <= 0.0 {
+                return None;
+            }
+            let t = |p: &Point| ((p.x - fx).hypot(p.y - fy) - fr) / grow;
+            (0.0, corners.iter().map(t).fold(1.0, f32::max))
+        };
+        let from = lo.min(0.0).floor().max(-MAX_PERIODS);
+        let to = hi.max(1.0).ceil().min(from + MAX_PERIODS);
+        (from.is_finite() && to.is_finite()).then_some(Self { from, to, reflect })
+    }
+
+    /// `geometry`'s coordinates at `from` and `to`.
+    fn coords(&self, (kind, c): &Geometry) -> Vec<f32> {
+        let at = |t: f32, a: f32, b: f32| a + t * (b - a);
+        if *kind == FunctionShadingType::Axial {
+            let p = |t| [at(t, c[0], c[2]), at(t, c[1], c[3])];
+            [p(self.from), p(self.to)].concat()
+        } else {
+            let p = |t| [at(t, c[0], c[3]), at(t, c[1], c[4]), at(t, c[2], c[5])];
+            [p(self.from), p(self.to)].concat()
+        }
+    }
 }
 
 fn pdf_rect(r: usvg::NonZeroRect) -> Rect {
@@ -337,7 +420,7 @@ impl Svg<'_> {
     /// Draws a group. In `clip` mode everything is filled opaque black
     /// (the content of an alpha soft mask built from a clip path).
     fn group(&mut self, cv: &mut Canvas, g: &Group, ts: Transform, depth: u32, clip: bool) -> Res {
-        if depth > MAX_DEPTH || !g.filters().is_empty() {
+        if depth > MAX_DEPTH {
             return Ok(());
         }
         let ts = ts.pre_concat(g.transform());
@@ -580,10 +663,11 @@ impl Svg<'_> {
                 }
             }
             Paint::LinearGradient(_) | Paint::RadialGradient(_) => {
-                let (stops, gt, kind) = match paint {
+                let (stops, gt, spread, kind) = match paint {
                     Paint::LinearGradient(l) => (
                         l.stops(),
                         l.transform(),
+                        l.spread_method(),
                         (
                             FunctionShadingType::Axial,
                             vec![l.x1(), l.y1(), l.x2(), l.y2()],
@@ -592,6 +676,7 @@ impl Svg<'_> {
                     Paint::RadialGradient(r) => (
                         r.stops(),
                         r.transform(),
+                        r.spread_method(),
                         (
                             FunctionShadingType::Radial,
                             vec![r.fx(), r.fy(), r.fr().get(), r.cx(), r.cy(), r.r().get()],
@@ -599,7 +684,8 @@ impl Svg<'_> {
                     ),
                     _ => unreachable!(),
                 };
-                let shading = self.shading(stops, &kind, false);
+                let periods = Periods::cover(spread, &kind, gt, bbox);
+                let shading = self.shading(stops, &kind, periods, false);
                 let pattern = self.next();
                 self.pdf
                     .shading_pattern(pattern)
@@ -607,7 +693,7 @@ impl Svg<'_> {
                     .matrix(matrix(ts.pre_concat(gt)));
                 cv.set_pattern(pattern, stroke);
                 if stops.iter().any(|s| s.opacity().get() < 1.0) {
-                    let alpha = self.shading(stops, &kind, true);
+                    let alpha = self.shading(stops, &kind, periods, true);
                     let form = self.sub_form(bbox, |_, inner| {
                         inner.c.transform(matrix(gt));
                         inner.paint_shading(alpha);
@@ -640,11 +726,13 @@ impl Svg<'_> {
     }
 
     /// An axial or radial shading over the stops' colours (or, with
-    /// `alpha`, their opacities as gray), padded at both ends.
+    /// `alpha`, their opacities as gray), repeated over `periods` and
+    /// padded past them.
     fn shading(
         &mut self,
         stops: &[usvg::Stop],
-        (kind, coords): &(FunctionShadingType, Vec<f32>),
+        geometry: &Geometry,
+        periods: Option<Periods>,
         alpha: bool,
     ) -> Ref {
         let value = |s: &usvg::Stop| -> Vec<f32> {
@@ -692,13 +780,39 @@ impl Svg<'_> {
                 .encode(parts.iter().flat_map(|_| [0.0, 1.0]));
             r
         };
+        // One copy of the stops per period, every other one mirrored when
+        // reflecting.
+        let (function, domain, coords) = match periods {
+            Some(p) => {
+                let starts: Vec<f32> = (p.from as i32..p.to as i32).map(|n| n as f32).collect();
+                let r = self.next();
+                self.pdf
+                    .stitching_function(r)
+                    .domain([p.from, p.to])
+                    .functions(starts.iter().map(|_| function))
+                    .bounds(starts[1..].iter().copied())
+                    .encode(starts.iter().flat_map(|&n| {
+                        if p.reflect && (n as i32).rem_euclid(2) == 1 {
+                            [1.0, 0.0]
+                        } else {
+                            [0.0, 1.0]
+                        }
+                    }));
+                (r, [p.from, p.to], p.coords(geometry))
+            }
+            None => (function, [0.0, 1.0], geometry.1.clone()),
+        };
         let id = self.next();
         let mut sh = self.pdf.function_shading(id);
-        sh.shading_type(*kind);
+        sh.shading_type(geometry.0);
         if alpha {
             sh.color_space().device_gray();
         } else {
             sh.color_space().device_rgb();
+        }
+        if periods.is_some() {
+            // Axial and radial shadings take a 2-element `/Domain`.
+            sh.insert(Name(b"Domain")).array().items(domain);
         }
         sh.function(function)
             .coords(coords.iter().map(|&v| finite(v)))
@@ -760,7 +874,10 @@ impl Svg<'_> {
         let size = img.size();
         let (w, h) = (size.width(), size.height());
         match img.kind() {
-            usvg::ImageKind::JPEG(data) | usvg::ImageKind::PNG(data) => {
+            usvg::ImageKind::JPEG(data)
+            | usvg::ImageKind::PNG(data)
+            | usvg::ImageKind::GIF(data)
+            | usvg::ImageKind::WEBP(data) => {
                 // An image that cannot be decoded is left out, like
                 // other formats.
                 let Some(r) = self.raster(data)? else {
@@ -782,7 +899,6 @@ impl Svg<'_> {
                 self.group(cv, tree.root(), ts.pre_concat(scale), depth + 1, false)?;
                 cv.c.restore_state();
             }
-            _ => {}
         }
         Ok(())
     }
@@ -797,23 +913,61 @@ mod tests {
     use super::RefAlloc;
     use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
 
-    /// Image `XObject`s written for an SVG drawing `copies` copies of a PNG.
-    fn images_written(copies: usize) -> usize {
-        let png = crate::test_fixtures::fixture("images/logo.png");
-        let mut url = String::from("data:image/png,");
-        for b in png {
-            let _ = write!(url, "%{b:02X}");
-        }
-        let svg = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><defs><image id="i" width="4" height="4" href="{url}"/></defs>{}</svg>"#,
-            r##"<use href="#i"/>"##.repeat(copies)
-        );
-        let ImageBody::Svg(tree) = ImageCrateDecoder.decode(svg.as_bytes()).unwrap().body else {
+    /// The PDF objects written for `svg`.
+    fn written(svg: &str) -> Vec<u8> {
+        let ImageBody::Svg { tree, .. } = ImageCrateDecoder.decode(svg.as_bytes()).unwrap().body
+        else {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();
         super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, false).unwrap();
-        let out = pdf.finish();
+        pdf.finish()
+    }
+
+    /// The objects written for `svg` as text, its streams inflated.
+    fn written_text(svg: &str) -> String {
+        let out = written(svg);
+        let mut text = String::new();
+        let mut rest = &out[..];
+        while let Some(i) = rest.windows(7).position(|w| w == b"stream\n") {
+            text.push_str(&String::from_utf8_lossy(&rest[..i]));
+            let body = &rest[i + 7..];
+            let end = body.windows(9).position(|w| w == b"endstream").unwrap();
+            let mut data = Vec::new();
+            std::io::Read::read_to_end(
+                &mut flate2::read::ZlibDecoder::new(&body[..end]),
+                &mut data,
+            )
+            .unwrap();
+            text.push_str(&String::from_utf8_lossy(&data));
+            rest = &body[end + b"endstream".len()..];
+        }
+        text + &String::from_utf8_lossy(rest)
+    }
+
+    /// `bytes` as a `data:` URL.
+    fn url(mime: &str, bytes: &[u8]) -> String {
+        let mut url = format!("data:{mime},");
+        for b in bytes {
+            let _ = write!(url, "%{b:02X}");
+        }
+        url
+    }
+
+    fn svg(body: &str) -> String {
+        format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50">{body}</svg>"#)
+    }
+
+    /// Image `XObject`s written for an SVG drawing `copies` copies of a PNG.
+    fn images_written(copies: usize) -> usize {
+        let png = url(
+            "image/png",
+            &crate::test_fixtures::fixture("images/logo.png"),
+        );
+        let out = written(&svg(&format!(
+            r#"<defs><image id="i" width="4" height="4" href="{png}"/></defs>{}"#,
+            r##"<use href="#i"/>"##.repeat(copies)
+        )));
         out.windows(15).filter(|w| w == b"/Subtype /Image").count()
     }
 
@@ -822,5 +976,76 @@ mod tests {
         let once = images_written(1);
         assert!(once > 0);
         assert_eq!(images_written(5), once);
+    }
+
+    #[test]
+    fn draws_embedded_gif_and_webp_images() {
+        for (mime, file) in [
+            ("image/gif", "anim.gif"),
+            ("image/webp", "badge-lossless.webp"),
+            ("", "photo-lossy.webp"),
+        ] {
+            let data = url(
+                mime,
+                &crate::test_fixtures::fixture(&format!("images/{file}")),
+            );
+            let out = written(&svg(&format!(
+                r#"<image width="40" height="40" href="{data}"/>"#
+            )));
+            assert!(out.windows(15).any(|w| w == b"/Subtype /Image"), "{file}");
+        }
+    }
+
+    #[test]
+    fn draws_filtered_elements_without_the_filter() {
+        let text = written_text(&svg(
+            r##"<filter id="s"><feDropShadow dx="2" dy="2"/></filter>
+               <rect width="10" height="10" fill="#00ff00" filter="url(#s)"/>"##,
+        ));
+        assert!(text.contains("0 1 0 rg"), "{text}");
+    }
+
+    #[test]
+    fn repeats_and_reflects_gradients_over_what_they_paint() {
+        let gradient = |spread: &str| {
+            String::from_utf8_lossy(&written(&svg(&format!(
+                r#"<linearGradient id="g" x2="0.2" spreadMethod="{spread}">
+                     <stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/>
+                   </linearGradient>
+                   <rect width="100" height="50" fill="url(#g)"/>"#
+            ))))
+            .into_owned()
+        };
+        // A fifth of the width per period: five periods.
+        let repeat = gradient("repeat");
+        assert!(repeat.contains("/Domain [0 5]"), "{repeat}");
+        assert!(repeat.contains("/Bounds [1 2 3 4]"), "{repeat}");
+        assert!(repeat.contains("/Encode [0 1 0 1 0 1 0 1 0 1]"), "{repeat}");
+        let reflect = gradient("reflect");
+        assert!(
+            reflect.contains("/Encode [0 1 1 0 0 1 1 0 0 1]"),
+            "{reflect}"
+        );
+        // pad: one ramp, extended.
+        let pad = gradient("pad");
+        assert!(
+            !pad.contains("/Bounds") && !pad.contains("/Domain [0 5]"),
+            "{pad}"
+        );
+    }
+
+    #[test]
+    fn repeats_radial_gradients_out_to_the_far_corner() {
+        let out = String::from_utf8_lossy(&written(&svg(
+            r#"<radialGradient id="g" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="10" spreadMethod="repeat">
+                 <stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/>
+               </radialGradient>
+               <rect width="100" height="50" fill="url(#g)"/>"#,
+        )))
+        .into_owned();
+        // The far corner is √(100² + 50²) ≈ 111.8 from the centre: 12
+        // periods, the last circle of radius 120.
+        assert!(out.contains("/Domain [0 12]"), "{out}");
+        assert!(out.contains("/Coords [0 0 0 0 0 120]"), "{out}");
     }
 }

@@ -186,9 +186,11 @@ fn percentages_compounding_past_f32_render_finite_numbers() {
 fn svg_numbers_that_overflow_render_finite_numbers() {
     // SVG images bring numbers of their own, which the document's bounds
     // do not cover: a tiny viewBox scaled up to the image size, gradient
-    // coordinates and dashes past f32 (usvg reads them as f64).
+    // coordinates and dashes past f32 (usvg reads them as f64), and a size
+    // so small that scaling it to the unit square overflows.
     const NS: &str = "xmlns='http://www.w3.org/2000/svg'";
     let svgs = [
+        format!("<svg {NS} width='1e-39' height='1e-39'><rect width='1' height='1'/></svg>"),
         format!("<svg {NS} width='100' height='100' viewBox='0 0 1e-38 1e-38'><rect width='1' height='1'/></svg>"),
         format!("<svg {NS} width='100' height='100'><defs><linearGradient id='g' x1='-1e39' x2='1e39' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue' stop-opacity='0.5'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/></svg>"),
         format!("<svg {NS} width='100' height='100'><path d='M0 0 L 50 50' stroke='red' stroke-width='2' stroke-dasharray='1e39 1' stroke-dashoffset='1e39'/></svg>"),

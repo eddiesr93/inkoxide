@@ -254,7 +254,23 @@ type Xywh = (f32, f32, f32, f32);
 /// whose only node is `node` (store images `photo`, 240 × 150 pt, and
 /// `chart`, an SVG of 300 × 180 pt), in a 100 × 100 box at (10, 20).
 fn painted(node: &str) -> (Xywh, Option<Xywh>) {
-    use crate::paint::{ContentCtx, Op};
+    use crate::paint::Op;
+    let mut clip = None;
+    let mut rect = None;
+    for op in &painted_ops(node) {
+        match op {
+            Op::ClipRect(r) => clip = Some((r.x, r.y, r.w, r.h)),
+            // Orientation 1: [w 0 0 −h x y+h].
+            Op::Image { matrix: m, .. } => rect = Some((m[4], m[5] + m[3], m[0], -m[3])),
+            _ => {}
+        }
+    }
+    (rect.expect("an image op"), clip)
+}
+
+/// The ops an image node is painted with (see [`painted`]).
+fn painted_ops(node: &str) -> Vec<crate::paint::Op> {
+    use crate::paint::ContentCtx;
     let json = format!(
         r#"{{"version":1,"pages":[{{"size":{{"width":200,"height":200}},"children":[{node}]}}]}}"#
     );
@@ -280,17 +296,28 @@ fn painted(node: &str) -> (Xywh, Option<Xywh>) {
     };
     let mut ops = Vec::new();
     set.paint(&doc.pages[0].children[0], &geo, &ctx, &mut ops);
-    let mut clip = None;
-    let mut rect = None;
-    for op in &ops {
-        match op {
-            Op::ClipRect(r) => clip = Some((r.x, r.y, r.w, r.h)),
-            // Orientation 1: [w 0 0 −h x y+h].
-            Op::Image { matrix: m, .. } => rect = Some((m[4], m[5] + m[3], m[0], -m[3])),
-            _ => {}
-        }
-    }
-    (rect.expect("an image op"), clip)
+    ops
+}
+
+#[test]
+fn border_radius_rounds_an_image_without_overflow_hidden() {
+    use crate::paint::{Op, PathSeg};
+    let clip = |style: &str| {
+        let ops = painted_ops(&format!(
+            r#"{{"type":"image","src":"photo","fit":"cover","style":{{{style}}}}}"#
+        ));
+        assert!(!ops.iter().any(|op| matches!(op, Op::ClipRect(_))));
+        ops.into_iter().find_map(|op| match op {
+            Op::ClipPath { path, .. } => Some(path.segs),
+            _ => None,
+        })
+    };
+    let round = clip(r#""borderRadius":50"#).expect("a rounded clip");
+    assert_eq!(round[0], PathSeg::MoveTo(60.0, 20.0));
+    assert!(round.iter().any(|s| matches!(s, PathSeg::CubicTo(..))));
+    // Square corners: the plain clip of an overflowing fit.
+    let (_, square) = painted(r#"{"type":"image","src":"photo","fit":"cover"}"#);
+    assert!(square.is_some());
 }
 
 fn near(a: Xywh, b: Xywh) -> bool {
@@ -383,8 +410,16 @@ fn raster_and_svg_images_follow_their_object_position() {
             (10.0, 20.0, 300.0, 180.0),
             true,
         ),
-        // fill ignores objectPosition.
-        ("chart", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
+        // fill ignores objectPosition. The box is the chart's viewport,
+        // which its viewBox (xMidYMid meet) fits: 100 × 60, centred.
+        ("photo", "fill", r#"{"x":"right","y":"bottom"}"#, BOX, false),
+        (
+            "chart",
+            "fill",
+            r#"{"x":"right","y":"bottom"}"#,
+            (10.0, 40.0, 100.0, 60.0),
+            false,
+        ),
     ] {
         let (r, clip) = image(src, fit, position);
         assert!(near(r, rect), "{src} {fit} {position}: {r:?}");

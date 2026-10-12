@@ -266,9 +266,25 @@ impl ImageSet {
             return;
         }
         let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
-        let (rect, clip) = fit_rect(*fit, *object_position, bx, intrinsic);
+        let (rect, clip) = match (&self.get(key).body, fit) {
+            // The box is the SVG's viewport, which its `viewBox` fits.
+            (
+                ImageBody::Svg {
+                    view_box: Some(vb), ..
+                },
+                ImageFit::Fill,
+            ) => vb.place(intrinsic, bx),
+            _ => fit_rect(*fit, *object_position, bx, intrinsic),
+        };
+        // `borderRadius` rounds the image without `overflow: hidden`.
+        let radii = crate::paint::content_radii(&node.style, geo);
         ops.push(Op::Save);
-        if clip {
+        if !crate::paint::is_square(&radii) {
+            ops.push(Op::ClipPath {
+                path: crate::paint::rounded_rect(bx, &radii),
+                rule: crate::paint::FillRule::NonZero,
+            });
+        } else if clip {
             ops.push(Op::ClipRect(bx));
         }
         ops.push(Op::Image {
@@ -366,8 +382,8 @@ pub(crate) fn image_matrix(orientation: u8, rect: Rect) -> [f32; 6] {
     ]
 }
 
-/// Decodes a JPEG or PNG embedded in an SVG, through the process-wide
-/// cache.
+/// Decodes a JPEG, PNG, GIF or WebP embedded in an SVG, through the
+/// process-wide cache.
 pub(crate) fn decode_embedded(bytes: &[u8]) -> Result<Arc<DecodedImage>, String> {
     ImageData::new(bytes.into()).decoded(&ImageCrateDecoder)
 }

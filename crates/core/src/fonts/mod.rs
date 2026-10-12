@@ -64,6 +64,14 @@ impl FontData {
             Some(sfnt) => sfnt.into(),
             None => bytes,
         };
+        // `Face::parse` would take the first face of a collection, and the
+        // PDF needs the program of one font, not the whole file.
+        if bytes.starts_with(b"ttcf") {
+            return Err(err(
+                "font collections (.ttc) are not supported; register each font as its own \
+                 .ttf or .otf file",
+            ));
+        }
         let face = ttf_parser::Face::parse(&bytes, 0)
             .map_err(|e| err(&format!("not a valid TrueType/OpenType font ({e})")))?;
         let tables = face.tables();
@@ -446,6 +454,35 @@ mod tests {
             e.to_string(),
             "font error: font `x`: not a valid WOFF2 font"
         );
+    }
+
+    /// `font` wrapped in a TrueType collection of one face.
+    fn collection(font: &[u8]) -> Vec<u8> {
+        const HEADER: u32 = 16;
+        let mut out = b"ttcf".to_vec();
+        out.extend([0, 1, 0, 0]);
+        out.extend(1u32.to_be_bytes());
+        out.extend(HEADER.to_be_bytes());
+        let mut face = font.to_vec();
+        // Table offsets count from the start of the file.
+        let tables = u16::from_be_bytes([face[4], face[5]]) as usize;
+        for i in 0..tables {
+            let at = 12 + 16 * i + 8;
+            let offset = u32::from_be_bytes(face[at..at + 4].try_into().unwrap());
+            face[at..at + 4].copy_from_slice(&(offset + HEADER).to_be_bytes());
+        }
+        out.extend(face);
+        out
+    }
+
+    #[test]
+    fn rejects_font_collections() {
+        let inter = fixture("Inter-Regular.ttf");
+        let ttc = collection(&inter);
+        assert!(ttf_parser::Face::parse(&ttc, 0).is_ok());
+        let e = FontStore::new().register("x", ttc).unwrap_err();
+        assert_eq!(e.code(), "FONT_ERROR");
+        assert!(e.to_string().contains("font collections (.ttc)"), "{e}");
     }
 
     #[test]

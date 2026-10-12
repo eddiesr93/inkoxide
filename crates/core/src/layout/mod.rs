@@ -24,7 +24,7 @@ use taffy::{LayoutInput, LayoutOutput};
 pub(crate) use table::TableLayout;
 
 use crate::paint::Rect;
-use crate::schema::{Edges, Node, NodeKind, Style, TableCell, TableRow, VerticalAlign};
+use crate::schema::{Edges, FieldKind, Node, NodeKind, Style, TableCell, TableRow, VerticalAlign};
 use crate::InkoxideError;
 
 pub(crate) type NodeIdx = u32;
@@ -322,7 +322,7 @@ impl<'m> LayoutCtx<'m> {
             let id = if k == 0 {
                 taffy.new_with_children(root_style(ln, mode), kids)
             } else {
-                let s = match mode {
+                let mut s = match mode {
                     // The page content box is a page child's containing
                     // block: its percentage heights are of the page.
                     RootMode::Flow { min_height, .. } if k <= list[0].2 && min_height > 0.0 => {
@@ -330,6 +330,16 @@ impl<'m> LayoutCtx<'m> {
                     }
                     _ => style::to_taffy(ln.style()),
                 };
+                // Checkboxes and radio buttons are `size` + 2 pt squares
+                // unless sized.
+                let button = |n: &Node| {
+                    matches!(&n.kind, NodeKind::Field(f)
+                        if matches!(f.kind, FieldKind::Checkbox | FieldKind::Radio))
+                };
+                if ln.node.is_some_and(button) {
+                    let parent = tree.nodes[ln.parent as usize].style();
+                    style::keep_intrinsic_size(&mut s, ln.style(), parent);
+                }
                 if len == 0 {
                     taffy.new_leaf_with_context(s, idx)
                 } else {

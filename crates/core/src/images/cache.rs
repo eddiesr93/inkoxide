@@ -28,7 +28,7 @@ fn size_of(image: &DecodedImage, encoded: usize) -> usize {
             samples.len() + alpha.as_ref().map_or(0, Vec::len) + encoded
         }
         // A parsed tree is several times larger than its source.
-        ImageBody::Svg(_) => encoded * 8,
+        ImageBody::Svg { .. } => encoded * 8,
     }
 }
 

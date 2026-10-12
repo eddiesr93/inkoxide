@@ -149,8 +149,15 @@ impl PdfSink for PdfWriterSink {
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
         let mut fields = Vec::new();
+        // Links and widgets are areas on the page: they cover where the
+        // transform in effect puts them.
+        let mut ctm: Option<[f32; 6]> = None;
+        let mut saved = Vec::new();
         for op in &page.ops {
             match op {
+                Op::Save => saved.push(ctm),
+                Op::Restore => ctm = saved.pop().flatten(),
+                Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| crate::paint::mul(c, *m))),
                 Op::Text(t) => {
                     glyphs
                         .entry(t.font)
@@ -163,7 +170,9 @@ impl PdfSink for PdfWriterSink {
                 Op::Image { key, .. } => {
                     images.insert(*key);
                 }
-                Op::Link { rect, target } => links.push((*rect, target.clone())),
+                Op::Link { rect, target } => {
+                    links.push((ctm.map_or(*rect, |m| bounds(m, *rect)), target.clone()));
+                }
                 Op::Field(f) => {
                     if let Some(font) = f.font {
                         let used = glyphs.entry(font).or_default();
@@ -172,7 +181,9 @@ impl PdfSink for PdfWriterSink {
                         }
                         used.extend(&f.edit_glyphs);
                     }
-                    fields.push((**f).clone());
+                    let mut f = (**f).clone();
+                    f.ctm = ctm;
+                    fields.push(f);
                 }
                 _ => {}
             }
@@ -439,12 +450,24 @@ impl PdfSink for PdfWriterSink {
         }
         inf.producer(TextStr(&text(producer)));
         if let Some(t) = doc.creation_date {
-            inf.creation_date(pdf_date(t));
+            inf.pair(Name(b"CreationDate"), Str(pdf_date(t).as_bytes()));
         }
         inf.finish();
 
         Ok(pdf.finish())
     }
+}
+
+/// The upright rectangle that `rect` covers once transformed by `m`.
+fn bounds(m: [f32; 6], rect: Rect) -> Rect {
+    let Rect { x, y, w, h } = rect;
+    let corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)]
+        .map(|(px, py)| (m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]));
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for (px, py) in corners {
+        (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px), y1.max(py));
+    }
+    Rect::new(x0, y0, x1 - x0, y1 - y0)
 }
 
 /// Writes one link annotation as object `r`; `false` (nothing written)
@@ -580,20 +603,22 @@ fn write_outline(
     Some(root)
 }
 
-fn pdf_date(t: Timestamp) -> pdf_writer::Date {
+/// A PDF date string (`D:YYYYMMDDHHmmSS` and `Z` or `±HH'mm`). Written by
+/// hand: `pdf_writer::Date` takes the offset's sign from its hours, so an
+/// offset under an hour west of UTC (`-00:30`) would come out east of it.
+fn pdf_date(t: Timestamp) -> String {
     let off = t.offset_minutes;
-    let date = pdf_writer::Date::new(t.year)
-        .month(t.month)
-        .day(t.day)
-        .hour(t.hour)
-        .minute(t.minute)
-        .second(t.second);
-    if off == 0 {
-        date.utc_offset_hour(0).utc_offset_minute(0)
+    let zone = if off == 0 {
+        "Z".to_string()
     } else {
-        date.utc_offset_hour((off / 60) as i8)
-            .utc_offset_minute((off.unsigned_abs() % 60) as u8)
-    }
+        let sign = if off < 0 { '-' } else { '+' };
+        let a = off.unsigned_abs();
+        format!("{sign}{:02}'{:02}", a / 60, a % 60)
+    };
+    format!(
+        "D:{:04}{:02}{:02}{:02}{:02}{:02}{zone}",
+        t.year, t.month, t.day, t.hour, t.minute, t.second
+    )
 }
 
 pub(crate) fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
@@ -863,6 +888,101 @@ mod tests {
             assert_eq!(q(v), 0.0);
             assert_eq!(round_to(v, 1e5), 0.0);
         }
+    }
+
+    #[test]
+    fn dates_keep_the_sign_of_offsets_under_an_hour() {
+        let t = Timestamp {
+            year: 2026,
+            month: 10,
+            day: 12,
+            hour: 9,
+            minute: 30,
+            second: 0,
+            offset_minutes: -30,
+        };
+        assert_eq!(pdf_date(t), "D:20261012093000-00'30");
+        for (off, zone) in [(0, "Z"), (30, "+00'30"), (-90, "-01'30"), (150, "+02'30")] {
+            let t = Timestamp {
+                offset_minutes: off,
+                ..t
+            };
+            assert_eq!(pdf_date(t), format!("D:20261012093000{zone}"));
+        }
+        // The information dictionary and XMP name the same instant.
+        let doc = br#"{"version":1,"pages":[{"size":{"width":10,"height":10}}]}"#;
+        let options = crate::RenderOptions::default()
+            .with_creation_date("2026-10-12T09:30:00-00:30")
+            .with_pdf_a(true);
+        let pdf = crate::render(
+            doc,
+            crate::InputFormat::Json,
+            &options,
+            &crate::FontStore::new(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        assert!(
+            pdf.contains("/CreationDate (D:20261012093000-00'30)"),
+            "{pdf}"
+        );
+        assert!(pdf.contains("<xmp:CreateDate>2026-10-12T09:30:00-00:30</xmp:CreateDate>"));
+    }
+
+    /// The `/Rect` of every annotation of a 300 × 300 pt page holding
+    /// `children`, in order, rounded to points.
+    fn annotation_rects(children: &str) -> Vec<[f32; 4]> {
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+               "pages":[{{"size":{{"width":300,"height":300}},"children":[{children}]}}]}}"#
+        );
+        let options = crate::RenderOptions::default().with_compress(false);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &options,
+            &crate::test_fixtures::inter(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        String::from_utf8_lossy(&pdf)
+            .split("/Rect [")
+            .skip(1)
+            .map(|s| {
+                let v: Vec<f32> = s
+                    .split(']')
+                    .next()
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|n| n.parse::<f32>().unwrap().round())
+                    .collect();
+                [v[0], v[1], v[2], v[3]]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn links_and_widgets_cover_their_transformed_area() {
+        // A linked 100 × 20 box at the top left, holding a linked run and a
+        // text field, moved by (150, 100).
+        let moved = annotation_rects(
+            r#"{"type":"box","link":"https://a.example","style":{"width":100,"height":40,"transform":[{"translate":[150,100]}]},
+               "children":[{"type":"text","runs":[{"text":"Click","font":"Inter-Regular","size":10,"link":"https://b.example"}]},
+                 {"type":"field","style":{"width":100,"height":20},"field":{"name":"t","kind":"text","font":"Inter-Regular"}}]}"#,
+        );
+        assert_eq!(moved.len(), 3, "{moved:?}");
+        assert_eq!(moved[0], [150.0, 160.0, 250.0, 200.0]);
+        let [x0, y0, _, y1] = moved[1];
+        assert_eq!((x0, y1), (150.0, 200.0), "{moved:?}");
+        assert!(y0 > 180.0);
+        // Widgets come after links; the field sits under the 12 pt line.
+        assert_eq!(moved[2], [150.0, 168.0, 250.0, 188.0]);
+        // Turned a quarter around its centre (50, 20): 40 wide, 100 tall.
+        let turned = annotation_rects(
+            r#"{"type":"box","link":"https://a.example","style":{"width":100,"height":40,"rotate":90}}"#,
+        );
+        assert_eq!(turned, [[30.0, 230.0, 70.0, 330.0]]);
     }
 
     #[test]

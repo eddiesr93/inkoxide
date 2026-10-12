@@ -99,6 +99,40 @@ All notable changes to the packages in this repository. The format follows
   hyphen was drawn outside it.
 - The docs say how `minPresenceAhead`, percentage gaps and relative `top`/`left` offsets work,
   and where they differ from react-pdf (`MIGRATING.md`).
+- A creation date with an offset under an hour west of UTC (`-00:30`) is written with its sign
+  in the PDF information dictionary; it was written east of UTC, an hour off the XMP date that
+  PDF/A requires it to match.
+- Registering a font collection (`.ttc`) fails with `FONT_ERROR`. It was accepted, only its first
+  face could be used, and with `subsetFonts: false` the whole collection was embedded where the
+  PDF needs a single TrueType program.
+- An SVG image smaller than about 3e-39 px no longer makes the PDF writer output `inf` in the
+  image's matrix.
+- `borderRadius` rounds an image's corners without `overflow: hidden`: the image is clipped to
+  the rounded content box, as in CSS.
+- A select field embeds the glyphs of the common Latin range and of every option, as a text
+  field does, so a viewer can show the option picked; it embedded only those of its value.
+- The mark of a checkbox or radio button takes its size from `size`, centred in the widget; it
+  grew with the widget box.
+- A checkbox or radio button without a width or height keeps its `size` + 2 pt square where its
+  container would stretch it (as in a column, by default); it stretched across the container.
+- A radio button whose value is `Off`, or longer than 127 bytes, is no longer written with a
+  broken appearance state: such a group names its states by position and lists its values in
+  `/Opt`. A checked `Off` button showed as unselected.
+- Links and form fields inside a box with `transform` or `rotate` are clickable where the box is
+  drawn: their areas follow the transform, and a field's appearance turns and scales with it.
+  They stayed at the untransformed position.
+- An SVG with a `viewBox` drawn with `fit: fill` (the default) into a box of another shape keeps
+  its proportions, as in CSS: the box becomes its viewport, and its `preserveAspectRatio`
+  (centred and whole by default) places the drawing. It was stretched to the box, so an `<Svg>`
+  given `width: '100%'` came out squashed.
+- An SVG element with a `filter` (a drop shadow, a blur) is drawn without the filter; it was left
+  out with its children, so a logo with a shadow showed as a blank box.
+- SVG gradients with `spreadMethod="repeat"` or `"reflect"` repeat or mirror their stops over
+  what they paint; they were drawn as `pad`, one ramp and then a flat colour.
+- GIF and WebP images embedded in an SVG as `data:` URLs are drawn; they were left out.
+- An SVG fails with `INVALID_IMAGE` when an SVG image nested in it has text, as it does with text
+  of its own, and when an image embedded in it is over 50 megapixels; both were left out
+  silently. The guide lists what SVG drawing does not support.
 
 ## 0.5.0 - 2026-10-12
 
