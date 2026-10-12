@@ -7,7 +7,7 @@
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let [_, mode, path] = &args[..] else {
-        eprintln!("usage: repro tree|json|image|font <input>");
+        eprintln!("usage: repro tree|json|image|svg|font <input>");
         std::process::exit(2);
     };
     if mode == "stats" {
@@ -17,6 +17,27 @@ fn main() {
     if mode == "image" {
         let rendered = inkoxide_fuzz::check_image(&bytes);
         return eprintln!("ok ({})", if rendered { "rendered" } else { "rejected" });
+    }
+    if mode == "svg" {
+        let svg = inkoxide_fuzz::svg::svg(&bytes);
+        println!("{}", String::from_utf8_lossy(&svg));
+        let t = std::time::Instant::now();
+        let rendered = inkoxide_fuzz::check_image(&svg);
+        let mut images = inkoxide::ImageStore::new();
+        images.insert("fz", svg.clone());
+        let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[{"type":"image","src":"fz"}]}]}"#;
+        let why = inkoxide::validate(
+            doc,
+            inkoxide::InputFormat::Json,
+            &inkoxide::FontStore::new(),
+            &images,
+        );
+        let verdict = if rendered {
+            "rendered".to_string()
+        } else {
+            format!("rejected: {:?}", why.first().map(|e| &e.message))
+        };
+        return eprintln!("ok ({verdict} in {:?})", t.elapsed());
     }
     if mode == "font" {
         let registered = inkoxide_fuzz::check_font(&bytes);

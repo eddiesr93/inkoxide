@@ -72,6 +72,10 @@ Targets (in `fuzz/`, outside the workspace):
   (edge values, long words, mixed scripts, big tables, deep nesting).
 - `render_svg`: raw bytes registered as an image and drawn twice; seeded
   with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
+- `render_svg_tree`: a structure-aware SVG generator that combines what
+  `usvg` expands (references, markers, patterns, style sheets, entities,
+  nested SVG images), so a timeout or an out-of-memory shows a way past
+  the complexity limits.
 - `register_font`: raw bytes registered as a font, as they are and with
   the WOFF and WOFF2 signatures over its first bytes, so every input reaches both
   decoders; each font that registers sets a line of text. Seeded with
@@ -90,6 +94,7 @@ cd fuzz
 cargo run --release --bin repro -- tree artifacts/render_tree/crash-…   # prints the document, runs the oracle
 cargo run --release --bin repro -- json artifacts/render_json/crash-…
 cargo run --release --bin repro -- image artifacts/render_svg/crash-…
+cargo run --release --bin repro -- svg artifacts/render_svg_tree/timeout-…  # prints the SVG, its time and verdict
 cargo run --release --bin repro -- font artifacts/register_font/crash-…
 cargo run --release --bin repro -- stats corpus/render_tree             # generator validity rate
 ```

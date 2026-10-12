@@ -3,6 +3,8 @@
 
 use std::sync::LazyLock;
 
+pub mod svg;
+
 use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
 use serde_json::{json, Map, Value};
 
@@ -112,7 +114,7 @@ pub fn check_font(bytes: &[u8]) -> usize {
         }
     }
     let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"}],"pages":[{"size":{"width":300,"height":200},"children":[
-        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi­😀","font":"fz","size":12}]}]}]}"#;
+        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]}]}]}"#;
     let mut registered = 0;
     for v in variants {
         let mut fonts = FontStore::new();
