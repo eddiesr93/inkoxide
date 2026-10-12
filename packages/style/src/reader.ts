@@ -91,24 +91,19 @@ export class Reader {
   }
 
   private dimToLen(d: Dim, value: string): Len {
+    // `calc(infinity * 1px)` (`rounded-full`): as large as a length gets here.
+    if ((d.u === 'pt' || d.u === '') && Math.abs(d.v) === Number.POSITIVE_INFINITY)
+      return Math.sign(d.v) * 1e4;
     if (d.u === 'pt') return round(d.v);
     if (d.u === '%') return `${round(d.v)}%`;
     if (d.u === '' && d.v === 0) return 0;
-    if (d.u === '' && !Number.isFinite(d.v)) return 1e4;
     throw this.error(`${this.prop}: ${value} (expected a length in pt/px/rem or a percentage)`);
   }
 
   len(value: string): Len {
     const v = value.trim();
     if (v === 'auto') return 'auto';
-    try {
-      const d = evalDim(v);
-      const out = this.dimToLen(d, v);
-      return typeof out === 'number' && out > 1e4 ? 1e4 : out;
-    } catch (e) {
-      if (e instanceof UnsupportedValueError) throw e;
-      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
-    }
+    return this.dimToLen(this.dim(v), v);
   }
 
   lenPercent(value: string): LenPercent {
@@ -123,15 +118,21 @@ export class Reader {
     return l;
   }
 
-  num(value: string): number {
+  /** The value evaluated (`calc()` included), with its unit. */
+  dim(value: string): Dim {
     try {
-      const d = evalDim(value);
-      if (d.u === '%') return round(d.v / 100);
-      if (d.u !== '') throw new ValueError(`unexpected unit ${d.u}`);
-      return round(d.v);
+      return evalDim(value);
     } catch (e) {
-      throw this.error(`${this.prop}: ${value} (${(e as Error).message})`);
+      if (!(e instanceof ValueError)) throw e;
+      throw this.error(`${this.prop}: ${value} (${e.message})`);
     }
+  }
+
+  num(value: string): number {
+    const d = this.dim(value);
+    if (d.u === '%') return round(d.v / 100);
+    if (d.u !== '') throw this.error(`${this.prop}: ${value} (unexpected unit ${d.u})`);
+    return round(d.v);
   }
 
   color(value: string): ColorValue {
@@ -211,7 +212,7 @@ export class Reader {
   }
 
   angle(value: string): number {
-    const d = evalDim(value);
+    const d = this.dim(value);
     if (d.u === 'deg' || (d.u === '' && d.v === 0)) return round(d.v);
     throw this.error(`${this.prop}: ${value} (expected an angle)`);
   }

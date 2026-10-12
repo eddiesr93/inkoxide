@@ -312,6 +312,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'rotate-45': { rotate: 45 },
       '-rotate-12': { rotate: -12 },
       'rotate-[30deg]': { rotate: 30 },
+      'rotate-45 rotate-none': {},
     },
   },
   {

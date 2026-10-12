@@ -192,3 +192,38 @@ describe('the flex shorthand', () => {
     expect(() => tw('flex-[50%_50%]')).toThrow(/grow and shrink are numbers/);
   });
 });
+
+/** The error `tw(cls)` throws. */
+function errorOf(cls: string): UnsupportedUtilityError {
+  try {
+    tw(cls);
+  } catch (e) {
+    expect(e).toBeInstanceOf(UnsupportedUtilityError);
+    return e as UnsupportedUtilityError;
+  }
+  return expect.unreachable(`${cls} did not throw`);
+}
+
+describe('errors name the CSS property', () => {
+  it('for values that do not evaluate, edges and var()', () => {
+    expect(errorOf('leading-[abc]').property).toBe('line-height');
+    expect(errorOf('tracking-[abc]').property).toBe('letter-spacing');
+    expect(errorOf('rotate-[abc]').property).toBe('rotate');
+    expect(errorOf('translate-[1pt_2pt_abc]').property).toBe('translate');
+    expect(errorOf('p-[1pt_2pt_3pt_4pt_5pt]').property).toBe('padding');
+    expect(errorOf('m-[var(--nope)]').property).toBe('margin');
+    expect(errorOf('leading-[abc]').message).toContain('line-height: abc');
+  });
+});
+
+describe('arbitrary lengths', () => {
+  it('are not clamped', () => {
+    expect(tw('w-[20000pt]')).toEqual({ width: 20000 });
+    expect(tw('h-[12000pt]')).toEqual({ height: 12000 });
+    expect(tw('-mt-[20000pt]')).toEqual({ marginTop: -20000 });
+  });
+
+  it('cap an infinite radius', () => {
+    expect(tw('rounded-full')).toEqual({ borderRadius: 1e4 });
+  });
+});

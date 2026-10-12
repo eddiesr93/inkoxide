@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseFlex, Reader } from '../src/index.ts';
+import { parseFlex, parseTransform, Reader, UnsupportedValueError } from '../src/index.ts';
 
 describe('Reader.placement', () => {
   it('reads both halves of a grid placement', () => {
@@ -40,5 +40,27 @@ describe('parseFlex', () => {
     for (const bad of ['50% 50%', '1 2% 3', 'auto auto', '1 2 3 4', '', '-1']) {
       expect(() => flex(bad), bad).toThrow(/flex/);
     }
+  });
+});
+
+describe('parseTransform errors', () => {
+  it('are UnsupportedValueError, naming the property, for a bad angle', () => {
+    for (const bad of ['rotate(abc)', 'rotate(1grad)', 'skewX(1grad)', 'rotate(calc(1deg)']) {
+      expect(() => parseTransform('transform', bad), bad).toThrow(UnsupportedValueError);
+      expect(() => parseTransform('transform', bad), bad).toThrow(/^transform: /);
+    }
+  });
+});
+
+describe('lengths', () => {
+  it('are kept above 10000pt, and only infinite ones are capped', () => {
+    const r = new Reader('width');
+    expect(r.len('20000pt')).toBe(20000);
+    expect(r.len('-20000pt')).toBe(-20000);
+    expect(r.len('calc(infinity * 1px)')).toBe(1e4);
+  });
+
+  it('are kept above 10000pt in a transform', () => {
+    expect(parseTransform('transform', 'translate(20000pt, 0)')).toEqual([{ translate: [20000, 0] }]);
   });
 });

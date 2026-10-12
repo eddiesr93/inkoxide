@@ -1,6 +1,5 @@
 import type { GridPlacement } from '@inkoxide/schema';
 import {
-  evalDim,
   parseFlex,
   parseFontFamily,
   parseObjectPosition,
@@ -276,7 +275,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         return;
       }
       const [x = '0', y = '0', z] = splitTopLevel(v, ' ');
-      if (z !== undefined && evalDim(z).v !== 0) throw r.error(`translate: ${v} (no z axis)`);
+      if (z !== undefined && r.dim(z).v !== 0) throw r.error(`translate: ${v} (no z axis)`);
       s.translate = [r.lenPercent(x), r.lenPercent(y)];
       return;
     }
@@ -346,7 +345,11 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'background-image':
       throw r.error('gradients and background images are not supported (use bg-<colour>)');
     case 'rotate': {
-      const d = evalDim(v);
+      if (v === 'none') {
+        delete s.rotate;
+        return;
+      }
+      const d = r.dim(v);
       if (d.u !== 'deg') throw r.error(`rotate: ${v}`);
       s.rotate = round(d.v);
       return;
@@ -376,7 +379,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         delete s.lineHeight;
         return;
       }
-      const d = evalDim(v);
+      const d = r.dim(v);
       if (d.u === '') s.lineHeight = { mult: round(d.v) };
       else if (d.u === '%') s.lineHeight = { mult: round(d.v / 100) };
       else if (d.u === 'em') s.lineHeight = { mult: round(d.v) };
@@ -389,7 +392,7 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
         s.letterSpacing = { pt: 0 };
         return;
       }
-      const d = evalDim(v);
+      const d = r.dim(v);
       if (d.u === 'em') s.letterSpacing = { em: round(d.v) };
       else if (d.u === 'pt' || (d.u === '' && d.v === 0)) s.letterSpacing = { pt: round(d.v) };
       else throw r.error(`letter-spacing: ${v}`);
@@ -539,7 +542,14 @@ export function mapClasses(
           throw new UnsupportedValueError(prop, `text-overflow: ${raw} (use truncate)`);
         // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
         const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
-        applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup));
+        try {
+          applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup));
+        } catch (e) {
+          // A value that does not parse at all (`var()` with no value, five edges): name the property.
+          if (e instanceof ValueError)
+            throw new UnsupportedValueError(prop, `${prop}: ${raw} (${e.message})`);
+          throw e;
+        }
       }
       style = next;
     } catch (e) {

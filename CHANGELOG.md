@@ -19,6 +19,10 @@ All notable changes to the packages in this repository. The format follows
 - **`flex`:** a lone length is the basis, as in CSS: `flex: '30%'` and `flex-[30%]` are
   `1 1 30%`. The style prop rejected it and the class read it as a grow of 0.3. Grow and shrink
   with a unit are an unsupported value.
+- **Reading values:** an unsupported Tailwind value always names the CSS property
+  (`leading-[abc]`, `rotate-[abc]`, `p-[1pt_2pt_3pt_4pt_5pt]`, `m-[var(--nope)]`), and
+  `parseTransform` throws `UnsupportedValueError` for a bad angle (`rotate(1grad)`).
+  `rotate-none` works, and lengths above 10000pt are no longer cut to 10000pt (`h-[12000pt]`).
 
 ## 0.5.0 - 2026-10-12
 
