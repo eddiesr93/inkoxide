@@ -36,4 +36,4 @@ export const sample = {
   ],
 };
 
-if (import.meta.main) await renderToFile(<Receipt {...sample} />, 'receipt.pdf');
+if (process.argv[1] === import.meta.filename) await renderToFile(<Receipt {...sample} />, 'receipt.pdf');

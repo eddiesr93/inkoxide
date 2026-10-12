@@ -51,7 +51,8 @@ case "${1:-}" in
   open)
     run="${2:?usage: fuzz-findings.sh open RUN_ID}"
     dest="$root/fuzz/findings/$run"
-    gh run download "$run" --repo eddiesr93/inkoxide --pattern 'fuzz-findings-*' --dir "$dest"
+    repo=$(node "$root/scripts/release/common.mjs" repository-slug)
+    gh run download "$run" --repo "$repo" --pattern 'fuzz-findings-*' --dir "$dest"
     for dir in "$dest"/fuzz-findings-*; do
       unseal "$dir"
       echo "${dir#"$root/"}/findings: $(find "$dir/findings/artifacts" -type f | wc -l | tr -d ' ') inputs"

@@ -181,4 +181,4 @@ export const sample: InvoiceProps = {
   taxRate: 0.08,
 };
 
-if (import.meta.main) await renderToFile(<Invoice {...sample} />, 'invoice.pdf');
+if (process.argv[1] === import.meta.filename) await renderToFile(<Invoice {...sample} />, 'invoice.pdf');

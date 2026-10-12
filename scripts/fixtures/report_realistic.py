@@ -5,19 +5,16 @@ business report with paragraphs (some with bold and linked phrases),
 KPIs, a wide numeric grid, key/value pairs), two fonts, and a header and
 footer with page numbers. It is the input of scripts/bench-headline.sh.
 
-The output is committed; scripts/ci.sh regenerates it and fails when it
-differs, so edit this script, not the JSON.
+The output is committed; scripts/check-generated.sh regenerates it and
+fails when it differs, so edit this script, not the JSON.
 
   scripts/fixtures/report_realistic.py
 """
-import json
-import pathlib
 import random
 
-OUT = pathlib.Path(__file__).resolve().parents[2] / "fixtures/docs/report-100p-realistic.json"
+from common import A4, B, FONTS, INK, R, run, write
+
 rng = random.Random(2026)
-R, B = "Inter-Regular", "Inter-Bold"
-INK = [0.1, 0.11, 0.14, 1]
 MUTED = [0.4, 0.42, 0.48, 1]
 ACCENT = [0.12, 0.29, 0.6, 1]
 LINE = [0.85, 0.86, 0.9, 1]
@@ -29,6 +26,7 @@ WORDS = ("analysis revenue quarterly performance growth market segment customer 
          "implementation measurable outcomes stakeholder engagement sustainability digital "
          "transformation infrastructure investment portfolio diversification risk mitigation "
          "headcount margin pricing contract renewal pipeline conversion inventory turnover").split()
+BODY = 10  # body text size
 REGIONS = ["North", "South", "East", "West", "Central", "Export"]
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
 
@@ -41,25 +39,19 @@ def sentence():
     return words(8, 18).capitalize() + "."
 
 
-def run(text, font=R, size=10, color=INK, **kw):
-    r = {"text": text, "font": font, "size": size, "color": color}
-    r.update(kw)
-    return r
-
-
 def para(n=None):
     runs = []
     for _ in range(n or rng.randint(3, 7)):
         roll = rng.random()
         if roll < 0.15:
-            runs.append(run(words(1, 3).capitalize() + ": ", B))
-            runs.append(run(sentence() + " "))
+            runs.append(run(words(1, 3).capitalize() + ": ", B, BODY))
+            runs.append(run(sentence() + " ", size=BODY))
         elif roll < 0.2:
-            runs.append(run(words(2, 4).capitalize(), color=ACCENT, decoration="underline",
+            runs.append(run(words(2, 4).capitalize(), size=BODY, color=ACCENT, decoration="underline",
                             link="https://example.com/" + rng.choice(WORDS)))
-            runs.append(run(" " + words(6, 12) + ". "))
+            runs.append(run(" " + words(6, 12) + ". ", size=BODY))
         else:
-            runs.append(run(sentence() + " "))
+            runs.append(run(sentence() + " ", size=BODY))
     runs[-1]["text"] = runs[-1]["text"].rstrip()
     return {"type": "text", "style": {"textAlign": "justify", "lineHeight": 1.45, "hyphenate": True,
                                       "margin": {"bottom": 8}}, "runs": runs}
@@ -172,9 +164,8 @@ footer = {"type": "box", "style": {"flexDirection": "row", "justifyContent": "sp
                   {"placeholder": "totalPages", "font": R, "size": 8, "color": MUTED}]}]}
 doc = {"version": 1,
        "meta": {"title": "Annual Operations Report 2026", "author": "Inkoxide Holdings", "lang": "en"},
-       "fonts": [{"id": R, "family": "Inter"}, {"id": B, "family": "Inter", "weight": 700}],
-       "pages": [{"size": {"width": 595.28, "height": 841.89},
+       "fonts": FONTS,
+       "pages": [{"size": A4,
                   "margin": {"top": 52, "right": 48, "bottom": 56, "left": 48},
                   "header": header, "footer": footer, "children": children}]}
-OUT.write_text(json.dumps(doc, separators=(",", ":"), ensure_ascii=False) + "\n", encoding="utf-8")
-print(f"wrote {OUT.relative_to(OUT.parents[2])} ({OUT.stat().st_size // 1024} KiB)")
+write("report-100p-realistic", doc, compact=True)

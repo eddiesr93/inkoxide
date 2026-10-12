@@ -26,7 +26,7 @@ for arg in "$@"; do
   esac
 done
 
-registry="https://registry.npmjs.org/"
+registry="$(node scripts/release/common.mjs registry)"
 # In stage.mjs's order. Read loops, not mapfile: macOS ships bash 3.2.
 packages=()
 while IFS= read -r line; do
@@ -50,8 +50,9 @@ published() {
   node scripts/release/registry.mjs "$1"
 }
 
-# Every registry dependency of the staged packages (the engine packages in particular) must
-# already be published, or the published packages could not be installed.
+# The engine packages (inkoxide, @inkoxide/schema) the staged packages depend on must already be
+# published, or the published packages could not be installed. Other registry dependencies are
+# not checked.
 missing_deps=0
 deps=()
 while IFS= read -r line; do

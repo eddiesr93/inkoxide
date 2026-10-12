@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- The examples in the `@inkoxide/render` README run when copied into a new project and started
+  with `npx tsx`, as the README says: like the quick start, they name the JSX runtime and end in
+  a plain `renderToFile` call, without a top-level await. The files in `examples/` render their
+  PDF on every Node.js 22, not only on 22.18 and later.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and

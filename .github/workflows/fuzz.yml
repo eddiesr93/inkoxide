@@ -11,7 +11,8 @@ on:
   workflow_dispatch:
     inputs:
       seconds:
-        description: Seconds per target
+        # The job times out at 100 minutes, which would lose the corpus and the findings.
+        description: Seconds per target (at most 5400)
         default: '3600'
 
 permissions:
@@ -32,14 +33,37 @@ env:
   FUZZ_TOOLCHAIN: nightly-2026-10-11
 
 jobs:
+  targets:
+    name: targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the run length
+        env:
+          FUZZ_SECONDS: ${{ inputs.seconds || '3600' }}
+        run: |
+          if ! [[ $FUZZ_SECONDS =~ ^[0-9]+$ && $FUZZ_SECONDS -le 5400 ]]; then
+            echo "::error::seconds must be a whole number up to 5400: the fuzz jobs time out at 100 minutes"
+            exit 1
+          fi
+      - name: List the targets
+        id: list
+        run: echo "targets=$(scripts/fuzz.sh --list | jq -R . | jq -sc .)" >>"$GITHUB_OUTPUT"
+
   fuzz:
     name: ${{ matrix.target }}
+    needs: targets
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
-        target: [render_tree, render_json, render_svg, render_svg_tree, register_font]
+        target: ${{ fromJSON(needs.targets.outputs.targets) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,7 +91,12 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           FUZZ_SECONDS: ${{ inputs.seconds || '3600' }}
-        run: scripts/fuzz.sh "$FUZZ_SECONDS" "$TARGET"
+        # fuzz.sh exits 1 on findings, and 2 when the targets do not build: only findings are sealed.
+        run: |
+          status=0
+          scripts/fuzz.sh "$FUZZ_SECONDS" "$TARGET" || status=$?
+          if [[ $status -eq 1 ]]; then echo "findings=true" >>"$GITHUB_OUTPUT"; fi
+          exit "$status"
       - name: Save the corpus
         if: ${{ !cancelled() }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -75,12 +104,12 @@ jobs:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
       - name: Seal the findings
-        if: ${{ failure() && steps.fuzz.outcome == 'failure' }}
+        if: ${{ failure() && steps.fuzz.outputs.findings == 'true' }}
         run: |
           scripts/fuzz-findings.sh seal sealed
           echo "Findings sealed: decrypt them with \`scripts/fuzz-findings.sh open $GITHUB_RUN_ID\`." >>"$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() && steps.fuzz.outcome == 'failure' }}
+        if: ${{ failure() && steps.fuzz.outputs.findings == 'true' }}
         with:
           name: fuzz-findings-${{ matrix.target }}
           path: sealed

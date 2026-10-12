@@ -3,5 +3,5 @@
 #![no_main]
 
 libfuzzer_sys::fuzz_target!(|data: &[u8]| {
-    inkoxide_fuzz::check_image(data);
+    let _ = inkoxide_fuzz::check_image(data);
 });

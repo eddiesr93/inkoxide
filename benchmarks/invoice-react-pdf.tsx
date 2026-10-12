@@ -3,12 +3,8 @@ import { join } from 'node:path';
 import { Document, Font, Image, Page, renderToFile, StyleSheet, Text, View } from '@react-pdf/renderer';
 
 import invoice from './invoice.json' with { type: 'json' };
+import { setUpReactPdf } from './report.tsx';
 
-const FONTS = join(import.meta.dirname, '..', 'fixtures', 'fonts');
-Font.register({
-  family: 'Inter',
-  fonts: [{ src: join(FONTS, 'Inter-Regular.ttf') }, { src: join(FONTS, 'Inter-Bold.ttf'), fontWeight: 700 }],
-});
 const logo = join(import.meta.dirname, 'logo.jpg');
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 });
 
@@ -173,5 +169,9 @@ export function Invoice(inv: typeof invoice) {
   );
 }
 
-// Run directly: writes the PDF. Imported (bench.tsx): only exports Invoice.
-if (import.meta.main) await renderToFile(<Invoice {...invoice} />, 'invoice-react-pdf.pdf');
+// Run directly: writes the PDF, with the font setup bench.tsx uses. Imported (bench.tsx): only
+// exports Invoice.
+if (process.argv[1] === import.meta.filename) {
+  setUpReactPdf(Font);
+  await renderToFile(<Invoice {...invoice} />, 'invoice-react-pdf.pdf');
+}

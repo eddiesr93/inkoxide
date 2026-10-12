@@ -8,26 +8,38 @@ pub mod svg;
 use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
 use serde_json::{json, Map, Value};
 
+/// The fixture fonts: id, family, weight and bytes. Generated documents
+/// declare them all, and their runs pick from them.
+const FIXTURE_FONTS: &[(&str, &str, u16, &[u8])] = &[
+    (
+        "Inter-Regular",
+        "Inter",
+        400,
+        include_bytes!("../../fixtures/fonts/Inter-Regular.ttf"),
+    ),
+    (
+        "Inter-Bold",
+        "Inter",
+        700,
+        include_bytes!("../../fixtures/fonts/Inter-Bold.ttf"),
+    ),
+    (
+        "NotoSans-Regular",
+        "Noto Sans",
+        400,
+        include_bytes!("../../fixtures/fonts/NotoSans-Regular.ttf"),
+    ),
+    (
+        "RobotoMono-Regular",
+        "Roboto Mono",
+        400,
+        include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf"),
+    ),
+];
+
 pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
     let mut f = FontStore::new();
-    for (id, bytes) in [
-        (
-            "Inter-Regular",
-            &include_bytes!("../../fixtures/fonts/Inter-Regular.ttf")[..],
-        ),
-        (
-            "Inter-Bold",
-            &include_bytes!("../../fixtures/fonts/Inter-Bold.ttf")[..],
-        ),
-        (
-            "NotoSans-Regular",
-            &include_bytes!("../../fixtures/fonts/NotoSans-Regular.ttf")[..],
-        ),
-        (
-            "RobotoMono-Regular",
-            &include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf")[..],
-        ),
-    ] {
+    for &(id, _, _, bytes) in FIXTURE_FONTS {
         f.register(id, bytes.to_vec()).unwrap();
     }
     f
@@ -61,7 +73,11 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 
 /// Validates and renders `doc`; panics (a finding) when the engine panics
 /// or when `validate` and `render` disagree. A JSON document that renders
-/// must render to the same bytes as MessagePack.
+/// must render to the same bytes as `MessagePack`.
+///
+/// # Panics
+///
+/// On a finding.
 pub fn check(doc: &[u8]) {
     // Half the inputs also go through the PDF/A writer.
     let pdf_a = doc.len() % 2 == 1;
@@ -84,9 +100,12 @@ pub fn check(doc: &[u8]) {
 }
 
 /// Renders arbitrary bytes registered as an image (SVG or raster), drawn
-/// twice at different sizes; same oracle as [`check`]. Returns whether
-/// it rendered.
-pub fn check_image(bytes: &[u8]) -> bool {
+/// twice at different sizes; same oracle as [`check`].
+///
+/// # Errors
+///
+/// Why the engine did not render it.
+pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
     let mut images = ImageStore::new();
     images.insert("fz", bytes.to_vec());
     let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
@@ -99,7 +118,7 @@ pub fn check_image(bytes: &[u8]) -> bool {
         &images,
         bytes.len() % 2 == 1,
     )
-    .is_ok()
+    .map(|_| ())
 }
 
 /// Registers arbitrary bytes as a font, as they are and with the WOFF and
@@ -253,6 +272,7 @@ fn assert_finite_numbers(data: &[u8], objects: bool) {
 
 /// Entropy source over the fuzzer's bytes; reads zeros once exhausted, so
 /// generation always terminates.
+#[derive(Debug)]
 pub struct Src<'a> {
     data: &'a [u8],
     pos: usize,
@@ -390,6 +410,20 @@ fn edges(s: &mut Src, f: fn(&mut Src) -> Value) -> Value {
     Value::Object(m)
 }
 
+fn corners(s: &mut Src, f: fn(&mut Src) -> Value) -> Value {
+    let mut m = Map::new();
+    for k in ["topLeft", "topRight", "bottomRight", "bottomLeft"] {
+        if s.chance(150) {
+            m.insert(k.into(), f(s));
+        }
+    }
+    Value::Object(m)
+}
+
+fn border_style(s: &mut Src) -> Value {
+    json!(s.pick(&["solid", "dashed", "dotted"]))
+}
+
 fn breadth(s: &mut Src) -> Value {
     match s.below(7) {
         0 => json!(format!("{}fr", s.below(4))),
@@ -433,7 +467,7 @@ fn template(s: &mut Src) -> Value {
         // An auto repeat: everything must have a fixed size.
         let n = s.pick(&["auto-fill", "auto-fit"]);
         let mut v: Vec<Value> = (0..s.below(2)).map(|_| fixed(s)).collect();
-        let tracks: Vec<Value> = (0..1 + s.below(2)).map(|_| fixed(s)).collect();
+        let tracks: Vec<Value> = (0..=s.below(2)).map(|_| fixed(s)).collect();
         v.insert(s.below(v.len() + 1), json!({"repeat": n, "tracks": tracks}));
         return Value::Array(v);
     }
@@ -445,7 +479,7 @@ fn template(s: &mut Src) -> Value {
                 } else {
                     json!(1 + s.below(6))
                 };
-                let tracks: Vec<Value> = (0..1 + s.below(3)).map(|_| track(s)).collect();
+                let tracks: Vec<Value> = (0..=s.below(3)).map(|_| track(s)).collect();
                 json!({"repeat": count, "tracks": tracks})
             } else {
                 track(s)
@@ -486,9 +520,12 @@ const TEXT_ONLY: &[&str] = &[
     "lang",
     "whiteSpace",
     "textIndent",
+    "orphans",
+    "widows",
+    "direction",
 ];
 
-const PROPS: &[&str] = &[
+const BOX_PROPS: &[&str] = &[
     "display",
     "flexDirection",
     "flexWrap",
@@ -534,15 +571,8 @@ const PROPS: &[&str] = &[
     "rotate",
     "transform",
     "transformOrigin",
-    "textAlign",
-    "lineHeight",
-    "maxLines",
-    "ellipsis",
-    "hyphenate",
-    "lang",
-    "whiteSpace",
-    "textIndent",
     "verticalAlign",
+    "zIndex",
 ];
 
 fn prop(s: &mut Src, name: &str) -> Value {
@@ -590,6 +620,7 @@ fn prop(s: &mut Src, name: &str) -> Value {
                 "end",
             ],
         ),
+        "borderRadius" if s.chance(80) => corners(s, nonneg),
         "flexGrow" | "flexShrink" | "borderRadius" => nonneg(s),
         "gap" | "rowGap" | "columnGap" => length_pct(s),
         "flexBasis" | "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "maxHeight" => {
@@ -613,9 +644,9 @@ fn prop(s: &mut Src, name: &str) -> Value {
             .as_str()
             .map_or(Value::Null, |r| json!([r, r])),
         "gridTemplateAreas" => json!(s.pick(AREAS)),
-        // Placed by `node` under a parent with areas; random names in chaos.
+        // Random names in chaos; otherwise placed by `node` under a parent
+        // with areas (`Null` here, as for any unknown property).
         "gridArea" if s.chaos => e(s, &["a", "b", "zz", "9"]),
-        "gridArea" => Value::Null,
         "gridAutoFlow" => e(s, &["row", "column", "row dense", "column dense"]),
         "gridColumn" | "gridRow" => placement(s),
         "overflow" => e(s, &["visible", "hidden"]),
@@ -623,14 +654,25 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "opacity" => json!(s.below(5) as f64 / 4.0),
         "borderWidth" => edges(s, nonneg),
         "borderColor" => edges(s, color),
-        "borderStyle" => e(s, &["solid", "dashed", "dotted"]),
+        "borderStyle" if s.chance(80) => edges(s, border_style),
+        "borderStyle" => border_style(s),
         "textAlign" => e(s, &["left", "center", "right", "justify"]),
         "maxLines" => json!(s.below(5)),
         "ellipsis" | "hyphenate" => json!(s.chance(128)),
         "lang" => e(s, &["fr", "en", "en-US", "de", "xx", ""]),
-        "whiteSpace" if s.chaos => e(s, &["pre-wrap", "pre-line"]),
-        "whiteSpace" => e(s, &["normal", "nowrap", "pre"]),
+        "whiteSpace" => e(s, &["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),
+        "orphans" | "widows" => match s.below(8) {
+            0 => json!(100),
+            1 if s.chaos => json!(s.pick(&[0, 101, -1])),
+            _ => json!(1 + s.below(5)),
+        },
+        "direction" => e(s, &["ltr", "rtl", "auto"]),
         "verticalAlign" => e(s, &["top", "middle", "bottom"]),
+        "zIndex" => match s.below(8) {
+            0 => json!(s.pick(&[i64::from(i32::MIN), i64::from(i32::MAX)])),
+            1 if s.chaos => json!(s.pick(&[i64::from(i32::MAX) + 1, -1i64 << 40])),
+            _ => json!(s.below(5) as i64 - 2),
+        },
         _ => Value::Null,
     }
 }
@@ -646,7 +688,7 @@ fn factor(s: &mut Src) -> Value {
 
 /// `transform`: one to three functions.
 fn transform(s: &mut Src) -> Value {
-    let ops = (0..1 + s.below(3))
+    let ops = (0..=s.below(3))
         .map(|_| match s.below(5) {
             0 => json!({"translate": [length_pct(s), length_pct(s)]}),
             1 => json!({"scale": [factor(s), factor(s)]}),
@@ -658,10 +700,19 @@ fn transform(s: &mut Src) -> Value {
     Value::Array(ops)
 }
 
+/// Any style property: one of [`BOX_PROPS`] or [`TEXT_ONLY`].
+fn any_prop(s: &mut Src) -> &'static str {
+    let i = s.below(BOX_PROPS.len() + TEXT_ONLY.len());
+    BOX_PROPS
+        .get(i)
+        .copied()
+        .unwrap_or_else(|| TEXT_ONLY[i - BOX_PROPS.len()])
+}
+
 fn style(s: &mut Src, text: bool) -> Value {
     let mut m = Map::new();
     for _ in 0..s.below(7) {
-        let mut p = s.pick(PROPS);
+        let mut p = any_prop(s);
         if !text && !s.chaos && TEXT_ONLY.contains(&p) {
             continue;
         }
@@ -745,6 +796,23 @@ fn link(s: &mut Src) -> Value {
     }
 }
 
+/// A fixture font, or one the document does not declare.
+fn font(s: &mut Src) -> Value {
+    let font = FIXTURE_FONTS
+        .get(s.below(FIXTURE_FONTS.len() + 1))
+        .map_or("Missing", |f| f.0);
+    json!(font)
+}
+
+fn font_size(s: &mut Src) -> Value {
+    match s.below(8) {
+        0 => json!(1000),
+        1 => json!(0.01),
+        2 => json!(0),
+        _ => json!(4 + s.below(30)),
+    }
+}
+
 fn run(s: &mut Src) -> Value {
     let mut m = Map::new();
     if s.chance(20) {
@@ -755,23 +823,8 @@ fn run(s: &mut Src) -> Value {
     } else {
         m.insert("text".into(), json!(text(s)));
     }
-    let font = s.pick(&[
-        "Inter-Regular",
-        "Inter-Bold",
-        "NotoSans-Regular",
-        "RobotoMono-Regular",
-        "Missing",
-    ]);
-    m.insert("font".into(), json!(font));
-    m.insert(
-        "size".into(),
-        match s.below(8) {
-            0 => json!(1000),
-            1 => json!(0.01),
-            2 => json!(0),
-            _ => json!(4 + s.below(30)),
-        },
-    );
+    m.insert("font".into(), font(s));
+    m.insert("size".into(), font_size(s));
     if s.chance(50) {
         m.insert("color".into(), color(s));
     }
@@ -783,6 +836,24 @@ fn run(s: &mut Src) -> Value {
             "decoration".into(),
             json!(s.pick(&["none", "underline", "lineThrough"])),
         );
+        if s.chance(80) {
+            m.insert(
+                "decorationStyle".into(),
+                json!(s.pick(&["solid", "double", "dotted", "dashed", "wavy"])),
+            );
+        }
+        if s.chance(60) {
+            m.insert("decorationColor".into(), color(s));
+        }
+        if s.chance(60) {
+            let thickness = match s.below(8) {
+                0 => json!(100),
+                1 => json!(0.01),
+                2 if s.chaos => json!(s.pick(&[0.0, -1.0, 100.5])),
+                _ => json!(0.25 * (1 + s.below(16)) as f64),
+            };
+            m.insert("decorationThickness".into(), thickness);
+        }
     }
     if s.chance(20) {
         m.insert("link".into(), link(s));
@@ -791,6 +862,85 @@ fn run(s: &mut Src) -> Value {
         m.insert("hyphenate".into(), json!(s.chance(50)));
     }
     Value::Object(m)
+}
+
+/// A form field: names mostly unique, radio buttons in two groups.
+fn field(s: &mut Src) -> Value {
+    let mut m = Map::new();
+    let kind = s.pick(&["text", "checkbox", "radio", "select"]);
+    m.insert("kind".into(), json!(kind));
+    let name = if s.chaos && s.chance(40) {
+        json!(s.pick(&["", "a.b", "f0", "n".repeat(129).as_str()]))
+    } else if kind == "radio" {
+        json!(format!("group{}", s.below(2)))
+    } else {
+        json!(format!("f{}", s.below(1000)))
+    };
+    m.insert("name".into(), name);
+    let options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
+    if kind == "select" || (s.chaos && s.chance(20)) {
+        m.insert("options".into(), Value::Array(options.clone()));
+    }
+    if s.chance(150) {
+        let value = match kind {
+            "select" if !s.chaos => options[s.below(options.len())].clone(),
+            "radio" => json!(s.pick(&["yes", "no", "maybe"])),
+            _ => json!(text(s)),
+        };
+        m.insert("value".into(), value);
+    }
+    if matches!(kind, "text" | "select") || s.chance(30) {
+        m.insert("font".into(), font(s));
+    }
+    for (key, of256) in [
+        ("checked", 60),
+        ("multiline", 60),
+        ("password", 30),
+        ("readOnly", 30),
+        ("required", 30),
+    ] {
+        let applies = matches!((key, kind), ("checked", "checkbox" | "radio"))
+            || matches!((key, kind), ("multiline" | "password", "text"))
+            || matches!(key, "readOnly" | "required");
+        if (applies || s.chaos) && s.chance(of256) {
+            m.insert(key.into(), json!(s.chance(128)));
+        }
+    }
+    if (kind == "text" || s.chaos) && s.chance(40) {
+        let max = if s.chaos {
+            s.below(3)
+        } else {
+            1 + s.below(200)
+        };
+        m.insert("maxLength".into(), json!(max));
+    }
+    if s.chance(100) {
+        m.insert("size".into(), font_size(s));
+    }
+    if s.chance(50) {
+        m.insert("color".into(), color(s));
+    }
+    Value::Object(m)
+}
+
+/// Pages that show a node: a keyword, or page numbers counted from either
+/// end.
+fn page_filter(s: &mut Src) -> Value {
+    if s.chance(100) {
+        return json!(s.pick(&["first", "last", "notFirst", "notLast", "odd", "even"]));
+    }
+    let n = if s.chaos { s.below(3) } else { 1 + s.below(3) };
+    let pages: Vec<Value> = (0..n)
+        .map(|_| match s.below(8) {
+            0 if s.chaos => json!(0),
+            1 => json!(s.pick(&[i64::from(i32::MAX), i64::from(i32::MIN)])),
+            _ => {
+                let page = 1 + s.below(3) as i64;
+                json!(if s.chance(100) { -page } else { page })
+            }
+        })
+        .collect();
+    Value::Array(pages)
 }
 
 fn cell(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
@@ -807,6 +957,7 @@ fn cell(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             // Not on table cells.
             st.remove("transform");
             st.remove("transformOrigin");
+            st.remove("zIndex");
         }
         m.insert("style".into(), st);
     }
@@ -875,11 +1026,14 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             "text",
             "image",
             "table",
+            "field",
             "pageBreak",
             "spacer",
         ])
     } else {
-        s.pick(&["box", "box", "text", "text", "image", "table", "spacer"])
+        s.pick(&[
+            "box", "box", "text", "text", "image", "table", "field", "spacer",
+        ])
     };
     let mut m = Map::new();
     m.insert("type".into(), json!(kind));
@@ -892,10 +1046,12 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(50) {
         m.insert("break".into(), brk(s));
     }
-    if kind != "pageBreak" && s.chance(20) {
+    // Fields take no link or bookmark.
+    let linkable = !matches!(kind, "pageBreak" | "field") || s.chaos;
+    if linkable && s.chance(20) {
         m.insert("link".into(), link(s));
     }
-    if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(20) {
+    if linkable && (s.flow || s.chaos) && s.chance(20) {
         let level = if s.chaos { s.below(40) } else { 1 + s.below(4) };
         m.insert(
             "bookmark".into(),
@@ -904,6 +1060,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     }
     if kind != "pageBreak" && s.chance(8) {
         m.insert("debug".into(), json!(true));
+    }
+    if kind != "pageBreak" && s.chance(16) {
+        m.insert("pages".into(), page_filter(s));
     }
     match kind {
         "box" => {
@@ -937,6 +1096,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         "text" => {
             let runs: Vec<Value> = (0..s.below(4)).map(|_| run(s)).collect();
             m.insert("runs".into(), Value::Array(runs));
+        }
+        "field" => {
+            m.insert("field".into(), field(s));
         }
         "image" => {
             if s.chaos && s.chance(30) {
@@ -1015,7 +1177,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
     let s = &mut Src::new(data);
     let mut budget = 2_000;
     let mut pages = Vec::new();
-    for _ in 0..1 + s.below(3) {
+    for _ in 0..=s.below(3) {
         let mut p = Map::new();
         let size = match s.below(8) {
             7 if s.chaos => json!({"width": num(s)}),
@@ -1061,16 +1223,82 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             json!(s.pick(&["2026-01-01T00:00:00Z", "2026-13-40T99:00:00Z", "bad"])),
         );
     }
+    let fonts: Vec<Value> = FIXTURE_FONTS
+        .iter()
+        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
+        .collect();
     let doc = json!({
         "version": 1,
         "meta": meta,
-        "fonts": [
-            {"id": "Inter-Regular", "family": "Inter"},
-            {"id": "Inter-Bold", "family": "Inter", "weight": 700},
-            {"id": "NotoSans-Regular", "family": "Noto Sans"},
-            {"id": "RobotoMono-Regular", "family": "Roboto Mono"}
-        ],
+        "fonts": fonts,
         "pages": pages,
     });
-    serde_json::to_vec(&doc).unwrap()
+    doc.to_string().into_bytes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_image_says_why_it_did_not_render() {
+        let Err(InkoxideError::Validation(e)) = check_image(b"abc") else {
+            panic!("rendered an image that is not one");
+        };
+        assert!(e.message.contains("unsupported image format"), "{e}");
+        assert!(check_image(include_bytes!("../../fixtures/images/logo.png")).is_ok());
+    }
+
+    /// The generator reaches the newer parts of the schema with documents
+    /// that validate.
+    #[test]
+    fn document_covers_the_schema() {
+        let features = [
+            r#""type":"field""#,
+            r#""kind":"select""#,
+            r#""kind":"radio""#,
+            r#""pages":"odd""#,
+            r#""pages":[-"#,
+            r#""zIndex":"#,
+            r#""orphans":"#,
+            r#""widows":"#,
+            r#""direction":"rtl""#,
+            r#""topLeft":"#,
+            r#""borderStyle":{"#,
+            r#""decorationStyle":"wavy""#,
+            r#""decorationColor":"#,
+            r#""decorationThickness":"#,
+            r#""whiteSpace":"pre-wrap""#,
+        ];
+        let mut seen = vec![false; features.len()];
+        let mut valid = 0;
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        for i in 0..1000 {
+            let data: Vec<u8> = (0..64 << (i % 5))
+                .map(|_| {
+                    // xorshift64
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    x as u8
+                })
+                .collect();
+            let doc = document(&data);
+            if !inkoxide::validate(&doc, InputFormat::Json, &FONTS, &IMAGES).is_empty() {
+                continue;
+            }
+            valid += 1;
+            let json = String::from_utf8(doc).unwrap();
+            for (f, seen) in features.iter().zip(&mut seen) {
+                *seen |= json.contains(f);
+            }
+        }
+        let missing: Vec<_> = features
+            .iter()
+            .zip(&seen)
+            .filter(|(_, seen)| !**seen)
+            .collect();
+        assert!(missing.is_empty(), "no valid document has {missing:?}");
+        assert!(valid >= 100, "{valid} of 1000 documents are valid");
+    }
 }

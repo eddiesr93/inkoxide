@@ -12,16 +12,11 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const REPO_URL = 'https://github.com/eddiesr93/inkoxide';
+import { failer, REPOSITORY, ROOT } from './common.mjs';
 
-function fail(msg) {
-  console.error(`github-release: ${msg}`);
-  process.exit(1);
-}
+const fail = failer('github-release');
 
 function parseArgs(argv) {
   const args = { dryRun: false, section: undefined, target: undefined };
@@ -62,7 +57,7 @@ function tagFor(name) {
 function absolutize(text, ref) {
   return text.replace(
     /\]\((?!https?:|#|mailto:)([^)\s]+)\)/g,
-    (_, path) => `](${REPO_URL}/blob/${ref}/${path})`,
+    (_, path) => `](${REPOSITORY}/blob/${ref}/${path})`,
   );
 }
 

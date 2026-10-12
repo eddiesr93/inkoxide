@@ -190,4 +190,4 @@ export const sample: ReportProps = {
   })),
 };
 
-if (import.meta.main) await renderToFile(<Report {...sample} />, 'report.pdf');
+if (process.argv[1] === import.meta.filename) await renderToFile(<Report {...sample} />, 'report.pdf');

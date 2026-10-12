@@ -4,9 +4,9 @@
 # bytes seeded with fixtures/docs), render_svg (raw bytes as an image,
 # seeded with fixtures/images), render_svg_tree (structure-aware SVG,
 # 2 workers) and register_font (raw bytes as a font, also as WOFF and
-# WOFF2, seeded with fixtures/fonts), or only the TARGETs named. Fails if
-# anything crashes, times out or runs out of memory; findings land in
-# fuzz/artifacts/.
+# WOFF2, seeded with fixtures/fonts), or only the TARGETs named. Exits 1
+# if anything crashes, times out or runs out of memory (findings land in
+# fuzz/artifacts/), and 2 if the targets do not build.
 #
 # Without a sanitizer: the core crate has no unsafe code, and what the
 # targets look for (panics, hangs, memory use) is what AddressSanitizer's
@@ -16,14 +16,22 @@
 #   scripts/fuzz.sh                       # every target, 60 s
 #   scripts/fuzz.sh 3600                  # a one-hour run
 #   scripts/fuzz.sh 600 render_svg_tree   # one target
+#   scripts/fuzz.sh --list                # the targets, one per line
 set -euo pipefail
 cd "$(dirname "$0")/../fuzz"
+
+# Every target; the nightly workflow's matrix is read from --list.
+all=(render_tree render_json render_svg render_svg_tree register_font)
+if [[ "${1:-}" == "--list" ]]; then
+  printf '%s\n' "${all[@]}"
+  exit 0
+fi
 
 secs="${1:-60}"
 shift || true
 targets=("$@")
 if [[ ${#targets[@]} -eq 0 ]]; then
-  targets=(render_tree render_json render_svg render_svg_tree register_font)
+  targets=("${all[@]}")
 fi
 limits=(-timeout=10 -rss_limit_mb=2048)
 fuzz=(cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz)
@@ -54,7 +62,10 @@ flags() {
 
 mkdir -p logs artifacts
 for t in "${targets[@]}"; do
-  "${fuzz[@]}" build "${build[@]}" "$t" >/dev/null 2>&1 || "${fuzz[@]}" build "${build[@]}" "$t"
+  "${fuzz[@]}" build "${build[@]}" "$t" >/dev/null 2>&1 || "${fuzz[@]}" build "${build[@]}" "$t" || {
+    echo "fuzz: $t does not build" >&2
+    exit 2
+  }
 done
 
 before=$(find artifacts -type f | wc -l)
@@ -71,9 +82,15 @@ for pid in "${pids[@]}"; do
 done
 after=$(find artifacts -type f | wc -l)
 
-# Statistics only: the logs show the inputs found.
+# Statistics only: the numbers of each log's last status line, nothing
+# else from the logs.
+stats() {
+  grep -a -E '^#[0-9]+' "logs/$1.log" | tail -1 | sed 's/ MS: .*//' |
+    grep -a -o -E '^#[0-9]+| (cov|ft|corp|lim|exec/s|rss|oom/timeout/crash|time|job): [0-9/]+(Kb|Mb|s)?' |
+    sed 's/^ //' | paste -sd ' ' - || true
+}
 for t in "${targets[@]}"; do
-  echo "$t: $(grep -a -E '^#[0-9]+' "logs/$t.log" | tail -1 || true)"
+  echo "$t: $(stats "$t")"
 done
 if [[ $after -gt $before || $status -ne 0 ]]; then
   echo "fuzz findings: $((after - before)) new in fuzz/artifacts (details in fuzz/logs)"

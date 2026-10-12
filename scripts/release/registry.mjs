@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const REGISTRY = 'https://registry.npmjs.org';
+import { REGISTRY } from './common.mjs';
 
 export function npm(args, opts = {}) {
   // shell: true lets Windows find npm.cmd; every argument here is ours.

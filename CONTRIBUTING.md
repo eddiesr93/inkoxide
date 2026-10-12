@@ -39,9 +39,10 @@ scripts/ci.sh              # everything, including clippy and the visual diff
   and when the new output is right, regenerate the references with
   `scripts/update-expected.sh` (on Linux) and commit them with the change.
 - **Schema changes** start in `packages/schema/document.v1.json`. Then update the serde structs
-  in `crates/core/src/schema/`, run `node scripts/gen-schema-types.mjs` and
-  `python3 scripts/gen-schema-doc.py`, and add an entry to
-  `packages/schema/CHANGELOG.md`. Changes must be backwards compatible within schema version 1.
+  in `crates/core/src/schema/`, run `node scripts/gen-schema-types.mjs`,
+  `python3 scripts/gen-schema-doc.py` and `python3 scripts/gen-fuzz-dict.py`,
+  teach the fuzz generator (`fuzz/src/lib.rs`) the new properties, and add
+  an entry to `packages/schema/CHANGELOG.md`. Changes must be backwards compatible within schema version 1.
 - **React and Tailwind changes** need a test in `packages/*/test`. A new Tailwind utility
   belongs in `packages/tailwind/src/supported.ts`; its examples are tests, and
   `pnpm exec tsx scripts/gen-tailwind-docs.ts` regenerates `docs/TAILWIND_SUPPORT.md`.

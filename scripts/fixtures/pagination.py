@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
 """Generates the pagination fixtures:
 multi-page-text, keep-together, header-footer-pagenumbers."""
-import json
-import pathlib
+from common import A4, ACCENT, FONTS, INK, box, edges, run, text, write
 
-OUT = pathlib.Path(__file__).resolve().parents[2] / "fixtures/docs"
-INK = [0.1, 0.11, 0.14, 1]
 MUTED = [0.45, 0.47, 0.53, 1]
 LINE = [0.86, 0.87, 0.9, 1]
-ACCENT = [0.16, 0.36, 0.86, 1]
-FONTS = [
-    {"id": "Inter-Regular", "family": "Inter"},
-    {"id": "Inter-Bold", "family": "Inter", "weight": 700},
-    {"id": "Inter-Italic", "family": "Inter", "style": "italic"},
-]
-A4 = {"width": 595.28, "height": 841.89}
+FONTS = FONTS + [{"id": "Inter-Italic", "family": "Inter", "style": "italic"}]
 
 PARAS = [
     "Pagination is where most of the engine's complexity lives. Content is laid out once, in a single column of unbounded height, and then sliced into pages. Every time something has to move to the next page, everything after it shifts down by the same amount, so nothing is laid out twice.",
@@ -24,43 +15,12 @@ PARAS = [
 ]
 
 
-def run(text, font="Inter-Regular", size=10.5, color=INK, **kw):
-    return {"text": text, "font": font, "size": size, "color": color, **kw}
-
-
-def text(*runs, brk=None, **style):
-    n = {"type": "text", "runs": list(runs)}
-    if style:
-        n["style"] = style
-    if brk:
-        n["break"] = brk
-    return n
-
-
-def box(*children, brk=None, **style):
-    n = {"type": "box", "style": style}
-    if children:
-        n["children"] = list(children)
-    if brk:
-        n["break"] = brk
-    return n
-
-
-def edges(v):
-    return {"top": v, "right": v, "bottom": v, "left": v}
-
-
 def heading(t, size=15):
     return text(run(t, "Inter-Bold", size), brk={"minPresenceAhead": 60}, margin={"top": 14, "bottom": 6})
 
 
 def para(t, **kw):
-    return text(run(t), lineHeight=1.5, textAlign="justify", margin={"bottom": 8}, **kw)
-
-
-def write(name, doc):
-    (OUT / f"{name}.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
-    print(f"wrote fixtures/docs/{name}.json")
+    return text(run(t, size=10.5), lineHeight=1.5, textAlign="justify", margin={"bottom": 8}, **kw)
 
 
 # --- multi-page-text: ~5 pages of flowing paragraphs and headings ---------

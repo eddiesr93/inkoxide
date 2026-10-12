@@ -8,6 +8,7 @@ import { cpus, totalmem } from 'node:os';
 
 import * as inkoxide from '@inkoxide/render';
 import * as reactPdf from '@react-pdf/renderer';
+import reactPdfPackage from '@react-pdf/renderer/package.json' with { type: 'json' };
 import type { ReactElement } from 'react';
 
 import { Invoice as InkoxideInvoice } from './invoice-inkoxide.tsx';
@@ -79,7 +80,7 @@ const rows = [
 const cpu = cpus()[0]?.model ?? 'unknown CPU';
 console.log(
   `${cpu}, ${cpus().length} cores, ${Math.round(totalmem() / 2 ** 30)} GB, Node ${process.version}, ` +
-    `@react-pdf/renderer 4.9.0, median of ${runs} warm renders (${reportRuns} for the report)\n`,
+    `@react-pdf/renderer ${reactPdfPackage.version}, median of ${runs} warm renders (${reportRuns} for the report)\n`,
 );
 console.log('| Document | Pages | Inkoxide | Inkoxide, 1 thread | react-pdf | Faster (1 thread) |');
 console.log('|---|---:|---:|---:|---:|---:|');

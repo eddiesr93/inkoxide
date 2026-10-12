@@ -51,6 +51,31 @@ test = false
 doc = false
 bench = false
 
+# The workspace's lints (Cargo.toml), copied: this crate is its own
+# workspace.
+[lints.rust]
+missing_debug_implementations = "warn"
+
+# Pedantic by default; the allowed lints below are noise for this code
+# base: geometry is f32 throughout, with casts that are checked or bounded
+# by validation, and exact float comparisons are deliberate (layout must
+# be deterministic, not approximately equal).
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+float_cmp = "allow"
+many_single_char_names = "allow"
+too_many_lines = "allow"
+must_use_candidate = "allow"
+module_name_repetitions = "allow"
+similar_names = "allow"
+struct_excessive_bools = "allow"
+struct_field_names = "allow"
+implicit_hasher = "allow"
+
 [workspace]
 members = ["."]
 

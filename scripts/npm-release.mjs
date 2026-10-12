@@ -15,24 +15,19 @@
 // --publish publishes platform packages first, then inkoxide, then
 // @inkoxide/schema, skipping any name@version already on the registry.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 
 import { platforms } from './platforms.mjs';
-import { isPublished, npm, REGISTRY } from './release/registry.mjs';
+import { failer, readJson, REGISTRY, REPOSITORY_GIT_URL, ROOT, writeJson } from './release/common.mjs';
+import { isPublished, npm } from './release/registry.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCOPE = '@inkoxide';
+const fail = failer('npm-release');
 
 // Triple (as packages/inkoxide/index.js platformTriple() names it) -> npm platform fields, for
 // every target in packages/inkoxide/package.json napi.targets.
 const PLATFORMS = Object.fromEntries(platforms().map((p) => [p.triple, p]));
-
-function fail(msg) {
-  console.error(`npm-release: ${msg}`);
-  process.exit(1);
-}
 
 function parseArgs(argv) {
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
@@ -50,14 +45,6 @@ function parseArgs(argv) {
     publish: flags.has('--publish'),
     dryRun: flags.has('--dry-run'),
   };
-}
-
-function readJson(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
-}
-
-function writeJson(path, value) {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function stagePlatform(stageDir, binDir, triple, version, repository, mainPkg) {
@@ -156,6 +143,11 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const mainPkg = readJson(join(ROOT, 'packages', 'inkoxide', 'package.json'));
   const { version, repository } = mainPkg;
+  for (const pkg of [mainPkg, readJson(join(ROOT, 'packages', 'schema', 'package.json'))]) {
+    if (pkg.repository?.url !== REPOSITORY_GIT_URL) {
+      fail(`${pkg.name}: repository.url is not ${REPOSITORY_GIT_URL}, the repository of Cargo.toml`);
+    }
+  }
 
   const missing = Object.keys(PLATFORMS)
     .map((t) => `inkoxide.${t}.node`)

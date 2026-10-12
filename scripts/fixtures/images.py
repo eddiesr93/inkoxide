@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Generates fixtures/images/* (deterministic, Pillow) and
 fixtures/docs/images-jpeg-png.json."""
-import base64, io, json, math, os
+import base64, io, os
 
 from PIL import Image, ImageDraw
 
-ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
+from common import A4, ROOT, edges, write
+
 IMG = os.path.join(ROOT, "fixtures", "images")
 os.makedirs(IMG, exist_ok=True)
 
@@ -58,7 +59,6 @@ Image.new("RGB", (8, 8), (220, 38, 38)).save(buf, format="PNG")
 inline = base64.b64encode(buf.getvalue()).decode()
 
 BLACK = [0, 0, 0, 1]
-E = lambda v: {"top": v, "right": v, "bottom": v, "left": v}
 
 
 def text(s, size=9, **style):
@@ -77,9 +77,10 @@ FRAME = {"width": 150, "height": 90, "backgroundColor": [0.93, 0.93, 0.93, 1]}
 
 
 def img(src, fit="fill", **style):
+    """An image node; without `src` (None) for one that takes inline `data`."""
     s = dict(FRAME)
     s.update(style)
-    return {"type": "image", "src": src, "fit": fit, "style": s}
+    return {"type": "image", **({"src": src} if src else {}), "fit": fit, "style": s}
 
 
 row = lambda *c: {"type": "box", "style": {"flexDirection": "row", "gap": 16, "margin": {"bottom": 16}}, "children": list(c)}
@@ -90,8 +91,8 @@ doc = {
     "fonts": [{"id": "Inter-Regular", "family": "Inter", "weight": 400, "style": "normal"}],
     "pages": [
         {
-            "size": {"width": 595.28, "height": 841.89},
-            "margin": {"top": 40, "right": 40, "bottom": 40, "left": 40},
+            "size": A4,
+            "margin": edges(40),
             "children": [
                 text("Images: JPEG passthrough, PNG with alpha, fit modes", 14, margin={"bottom": 12}),
                 row(
@@ -119,7 +120,7 @@ doc = {
                 row(
                     cell("intrinsic size (96 dpi)", {"type": "image", "src": "logo", "style": {}}),
                     cell("opacity 0.5, rounded clip", img("photo", "cover", opacity=0.5, borderRadius=16, overflow="hidden")),
-                    cell("inline base64 + border", img(None, "fill", width=40, height=40, borderWidth=E(2), borderColor=E(BLACK), padding=E(4)) | {"data": inline}),
+                    cell("inline base64 + border", img(None, "fill", width=40, height=40, borderWidth=edges(2), borderColor=edges(BLACK), padding=edges(4)) | {"data": inline}),
                 ),
                 text("Width only (height from aspect ratio):", margin={"bottom": 4}),
                 {"type": "image", "src": "photo", "style": {"width": 200}},
@@ -127,9 +128,4 @@ doc = {
         }
     ],
 }
-# The inline node has no `src`.
-doc["pages"][0]["children"][4]["children"][2]["children"][1].pop("src")
-
-with open(os.path.join(ROOT, "fixtures", "docs", "images-jpeg-png.json"), "w") as f:
-    json.dump(doc, f, indent=1)
-    f.write("\n")
+write("images-jpeg-png", doc)
