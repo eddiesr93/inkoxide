@@ -62,7 +62,7 @@ pub(crate) fn write_svg(
         id,
         cv,
         Rect::new(0.0, 0.0, w, h),
-        Some([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0]),
+        Some([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0].map(finite)),
         false,
     )?;
     Ok(id)

@@ -15,6 +15,8 @@ All notable changes to the packages in this repository. The format follows
 - Registering a font collection (`.ttc`) fails with `FONT_ERROR`. It was accepted, only its first
   face could be used, and with `subsetFonts: false` the whole collection was embedded where the
   PDF needs a single TrueType program.
+- An SVG image smaller than about 3e-39 px no longer makes the PDF writer output `inf` in the
+  image's matrix.
 - `borderRadius` rounds an image's corners without `overflow: hidden`: the image is clipped to
   the rounded content box, as in CSS.
 
