@@ -114,7 +114,7 @@ impl Prepared {
 
 /// An extra glyph appended to a line (hyphen or ellipsis).
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Ellipsis {
+pub(crate) struct ExtraGlyph {
     pub font: FontKey,
     pub run: u16,
     pub glyph: u16,
@@ -130,8 +130,8 @@ pub(crate) struct Line {
     pub end: u32,
     /// Natural width including any hyphen / ellipsis.
     pub width: f32,
-    pub hyphen: Option<Ellipsis>,
-    pub ellipsis: Option<Ellipsis>,
+    pub hyphen: Option<ExtraGlyph>,
+    pub ellipsis: Option<ExtraGlyph>,
     /// Ends at a forced break or the end of the paragraph (not justified).
     pub forced: bool,
     /// `textIndent` of the first line (0 on the others).

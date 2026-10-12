@@ -21,7 +21,8 @@ pub(super) struct Form {
 }
 
 /// Writes every field; appends widget refs to `annots` (per page).
-/// `None` when the document has no fields.
+/// `None` when the document has no fields. With `pdf_a`, appearance
+/// streams leave out `.notdef` glyphs, as page content does.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_fields(
     pdf: &mut Pdf,
@@ -30,7 +31,7 @@ pub(super) fn write_fields(
     page_refs: &[(Ref, Ref)],
     font_refs: &BTreeMap<FontKey, Ref>,
     fonts: &FontSet<'_>,
-    skip_notdef: bool,
+    pdf_a: bool,
     annots: &mut [Vec<Ref>],
 ) -> Option<Form> {
     // Widgets grouped by field name, in order of first appearance.
@@ -58,7 +59,7 @@ pub(super) fn write_fields(
         page_refs,
         font_refs,
         fonts,
-        skip_notdef,
+        pdf_a,
     };
     for name in order {
         let widgets = &groups[name];
@@ -182,7 +183,8 @@ struct Ctx<'r, 'f, 'a> {
     page_refs: &'r [(Ref, Ref)],
     font_refs: &'r BTreeMap<FontKey, Ref>,
     fonts: &'f FontSet<'a>,
-    skip_notdef: bool,
+    /// Writing PDF/A: leave `.notdef` glyphs out of appearance streams.
+    pdf_a: bool,
 }
 
 /// Appearance streams of one widget: `(state, stream)`; the state is
@@ -218,7 +220,7 @@ impl Ctx<'_, '_, '_> {
                 // Widget space is y-up; the text ops are top-left based.
                 c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(h)]);
                 for t in &op.text {
-                    show_text(&mut c, t, self.fonts, self.skip_notdef);
+                    show_text(&mut c, t, self.fonts, self.pdf_a);
                 }
                 c.restore_state();
                 c.end_marked_content();

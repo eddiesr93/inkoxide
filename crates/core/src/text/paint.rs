@@ -2,7 +2,7 @@
 //! justification and page-number placeholders.
 
 use super::{
-    Ellipsis, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
+    ExtraGlyph, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
 };
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
@@ -293,7 +293,7 @@ fn paint_line(
     }
 }
 
-fn extra_piece(e: &Ellipsis) -> Piece {
+fn extra_piece(e: &ExtraGlyph) -> Piece {
     let glyphs = (0..e.count)
         .map(|i| TextGlyph {
             id: e.glyph,

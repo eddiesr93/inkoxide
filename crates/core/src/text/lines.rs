@@ -1,7 +1,7 @@
 //! Line breaking (greedy, first fit) and line metrics.
 
 use super::{
-    BreakKind, Ellipsis, Line, LineLayout, ParaStyle, Prepared, GLYPH_INVISIBLE, GLYPH_SPACE,
+    BreakKind, ExtraGlyph, Line, LineLayout, ParaStyle, Prepared, GLYPH_INVISIBLE, GLYPH_SPACE,
 };
 use crate::fonts::FontSet;
 use crate::schema::TextRun;
@@ -183,12 +183,17 @@ pub(crate) fn break_lines(
 
 /// The hyphen shown when breaking before glyph `at`, in the font of the
 /// glyph before it.
-fn hyphen_for(p: &Prepared, fonts: &FontSet<'_>, runs: &[TextRun], at: usize) -> Option<Ellipsis> {
+fn hyphen_for(
+    p: &Prepared,
+    fonts: &FontSet<'_>,
+    runs: &[TextRun],
+    at: usize,
+) -> Option<ExtraGlyph> {
     let seg = p.segment_of(at.checked_sub(1)?)?;
     let font = fonts.get(seg.font);
     let size = runs[seg.run as usize].size;
     let gid = font.glyph(HYPHEN).or_else(|| font.glyph('-'))?;
-    Some(Ellipsis {
+    Some(ExtraGlyph {
         font: seg.font,
         run: seg.run,
         glyph: gid,
@@ -234,7 +239,7 @@ fn apply_ellipsis(
     line.end = e as u32;
     line.hyphen = None;
     line.width = prefix[e] - prefix[s] + ell_w;
-    line.ellipsis = Some(Ellipsis {
+    line.ellipsis = Some(ExtraGlyph {
         font: seg.font,
         run: seg.run,
         glyph: gid,

@@ -407,22 +407,21 @@ impl<'a> Checker<'a> {
         ok
     }
 
-    /// Runs `f` with `seg` appended to the current path.
-    fn at<R>(
-        &mut self,
-        seg: impl std::fmt::Display,
-        index: bool,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+    /// Runs `f` with the property `key` appended to the current path
+    /// (`.key`).
+    fn at<R>(&mut self, key: &str, f: impl FnOnce(&mut Self) -> R) -> R {
         let len = self.path.len();
-        if index {
-            let _ = write!(self.path, "[{seg}]");
-        } else {
-            if !self.path.is_empty() {
-                self.path.push('.');
-            }
-            let _ = write!(self.path, "{seg}");
-        }
+        push_key(&mut self.path, key);
+        let r = f(self);
+        self.path.truncate(len);
+        r
+    }
+
+    /// Runs `f` with the array index `i` appended to the current path
+    /// (`[i]`).
+    fn at_index<R>(&mut self, i: usize, f: impl FnOnce(&mut Self) -> R) -> R {
+        let len = self.path.len();
+        let _ = write!(self.path, "[{i}]");
         let r = f(self);
         self.path.truncate(len);
         r
@@ -436,7 +435,7 @@ impl<'a> Checker<'a> {
         }
         if let Some(date) = &doc.meta.creation_date {
             if parse_rfc3339(date).is_none() {
-                self.at("meta", false, |c| {
+                self.at("meta", |c| {
                     c.err(
                         Code::InvalidValue,
                         Some("creationDate"),
@@ -448,8 +447,8 @@ impl<'a> Checker<'a> {
 
         let mut seen = BTreeMap::new();
         for (i, f) in doc.fonts.iter().enumerate() {
-            self.at("fonts", false, |c| {
-                c.at(i, true, |c| {
+            self.at("fonts", |c| {
+                c.at_index(i, |c| {
                     c.id(Some("id"), &f.id);
                     if f.family.is_empty() {
                         c.err(Code::InvalidValue, Some("family"), "a font family is at least 1 character");
@@ -472,8 +471,8 @@ impl<'a> Checker<'a> {
             self.declared.insert(&f.id);
         }
         for (i, id) in doc.fallback_fonts.iter().enumerate() {
-            self.at("fallbackFonts", false, |c| {
-                c.at(i, true, |c| {
+            self.at("fallbackFonts", |c| {
+                c.at_index(i, |c| {
                     if c.id(None, id) && !c.declared.contains(id.as_str()) {
                         c.err(
                             Code::UnknownFont,
@@ -492,7 +491,7 @@ impl<'a> Checker<'a> {
             );
         }
         for (i, page) in doc.pages.iter().enumerate() {
-            self.at("pages", false, |c| c.at(i, true, |c| c.page(page)));
+            self.at("pages", |c| c.at_index(i, |c| c.page(page)));
         }
     }
 
@@ -500,7 +499,7 @@ impl<'a> Checker<'a> {
         let s = page.size;
         for (name, v) in [("width", s.width), ("height", s.height)] {
             if !(v > 0.0 && v <= MAX_PAGE_EDGE) {
-                self.at("size", false, |c| {
+                self.at("size", |c| {
                     c.err(
                         Code::OutOfRange,
                         Some(name),
@@ -517,7 +516,7 @@ impl<'a> Checker<'a> {
             ("left", m.left),
         ] {
             if !(v >= 0.0) {
-                self.at("margin", false, |c| {
+                self.at("margin", |c| {
                     c.err(Code::OutOfRange, Some(name), "margin must be non-negative");
                 });
             }
@@ -534,10 +533,10 @@ impl<'a> Checker<'a> {
         }
         self.in_fixed = true;
         if let Some(h) = &page.header {
-            self.at("header", false, |c| c.node(h, Ctx::Fixed));
+            self.at("header", |c| c.node(h, Ctx::Fixed));
         }
         if let Some(f) = &page.footer {
-            self.at("footer", false, |c| c.node(f, Ctx::Fixed));
+            self.at("footer", |c| c.node(f, Ctx::Fixed));
         }
         self.in_fixed = false;
         self.children(None, &page.children, Ctx::Page);
@@ -548,9 +547,9 @@ impl<'a> Checker<'a> {
         let areas = parent
             .and_then(|p| p.grid_template_areas.as_deref())
             .and_then(|rows| parse_areas(rows).ok());
-        self.at("children", false, |c| {
+        self.at("children", |c| {
             for (i, n) in children.iter().enumerate() {
-                c.at(i, true, |c| {
+                c.at_index(i, |c| {
                     c.node(n, ctx);
                     let Some(name) = &n.style.grid_area else {
                         return;
@@ -559,7 +558,7 @@ impl<'a> Checker<'a> {
                     let reported =
                         !is_area_name(name) || st.grid_row.is_some() || st.grid_column.is_some();
                     if !reported && !areas.as_ref().is_some_and(|a| a.has(name)) {
-                        c.at("style", false, |c| {
+                        c.at("style", |c| {
                             c.err(
                                 Code::InvalidValue,
                                 Some("gridArea"),
@@ -597,16 +596,16 @@ impl<'a> Checker<'a> {
             self.id(Some("id"), id);
         }
         let is_text = matches!(node.kind, NodeKind::Text { .. });
-        self.at("style", false, |c| c.style(&node.style, is_text, false));
+        self.at("style", |c| c.style(&node.style, is_text, false));
         let is_table = matches!(node.kind, NodeKind::Table(_));
         if !is_table {
-            self.at("style", false, |c| c.table_only(&node.style));
+            self.at("style", |c| c.table_only(&node.style));
         }
         if is_table
             && node.style.border_spacing.is_some()
             && node.style.border_collapse != Some(BorderCollapse::Separate)
         {
-            self.at("style", false, |c| {
+            self.at("style", |c| {
                 c.err(
                     Code::InvalidValue,
                     Some("borderSpacing"),
@@ -615,7 +614,7 @@ impl<'a> Checker<'a> {
             });
         }
         if let v @ Some(_) = node.brk.min_presence_ahead {
-            self.at("break", false, |c| c.non_neg("minPresenceAhead", v));
+            self.at("break", |c| c.non_neg("minPresenceAhead", v));
         }
         let ctx = match ctx {
             Ctx::Page if crate::pipeline::is_overlay(node) => {
@@ -661,13 +660,13 @@ impl<'a> Checker<'a> {
         match &node.kind {
             NodeKind::Box { children } => self.children(Some(&node.style), children, ctx),
             NodeKind::Text { runs } => {
-                self.at("runs", false, |c| {
+                self.at("runs", |c| {
                     for (i, r) in runs.iter().enumerate() {
-                        c.at(i, true, |c| c.run(r));
+                        c.at_index(i, |c| c.run(r));
                     }
                 });
                 if node.style.ellipsis == Some(true) && node.style.max_lines.is_none() {
-                    self.at("style", false, |c| {
+                    self.at("style", |c| {
                         c.err(
                             Code::InvalidValue,
                             Some("ellipsis"),
@@ -695,7 +694,7 @@ impl<'a> Checker<'a> {
                 }
             }
             NodeKind::Spacer => {}
-            NodeKind::Field(f) => self.at("field", false, |c| c.field(f)),
+            NodeKind::Field(f) => self.at("field", |c| c.field(f)),
         }
     }
 
@@ -728,7 +727,7 @@ impl<'a> Checker<'a> {
     /// Bounds both axes of an image's `objectPosition` (untrusted input: a
     /// huge percentage times the free space would overflow `f32`).
     fn object_position(&mut self, p: &ObjectPosition) {
-        self.at("objectPosition", false, |c| {
+        self.at("objectPosition", |c| {
             for (axis, v) in [("x", p.x), ("y", p.y)] {
                 match v {
                     LengthPercent::Points(v) if !(v.abs() <= MAX_PAGE_EDGE) => c.err(
@@ -918,7 +917,7 @@ impl<'a> Checker<'a> {
     }
 
     fn bookmark(&mut self, b: &Bookmark) {
-        self.at("bookmark", false, |c| {
+        self.at("bookmark", |c| {
             if c.in_fixed {
                 c.err(
                     Code::InvalidValue,
@@ -1006,14 +1005,14 @@ impl<'a> Checker<'a> {
             );
             return;
         }
-        self.at("columns", false, |c| {
+        self.at("columns", |c| {
             for (i, col) in t.columns.iter().enumerate() {
                 let width = match col.width {
                     ColumnWidth::Points(p) => Len::Points(p),
                     ColumnWidth::Fr(f) => Len::Fr(f),
                     ColumnWidth::Auto => continue,
                 };
-                c.at(i, true, |c| c.len(Some("width"), width, false));
+                c.at_index(i, |c| c.len(Some("width"), width, false));
             }
         });
         if t.header_rows as usize > t.rows.len() {
@@ -1030,9 +1029,9 @@ impl<'a> Checker<'a> {
         // Occupancy: how many more rows each column is covered by a rowSpan from above.
         let mut carry = vec![0u32; ncols];
         let nrows = t.rows.len();
-        self.at("rows", false, |c| {
+        self.at("rows", |c| {
             for (ri, row) in t.rows.iter().enumerate() {
-                c.at(ri, true, |c| {
+                c.at_index(ri, |c| {
                     if let Some(id) = &row.id {
                         c.id(Some("id"), id);
                     }
@@ -1042,8 +1041,8 @@ impl<'a> Checker<'a> {
                     }
                     let mut col = 0usize;
                     for (ci, cell) in row.cells.iter().enumerate() {
-                        c.at("cells", false, |c| {
-                            c.at(ci, true, |c| {
+                        c.at("cells", |c| {
+                            c.at_index(ci, |c| {
                                 if let Some(id) = &cell.id {
                                     c.id(Some("id"), id);
                                 }
@@ -1082,7 +1081,7 @@ impl<'a> Checker<'a> {
                                     carry[col..col + span].fill(cell.row_span);
                                 }
                                 col += span;
-                                c.at("style", false, |c| {
+                                c.at("style", |c| {
                                     c.style(&cell.style, false, true);
                                     c.table_only(&cell.style);
                                 });
@@ -1176,7 +1175,7 @@ impl<'a> Checker<'a> {
     /// [`Self::len`] on each side that is set.
     fn edges<T: Copy + Into<Len>>(&mut self, field: &str, e: Option<&OptEdges<T>>, negative: bool) {
         let Some(e) = e else { return };
-        self.at(field, false, |c| {
+        self.at(field, |c| {
             for (k, v) in e.iter() {
                 c.len(Some(k), *v, negative);
             }
@@ -1246,16 +1245,16 @@ impl<'a> Checker<'a> {
             }
         }
         if let Some(ops) = &s.transform {
-            self.at("transform", false, |c| {
+            self.at("transform", |c| {
                 for (k, op) in ops.iter().enumerate() {
-                    c.at(k, true, |c| c.transform_op(op));
+                    c.at_index(k, |c| c.transform_op(op));
                 }
             });
         }
         if let Some(origin) = &s.transform_origin {
-            self.at("transformOrigin", false, |c| {
+            self.at("transformOrigin", |c| {
                 for (i, v) in origin.iter().enumerate() {
-                    c.at(i, true, |c| c.len(None, *v, true));
+                    c.at_index(i, |c| c.len(None, *v, true));
                 }
             });
         }
@@ -1289,7 +1288,7 @@ impl<'a> Checker<'a> {
         self.edges("margin", s.margin.as_ref(), true);
         self.edges("inset", s.inset.as_ref(), true);
         if let Some(bw) = &s.border_width {
-            self.at("borderWidth", false, |c| {
+            self.at("borderWidth", |c| {
                 for (k, v) in bw.iter() {
                     c.non_neg(k, Some(*v));
                 }
@@ -1351,7 +1350,7 @@ impl<'a> Checker<'a> {
             ("gridTemplateRows", &s.grid_template_rows),
         ] {
             if let Some(tracks) = tracks {
-                self.at(name, false, |c| c.template(tracks));
+                self.at(name, |c| c.template(tracks));
             }
         }
         for (name, tracks) in [
@@ -1359,9 +1358,9 @@ impl<'a> Checker<'a> {
             ("gridAutoRows", &s.grid_auto_rows),
         ] {
             if let Some(tracks) = tracks {
-                self.at(name, false, |c| {
+                self.at(name, |c| {
                     for (i, t) in tracks.iter().enumerate() {
-                        c.at(i, true, |c| c.track(t));
+                        c.at_index(i, |c| c.track(t));
                     }
                 });
             }
@@ -1397,18 +1396,18 @@ impl<'a> Checker<'a> {
                 GridTrack::Single(t) => (std::slice::from_ref(t), false),
                 GridTrack::Repeat(n, t) => (&t[..], !matches!(n, RepeatCount::Count(_))),
             };
-            self.at(i, true, |c| match t {
+            self.at_index(i, |c| match t {
                 GridTrack::Single(t) => c.track(t),
-                GridTrack::Repeat(_, t) => c.at("tracks", false, |c| {
+                GridTrack::Repeat(_, t) => c.at("tracks", |c| {
                     for (j, t) in t.iter().enumerate() {
-                        c.at(j, true, |c| c.track(t));
+                        c.at_index(j, |c| c.track(t));
                     }
                 }),
             });
             if auto {
                 auto_repeats += 1;
                 if auto_repeats > 1 {
-                    self.at(i, true, |c| {
+                    self.at_index(i, |c| {
                         c.err(
                             Code::InvalidValue,
                             Some("repeat"),
@@ -1418,7 +1417,7 @@ impl<'a> Checker<'a> {
                 } else if sizes.iter().all(|t| fixed_size(t).is_some())
                     && !sizes.iter().any(|t| fixed_size(t).is_some_and(|v| v > 0.0))
                 {
-                    self.at(i, true, |c| {
+                    self.at_index(i, |c| {
                         c.err(
                             Code::InvalidValue,
                             Some("tracks"),
@@ -1447,16 +1446,16 @@ impl<'a> Checker<'a> {
     /// within ±[`MAX_NUMBER`], skew angles short of ±90°.
     fn transform_op(&mut self, op: &TransformOp) {
         let each = |c: &mut Self, name: &str, xs: &[f32], f: fn(&mut Self, f32)| {
-            c.at(name, false, |c| {
+            c.at(name, |c| {
                 for (i, &x) in xs.iter().enumerate() {
-                    c.at(i, true, |c| f(c, x));
+                    c.at_index(i, |c| f(c, x));
                 }
             });
         };
         match op {
-            TransformOp::Translate(v) => self.at("translate", false, |c| {
+            TransformOp::Translate(v) => self.at("translate", |c| {
                 for (i, &v) in v.iter().enumerate() {
-                    c.at(i, true, |c| c.len(None, v, true));
+                    c.at_index(i, |c| c.len(None, v, true));
                 }
             }),
             TransformOp::Scale(v) => each(self, "scale", v, |c, x| c.signed(None, x)),
