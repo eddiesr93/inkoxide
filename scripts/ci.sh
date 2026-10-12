@@ -38,6 +38,8 @@ cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 step "node binding (packages/inkoxide)"
 if command -v node >/dev/null; then
   scripts/build-node.sh --debug >/dev/null
+  # schema-parity.test.js imports ajv from the workspace dependencies.
+  if command -v pnpm >/dev/null; then pnpm install --frozen-lockfile --silent; fi
   # The totals when the tests pass, the whole report when one fails. TAP:
   # Node 23+ prints the spec reporter even when piped.
   log=$(mktemp)

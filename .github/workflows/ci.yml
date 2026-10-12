@@ -93,11 +93,12 @@ jobs:
         run: corepack enable
       - name: Build the native binding
         run: scripts/build-node.sh --debug
+      - name: Install dependencies
+        # Before the binding tests: schema-parity.test.js imports ajv.
+        run: pnpm install --frozen-lockfile
       - name: Binding tests
         working-directory: packages/inkoxide
         run: node --test test/*.test.js
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint
