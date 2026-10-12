@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Generates docs/SCHEMA.md from packages/schema/document.v1.json.
+"""Generates docs/SCHEMA.md from packages/schema/document.v1.json, and
+checks that its table of validation codes lists exactly the codes of
+`ValidationCode` (crates/core/src/error.rs).
 
   scripts/gen-schema-doc.py          # rewrite docs/SCHEMA.md
   scripts/gen-schema-doc.py --check  # fail if docs/SCHEMA.md is stale
 """
 import json
 import pathlib
+import re
 import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -55,7 +58,7 @@ INTRO = """# Document schema v1
 
 | Code | Meaning |
 |---|---|
-| `PARSE_ERROR` | Input is not well-formed JSON |
+| `PARSE_ERROR` | Input is not well-formed JSON or MessagePack |
 | `UNSUPPORTED_VERSION` | `version` is not `1` |
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
@@ -66,7 +69,7 @@ INTRO = """# Document schema v1
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
-| `INVALID_IMAGE` | Image data cannot be decoded |
+| `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
 | `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
@@ -91,22 +94,33 @@ def type_of(p):
     if "enum" in p:
         return " \\| ".join(f"`{json.dumps(v)}`" for v in p["enum"])
     if "oneOf" in p:
-        return " or ".join(type_of(o) for o in p["oneOf"])
+        return " or ".join(nested(o) for o in p["oneOf"])
     t = p.get("type", "")
     if t == "array" and "prefixItems" in p:
-        return "`[` " + ", ".join(type_of(i) for i in p["prefixItems"]) + " `]`"
+        return "`[` " + ", ".join(nested(i) for i in p["prefixItems"]) + " `]`"
     if t == "object" and "properties" in p:
-        keys = ", ".join(f"`{k}`" for k in p["properties"])
         if p.get("required"):
-            inner = p["properties"][p["required"][0]]
-            return f"`{{{p['required'][0]}: …}}` ({type_of(inner)})"
+            # Every required key, with its type: `{min, max}` (`min`: …; `max`: …).
+            req = p["required"]
+            types = "; ".join(f"`{k}`: {nested(p['properties'][k])}" for k in req)
+            return f"`{{{', '.join(req)}}}` ({types})"
+        keys = ", ".join(f"`{k}`" for k in p["properties"])
         return f"object with {keys}"
     if t == "array":
-        return f"array of {type_of(p.get('items', {}))}"
+        items = p.get("items", {})
+        each = constraints(items, defaults=False)
+        return f"array of {type_of(items)}" + (f" (each {each})" if each else "")
     out = f"`{t}`" if t else ""
     if "pattern" in p:
         out += f" matching `{p['pattern']}`"
     return out
+
+
+def nested(p):
+    """The type of a value inside another type (a `oneOf` branch, an object
+    key, an array item), with its constraints, which have no Notes column."""
+    c = constraints(p, defaults=False)
+    return type_of(p) + (f" ({c})" if c else "")
 
 
 def number(v):
@@ -114,21 +128,31 @@ def number(v):
     return f"{v:f}".rstrip("0").rstrip(".") if isinstance(v, float) else str(v)
 
 
-def constraints(p):
+def constraints(p, defaults=True):
     parts = []
     for key, label in [
         ("minimum", "≥"),
         ("exclusiveMinimum", ">"),
         ("maximum", "≤"),
-        ("minItems", "min items"),
+        ("exclusiveMaximum", "<"),
         ("minLength", "min length"),
         ("maxLength", "max length"),
     ]:
         if key in p:
             parts.append(f"{label} {number(p[key])}")
+    if "minItems" in p and p.get("maxItems") == p["minItems"]:
+        parts.append(f"exactly {p['minItems']} items")
+    else:
+        for key, label in [("minItems", "min items"), ("maxItems", "max items")]:
+            if key in p:
+                parts.append(f"{label} {p[key]}")
+    if "format" in p:
+        parts.append(f"format `{p['format']}`")
     if "const" in p.get("not", {}):
         parts.append(f"≠ {json.dumps(p['not']['const'])}")
-    if "default" in p:
+    if "pattern" in p.get("not", {}):
+        parts.append(f"not matching `{p['not']['pattern']}`")
+    if "default" in p and defaults:
         parts.append(f"default `{json.dumps(p['default'])}`")
     return ", ".join(parts)
 
@@ -149,6 +173,18 @@ def obj_section(name, d):
         lines += [f"Type: {type_of(d)}" + (f" ({constraints(d)})" if constraints(d) else ""), ""]
     return lines
 
+
+# The code table must list exactly the codes of `ValidationCode`.
+error_rs = (root / "crates/core/src/error.rs").read_text()
+engine_codes = re.findall(r'^\s*\w+ = "([A-Z_]+)",$', error_rs.split("validation_codes! {")[1].split("\n}")[0], re.M)
+table_codes = re.findall(r"^\| `([A-Z_]+)` \|", INTRO, re.M)
+if sorted(engine_codes) != sorted(table_codes):
+    print(
+        "the validation code table in scripts/gen-schema-doc.py differs from ValidationCode "
+        f"in crates/core/src/error.rs: missing {sorted(set(engine_codes) - set(table_codes))}, "
+        f"extra {sorted(set(table_codes) - set(engine_codes))}"
+    )
+    sys.exit(1)
 
 out = [INTRO, "## Document (top level)", ""]
 out += obj_section("Document", schema)[2:]

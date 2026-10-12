@@ -41,7 +41,7 @@
 
 | Code | Meaning |
 |---|---|
-| `PARSE_ERROR` | Input is not well-formed JSON |
+| `PARSE_ERROR` | Input is not well-formed JSON or MessagePack |
 | `UNSUPPORTED_VERSION` | `version` is not `1` |
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
@@ -52,7 +52,7 @@
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
-| `INVALID_IMAGE` | Image data cannot be decoded |
+| `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
 | `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
@@ -115,7 +115,7 @@ Type: `boolean` (default `false`)
 | `keywords` | `string` |  |  |
 | `creator` | `string` |  |  |
 | `lang` | `string` |  | BCP-47 language tag of the document, e.g. "en" or "en-GB". |
-| `creationDate` | `string` |  | RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
+| `creationDate` | `string` |  | format `date-time`; RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
 
 ### FontDecl
 
@@ -148,19 +148,19 @@ Type: `string` matching `^0*([0-9]{1,6}(\.[0-9]+)?|1000000(\.0+)?)fr$`
 
 Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto".
 
-Type: `number` or [`Percent`](#percent) or `"auto"`
+Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent) or `"auto"`
 
 ### LengthPercent
 
 Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).
 
-Type: `number` or [`Percent`](#percent)
+Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent)
 
 ### Color
 
 [r, g, b, a], each in [0, 1].
 
-Type: array of `number` (min items 4)
+Type: array of `number` (each ≥ 0, ≤ 1) (exactly 4 items)
 
 ### Size
 
@@ -245,7 +245,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 
 Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
 
-Type: [`TrackBreadth`](#trackbreadth) or `{min: …}` ([`TrackBreadth`](#trackbreadth)) or `{fitContent: …}` ([`LengthPercent`](#lengthpercent))
+Type: [`TrackBreadth`](#trackbreadth) or `{min, max}` (`min`: [`TrackBreadth`](#trackbreadth); `max`: [`TrackBreadth`](#trackbreadth)) or `{fitContent}` (`fitContent`: [`LengthPercent`](#lengthpercent))
 
 ### BorderRadius
 
@@ -261,9 +261,9 @@ Type: `"solid"` \| `"dashed"` \| `"dotted"` or object with `top`, `right`, `bott
 
 ### TransformOp
 
-One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.
+One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, `rotate` and matrix entries are within ±1000000; `skew` angles are within (−90, 90).
 
-Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale: …}` (array of `number`) or `{rotate: …}` (`number`) or `{skew: …}` (array of `number`) or `{matrix: …}` (array of `number`)
+Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (exactly 2 items)) or `{scale}` (`scale`: array of `number` (each ≥ -1000000, ≤ 1000000) (exactly 2 items)) or `{rotate}` (`rotate`: `number` (≥ -1000000, ≤ 1000000)) or `{skew}` (`skew`: array of `number` (each > -90, < 90) (exactly 2 items)) or `{matrix}` (`matrix`: array of `number` (each ≥ -1000000, ≤ 1000000) (exactly 6 items))
 
 ### Style
 
@@ -313,7 +313,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 | `borderStyle` | [`BorderStyles`](#borderstyles) |  | default `"solid"` |
 | `rotate` | `number` |  | ≥ -1000000, ≤ 1000000; Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
-| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | min items 2; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells. |
+| `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | exactly 2 items; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells. |
 | `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0, ≤ 100; text nodes only; multiplier of the largest run size on the line |
@@ -351,7 +351,7 @@ Type: `{translate: …}` (array of [`LengthPercent`](#lengthpercent)) or `{scale
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `width` | `number` or [`Fr`](#fr) or `"auto"` | yes |  |
+| `width` | `number` (> 0, ≤ 1000000) or [`Fr`](#fr) (not matching `^0+(\.0+)?fr$`) or `"auto"` | yes |  |
 
 ### TableCell
 
@@ -431,8 +431,8 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `x` | `"left"` \| `"center"` \| `"right"` or `number` or [`Percent`](#percent) |  | default `"center"` |
-| `y` | `"top"` \| `"center"` \| `"bottom"` or `number` or [`Percent`](#percent) |  | default `"center"` |
+| `x` | `"left"` \| `"center"` \| `"right"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
+| `y` | `"top"` \| `"center"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
 
 ### TableNode
 
@@ -510,16 +510,16 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
 
-Type: `number` or [`Percent`](#percent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
+Type: `number` (≥ 0, ≤ 1000000) or [`Percent`](#percent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
 
 ### TemplateTrack
 
 Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
 
-Type: [`TrackSize`](#tracksize) or `{repeat: …}` (`integer` or `"auto-fill"` \| `"auto-fit"`)
+Type: [`TrackSize`](#tracksize) or `{repeat, tracks}` (`repeat`: `integer` (≥ 1, ≤ 1000) or `"auto-fill"` \| `"auto-fit"`; `tracks`: array of [`TrackSize`](#tracksize) (min items 1))
 
 ### PageFilter
 
 Pages that show the node, by physical page number (as the `pageNumber` placeholder). The node keeps its place in the layout on every page; it is only painted on the matching ones.
 
-Type: `"first"` \| `"last"` \| `"notFirst"` \| `"notLast"` \| `"odd"` \| `"even"` or array of `integer`
+Type: `"first"` \| `"last"` \| `"notFirst"` \| `"notLast"` \| `"odd"` \| `"even"` or array of `integer` (each ≥ -2147483648, ≤ 2147483647, ≠ 0) (min items 1)

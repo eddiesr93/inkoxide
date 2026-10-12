@@ -31,6 +31,13 @@ version 2.
   `gridTemplateAreas` has at most 10000 cells; `transformOrigin` does not apply to table cells;
   a `#id` link must name a displayed node in the flowing content, not one in a header or footer
   or under `display: none`.
+- **`TransformOp`:** the description said angles are within ±1000000; `skew` angles are within
+  (−90, 90), as the schema's own bounds and the engine already required.
+- **SCHEMA.md** states every bound of the schema: `maxItems` and `exclusiveMaximum` (an array of
+  a fixed length reads "exactly N items"), the bounds of array items and of `oneOf` branches,
+  and every required key of an inline object (`TrackSize` is `{min, max}`, not `{min: …}`). Its
+  table of validation codes is checked against the engine's, and `PARSE_ERROR` covers
+  MessagePack too.
 - **Types:** a `TransformOp`, `TrackSize` or `TemplateTrack` object forbids the keys of the
   other forms (`rotate?: never` beside `translate`), so `{ translate: [1, 2], rotate: 5 }` no
   longer type-checks; validation always rejected it.

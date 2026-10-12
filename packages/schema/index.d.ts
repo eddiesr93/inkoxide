@@ -150,7 +150,7 @@ export type BorderStyles =
       left?: 'solid' | 'dashed' | 'dotted';
     };
 /**
- * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, angles and matrix entries are within ±1000000.
+ * One transform function, as an object with exactly one key. Lengths are points or percentages of the node's own border box; angles are degrees, clockwise. Scale factors, `rotate` and matrix entries are within ±1000000; `skew` angles are within (−90, 90).
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TransformOp".
