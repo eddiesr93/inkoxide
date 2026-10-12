@@ -29,6 +29,7 @@ struct Cli {
     command: Cmd,
 }
 
+/// The fonts and images a document uses.
 #[derive(Args)]
 struct Resources {
     /// Directory of .ttf/.otf/.woff/.woff2 files; each is registered under
@@ -38,12 +39,22 @@ struct Resources {
     /// Directory of images; each is available to `src` under its file stem.
     #[arg(long)]
     images: Vec<PathBuf>,
-    /// Embed whole font programs instead of subsets.
-    #[arg(long)]
-    full_fonts: bool,
+}
+
+/// How to read the document.
+#[derive(Args)]
+struct Input {
     /// Read the document as `MessagePack` (implied by a .msgpack/.mpk extension).
     #[arg(long)]
     msgpack: bool,
+}
+
+/// Render options that `validate` has no use for.
+#[derive(Args)]
+struct Output {
+    /// Embed whole font programs instead of subsets.
+    #[arg(long)]
+    full_fonts: bool,
     /// TeX hyphenation patterns for a language, as LANG=PATH
     /// (`--hyphenation en=hyph-en-us.tex`); repeatable. They win over the
     /// built-in patterns.
@@ -58,6 +69,10 @@ enum Cmd {
         doc: PathBuf,
         #[command(flatten)]
         res: Resources,
+        #[command(flatten)]
+        input: Input,
+        #[command(flatten)]
+        out: Output,
         /// Output file (default: the input path with a .pdf extension).
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -86,6 +101,8 @@ enum Cmd {
         doc: PathBuf,
         #[command(flatten)]
         res: Resources,
+        #[command(flatten)]
+        input: Input,
         /// Print errors as a JSON array.
         #[arg(long)]
         json: bool,
@@ -95,6 +112,10 @@ enum Cmd {
         doc: PathBuf,
         #[command(flatten)]
         res: Resources,
+        #[command(flatten)]
+        input: Input,
+        #[command(flatten)]
+        out: Output,
         #[arg(long, default_value_t = 30)]
         iterations: u32,
         /// Worker threads (default: all cores; 0 and 1 render on the calling
@@ -141,9 +162,9 @@ fn load_resources(res: &Resources) -> Result<(FontStore, ImageStore), String> {
     Ok((fonts, images))
 }
 
-fn load_hyphenation(res: &Resources) -> Result<HyphenationStore, String> {
+fn load_hyphenation(out: &Output) -> Result<HyphenationStore, String> {
     let mut store = HyphenationStore::new();
-    for spec in &res.hyphenation {
+    for spec in &out.hyphenation {
         let (lang, path) = spec
             .split_once('=')
             .ok_or_else(|| format!("--hyphenation `{spec}`: expected LANG=PATH"))?;
@@ -190,9 +211,14 @@ fn print_errors(errors: &[ValidationError], json: bool) {
 
 fn run(cli: Cli) -> Result<ExitCode, String> {
     match cli.command {
-        Cmd::Validate { doc, res, json } => {
+        Cmd::Validate {
+            doc,
+            res,
+            input,
+            json,
+        } => {
             let (fonts, images) = load_resources(&res)?;
-            let errors = inkoxide::validate(&read(&doc)?, format_of(&doc, &res), &fonts, &images);
+            let errors = inkoxide::validate(&read(&doc)?, format_of(&doc, &input), &fonts, &images);
             print_errors(&errors, json);
             if errors.is_empty() {
                 if !json {
@@ -206,6 +232,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Cmd::Render {
             doc,
             res,
+            input,
+            out,
             output,
             no_compress,
             creation_date,
@@ -215,60 +243,62 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             threads,
         } => {
             let (fonts, images) = load_resources(&res)?;
-            let input = read(&doc)?;
+            let bytes = read(&doc)?;
             let mut opts = RenderOptions::default()
                 .with_compress(!no_compress)
                 .with_threads(threads)
-                .with_subset_fonts(!res.full_fonts)
+                .with_subset_fonts(!out.full_fonts)
                 .with_pdf_a(pdf_a)
-                .with_hyphenation(load_hyphenation(&res)?);
+                .with_hyphenation(load_hyphenation(&out)?);
             opts.creation_date = creation_date;
             let start = Instant::now();
-            let pdf = match inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
-            {
-                Ok(pdf) => pdf,
-                Err(e) => {
-                    eprintln!("{}", describe(&e));
-                    return Ok(ExitCode::from(1));
-                }
-            };
+            let pdf =
+                match inkoxide::render(&bytes, format_of(&doc, &input), &opts, &fonts, &images) {
+                    Ok(pdf) => pdf,
+                    Err(e) => {
+                        eprintln!("{}", describe(&e));
+                        return Ok(ExitCode::from(1));
+                    }
+                };
             let elapsed = start.elapsed();
-            let out = output.unwrap_or_else(|| doc.with_extension("pdf"));
-            fs::write(&out, &pdf).map_err(|e| format!("{}: {e}", out.display()))?;
+            let path = output.unwrap_or_else(|| doc.with_extension("pdf"));
+            fs::write(&path, &pdf).map_err(|e| format!("{}: {e}", path.display()))?;
             eprintln!(
                 "{} ({} bytes) in {:.2} ms",
-                out.display(),
+                path.display(),
                 pdf.len(),
                 ms(elapsed)
             );
             if let Some(dir) = png_dir {
-                rasterise(&out, &dir, dpi)?;
+                rasterise(&path, &dir, dpi)?;
             }
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Bench {
             doc,
             res,
+            input,
+            out,
             iterations,
             threads,
         } => {
-            let input = read(&doc)?;
+            let bytes = read(&doc)?;
+            let format = format_of(&doc, &input);
             let opts = RenderOptions::default()
                 .with_threads(threads)
-                .with_subset_fonts(!res.full_fonts)
-                .with_hyphenation(load_hyphenation(&res)?);
+                .with_subset_fonts(!out.full_fonts)
+                .with_hyphenation(load_hyphenation(&out)?);
             // Cold start: font registration plus the first render, which
             // also fills the process-wide caches.
             let cold = Instant::now();
             let (fonts, images) = load_resources(&res)?;
-            inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
-                .map_err(|e| describe(&e))?;
+            inkoxide::render(&bytes, format, &opts, &fonts, &images).map_err(|e| describe(&e))?;
             let cold = cold.elapsed();
             let mut times = Vec::with_capacity(iterations as usize);
             let mut size = 0;
             for _ in 0..iterations.max(1) {
                 let start = Instant::now();
-                let pdf = inkoxide::render(&input, format_of(&doc, &res), &opts, &fonts, &images)
+                let pdf = inkoxide::render(&bytes, format, &opts, &fonts, &images)
                     .map_err(|e| describe(&e))?;
                 times.push(start.elapsed());
                 size = pdf.len();
@@ -292,9 +322,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
 
 /// `MessagePack` with `--msgpack` or a `.msgpack` / `.mpk` extension;
 /// JSON otherwise.
-fn format_of(doc: &Path, res: &Resources) -> InputFormat {
+fn format_of(doc: &Path, input: &Input) -> InputFormat {
     match doc.extension().and_then(|e| e.to_str()) {
-        _ if res.msgpack => InputFormat::MessagePack,
+        _ if input.msgpack => InputFormat::MessagePack,
         Some("msgpack" | "mpk") => InputFormat::MessagePack,
         _ => InputFormat::Json,
     }
@@ -345,5 +375,22 @@ mod tests {
         assert_eq!(describe(&e), "UNKNOWN_FIELD at zz: unknown field `zz`");
         let e = InkoxideError::Font("bad".into());
         assert_eq!(describe(&e), "FONT_ERROR font error: bad");
+    }
+
+    #[test]
+    fn validate_refuses_render_only_flags() {
+        let parse = |args: &[&str]| Cli::try_parse_from(["inkoxide"].iter().chain(args));
+        assert!(parse(&["validate", "d.json", "--msgpack"]).is_ok());
+        assert!(parse(&["validate", "d.json", "--full-fonts"]).is_err());
+        assert!(parse(&["validate", "d.json", "--hyphenation", "en=x.tex"]).is_err());
+        assert!(parse(&[
+            "render",
+            "d.json",
+            "--full-fonts",
+            "--hyphenation",
+            "en=x.tex"
+        ])
+        .is_ok());
+        assert!(parse(&["bench", "d.json", "--full-fonts", "--msgpack"]).is_ok());
     }
 }
