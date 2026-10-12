@@ -239,6 +239,9 @@ export interface FontDecl {
  */
 export interface PageSpec {
   size: Size;
+  /**
+   * `left + right` must be less than the page width and `top + bottom` less than its height; margins that leave no room for content are `OUT_OF_RANGE` at `margin`.
+   */
   margin?: EdgesNumber;
   background?: Color;
   /**
@@ -246,11 +249,11 @@ export interface PageSpec {
    */
   debug?: Debug;
   /**
-   * Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it.
+   * Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.
    */
   header?: Node;
   /**
-   * Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page.
+   * Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.
    */
   footer?: Node;
   children?: Node[];
@@ -478,7 +481,7 @@ export interface EdgesLength {
   left?: Length;
 }
 /**
- * 1-based CSS grid line placement. Negative lines count from the end. Use `span` alone or with `start`.
+ * 1-based CSS grid line placement. Negative lines count from the end; there is no line 0. Use `span` alone or with `start`.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "GridPlacement".
@@ -499,6 +502,8 @@ export interface EdgesColor {
   left?: Color;
 }
 /**
+ * Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Break".
  */
@@ -658,6 +663,8 @@ export interface TableCell {
   children?: Node[];
 }
 /**
+ * Starts a new page. Flowing content only: in a header, a footer, a table cell or a fixed overlay it is `INVALID_NODE`.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "PageBreakNode".
  */
@@ -702,7 +709,7 @@ export interface FieldNode {
  */
 export interface Field {
   /**
-   * Field name (no `.`); unique in the document except for the buttons of one radio group.
+   * Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`.
    */
   name: string;
   kind: 'text' | 'checkbox' | 'radio' | 'select';

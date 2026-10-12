@@ -22,7 +22,7 @@ use taffy::{AvailableSpace, Size as TSize};
 pub(crate) use decode::{
     DecodedImage, ImageBody, ImageCrateDecoder, ImageDecoder, JpegColor, RawColor,
 };
-pub(crate) use probe::probe;
+pub(crate) use probe::{probe, ProbeError};
 
 use crate::schema::{
     ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,

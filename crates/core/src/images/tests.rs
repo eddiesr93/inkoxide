@@ -24,7 +24,10 @@ fn probes_jpeg_png_and_exif() {
     let mut huge = fixture("logo.png");
     huge[16..20].copy_from_slice(&100_000u32.to_be_bytes());
     huge[20..24].copy_from_slice(&100_000u32.to_be_bytes());
-    assert!(probe(&huge).unwrap_err().contains("megapixels"));
+    assert!(matches!(
+        probe(&huge),
+        Err(ProbeError::TooLarge(m)) if m.contains("megapixels")
+    ));
 }
 
 #[test]

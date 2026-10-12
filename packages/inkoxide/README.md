@@ -48,7 +48,7 @@ try {
   console.error(e.code, e.path, e.message);
 }
 
-// All problems at once, without rendering: [{ code, path, message }, …]
+// The problems at once (at most 100), without rendering: [{ code, path, message }, …]
 console.log(validate(JSON.stringify(doc)));
 ```
 

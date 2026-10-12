@@ -416,6 +416,19 @@ impl<'de> Deserialize<'de> for GridLine {
     }
 }
 
+/// `deserialize_with` for [`super::GridPlacement::span`]: at least one track.
+pub(super) fn grid_span<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u16>, D::Error> {
+    let Some(v) = Option::<i64>::deserialize(d)? else {
+        return Ok(None);
+    };
+    match u16::try_from(v) {
+        Ok(n) if n >= 1 => Ok(Some(n)),
+        _ => Err(de::Error::custom(
+            "[OUT_OF_RANGE] grid span must be an integer within [1, 65535]",
+        )),
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum RawColumnWidth {

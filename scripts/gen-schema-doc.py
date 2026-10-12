@@ -57,21 +57,25 @@ INTRO = """# Document schema v1
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format |
-| `OUT_OF_RANGE` | Number outside its allowed range |
-| `DUPLICATE_ID` | Font id declared twice |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
+| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
 | `INVALID_IMAGE` | Image data cannot be decoded |
-| `IMAGE_TOO_LARGE` | Decoded image exceeds the size guard |
+| `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no node `id` in the document |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
-`pages[0].children[3].runs[1].font`.
+`pages[0].children[3].runs[1].font`. Validation returns at most 100
+errors. A problem found while reading the document's structure (input
+that does not parse, an unknown or missing property, a wrong type, a
+value the reader rejects) is returned alone, as the rest cannot be
+checked.
 """
 
 
@@ -109,9 +113,18 @@ def number(v):
 
 def constraints(p):
     parts = []
-    for key, label in [("minimum", "≥"), ("exclusiveMinimum", ">"), ("maximum", "≤"), ("minItems", "min items")]:
+    for key, label in [
+        ("minimum", "≥"),
+        ("exclusiveMinimum", ">"),
+        ("maximum", "≤"),
+        ("minItems", "min items"),
+        ("minLength", "min length"),
+        ("maxLength", "max length"),
+    ]:
         if key in p:
             parts.append(f"{label} {number(p[key])}")
+    if "const" in p.get("not", {}):
+        parts.append(f"≠ {json.dumps(p['not']['const'])}")
     if "default" in p:
         parts.append(f"default `{json.dumps(p['default'])}`")
     return ", ".join(parts)

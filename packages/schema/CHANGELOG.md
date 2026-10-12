@@ -7,6 +7,19 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- **Engine parity:** the engine enforces every bound the schema states. An `Id` of 0 or more
+  than 256 characters and an empty `FontDecl.family` are `INVALID_VALUE`, and a
+  `GridPlacement.span` of 0 is `OUT_OF_RANGE`; the engine accepted them, and laid out
+  `span: 0` as 1. The schema states the engine's existing bounds of `GridPlacement`: `start`
+  and `end` are within ±32767 and not 0, and `span` is at most 65535.
+- **Descriptions:** the schema describes rules the engine already applied. `break` with a value
+  other than its defaults is `INVALID_VALUE` on a header or footer, on a node in a table cell
+  and on any node inside these, and `pageBreak` is `INVALID_NODE` there; page margins that
+  leave no room for content are `OUT_OF_RANGE` at `margin`; a form field `name` used twice is
+  `DUPLICATE_ID`.
+
 ## 2.1.0 - 2026-10-12
 
 Still document schema version 1.

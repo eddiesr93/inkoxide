@@ -168,7 +168,7 @@ export async function renderPdf(
   }
 }
 
-/** Every problem the engine finds in a document, without rendering. */
+/** The problems the engine finds in a document (at most 100), without rendering. */
 export function validateWithEngine(doc: Document, images: Record<string, Uint8Array>) {
   return ink.validate(JSON.stringify(doc), 'json', images);
 }

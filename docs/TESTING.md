@@ -22,7 +22,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `crates/core/tests/limits.rs`: memory guards (page limit, deepest
   accepted nesting on a small stack).
 - `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
-  the properties the JSON Schema declares.
+  the properties the JSON Schema declares, and validation enforces the
+  schema's bounds of ids, font families, `pages` and grid placements,
+  read from the schema.
 - `crates/core/tests/threads.rs`: concurrent one-thread renders each run
   on their calling thread, at the same time.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.

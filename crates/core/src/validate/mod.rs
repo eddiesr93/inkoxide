@@ -349,6 +349,9 @@ struct Checker<'a> {
 /// Longest link target accepted.
 const MAX_LINK: usize = 2048;
 
+/// Longest `Id` (node, font and image ids), in characters.
+const MAX_ID: usize = 256;
+
 /// Ids of the nodes that get a destination: flowing content that is
 /// displayed (not headers or footers, not under `display: none`).
 fn collect_anchors<'a>(nodes: &'a [Node], out: &mut HashSet<&'a str>) {
@@ -403,6 +406,19 @@ impl<'a> Checker<'a> {
         });
     }
 
+    /// Checks an `Id`: 1 to [`MAX_ID`] characters. False when it is not one.
+    fn id(&mut self, field: Option<&str>, id: &str) -> bool {
+        let ok = (1..=MAX_ID).contains(&id.chars().count());
+        if !ok {
+            self.err(
+                Code::InvalidValue,
+                field,
+                format!("an id is 1 to {MAX_ID} characters"),
+            );
+        }
+        ok
+    }
+
     /// Runs `f` with `seg` appended to the current path.
     fn at<R>(
         &mut self,
@@ -446,6 +462,10 @@ impl<'a> Checker<'a> {
         for (i, f) in doc.fonts.iter().enumerate() {
             self.at("fonts", false, |c| {
                 c.at(i, true, |c| {
+                    c.id(Some("id"), &f.id);
+                    if f.family.is_empty() {
+                        c.err(Code::InvalidValue, Some("family"), "a font family is at least 1 character");
+                    }
                     if let Some(prev) = seen.insert(f.id.as_str(), i) {
                         c.err(Code::DuplicateId, Some("id"), format!("font id `{}` is already declared at fonts[{prev}]", f.id));
                     }
@@ -464,17 +484,24 @@ impl<'a> Checker<'a> {
             self.declared.insert(&f.id);
         }
         for (i, id) in doc.fallback_fonts.iter().enumerate() {
-            if !self.declared.contains(id.as_str()) {
-                self.at("fallbackFonts", false, |c| {
-                    c.at(i, true, |c| {
+            self.at("fallbackFonts", false, |c| {
+                c.at(i, true, |c| {
+                    if c.id(None, id) && !c.declared.contains(id.as_str()) {
                         c.err(
                             Code::UnknownFont,
                             None,
                             format!("fallback font `{id}` is not declared in `fonts`"),
                         );
-                    });
+                    }
                 });
-            }
+            });
+        }
+        if doc.pages.is_empty() {
+            self.err(
+                Code::InvalidValue,
+                Some("pages"),
+                "a document needs at least one page",
+            );
         }
         for (i, page) in doc.pages.iter().enumerate() {
             self.at("pages", false, |c| c.at(i, true, |c| c.page(page)));
@@ -560,6 +587,9 @@ impl<'a> Checker<'a> {
     fn node(&mut self, node: &Node, ctx: Ctx) {
         if self.errors.len() >= MAX_ERRORS {
             return;
+        }
+        if let Some(id) = &node.id {
+            self.id(Some("id"), id);
         }
         let is_text = matches!(node.kind, NodeKind::Text { .. });
         self.at("style", false, |c| c.style(&node.style, is_text, false));
@@ -678,6 +708,7 @@ impl<'a> Checker<'a> {
 
     fn image_source(&mut self, source: &crate::schema::ImageSource) {
         match source {
+            crate::schema::ImageSource::Ref(id) if !self.id(Some("src"), id) => {} // reported by `id`
             crate::schema::ImageSource::Ref(id) => match self.images.get(id) {
                 None => self.err(
                     Code::UnknownImage,
@@ -686,11 +717,7 @@ impl<'a> Checker<'a> {
                 ),
                 Some(data) => {
                     if let Err(e) = crate::images::probe(&data.bytes) {
-                        self.err(
-                            Code::InvalidImage,
-                            Some("src"),
-                            format!("image `{id}`: {e}"),
-                        );
+                        self.err(probe_code(&e), Some("src"), format!("image `{id}`: {e}"));
                     }
                 }
             },
@@ -698,7 +725,7 @@ impl<'a> Checker<'a> {
                 Err(e) => self.err(Code::InvalidImage, Some("data"), e),
                 Ok(bytes) => {
                     if let Err(e) = crate::images::probe(&bytes) {
-                        self.err(Code::InvalidImage, Some("data"), e);
+                        self.err(probe_code(&e), Some("data"), e.to_string());
                     }
                 }
             },
@@ -753,6 +780,7 @@ impl<'a> Checker<'a> {
         }
         let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);
         match (&f.font, text_like) {
+            (Some(font), _) if !self.id(Some("font"), font) => {} // reported by `id`
             (Some(font), _) if !self.declared.contains(font.as_str()) => self.err(
                 Code::UnknownFont,
                 Some("font"),
@@ -933,7 +961,7 @@ impl<'a> Checker<'a> {
             ),
             _ => {}
         }
-        if !self.declared.contains(r.font.as_str()) {
+        if self.id(Some("font"), &r.font) && !self.declared.contains(r.font.as_str()) {
             self.err(
                 Code::UnknownFont,
                 Some("font"),
@@ -1010,6 +1038,9 @@ impl<'a> Checker<'a> {
         self.at("rows", false, |c| {
             for (ri, row) in t.rows.iter().enumerate() {
                 c.at(ri, true, |c| {
+                    if let Some(id) = &row.id {
+                        c.id(Some("id"), id);
+                    }
                     c.non_neg("minHeight", row.min_height);
                     if let Some(bg) = &row.background_color {
                         c.color(Some("backgroundColor"), bg);
@@ -1018,6 +1049,9 @@ impl<'a> Checker<'a> {
                     for (ci, cell) in row.cells.iter().enumerate() {
                         c.at("cells", false, |c| {
                             c.at(ci, true, |c| {
+                                if let Some(id) = &cell.id {
+                                    c.id(Some("id"), id);
+                                }
                                 while col < ncols && carry[col] > 0 {
                                     col += 1;
                                 }
@@ -1468,6 +1502,14 @@ fn fixed_size(t: &TrackSize) -> Option<f32> {
         TrackSize::Breadth(b) => fixed(b),
         TrackSize::MinMax(a, b) => fixed(b).or(fixed(a)),
         TrackSize::FitContent(_) => None,
+    }
+}
+
+/// The code for an image that failed its header probe.
+fn probe_code(e: &crate::images::ProbeError) -> Code {
+    match e {
+        crate::images::ProbeError::Invalid(_) => Code::InvalidImage,
+        crate::images::ProbeError::TooLarge(_) => Code::ImageTooLarge,
     }
 }
 

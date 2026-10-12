@@ -105,7 +105,8 @@ export function registerHyphenationPatterns(lang: string, data: Uint8Array | str
 export function unregisterHyphenationPatterns(lang: string): boolean;
 /**
  * Validates a document against the schema and the registered fonts. Image
- * references are checked only when `images` is given.
+ * references are checked only when `images` is given. Returns at most 100
+ * problems; one in the document's structure is returned alone.
  */
 export function validate(
   doc: Uint8Array | string,

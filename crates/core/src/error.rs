@@ -18,9 +18,11 @@ pub enum ValidationCode {
     /// A value has the right type but is not accepted (an unknown enum
     /// string, a malformed colour, a misplaced pagination control).
     InvalidValue,
-    /// A number is outside its allowed range.
+    /// A number is outside its allowed range, or page margins leave no room
+    /// for content.
     OutOfRange,
-    /// A font id is declared twice.
+    /// A font id is declared twice, or a form field name is used twice
+    /// (other than by the buttons of one radio group).
     DuplicateId,
     /// A run or `fallbackFonts` references a font id not declared in `fonts`.
     UnknownFont,
@@ -30,7 +32,7 @@ pub enum ValidationCode {
     UnknownImage,
     /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
     InvalidImage,
-    /// A decoded image exceeds the size guard.
+    /// An image has more than 50 million pixels (width × height).
     ImageTooLarge,
     /// A style property was set on a node type it does not apply to.
     StyleNotApplicable,
@@ -125,7 +127,7 @@ impl fmt::Display for ValidationError {
 #[non_exhaustive]
 pub enum InkoxideError {
     /// The document failed validation; carries the first problem found.
-    /// Use [`crate::validate`] to obtain the full list.
+    /// Use [`crate::validate`] to obtain the others.
     #[error("{}", .0)]
     Validation(ValidationError),
     /// Font bytes could not be parsed, shaped or embedded.

@@ -129,6 +129,12 @@ fn invalid_values() {
         (code, path.as_str()),
         (C::InvalidValue, "pages[0].children[0].type")
     );
+
+    // A PDF without pages is not a valid PDF.
+    assert_eq!(
+        one(r#"{"version":1,"pages":[]}"#),
+        (C::InvalidValue, "pages".into())
+    );
 }
 
 #[test]
@@ -245,6 +251,41 @@ fn page_breaks_only_in_flow() {
 }
 
 #[test]
+fn pagination_controls_only_apply_in_the_flow() {
+    let page = |fixed: &str, children: &str| {
+        format!(
+            r#"{{"version":1,"pages":[{{"size":{{"width":100,"height":100}}{fixed},"children":[{children}]}}]}}"#
+        )
+    };
+    let brk = r#""break":{"inside":"avoid"}"#;
+    let deep = format!(r#"{{"type":"box","children":[{{"type":"box",{brk}}}]}}"#);
+    let cell = |child: &str| {
+        format!(
+            r#"{{"type":"table","columns":[{{"width":10}}],"rows":[{{"cells":[{{"children":[{child}]}}]}}]}}"#
+        )
+    };
+    for (d, path) in [
+        (
+            page(&format!(r#","header":{{"type":"box",{brk}}}"#), ""),
+            "pages[0].header.break",
+        ),
+        (
+            page(&format!(r#","footer":{deep}"#), ""),
+            "pages[0].footer.children[0].break",
+        ),
+        (
+            page("", &cell(&deep)),
+            "pages[0].children[0].rows[0].cells[0].children[0].children[0].break",
+        ),
+    ] {
+        assert_eq!(one(&d), (C::InvalidValue, path.into()), "{d}");
+    }
+    // The defaults are not pagination controls.
+    let defaults = r#"{"type":"box","break":{"before":"auto","inside":"auto","fixed":false}}"#;
+    assert_eq!(run(&page("", &cell(defaults))), vec![]);
+}
+
+#[test]
 fn pagination_controls_do_not_apply_in_overlays() {
     // An overlay: fixed and absolutely positioned, directly in the page.
     let overlay = |brk: &str, children: &str| {
@@ -351,6 +392,36 @@ fn rejects_corrupt_and_unknown_images() {
         ]
     );
     assert!(e[3].message.contains("<text>"), "{}", e[3].message);
+}
+
+#[test]
+fn images_over_the_pixel_limit_are_too_large() {
+    // A PNG header claiming 100000×100000 pixels: the probe reads no further.
+    let mut huge = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    huge.extend_from_slice(&100_000u32.to_be_bytes());
+    huge.extend_from_slice(&100_000u32.to_be_bytes());
+    let mut images = ImageStore::new();
+    images.insert("huge", huge);
+    let doc = r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
+      "children":[{"type":"image","src":"huge"},{"type":"image","data":"iVBORw0KGgoAAAANSUhEUgABhqAAAYag"}]}]}"#;
+    let e = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &FontStore::new(),
+        &images,
+    );
+    let got: Vec<(&str, &str)> = e
+        .iter()
+        .map(|e| (e.code.as_str(), e.path.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("IMAGE_TOO_LARGE", "pages[0].children[0].src"),
+            ("IMAGE_TOO_LARGE", "pages[0].children[1].data"),
+        ]
+    );
+    assert!(e[0].message.contains("megapixels"), "{}", e[0].message);
 }
 
 #[test]
