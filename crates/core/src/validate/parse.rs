@@ -3,6 +3,7 @@
 
 use std::fmt::Write as _;
 
+use serde::de::{Deserializer, Visitor};
 use serde::Deserialize;
 
 use crate::error::{ValidationCode as Code, ValidationError};
@@ -49,18 +50,20 @@ fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
         };
     }
     let mut de = msgpack_de(doc);
-    let Err(err) = serde_path_to_error::deserialize::<_, Document>(&mut de) else {
-        return Err(trailing_bytes());
+    let err = match serde_path_to_error::deserialize::<_, Document>(&mut de) {
+        Ok(d) if de.position() as usize == doc.len() => return Ok(d),
+        Ok(_) => return Err(trailing_bytes()),
+        Err(e) => e,
     };
-    if let Some(v) = probe_version_msgpack(doc) {
-        if v != i64::from(SCHEMA_VERSION) {
-            return Err(unsupported_version(&v.to_string()));
-        }
+    if let Some(e) = version_error(&mut msgpack_de(doc)) {
+        return Err(e);
     }
     let path = format_path(err.path());
     match err.into_inner() {
         // Messages from serde itself and from our deserialisers.
         E::Syntax(msg) => Err(classify(path, &msg)),
+        // An array with more items than its fixed length, as in JSON.
+        E::LengthMismatch(_) if !path.is_empty() => Err(too_many_items(path)),
         // A reserved marker (0xc1) is malformed input, not a type error.
         E::TypeMismatch(marker) if !path.is_empty() && format!("{marker:?}") != "Reserved" => {
             Err(ValidationError {
@@ -75,14 +78,6 @@ fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
             message: format!("not valid MessagePack: {other}"),
         }),
     }
-}
-
-fn probe_version_msgpack(doc: &[u8]) -> Option<i64> {
-    #[derive(Deserialize)]
-    struct Probe {
-        version: Option<i64>,
-    }
-    rmp_serde::from_slice::<Probe>(doc).ok()?.version
 }
 
 fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
@@ -104,12 +99,8 @@ fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
         Err(e) => e,
     };
 
-    // A document from another schema version usually fails structurally;
-    // report the version, not the symptoms.
-    if let Some(v) = probe_version(doc) {
-        if v != SCHEMA_VERSION {
-            return Err(unsupported_version(&v.to_string()));
-        }
+    if let Some(e) = version_error(&mut serde_json::Deserializer::from_slice(doc)) {
+        return Err(e);
     }
 
     let path = format_path(err.path());
@@ -119,6 +110,12 @@ fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
         Some(i) if !inner.is_syntax() && !inner.is_eof() => raw[..i].to_string(),
         _ => raw,
     };
+    // Inside the document, "trailing characters" is an array with more
+    // items than its fixed length (a colour, a transform function):
+    // `serde_json` reports it once the items it needed are read.
+    if inner.is_syntax() && !path.is_empty() && msg.starts_with("trailing characters") {
+        return Err(too_many_items(path));
+    }
     if inner.is_syntax() || inner.is_eof() || inner.is_io() {
         return Err(ValidationError {
             code: Code::ParseError,
@@ -129,12 +126,48 @@ fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {
     Err(classify(path, &msg))
 }
 
-fn probe_version(doc: &[u8]) -> Option<serde_json::Value> {
+/// A document from another schema version usually fails structurally;
+/// report the version, not the symptoms. Reads `version` alone, the same
+/// way from either format: a number other than 1 is unsupported. Another
+/// type is left to the structural error (`INVALID_TYPE`).
+fn version_error<'de, D: Deserializer<'de>>(de: D) -> Option<ValidationError> {
+    /// A `version` that is a number; any other type fails the probe.
+    struct Number(f64);
+    impl<'de> Deserialize<'de> for Number {
+        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            struct V;
+            impl Visitor<'_> for V {
+                type Value = Number;
+                fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    f.write_str("a number")
+                }
+                fn visit_f64<E>(self, v: f64) -> Result<Number, E> {
+                    Ok(Number(v))
+                }
+                fn visit_i64<E>(self, v: i64) -> Result<Number, E> {
+                    Ok(Number(v as f64))
+                }
+                fn visit_u64<E>(self, v: u64) -> Result<Number, E> {
+                    Ok(Number(v as f64))
+                }
+            }
+            d.deserialize_any(V)
+        }
+    }
     #[derive(Deserialize)]
     struct Probe {
-        version: Option<serde_json::Value>,
+        version: Option<Number>,
     }
-    serde_json::from_slice::<Probe>(doc).ok()?.version
+    let Number(v) = Probe::deserialize(de).ok()?.version?;
+    (v != f64::from(SCHEMA_VERSION)).then(|| unsupported_version(&v.to_string()))
+}
+
+fn too_many_items(path: String) -> ValidationError {
+    ValidationError {
+        code: Code::InvalidValue,
+        path,
+        message: "the array has more items than its fixed length".into(),
+    }
 }
 
 pub(super) fn unsupported_version(found: &str) -> ValidationError {

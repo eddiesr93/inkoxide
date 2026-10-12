@@ -32,6 +32,14 @@ All notable changes to the packages in this repository. The format follows
   `message`).
 - Rust: the `RenderOptions::threads` docs state that a pool has at most 256 threads and that
   `Some(0)` renders on the calling thread, as `Some(1)` does.
+- A transform function with two keys or none (`{ translate: [1, 2], rotate: 5 }`, `{}`), and an
+  array with more items than its fixed length (a five-item colour, a three-item
+  `transformOrigin`), are `INVALID_VALUE` at their path. They were `PARSE_ERROR` ("not
+  well-formed JSON") with no path.
+- JSON and MessagePack report a bad `version` alike: a number other than 1 (`2`, `2.5`) is
+  `UNSUPPORTED_VERSION`, and a `version` that is not a number (`"1"`, `true`) is
+  `INVALID_TYPE`. JSON reported `"1"` as an unsupported version, and MessagePack reported `2.5`
+  as a wrong type.
 
 ## 0.5.0 - 2026-10-12
 

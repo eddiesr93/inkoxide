@@ -259,6 +259,18 @@ fn msgpack_errors_match_json() {
         r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"spacer","style":{"width":"wide"}}]}]}"#,
         r#"{"version":1,"fonts":[],"pages":[{"size":{"width":-5,"height":100},"children":[]}]}"#,
         r#"{"version":2,"fonts":[],"pages":[]}"#,
+        // Versions that are not the integer 1.
+        r#"{"version":"1","fonts":[],"pages":[]}"#,
+        r#"{"version":2.5,"fonts":[],"pages":[]}"#,
+        r#"{"version":true,"fonts":[],"pages":[]}"#,
+        r#"{"version":null,"fonts":[],"pages":[]}"#,
+        r#"{"fonts":[],"pages":[]}"#,
+        // A transform function with two keys or none, arrays too long.
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","style":{"transform":[{"translate":[1,2],"rotate":5}]}}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","style":{"transform":[{}]}}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","style":{"transform":[{"spin":5}]}}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","style":{"backgroundColor":[0,0,0,1,1]}}]}]}"#,
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[{"type":"box","style":{"transformOrigin":[1,2,3]}}]}]}"#,
     ];
     for json in cases {
         let value: serde_json::Value = serde_json::from_str(json).unwrap();

@@ -12,7 +12,7 @@ use serde::Deserialize;
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
     Field, ImageFit, ImageSource, Node, NodeKind, ObjectPosition, OptEdges, PageFilter,
-    PagePattern, Style, Table, TableRow, TextRun,
+    PagePattern, Style, Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -255,6 +255,43 @@ impl<'de> Deserialize<'de> for PageFilter {
             }
         }
         d.deserialize_any(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for TransformOp {
+    /// An object with exactly one key. serde's externally tagged enum
+    /// reports a second key, or none, as malformed input with no path.
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = TransformOp;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a transform function: an object with one key")
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<TransformOp, A::Error> {
+                const ONE_KEY: &str = "[INVALID_VALUE] a transform function is an object with exactly one key: `translate`, `scale`, `rotate`, `skew` or `matrix`";
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom(ONE_KEY));
+                };
+                let op = match key.as_str() {
+                    "translate" => TransformOp::Translate(map.next_value()?),
+                    "scale" => TransformOp::Scale(map.next_value()?),
+                    "rotate" => TransformOp::Rotate(map.next_value()?),
+                    "skew" => TransformOp::Skew(map.next_value()?),
+                    "matrix" => TransformOp::Matrix(map.next_value()?),
+                    _ => {
+                        return Err(de::Error::custom(format_args!(
+                            "[INVALID_VALUE] unknown transform function `{key}`, expected `translate`, `scale`, `rotate`, `skew` or `matrix`"
+                        )))
+                    }
+                };
+                if map.next_key::<de::IgnoredAny>()?.is_some() {
+                    return Err(de::Error::custom(ONE_KEY));
+                }
+                Ok(op)
+            }
+        }
+        d.deserialize_map(V)
     }
 }
 

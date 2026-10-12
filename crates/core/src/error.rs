@@ -34,7 +34,9 @@ macro_rules! validation_codes {
 validation_codes! {
     /// The input is not well-formed JSON / `MessagePack`.
     ParseError = "PARSE_ERROR",
-    /// `version` is missing or not supported by this engine.
+    /// `version` is a number other than 1. A missing `version` is
+    /// [`MissingField`](Self::MissingField), and one that is not a number
+    /// [`InvalidType`](Self::InvalidType).
     UnsupportedVersion = "UNSUPPORTED_VERSION",
     /// A property the schema does not define.
     UnknownField = "UNKNOWN_FIELD",

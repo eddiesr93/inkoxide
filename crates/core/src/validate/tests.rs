@@ -69,6 +69,21 @@ fn unsupported_version_wins_over_structure() {
         one(r#"{"version":2,"pages":[{"size":{"width":1,"height":1}}]}"#),
         (C::UnsupportedVersion, "version".into())
     );
+    let e = run(r#"{"version":2.5,"pages":[]}"#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::UnsupportedVersion, "version")
+    );
+    assert!(
+        e[0].message.starts_with("document version 2.5 is not"),
+        "{}",
+        e[0].message
+    );
+    // Not a number: the wrong type, as in MessagePack.
+    for v in [r#""1""#, "true", "null"] {
+        let d = format!(r#"{{"version":{v},"pages":[{{"size":{{"width":1,"height":1}}}}]}}"#);
+        assert_eq!(one(&d), (C::InvalidType, "version".into()), "{v}");
+    }
 }
 
 #[test]
@@ -763,6 +778,36 @@ fn transforms_radii_border_styles_and_z_index() {
         matches!(code, C::InvalidValue | C::UnknownField),
         "{code:?}"
     );
+}
+
+/// A transform function with two keys or none, and an array with too many
+/// items, are well-formed input: `INVALID_VALUE` at their path, not
+/// `PARSE_ERROR`.
+#[test]
+fn malformed_transforms_and_arrays_have_paths() {
+    let style = "pages[0].children[0].style";
+    for (s, path) in [
+        (
+            r#""transform":[{"translate":[1,2],"rotate":5}]"#,
+            "transform[0]",
+        ),
+        (r#""transform":[{"rotate":5},{}]"#, "transform[1]"),
+        (r#""transform":[{"spin":5}]"#, "transform[0]"),
+        (
+            r#""transform":[{"translate":[1,2,3]}]"#,
+            "transform[0].translate",
+        ),
+        (
+            r#""transform":[{"matrix":[1,0,0,1,0]}]"#,
+            "transform[0].matrix",
+        ),
+        (r#""backgroundColor":[0,0,0,1,1]"#, "backgroundColor"),
+        (r#""borderColor":{"top":[0,0,0,1,0]}"#, "borderColor.top"),
+        (r#""transformOrigin":[1,2,3]"#, "transformOrigin"),
+    ] {
+        let d = doc(&format!(r#"{{"type":"box","style":{{{s}}}}}"#));
+        assert_eq!(one(&d), (C::InvalidValue, format!("{style}.{path}")), "{s}");
+    }
 }
 
 #[test]

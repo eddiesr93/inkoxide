@@ -651,9 +651,9 @@ impl BorderStyles {
 }
 
 /// One transform function. Lengths are points or percentages of the
-/// node's own border box; angles are degrees.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// node's own border box; angles are degrees. Read from an object with
+/// exactly one key (`de.rs`).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TransformOp {
     Translate([LengthPercent; 2]),
     Scale([f32; 2]),
