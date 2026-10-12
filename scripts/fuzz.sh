@@ -74,9 +74,15 @@ for pid in "${pids[@]}"; do
 done
 after=$(find artifacts -type f | wc -l)
 
-# Statistics only: the logs show the inputs found.
+# Statistics only: the numbers of each log's last status line, nothing
+# else from the logs.
+stats() {
+  grep -a -E '^#[0-9]+' "logs/$1.log" | tail -1 | sed 's/ MS: .*//' |
+    grep -a -o -E '^#[0-9]+| (cov|ft|corp|lim|exec/s|rss|oom/timeout/crash|time|job): [0-9/]+(Kb|Mb|s)?' |
+    sed 's/^ //' | paste -sd ' ' - || true
+}
 for t in "${targets[@]}"; do
-  echo "$t: $(grep -a -E '^#[0-9]+' "logs/$t.log" | tail -1 || true)"
+  echo "$t: $(stats "$t")"
 done
 if [[ $after -gt $before || $status -ne 0 ]]; then
   echo "fuzz findings: $((after - before)) new in fuzz/artifacts (details in fuzz/logs)"
