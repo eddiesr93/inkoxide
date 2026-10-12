@@ -175,7 +175,9 @@ registerHyphenationPatterns('en-US', readFileSync('hyph-en-us.tex')); // from hy
 ```
 
 - **Lookup order.** Registered patterns take precedence over the
-  built-in ones for that language.
+  built-in ones for that language. Text uses the patterns of its own
+  tag, else of the nearest less specific one: `en-GB` text uses
+  `en-GB` patterns, else `en` patterns, never `en-US` ones.
 - **Bad patterns.** A malformed file fails at registration with
   `HYPHENATION_ERROR`, not later during a render.
 - **Soft hyphens.** Soft hyphens (U+00AD) in the text are always

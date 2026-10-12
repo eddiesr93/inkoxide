@@ -233,7 +233,7 @@ pub fn unregister_font(id: String) -> bool {
     FONTS.write().is_ok_and(|mut f| f.unregister(&id))
 }
 
-/// Registers (or replaces) TeX hyphenation patterns for a language, used
+/// Registers (or replaces) TeX hyphenation patterns for a BCP-47 tag, used
 /// by all later renders before the built-in patterns.
 #[napi]
 pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, String>) -> Result<()> {
@@ -246,7 +246,8 @@ pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, Stri
         .map_err(from_engine)
 }
 
-/// Removes registered patterns; returns whether there were any.
+/// Removes the patterns registered for exactly `lang`; returns whether
+/// there were any.
 #[napi]
 pub fn unregister_hyphenation_patterns(lang: String) -> bool {
     HYPHENATION.write().is_ok_and(|mut h| h.unregister(&lang))

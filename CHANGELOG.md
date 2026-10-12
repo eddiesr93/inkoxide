@@ -25,6 +25,12 @@ All notable changes to the packages in this repository. The format follows
   drawing.
 - The `@inkoxide/react` renderer gives React its real version, from its `package.json`, instead
   of `0.1.0`.
+- Hyphenation patterns are registered for the whole language tag. Patterns for `en-GB` no longer
+  replace those for `en-US`; text uses the patterns of its own tag, else of the nearest less
+  specific one (`en-GB`, then `en`), else the built-in ones. Three-letter languages such as
+  `haw` or `fil` can be registered. `@inkoxide/render` registers its US English patterns for
+  `en`, so they still serve every English `lang`; `engineStatus().hyphenation` lists them as
+  `en`.
 
 ### Removed
 

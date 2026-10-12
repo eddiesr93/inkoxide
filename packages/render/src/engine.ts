@@ -39,11 +39,11 @@ export interface EngineStatus {
 let status: EngineStatus | undefined;
 
 /**
- * Hyphenation pattern files (hyph-utf8) loaded from `assets/hyphenation/`, by BCP-47 tag. The
- * engine applies patterns to the language subtag, so `en-US` patterns serve every `lang` that
- * starts with `en`.
+ * Hyphenation pattern files (hyph-utf8) loaded from `assets/hyphenation/`, by the BCP-47 tag they
+ * are registered for. The engine falls back from a tag to its language, so the US English patterns,
+ * registered for `en`, serve every `lang` that starts with `en` and has no patterns of its own.
  */
-export const HYPHENATION_FILES: Readonly<Record<string, string>> = { 'en-US': 'hyph-en-us.tex' };
+export const HYPHENATION_FILES: Readonly<Record<string, string>> = { en: 'hyph-en-us.tex' };
 
 export interface InitOptions {
   fontsDir?: string;

@@ -217,6 +217,13 @@ test('registered hyphenation patterns win over the built-in ones', () => {
     assert.strictEqual(ink.unregisterHyphenationPatterns('en-US'), true);
   }
   assert.deepStrictEqual(ink.renderSync(doc, { compress: false }), without);
+  // The document is en-US: patterns for en-GB leave it alone.
+  ink.registerHyphenationPatterns('en_gb', patterns);
+  try {
+    assert.deepStrictEqual(ink.renderSync(doc, { compress: false }), without);
+  } finally {
+    assert.strictEqual(ink.unregisterHyphenationPatterns('EN-GB'), true);
+  }
   assert.throws(() => ink.registerHyphenationPatterns('en-US', '1ba 1ca'), {
     name: 'InkoxideError',
     code: 'HYPHENATION_ERROR',

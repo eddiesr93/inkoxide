@@ -10,7 +10,7 @@ use crate::InkoxideError;
 
 /// Finds hyphenation points in a word.
 pub(crate) trait Hyphenator: Send + Sync {
-    /// Whether patterns exist for `lang` (an ISO 639-1 code, lowercase).
+    /// Whether patterns exist for `lang` (a tag from [`normalize_tag`]).
     fn supports(&self, lang: &str) -> bool;
     /// Byte offsets inside `word` where a hyphen may be inserted.
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize>;
@@ -19,8 +19,10 @@ pub(crate) trait Hyphenator: Send + Sync {
 /// `hypher`: embedded TeX patterns for ~50 languages.
 pub(crate) struct HypherHyphenator;
 
-fn lang_of(code: &str) -> Option<hypher::Lang> {
-    let b = code.as_bytes();
+/// hypher's language for a normalised tag: its language subtag, when that
+/// is an ISO 639-1 code.
+fn lang_of(tag: &str) -> Option<hypher::Lang> {
+    let b = tag.split('-').next()?.as_bytes();
     if b.len() != 2 {
         return None;
     }
@@ -63,23 +65,34 @@ impl Hyphenator for NoHyphenation {
     }
 }
 
-/// Normalises a BCP-47 tag (`en`, `en-GB`) to its lowercase ISO 639-1
-/// language code.
-pub(crate) fn language_code(tag: &str) -> Option<String> {
-    let b = tag.as_bytes();
-    if b.len() < 2 || (b.len() > 2 && b[2] != b'-' && b[2] != b'_') {
-        return None;
-    }
-    Some(tag[..2].to_ascii_lowercase())
+/// Normalises a BCP-47 tag (`en-GB`, `en_gb`, `haw`) to lowercase with `-`
+/// separators. The language subtag has two or three letters, every other
+/// subtag one to eight letters or digits.
+pub(crate) fn normalize_tag(tag: &str) -> Option<String> {
+    let tag = tag.to_ascii_lowercase().replace('_', "-");
+    let mut subtags = tag.split('-');
+    let language = subtags.next()?;
+    let valid = (2..=3).contains(&language.len())
+        && language.bytes().all(|b| b.is_ascii_lowercase())
+        && subtags
+            .all(|s| (1..=8).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric()));
+    valid.then_some(tag)
 }
 
-/// Hyphenation patterns registered at runtime, by language.
+/// The tag a paragraph is hyphenated in: `tag` normalised, or only its
+/// language when the rest is malformed (`en-` hyphenates as `en`).
+pub(crate) fn paragraph_tag(tag: &str) -> Option<String> {
+    normalize_tag(tag).or_else(|| normalize_tag(tag.split(['-', '_']).next()?))
+}
+
+/// Hyphenation patterns registered at runtime, by BCP-47 tag.
 ///
 /// Patterns are TeX files as distributed by hyph-utf8 (`hyph-en-us.tex`):
 /// one or more `\patterns{…}` groups of Liang patterns and optional
 /// `\hyphenation{…}` groups of exception words (`ta-ble`), in UTF-8. When a
-/// paragraph asks for hyphenation, registered patterns for its language
-/// are used first, then hypher's built-in patterns; soft hyphens in the
+/// paragraph asks for hyphenation, the patterns registered for its tag are
+/// used first, then those of each less specific tag (`en-GB`, then `en`),
+/// then hypher's built-in patterns for the language; soft hyphens in the
 /// text are always honoured.
 ///
 /// Cloning is cheap: parsed patterns are shared.
@@ -87,13 +100,14 @@ pub(crate) fn language_code(tag: &str) -> Option<String> {
 /// ```
 /// let mut store = inkoxide::HyphenationStore::new();
 /// let tex = r"\patterns{ 1ba 1ca 2n1t } \hyphenation{ en-ter-prise }";
-/// store.register("en-US", tex.as_bytes())?;
-/// assert!(store.contains("en"));
+/// store.register("en", tex.as_bytes())?;
+/// assert!(store.contains("en-GB"));
 /// let options = inkoxide::RenderOptions::default().with_hyphenation(store);
 /// # Ok::<(), inkoxide::InkoxideError>(())
 /// ```
 #[derive(Clone, Default)]
 pub struct HyphenationStore {
+    /// By normalised tag (`en`, `en-gb`).
     langs: HashMap<String, Arc<Patterns>>,
 }
 
@@ -115,39 +129,60 @@ impl HyphenationStore {
     }
 
     /// Parses TeX hyphenation patterns and registers (or replaces) them
-    /// for `lang`, a BCP-47 tag whose language subtag has two letters
-    /// (`en`, `en-GB`); patterns apply to the language, whatever the
-    /// region.
+    /// for `lang`, a BCP-47 tag with a two- or three-letter language
+    /// (`en`, `en-GB`, `haw`), in any case, with `-` or `_`. Patterns for
+    /// `en` also serve `en-GB` and every other `en-…` tag without patterns
+    /// of its own; patterns for `en-GB` serve only `en-GB` (and its longer
+    /// tags).
     ///
     /// # Errors
     ///
-    /// [`InkoxideError::Hyphenation`] for a tag without a two-letter
-    /// language, bytes that are not UTF-8, unbalanced braces, malformed
-    /// patterns, or input without any `\patterns` or `\hyphenation` group.
+    /// [`InkoxideError::Hyphenation`] for a malformed tag, bytes that are
+    /// not UTF-8, unbalanced braces, malformed patterns, or input without
+    /// any `\patterns` or `\hyphenation` group.
     pub fn register(&mut self, lang: &str, patterns: &[u8]) -> Result<(), InkoxideError> {
-        let code = language_code(lang).ok_or_else(|| {
+        let tag = normalize_tag(lang).ok_or_else(|| {
             InkoxideError::Hyphenation(format!(
-                "`{lang}` is not a language tag with a two-letter language"
+                "`{lang}` is not a language tag such as `en`, `en-GB` or `haw`"
             ))
         })?;
         let parsed = Patterns::parse(patterns)
-            .map_err(|e| InkoxideError::Hyphenation(format!("{code}: {e}")))?;
-        self.langs.insert(code, Arc::new(parsed));
+            .map_err(|e| InkoxideError::Hyphenation(format!("{lang}: {e}")))?;
+        self.langs.insert(tag, Arc::new(parsed));
         Ok(())
     }
 
-    /// Removes the patterns for `lang`; returns whether there were any.
+    /// Removes the patterns registered for `lang` itself (not those of a
+    /// more or less specific tag); returns whether there were any.
     pub fn unregister(&mut self, lang: &str) -> bool {
-        language_code(lang).is_some_and(|code| self.langs.remove(&code).is_some())
+        normalize_tag(lang).is_some_and(|tag| self.langs.remove(&tag).is_some())
     }
 
-    /// Whether patterns are registered for `lang`.
+    /// Whether text in `lang` uses registered patterns: its own, or those
+    /// of a less specific tag (`en` for `en-GB`).
     #[must_use]
     pub fn contains(&self, lang: &str) -> bool {
-        language_code(lang).is_some_and(|code| self.langs.contains_key(&code))
+        normalize_tag(lang).is_some_and(|tag| self.lookup(&tag).is_some())
     }
 
-    /// Number of languages with registered patterns.
+    /// The patterns for a normalised tag: its own, else those of the
+    /// nearest less specific tag (`en-gb-x-oed` → `en-gb` → `en`).
+    fn lookup(&self, tag: &str) -> Option<&Patterns> {
+        let mut tag = tag;
+        loop {
+            if let Some(p) = self.langs.get(tag) {
+                return Some(p.as_ref());
+            }
+            let (rest, _) = tag.rsplit_once('-')?;
+            // A one-letter subtag (`x`, an extension) goes with the next.
+            tag = match rest.rsplit_once('-') {
+                Some((shorter, s)) if s.len() == 1 => shorter,
+                _ => rest,
+            };
+        }
+    }
+
+    /// Number of tags with registered patterns.
     #[must_use]
     pub fn len(&self) -> usize {
         self.langs.len()
@@ -167,11 +202,11 @@ pub(crate) struct ResolvedHyphenator<'a> {
 
 impl Hyphenator for ResolvedHyphenator<'_> {
     fn supports(&self, lang: &str) -> bool {
-        self.store.langs.contains_key(lang) || HypherHyphenator.supports(lang)
+        self.store.lookup(lang).is_some() || HypherHyphenator.supports(lang)
     }
 
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize> {
-        match self.store.langs.get(lang) {
+        match self.store.lookup(lang) {
             Some(p) => p.hyphenate(word),
             None => HypherHyphenator.hyphenate(word, lang),
         }
@@ -417,12 +452,33 @@ mod tests {
             ("en", br"\patterns{ ^^e3 }"),
             ("en", br"\hyphenation{ -ab }"),
             ("en", b"\\patterns{ \xff }"),
-            ("eng", br"\patterns{ 1ba }"),
+            ("english", br"\patterns{ 1ba }"),
+            ("e", br"\patterns{ 1ba }"),
+            ("en-", br"\patterns{ 1ba }"),
+            ("en--gb", br"\patterns{ 1ba }"),
+            ("en-gb!", br"\patterns{ 1ba }"),
+            ("", br"\patterns{ 1ba }"),
         ] {
             let err = store.register(lang, tex).unwrap_err();
             assert_eq!(err.code(), "HYPHENATION_ERROR", "{err}");
         }
         assert!(store.is_empty());
+    }
+
+    #[test]
+    fn tags() {
+        assert_eq!(normalize_tag("en-GB").as_deref(), Some("en-gb"));
+        assert_eq!(normalize_tag("DE").as_deref(), Some("de"));
+        assert_eq!(normalize_tag("fil_PH").as_deref(), Some("fil-ph"));
+        assert_eq!(normalize_tag("zh-Hant-HK").as_deref(), Some("zh-hant-hk"));
+        assert_eq!(normalize_tag("x"), None);
+        assert_eq!(normalize_tag("en-"), None);
+        assert_eq!(paragraph_tag("en-").as_deref(), Some("en"));
+        assert_eq!(paragraph_tag("EN_us.UTF-8").as_deref(), Some("en"));
+        assert_eq!(paragraph_tag("english"), None);
+        // hypher goes by the language subtag.
+        assert!(HypherHyphenator.supports("de-at"));
+        assert!(!HypherHyphenator.supports("deu"));
     }
 
     #[test]
@@ -436,11 +492,11 @@ mod tests {
         );
         assert!(!h.supports("ja"));
 
-        store.register("ja-JP", br"\patterns{ 1m 1n }").unwrap();
+        store.register("ja", br"\patterns{ 1m 1n }").unwrap();
         store
             .register("EN", br"\hyphenation{ documentati-on }")
             .unwrap();
-        assert!(store.contains("ja") && store.contains("en-GB"));
+        assert!(store.contains("ja-JP") && store.contains("en-GB"));
         let h = ResolvedHyphenator { store: &store };
         assert!(h.supports("ja"));
         assert_eq!(split("banana", &h.hyphenate("banana", "ja")), "ba-na-na");
@@ -450,5 +506,63 @@ mod tests {
         );
         assert!(store.unregister("ja"));
         assert!(!store.unregister("ja"));
+    }
+
+    #[test]
+    fn regional_patterns_coexist() {
+        let mut store = HyphenationStore::new();
+        store
+            .register("en-GB", br"\hyphenation{ colo-ur }")
+            .unwrap();
+        store
+            .register("en_us", br"\hyphenation{ co-lour }")
+            .unwrap();
+        assert_eq!(store.len(), 2);
+        let h = ResolvedHyphenator { store: &store };
+        assert_eq!(split("colour", &h.hyphenate("colour", "en-gb")), "colo-ur");
+        assert_eq!(split("colour", &h.hyphenate("colour", "en-us")), "co-lour");
+        // Neither serves the bare language or another region: hypher does.
+        assert!(!store.contains("en") && !store.contains("en-AU"));
+        assert_eq!(
+            h.hyphenate("colour", "en-au"),
+            HypherHyphenator.hyphenate("colour", "en")
+        );
+        // Unregistering one region keeps the other.
+        assert!(store.unregister("EN-gb"));
+        assert!(!store.unregister("en"));
+        assert!(!store.contains("en-GB") && store.contains("en-US"));
+    }
+
+    #[test]
+    fn three_letter_languages() {
+        let mut store = HyphenationStore::new();
+        assert!(!ResolvedHyphenator { store: &store }.supports("haw"));
+        store.register("haw", br"\patterns{ 1k 1l 1n }").unwrap();
+        let h = ResolvedHyphenator { store: &store };
+        assert!(h.supports("haw") && h.supports("haw-us"));
+        assert_eq!(
+            split("hanakala", &h.hyphenate("hanakala", "haw")),
+            "ha-na-ka-la"
+        );
+        // `haw` is not `ha` (Hausa).
+        assert!(!store.contains("ha"));
+    }
+
+    #[test]
+    fn lookup_falls_back_from_region_to_language() {
+        let mut store = HyphenationStore::new();
+        store.register("de", br"\hyphenation{ stra-sse }").unwrap();
+        store
+            .register("de-CH", br"\hyphenation{ str-asse }")
+            .unwrap();
+        let h = ResolvedHyphenator { store: &store };
+        let of = |lang| split("strasse", &h.hyphenate("strasse", lang));
+        assert_eq!(of("de"), "stra-sse");
+        assert_eq!(of("de-at"), "stra-sse");
+        assert_eq!(of("de-ch"), "str-asse");
+        assert_eq!(of("de-ch-1996"), "str-asse");
+        // A private-use or extension subtag goes with its singleton.
+        assert_eq!(of("de-ch-x-ab"), "str-asse");
+        assert_eq!(of("de-latn-ch"), "stra-sse");
     }
 }
