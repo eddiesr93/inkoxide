@@ -74,7 +74,7 @@ fn stats(dir: &str) {
             Some(e) => {
                 *codes
                     .entry(format!("{} {}", e.code.as_str(), e.message))
-                    .or_default() += 1
+                    .or_default() += 1;
             }
         }
     }

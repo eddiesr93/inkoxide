@@ -20,6 +20,7 @@ cargo fmt --manifest-path fuzz/Cargo.toml -- --check
 if [[ $quick == 0 ]]; then
   step "clippy"
   cargo clippy --workspace --all-targets -- -D warnings
+  cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 fi
 
 step "tests"

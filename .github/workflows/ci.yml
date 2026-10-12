@@ -37,6 +37,10 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            fuzz -> target
       - name: Install qpdf
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends qpdf
       - name: Format
@@ -44,7 +48,10 @@ jobs:
           cargo fmt --all -- --check
           cargo fmt --manifest-path fuzz/Cargo.toml -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # The fuzz crate is its own workspace; this also checks that it builds against the engine.
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
 

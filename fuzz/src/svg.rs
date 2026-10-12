@@ -87,12 +87,12 @@ fn element(
             }
         }
         "filter" => {
-            for _ in 0..1 + s.below(3) {
+            for _ in 0..=s.below(3) {
                 match s.below(4) {
                     0 => {
                         let _ = write!(out, r##"<feImage href="#{}"/>"##, s.pick(IDS));
                     }
-                    1 => out.push_str(r#"<feTile/>"#),
+                    1 => out.push_str(r"<feTile/>"),
                     2 => {
                         let _ = write!(out, r#"<feGaussianBlur stdDeviation="{}"/>"#, number(s));
                     }
@@ -174,7 +174,7 @@ fn attributes(s: &mut Src, out: &mut String, tag: &str, entities: bool) {
         }
         "polyline" | "polygon" => {
             let mut points = String::new();
-            for _ in 0..1 + s.below(64) * if s.chance(20) { 64 } else { 1 } {
+            for _ in 0..=(s.below(64) * if s.chance(20) { 64 } else { 1 }) {
                 let _ = write!(points, "{},{} ", number(s), number(s));
             }
             let _ = write!(out, r#" points="{points}""#);
@@ -351,7 +351,7 @@ fn dashes(s: &mut Src) -> String {
 
 fn declarations(s: &mut Src) -> String {
     let mut out = String::new();
-    for _ in 0..1 + s.below(4) * if s.chance(10) { 500 } else { 1 } {
+    for _ in 0..=(s.below(4) * if s.chance(10) { 500 } else { 1 }) {
         let _ = match s.below(7) {
             0 => write!(out, "fill:{};", paint(s)),
             1 => write!(out, "marker:{};", url(s)),
@@ -367,10 +367,10 @@ fn declarations(s: &mut Src) -> String {
 
 fn style_sheet(s: &mut Src, out: &mut String) {
     out.push_str("<style>");
-    for _ in 0..1 + s.below(6) * if s.chance(20) { 500 } else { 1 } {
+    for _ in 0..=(s.below(6) * if s.chance(20) { 500 } else { 1 }) {
         let mut selectors = Vec::new();
-        for _ in 0..1 + s.below(3) {
-            let parts: Vec<&str> = (0..1 + s.below(4) * if s.chance(20) { 8 } else { 1 })
+        for _ in 0..=s.below(3) {
+            let parts: Vec<&str> = (0..=(s.below(4) * if s.chance(20) { 8 } else { 1 }))
                 .map(|_| s.pick(&["*", "g", "path", ".c", "#a", "rect", "svg"]))
                 .collect();
             let joiner = s.pick(&[" ", " > ", " ~ ", " + "]);

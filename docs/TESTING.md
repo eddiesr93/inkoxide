@@ -69,7 +69,8 @@ The targets run without a sanitizer: the core crate has no unsafe code,
 and AddressSanitizer's own memory and time would blur the hangs and
 memory use they look for.
 
-Targets (in `fuzz/`, outside the workspace):
+Targets (in `fuzz/`, outside the workspace, with the workspace's lints;
+the `ci` workflow builds them and runs clippy on them):
 
 - `render_json`: raw bytes, seeded with `fixtures/docs`, with a dictionary
   of schema keys (`fuzz/render_json.dict`).

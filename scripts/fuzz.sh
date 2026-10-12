@@ -4,9 +4,9 @@
 # bytes seeded with fixtures/docs), render_svg (raw bytes as an image,
 # seeded with fixtures/images), render_svg_tree (structure-aware SVG,
 # 2 workers) and register_font (raw bytes as a font, also as WOFF and
-# WOFF2, seeded with fixtures/fonts), or only the TARGETs named. Fails if
-# anything crashes, times out or runs out of memory; findings land in
-# fuzz/artifacts/.
+# WOFF2, seeded with fixtures/fonts), or only the TARGETs named. Exits 1
+# if anything crashes, times out or runs out of memory (findings land in
+# fuzz/artifacts/), and 2 if the targets do not build.
 #
 # Without a sanitizer: the core crate has no unsafe code, and what the
 # targets look for (panics, hangs, memory use) is what AddressSanitizer's
@@ -54,7 +54,10 @@ flags() {
 
 mkdir -p logs artifacts
 for t in "${targets[@]}"; do
-  "${fuzz[@]}" build "${build[@]}" "$t" >/dev/null 2>&1 || "${fuzz[@]}" build "${build[@]}" "$t"
+  "${fuzz[@]}" build "${build[@]}" "$t" >/dev/null 2>&1 || "${fuzz[@]}" build "${build[@]}" "$t" || {
+    echo "fuzz: $t does not build" >&2
+    exit 2
+  }
 done
 
 before=$(find artifacts -type f | wc -l)

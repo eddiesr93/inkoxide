@@ -61,7 +61,11 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 
 /// Validates and renders `doc`; panics (a finding) when the engine panics
 /// or when `validate` and `render` disagree. A JSON document that renders
-/// must render to the same bytes as MessagePack.
+/// must render to the same bytes as `MessagePack`.
+///
+/// # Panics
+///
+/// On a finding.
 pub fn check(doc: &[u8]) {
     // Half the inputs also go through the PDF/A writer.
     let pdf_a = doc.len() % 2 == 1;
@@ -253,6 +257,7 @@ fn assert_finite_numbers(data: &[u8], objects: bool) {
 
 /// Entropy source over the fuzzer's bytes; reads zeros once exhausted, so
 /// generation always terminates.
+#[derive(Debug)]
 pub struct Src<'a> {
     data: &'a [u8],
     pos: usize,
@@ -433,7 +438,7 @@ fn template(s: &mut Src) -> Value {
         // An auto repeat: everything must have a fixed size.
         let n = s.pick(&["auto-fill", "auto-fit"]);
         let mut v: Vec<Value> = (0..s.below(2)).map(|_| fixed(s)).collect();
-        let tracks: Vec<Value> = (0..1 + s.below(2)).map(|_| fixed(s)).collect();
+        let tracks: Vec<Value> = (0..=s.below(2)).map(|_| fixed(s)).collect();
         v.insert(s.below(v.len() + 1), json!({"repeat": n, "tracks": tracks}));
         return Value::Array(v);
     }
@@ -445,7 +450,7 @@ fn template(s: &mut Src) -> Value {
                 } else {
                     json!(1 + s.below(6))
                 };
-                let tracks: Vec<Value> = (0..1 + s.below(3)).map(|_| track(s)).collect();
+                let tracks: Vec<Value> = (0..=s.below(3)).map(|_| track(s)).collect();
                 json!({"repeat": count, "tracks": tracks})
             } else {
                 track(s)
@@ -613,9 +618,9 @@ fn prop(s: &mut Src, name: &str) -> Value {
             .as_str()
             .map_or(Value::Null, |r| json!([r, r])),
         "gridTemplateAreas" => json!(s.pick(AREAS)),
-        // Placed by `node` under a parent with areas; random names in chaos.
+        // Random names in chaos; otherwise placed by `node` under a parent
+        // with areas (`Null` here, as for any unknown property).
         "gridArea" if s.chaos => e(s, &["a", "b", "zz", "9"]),
-        "gridArea" => Value::Null,
         "gridAutoFlow" => e(s, &["row", "column", "row dense", "column dense"]),
         "gridColumn" | "gridRow" => placement(s),
         "overflow" => e(s, &["visible", "hidden"]),
@@ -646,7 +651,7 @@ fn factor(s: &mut Src) -> Value {
 
 /// `transform`: one to three functions.
 fn transform(s: &mut Src) -> Value {
-    let ops = (0..1 + s.below(3))
+    let ops = (0..=s.below(3))
         .map(|_| match s.below(5) {
             0 => json!({"translate": [length_pct(s), length_pct(s)]}),
             1 => json!({"scale": [factor(s), factor(s)]}),
@@ -1015,7 +1020,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
     let s = &mut Src::new(data);
     let mut budget = 2_000;
     let mut pages = Vec::new();
-    for _ in 0..1 + s.below(3) {
+    for _ in 0..=s.below(3) {
         let mut p = Map::new();
         let size = match s.below(8) {
             7 if s.chaos => json!({"width": num(s)}),
@@ -1072,5 +1077,5 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         ],
         "pages": pages,
     });
-    serde_json::to_vec(&doc).unwrap()
+    doc.to_string().into_bytes()
 }
