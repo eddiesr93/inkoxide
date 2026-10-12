@@ -25,12 +25,6 @@ All notable changes to the packages in this repository. The format follows
   drawing.
 - The `@inkoxide/react` renderer gives React its real version, from its `package.json`, instead
   of `0.1.0`.
-- Hyphenation patterns are registered for the whole language tag. Patterns for `en-GB` no longer
-  replace those for `en-US`; text uses the patterns of its own tag, else of the nearest less
-  specific one (`en-GB`, then `en`), else the built-in ones. Three-letter languages such as
-  `haw` or `fil` can be registered. `@inkoxide/render` registers its US English patterns for
-  `en`, so they still serve every English `lang`; `engineStatus().hyphenation` lists them as
-  `en`.
 - An image over the 50-megapixel limit fails validation with `IMAGE_TOO_LARGE`, as documented.
   It was reported as `INVALID_IMAGE`.
 - A document with `pages: []` fails validation with `INVALID_VALUE` at `pages`, as the schema
@@ -45,6 +39,16 @@ All notable changes to the packages in this repository. The format follows
   the rules the engine applies beyond the schema's shapes: `break` and `pageBreak` in headers,
   footers and table cells, margins that leave no room for content, and repeated form field
   names.
+
+### Changed
+
+- Hyphenation patterns are registered for the whole language tag. Patterns for `en-GB` no longer
+  replace those for `en-US`; text uses the patterns of its own tag, else of the nearest less
+  specific one (`en-GB`, then `en`), else the built-in ones. Three-letter languages such as
+  `haw` or `fil` can be registered. **Patterns registered for a region now serve only that
+  region:** register for `en` (not `en-US`) to cover every English `lang`. `@inkoxide/render`
+  registers its US English patterns for `en`, so they still serve every English `lang`;
+  `engineStatus().hyphenation` lists them as `en`.
 
 ### Removed
 

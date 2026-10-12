@@ -95,11 +95,11 @@ language hypher lacks), register a file:
 3. Register it:
 
 ```js
-registerHyphenationPatterns('en-US', fs.readFileSync('hyph-en-us.tex')); // once, at startup
+registerHyphenationPatterns('en', fs.readFileSync('hyph-en-us.tex')); // once, at startup; 'en' covers every English lang
 ```
 
 ```sh
-inkoxide render doc.json --fonts fonts/ --hyphenation en-US=hyph-en-us.tex
+inkoxide render doc.json --fonts fonts/ --hyphenation en=hyph-en-us.tex
 ```
 
 ```rust

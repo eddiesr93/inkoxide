@@ -171,7 +171,7 @@ patterns yourself, once, at startup:
 
 ```js
 import { registerHyphenationPatterns } from 'inkoxide';
-registerHyphenationPatterns('en-US', readFileSync('hyph-en-us.tex')); // from hyph-utf8; check its licence
+registerHyphenationPatterns('en', readFileSync('hyph-en-us.tex')); // from hyph-utf8; check its licence
 ```
 
 - **Lookup order.** Registered patterns take precedence over the
