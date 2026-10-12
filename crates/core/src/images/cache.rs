@@ -1,4 +1,4 @@
-//! Process-wide cache of decoded images, keyed by content hash.
+//! Process-wide cache of decoded images, keyed by content.
 //!
 //! An [`ImageStore`](super::ImageStore) already decodes each of its images
 //! once, but the Node binding builds a fresh store per call from the
@@ -6,18 +6,16 @@
 //! every render. This cache sits behind every store: least recently used
 //! entries go once the decoded data exceeds [`BUDGET`].
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use super::decode::{DecodedImage, ImageBody, ImageDecoder};
-use crate::lru::Lru;
+use super::ContentKey;
+use crate::lru::SharedLru;
 
 /// Bytes (encoded plus compressed samples) kept across renders.
 const BUDGET: usize = 64 << 20;
 
-/// Encoded bytes (to rule out hash collisions) and the decoded image.
-type Entry = (Arc<[u8]>, Arc<DecodedImage>);
-
-static CACHE: Mutex<Option<Lru<u64, Entry>>> = Mutex::new(None);
+static CACHE: SharedLru<ContentKey<Arc<[u8]>>, Arc<DecodedImage>> = SharedLru::new(BUDGET);
 
 /// Approximate memory held by an entry whose encoded form is `encoded`
 /// bytes long.
@@ -39,32 +37,17 @@ pub(crate) fn decode(
     hash: u64,
     decoder: &dyn ImageDecoder,
 ) -> Result<Arc<DecodedImage>, String> {
-    if let Ok(mut guard) = CACHE.lock() {
-        let lru = guard.get_or_insert_with(|| Lru::new(BUDGET));
-        if let Some((b, image)) = lru.get(&hash) {
-            if b[..] == bytes[..] {
-                return Ok(image);
-            }
-        }
+    let key = ContentKey::with_hash(bytes.clone(), hash);
+    if let Some(image) = CACHE.get(&key) {
+        return Ok(image);
     }
     // Decode outside the lock: other renders keep going meanwhile.
     let image = Arc::new(decoder.decode(bytes)?);
-    if let Ok(mut guard) = CACHE.lock() {
-        let size = size_of(&image, bytes.len());
-        guard.get_or_insert_with(|| Lru::new(BUDGET)).insert(
-            hash,
-            (bytes.clone(), image.clone()),
-            size,
-        );
-    }
+    CACHE.insert(key, image.clone(), size_of(&image, bytes.len()));
     Ok(image)
 }
 
 #[cfg(test)]
-pub(crate) fn contains(hash: u64) -> bool {
-    CACHE
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().map(|l| l.contains(&hash)))
-        .unwrap_or(false)
+pub(crate) fn contains(bytes: &Arc<[u8]>, hash: u64) -> bool {
+    CACHE.contains(&ContentKey::with_hash(bytes.clone(), hash))
 }

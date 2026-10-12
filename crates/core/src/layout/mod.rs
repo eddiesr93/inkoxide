@@ -49,13 +49,9 @@ pub(crate) struct Geometry {
 impl Geometry {
     /// The border box less border and padding.
     pub fn content_box(&self) -> Rect {
-        let (b, p) = (self.border, self.padding);
-        Rect::new(
-            self.x + b.left + p.left,
-            self.y + b.top + p.top,
-            (self.w - b.left - b.right - p.left - p.right).max(0.0),
-            (self.h - b.top - b.bottom - p.top - p.bottom).max(0.0),
-        )
+        Rect::new(self.x, self.y, self.w, self.h)
+            .inset(self.border)
+            .inset(self.padding)
     }
 
     fn offset(mut self, dx: f32, dy: f32) -> Self {

@@ -21,18 +21,10 @@ pub(crate) fn write_image(
     let (w, h) = (img.width as i32, img.height as i32);
     match &img.body {
         ImageBody::Jpeg {
-            bytes,
             color: JpegColor::Cmyk { .. },
+            ..
         } if pdf_a => {
-            let rgb = image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg)
-                .map_err(|e| crate::InkoxideError::Image(format!("CMYK JPEG: {e}")))?
-                .into_rgb8();
-            if (rgb.width(), rgb.height()) != (img.width, img.height) {
-                return Err(crate::InkoxideError::Internal(
-                    "CMYK JPEG decoded to an unexpected size".into(),
-                ));
-            }
-            let samples = super::deflate(rgb.as_raw(), 6)?;
+            let samples = super::deflate(&img.cmyk_to_rgb()?, crate::flate::LEVEL)?;
             let mut x = pdf.image_xobject(id, &samples);
             x.width(w).height(h).bits_per_component(8);
             x.filter(Filter::FlateDecode);

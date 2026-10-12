@@ -1,9 +1,13 @@
 //! Images: registry, header probing, decoding into PDF-ready samples, and
 //! the per-render set of unique images (deduplicated by content hash).
 //!
-//! JPEG is never decoded: its bytes go into the PDF as `DCTDecode` and only
-//! its markers are read. PNG is decoded behind [`ImageDecoder`] and
-//! written as Flate-compressed samples plus an optional alpha `SMask`.
+//! JPEG is not decoded: its bytes go into the PDF as `DCTDecode` and only
+//! its markers are read (a CMYK JPEG in PDF/A output is the exception: it
+//! is converted to RGB samples). PNG, GIF (its first frame) and WebP are
+//! decoded behind [`ImageDecoder`] and written as Flate-compressed samples
+//! plus an optional alpha `SMask`. SVG is parsed into a `usvg` tree, with
+//! limits for untrusted input (`svg.rs`), and written as a vector form
+//! `XObject`.
 
 pub(crate) mod base64;
 mod cache;
@@ -15,6 +19,8 @@ mod svg;
 mod tests;
 
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 
 use taffy::{AvailableSpace, Size as TSize};
@@ -35,6 +41,41 @@ pub(crate) const MAX_PIXELS: u64 = 50_000_000;
 
 /// Points per CSS pixel: images have a 96 dpi intrinsic size.
 const PT_PER_PX: f32 = 0.75;
+
+/// Image content as a map key: equal keys hold equal bytes. Keys are
+/// hashed by the content's xxh3 alone, and the bytes are compared on a
+/// match, so a hash collision never swaps one image for another.
+#[derive(Debug, Clone)]
+pub(crate) struct ContentKey<B> {
+    hash: u64,
+    bytes: B,
+}
+
+impl<B: Deref<Target = T>, T: AsRef<[u8]> + ?Sized> ContentKey<B> {
+    pub fn new(bytes: B) -> Self {
+        let hash = xxhash_rust::xxh3::xxh3_64(bytes.as_ref());
+        Self::with_hash(bytes, hash)
+    }
+
+    /// A key for `bytes` whose xxh3 is `hash`, already computed.
+    pub fn with_hash(bytes: B, hash: u64) -> Self {
+        Self { hash, bytes }
+    }
+}
+
+impl<B: Deref<Target = T>, T: AsRef<[u8]> + ?Sized> PartialEq for ContentKey<B> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash && self.bytes.as_ref() == other.bytes.as_ref()
+    }
+}
+
+impl<B: Deref<Target = T>, T: AsRef<[u8]> + ?Sized> Eq for ContentKey<B> {}
+
+impl<B> Hash for ContentKey<B> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.hash);
+    }
+}
 
 /// Encoded image bytes plus lazily decoded, process-lifetime data.
 #[derive(Debug)]

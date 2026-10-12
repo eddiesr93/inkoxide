@@ -64,6 +64,27 @@ impl DecodedImage {
             (self.width as f32, self.height as f32)
         }
     }
+
+    /// The 8-bit RGB samples of a CMYK JPEG, for output that cannot hold
+    /// CMYK (PDF/A has an sRGB output intent only). Decoded on every call.
+    pub fn cmyk_to_rgb(&self) -> Result<Vec<u8>, crate::InkoxideError> {
+        let ImageBody::Jpeg {
+            bytes,
+            color: JpegColor::Cmyk { .. },
+        } = &self.body
+        else {
+            return Err(crate::InkoxideError::Internal("not a CMYK JPEG".into()));
+        };
+        let rgb = image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg)
+            .map_err(|e| crate::InkoxideError::Image(format!("CMYK JPEG: {e}")))?
+            .into_rgb8();
+        if (rgb.width(), rgb.height()) != (self.width, self.height) {
+            return Err(crate::InkoxideError::Internal(
+                "CMYK JPEG decoded to an unexpected size".into(),
+            ));
+        }
+        Ok(rgb.into_raw())
+    }
 }
 
 pub(crate) trait ImageDecoder: Sync {
@@ -72,9 +93,6 @@ pub(crate) trait ImageDecoder: Sync {
 
 /// JPEG passthrough plus PNG, GIF and WebP decoding with the `image` crate.
 pub(crate) struct ImageCrateDecoder;
-
-/// Flate level for image samples: decoded once and cached, so favour size.
-const IMAGE_FLATE_LEVEL: u32 = 6;
 
 impl ImageDecoder for ImageCrateDecoder {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String> {
@@ -118,7 +136,7 @@ impl ImageDecoder for ImageCrateDecoder {
 }
 
 fn zlib(data: &[u8]) -> Result<Vec<u8>, String> {
-    crate::pdf::deflate(data, IMAGE_FLATE_LEVEL).map_err(|e| e.to_string())
+    crate::flate::deflate(data, crate::flate::LEVEL).map_err(|e| format!("compression failed: {e}"))
 }
 
 /// PNG, GIF and WebP: decoded to 8-bit samples.

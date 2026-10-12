@@ -11,7 +11,7 @@ use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr}
 use super::{font_name, q, set_fill, show_text, EncodedPage, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::FieldOp;
-use crate::paint::PathSeg;
+use crate::paint::{polygon, PathSeg, KAPPA};
 use crate::schema::{FieldKind, BLACK};
 
 /// Longest PDF name, in bytes (ISO 32000-1, Annex C; PDF/A-2 holds files
@@ -220,7 +220,7 @@ fn default_appearance(op: &FieldOp) -> String {
 /// What the fields' widgets and appearance streams refer to.
 pub(super) struct Ctx<'r, 'f, 'a> {
     pub pages: &'r [EncodedPage],
-    pub page_refs: &'r [(Ref, Ref)],
+    pub page_refs: &'r [Ref],
     pub font_refs: &'r BTreeMap<FontKey, Ref>,
     pub fonts: &'f FontSet<'a>,
     /// Writing PDF/A: leave `.notdef` glyphs out of appearance streams, as
@@ -309,19 +309,13 @@ impl Ctx<'_, '_, '_> {
         aps: &Appearances,
     ) {
         let r = op.ctm.map_or(op.rect, |m| super::bounds(m, op.rect));
-        let page_h = self.pages[page].height;
-        a.rect(PdfRect::new(
-            q(r.x),
-            q(page_h - r.y - r.h),
-            q(r.x + r.w),
-            q(page_h - r.y),
-        ))
-        .page(self.page_refs[page].0)
-        .flags(if op.field.read_only {
-            AnnotationFlags::PRINT | AnnotationFlags::READ_ONLY
-        } else {
-            AnnotationFlags::PRINT
-        });
+        a.rect(super::annot_rect(r, self.pages[page].height))
+            .page(self.page_refs[page])
+            .flags(if op.field.read_only {
+                AnnotationFlags::PRINT | AnnotationFlags::READ_ONLY
+            } else {
+                AnnotationFlags::PRINT
+            });
         if let [(None, s)] = aps.as_slice() {
             a.appearance().normal().stream(*s);
         } else {
@@ -361,16 +355,13 @@ fn check(w: f32, h: f32, size: f32) -> Vec<PathSeg> {
         p(0.87, 0.72),
         p(0.42, 0.18),
     ];
-    let mut segs = vec![PathSeg::MoveTo(pts[0].0, pts[0].1)];
-    segs.extend(pts[1..].iter().map(|&(x, y)| PathSeg::LineTo(x, y)));
-    segs.push(PathSeg::Close);
-    segs
+    polygon(&pts).segs
 }
 
 /// A centred dot of `size` for a selected radio button.
 fn dot(w: f32, h: f32, size: f32) -> Vec<PathSeg> {
     let r = mark_side(w, h, size) * 0.28;
-    let k = 0.552_284_8 * r;
+    let k = KAPPA * r;
     let (cx, cy) = (w / 2.0, h / 2.0);
     vec![
         PathSeg::MoveTo(cx + r, cy),

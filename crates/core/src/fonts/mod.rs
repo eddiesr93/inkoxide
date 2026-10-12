@@ -1,16 +1,17 @@
 //! Font registry, metrics, the per-render font set and the font programs
-//! PDFs embed.
+//! PDFs embed, whole or subset.
 //!
 //! Fonts are registered explicitly (no system font discovery: determinism).
 //! Registration decodes WOFF and WOFF2 files to the font they wrap, then
 //! parses and validates the font once; per render, the fonts a document
 //! declares are parsed again for glyph lookups and advances (`FontSet`).
 //!
-//! The font-parsing library (ttf-parser) stays in this module: the rest of
-//! the engine sees glyph ids, advances and [`FontMetrics`]. Shaping faces
-//! belong to `text`, which builds them from [`FontData`]'s bytes.
+//! The font-parsing library (ttf-parser) and the subsetter stay in this
+//! module: the rest of the engine sees glyph ids, advances, [`FontMetrics`]
+//! and font programs. Shaping faces belong to `text`, which builds them
+//! from [`FontData`]'s bytes.
 
-pub(crate) mod cff;
+mod cff;
 mod woff;
 
 use std::collections::BTreeMap;
@@ -163,6 +164,42 @@ impl FontData {
     }
 }
 
+/// A font program cut down to some glyphs, uncompressed. Its CIDs are
+/// the original glyph ids.
+pub(crate) struct Subset {
+    /// The `FontFile2` program, or the CID-keyed CFF for `FontFile3`.
+    pub program: Vec<u8>,
+    /// TrueType: the `CIDToGIDMap`, the new glyph id of each original one
+    /// up to the largest used (two bytes each, big-endian). `None` for CFF,
+    /// whose charset maps the CIDs.
+    pub cid_to_gid: Option<Vec<u8>>,
+}
+
+impl FontData {
+    /// The program with only `glyphs` (sorted); `None` when the subsetter
+    /// rejects the font.
+    pub(crate) fn subset(&self, glyphs: &[u16]) -> Option<Subset> {
+        if self.metrics.cff {
+            return Some(Subset {
+                program: cff::subset_program(&self.bytes, glyphs)?,
+                cid_to_gid: None,
+            });
+        }
+        let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(glyphs);
+        let program = subsetter::subset(&self.bytes, 0, &remapper).ok()?;
+        let max = glyphs.last().copied().unwrap_or(0);
+        let mut map = vec![0u8; 2 * (usize::from(max) + 1)];
+        for &g in glyphs {
+            let new = remapper.get(g).unwrap_or(0);
+            map[2 * usize::from(g)..][..2].copy_from_slice(&new.to_be_bytes());
+        }
+        Some(Subset {
+            program,
+            cid_to_gid: Some(map),
+        })
+    }
+}
+
 /// PDF names may not contain whitespace or delimiters.
 fn sanitize_name(name: &str) -> String {
     let s: String = name
@@ -197,7 +234,14 @@ impl FontStore {
     /// # Errors
     ///
     /// Fails for bytes that are not a font, for WOFF and WOFF2 files that
-    /// cannot be decoded, and for unsupported fonts (variable fonts).
+    /// cannot be decoded, and for fonts that cannot be used:
+    ///
+    /// - font collections (`.ttc`): register each font on its own;
+    /// - variable fonts (and CFF2 outlines): register a static instance;
+    /// - fonts with neither TrueType (`glyf`) nor CFF outlines that can be
+    ///   embedded;
+    /// - fonts without a Unicode `cmap` (text is mapped to glyphs through
+    ///   it).
     pub fn register(
         &mut self,
         id: impl Into<String>,

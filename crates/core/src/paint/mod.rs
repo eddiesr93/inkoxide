@@ -11,9 +11,9 @@ mod shapes;
 pub(crate) use boxes::{content_radii, mul, paint_flow, ContentCtx, ContentPainter, FlowPart};
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
 pub(crate) use debug::{DebugBoxes, Labels as DebugLabels};
-pub(crate) use shapes::{is_square, rounded_rect};
+pub(crate) use shapes::{is_square, polygon, rounded_rect, KAPPA};
 
-use crate::schema::Color;
+use crate::schema::{Color, Edges};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) struct Rect {
@@ -26,6 +26,27 @@ pub(crate) struct Rect {
 impl Rect {
     pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self { x, y, w, h }
+    }
+
+    /// Shrunk by `e` on each side, to no less than nothing.
+    pub fn inset(self, e: Edges<f32>) -> Self {
+        Self::new(
+            self.x + e.left,
+            self.y + e.top,
+            (self.w - e.left - e.right).max(0.0),
+            (self.h - e.top - e.bottom).max(0.0),
+        )
+    }
+
+    /// Grown by `e` on each side (shrunk where negative, to no less than
+    /// nothing).
+    pub fn outset(self, e: Edges<f32>) -> Self {
+        Self::new(
+            self.x - e.left,
+            self.y - e.top,
+            (self.w + e.left + e.right).max(0.0),
+            (self.h + e.top + e.bottom).max(0.0),
+        )
     }
 }
 
@@ -101,6 +122,24 @@ pub(crate) enum Op {
     /// annotation with its appearance, transformed like the content
     /// around it).
     Field(Box<crate::forms::FieldOp>),
+}
+
+/// Runs `f`, which draws in a colour of alpha `alpha`, with that alpha
+/// folded into `opacity`, the opacity in effect.
+pub(crate) fn with_alpha(
+    ops: &mut Vec<Op>,
+    opacity: f32,
+    alpha: f32,
+    f: impl FnOnce(&mut Vec<Op>),
+) {
+    if alpha >= 1.0 {
+        f(ops);
+        return;
+    }
+    ops.push(Op::Save);
+    ops.push(Op::SetOpacity(opacity * alpha));
+    f(ops);
+    ops.push(Op::Restore);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

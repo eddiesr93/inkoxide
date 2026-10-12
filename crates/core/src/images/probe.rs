@@ -17,7 +17,7 @@ pub(crate) struct ImageInfo {
     pub format: ImageFormat,
     pub width: u32,
     pub height: u32,
-    /// JPEG colour components (1, 3 or 4); 0 for PNG.
+    /// JPEG colour components (1, 3 or 4); 0 for the other formats.
     pub components: u8,
     /// JPEG with an Adobe APP14 marker (CMYK data is then stored inverted).
     pub adobe: bool,
@@ -58,30 +58,44 @@ impl std::fmt::Display for ProbeError {
     }
 }
 
-pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, ProbeError> {
-    let info = if bytes.starts_with(PNG_SIGNATURE) {
-        probe_png(bytes)?
+/// The format `bytes` start like: the signature of a raster format, or
+/// what looks like SVG markup. Nothing past the signature is checked.
+pub(crate) fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
+    if bytes.starts_with(PNG_SIGNATURE) {
+        Some(ImageFormat::Png)
     } else if bytes.starts_with(&[0xFF, 0xD8]) {
-        probe_jpeg(bytes)?
+        Some(ImageFormat::Jpeg)
     } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        probe_gif(bytes)?
+        Some(ImageFormat::Gif)
     } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
-        probe_webp(bytes)?
+        Some(ImageFormat::WebP)
     } else if super::svg::is_svg(bytes) {
-        // No header to read: parsing is the only real check.
-        let size = super::svg::parse(bytes)?.0.size();
-        return Ok(ImageInfo {
-            format: ImageFormat::Svg,
-            width: size.width().ceil() as u32,
-            height: size.height().ceil() as u32,
-            components: 0,
-            adobe: false,
-            orientation: 1,
-        });
+        Some(ImageFormat::Svg)
     } else {
-        return Err(ProbeError::Invalid(
-            "unsupported image format (expected JPEG, PNG, GIF, WebP or SVG)".into(),
-        ));
+        None
+    }
+}
+
+pub(crate) fn probe(bytes: &[u8]) -> Result<ImageInfo, ProbeError> {
+    let info = match sniff(bytes) {
+        Some(ImageFormat::Png) => probe_png(bytes)?,
+        Some(ImageFormat::Jpeg) => probe_jpeg(bytes)?,
+        Some(ImageFormat::Gif) => probe_gif(bytes)?,
+        Some(ImageFormat::WebP) => probe_webp(bytes)?,
+        Some(ImageFormat::Svg) => {
+            // No header to read: parsing is the only real check.
+            let size = super::svg::parse(bytes)?.0.size();
+            return Ok(raster(
+                ImageFormat::Svg,
+                size.width().ceil() as u32,
+                size.height().ceil() as u32,
+            ));
+        }
+        None => {
+            return Err(ProbeError::Invalid(
+                "unsupported image format (expected JPEG, PNG, GIF, WebP or SVG)".into(),
+            ))
+        }
     };
     if info.width == 0 || info.height == 0 {
         return Err(ProbeError::Invalid("image has zero width or height".into()));
@@ -114,16 +128,11 @@ fn probe_png(b: &[u8]) -> Result<ImageInfo, String> {
     let (w, h) = be32(b, 16)
         .zip(be32(b, 20))
         .ok_or("PNG header is truncated")?;
-    Ok(ImageInfo {
-        format: ImageFormat::Png,
-        width: w,
-        height: h,
-        components: 0,
-        adobe: false,
-        orientation: 1,
-    })
+    Ok(raster(ImageFormat::Png, w, h))
 }
 
+/// The header of an image other than a JPEG: no colour components to
+/// report and no EXIF orientation.
 fn raster(format: ImageFormat, width: u32, height: u32) -> ImageInfo {
     ImageInfo {
         format,

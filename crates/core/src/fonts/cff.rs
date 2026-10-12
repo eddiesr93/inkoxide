@@ -38,7 +38,7 @@ pub(super) fn full_program(otf: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// A subset of `glyphs` (sorted) whose CIDs are the original glyph ids.
-pub(crate) fn subset_program(otf: &[u8], glyphs: &[u16]) -> Option<Vec<u8>> {
+pub(super) fn subset_program(otf: &[u8], glyphs: &[u16]) -> Option<Vec<u8>> {
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(glyphs);
     let sub = subsetter::subset(otf, 0, &remapper).ok()?;
     let mut cff = cff_table(&sub)?.to_vec();

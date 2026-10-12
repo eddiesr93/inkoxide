@@ -7,10 +7,7 @@ mod pdfa;
 mod svg;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write as _;
 
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
 use pdf_writer::types::{
     ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageLayout,
     PageMode,
@@ -212,17 +209,14 @@ impl PdfSink for PdfWriterSink {
         let catalog = alloc.next();
         let info = alloc.next();
 
-        // Page refs first, in document order, so numbering is stable.
-        let page_refs: Vec<(Ref, Ref)> = doc
+        // Page and content stream refs first, in document order, so
+        // numbering is stable.
+        let (page_refs, content_refs): (Vec<Ref>, Vec<Ref>) = doc
             .pages
             .iter()
             .map(|_| (alloc.next(), alloc.next()))
-            .collect();
-        let tree_root = write_page_tree(
-            &mut pdf,
-            &mut alloc,
-            &page_refs.iter().map(|p| p.0).collect::<Vec<_>>(),
-        );
+            .unzip();
+        let tree_root = write_page_tree(&mut pdf, &mut alloc, &page_refs);
 
         // Shared graphics states, one per distinct opacity, in value order.
         let mut opacities: BTreeMap<u16, Ref> = BTreeMap::new();
@@ -233,7 +227,7 @@ impl PdfSink for PdfWriterSink {
         }
         for (key, r) in &mut opacities {
             *r = alloc.next();
-            let a = f32::from(*key) / 1000.0;
+            let a = key_alpha(*key);
             pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
         }
 
@@ -308,7 +302,13 @@ impl PdfSink for PdfWriterSink {
         let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots);
         let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
 
-        for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
+        for (i, ((page, page_ref), content_ref)) in doc
+            .pages
+            .iter()
+            .zip(&page_refs)
+            .zip(&content_refs)
+            .enumerate()
+        {
             let parent = tree_root.leaf_parents[i / PAGE_TREE_FANOUT];
             let mut p = pdf.page(*page_ref);
             p.parent(parent)
@@ -478,7 +478,7 @@ fn write_link(
     page_h: f32,
     (rect, target): &(Rect, Box<str>),
     marks: &Marks<'_>,
-    pages: &[(Ref, Ref)],
+    pages: &[Ref],
     pdf_a: bool,
 ) -> bool {
     let dest = match target.strip_prefix('#') {
@@ -490,12 +490,7 @@ fn write_link(
     };
     let mut a = pdf.annotation(r);
     a.subtype(AnnotationType::Link)
-        .rect(PdfRect::new(
-            q(rect.x),
-            q(page_h - rect.y - rect.h),
-            q(rect.x + rect.w),
-            q(page_h - rect.y),
-        ))
+        .rect(annot_rect(*rect, page_h))
         .border(0.0, 0.0, 0.0, None);
     if pdf_a {
         a.flags(AnnotationFlags::PRINT);
@@ -515,10 +510,16 @@ fn write_link(
     true
 }
 
+/// An annotation's `/Rect`: `r` (page coordinates, top-left origin) in
+/// PDF user space, whose origin is the bottom left of a page `page_h` high.
+fn annot_rect(r: Rect, page_h: f32) -> PdfRect {
+    PdfRect::new(q(r.x), q(page_h - r.y - r.h), q(r.x + r.w), q(page_h - r.y))
+}
+
 /// `[page /XYZ left top 0]`: keeps the viewer's zoom.
-fn xyz(d: pdf_writer::writers::Destination<'_>, dest: Dest, pages: &[(Ref, Ref)]) {
-    let (page_ref, _) = pages[dest.page as usize];
-    d.page(page_ref).xyz(q(dest.x), q(dest.y), None);
+fn xyz(d: pdf_writer::writers::Destination<'_>, dest: Dest, pages: &[Ref]) {
+    d.page(pages[dest.page as usize])
+        .xyz(q(dest.x), q(dest.y), None);
 }
 
 /// PDF URIs are 7-bit ASCII: percent-encode everything else (and spaces).
@@ -540,7 +541,7 @@ fn write_outline(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     entries: &[crate::pipeline::OutlineEntry<'_>],
-    page_refs: &[(Ref, Ref)],
+    page_refs: &[Ref],
 ) -> Option<Ref> {
     if entries.is_empty() {
         return None;
@@ -621,13 +622,8 @@ fn pdf_date(t: Timestamp) -> String {
     )
 }
 
-pub(crate) fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
-    let mut enc = ZlibEncoder::new(
-        Vec::with_capacity(data.len() / 3 + 64),
-        Compression::new(level),
-    );
-    enc.write_all(data)
-        .and_then(|()| enc.finish())
+fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
+    crate::flate::deflate(data, level)
         .map_err(|e| InkoxideError::Pdf(format!("compression failed: {e}")))
 }
 
@@ -696,6 +692,11 @@ fn write_page_tree(pdf: &mut Pdf, alloc: &mut RefAlloc, pages: &[Ref]) -> PageTr
 /// Opacity quantised to 1/1000: the key of its shared graphics state.
 fn alpha_key(a: f32) -> u16 {
     (a.clamp(0.0, 1.0) * 1000.0).round() as u16
+}
+
+/// The opacity [`alpha_key`] quantised to `key`.
+fn key_alpha(key: u16) -> f32 {
+    f32::from(key) / 1000.0
 }
 
 fn gs_name(key: u16) -> String {

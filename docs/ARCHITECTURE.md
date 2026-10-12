@@ -56,7 +56,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 |---|---|---|
 | Parse | `validate` (`parse`), `schema` | JSON or MessagePack into the typed structs of `schema` (hand-written deserialisers in `schema/de.rs`); serde errors become validation errors with their path and code |
 | Validate | `validate` (`check`) | Semantic checks: font ids, image ids (images must decode), anchors, value ranges |
-| Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding, CFF programs (`fonts/cff.rs`); Type0/CID embedding of TrueType and CFF, subsetting, ToUnicode |
+| Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding, subsetting, CFF programs (`fonts/cff.rs`); Type0/CID embedding of TrueType and CFF, ToUnicode |
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
@@ -102,8 +102,10 @@ touches only that module: ttf-parser (font parsing) is used only in
 `fonts`, which gives the rest of the engine metrics, glyph ids and
 advances; rustybuzz (shaping) only in `text/prepare.rs`, which parses its
 shaping faces from the font bytes once per render and shares them between
-threads. `pdf` depends on `fonts`, never the reverse: `fonts` caches the
-compressed font program, and the PDF writer supplies the compression.
+threads. `pdf` depends on `fonts` and `images`, never the reverse: `fonts`
+subsets font programs and caches the compressed whole program, and the PDF
+writer supplies the compression; the writer and `images` both compress
+through `flate.rs`.
 
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
 for min-content / max-content / definite widths and gets the paragraph's
