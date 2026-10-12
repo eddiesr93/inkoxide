@@ -118,9 +118,11 @@ All notable changes to the packages in this repository. The format follows
 - A table cell's `height` is a minimum, as in CSS: the row grows to fit the cell's content.
   Until now it fixed the row's height, and taller content ran over the next row.
 - Styles a table cell ignored are validation errors (`STYLE_NOT_APPLICABLE`), like `transform`
-  and `zIndex` already were: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`,
-  `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`,
-  `overflow`, `opacity` and `rotate`. They passed validation and had no effect.
+  and `zIndex` already were: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`,
+  `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`,
+  `gridColumn`, `gridArea`, `overflow`, `opacity` and `rotate`. They passed validation and had no
+  effect, or, for `minWidth` and `maxWidth`, changed the width of the cell's text but not of its
+  column, so the text ran into the next cell or wrapped in a narrow strip.
 - Collapsed table borders (the default `borderCollapse`) keep their `borderStyle`: dashed and
   dotted cell borders were drawn solid. Where two borders of equal width meet, solid wins over
   dashed and dashed over dotted, as in CSS.

@@ -1078,6 +1078,8 @@ impl<'a> Checker<'a> {
                 ("position", s.position.is_some()),
                 ("inset", s.inset.is_some()),
                 ("width", s.width.is_some()),
+                ("minWidth", s.min_width.is_some()),
+                ("maxWidth", s.max_width.is_some()),
                 ("maxHeight", s.max_height.is_some()),
                 ("alignSelf", s.align_self.is_some()),
                 ("justifySelf", s.justify_self.is_some()),

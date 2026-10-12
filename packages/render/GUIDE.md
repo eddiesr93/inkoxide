@@ -400,9 +400,10 @@ page. Lengths are points or strings with a unit:
 - **Pagination.** Header rows repeat on every page. Rows split across pages, and a row taller
   than a page splits inside its cells.
 - **Cells.** `colSpan`, `rowSpan` and `verticalAlign` are available on `Cell`. The columns set a
-  cell's width, and a cell's `height` is a minimum: the row grows to fit the content. Styles that
-  place or size the cell itself (`width`, `margin`, `position`, `flexGrow`, …) or apply an effect
-  to it (`opacity`, `rotate`, `transform`, …) are errors on a `Cell`; put them on a `View` inside it.
+  cell's width, and a cell's `height` and `minHeight` are minimums: the row grows to fit the
+  content. Styles that place or size the cell itself (`width`, `minWidth`, `maxWidth`, `margin`,
+  `position`, `flexGrow`, …) or apply an effect to it (`opacity`, `rotate`, `transform`, …) are
+  errors on a `Cell`; put them on a `View` inside it.
 
 ## Links, bookmarks and metadata
 
