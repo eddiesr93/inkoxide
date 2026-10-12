@@ -163,6 +163,3 @@ export class RenderError extends Error {
     return out;
   }
 }
-
-/** Deprecated aliases of `RenderError` and `RenderErrorCode`, from 0.1.0. */
-export { RenderError as StudioError, type RenderErrorCode as StudioErrorCode };

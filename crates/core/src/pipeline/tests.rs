@@ -452,6 +452,57 @@ fn overlays_are_placed_in_the_content_box_of_every_page() {
 }
 
 #[test]
+fn a_fixed_table_repeats_whole() {
+    // A fixed table in the flow repeats with its row and cell fills, not
+    // only its cells' content.
+    let table = r#"{"type":"table","break":{"fixed":true},"columns":[{"width":"1fr"}],"rows":[
+        {"backgroundColor":[1,0,0,1],"cells":[{"children":[{"type":"box","style":{"height":10}}]}]},
+        {"cells":[{"style":{"backgroundColor":[1,0,0,1]},"children":[{"type":"box","style":{"height":10}}]}]}]}"#;
+    // It takes room on every page, so the flow runs onto a fourth.
+    let boxes = red_boxes(&with_fixed(3, table));
+    assert_eq!(boxes.len(), 4, "{boxes:?}");
+    for (k, page) in boxes.iter().enumerate() {
+        assert_eq!(page.len(), 2, "page {}: {page:?}", k + 1);
+        assert!(
+            close_bounds(page[0], boxes[0][0]),
+            "page {}: {page:?}",
+            k + 1
+        );
+        assert!(
+            close_bounds(page[1], boxes[0][1]),
+            "page {}: {page:?}",
+            k + 1
+        );
+    }
+}
+
+#[test]
+fn a_repeated_header_is_painted_once_per_page() {
+    // A table at the top of the flow, over two pages: its header row on
+    // each page once, including the first.
+    let row = r#"{"cells":[{"children":[{"type":"box","style":{"height":30}}]}]}"#;
+    let rows = [row; 12].join(",");
+    let table = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[1,0,0,1],"cells":[{{"children":[{{"type":"box","style":{{"height":10}}}}]}}]}},{rows}]}}"#
+    );
+    for collapse in ["", r#","style":{"borderCollapse":"separate"}"#] {
+        let table = table.replacen(
+            r#""headerRows":1"#,
+            &format!(r#""headerRows":1{collapse}"#),
+            1,
+        );
+        // The pages after the table hold only the box that follows it.
+        let boxes = red_boxes(&with_fixed(1, &table));
+        let on_table = boxes.iter().take_while(|page| !page.is_empty()).count();
+        assert!(on_table >= 2, "{collapse} {boxes:?}");
+        for (k, page) in boxes.iter().enumerate() {
+            assert!(page.len() <= 1, "{collapse} page {}: {page:?}", k + 1);
+        }
+    }
+}
+
+#[test]
 fn overlays_take_no_space() {
     // Below the content box: painted off the page, without adding pages.
     let low = red_box(

@@ -153,6 +153,9 @@ describe('paint styles', () => {
     expect(c?.style).toEqual({ position: 'absolute', inset: { top: 0, right: 28.346457 } });
     // `<grow> <basis>`, as in Tailwind's `flex-[1_auto]`.
     expect(d?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
+    // Grow and shrink are never negative, in a style or a class.
+    expect(thrown(() => tree(<View style={{ flex: '-1' }} />)).message).toContain('cannot be negative');
+    expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
     );

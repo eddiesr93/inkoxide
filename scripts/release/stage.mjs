@@ -148,6 +148,11 @@ function manifest(name, pkg, dist) {
   }
   exports['./package.json'] = './package.json';
   if (pkg.exports?.['./*']) exports['./*'] = './dist/*';
+  // TypeScript with `moduleResolution: node10` ignores `exports`; point it at the subpaths' types.
+  const subpaths = Object.entries(exports).filter(([k, v]) => k !== '.' && typeof v === 'object');
+  const typesVersions = subpaths.length
+    ? { '*': Object.fromEntries(subpaths.map(([k, v]) => [k.slice(2), [v.types]])) }
+    : undefined;
   const out = {
     name: pkg.name,
     version: pkg.version,
@@ -158,6 +163,7 @@ function manifest(name, pkg, dist) {
     main: './dist/index.js',
     types: './dist/index.d.ts',
     exports,
+    ...(typesVersions && { typesVersions }),
     files: name === 'render' ? ['dist', 'assets', 'media', 'GUIDE.md', 'MIGRATING.md'] : ['dist'],
     engines: { node: NODE_ENGINE },
   };

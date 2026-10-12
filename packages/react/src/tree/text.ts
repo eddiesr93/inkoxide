@@ -20,8 +20,8 @@ export function transformText(text: string, how: TextCtx['textTransform'], lang:
 }
 
 /** A word as a hyphenation callback sees it: letters, their marks, and soft hyphens. */
-const WORD = /[\p{L}\p{M}­]+/gu;
-const SHY = '­';
+const WORD = /[\p{L}\p{M}\u00AD]+/gu;
+const SHY = '\u00AD';
 
 /** Reports a callback that throws or returns parts that are not the word. */
 type Fail = (message: string, init: TemplateErrorInit) => never;

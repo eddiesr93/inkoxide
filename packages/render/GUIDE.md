@@ -678,6 +678,11 @@ Data that does not match the schema fails with `INVALID_DATA` (400) before anyth
 `UNKNOWN_TEMPLATE` (404) is never thrown by the package; it is there for your own lookup, as
 above, so that every error has the same shape.
 
+The entry also exports the types of these: `TemplateLike` (a template), `GenerateOptions` (the
+options of `generate`), `RenderResult` (what `generate` resolves to), `Timings` (its `timings`),
+`TreeResult` (what `renderTree` resolves to) and `RenderOpts` (the options of `renderSettled` and
+`renderDocument`).
+
 ## FAQ
 
 **How is this different from HTML to PDF with Puppeteer or Playwright?**

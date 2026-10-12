@@ -238,12 +238,17 @@ export function parseFlex<L>(
   if (keyword) return [...keyword];
   const [grow, second, basis] = splitTopLevel(v, ' ');
   if (grow === undefined) throw new ValueError(`flex "${value}" is not a number or "grow shrink basis"`);
+  const factor = (f: string): number => {
+    const n = number(f);
+    if (n < 0) throw new ValueError(`flex "${value}": grow and shrink cannot be negative`);
+    return n;
+  };
   if (second !== undefined && basis === undefined && !NUMBER_RE.test(second)) {
-    return [number(grow), 1, length(second)];
+    return [factor(grow), 1, length(second)];
   }
   return [
-    number(grow),
-    second === undefined ? 1 : number(second),
+    factor(grow),
+    second === undefined ? 1 : factor(second),
     basis === undefined ? '0%' : length(basis),
   ];
 }

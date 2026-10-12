@@ -21,6 +21,11 @@ All notable changes to the packages in this repository. The format follows
   body, with negative page numbers counting from the end.
 - `@inkoxide/tailwind` exports `UnsupportedValueError`, which `parseTransform`, `parseOrigin` and
   `parseObjectPosition` throw for a value the engine cannot express.
+- `@inkoxide/tailwind` exports the CSS value helpers that `@inkoxide/react` shares with it:
+  `PT_PER_UNIT`, `parseFlex`, `round`, `splitTopLevel`, `BORDER_STYLES` and `OBJECT_FITS`.
+- `@inkoxide/react` exports `imageSource` and its `ImageSource` type, `remoteRefused` and
+  `innermostComponent`, which `@inkoxide/render` uses. `HOST_NAME` is typed by host type
+  (`Record<HostType, string>`).
 
 ### Changed
 
@@ -46,6 +51,18 @@ All notable changes to the packages in this repository. The format follows
   `style={{ flex: '1 auto' }}` sets grow and basis, as `flex-[1_auto]` does, and
   `flex-[initial]` works as `flex: 'initial'` does. A lone grow in a class is rounded to six
   decimals like every other value.
+  An empty `flex` (`''`) is an error instead of a grow of 0, and a negative grow or shrink
+  (`flex-[-1]`) is an unsupported value where the class or style is read, not a schema error
+  later.
+
+### Fixed
+
+- A table with `break: { fixed: true }` in the flow repeats whole on every page: its row and
+  cell backgrounds and borders were painted only on its first page, and the later pages showed
+  only the cells' content.
+- A table with `headerRows` that starts at the top of a page no longer paints its header twice
+  on that page (a translucent header background came out darker, and text extraction read the
+  header twice).
 
 ## 0.4.0 - 2026-10-12
 

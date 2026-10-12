@@ -137,15 +137,6 @@ impl<'p> Mode<'p> {
         }
     }
 
-    /// Whether table row `i` is on this page. Unlike [`Mode::shows`], this
-    /// also filters the rows of a fixed table.
-    fn shows_row(self, i: NodeIdx) -> bool {
-        match self.paged() {
-            Some((pl, page)) => pl.on_page(i, page),
-            None => true,
-        }
-    }
-
     /// Paged y range shown on this page (`None`: everything).
     fn window(self) -> Option<PageWindow> {
         match self {
@@ -386,7 +377,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         let range = if header_pass { 0..t.header_rows } else { 0..n };
         // Rows on this page. Only `lo..hi` is scanned below, so painting a
         // long table costs O(rows on the page), not O(rows) per page.
-        let in_page = |r: usize| range.contains(&r) && mode.shows_row(rows[r]);
+        let in_page = |r: usize| range.contains(&r) && mode.shows(rows[r]);
         let lo = range.clone().find(|&r| in_page(r)).unwrap_or(n);
         let hi = range
             .clone()
@@ -537,6 +528,10 @@ impl BoxPainter<'_, '_, '_, '_> {
             return;
         }
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
+        // The table's own header is on this page: nothing to repeat.
+        if pl.on_page(rows[0], page) {
+            return;
+        }
         let page_top = pl.page_top(page);
         // First body row on this page, if it starts below a reserved header.
         let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], page)) else {
