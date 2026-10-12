@@ -11,20 +11,21 @@ use unicode_linebreak::{linebreaks, BreakOpportunity};
 
 use super::hyphen::Hyphenator;
 use super::{
-    BreakKind, BreakPoint, Glyph, PageNumbers, Prepared, Segment, GLYPH_INVISIBLE, GLYPH_SPACE,
+    BreakKind, BreakPoint, Glyph, PageNumbers, Para, Prepared, Segment, GLYPH_INVISIBLE,
+    GLYPH_SPACE,
 };
-use crate::fonts::{FontKey, FontSet};
-use crate::schema::{Direction, Placeholder, TextRun, WhiteSpace};
+use crate::fonts::{FontKey, FontSet, LoadedFont};
+use crate::schema::{Direction, TextRun, WhiteSpace};
 use crate::InkoxideError;
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
 pub(crate) const SHY: char = '\u{00AD}';
 
 /// Stand-in digits laid out in place of page-number placeholders until the
-/// page count is known. Headers and footers are laid out again on every
-/// page with the real numbers ([`fill_numbers`]), and flow text with the
-/// numbers of its page; flow text painted on several pages (fixed, or in
-/// a table's header rows) keeps this width.
+/// page count is known. Headers, footers and overlays are laid out again
+/// on every page with the real numbers ([`fill_numbers`]), and flow text
+/// with the numbers of its page; flow text painted on several pages
+/// (fixed, or in a table's header rows) keeps this width.
 pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 
 pub(crate) struct ParagraphOptions<'a> {
@@ -475,16 +476,32 @@ pub(crate) fn prepare(
     }
 }
 
-/// `p` with the page numbers in place of the stand-in digits of its
-/// placeholder runs, so its lines break and align at the width the numbers
-/// take. Like the painter, takes each digit's glyph from the font's `cmap`
-/// without shaping.
-pub(crate) fn fill_numbers(
-    p: &Prepared,
-    runs: &[TextRun],
-    fonts: &FontSet<'_>,
-    numbers: PageNumbers,
-) -> Prepared {
+/// The glyphs of number `n` in run `run` of font `font`, left to right,
+/// each with its advance (letter spacing included): each digit's glyph
+/// from the font's `cmap`, without shaping. What the painter draws for a
+/// placeholder, and what [`fill_numbers`] lays out.
+pub(super) fn number_glyphs(font: &LoadedFont<'_>, run: &TextRun, n: u32) -> Vec<(u16, f32)> {
+    let scale = font.scale(run.size);
+    let letter_spacing = run.letter_spacing.unwrap_or(0.0);
+    n.to_string()
+        .chars()
+        .map(|c| {
+            let id = font.glyph(c).unwrap_or(0);
+            (id, font.advance(id) * scale + letter_spacing)
+        })
+        .collect()
+}
+
+/// The paragraph with the page numbers in place of the stand-in digits of
+/// its placeholder runs, so its lines break and align at the width the
+/// numbers take.
+pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
+    let Para {
+        prepared: p,
+        runs,
+        fonts,
+        ..
+    } = *para;
     let mut glyphs = Vec::with_capacity(p.glyphs.len() + 4);
     let mut segments: Vec<Segment> = Vec::with_capacity(p.segments.len());
     // Per segment: (first old glyph, first new glyph) for remapping breaks.
@@ -527,20 +544,16 @@ pub(crate) fn fill_numbers(
             }
             continue;
         }
-        let digits = match ph {
-            Placeholder::PageNumber => numbers.current,
-            Placeholder::TotalPages => numbers.total,
-        }
-        .to_string();
-        let font = fonts.get(seg.font);
-        let scale = font.scale(run.size);
-        let letter_spacing = run.letter_spacing.unwrap_or(0.0);
+        let n = numbers.of(ph);
+        let digits = n.to_string();
         let at = glyphs.len();
-        for (i, c) in digits.char_indices() {
-            let id = font.glyph(c).unwrap_or(0);
+        for (i, (id, advance)) in number_glyphs(fonts.get(seg.font), run, n)
+            .into_iter()
+            .enumerate()
+        {
             glyphs.push(Glyph {
                 id,
-                advance: font.advance(id) * scale + letter_spacing,
+                advance,
                 x_offset: 0.0,
                 y_offset: 0.0,
                 cluster: text_start + i as u32,

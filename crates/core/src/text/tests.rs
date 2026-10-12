@@ -223,7 +223,13 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
         current: 7,
         total: 1234,
     };
-    let filled = cache.shaper.fill_numbers(p, runs, numbers);
+    let paragraph = |prepared| Para {
+        prepared,
+        runs,
+        style,
+        fonts: &fonts,
+    };
+    let filled = prepare::fill_numbers(&paragraph(p), numbers);
     assert!(!filled.placeholders);
     assert_eq!(filled.text, "Page 7 of 1234");
     let pieces: Vec<&str> = filled
@@ -238,13 +244,11 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
     }
 
     // As wide as the numbers written out, and wrapped like them.
-    let one_line = cache
-        .shaper
-        .break_lines(&filled, runs, style, f32::INFINITY);
+    let one_line = lines::break_lines(&paragraph(&filled), f32::INFINITY);
     let written = lines(&doc(&para("Page 7 of 1234", "")), &s, 500.0).1;
     assert!((one_line.width - written.width).abs() < 0.01);
     let narrow = lines(&doc(&para("Page 7 of", "")), &s, 500.0).1.width + 1.0;
-    let wrapped = cache.shaper.break_lines(&filled, runs, style, narrow);
+    let wrapped = lines::break_lines(&paragraph(&filled), narrow);
     assert_eq!(line_texts(&filled, &wrapped), ["Page 7 of", "1234"]);
 }
 

@@ -1,24 +1,18 @@
 //! Line breaking (greedy, first fit) and line metrics.
 
-use super::{
-    BreakKind, ExtraGlyph, Line, LineLayout, ParaStyle, Prepared, GLYPH_INVISIBLE, GLYPH_SPACE,
-    WIDTH_EPS,
-};
-use crate::fonts::FontSet;
-use crate::schema::TextRun;
+use super::{BreakKind, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS};
 
-const ELLIPSIS: char = '\u{2026}';
-const HYPHEN: char = '\u{2010}';
+/// Shown at the end of a truncated line; three dots in fonts without it.
+pub(super) const ELLIPSIS: char = '\u{2026}';
+/// Shown at a hyphenation break; a hyphen-minus in fonts without it.
+pub(super) const HYPHEN: char = '\u{2010}';
 
-/// Breaks `p` into lines no wider than `max_width` (`f32::INFINITY` for
+/// Breaks `para` into lines no wider than `max_width` (`f32::INFINITY` for
 /// max-content).
-pub(crate) fn break_lines(
-    p: &Prepared,
-    runs: &[TextRun],
-    style: &ParaStyle,
-    fonts: &FontSet<'_>,
-    max_width: f32,
-) -> LineLayout {
+pub(crate) fn break_lines(para: &Para<'_>, max_width: f32) -> LineLayout {
+    let Para {
+        prepared: p, style, ..
+    } = *para;
     if p.glyphs.is_empty() {
         return LineLayout::default();
     }
@@ -31,15 +25,8 @@ pub(crate) fn break_lines(
     }
 
     // Width of glyphs[start..end] without trailing spaces / invisibles.
-    let visible_end = |start: usize, end: usize| {
-        let mut e = end;
-        while e > start && p.glyphs[e - 1].flags & (GLYPH_SPACE | GLYPH_INVISIBLE) != 0 {
-            e -= 1;
-        }
-        e
-    };
-    let width = |start: usize, end: usize| prefix[visible_end(start, end)] - prefix[start];
-    let hyphen_width = |end: usize| hyphen_for(p, fonts, runs, end).map_or(0.0, |h| h.advance);
+    let width = |start: usize, end: usize| prefix[p.visible_end(start, end)] - prefix[start];
+    let hyphen_width = |end: usize| hyphen_for(para, end).map_or(0.0, |h| h.advance);
 
     let mut raw: Vec<(usize, usize, BreakKind)> = Vec::new();
     let mut start = 0usize;
@@ -129,11 +116,11 @@ pub(crate) fn break_lines(
         .into_iter()
         .map(|(s, e, kind)| {
             let hyphen = if kind == BreakKind::Hyphen && e < n {
-                hyphen_for(p, fonts, runs, e)
+                hyphen_for(para, e)
             } else {
                 None
             };
-            let ve = visible_end(s, e);
+            let ve = p.visible_end(s, e);
             let mut line = Line {
                 start: s as u32,
                 end: ve as u32,
@@ -146,7 +133,7 @@ pub(crate) fn break_lines(
                 ascent: 0.0,
                 height: 0.0,
             };
-            metrics(&mut line, p, runs, style, fonts, s);
+            metrics(&mut line, para);
             line
         })
         .collect();
@@ -159,7 +146,7 @@ pub(crate) fn break_lines(
             if let Some(last) = lines.last_mut() {
                 let limit = max_width - last.indent;
                 if truncated || last.width > limit + WIDTH_EPS {
-                    apply_ellipsis(last, p, runs, fonts, limit, &prefix);
+                    apply_ellipsis(last, para, limit, &prefix);
                 }
             }
         }
@@ -181,12 +168,10 @@ pub(crate) fn break_lines(
 
 /// Widest unbreakable piece of a paragraph, first-line indent included. A
 /// piece that ends at a hyphenation point includes the hyphen shown there.
-pub(crate) fn min_content(
-    p: &Prepared,
-    runs: &[TextRun],
-    style: &ParaStyle,
-    fonts: &FontSet<'_>,
-) -> f32 {
+pub(crate) fn min_content(para: &Para<'_>) -> f32 {
+    let Para {
+        prepared: p, style, ..
+    } = *para;
     let mut min_content = 0.0f32;
     let mut start = 0usize;
     let ends = p
@@ -195,13 +180,10 @@ pub(crate) fn min_content(
         .map(|b| (b.glyph as usize, b.kind))
         .chain(std::iter::once((p.glyphs.len(), BreakKind::Mandatory)));
     for (end, kind) in ends {
-        let mut e = end;
-        while e > start && p.glyphs[e - 1].flags & (GLYPH_SPACE | GLYPH_INVISIBLE) != 0 {
-            e -= 1;
-        }
+        let e = p.visible_end(start, end);
         let mut w: f32 = p.glyphs[start..e].iter().map(|g| g.advance).sum();
         if kind == BreakKind::Hyphen && e > start {
-            w += hyphen_for(p, fonts, runs, end).map_or(0.0, |h| h.advance);
+            w += hyphen_for(para, end).map_or(0.0, |h| h.advance);
         }
         min_content = min_content.max(w);
         start = end;
@@ -211,15 +193,10 @@ pub(crate) fn min_content(
 
 /// The hyphen shown when breaking before glyph `at`, in the font of the
 /// glyph before it.
-fn hyphen_for(
-    p: &Prepared,
-    fonts: &FontSet<'_>,
-    runs: &[TextRun],
-    at: usize,
-) -> Option<ExtraGlyph> {
-    let seg = p.segment_of(at.checked_sub(1)?)?;
-    let font = fonts.get(seg.font);
-    let size = runs[seg.run as usize].size;
+fn hyphen_for(para: &Para<'_>, at: usize) -> Option<ExtraGlyph> {
+    let seg = para.prepared.segment_of(at.checked_sub(1)?)?;
+    let font = para.fonts.get(seg.font);
+    let size = para.runs[seg.run as usize].size;
     let gid = font.glyph(HYPHEN).or_else(|| font.glyph('-'))?;
     Some(ExtraGlyph {
         font: seg.font,
@@ -230,14 +207,13 @@ fn hyphen_for(
     })
 }
 
-fn apply_ellipsis(
-    line: &mut Line,
-    p: &Prepared,
-    runs: &[TextRun],
-    fonts: &FontSet<'_>,
-    max_width: f32,
-    prefix: &[f32],
-) {
+fn apply_ellipsis(line: &mut Line, para: &Para<'_>, max_width: f32, prefix: &[f32]) {
+    let Para {
+        prepared: p,
+        runs,
+        fonts,
+        ..
+    } = *para;
     let s = line.start as usize;
     let last = (line.end as usize).max(s + 1) - 1;
     let Some(seg) = p.segment_of(last) else {
@@ -255,8 +231,7 @@ fn apply_ellipsis(
     let ell_w = font.advance(gid) * font.scale(size) * f32::from(count);
     let mut e = line.end as usize;
     while e > s
-        && (prefix[e] - prefix[s] + ell_w > max_width + WIDTH_EPS
-            || p.glyphs[e - 1].flags & GLYPH_SPACE != 0)
+        && (prefix[e] - prefix[s] + ell_w > max_width + WIDTH_EPS || p.glyphs[e - 1].is_space())
     {
         e -= 1;
         // Keep whole clusters.
@@ -278,19 +253,19 @@ fn apply_ellipsis(
 
 /// Line box height and baseline from the fonts and sizes on the line
 /// (CSS inline formatting with half-leading).
-fn metrics(
-    line: &mut Line,
-    p: &Prepared,
-    runs: &[TextRun],
-    style: &ParaStyle,
-    fonts: &FontSet<'_>,
-    start: usize,
-) {
+fn metrics(line: &mut Line, para: &Para<'_>) {
+    let Para {
+        prepared: p,
+        runs,
+        style,
+        fonts,
+    } = *para;
     let (mut above, mut below) = (0.0f32, 0.0f32);
     let mut add = |seg: &super::Segment| {
         let run = &runs[seg.run as usize];
-        let m = &fonts.get(seg.font).data.metrics;
-        let scale = run.size / m.units_per_em;
+        let font = fonts.get(seg.font);
+        let m = &font.data.metrics;
+        let scale = font.scale(run.size);
         let asc = m.ascender * scale;
         let desc = -m.descender * scale;
         let (a, b) = if let Some(lh) = style.line_height {
@@ -303,7 +278,8 @@ fn metrics(
         above = above.max(a);
         below = below.max(b);
     };
-    let (s, e) = (line.start as usize, (line.end as usize).max(start));
+    let s = line.start as usize;
+    let e = (line.end as usize).max(s);
     let mut any = false;
     for seg in &p.segments {
         let (gs, ge) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
@@ -315,7 +291,7 @@ fn metrics(
     if !any {
         // Empty line (e.g. between two newlines): metrics of the segment the
         // line starts in, else the first one.
-        if let Some(seg) = p.segment_of(start).or(p.segments.first()) {
+        if let Some(seg) = p.segment_of(s).or(p.segments.first()) {
             add(seg);
         }
     }

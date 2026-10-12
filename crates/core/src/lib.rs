@@ -266,8 +266,7 @@ fn render_inner(
     let hyphenator = text::ResolvedHyphenator {
         store: &options.hyphenation,
     };
-    let mut shaper = RustybuzzShaper::new(&font_set)?;
-    shaper.hyphenator = &hyphenator;
+    let shaper = RustybuzzShaper::new(&font_set)?.with_hyphenator(&hyphenator);
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
     let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
     let mut sink = PdfWriterSink {
@@ -284,7 +283,7 @@ fn render_inner(
         parallel,
         |page| sink.encode_page(&page, &font_set),
     )?;
-    let unicode: UnicodeMap = text.shaper.unicode;
+    let unicode: UnicodeMap = text.into_unicode();
 
     sink.write(&DocumentOut {
         pages: &pages,
