@@ -62,7 +62,10 @@ if command -v pnpm >/dev/null; then
   step "generated files up to date"
   scripts/check-generated.sh
 else
-  echo "pnpm not installed; skipped, with the generated files check (npm i -g pnpm)"
+  echo "pnpm not installed; skipped (npm i -g pnpm)"
+
+  step "generated files up to date (those python3 writes; the others need pnpm)"
+  scripts/check-generated.sh --python-only
 fi
 
 step "schema conformance of fixtures"

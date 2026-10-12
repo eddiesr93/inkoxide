@@ -62,6 +62,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict` and the report
   fixture) and fails when one is stale; `ci.yml` and `scripts/ci.sh` run it.
+  With `--python-only` it checks only the files python3 writes, which is
+  what `scripts/ci.sh` does where pnpm is not installed.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).
 
 ## Fuzzing
