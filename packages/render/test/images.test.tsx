@@ -94,13 +94,21 @@ beforeAll(async () => {
     else if (req.url === '/image' && req.method === 'POST') res.end(body === 'palette' ? palette : logo);
     else if (req.url === '/by-token') res.end(req.headers['x-token'] === 'palette' ? palette : logo);
     else if (req.url === '/moved') res.writeHead(302, { location: '/logo.png' }).end();
-    else res.writeHead(404).end();
+    // The headers and part of the body, then nothing more, or a dropped connection.
+    else if (req.url === '/stall') res.writeHead(200).write(logo.subarray(0, 100));
+    else if (req.url === '/drop') {
+      res.writeHead(200).write(logo.subarray(0, 100));
+      setTimeout(() => res.destroy(), 20);
+    } else res.writeHead(404).end();
   });
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
-afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
+afterAll(() => {
+  server.closeAllConnections();
+  return new Promise<void>((ok) => server.close(() => ok()));
+});
 
 const allowed = (): RenderToBufferOptions => ({ remoteImages: { allow: [`${base}/`] } });
 
@@ -256,9 +264,31 @@ describe('image requests', () => {
     expect(outside.message).toContain('remoteImages allowlist');
     const moved = await failure({ uri: `${base}/moved` }, allowed());
     expect(moved.code).toBe('IMAGE_FETCH_FAILED');
+    expect(moved.message).toBe(
+      `Cannot fetch the image ${base}/moved: HTTP 302, and redirects are not followed.`,
+    );
+    expect((await failure(`${base}/moved`, allowed())).message).toContain('redirects are not followed');
     expect((await failure({ uri: `${base}/gone.png` }, allowed())).message).toBe(
       `Cannot fetch the image ${base}/gone.png: HTTP 404.`,
     );
+  });
+
+  it('fails with IMAGE_FETCH_FAILED when the body stalls or the connection drops', async () => {
+    const stalled = await failure(`${base}/stall`, {
+      remoteImages: { allow: [`${base}/`], timeoutMs: 300 },
+    });
+    expect(stalled).toMatchObject({ code: 'IMAGE_FETCH_FAILED', status: 502 });
+    expect(stalled.message).toBe(`Cannot fetch the image ${base}/stall: timed out after 300 ms.`);
+    const dropped = await failure({ uri: `${base}/drop` }, allowed());
+    expect(dropped).toMatchObject({ code: 'IMAGE_FETCH_FAILED', status: 502 });
+    expect(dropped.message).toMatch(new RegExp(`^Cannot fetch the image ${base}/drop: .+\\.$`));
+  });
+
+  it('takes Infinity and timeouts past what a timer holds', async () => {
+    for (const timeoutMs of [Infinity, 2 ** 31, 2 ** 32]) {
+      const opts = { remoteImages: { allow: [`${base}/`], timeoutMs } };
+      expect(countPages(await render(`${base}/logo.png`, opts))).toBe(1);
+    }
   });
 
   it('keeps requests with Headers instances apart', async () => {

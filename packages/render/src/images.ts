@@ -13,6 +13,7 @@ import {
 } from '@inkoxide/react';
 
 import { readLocalImage } from './local.ts';
+import { timerMs } from './policy.ts';
 import { fetchImage } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
 
@@ -64,8 +65,7 @@ async function settle(
   timeoutMs: number,
 ): Promise<ImageSrcValue> {
   const timedOut = Symbol('timeout');
-  // Infinity waits without a limit; setTimeout fires at once past 2^31 - 1 ms, so cap there.
-  const limit = timeoutMs === Infinity ? undefined : Math.min(timeoutMs, 2 ** 31 - 1);
+  const limit = timerMs(timeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let value: ImageSrcValue | typeof timedOut;
   try {

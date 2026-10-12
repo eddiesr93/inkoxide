@@ -196,7 +196,14 @@ const logo = readFileSync('logo.png');
   [template's](#serving-templates) `images`) is that image, even when it looks like a path or a
   URL. No file is read for it.
 - **Requests.** `{ uri, method, headers, body }` fetches `uri` with that method, headers and
-  body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
+  body. It follows the same rules as a URL string: the allowlist, the timeout, the size limit
+  and no redirects.
+- **Redirects.** A remote image is not followed to another URL, since that URL could be outside
+  the allowlist: a redirect fails the render with `IMAGE_FETCH_FAILED`
+  (`HTTP 302, and redirects are not followed`). Use the URL the image ends up at.
+- **Remote limits.** `remoteImages.timeoutMs` (default 10 000 ms; `Infinity` waits without a
+  limit) covers the whole download, body included, and `maxBytes` (default 20 MiB) its size. A
+  download that times out, breaks off or grows past the limit fails with `IMAGE_FETCH_FAILED`.
 - **Functions and promises.** A function is called once per render, after the tree is built and
   before the engine runs, with the other images loading in parallel; a promise is awaited
   then. Either resolves to bytes, a string or a request, read as if written in `src`. If it
@@ -516,7 +523,7 @@ All three take the same options:
 |---|---|---|
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
-| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A-2b, for archiving |
 | `compress` | `true` | Compress the page content |
@@ -600,7 +607,7 @@ apply:
 | `INVALID_TREE` | The document tree does not match the engine's schema. Checked only with `validate`, which is on outside production |
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image |
-| `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched |
+| `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
 | `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), `renderToFile` could not write the file, or a bug |
 

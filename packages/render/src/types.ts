@@ -45,7 +45,7 @@ export interface LocalImageOptions {
 export interface RemoteImageOptions {
   /** URL prefixes (`'https://cdn.example.com/img/'`) or host names (`'*.example.com'`, https only). */
   allow: readonly string[];
-  /** Per-image timeout (default 10 000 ms). */
+  /** Per-image timeout for the whole download (default 10 000 ms; `Infinity` for none). */
   timeoutMs?: number;
   /** Largest accepted image in bytes (default 20 MiB). */
   maxBytes?: number;

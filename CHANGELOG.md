@@ -7,6 +7,16 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- `@inkoxide/render`: a remote image that times out or drops its connection after the headers
+  fails the render with `IMAGE_FETCH_FAILED`, as one that fails before them does, instead of a
+  raw `TimeoutError` or `TypeError`. `remoteImages.timeoutMs` takes `Infinity` (no limit) and
+  values past what a timer holds, as `imageTimeoutMs` does, instead of throwing a `RangeError`.
+  A redirect from an allowed URL, still not followed, fails with
+  `HTTP 302, and redirects are not followed` instead of `fetch failed`, and the guide and
+  SECURITY.md say so.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and
