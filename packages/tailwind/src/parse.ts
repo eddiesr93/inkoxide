@@ -1,12 +1,12 @@
 import type { GridPlacement } from '@inkoxide/schema';
 import {
+  type FlatStyle,
   parseFlex,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
   round,
   splitTopLevel,
-  type TwStyle,
   UnsupportedValueError,
   ValueError,
 } from '@inkoxide/style';
@@ -104,7 +104,7 @@ function sidesOf(logical: string): readonly Side[] {
 }
 
 /** Applies one resolved declaration to the style being built. */
-function applyDecl(s: TwStyle, prop: string, value: string): void {
+function applyDecl(s: FlatStyle, prop: string, value: string): void {
   const r = new Reader(prop);
   // The style by key, for the keys built from the property name (`paddingTop`, `insetLeft`).
   const keyed = s as Record<string, unknown>;
@@ -490,8 +490,8 @@ export function mapClasses(
   compiler: TailwindCompiler,
   classes: string[],
   onError: (e: UnsupportedUtilityError) => void,
-): TwStyle {
-  let style: TwStyle = {};
+): FlatStyle {
+  let style: FlatStyle = {};
   const elementVars = new Map<string, string>();
   const initials = new Map<string, string>();
   const usable: string[] = [];
@@ -529,7 +529,7 @@ export function mapClasses(
       decls.some(([p, v]) => p === 'text-overflow' && v.trim() === 'ellipsis') &&
       decls.some(([p, v]) => p === 'white-space' && v.trim() === 'nowrap');
     // Apply into a scratch copy so a failing class leaves no partial result behind.
-    const next: TwStyle = { ...style };
+    const next: FlatStyle = { ...style };
     try {
       if (clamp) {
         const n = clamp[1].trim();

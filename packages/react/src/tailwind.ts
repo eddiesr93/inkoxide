@@ -1,6 +1,6 @@
 // `@inkoxide/tailwind` is optional: templates that style with `style` alone do not need it, and
 // it is loaded only when it is installed.
-import type { TwStyle } from '@inkoxide/style';
+import type { FlatStyle } from '@inkoxide/style';
 import { DEFAULT_SANS } from '@inkoxide/style/internal';
 
 /**
@@ -10,7 +10,7 @@ import { DEFAULT_SANS } from '@inkoxide/style/internal';
 interface Tailwind {
   initTailwind(): Promise<void>;
   isTailwindReady(): boolean;
-  tw(className: string): TwStyle;
+  tw(className: string): FlatStyle;
   UnsupportedUtilityError: abstract new (...args: never[]) => Error & { className: string };
 }
 
@@ -55,7 +55,7 @@ function isMissing(e: unknown): boolean {
  * The style of `className`, or why there is none: the reason, to end "needs Tailwind: …". The
  * Tailwind error for an unsupported class is thrown, to report with the element.
  */
-export function classStyle(className: string): TwStyle | string {
+export function classStyle(className: string): FlatStyle | string {
   if (tailwind === null) return 'install it with `npm install @inkoxide/tailwind`';
   if (!tailwind?.isTailwindReady()) {
     return 'call `await loadTailwind()` before `renderTemplate`, or use `renderToTree`';

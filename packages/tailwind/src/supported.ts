@@ -1,4 +1,4 @@
-import type { TwStyle } from '@inkoxide/style';
+import type { FlatStyle } from '@inkoxide/style';
 
 /**
  * The supported Tailwind subset, one entry per utility family. This table is the single source
@@ -13,7 +13,7 @@ export interface SupportedFamily {
   /** The engine `Style` field (or run property) it sets. */
   maps: string;
   notes?: string;
-  examples: Record<string, TwStyle>;
+  examples: Record<string, FlatStyle>;
 }
 
 const C = (r: number, g: number, b: number, a = 1): [number, number, number, number] => [r, g, b, a];

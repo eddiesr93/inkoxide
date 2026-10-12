@@ -30,6 +30,9 @@ All notable changes to the packages in this repository. The format follows
   `parseFontFamily`, which only `@inkoxide/tailwind` uses. They moved to
   `@inkoxide/style/internal`, which is for Inkoxide's own packages and not covered by semver,
   and will be removed from the main entry.
+- `TwStyle` and `TwKey` (from `@inkoxide/style` and `@inkoxide/tailwind`) are renamed
+  `FlatStyle` and `FlatStyleKey`: `style` props build this style too, not only classes. The old
+  names stay as aliases for now.
 
 ### Fixed
 

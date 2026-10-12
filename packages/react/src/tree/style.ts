@@ -18,7 +18,7 @@ import {
   TEXT_INHERITED,
   TEXT_ONLY,
   type TextDecoration,
-  type TwStyle,
+  type FlatStyle,
 } from '@inkoxide/style';
 
 import type { HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
@@ -34,7 +34,7 @@ type RootKey = 'fontFamily' | 'fontWeight' | 'fontStyle' | 'fontSize' | 'color';
  * `TEXT_INHERITED` key, unset until an element sets one, apart from the font and the colour,
  * which the document sets.
  */
-export interface TextCtx extends Omit<{ [K in InheritedKey]?: TwStyle[K] }, RootKey> {
+export interface TextCtx extends Omit<{ [K in InheritedKey]?: FlatStyle[K] }, RootKey> {
   fontFamily: readonly string[];
   fontWeight: number;
   fontStyle: 'normal' | 'italic';
@@ -52,10 +52,10 @@ export interface TextCtx extends Omit<{ [K in InheritedKey]?: TwStyle[K] }, Root
   fontId?: string | undefined;
 }
 
-const inheritedFlag = new WeakMap<TwStyle, boolean>();
+const inheritedFlag = new WeakMap<FlatStyle, boolean>();
 
 /** True when the style sets any inherited text property. Cached per (immutable) style object. */
-export function hasInherited(s: TwStyle): boolean {
+export function hasInherited(s: FlatStyle): boolean {
   let v = inheritedFlag.get(s);
   if (v === undefined) {
     v = TEXT_INHERITED.some((k) => s[k] !== undefined);
@@ -70,13 +70,13 @@ export interface InheritExtra {
   /** `null` turns off the callback inherited from the document. */
   hyphenation?: HyphenationCallback | null | undefined;
   link?: string | undefined;
-  direction?: TwStyle['direction'];
+  direction?: FlatStyle['direction'];
   orphans?: number | undefined;
   widows?: number | undefined;
 }
 
 /** The context of an element's content: the parent's, overridden by the element's own style. */
-export function inherit(parent: TextCtx, own: TwStyle, extra?: InheritExtra): TextCtx {
+export function inherit(parent: TextCtx, own: FlatStyle, extra?: InheritExtra): TextCtx {
   const changes = hasInherited(own);
   if (!changes && (!extra || Object.values(extra).every((v) => v === undefined))) {
     return parent;
@@ -151,7 +151,7 @@ const SIMPLE_KEYS = [
   'opacity',
   'transformOrigin',
   'zIndex',
-] as const satisfies ReadonlyArray<keyof TwStyle & keyof Style>;
+] as const satisfies ReadonlyArray<keyof FlatStyle & keyof Style>;
 
 const CORNER_KEYS = [
   ['topLeft', 'borderTopLeftRadius'],
@@ -184,12 +184,12 @@ export const BOX_KEYS: ReadonlySet<string> = new Set<string>([
 const TEXT_ONLY_KEYS: ReadonlySet<string> = new Set(TEXT_ONLY);
 
 /** Box keys set by a style, for "this utility has no effect here" errors. */
-export function boxKeys(s: TwStyle): string[] {
-  return Object.keys(s).filter((k) => BOX_KEYS.has(k) && s[k as keyof TwStyle] !== undefined);
+export function boxKeys(s: FlatStyle): string[] {
+  return Object.keys(s).filter((k) => BOX_KEYS.has(k) && s[k as keyof FlatStyle] !== undefined);
 }
 
-export function textOnlyKeys(s: TwStyle): string[] {
-  return Object.keys(s).filter((k) => TEXT_ONLY_KEYS.has(k) && s[k as keyof TwStyle] !== undefined);
+export function textOnlyKeys(s: FlatStyle): string[] {
+  return Object.keys(s).filter((k) => TEXT_ONLY_KEYS.has(k) && s[k as keyof FlatStyle] !== undefined);
 }
 
 type Edge = 'top' | 'right' | 'bottom' | 'left';
@@ -200,9 +200,11 @@ const EDGES: ReadonlyArray<[Edge, 'Top' | 'Right' | 'Bottom' | 'Left']> = [
   ['left', 'Left'],
 ];
 
-type EdgeKeys = readonly [Edge, keyof TwStyle][];
+type EdgeKeys = readonly [Edge, keyof FlatStyle][];
 const keysFor = (prefix: string, suffix = ''): EdgeKeys =>
-  EDGES.map(([edge, cap]) => [edge, `${prefix}${cap}${suffix}` as keyof TwStyle] as [Edge, keyof TwStyle]);
+  EDGES.map(
+    ([edge, cap]) => [edge, `${prefix}${cap}${suffix}` as keyof FlatStyle] as [Edge, keyof FlatStyle],
+  );
 const PADDING = keysFor('padding');
 const MARGIN = keysFor('margin');
 const INSET = keysFor('inset');
@@ -210,7 +212,7 @@ const BORDER_WIDTH = keysFor('border', 'Width');
 const BORDER_COLOR = keysFor('border', 'Color');
 const BORDER_STYLE = keysFor('border', 'Style');
 
-function edgeObject<T>(s: TwStyle, keys: EdgeKeys): Partial<Record<Edge, T>> | undefined {
+function edgeObject<T>(s: FlatStyle, keys: EdgeKeys): Partial<Record<Edge, T>> | undefined {
   let out: Partial<Record<Edge, T>> | undefined;
   for (const [edge, key] of keys) {
     const v = s[key];
@@ -230,14 +232,14 @@ interface BoxPlan {
   byColor?: Map<Color, Style | undefined>;
 }
 
-const plans = new WeakMap<TwStyle, BoxPlan>();
-const cellPlans = new WeakMap<TwStyle, BoxPlan>();
+const plans = new WeakMap<FlatStyle, BoxPlan>();
+const cellPlans = new WeakMap<FlatStyle, BoxPlan>();
 
-function usesCurrentColor(s: TwStyle): boolean {
+function usesCurrentColor(s: FlatStyle): boolean {
   if (s.backgroundColor === 'currentColor') return true;
   for (let i = 0; i < 4; i++) {
-    const w = s[BORDER_WIDTH[i]?.[1] as keyof TwStyle] as number | undefined;
-    const c = s[BORDER_COLOR[i]?.[1] as keyof TwStyle];
+    const w = s[BORDER_WIDTH[i]?.[1] as keyof FlatStyle] as number | undefined;
+    const c = s[BORDER_COLOR[i]?.[1] as keyof FlatStyle];
     if (c === 'currentColor' || (c === undefined && w !== undefined && w > 0)) return true;
   }
   return false;
@@ -249,7 +251,7 @@ function usesCurrentColor(s: TwStyle): boolean {
  * Returns undefined when nothing is set. Results are cached per (immutable) style object, so
  * callers must copy before modifying the returned object.
  */
-export function boxStyle(s: TwStyle, currentColor: Color, cell = false): Style | undefined {
+export function boxStyle(s: FlatStyle, currentColor: Color, cell = false): Style | undefined {
   const cache = cell ? cellPlans : plans;
   let plan = cache.get(s);
   if (!plan) {
@@ -265,7 +267,7 @@ export function boxStyle(s: TwStyle, currentColor: Color, cell = false): Style |
   return out;
 }
 
-function computeBox(s: TwStyle, currentColor: Color, cell: boolean): Style | undefined {
+function computeBox(s: FlatStyle, currentColor: Color, cell: boolean): Style | undefined {
   const out: Style = {};
   const w = out as Record<string, unknown>;
   let any = false;
@@ -312,7 +314,7 @@ function computeBox(s: TwStyle, currentColor: Color, cell: boolean): Style | und
   const colors: Partial<Record<Edge, Color>> = {};
   let anyColor = false;
   for (let i = 0; i < 4; i++) {
-    const [edge, ck] = BORDER_COLOR[i] as [Edge, keyof TwStyle];
+    const [edge, ck] = BORDER_COLOR[i] as [Edge, keyof FlatStyle];
     const c = s[ck] as ColorValue | undefined;
     const wv = widths?.[edge];
     if (c !== undefined) colors[edge] = resolveColor(c, currentColor);
@@ -328,7 +330,7 @@ function computeBox(s: TwStyle, currentColor: Color, cell: boolean): Style | und
     out.borderColor = colors;
     any = true;
   }
-  const sideStyles = edgeObject<NonNullable<TwStyle['borderStyle']>>(s, BORDER_STYLE);
+  const sideStyles = edgeObject<NonNullable<FlatStyle['borderStyle']>>(s, BORDER_STYLE);
   if (sideStyles) {
     const base = s.borderStyle ?? 'solid';
     out.borderStyle = {
@@ -384,7 +386,7 @@ function computeBox(s: TwStyle, currentColor: Color, cell: boolean): Style | und
 /** Adds the text-node properties (alignment, line height, clamping, hyphenation) to a style. */
 export function textNodeStyle(
   base: Style | undefined,
-  own: TwStyle,
+  own: FlatStyle,
   ctx: TextCtx,
   docLang: string | undefined,
 ) {
@@ -520,11 +522,11 @@ function setAxesAndSides(
  * width and height.
  */
 export function withStyleProp(
-  base: TwStyle,
+  base: FlatStyle,
   style: StyleInput,
   parentSize: number,
   page: Units['page'],
-): TwStyle {
+): FlatStyle {
   const list = (Array.isArray(style) ? style : [style]).filter((p): p is StyleProp => !!p);
   const outer: Units = { em: parentSize, page };
   // The font size comes first: `em` in every other length depends on it.
@@ -544,7 +546,7 @@ export function withStyleProp(
 }
 
 /** Keys for every side or corner at once, and the per-side or per-corner keys they replace. */
-const ALL_SIDES: ReadonlyArray<readonly [keyof TwStyle, ReadonlyArray<keyof TwStyle>]> = [
+const ALL_SIDES: ReadonlyArray<readonly [keyof FlatStyle, ReadonlyArray<keyof FlatStyle>]> = [
   ['borderStyle', BORDER_STYLE.map(([, k]) => k)],
   ['borderRadius', CORNER_KEYS.map(([, k]) => k)],
 ];
@@ -553,13 +555,13 @@ const ALL_SIDES: ReadonlyArray<readonly [keyof TwStyle, ReadonlyArray<keyof TwSt
  * `next` over `s`, as a later CSS rule: a `borderStyle` or `borderRadius` for every side or
  * corner replaces the per-side and per-corner values `s` has, which would otherwise win.
  */
-function over(s: TwStyle, next: TwStyle): TwStyle {
+function over(s: FlatStyle, next: FlatStyle): FlatStyle {
   const out: Record<string, unknown> = { ...s, ...next };
   for (const [all, each] of ALL_SIDES) {
     if (next[all] === undefined) continue;
     for (const k of each) if (next[k] === undefined) delete out[k];
   }
-  return out as TwStyle;
+  return out as FlatStyle;
 }
 
 /**
@@ -580,7 +582,7 @@ function nonFinite(v: unknown): number | undefined {
  * Converts one style object to the flat style the builder uses. `fontUnits` resolve `fontSize`
  * (the parent's font size is its `em`); `units` resolve everything else.
  */
-export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): TwStyle {
+export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): FlatStyle {
   const len = (v: number | string) => toPt(v, units);
   const {
     color,
@@ -739,7 +741,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
     if (out[k] === undefined) delete out[k];
     else if (!KNOWN_KEYS.has(k)) throw new Error(`unknown style property "${k}"`);
   }
-  return out as TwStyle;
+  return out as FlatStyle;
 }
 
 const WEIGHTS: Readonly<Record<string, number>> = {

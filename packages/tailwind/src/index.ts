@@ -1,4 +1,4 @@
-import type { TwStyle } from '@inkoxide/style';
+import type { FlatStyle } from '@inkoxide/style';
 
 import { Lru } from './cache.ts';
 import { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
@@ -15,6 +15,8 @@ export {
   type ColorValue,
   type DecorationStyle,
   type Direction,
+  type FlatStyle,
+  type FlatStyleKey,
   type LenPercent,
   type Len,
   type LetterSpacing,
@@ -62,9 +64,9 @@ let compiler: TailwindCompiler | undefined;
 /** The theme load asked for last, until it settles: a later theme replaces an earlier one. */
 let loading: Promise<TailwindCompiler> | undefined;
 let strict = process.env.NODE_ENV !== 'production';
-let cache = new Lru<TwStyle>(5000);
+let cache = new Lru<FlatStyle>(5000);
 const warned = new Set<string>();
-const EMPTY: TwStyle = Object.freeze({}) as TwStyle;
+const EMPTY: FlatStyle = Object.freeze({}) as FlatStyle;
 
 /**
  * Loads Tailwind's design system once per process. Safe to call repeatedly. A call without `css`
@@ -72,7 +74,7 @@ const EMPTY: TwStyle = Object.freeze({}) as TwStyle;
  */
 export async function initTailwind(opts: TailwindOptions = {}): Promise<void> {
   if (opts.strict !== undefined) setTailwindStrict(opts.strict);
-  if (opts.cacheSize !== undefined) cache = new Lru<TwStyle>(opts.cacheSize);
+  if (opts.cacheSize !== undefined) cache = new Lru<FlatStyle>(opts.cacheSize);
   if (opts.css !== undefined || opts.base !== undefined) {
     loading = TailwindCompiler.load(opts.css ?? DEFAULT_THEME_CSS, opts.base);
   } else if (!compiler) {
@@ -111,7 +113,7 @@ function report(e: UnsupportedUtilityError): void {
  * Results are cached by the normalised string, so the hot path is one map lookup. Do not
  * mutate the returned object.
  */
-export function tw(className: string | undefined | null | false): TwStyle {
+export function tw(className: string | undefined | null | false): FlatStyle {
   if (!className) return EMPTY;
   const hit = cache.get(className);
   if (hit) return hit;

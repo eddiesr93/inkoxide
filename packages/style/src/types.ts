@@ -37,13 +37,15 @@ export type Direction = 'ltr' | 'rtl' | 'auto';
 export type { ObjectPosition, TransformOp };
 
 /**
- * The style of one class string, flattened. Edges are separate keys so that `px-4 pt-2` merge
- * without allocating objects; the tree builder folds them into the schema's `{ top, right, … }`.
+ * The style of one element, flattened: what `tw()` reads from a class string and the React tree
+ * builder from a `style` prop, before it becomes the schema's style. Edges are separate keys so
+ * that `px-4 pt-2` merge without allocating objects; the tree builder folds them into the
+ * schema's `{ top, right, … }`.
  *
  * Text properties (the `TEXT_INHERITED` keys) cascade from `Page` to `View` to `Text` to nested
  * `Text`. Everything else applies to the element that carries the class only.
  */
-export interface TwStyle {
+export interface FlatStyle {
   display?: Style['display'];
   flexDirection?: Style['flexDirection'];
   flexWrap?: Style['flexWrap'];
@@ -154,7 +156,12 @@ export interface TwStyle {
   ellipsis?: boolean;
 }
 
-export type TwKey = keyof TwStyle;
+export type FlatStyleKey = keyof FlatStyle;
+
+/** @deprecated Renamed `FlatStyle`: `style` props build it too, not only Tailwind classes. */
+export type TwStyle = FlatStyle;
+/** @deprecated Renamed `FlatStyleKey`. */
+export type TwKey = FlatStyleKey;
 
 /**
  * Keys that cascade to descendants, like inherited CSS properties. The React tree builder's text
@@ -180,7 +187,7 @@ export const TEXT_INHERITED = [
   'direction',
   'orphans',
   'widows',
-] as const satisfies readonly TwKey[];
+] as const satisfies readonly FlatStyleKey[];
 
 /** Keys that only mean something on a `Text` node. */
-export const TEXT_ONLY = ['maxLines', 'ellipsis'] as const satisfies readonly TwKey[];
+export const TEXT_ONLY = ['maxLines', 'ellipsis'] as const satisfies readonly FlatStyleKey[];
