@@ -39,7 +39,6 @@ export interface EngineStatus {
 
 let status: EngineStatus | undefined;
 
-
 /**
  * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Throws an
  * `INTERNAL` RenderError with the fix when fonts are missing or the engine speaks another schema
