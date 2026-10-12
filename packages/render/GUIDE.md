@@ -61,6 +61,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
   `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
   percentage. A page's `size` takes the units that do not depend on the font or the page.
+  Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
+  the element's own size. A percentage height needs a parent with a set height; a child of the
+  `Page` takes it of the page.
 - **Arrays.** Falsy entries are skipped and later entries win.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
   `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,
@@ -368,7 +371,10 @@ page. Lengths are points or strings with a unit:
 - **Columns.** Widths are fractions (`'1fr'`) or points.
 - **Pagination.** Header rows repeat on every page. Rows split across pages, and a row taller
   than a page splits inside its cells.
-- **Cells.** `colSpan`, `rowSpan` and `verticalAlign` are available on `Cell`.
+- **Cells.** `colSpan`, `rowSpan` and `verticalAlign` are available on `Cell`. The columns set a
+  cell's width, and a cell's `height` is a minimum: the row grows to fit the content. Styles that
+  place or size the cell itself (`width`, `margin`, `position`, `flexGrow`, …) or apply an effect
+  to it (`opacity`, `rotate`, `transform`, …) are errors on a `Cell`; put them on a `View` inside it.
 
 ## Links, bookmarks and metadata
 

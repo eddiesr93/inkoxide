@@ -229,6 +229,8 @@ pub(crate) trait TextShaper {
     /// `p` with the page numbers in place of its placeholders' stand-in
     /// digits.
     fn fill_numbers(&self, p: &Prepared, runs: &[TextRun], numbers: PageNumbers) -> Prepared;
+    /// The widest unbreakable piece of a prepared paragraph.
+    fn min_content(&self, p: &Prepared, runs: &[TextRun], style: &ParaStyle) -> f32;
 }
 
 /// rustybuzz + unicode-linebreak + hypher implementation.
@@ -305,6 +307,10 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
     fn fill_numbers(&self, p: &Prepared, runs: &[TextRun], numbers: PageNumbers) -> Prepared {
         prepare::fill_numbers(p, runs, self.fonts, numbers)
     }
+
+    fn min_content(&self, p: &Prepared, runs: &[TextRun], style: &ParaStyle) -> f32 {
+        lines::min_content(p, runs, style, self.fonts)
+    }
 }
 
 /// Cache key of a layout width. Exact: bucketing could round below a
@@ -326,9 +332,14 @@ struct Entry {
 }
 
 impl Entry {
-    fn new(style: ParaStyle, prepared: Prepared) -> Self {
+    fn new<S: TextShaper>(
+        shaper: &S,
+        runs: &[TextRun],
+        style: ParaStyle,
+        prepared: Prepared,
+    ) -> Self {
         Self {
-            min_content: min_content(&prepared, &style),
+            min_content: shaper.min_content(&prepared, runs, &style),
             style,
             prepared,
             layouts: Vec::new(),
@@ -404,28 +415,7 @@ fn new_entry<S: TextShaper>(
 ) -> Entry {
     let style = ParaStyle::from_style(&node.style, lang);
     let prepared = shaper.prepare(runs, &style);
-    Entry::new(style, prepared)
-}
-
-/// Widest unbreakable piece of a paragraph, first-line indent included.
-fn min_content(prepared: &Prepared, style: &ParaStyle) -> f32 {
-    let mut min_content = 0.0f32;
-    let mut start = 0usize;
-    let bounds = prepared
-        .breaks
-        .iter()
-        .map(|b| b.glyph as usize)
-        .chain(std::iter::once(prepared.glyphs.len()));
-    for end in bounds {
-        let mut e = end;
-        while e > start && prepared.glyphs[e - 1].flags & (GLYPH_SPACE | GLYPH_INVISIBLE) != 0 {
-            e -= 1;
-        }
-        let w: f32 = prepared.glyphs[start..e].iter().map(|g| g.advance).sum();
-        min_content = min_content.max(w);
-        start = end;
-    }
-    min_content + style.indent.max(0.0)
+    Entry::new(shaper, runs, style, prepared)
 }
 
 /// Per-render cache of shaped paragraphs, keyed by node identity. Also
@@ -547,7 +537,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         // unless the paragraph ended up on another page than it was laid
         // out for.
         prepared.placeholders = true;
-        let entry = Entry::new(stand_in.style.clone(), prepared);
+        let entry = Entry::new(&self.shaper, runs, stand_in.style.clone(), prepared);
         self.entries.insert(key, entry);
         true
     }
@@ -690,7 +680,7 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
         let numbers = self.numbers;
         let entry = self.entries.entry(key).or_insert_with(|| {
             let prepared = shaper.fill_numbers(&shared.prepared, runs, numbers);
-            Entry::new(shared.style.clone(), prepared)
+            Entry::new(shaper, runs, shared.style.clone(), prepared)
         });
         let width = entry.width_in(available.width);
         leaf_size(&entry.layout(shaper, runs, width), known, width)

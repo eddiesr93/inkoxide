@@ -8,8 +8,10 @@
 //!   the row's `minHeight`; a row-spanning cell taller than its rows adds
 //!   the difference to its last row.
 //! - Collapsed borders: every grid edge takes the wider of the two cell
-//!   borders that meet there (later cell wins ties). Each cell reserves the
-//!   full width of outer edges and half the width of inner edges.
+//!   borders that meet there; at equal widths the style ranks, as in CSS
+//!   (solid, then dashed, then dotted), then the later cell wins. Each cell
+//!   reserves the full width of outer edges and half the width of inner
+//!   edges.
 //! - Separate borders (`borderCollapse: separate`): each cell keeps its
 //!   own borders, `borderSpacing` apart and from the table edge. A row's
 //!   band (`row_y`/`row_h`) includes the spacing below it, and above it
@@ -21,7 +23,9 @@
 use taffy::prelude::AvailableSpace;
 
 use super::{LayoutCtx, NodeIdx, Part, Tree};
-use crate::schema::{BorderCollapse, Color, ColumnWidth, Edges, NodeKind, Table, BLACK};
+use crate::schema::{
+    BorderCollapse, BorderStyle, Color, ColumnWidth, Edges, NodeKind, Table, BLACK,
+};
 use crate::InkoxideError;
 
 // Indices into `[top, right, bottom, left]` arrays.
@@ -51,6 +55,7 @@ pub(crate) struct HEdge {
     pub line: usize,
     pub col: usize,
     pub width: f32,
+    pub style: BorderStyle,
     pub color: Color,
 }
 
@@ -62,6 +67,7 @@ pub(crate) struct VEdge {
     pub row: usize,
     pub rows: usize,
     pub width: f32,
+    pub style: BorderStyle,
     pub color: Color,
 }
 
@@ -105,6 +111,22 @@ struct Grid {
     v_w: Vec<f32>,
 }
 
+/// One cell's border on one side.
+struct Border {
+    width: f32,
+    style: BorderStyle,
+    color: Color,
+}
+
+/// Rank of a border style when two collapsed borders of equal width meet.
+fn style_rank(s: BorderStyle) -> u8 {
+    match s {
+        BorderStyle::Solid => 2,
+        BorderStyle::Dashed => 1,
+        BorderStyle::Dotted => 0,
+    }
+}
+
 fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
     let cols = table.columns.len();
     let rows = table.rows.len();
@@ -136,19 +158,26 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
         }
     }
 
-    let border = |k: usize, side: usize| -> (f32, Color) {
+    let border = |k: usize, side: usize| -> Border {
         let s = tree.nodes[cells[k].0 as usize].style();
-        let w = s.border_width.map_or(0.0, |b| b.get(0.0)[side]);
-        let c = s.border_color.map_or(BLACK, |b| b.get(BLACK)[side]);
-        (w, c)
+        Border {
+            width: s.border_width.map_or(0.0, |b| b.get(0.0)[side]),
+            style: s
+                .border_style
+                .map_or(BorderStyle::Solid, |b| b.sides()[side]),
+            color: s.border_color.map_or(BLACK, |b| b.get(BLACK)[side]),
+        }
     };
-    // The wider border wins; on a tie the later cell (document order) wins.
-    let resolve = |a: Option<(usize, usize)>, b: Option<(usize, usize)>| -> Option<(f32, Color)> {
+    // CSS conflict resolution: the wider border wins, then the higher
+    // ranked style; on a full tie the later cell (document order) wins.
+    let rank = |b: &Border| (b.width, style_rank(b.style));
+    let resolve = |a: Option<(usize, usize)>, b: Option<(usize, usize)>| -> Option<Border> {
         let ca = a.map(|(k, s)| (k, border(k, s)));
         let cb = b.map(|(k, s)| (k, border(k, s)));
         let best = match (ca, cb) {
             (Some(x), Some(y)) => {
-                if y.1 .0 > x.1 .0 || (y.1 .0 == x.1 .0 && y.0 > x.0) {
+                let (rx, ry) = (rank(&x.1), rank(&y.1));
+                if ry > rx || (ry == rx && y.0 > x.0) {
                     y
                 } else {
                     x
@@ -157,7 +186,7 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
             (Some(x), None) | (None, Some(x)) => x,
             (None, None) => return None,
         };
-        (best.1 .0 > 0.0).then_some(best.1)
+        (best.1.width > 0.0).then_some(best.1)
     };
 
     let mut h_edges = Vec::new();
@@ -171,14 +200,13 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
             if above.is_some() && above == below {
                 continue; // inside a row span
             }
-            if let Some((width, color)) =
-                resolve(above.map(|k| (k, BOTTOM)), below.map(|k| (k, TOP)))
-            {
+            if let Some(b) = resolve(above.map(|k| (k, BOTTOM)), below.map(|k| (k, TOP))) {
                 h_edges.push(HEdge {
                     line,
                     col: c,
-                    width,
-                    color,
+                    width: b.width,
+                    style: b.style,
+                    color: b.color,
                 });
             }
         }
@@ -198,15 +226,14 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
                 .unwrap_or(1)
                 .max(1);
             if left.is_none() || left != right {
-                if let Some((width, color)) =
-                    resolve(left.map(|k| (k, RIGHT)), right.map(|k| (k, LEFT)))
-                {
+                if let Some(b) = resolve(left.map(|k| (k, RIGHT)), right.map(|k| (k, LEFT))) {
                     v_edges.push(VEdge {
                         line,
                         row: r,
                         rows: span_rows,
-                        width,
-                        color,
+                        width: b.width,
+                        style: b.style,
+                        color: b.color,
                     });
                 }
             }

@@ -1073,10 +1073,29 @@ impl<'a> Checker<'a> {
             None => {}
         }
         if is_cell {
+            // The table places and sizes a cell and paints its background
+            // and borders: its own box placement, size within the row and
+            // visual effects would be dropped.
             for (name, set) in [
                 ("transform", s.transform.is_some()),
                 ("transformOrigin", s.transform_origin.is_some()),
                 ("zIndex", s.z_index.is_some()),
+                ("rotate", s.rotate.is_some()),
+                ("opacity", s.opacity.is_some()),
+                ("overflow", s.overflow.is_some()),
+                ("margin", s.margin.is_some()),
+                ("position", s.position.is_some()),
+                ("inset", s.inset.is_some()),
+                ("width", s.width.is_some()),
+                ("maxHeight", s.max_height.is_some()),
+                ("alignSelf", s.align_self.is_some()),
+                ("justifySelf", s.justify_self.is_some()),
+                ("flexGrow", s.flex_grow.is_some()),
+                ("flexShrink", s.flex_shrink.is_some()),
+                ("flexBasis", s.flex_basis.is_some()),
+                ("gridColumn", s.grid_column.is_some()),
+                ("gridRow", s.grid_row.is_some()),
+                ("gridArea", s.grid_area.is_some()),
             ] {
                 if set {
                     self.err(

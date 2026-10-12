@@ -181,6 +181,65 @@ fn box_whose_first_child_does_not_fit_moves_whole() {
 }
 
 #[test]
+fn a_box_takes_its_first_child_s_presence_and_forced_break() {
+    // A 70pt box, then a card with 10pt top padding whose first child asks
+    // to start a page or for 40pt of room. The card moves with it rather
+    // than leaving its empty top at the foot of page 0.
+    for brk in [r#"{"minPresenceAhead":40}"#, r#"{"before":"page"}"#] {
+        let d = doc(&format!(
+            r#"{},{{"type":"box","style":{{"padding":{{"top":10}}}},"children":[
+                {{"type":"box","style":{{"height":10}},"break":{brk}}},{}]}}"#,
+            boxes(&[70.0]),
+            boxes(&[50.0])
+        ));
+        let (t, p) = run(&d);
+        assert_eq!(rect(&t, &p, 2).0, 100.0, "{brk}: the card moves");
+        assert_eq!(rect(&t, &p, 3).0, 110.0, "{brk}: its child follows");
+        assert_eq!(p.pages, 2, "{brk}");
+        check_invariants(&t, &p);
+    }
+}
+
+#[test]
+fn a_page_break_first_in_a_box_moves_the_box() {
+    let d = doc(&format!(
+        r#"{},{{"type":"box","style":{{"padding":{{"top":10}}}},"children":[{{"type":"pageBreak"}},{}]}}"#,
+        boxes(&[20.0]),
+        boxes(&[10.0])
+    ));
+    let (t, p) = run(&d);
+    assert_eq!(rect(&t, &p, 2).0, 100.0);
+    assert_eq!(rect(&t, &p, 4).0, 110.0);
+    assert_eq!(p.pages, 2);
+}
+
+#[test]
+fn a_first_row_taller_than_a_page_starts_where_the_table_is() {
+    // The row splits inside its cell, so the table starts on page 0 when
+    // the first piece of the cell fits there.
+    for header in ["", r#"{"cells":[{"style":{"height":10}}]},"#] {
+        let cell = [r#"{"type":"box","style":{"height":25}}"#; 6].join(",");
+        let d = doc(&format!(
+            r#"{},{{"type":"table","columns":[{{"width":"1fr"}}],"headerRows":{},"rows":[{header}
+                {{"cells":[{{"children":[{cell}]}}]}}]}}"#,
+            boxes(&[30.0]),
+            u8::from(!header.is_empty()),
+        ));
+        let (t, p) = run(&d);
+        assert_eq!(rect(&t, &p, 2).0, 30.0, "{header}: the table stays");
+        let row = t.children(2).last().unwrap();
+        let cell = t.children(row).next().unwrap();
+        let first = t.children(cell).next().unwrap();
+        assert_eq!(
+            page(rect(&t, &p, first).0),
+            0,
+            "{header}: the row starts on page 0"
+        );
+        check_invariants(&t, &p);
+    }
+}
+
+#[test]
 fn oversized_atomic_content_is_sliced() {
     let d = doc(&boxes(&[250.0]));
     let (t, p) = run(&d);

@@ -72,6 +72,33 @@ All notable changes to the packages in this repository. The format follows
   a page splits like any other; both were cut through a line of text at the page edge.
 - Fixed elements in the body are painted in document order and by `zIndex`, as without `fixed`;
   nested ones were painted in the wrong order.
+- A table cell's `height` is a minimum, as in CSS: the row grows to fit the cell's content.
+  Until now it fixed the row's height, and taller content ran over the next row.
+- Styles a table cell ignored are validation errors (`STYLE_NOT_APPLICABLE`), like `transform`
+  and `zIndex` already were: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`,
+  `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`,
+  `overflow`, `opacity` and `rotate`. They passed validation and had no effect.
+- Collapsed table borders (the default `borderCollapse`) keep their `borderStyle`: dashed and
+  dotted cell borders were drawn solid. Where two borders of equal width meet, solid wins over
+  dashed and dashed over dotted, as in CSS.
+- A box whose first child has `minPresenceAhead` or `break.before: "page"` (or is a
+  `PageBreak`) moves to the next page with that child, as CSS carries a break up to the parent.
+  It left its empty top (padding and background) at the foot of the page before.
+- A table whose first row is taller than a page starts on the current page and splits that row,
+  as it already did for later rows. It moved whole to a new page, leaving the rest of the page
+  empty.
+- Percentage heights of a `Page`'s children (`height: '50%'`, `minHeight`, `maxHeight`) are of
+  the page content height. They behaved as `auto`.
+- Text collapses only spaces, tabs and line breaks, as in CSS. Thin, em, figure, ideographic and
+  other space characters keep their own width, and the non-breaking ones no longer allow a line
+  break.
+- Tabs in `pre` and `pre-wrap` text advance to the next tab stop, every 8 characters from the
+  start of the line (CSS `tab-size: 8`), so tab-separated columns line up. Each tab was four
+  spaces.
+- A box sized to the min-content width of hyphenated text leaves room for the hyphen; the
+  hyphen was drawn outside it.
+- The docs say how `minPresenceAhead`, percentage gaps and relative `top`/`left` offsets work,
+  and where they differ from react-pdf (`MIGRATING.md`).
 
 ## 0.5.0 - 2026-10-12
 

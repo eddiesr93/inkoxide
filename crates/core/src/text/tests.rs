@@ -126,6 +126,31 @@ fn hyphenation_shows_a_hyphen() {
 }
 
 #[test]
+fn min_content_includes_the_hyphen() {
+    // At its min-content width, a hyphenated paragraph breaks at every
+    // hyphenation point and every line, hyphen included, fits.
+    let s = store();
+    let d = doc(&para("aaa\u{AD}bbbbbb\u{AD}cc", ""));
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let min = cache
+        .measure(
+            node,
+            TSize::NONE,
+            TSize {
+                width: AvailableSpace::MinContent,
+                height: AvailableSpace::MaxContent,
+            },
+        )
+        .width;
+    let (texts, l) = lines(&d, &s, min);
+    assert_eq!(texts, ["aaa-", "bbbbbb-", "cc"]);
+    let widest = l.lines.iter().map(|x| x.width).fold(0.0, f32::max);
+    assert!((widest - min).abs() < 1e-3, "{widest} vs {min}");
+}
+
+#[test]
 fn max_lines_with_ellipsis() {
     let s = store();
     let d = doc(&para(LOREM, r#""maxLines":2,"ellipsis":true"#));

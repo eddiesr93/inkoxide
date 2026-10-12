@@ -867,6 +867,46 @@ fn malformed_transforms_and_arrays_have_paths() {
 }
 
 #[test]
+fn box_placement_and_effects_do_not_apply_to_cells() {
+    let cell = |style: &str| {
+        doc(&format!(
+            r#"{{"type":"table","columns":[{{"width":100}}],"rows":[{{"cells":[{{"style":{{{style}}}}}]}}]}}"#
+        ))
+    };
+    let ok = cell(
+        r#""height":10,"minHeight":5,"padding":{"top":2},"backgroundColor":[1,0,0,1],"borderWidth":{"top":1},"borderStyle":"dashed","verticalAlign":"middle","alignItems":"center""#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    for (prop, value) in [
+        ("rotate", "90"),
+        ("opacity", "0.2"),
+        ("overflow", r#""hidden""#),
+        ("margin", r#"{"top":20}"#),
+        ("position", r#""absolute""#),
+        ("inset", r#"{"top":5}"#),
+        ("width", "20"),
+        ("maxHeight", "10"),
+        ("alignSelf", r#""center""#),
+        ("justifySelf", r#""center""#),
+        ("flexGrow", "1"),
+        ("flexShrink", "0"),
+        ("flexBasis", "10"),
+        ("gridColumn", r#"{"start":1}"#),
+        ("gridRow", r#"{"start":1}"#),
+        ("gridArea", r#""a""#),
+    ] {
+        assert_eq!(
+            one(&cell(&format!(r#""{prop}":{value}"#))),
+            (
+                C::StyleNotApplicable,
+                format!("pages[0].children[0].rows[0].cells[0].style.{prop}")
+            ),
+            "{prop}"
+        );
+    }
+}
+
+#[test]
 fn widows_orphans_and_page_filters() {
     let ok = doc(
         r#"{"type":"text","pages":"notFirst","style":{"widows":2,"orphans":3},"runs":[{"text":"x","font":"Inter-Regular","size":10}]},

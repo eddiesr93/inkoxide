@@ -120,3 +120,45 @@ fn root_min_height_lets_flex_grow_fill_the_page() {
     assert_eq!(tree.nodes[0].geo.h, 300.0);
     assert_eq!(tree.nodes[3].geo.y, 290.0);
 }
+
+#[test]
+fn page_children_take_percentage_heights_of_the_page() {
+    let d = doc(
+        r#"{"type":"box","style":{"height":"50%"},"children":[{"type":"box","style":{"height":"50%"}}]},
+           {"type":"box","style":{"minHeight":"10%","maxHeight":"5%"}},
+           {"type":"box","style":{"height":10}}"#,
+    );
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 100.0, 400.0, &mut NoContent)
+        .unwrap();
+    let g = |i: usize| (tree.nodes[i].geo.y, tree.nodes[i].geo.h);
+    assert_eq!(g(1), (0.0, 200.0));
+    assert_eq!(g(4), (0.0, 100.0), "half of its parent");
+    assert_eq!(g(2), (200.0, 40.0), "minHeight wins over maxHeight");
+    assert_eq!(g(3).0, 240.0);
+    // Without a page height (a header or footer), they stay `auto`.
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 100.0, 0.0, &mut NoContent)
+        .unwrap();
+    assert_eq!(tree.nodes[1].geo.h, 0.0);
+}
+
+#[test]
+fn a_cell_height_is_a_minimum() {
+    let table = |height: u32| {
+        doc(&format!(
+            r#"{{"type":"table","columns":[{{"width":100}}],"rows":[
+                {{"cells":[{{"style":{{"height":{height}}},"children":[{{"type":"box","style":{{"height":30}}}}]}}]}},
+                {{"cells":[{{"children":[{{"type":"box","style":{{"height":5}}}}]}}]}}]}}"#
+        ))
+    };
+    // Root, table, two rows, two cells, a box in each cell.
+    let short = layout(&table(10), 100.0);
+    assert_eq!(short[2].3, 30.0, "the row grows to the content");
+    assert_eq!(short[3].1, 30.0);
+    assert_eq!(short[7].1, 30.0, "the next row starts below the content");
+    let tall = layout(&table(50), 100.0);
+    assert_eq!((tall[2].3, tall[4].3, tall[3].1), (50.0, 50.0, 50.0));
+}

@@ -27,7 +27,9 @@ INTRO = """# Document schema v1
 - **Units.** Every length is in PDF points (1/72 in). Percentages
   (`"50%"`) are allowed only where the type says `Length` or
   `LengthPercent`; they resolve against the containing block (width for
-  padding and horizontal properties, as in CSS).
+  padding and horizontal properties, as in CSS). Gaps resolve against the
+  box's own content box, and a percentage height needs a containing block
+  with a set height: the page content box, for a child of the page.
 - **Colours.** `[r, g, b, a]` floats in `[0, 1]`, DeviceRGB.
 - **Strictness.** Unknown properties are errors (`UNKNOWN_FIELD`), as are
   properties on the wrong node type (e.g. `runs` on a `box`) and text-only

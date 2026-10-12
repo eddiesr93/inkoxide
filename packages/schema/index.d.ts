@@ -37,7 +37,7 @@ export type Debug = boolean;
 export type Node =
   BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode;
 /**
- * Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto".
+ * Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto". A percentage height needs a containing block with a definite height, as in CSS: a child of the page takes it of the page content height; in a header or footer, or in a box whose height is not set, it is `auto`.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Length".
@@ -51,7 +51,7 @@ export type Length = number | Percent | 'auto';
  */
 export type Percent = string;
 /**
- * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%).
+ * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%). In `gap`, `rowGap` and `columnGap`, a percentage is of the box's own content box instead, as in CSS: a column gap of its width, a row gap of its height.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "LengthPercent".
@@ -391,6 +391,9 @@ export interface Style {
    * Sets both rowGap and columnGap; either of those, when present, wins.
    */
   gap?: LengthPercent;
+  /**
+   * A percentage is of the box's own content height, as in CSS. In a box whose height is not set, it is of the height of the content without the gaps, so it adds little: use points.
+   */
   rowGap?: LengthPercent;
   columnGap?: LengthPercent;
   width?: Length;
@@ -407,7 +410,7 @@ export interface Style {
   margin?: EdgesLength;
   position?: 'relative' | 'absolute';
   /**
-   * top/right/bottom/left offsets for positioned boxes.
+   * top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it.
    */
   inset?: EdgesLength;
   gridTemplateColumns?: TemplateTrack[];
@@ -490,7 +493,7 @@ export interface Style {
    */
   lang?: string;
   /**
-   * text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps.
+   * text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` expand a tab to the next multiple of 8 characters from the start of the line (CSS `tab-size: 8`).
    */
   whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
   /**
@@ -514,7 +517,7 @@ export interface Style {
    */
   verticalAlign?: 'top' | 'middle' | 'bottom';
   /**
-   * Tables only. `collapse`: adjacent cell borders merge (the wider wins). `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart.
+   * Tables only. `collapse`: adjacent cell borders merge into one, drawn in the winner's style and colour: the wider wins, and at equal widths solid wins over dashed and dashed over dotted. `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart.
    */
   borderCollapse?: 'collapse' | 'separate';
   /**
@@ -582,6 +585,9 @@ export interface Break {
    * `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole.
    */
   inside?: 'auto' | 'avoid';
+  /**
+   * Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: "page"` on a first child moves the box the same way.
+   */
   minPresenceAhead?: NonNegative;
   /**
    * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page.
@@ -730,6 +736,9 @@ export interface TableCell {
   debug?: Debug;
   colSpan?: number;
   rowSpan?: number;
+  /**
+   * The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`.
+   */
   style?: Style;
   children?: Node[];
 }

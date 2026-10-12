@@ -14,7 +14,10 @@
 //!   page). A break before a box's first child moves the box with it.
 //! - A node whose first unbreakable piece (its *head*) does not fit in the
 //!   rest of the page moves whole to the next page, so a box never leaves
-//!   just its top border/padding behind. `minPresenceAhead` raises the head.
+//!   just its top border/padding behind. `minPresenceAhead` raises the head,
+//!   measured from the node's top; a box's head includes its first child's.
+//!   A table's head is its header rows and first row group, or only the
+//!   first lines of a first row that splits.
 //! - `inside: avoid` nodes and row, grid, wrapping or reversed boxes move
 //!   whole when they fit on a page. Taller than a page, they split like
 //!   other content: a row or grid box band by band (children whose extents
@@ -405,6 +408,16 @@ impl Paginator<'_, '_, '_> {
                 };
                 let Rect { y: cy, .. } = g.content_box();
                 let first_body = t.groups.iter().find(|r| r.start >= t.header_rows);
+                // A first row taller than a page splits inside its cells
+                // (`split_table`): only the first line of each cell counts.
+                if let Some(r) = first_body.filter(|r| {
+                    r.len() == 1 && t.row_h[r.start] + t.header_height() > self.h + PAGED_EPS
+                }) {
+                    if let Some(row) = self.tree.children(i).nth(r.start) {
+                        let ry = self.tree.nodes[row as usize].geo.y;
+                        return (ry - g.y) + self.row_head(row);
+                    }
+                }
                 let end = first_body.map_or(t.row_y.len(), |r| r.end);
                 let bottom = if end == 0 {
                     0.0
@@ -435,7 +448,7 @@ impl Paginator<'_, '_, '_> {
                 match first {
                     Some(c) => {
                         let cy = self.tree.nodes[c as usize].geo.y;
-                        (cy - g.y) + self.head(c)
+                        (cy - g.y) + self.need(c)
                     }
                     None => g.h,
                 }
@@ -461,6 +474,15 @@ impl Paginator<'_, '_, '_> {
             }
         }
         g.h
+    }
+
+    /// Room node `i` needs from its top to stay on the page: its head,
+    /// or its `minPresenceAhead` when taller.
+    fn need(&mut self, i: NodeIdx) -> f32 {
+        let mpa = self.tree.nodes[i as usize]
+            .node
+            .and_then(|n| n.brk.min_presence_ahead);
+        self.head(i).max(mpa.unwrap_or(0.0))
     }
 
     /// Children that take part in pagination (not absolutely positioned,
@@ -523,7 +545,7 @@ impl Paginator<'_, '_, '_> {
         }
 
         let top = g.y + self.shift;
-        let need = self.head(i).max(node.brk.min_presence_ahead.unwrap_or(0.0));
+        let need = self.need(i);
         if top + need > self.page_end(top) + PAGED_EPS {
             self.push(top);
         }

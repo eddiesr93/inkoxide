@@ -226,7 +226,8 @@ fn edges(r: taffy::geometry::Rect<f32>) -> Edges<f32> {
 /// How the root of a subtree layout is sized.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum RootMode {
-    /// The synthetic flow root: a column of fixed width.
+    /// The synthetic flow root: a column of fixed width, at least
+    /// `min_height` tall (the page content height; 0 for a header or footer).
     Flow { width: f32, min_height: f32 },
     /// A table cell.
     Cell(CellSpace),
@@ -321,7 +322,14 @@ impl<'m> LayoutCtx<'m> {
             let id = if k == 0 {
                 taffy.new_with_children(root_style(ln, mode), kids)
             } else {
-                let s = style::to_taffy(ln.style());
+                let s = match mode {
+                    // The page content box is a page child's containing
+                    // block: its percentage heights are of the page.
+                    RootMode::Flow { min_height, .. } if k <= list[0].2 && min_height > 0.0 => {
+                        style::to_taffy_on_page(ln.style(), min_height)
+                    }
+                    _ => style::to_taffy(ln.style()),
+                };
                 if len == 0 {
                     taffy.new_leaf_with_context(s, idx)
                 } else {
@@ -516,6 +524,8 @@ fn root_style(ln: &LNode<'_>, mode: RootMode) -> taffy::Style {
                 AvailableSpace::Definite(w) => Dimension::length(w),
                 _ => Dimension::auto(),
             };
+            s.size.height = Dimension::auto();
+            s.min_size.height = style::cell_min_height(ln.style());
             if let Some(h) = height {
                 s.size.height = Dimension::length(h);
                 s.min_size.height = LengthPercentageAuto::length(h);

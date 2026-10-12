@@ -43,6 +43,18 @@ fn is_mark(c: char) -> bool {
     matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
 }
 
+/// Tab stops of `pre` and `pre-wrap` text, in characters (CSS `tab-size`).
+const TAB_SIZE: usize = 8;
+
+/// White space that collapses in `normal`, `nowrap` and `pre-line`: the
+/// space, tab and line-break characters CSS collapses, and the other
+/// control and separator characters, which have no glyph of their own.
+/// Other spaces (thin, em, figure, ideographic, no-break, …) keep their
+/// width and their line-breaking class.
+fn collapses(c: char) -> bool {
+    c.is_whitespace() && (c.is_ascii() || c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+}
+
 /// Builds the paragraph text from the runs. Returns the text and, per run,
 /// its byte range in it.
 fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
@@ -51,6 +63,8 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     // In collapsing modes: whether the text so far ends in a space or a
     // line start (true initially: leading space is dropped).
     let mut last_was_space = true;
+    // In preserving modes: characters since the start of the line.
+    let mut column = 0usize;
     for run in opts.runs {
         let start = text.len();
         let src: &str = match run.placeholder {
@@ -62,8 +76,20 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
                 for c in src.chars() {
                     match c {
                         '\r' => {}
-                        '\t' => text.push_str("    "),
-                        _ => text.push(c),
+                        '\t' => {
+                            // To the next tab stop.
+                            let n = TAB_SIZE - column % TAB_SIZE;
+                            text.extend(std::iter::repeat_n(' ', n));
+                            column += n;
+                        }
+                        '\n' => {
+                            text.push(c);
+                            column = 0;
+                        }
+                        _ => {
+                            text.push(c);
+                            column += 1;
+                        }
                     }
                 }
             }
@@ -77,7 +103,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
                         }
                         text.push('\n');
                         last_was_space = true;
-                    } else if c.is_whitespace() && c != '\u{00A0}' && c != '\u{202F}' {
+                    } else if collapses(c) {
                         // A collapsed space stays in the run where it
                         // first occurs (matters for decorations).
                         if !last_was_space {
@@ -658,7 +684,7 @@ mod tests {
     #[test]
     fn pre_keeps_spaces() {
         let runs = [run(" a\tb\r\n")];
-        assert_eq!(text_of(&runs, WhiteSpace::Pre), " a    b\n");
+        assert_eq!(text_of(&runs, WhiteSpace::Pre), " a      b\n");
     }
 
     #[test]
@@ -666,6 +692,32 @@ mod tests {
         let runs = [run("a  b\tc\n d")];
         assert_eq!(text_of(&runs, WhiteSpace::PreWrap), "a  b    c\n d");
         assert_eq!(text_of(&runs, WhiteSpace::PreLine), "a b c\nd");
+    }
+
+    #[test]
+    fn tabs_advance_to_the_next_tab_stop() {
+        // Columns of eight characters from the start of each line, across runs.
+        let runs = [run("a\tx\nabc\tx\nabcdefghi\tx\n"), run("ab"), run("\tx")];
+        assert_eq!(
+            text_of(&runs, WhiteSpace::Pre),
+            format!(
+                "a{}x\nabc{}x\nabcdefghi{}x\nab{}x",
+                " ".repeat(7),
+                " ".repeat(5),
+                " ".repeat(7),
+                " ".repeat(6)
+            )
+        );
+    }
+
+    #[test]
+    fn only_spaces_tabs_and_breaks_collapse() {
+        // Thin, em, figure and ideographic spaces keep their own width.
+        let runs = [run("A\u{2009}B\u{2003}C\u{2007}D\u{3000}E \t\r F\u{000C}G")];
+        assert_eq!(
+            text_of(&runs, WhiteSpace::Normal),
+            "A\u{2009}B\u{2003}C\u{2007}D\u{3000}E F G"
+        );
     }
 
     #[test]

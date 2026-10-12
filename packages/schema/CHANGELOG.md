@@ -37,6 +37,26 @@ version 2.
   positioned node: the engine accepted them and did nothing. Forced breaks elsewhere work at any
   depth and inside `inside: "avoid"`, and one at the end of the flow adds no page. `Break`
   documents how rows, grids and content taller than a page split.
+- **Table cells:** `TableCell.style` says how a cell is sized. A cell's `height` is a minimum
+  (the row grows to fit the content) instead of a fixed height that let the content overlap the
+  next row. The styles a cell ignored are `STYLE_NOT_APPLICABLE`: `width`, `maxHeight`,
+  `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`,
+  `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity` and `rotate`, as
+  `transform`, `transformOrigin` and `zIndex` already were.
+- **Collapsed borders:** a cell's `borderStyle` applies in a table with `borderCollapse:
+  "collapse"`; dashed and dotted borders were drawn solid. `Style.borderCollapse` says how two
+  borders that meet are merged: the wider wins, then solid over dashed over dotted.
+- **Pagination:** `Break.minPresenceAhead` is described: it counts from the node's top and
+  includes its height. On a box's first in-flow child, it and `break.before: "page"` (and a
+  `pageBreak`) move the box too, so the box no longer leaves its empty top on the page before.
+  A table whose first row is taller than a page splits that row where the table starts, instead
+  of moving to a new page. `inset` says that relative offsets count in pagination.
+- **Lengths:** a percentage height of a page child is of the page content height; it was
+  `auto`. `Length` and `LengthPercent` say what percentages resolve against: gaps against the
+  box's own content box, as in CSS.
+- **Text:** `whiteSpace` collapses only spaces, tabs and line breaks, as in CSS; other space
+  characters keep their width (they became ordinary spaces). Tabs in `pre` and `pre-wrap`
+  advance to the next multiple of 8 characters instead of becoming four spaces.
 
 ### Documentation
 
