@@ -14,9 +14,9 @@ use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, ColumnWidth,
-    Display, Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind,
-    ObjectPosition, OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth,
-    TrackSize, TransformOp, SCHEMA_VERSION,
+    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, ObjectPosition,
+    OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
+    SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore, InputFormat};
 
@@ -353,26 +353,14 @@ const MAX_LINK: usize = 2048;
 const MAX_ID: usize = 256;
 
 /// Ids of the nodes that get a destination: flowing content that is
-/// displayed (not headers or footers, not under `display: none`).
-fn collect_anchors<'a>(nodes: &'a [Node], out: &mut HashSet<&'a str>) {
-    for n in nodes {
-        if n.style.display == Some(Display::None) {
-            continue;
-        }
-        if let Some(id) = &n.id {
-            out.insert(id);
-        }
-        match &n.kind {
-            NodeKind::Box { children } => collect_anchors(children, out),
-            NodeKind::Table(t) => {
-                for c in t.rows.iter().flat_map(|r| &r.cells) {
-                    if c.style.display != Some(Display::None) {
-                        collect_anchors(&c.children, out);
-                    }
-                }
-            }
-            _ => {}
-        }
+/// displayed (not headers or footers, not under `display: none`). `node`
+/// is displayed.
+fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
+    if let Some(id) = &node.id {
+        out.insert(id);
+    }
+    for c in node.shown_children() {
+        collect_anchors(c, out);
     }
 }
 
@@ -887,8 +875,10 @@ impl<'a> Checker<'a> {
             let doc = self.doc;
             let anchors = self.anchors.get_or_insert_with(|| {
                 let mut out = HashSet::new();
-                for p in &doc.pages {
-                    collect_anchors(&p.children, &mut out);
+                for n in doc.pages.iter().flat_map(|p| &p.children) {
+                    if !n.hidden() {
+                        collect_anchors(n, &mut out);
+                    }
                 }
                 out
             });

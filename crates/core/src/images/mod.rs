@@ -158,15 +158,7 @@ impl ImageSet {
                     };
                     found.push((node_key(n), data));
                 }
-                NodeKind::Box { children } => stack.extend(children.iter()),
-                NodeKind::Table(t) => {
-                    for r in &t.rows {
-                        for c in &r.cells {
-                            stack.extend(c.children.iter());
-                        }
-                    }
-                }
-                _ => {}
+                _ => stack.extend(n.children()),
             }
         }
 

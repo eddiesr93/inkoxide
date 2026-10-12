@@ -321,27 +321,14 @@ fn subtree_marks<'d>(
 
 /// Text nodes under `node`, in document order.
 fn collect_texts<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
-    if node.style.display == Some(Display::None) {
+    if node.hidden() {
         return;
     }
-    match &node.kind {
-        NodeKind::Text { .. } => out.push(node),
-        NodeKind::Box { children } => {
-            for c in children {
-                collect_texts(c, out);
-            }
-        }
-        NodeKind::Table(t) => {
-            for c in t.rows.iter().flat_map(|r| &r.cells) {
-                if c.style.display == Some(Display::None) {
-                    continue;
-                }
-                for n in &c.children {
-                    collect_texts(n, out);
-                }
-            }
-        }
-        _ => {}
+    if let NodeKind::Text { .. } = node.kind {
+        out.push(node);
+    }
+    for c in node.shown_children() {
+        collect_texts(c, out);
     }
 }
 
