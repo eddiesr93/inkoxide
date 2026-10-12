@@ -14,7 +14,7 @@ import {
 
 import { readLocalImage } from './local.ts';
 import { timerMs } from './policy.ts';
-import { fetchImage } from './remote.ts';
+import { fetchImage, REMOTE_IMAGES_VARIABLE } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
 
 /** Where images may come from, and how long a function or promise `src` may take. */
@@ -132,10 +132,7 @@ async function fetchAllowed(
 ): Promise<Uint8Array> {
   const url = typeof src === 'string' ? src : src.uri;
   if (!policy || !remoteAllowed(url, policy)) {
-    throw new RenderError(
-      'TEMPLATE_ERROR',
-      remoteRefused(`src="${url}"`, 'the INKOXIDE_REMOTE_IMAGES variable'),
-    );
+    throw new RenderError('TEMPLATE_ERROR', remoteRefused(`src="${url}"`, REMOTE_IMAGES_VARIABLE));
   }
   return fetchImage(src, policy);
 }

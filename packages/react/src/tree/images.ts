@@ -145,6 +145,8 @@ export interface ImageTableOptions {
   /** The id table shared with the tree's rebuilds. */
   generated: ImageIds;
   remoteImages: RemoteImagePolicy | undefined;
+  /** Where else the caller reads the allowlist from, for `remoteRefused`. */
+  remoteElsewhere?: string | undefined;
   /** File paths in `src` are images to load; otherwise they are ids. */
   localImages: boolean | undefined;
 }
@@ -184,7 +186,9 @@ export class ImageTable {
         if (!this.opts.localImages) return { src: s.src };
         return { src: this.pendingId(`file\0${s.src}`, 'file', () => ({ kind: 'file', path: s.src })) };
       case 'url': {
-        if (!remoteAllowed(s.src, this.opts.remoteImages)) fail(remoteRefused(`src="${s.src}"`));
+        if (!remoteAllowed(s.src, this.opts.remoteImages)) {
+          fail(remoteRefused(`src="${s.src}"`, this.opts.remoteElsewhere));
+        }
         const id = this.opts.generated.of(`remote\0${s.src}`, 'remote');
         this.remote[id] = s.src;
         return { src: id };
@@ -209,7 +213,7 @@ export class ImageTable {
           fail('<Image src={{ uri }}>: a request needs a uri.');
         }
         if (!remoteAllowed(request.uri, this.opts.remoteImages)) {
-          fail(remoteRefused(`src={{ uri: "${request.uri}" }}`));
+          fail(remoteRefused(`src={{ uri: "${request.uri}" }}`, this.opts.remoteElsewhere));
         }
         const key = requestKey(request);
         return {

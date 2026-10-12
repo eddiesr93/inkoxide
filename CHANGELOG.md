@@ -215,7 +215,7 @@ All notable changes to the packages in this repository. The format follows
   directly in a `Table`, `Row` or `Document` says where it belongs (a `Cell`, a `Page`) instead
   of suggesting a `Text`, which is not allowed there either. The remote-image error of
   `@inkoxide/react` names its own option, `remoteImages.allow`, and only `@inkoxide/render` adds
-  the `INKOXIDE_REMOTE_IMAGES` variable.
+  the `INKOXIDE_REMOTE_IMAGES` variable, for every refused URL or request.
 - Percentage padding on a `Page` (`style={{ padding: '10%' }}`, `p-[10%]`) is a share of the
   page width on every side, as in CSS, instead of being dropped, which also left the header and
   footer unaligned. A percentage minimum height on a `Row` (`min-h-[10%]`), which has no table
@@ -324,7 +324,9 @@ guide documents, and the template helpers moved to `@inkoxide/render/templates` 
 - `@inkoxide/tailwind` exports the CSS value helpers that `@inkoxide/react` shares with it:
   `PT_PER_UNIT`, `parseFlex`, `round`, `splitTopLevel`, `BORDER_STYLES` and `OBJECT_FITS`.
 - `@inkoxide/react` exports `imageSource` and its `ImageSource` type, `remoteRefused` and
-  `innermostComponent`, which `@inkoxide/render` uses. `HOST_NAME` is typed by host type
+  `innermostComponent`, which `@inkoxide/render` uses, and takes the tree option
+  `remoteImagesElsewhere`, another place the caller reads the remote allowlist from, which the
+  error for a refused URL names. `HOST_NAME` is typed by host type
   (`Record<HostType, string>`).
 
 ### Changed

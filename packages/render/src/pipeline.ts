@@ -27,7 +27,7 @@ import { fontsPending, loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
 import { DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
-import { remotePolicy } from './remote.ts';
+import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
@@ -150,9 +150,15 @@ function imagePolicies(opts: RenderOpts): ImagePolicies {
 }
 
 /** What tree building needs to know of the image policies. */
-function treeImageOptions(opts: RenderOpts): Pick<TreeOptions, 'remoteImages' | 'localImages'> {
+function treeImageOptions(
+  opts: RenderOpts,
+): Pick<TreeOptions, 'remoteImages' | 'remoteImagesElsewhere' | 'localImages'> {
   const { remote, local } = imagePolicies(opts);
-  return { remoteImages: remote, localImages: local !== undefined };
+  return {
+    remoteImages: remote,
+    remoteImagesElsewhere: REMOTE_IMAGES_VARIABLE,
+    localImages: local !== undefined,
+  };
 }
 
 /** Most passes for `render` props: each one renders with the page count of the previous. */
