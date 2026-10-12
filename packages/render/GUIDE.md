@@ -677,9 +677,12 @@ data as `data`, and `images` are its static images by id (a logo). An image pass
 options under the same id replaces the template's.
 
 - **`generate(template, data, options?)`** checks `data`, renders and resolves to
-  `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, schemaVersion,
+  `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, images, schemaVersion,
   engineVersion }`. `timings` has the milliseconds of each stage: `reactMs`, `treeMs`,
-  `validateMs`, `engineMs`, `fetchMs` and `totalMs`. The options are those of `renderToBuffer`.
+  `validateMs`, `engineMs`, `fetchMs` and `totalMs`. `document` is the tree that was rendered,
+  and `images` the images it was rendered with, by id: the tree names an image given as bytes,
+  a file, a URL or a function by an id it made up (`image-0`, `remote-0`), and `images` has the
+  bytes behind those ids. The options are those of `renderToBuffer`.
 - **`parseData(template, data)`** only checks the data, and returns it parsed, with the
   schema's defaults applied.
 - **`renderTree(template, data, options?)`** builds the document tree without rendering it, for
@@ -688,10 +691,11 @@ options under the same id replaces the template's.
   after `Font.register`. Otherwise it throws an `INTERNAL` RenderError that says so.
   `renderSettled(tree, images, options?)` renders it, and renders again with the page count
   while `render` props change it; `images` are more images by id (`{}` when there are none), and
-  it resolves to `{ pdf, pages, passes, tree, fetchMs }`. Pass both the same options.
+  it resolves to `{ pdf, pages, passes, tree, images, fetchMs }`. Pass both the same options.
 - **`renderDocument(document, images?, options?)`** renders a document tree that is already
-  built, such as a stored `result.document` with the images it names, and resolves to
-  `{ pdf, pages, engineMs }`.
+  built, such as a stored `result.document`, and resolves to `{ pdf, pages, engineMs }`. The
+  document names its images by id, so pass their bytes in `images` or the `images` option
+  (`renderDocument(result.document, result.images)`); the other image options do not apply.
 
 Data that does not match the schema fails with `INVALID_DATA` (400) before anything renders. Its
 `issues` list every problem as `{ path, message, code }`, with readable messages:

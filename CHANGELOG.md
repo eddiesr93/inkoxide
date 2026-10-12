@@ -26,6 +26,12 @@ All notable changes to the packages in this repository. The format follows
   call `await init()`, instead of failing with `No fonts are registered`, pointing to functions
   the package does not export, or building a tree without those fonts. `renderSettled` runs
   `init()` itself. The guide says that `renderTree` needs `init()` first.
+- `@inkoxide/render/templates`: `renderDocument` takes images from the `images` option as well as
+  from its `images` argument, which it ignored. `generate` resolves with `images`, the images the
+  document was rendered with by id (and `renderSettled` with the same), so a stored
+  `result.document` whose images were bytes, files, URLs or functions renders again with
+  `renderDocument(result.document, result.images)`; until now the ids the tree made up for them
+  (`image-0`) failed with `UNKNOWN_IMAGE`.
 
 ## 0.5.0 - 2026-10-12
 

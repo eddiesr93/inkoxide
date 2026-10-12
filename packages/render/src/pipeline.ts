@@ -250,6 +250,7 @@ export async function generate<S extends z.ZodType>(
     fonts: tree.fonts,
     warnings: tree.warnings,
     document: tree.document,
+    images: settled.images,
   };
 }
 
@@ -257,14 +258,21 @@ export async function generate<S extends z.ZodType>(
  * Renders a tree; when it uses `render` props, renders again with the page count until the count
  * stops changing (at most MAX_PASSES renders). Before each render, loads the images of the tree it
  * does not have yet (a rebuild can add some) under the policies of `opts`. `images` are images by
- * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, and the
- * time spent loading images.
+ * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, the images
+ * it was rendered with by id, and the time spent loading images.
  */
 export async function renderSettled(
   first: TreeResult,
   images: Record<string, Uint8Array>,
   opts: RenderOpts = {},
-): Promise<{ tree: TreeResult; pdf: Uint8Array; pages: number; passes: number; fetchMs: number }> {
+): Promise<{
+  tree: TreeResult;
+  pdf: Uint8Array;
+  pages: number;
+  passes: number;
+  images: Record<string, Uint8Array>;
+  fetchMs: number;
+}> {
   await init();
   const registered = { ...images, ...opts.images };
   const policies = imagePolicies(opts);
@@ -303,7 +311,7 @@ export async function renderSettled(
       `render props did not settle on a page count after ${MAX_PASSES} passes; page numbers they show may be off.`,
     );
   }
-  return { tree, pdf, pages, passes, fetchMs };
+  return { tree, pdf, pages, passes, images: all, fetchMs };
 }
 
 /**
@@ -419,7 +427,11 @@ function componentName(element: ReactElement): string {
   return typeof t === 'string' ? t : (t.displayName ?? t.name ?? 'document');
 }
 
-/** Renders an already-built document (fixtures, benchmarks). */
+/**
+ * Renders an already-built document, such as a stored `result.document` with `result.images`.
+ * Its images are ids: `images` and `opts.images` (which wins) provide them, and the image
+ * policies of `opts` do not apply.
+ */
 export async function renderDocument(
   doc: Document,
   images: Record<string, Uint8Array> = {},
@@ -427,6 +439,6 @@ export async function renderDocument(
 ): Promise<{ pdf: Uint8Array; pages: number; engineMs: number }> {
   await init();
   const t0 = performance.now();
-  const pdf = await renderPdf(doc, opts, images);
+  const pdf = await renderPdf(doc, opts, { ...images, ...opts.images });
   return { pdf, pages: countPages(pdf), engineMs: performance.now() - t0 };
 }

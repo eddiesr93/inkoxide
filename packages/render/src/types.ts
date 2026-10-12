@@ -81,6 +81,12 @@ export interface RenderResult {
   warnings: string[];
   /** The document tree that was rendered. */
   document: Document;
+  /**
+   * The images `document` was rendered with, by id: the bytes behind the ids the tree generated
+   * (`image-0`, `remote-0`, …) and the images passed in. With `document`, they render it again
+   * (`renderDocument(result.document, result.images)`).
+   */
+  images: Record<string, Uint8Array>;
 }
 
 export type RenderErrorCode =
