@@ -220,6 +220,18 @@ describe('paint styles', () => {
       'Invalid style prop on <View>: flex -1: grow and shrink cannot be negative',
     ]);
     expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');
+    for (const key of ['flexGrow', 'flexShrink'] as const) {
+      expect(thrown(() => tree(<View style={{ [key]: -1 }} />)).message).toBe(
+        `Invalid style prop on <View>: ${key} -1: cannot be negative`,
+      );
+      expect(thrown(() => tree(<View style={{ [key]: '30%' as never }} />)).message).toBe(
+        `Invalid style prop on <View>: ${key} "30%" is not a number`,
+      );
+    }
+    expect(first<BoxNode>(tree(<View style={{ flexGrow: 0, flexShrink: 2 }} />)).style).toEqual({
+      flexGrow: 0,
+      flexShrink: 2,
+    });
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
     );

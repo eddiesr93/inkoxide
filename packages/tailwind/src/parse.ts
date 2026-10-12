@@ -151,10 +151,10 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       );
       return;
     case 'flex-grow':
-      s.flexGrow = r.num(v);
+      s.flexGrow = r.factor(v);
       return;
     case 'flex-shrink':
-      s.flexShrink = r.num(v);
+      s.flexShrink = r.factor(v);
       return;
     case 'flex-basis':
       s.flexBasis = r.len(v);

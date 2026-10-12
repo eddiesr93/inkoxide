@@ -190,6 +190,18 @@ describe('grid placement', () => {
   });
 });
 
+describe('flex-grow and flex-shrink', () => {
+  it('take a number that is not negative, as in CSS', () => {
+    expect(tw('grow-[2] shrink-[0.5]')).toEqual({ flexGrow: 2, flexShrink: 0.5 });
+    for (const bad of ['grow-[30%]', 'shrink-[30%]']) {
+      expect(errorOf(bad).reason, bad).toMatch(/^flex-(grow|shrink): 30% \(expected a number\)$/);
+    }
+    for (const bad of ['grow-[-1]', 'shrink-[-1]']) {
+      expect(errorOf(bad).reason, bad).toMatch(/^flex-(grow|shrink): -1 \(cannot be negative\)$/);
+    }
+  });
+});
+
 describe('the flex shorthand', () => {
   it('reads a lone length as the basis, as CSS and the style prop do', () => {
     expect(tw('flex-[30%]')).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: '30%' });

@@ -179,8 +179,9 @@ All notable changes to the packages in this repository. The format follows
   silently. The guide lists what SVG drawing does not support.
 - **Grid placement:** a `gridColumn` or `gridRow` with `start`, `end` and `span` runs from
   `start` to `end`, as in CSS; the engine used `start` and `span` and ignored `end`. In Tailwind,
-  a span after the slash is kept (`col-[2/span_3]` was one column at line 2), and
-  `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns.
+  a span after the slash is kept (`col-[2/span_3]` was one column at line 2),
+  `col-span-3 col-start-1 col-end-3` is 1 / 3, not three columns, and a span at the end is
+  ignored after one at the start (`col-start-[span_2] col-end-[span_3]` is two columns).
 - **Tailwind themes:** `initTailwind({ css })` run alongside `init()` or another `initTailwind()`
   keeps its theme; whichever load finished last used to win, so the default theme could replace
   it.
@@ -229,7 +230,8 @@ All notable changes to the packages in this repository. The format follows
   the text by the default rules instead of failing with an internal error.
 - `truncate`, `line-clamp-*`, `maxLines` and `ellipsis` on a `Page`, `Row` or `Spacer` are a
   template error, as on other elements, instead of doing nothing; a negative numeric `flex`
-  (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`.
+  (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`, and so is a
+  negative or non-numeric `flexGrow` or `flexShrink`.
 - `ClipPath` and `Defs` have exported props types, `ClipPathProps` and `DefsProps` (also from
   `@inkoxide/render`), and `ClipPath` takes `clipPathUnits`.
 - `@inkoxide/render`: a remote image that times out or drops its connection after the headers

@@ -631,6 +631,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   } = p;
   const out: Record<string, unknown> = { ...rest };
   if (fontWeight !== undefined) out.fontWeight = weightOf(fontWeight);
+  for (const k of ['flexGrow', 'flexShrink'] as const) if (out[k] !== undefined) checkFactor(k, out[k]);
   if (flex !== undefined) {
     const [grow, shrink, basis] = flexShorthand(flex, units);
     out.flexGrow ??= grow;
@@ -847,6 +848,12 @@ function borderShorthand(
     style: (style ?? 'solid') as BorderStyle,
     color: color ?? 'currentColor',
   };
+}
+
+/** `flexGrow` or `flexShrink`: a number that is not negative, as `flex` takes them. */
+function checkFactor(key: string, v: unknown): void {
+  if (typeof v !== 'number') throw new Error(`${key} ${JSON.stringify(v)} is not a number`);
+  if (v < 0) throw new Error(`${key} ${v}: cannot be negative`);
 }
 
 /** CSS `flex`: a number is `n 1 0%`; strings are read by `parseFlex`, with plain numbers for grow and shrink. */
