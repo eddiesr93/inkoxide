@@ -162,20 +162,30 @@ fn page_children_take_percentage_heights_of_the_page() {
 
 #[test]
 fn a_cell_height_is_a_minimum() {
-    let table = |height: u32| {
+    let table = |prop: &str, height: u32| {
         doc(&format!(
             r#"{{"type":"table","columns":[{{"width":100}}],"rows":[
-                {{"cells":[{{"style":{{"height":{height}}},"children":[{{"type":"box","style":{{"height":30}}}}]}}]}},
+                {{"cells":[{{"style":{{"{prop}":{height}}},"children":[{{"type":"box","style":{{"height":30}}}}]}}]}},
                 {{"cells":[{{"children":[{{"type":"box","style":{{"height":5}}}}]}}]}}]}}"#
         ))
     };
-    // Root, table, two rows, two cells, a box in each cell.
-    let short = layout(&table(10), 100.0);
-    assert_eq!(short[2].3, 30.0, "the row grows to the content");
-    assert_eq!(short[3].1, 30.0);
-    assert_eq!(short[7].1, 30.0, "the next row starts below the content");
-    let tall = layout(&table(50), 100.0);
-    assert_eq!((tall[2].3, tall[4].3, tall[3].1), (50.0, 50.0, 50.0));
+    // `minHeight` is the same minimum.
+    for prop in ["height", "minHeight"] {
+        // Root, table, two rows, two cells, a box in each cell.
+        let short = layout(&table(prop, 10), 100.0);
+        assert_eq!(short[2].3, 30.0, "{prop}: the row grows to the content");
+        assert_eq!(short[3].1, 30.0, "{prop}");
+        assert_eq!(
+            short[7].1, 30.0,
+            "{prop}: the next row starts below the content"
+        );
+        let tall = layout(&table(prop, 50), 100.0);
+        assert_eq!(
+            (tall[2].3, tall[4].3, tall[3].1),
+            (50.0, 50.0, 50.0),
+            "{prop}"
+        );
+    }
 }
 
 /// The closed-form cell layout (layout/fast.rs) must match Taffy exactly.

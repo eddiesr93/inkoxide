@@ -39,10 +39,11 @@ version 2.
   documents how rows, grids and content taller than a page split.
 - **Table cells:** `TableCell.style` says how a cell is sized. A cell's `height` is a minimum
   (the row grows to fit the content) instead of a fixed height that let the content overlap the
-  next row. The styles a cell ignored are `STYLE_NOT_APPLICABLE`: `width`, `maxHeight`,
-  `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`,
-  `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity` and `rotate`, as
-  `transform`, `transformOrigin` and `zIndex` already were.
+  next row. The styles a cell ignored or misapplied are `STYLE_NOT_APPLICABLE`: `width`,
+  `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`,
+  `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`,
+  `overflow`, `opacity` and `rotate`, as `transform`, `transformOrigin` and `zIndex` already
+  were.
 - **Collapsed borders:** a cell's `borderStyle` applies in a table with `borderCollapse:
   "collapse"`; dashed and dotted borders were drawn solid. `Style.borderCollapse` says how two
   borders that meet are merged: the wider wins, then solid over dashed over dotted.
@@ -56,7 +57,7 @@ version 2.
   box's own content box, as in CSS.
 - **Text:** `whiteSpace` collapses only spaces, tabs and line breaks, as in CSS; other space
   characters keep their width (they became ordinary spaces). Tabs in `pre` and `pre-wrap`
-  advance to the next multiple of 8 characters instead of becoming four spaces.
+  advance to the next tab stop, 8 spaces of the font apart, instead of becoming four spaces.
 - **`GridPlacement`** with `start`, `end` and `span` places the item between `start` and
   `end`, and ignores `span`, as CSS does when both lines are set after a span. The engine used
   `start` and `span` and ignored `end`. The description also says that `span` can go with `end`

@@ -493,7 +493,7 @@ export interface Style {
    */
   lang?: string;
   /**
-   * text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` expand a tab to the next multiple of 8 characters from the start of the line (CSS `tab-size: 8`).
+   * text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` advance a tab to the next tab stop (CSS `tab-size: 8`): stops are 8 spaces of the tab's font apart, from the start of the line (a line `pre-wrap` wraps keeps the stops of the line it continues), and a tab narrower than half a `0` goes on to the next stop.
    */
   whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
   /**
@@ -737,7 +737,7 @@ export interface TableCell {
   colSpan?: number;
   rowSpan?: number;
   /**
-   * The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`.
+   * The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`.
    */
   style?: Style;
   children?: Node[];

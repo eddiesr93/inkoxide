@@ -878,6 +878,8 @@ fn box_placement_and_effects_do_not_apply_to_cells() {
         ("position", r#""absolute""#),
         ("inset", r#"{"top":5}"#),
         ("width", "20"),
+        ("minWidth", "200"),
+        ("maxWidth", "20"),
         ("maxHeight", "10"),
         ("alignSelf", r#""center""#),
         ("justifySelf", r#""center""#),

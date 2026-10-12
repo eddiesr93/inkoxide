@@ -12,7 +12,7 @@ use unicode_linebreak::{linebreaks, BreakOpportunity};
 use super::hyphen::Hyphenator;
 use super::{
     BreakKind, BreakPoint, Glyph, PageNumbers, Para, Prepared, Segment, GLYPH_INVISIBLE,
-    GLYPH_SPACE,
+    GLYPH_SPACE, GLYPH_TAB,
 };
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::schema::{Direction, TextRun, WhiteSpace};
@@ -44,8 +44,8 @@ fn is_mark(c: char) -> bool {
     matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
 }
 
-/// Tab stops of `pre` and `pre-wrap` text, in characters (CSS `tab-size`).
-const TAB_SIZE: usize = 8;
+/// Tab stops of `pre` and `pre-wrap` text, in spaces (CSS `tab-size`).
+const TAB_SIZE: f32 = 8.0;
 
 /// White space that collapses in `normal`, `nowrap` and `pre-line`: the
 /// space, tab and line-break characters CSS collapses, and the other
@@ -64,8 +64,6 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     // In collapsing modes: whether the text so far ends in a space or a
     // line start (true initially: leading space is dropped).
     let mut last_was_space = true;
-    // In preserving modes: characters since the start of the line.
-    let mut column = 0usize;
     for run in opts.runs {
         let start = text.len();
         let src: &str = match run.placeholder {
@@ -74,25 +72,9 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
         };
         match opts.white_space {
             WhiteSpace::Pre | WhiteSpace::PreWrap => {
-                for c in src.chars() {
-                    match c {
-                        '\r' => {}
-                        '\t' => {
-                            // To the next tab stop.
-                            let n = TAB_SIZE - column % TAB_SIZE;
-                            text.extend(std::iter::repeat_n(' ', n));
-                            column += n;
-                        }
-                        '\n' => {
-                            text.push(c);
-                            column = 0;
-                        }
-                        _ => {
-                            text.push(c);
-                            column += 1;
-                        }
-                    }
-                }
+                // Tabs stay: shaping gives them the advance to the next
+                // tab stop (`place_tabs`).
+                text.extend(src.chars().filter(|&c| c != '\r'));
             }
             WhiteSpace::Normal | WhiteSpace::NoWrap | WhiteSpace::PreLine => {
                 for c in src.chars() {
@@ -362,7 +344,7 @@ impl<'a> ShapeCache<'a> {
 }
 
 /// Splits text into shaping units: maximal runs of non-spaces, and single
-/// spaces.
+/// spaces and tabs.
 fn words(s: &str) -> impl Iterator<Item = (usize, &str)> {
     let b = s.as_bytes();
     let mut i = 0;
@@ -371,10 +353,10 @@ fn words(s: &str) -> impl Iterator<Item = (usize, &str)> {
             return None;
         }
         let start = i;
-        if b[i] == b' ' {
+        if matches!(b[i], b' ' | b'\t') {
             i += 1;
         } else {
-            while i < b.len() && b[i] != b' ' {
+            while i < b.len() && !matches!(b[i], b' ' | b'\t') {
                 i += 1;
             }
         }
@@ -414,8 +396,11 @@ pub(crate) fn prepare(
                 if c == ' ' || c == '\u{00A0}' {
                     flags |= GLYPH_SPACE;
                 }
-                if c == '\n' || c == SHY || (c.is_control() && c != '\t') {
+                if c == '\n' || c == SHY || c.is_control() {
                     flags |= GLYPH_INVISIBLE;
+                }
+                if c == '\t' {
+                    flags |= GLYPH_TAB;
                 }
                 // Letter spacing goes after the last glyph of each cluster.
                 let cluster_end = shaped.get(k + 1).is_none_or(|n| n.cluster != g.cluster);
@@ -464,6 +449,8 @@ pub(crate) fn prepare(
         }
     }
 
+    place_tabs(&mut glyphs, &segments, &breaks, opts.runs, fonts);
+
     Prepared {
         #[cfg(test)]
         text,
@@ -473,6 +460,56 @@ pub(crate) fn prepare(
         rtl,
         bidi,
         placeholders: opts.runs.iter().any(|r| r.placeholder.is_some()),
+    }
+}
+
+/// Gives each tab the advance to the next tab stop, as CSS `tab-size: 8`:
+/// stops are 8 spaces of the tab's run font (letter spacing included)
+/// apart, from the start of the line, and a tab that would advance less
+/// than half a `0` goes on to the stop after. Lines start at forced
+/// breaks: a line `pre-wrap` wraps keeps the stops of the line it
+/// continues.
+fn place_tabs(
+    glyphs: &mut [Glyph],
+    segments: &[Segment],
+    breaks: &[BreakPoint],
+    runs: &[TextRun],
+    fonts: &FontSet<'_>,
+) {
+    if !glyphs.iter().any(Glyph::is_tab) {
+        return;
+    }
+    let mut line_starts = breaks
+        .iter()
+        .filter(|b| b.kind == BreakKind::Mandatory)
+        .map(|b| b.glyph as usize)
+        .peekable();
+    let mut x = 0.0f32;
+    for seg in segments {
+        let run = &runs[seg.run as usize];
+        let font = fonts.get(fonts.key(&run.font).unwrap_or(seg.font));
+        let scale = font.scale(run.size);
+        let advance_of = |c: char| font.glyph(c).map(|g| font.advance(g) * scale);
+        let space = advance_of(' ').unwrap_or(run.size / 4.0) + run.letter_spacing.unwrap_or(0.0);
+        let stop = TAB_SIZE * space;
+        let half_zero = advance_of('0').unwrap_or(run.size / 2.0) / 2.0;
+        for i in seg.glyphs.start as usize..seg.glyphs.end as usize {
+            while line_starts.next_if(|&at| at <= i).is_some() {
+                x = 0.0;
+            }
+            let g = &mut glyphs[i];
+            if g.is_tab() {
+                g.advance = 0.0;
+                if stop > 0.0 {
+                    let mut next = ((x / stop).floor() + 1.0) * stop;
+                    if next - x < half_zero {
+                        next += stop;
+                    }
+                    g.advance = next - x;
+                }
+            }
+            x += g.advance;
+        }
     }
 }
 
@@ -594,7 +631,9 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
                 kind: b.kind,
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
+    // The numbers move the tab stops after them.
+    place_tabs(&mut glyphs, &segments, &breaks, runs, fonts);
 
     Prepared {
         #[cfg(test)]
@@ -697,30 +736,14 @@ mod tests {
     #[test]
     fn pre_keeps_spaces() {
         let runs = [run(" a\tb\r\n")];
-        assert_eq!(text_of(&runs, WhiteSpace::Pre), " a      b\n");
+        assert_eq!(text_of(&runs, WhiteSpace::Pre), " a\tb\n");
     }
 
     #[test]
     fn pre_wrap_keeps_spaces_and_pre_line_collapses() {
         let runs = [run("a  b\tc\n d")];
-        assert_eq!(text_of(&runs, WhiteSpace::PreWrap), "a  b    c\n d");
+        assert_eq!(text_of(&runs, WhiteSpace::PreWrap), "a  b\tc\n d");
         assert_eq!(text_of(&runs, WhiteSpace::PreLine), "a b c\nd");
-    }
-
-    #[test]
-    fn tabs_advance_to_the_next_tab_stop() {
-        // Columns of eight characters from the start of each line, across runs.
-        let runs = [run("a\tx\nabc\tx\nabcdefghi\tx\n"), run("ab"), run("\tx")];
-        assert_eq!(
-            text_of(&runs, WhiteSpace::Pre),
-            format!(
-                "a{}x\nabc{}x\nabcdefghi{}x\nab{}x",
-                " ".repeat(7),
-                " ".repeat(5),
-                " ".repeat(7),
-                " ".repeat(6)
-            )
-        );
     }
 
     #[test]
