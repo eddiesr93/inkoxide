@@ -37,7 +37,6 @@ napi = { version = "=3.14.2", default-features = false, features = ["napi6"] }
 napi-derive = "=3.6.12"
 napi-build = "=2.6.0"
 clap = { version = "=4.6.7", features = ["derive"] }
-insta = "=1.49.0"
 criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
 
 [workspace.lints.rust]

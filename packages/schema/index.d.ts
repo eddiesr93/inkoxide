@@ -208,7 +208,7 @@ export type TransformOp =
       skew?: never;
     };
 /**
- * Link target. `#id` jumps to the top of the first node with that `id` in the flowing content: a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+ * Link target. `#id` jumps to the top of the first node with that `id` in the page body (the flow or an overlay): a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Link".

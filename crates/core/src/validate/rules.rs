@@ -3,12 +3,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
-use std::sync::Arc;
 
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
-use crate::images::{ImageCrateDecoder, ImageData};
+use crate::images::ImageCrateDecoder;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldKind, GridTrack, ImageSource, Length, LengthPercent, Node,
@@ -146,9 +145,9 @@ pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
 /// Largest `orphans` and `widows`.
 pub(crate) const MAX_ORPHANS: u32 = 100;
 
-/// Ids of the nodes that get a destination: flowing content that is
-/// displayed (not headers or footers, not under `display: none`). `node`
-/// is displayed.
+/// Ids of the nodes that get a destination: the page body (flow and
+/// overlays) that is displayed (not headers or footers, not under
+/// `display: none`). `node` is displayed.
 fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
     if let Some(id) = &node.id {
         out.insert(id);
@@ -206,6 +205,17 @@ impl<'a> Checker<'a> {
             );
         }
         ok
+    }
+
+    /// Checks a reference to a font: an `Id` that `fonts` declares.
+    fn font_ref(&mut self, field: Option<&str>, id: &str) {
+        if self.id(field, id) && !self.declared.contains(id) {
+            self.err(
+                Code::UnknownFont,
+                field,
+                format!("font `{id}` is not declared in `fonts`"),
+            );
+        }
     }
 
     /// Runs `f` with the property `key` appended to the current path
@@ -273,15 +283,7 @@ impl<'a> Checker<'a> {
         }
         for (i, id) in doc.fallback_fonts.iter().enumerate() {
             self.at("fallbackFonts", |c| {
-                c.at_index(i, |c| {
-                    if c.id(None, id) && !c.declared.contains(id.as_str()) {
-                        c.err(
-                            Code::UnknownFont,
-                            None,
-                            format!("fallback font `{id}` is not declared in `fonts`"),
-                        );
-                    }
-                });
+                c.at_index(i, |c| c.font_ref(None, id));
             });
         }
         if doc.pages.is_empty() {
@@ -541,8 +543,8 @@ impl<'a> Checker<'a> {
                 };
                 ("src", data.clone(), Some(id))
             }
-            ImageSource::Inline(b64) => match crate::images::base64::decode(b64) {
-                Ok(bytes) => ("data", Arc::new(ImageData::new(bytes.into())), None),
+            ImageSource::Inline(inline) => match inline.data() {
+                Ok(data) => ("data", data.clone(), None),
                 Err(e) => {
                     self.err(Code::InvalidImage, Some("data"), e);
                     return;
@@ -608,12 +610,7 @@ impl<'a> Checker<'a> {
         }
         let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);
         match (&f.font, text_like) {
-            (Some(font), _) if !self.id(Some("font"), font) => {} // reported by `id`
-            (Some(font), _) if !self.declared.contains(font.as_str()) => self.err(
-                Code::UnknownFont,
-                Some("font"),
-                format!("font `{font}` is not declared in `fonts`"),
-            ),
+            (Some(font), _) => self.font_ref(Some("font"), font),
             (None, true) => self.err(
                 Code::MissingField,
                 Some("font"),
@@ -724,7 +721,7 @@ impl<'a> Checker<'a> {
                 self.err(
                     Code::UnknownAnchor,
                     Some("link"),
-                    format!("no displayed node in the flowing content has id `{id}`"),
+                    format!("no displayed node in the page body (flow and overlays) has id `{id}`"),
                 );
             }
             return;
@@ -793,13 +790,7 @@ impl<'a> Checker<'a> {
             ),
             _ => {}
         }
-        if self.id(Some("font"), &r.font) && !self.declared.contains(r.font.as_str()) {
-            self.err(
-                Code::UnknownFont,
-                Some("font"),
-                format!("font `{}` is not declared in `fonts`", r.font),
-            );
-        }
+        self.font_ref(Some("font"), &r.font);
         self.font_size(r.size);
         if let Some(t) = r.decoration_thickness {
             if !(t > 0.0 && t <= MAX_DECORATION_THICKNESS) {

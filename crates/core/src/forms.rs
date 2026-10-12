@@ -14,6 +14,8 @@ pub(crate) const PAD: f32 = 2.0;
 const DEFAULT_WIDTH: f32 = 150.0;
 /// Visible lines of a multiline field without a height.
 const MULTILINE_ROWS: f32 = 3.0;
+/// Line height of a field's text, as a multiple of its font size.
+const LINE_HEIGHT: f32 = 1.2;
 
 /// Characters whose glyphs are embedded for every font a text or select
 /// field uses, so a viewer can show edits made in the common Latin range
@@ -50,7 +52,7 @@ pub(crate) struct FieldOp {
 
 /// Content size of a field without explicit dimensions.
 pub(crate) fn measure(f: &Field, available: TSize<AvailableSpace>) -> TSize<f32> {
-    let line = f.size * 1.2;
+    let line = f.size * LINE_HEIGHT;
     match f.kind {
         FieldKind::Text | FieldKind::Select => TSize {
             width: match available.width {
@@ -107,7 +109,7 @@ pub(crate) fn paint(
         } else {
             vec![shown.lines().next().unwrap_or("")]
         };
-        let line_h = f.size * 1.2;
+        let line_h = f.size * LINE_HEIGHT;
         for (i, line) in lines.iter().enumerate() {
             let baseline = if f.multiline {
                 PAD + (line_h - asc - desc) / 2.0 + asc + i as f32 * line_h

@@ -34,10 +34,7 @@ rmp-serde.workspace = true
 wuff.workspace = true
 
 [dev-dependencies]
-insta.workspace = true
 criterion.workspace = true
-serde_json.workspace = true
-rmp-serde.workspace = true
 
 [[bench]]
 name = "render"

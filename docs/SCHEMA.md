@@ -59,7 +59,7 @@
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
-| `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the flowing content (ids in headers, footers and under `display: none` are not destinations) |
+| `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -88,7 +88,7 @@ Type: `string` (min length 1, max length 256)
 
 ### Link
 
-Link target. `#id` jumps to the top of the first node with that `id` in the flowing content: a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
+Link target. `#id` jumps to the top of the first node with that `id` in the page body (the flow or an overlay): a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
 
 Type: `string` (min length 1, max length 2048)
 

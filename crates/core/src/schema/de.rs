@@ -11,8 +11,8 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, ImageFit, ImageSource, Node, NodeKind, ObjectPosition, OptEdges, PageFilter,
-    PagePattern, Style, Table, TableRow, TextRun, TransformOp,
+    Field, ImageFit, ImageSource, InlineImage, Node, NodeKind, ObjectPosition, OptEdges,
+    PageFilter, PagePattern, Style, Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -96,7 +96,7 @@ fn parse_suffixed(s: &str, suffix: &str) -> Option<f32> {
 }
 
 macro_rules! num_or_str_visitor {
-    ($ty:ident, $expecting:literal, |$v:ident| $num:expr, |$s:ident| $str:expr) => {
+    ($ty:ident, $expecting:expr, |$v:ident| $num:expr, |$s:ident| $str:expr) => {
         impl<'de> Deserialize<'de> for $ty {
             fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 struct V;
@@ -320,7 +320,7 @@ fn breadth_str(s: &str) -> Option<TrackBreadth> {
 
 num_or_str_visitor!(
     TrackBreadth,
-    "a number of points, a percentage, \"<n>fr\", \"auto\", \"min-content\" or \"max-content\"",
+    BREADTH,
     |v| finite(v).map(TrackBreadth::Points),
     |s| breadth_str(s)
 );
@@ -543,9 +543,9 @@ impl TryFrom<RawColumnWidth> for ColumnWidth {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum NodeType {
+pub(super) enum NodeType {
     Box,
     Text,
     Image,
@@ -553,6 +553,49 @@ enum NodeType {
     PageBreak,
     Spacer,
     Field,
+}
+
+/// Properties that most node types take.
+const COMMON: &[&str] = &["style", "break", "link", "bookmark", "pages", "debug"];
+
+impl NodeType {
+    #[cfg(test)]
+    pub(super) const ALL: [Self; 7] = [
+        Self::Box,
+        Self::Text,
+        Self::Image,
+        Self::Table,
+        Self::PageBreak,
+        Self::Spacer,
+        Self::Field,
+    ];
+
+    /// The `type` value.
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::Box => "box",
+            Self::Text => "text",
+            Self::Image => "image",
+            Self::Table => "table",
+            Self::PageBreak => "pageBreak",
+            Self::Spacer => "spacer",
+            Self::Field => "field",
+        }
+    }
+
+    /// The properties a node of this type takes, besides `type` and `id`.
+    pub(super) fn fields(self) -> impl Iterator<Item = &'static str> {
+        let (common, own): (&[&str], &[&str]) = match self {
+            Self::Box => (COMMON, &["children"]),
+            Self::Text => (COMMON, &["runs"]),
+            Self::Image => (COMMON, &["src", "data", "fit", "objectPosition"]),
+            Self::Table => (COMMON, &["columns", "headerRows", "rows"]),
+            Self::PageBreak => (&[], &[]),
+            Self::Spacer => (COMMON, &[]),
+            Self::Field => (&["style", "break", "pages", "debug"], &["field"]),
+        };
+        common.iter().chain(own).copied()
+    }
 }
 
 /// Every field any node type may carry. Converted into [`Node`] with
@@ -605,15 +648,7 @@ impl TryFrom<RawNode> for Node {
     type Error = String;
 
     fn try_from(r: RawNode) -> Result<Self, String> {
-        let type_name = match r.ty {
-            NodeType::Box => "box",
-            NodeType::Text => "text",
-            NodeType::Image => "image",
-            NodeType::Table => "table",
-            NodeType::PageBreak => "pageBreak",
-            NodeType::Spacer => "spacer",
-            NodeType::Field => "field",
-        };
+        let type_name = r.ty.name();
         let present = [
             ("style", r.style.is_some()),
             ("break", r.brk.is_some()),
@@ -632,41 +667,10 @@ impl TryFrom<RawNode> for Node {
             ("rows", r.rows.is_some()),
             ("field", r.field.is_some()),
         ];
-        let allowed: &[&str] = match r.ty {
-            NodeType::Box => &[
-                "style", "break", "link", "bookmark", "pages", "debug", "children",
-            ],
-            NodeType::Text => &[
-                "style", "break", "link", "bookmark", "pages", "debug", "runs",
-            ],
-            NodeType::Image => &[
-                "style",
-                "break",
-                "link",
-                "bookmark",
-                "pages",
-                "debug",
-                "src",
-                "data",
-                "fit",
-                "objectPosition",
-            ],
-            NodeType::Table => &[
-                "style",
-                "break",
-                "link",
-                "bookmark",
-                "pages",
-                "debug",
-                "columns",
-                "headerRows",
-                "rows",
-            ],
-            NodeType::PageBreak => &[],
-            NodeType::Spacer => &["style", "break", "link", "bookmark", "pages", "debug"],
-            NodeType::Field => &["style", "break", "pages", "debug", "field"],
-        };
-        if let Some((field, _)) = present.iter().find(|(f, set)| *set && !allowed.contains(f)) {
+        if let Some((field, _)) = present
+            .iter()
+            .find(|(f, set)| *set && !r.ty.fields().any(|a| a == *f))
+        {
             return Err(format!(
                 "[UNKNOWN_FIELD@{field}] field `{field}` is not allowed on a `{type_name}` node"
             ));
@@ -684,7 +688,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::Image => {
                 let source = match (r.src, r.data) {
                     (Some(s), None) => ImageSource::Ref(s),
-                    (None, Some(d)) => ImageSource::Inline(d),
+                    (None, Some(d)) => ImageSource::Inline(InlineImage::new(d)),
                     (Some(_), Some(_)) => {
                         return Err("[INVALID_VALUE@data] an `image` node takes either `src` or `data`, not both".into())
                     }

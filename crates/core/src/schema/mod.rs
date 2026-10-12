@@ -14,6 +14,8 @@ pub use areas::{is_area_name, parse_areas};
 
 use serde::Deserialize;
 
+use crate::images::InlineImage;
+
 pub use de::{GridLine, GridTrack, Length, LengthPercent, RepeatCount, TrackBreadth, TrackSize};
 
 /// The document `version` this engine reads.
@@ -179,6 +181,18 @@ pub struct PageSpec {
     pub footer: Option<Box<Node>>,
     #[serde(default, deserialize_with = "de::shrunk")]
     pub children: Vec<Node>,
+}
+
+impl PageSpec {
+    /// Width and height of the content box: the page less its margins.
+    /// The flow and the overlays are laid out against it.
+    pub fn content_size(&self) -> (f32, f32) {
+        let m = self.margin;
+        (
+            self.size.width - m.left - m.right,
+            self.size.height - m.top - m.bottom,
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -403,8 +417,8 @@ pub enum FieldKind {
 pub enum ImageSource {
     /// Key into the render-time image map.
     Ref(String),
-    /// Inline base64 payload (decoded during validation).
-    Inline(String),
+    /// Inline base64 payload, decoded once, when validation first reads it.
+    Inline(InlineImage),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]

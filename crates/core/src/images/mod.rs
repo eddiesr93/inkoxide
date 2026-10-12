@@ -63,6 +63,34 @@ impl ImageData {
     }
 }
 
+/// An image node's inline base64 payload. It is decoded once, on first
+/// use: validation decodes it, and the render that follows reuses the
+/// bytes and their decoded image.
+#[derive(Debug, Clone)]
+pub(crate) struct InlineImage {
+    b64: String,
+    data: OnceLock<Result<Arc<ImageData>, String>>,
+}
+
+impl InlineImage {
+    pub fn new(b64: String) -> Self {
+        Self {
+            b64,
+            data: OnceLock::new(),
+        }
+    }
+
+    /// The decoded bytes, or why the payload is not base64.
+    pub fn data(&self) -> Result<&Arc<ImageData>, &str> {
+        self.data
+            .get_or_init(|| {
+                base64::decode(&self.b64).map(|bytes| Arc::new(ImageData::new(bytes.into())))
+            })
+            .as_ref()
+            .map_err(String::as_str)
+    }
+}
+
 /// Encoded image bytes (JPEG, PNG, GIF, WebP or SVG) available to a render, keyed by the id
 /// that `image` nodes reference in `src`. Cloning is cheap and clones share
 /// decoded data.
@@ -153,11 +181,10 @@ impl ImageSet {
                         ImageSource::Ref(id) => store.get(id).cloned().ok_or_else(|| {
                             InkoxideError::Image(format!("image `{id}` is not registered"))
                         })?,
-                        ImageSource::Inline(b64) => {
-                            let bytes = base64::decode(b64)
-                                .map_err(|e| InkoxideError::Image(format!("inline image: {e}")))?;
-                            Arc::new(ImageData::new(bytes.into()))
-                        }
+                        ImageSource::Inline(inline) => inline
+                            .data()
+                            .map_err(|e| InkoxideError::Image(format!("inline image: {e}")))?
+                            .clone(),
                     };
                     found.push((node_key(n), data));
                 }

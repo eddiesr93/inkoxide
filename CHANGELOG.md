@@ -23,6 +23,8 @@ All notable changes to the packages in this repository. The format follows
   prefix: it allows URLs with the same scheme, host and port, and, when it has a path, that path
   and the paths under it (`https://cdn.example.com/img` allows `/img/logo.png`, not
   `/imgs/logo.png`). Entries such as `https://cdn.example.com/` work as before.
+- The `inkoxide` CLI's `validate` refuses `--full-fonts` and `--hyphenation`, which it accepted
+  and ignored; `render` and `bench` take them as before.
 
 ### Fixed
 

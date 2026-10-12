@@ -6,6 +6,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use super::de::NodeType;
 use super::Document;
 use crate::test_fixtures::fixture;
 use crate::{validate, FontStore, ImageStore, InputFormat};
@@ -159,6 +160,24 @@ fn structs_match_schema() {
     }
     let got = struct_fields(&node(r#"{@"type":"box"}"#));
     assert_eq!(got, want, "node property mismatch");
+}
+
+/// Each node type takes exactly the properties of its `*Node` definition.
+#[test]
+fn node_types_match_schema() {
+    let s = schema();
+    for ty in NodeType::ALL {
+        let name = ty.name();
+        let mut def = name.to_string();
+        def[..1].make_ascii_uppercase();
+        def.push_str("Node");
+        assert_eq!(s["$defs"][&def]["properties"]["type"]["const"], name);
+        let mut want = schema_props(&s, Some(&def));
+        want.remove("type");
+        want.remove("id");
+        let got: BTreeSet<String> = ty.fields().map(str::to_string).collect();
+        assert_eq!(got, want, "{def} property mismatch");
+    }
 }
 
 /// `(code, path)` of each error the engine reports for `doc`. A font and an
