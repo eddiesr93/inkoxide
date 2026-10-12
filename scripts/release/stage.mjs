@@ -12,23 +12,82 @@
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+import { failer, readJson, REPOSITORY, REPOSITORY_GIT_URL, ROOT, writeJson } from './common.mjs';
+
 const OUT = join(ROOT, 'tmp', 'release');
 const TSC = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
-/** `github:eddiesr93/inkoxide`, in the object form npm would otherwise normalise it to. */
-const REPOSITORY_URL = 'git+https://github.com/eddiesr93/inkoxide.git';
+const fail = failer('stage');
 
 /**
  * In dependency order: each package only depends on the ones before it. scripts/release/publish.sh
- * publishes them in this order (`--list`).
+ * publishes them in this order (`--list`). Each entry holds what is particular to the package:
+ *
+ * - `sideEffects`: false for a package with no import-time side effects (module state only, no
+ *   I/O or globals);
+ * - `assets`: the fonts and hyphenation patterns of @inkoxide/render;
+ * - `extras`: files and directories of packages/<name> published next to `dist`, which its
+ *   README links through jsDelivr;
+ * - `readme`: the npm README of a package without a README.md of its own.
  */
-const PACKAGES = ['style', 'tailwind', 'react', 'render'];
+const PACKAGES = [
+  {
+    name: 'style',
+    sideEffects: false,
+    readme: {
+      blurb:
+        'Reads CSS values into Inkoxide styles: lengths and units, colours, `flex`, transforms, ' +
+        'transform origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
+        '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
+      install: 'npm install @inkoxide/style',
+      example: `import { parseColor, parseTransform, PT_PER_UNIT } from '@inkoxide/style';
 
-/** Packages with no import-time side effects (module state only, no I/O or globals). */
-const SIDE_EFFECT_FREE = new Set(['style', 'tailwind', 'react']);
+parseColor('#f80'); // [1, 0.533333, 0, 1]
+parseTransform('transform', 'rotate(10deg) translate(4px, 50%)'); // [{ rotate: 10 }, { translate: [3, '50%'] }]
+PT_PER_UNIT.mm; // 2.834646`,
+    },
+  },
+  {
+    name: 'tailwind',
+    sideEffects: false,
+    readme: {
+      blurb:
+        'Turns Tailwind class strings into Inkoxide style objects, using the real Tailwind v4 compiler. ' +
+        'Unsupported classes throw outside production and are ignored with a warning in production. ' +
+        'Install it next to `@inkoxide/render` to style with `className`; without it, `style` works alone.',
+      install: 'npm install @inkoxide/tailwind',
+      example: `import { initTailwind, tw } from '@inkoxide/tailwind';
+
+await initTailwind(); // once per process
+const style = tw('p-4 text-lg font-bold text-slate-700');
+console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, color: […] }`,
+    },
+  },
+  {
+    name: 'react',
+    sideEffects: false,
+    readme: {
+      blurb:
+        'React components and a custom reconciler that build Inkoxide document trees. ' +
+        'Style with `style`, or with `className` when `@inkoxide/tailwind` is installed; fonts come ' +
+        'from a registry. ' +
+        'To make PDFs, install `@inkoxide/render`, which re-exports these components.',
+      install: 'npm install @inkoxide/react',
+      example: `import { readFileSync } from 'node:fs';
+import { createElement as h } from 'react';
+import { Document, Page, Text, fonts, renderToTree } from '@inkoxide/react';
+
+fonts.register({ id: 'Inter-Regular', family: 'Inter' }, readFileSync('Inter-Regular.ttf'));
+const doc = await renderToTree(
+  h(Document, null, h(Page, { size: 'A4', margin: '20mm' }, h(Text, { style: { fontSize: 18 } }, 'Hello'))),
+);
+console.log(JSON.stringify(doc)); // an Inkoxide document (schema v1); @inkoxide/render turns it into a PDF`,
+    },
+  },
+  { name: 'render', assets: true, extras: ['media', 'GUIDE.md', 'MIGRATING.md'] },
+];
 
 /** Licence files that must ship with the fonts. */
 const FONT_LICENCES = ['Inter-OFL.txt', 'NotoSans-OFL.txt', 'RobotoMono-OFL.txt'];
@@ -36,19 +95,6 @@ const FONT_LICENCES = ['Inter-OFL.txt', 'NotoSans-OFL.txt', 'RobotoMono-OFL.txt'
 const rootPkg = readJson(join(ROOT, 'package.json'));
 const NODE_ENGINE = rootPkg.engines?.node;
 if (!NODE_ENGINE) fail('The root package.json has no engines.node.');
-
-function readJson(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
-}
-
-function writeJson(path, value) {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function fail(message) {
-  console.error(`stage: ${message}`);
-  process.exit(1);
-}
 
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -122,7 +168,7 @@ function resolveVersion(dep, spec) {
   return spec;
 }
 
-function manifest(name, pkg, dist) {
+function manifest({ name, sideEffects, assets, extras = [] }, pkg, dist) {
   const deps = {};
   for (const [dep, spec] of Object.entries(pkg.dependencies ?? {})) {
     deps[dep] = resolveVersion(dep, spec);
@@ -164,16 +210,16 @@ function manifest(name, pkg, dist) {
     version: pkg.version,
     description: pkg.description,
     license: 'MIT',
-    repository: { type: 'git', url: REPOSITORY_URL, directory: `packages/${name}` },
+    repository: { type: 'git', url: REPOSITORY_GIT_URL, directory: `packages/${name}` },
     type: 'module',
     main: './dist/index.js',
     types: './dist/index.d.ts',
     exports,
     ...(typesVersions && { typesVersions }),
-    files: name === 'render' ? ['dist', 'assets', 'media', 'GUIDE.md', 'MIGRATING.md'] : ['dist'],
+    files: ['dist', ...(assets ? ['assets'] : []), ...extras],
     engines: { node: NODE_ENGINE },
   };
-  if (SIDE_EFFECT_FREE.has(name)) out.sideEffects = false;
+  if (sideEffects === false) out.sideEffects = false;
   // React is a peer: the reconciler and the user's components must share one copy. The range
   // matches react-reconciler's own peer range; the workspace keeps the exact pin.
   if (deps.react) {
@@ -224,70 +270,28 @@ These files are not covered by the package's MIT licence; each keeps its own lic
 | \`hyphenation/hyph-en-us.tex\` | hyph-utf8, US English patterns by Gerard D.C. Kuiken | Copying and distribution permitted provided the copyright notice and licence in the file header are preserved; the file is shipped unmodified |
 `;
 
-const READMES = {
-  style: {
-    blurb:
-      'Reads CSS values into Inkoxide styles: lengths and units, colours, `flex`, transforms, ' +
-      'transform origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
-      '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
-    install: 'npm install @inkoxide/style',
-    example: `import { parseColor, parseTransform, PT_PER_UNIT } from '@inkoxide/style';
-
-parseColor('#f80'); // [1, 0.533333, 0, 1]
-parseTransform('transform', 'rotate(10deg) translate(4px, 50%)'); // [{ rotate: 10 }, { translate: [3, '50%'] }]
-PT_PER_UNIT.mm; // 2.834646`,
-  },
-  tailwind: {
-    blurb:
-      'Turns Tailwind class strings into Inkoxide style objects, using the real Tailwind v4 compiler. ' +
-      'Unsupported classes throw outside production and are ignored with a warning in production. ' +
-      'Install it next to `@inkoxide/render` to style with `className`; without it, `style` works alone.',
-    install: 'npm install @inkoxide/tailwind',
-    example: `import { initTailwind, tw } from '@inkoxide/tailwind';
-
-await initTailwind(); // once per process
-const style = tw('p-4 text-lg font-bold text-slate-700');
-console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, color: […] }`,
-  },
-  react: {
-    blurb:
-      'React components and a custom reconciler that build Inkoxide document trees. ' +
-      'Style with `style`, or with `className` when `@inkoxide/tailwind` is installed; fonts come ' +
-      'from a registry. ' +
-      'To make PDFs, install `@inkoxide/render`, which re-exports these components.',
-    install: 'npm install @inkoxide/react',
-    example: `import { readFileSync } from 'node:fs';
-import { createElement as h } from 'react';
-import { Document, Page, Text, fonts, renderToTree } from '@inkoxide/react';
-
-fonts.register({ id: 'Inter-Regular', family: 'Inter' }, readFileSync('Inter-Regular.ttf'));
-const doc = await renderToTree(
-  h(Document, null, h(Page, { size: 'A4', margin: '20mm' }, h(Text, { style: { fontSize: 18 } }, 'Hello'))),
-);
-console.log(JSON.stringify(doc)); // an Inkoxide document (schema v1); @inkoxide/render turns it into a PDF`,
-  },
-};
-
 /**
  * npm shows a README without the repository's files, so the screenshots and the docs are
- * published in the package (`media/`, `GUIDE.md`, `MIGRATING.md`)
- * and linked through jsDelivr, which serves files of npm packages: their links become absolute
- * URLs pinned to this version.
+ * published in the package (the entry's `extras`: `media/`, `GUIDE.md`, `MIGRATING.md`) and
+ * linked through jsDelivr, which serves files of npm packages: their links become absolute URLs
+ * pinned to this version.
  */
-function withPublishedMedia(text, pkg) {
+function withPublishedExtras(text, pkg, extras) {
+  if (extras.length === 0) return text;
   const base = `https://cdn.jsdelivr.net/npm/${pkg.name}@${pkg.version}/`;
-  return text.replace(/(src="|\]\()(media\/|GUIDE\.md|MIGRATING\.md)/g, `$1${base}$2`);
+  const names = extras.map((e) => (e.endsWith('.md') ? e : `${e}/`).replace(/[.]/g, '\\.')).join('|');
+  return text.replace(new RegExp(`(src="|\\]\\()(${names})`, 'g'), `$1${base}$2`);
 }
 
-function readme(name, pkg) {
+function readme({ name, extras = [], readme: r }, pkg) {
   const own = join(ROOT, 'packages', name, 'README.md');
-  if (existsSync(own)) return withPublishedMedia(readFileSync(own, 'utf8'), pkg);
-  const r = READMES[name];
+  if (existsSync(own)) return withPublishedExtras(readFileSync(own, 'utf8'), pkg, extras);
+  if (!r) fail(`@inkoxide/${name} has no README.md and no readme in PACKAGES.`);
   return `# ${pkg.name}
 
 ${r.blurb}
 
-Part of [Inkoxide](https://github.com/eddiesr93/inkoxide). Requires Node.js ${NODE_ENGINE}; ES modules only.
+Part of [Inkoxide](${REPOSITORY}). Requires Node.js ${NODE_ENGINE}; ES modules only.
 
 \`\`\`sh
 ${r.install}
@@ -305,34 +309,43 @@ MIT
 `;
 }
 
-async function stage(name) {
+/** Files a package's README may link that only reach npm when its entry publishes them. */
+const PUBLISHABLE = ['media', 'GUIDE.md', 'MIGRATING.md'];
+
+async function stage(entry) {
+  const { name, assets, extras = [] } = entry;
   const pkgDir = join(ROOT, 'packages', name);
   const pkg = readJson(join(pkgDir, 'package.json'));
+  for (const f of PUBLISHABLE) {
+    if (existsSync(join(pkgDir, f)) && !extras.includes(f)) {
+      fail(`packages/${name}/${f} exists but is not published: add it to the package's extras in PACKAGES.`);
+    }
+  }
   const dist = build(name);
   const stageDir = join(OUT, name);
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(stageDir, { recursive: true });
   cpSync(dist, join(stageDir, 'dist'), { recursive: true });
-  const out = manifest(name, pkg, dist);
-  if (name === 'render') await stageAssets(stageDir, dist);
-  if (existsSync(join(pkgDir, 'media')))
-    cpSync(join(pkgDir, 'media'), join(stageDir, 'media'), { recursive: true });
-  for (const doc of ['GUIDE.md', 'MIGRATING.md']) {
-    if (existsSync(join(pkgDir, doc))) cpSync(join(pkgDir, doc), join(stageDir, doc));
+  const out = manifest(entry, pkg, dist);
+  if (assets) await stageAssets(stageDir, dist);
+  for (const f of extras) {
+    if (!existsSync(join(pkgDir, f)))
+      fail(`@inkoxide/${name} publishes ${f}, but packages/${name}/${f} is missing.`);
+    cpSync(join(pkgDir, f), join(stageDir, f), { recursive: true });
   }
   writeJson(join(stageDir, 'package.json'), out);
   cpSync(join(ROOT, 'LICENSE'), join(stageDir, 'LICENSE'));
-  writeFileSync(join(stageDir, 'README.md'), readme(name, pkg));
+  writeFileSync(join(stageDir, 'README.md'), readme(entry, pkg));
   const leftover = Object.entries(out.dependencies).filter(([, v]) => /^(workspace|file|link):/.test(v));
   if (leftover.length > 0) fail(`${pkg.name} still has local dependency specs: ${JSON.stringify(leftover)}`);
   console.log(`stage: ${pkg.name}@${pkg.version} -> ${relative(ROOT, stageDir)}`);
 }
 
 if (process.argv.includes('--list')) {
-  console.log(PACKAGES.join('\n'));
+  console.log(PACKAGES.map((p) => p.name).join('\n'));
   process.exit(0);
 }
 if (!existsSync(TSC)) fail(`${TSC} not found; run pnpm install.`);
 mkdirSync(OUT, { recursive: true });
-for (const name of PACKAGES) await stage(name);
+for (const entry of PACKAGES) await stage(entry);
 console.log('stage: done');
