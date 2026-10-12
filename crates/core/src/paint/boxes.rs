@@ -63,18 +63,16 @@ pub(crate) fn paint_flow(
     ops: &mut Vec<Op>,
     debug: &mut DebugBoxes,
 ) {
-    let (placement, page, fixed_only) = match part {
-        FlowPart::All => (None, 0, false),
-        FlowPart::Page { placement, page } => (Some(placement), page, false),
-        FlowPart::Fixed { placement, page } => (Some(placement), page, true),
+    let mode = match part {
+        FlowPart::All => Mode::Unpaged,
+        FlowPart::Page { placement, page } => Mode::Paged { placement, page },
+        FlowPart::Fixed { placement, page } => Mode::Fixed { placement, page },
     };
     let mut p = BoxPainter {
         tree,
-        placement,
-        page,
+        mode,
         dx,
         dy,
-        override_shift: None,
         numbers,
         opacity: 1.0,
         ctm: None,
@@ -82,34 +80,102 @@ pub(crate) fn paint_flow(
         ops,
         debug,
     };
-    match (fixed_only, placement) {
-        (true, Some(pl)) => {
+    match mode {
+        Mode::Fixed { placement, page } => {
             // Fixed nodes keep their position relative to their first page.
-            let h = pl.page_h;
-            for &i in &pl.fixed {
-                let first = pl.page_range[i as usize].0;
+            let h = placement.page_h;
+            for &i in &placement.fixed {
+                let first = placement.first_page(i);
                 p.dy = dy + (page as f32 - first as f32) * h;
-                p.placement = Some(pl);
-                p.node(i, true);
+                p.node(i);
             }
         }
         _ => {
             for c in paint_order(tree, 0) {
-                p.node(c, false);
+                p.node(c);
             }
+        }
+    }
+}
+
+/// How the nodes of a flow map onto the page being painted.
+#[derive(Clone, Copy)]
+enum Mode<'p> {
+    /// Unpaginated (headers, footers, overlays): every node, unshifted.
+    Unpaged,
+    /// Page `page` of a paginated flow: the nodes on it, shifted into paged
+    /// space, without the fixed nodes.
+    Paged { placement: &'p Placement, page: u32 },
+    /// The fixed nodes of a paginated flow, repeated on page `page`:
+    /// shifted as on their first page, and not cut to the page.
+    Fixed { placement: &'p Placement, page: u32 },
+    /// The header rows of a table, repeated at `shift` (paged space),
+    /// ignoring pagination.
+    Header { shift: f32 },
+}
+
+impl<'p> Mode<'p> {
+    /// The placement and page of a paginated flow.
+    fn paged(self) -> Option<(&'p Placement, u32)> {
+        match self {
+            Mode::Paged { placement, page } | Mode::Fixed { placement, page } => {
+                Some((placement, page))
+            }
+            Mode::Unpaged | Mode::Header { .. } => None,
+        }
+    }
+
+    /// Whether node `i` is on this page (fixed nodes aside).
+    fn shows(self, i: NodeIdx) -> bool {
+        match self {
+            Mode::Paged { placement, page } => placement.on_page(i, page),
+            _ => true,
+        }
+    }
+
+    /// Whether table row `i` is on this page. Unlike [`Mode::shows`], this
+    /// also filters the rows of a fixed table.
+    fn shows_row(self, i: NodeIdx) -> bool {
+        match self.paged() {
+            Some((pl, page)) => pl.on_page(i, page),
+            None => true,
+        }
+    }
+
+    /// Paged y range shown on this page (`None`: everything).
+    fn window(self) -> Option<(f32, f32)> {
+        match self {
+            Mode::Paged { placement, page } => Some(placement.window(page)),
+            _ => None,
+        }
+    }
+
+    /// Shift of node `i` into paged space, and its growth from being split
+    /// across pages.
+    fn shifts(self, i: NodeIdx) -> (f32, f32) {
+        match self {
+            Mode::Unpaged => (0.0, 0.0),
+            Mode::Paged { placement, .. } | Mode::Fixed { placement, .. } => {
+                (placement.shift(i), placement.growth(i))
+            }
+            Mode::Header { shift } => (shift, 0.0),
+        }
+    }
+
+    /// Per-line shifts of a split paragraph `i` (empty: use its shift).
+    fn line_shifts(self, i: NodeIdx) -> &'p [f32] {
+        match self.paged() {
+            Some((pl, _)) => pl.line_shifts(i),
+            None => &[],
         }
     }
 }
 
 struct BoxPainter<'t, 'a, 'c, 'p> {
     tree: &'t Tree<'a>,
-    placement: Option<&'p Placement>,
-    page: u32,
+    mode: Mode<'p>,
     dx: f32,
     dy: f32,
-    /// Paints a subtree at a fixed shift, ignoring pagination (repeated
-    /// table header rows).
-    override_shift: Option<f32>,
     /// Physical page number and page count.
     numbers: (u32, u32),
     /// Cumulative opacity of the ancestors.
@@ -122,18 +188,12 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
 }
 
 impl BoxPainter<'_, '_, '_, '_> {
-    fn node(&mut self, i: NodeIdx, as_fixed: bool) {
+    fn node(&mut self, i: NodeIdx) {
         let ln = &self.tree.nodes[i as usize];
         let Some(node) = ln.node else {
             // Rows and cells: the table paints their backgrounds and borders.
-            let paged = matches!(
-                (self.placement, self.override_shift, as_fixed),
-                (Some(_), None, false)
-            );
-            if let (Some(pl), true) = (self.placement, paged) {
-                if !pl.on_page(i, self.page) {
-                    return;
-                }
+            if !self.mode.shows(i) {
+                return;
             }
             let debug = match ln.part {
                 Part::Row(r) => r.debug,
@@ -141,15 +201,11 @@ impl BoxPainter<'_, '_, '_, '_> {
                 _ => false,
             };
             if debug || self.debug.all {
-                let window = self.placement.filter(|_| paged).map(|pl| {
-                    let h = pl.page_h;
-                    (self.page as f32 * h, (self.page + 1) as f32 * h)
-                });
-                let (shift, extra) = self.shifts(i);
-                self.outline(&ln.geo, shift, extra, window, None);
+                let (shift, extra) = self.mode.shifts(i);
+                self.outline(&ln.geo, shift, extra, self.mode.window(), None);
             }
             for c in self.tree.children(i) {
-                self.node(c, as_fixed);
+                self.node(c);
             }
             return;
         };
@@ -162,20 +218,14 @@ impl BoxPainter<'_, '_, '_, '_> {
                 return;
             }
         }
-        let window = match self.placement {
-            Some(_) if self.override_shift.is_some() => None,
-            Some(pl) if !as_fixed => {
-                // Fixed nodes are painted by the fixed pass on every page.
-                if node.brk.fixed || !pl.on_page(i, self.page) {
-                    return;
-                }
-                let h = pl.page_h;
-                Some((self.page as f32 * h, (self.page + 1) as f32 * h))
-            }
-            _ => None,
-        };
+        // Fixed nodes are painted by the fixed pass on every page.
+        let fixed_here = node.brk.fixed && matches!(self.mode, Mode::Paged { .. });
+        if fixed_here || !self.mode.shows(i) {
+            return;
+        }
+        let window = self.mode.window();
         let g = ln.geo;
-        let (shift, extra) = self.shifts(i);
+        let (shift, extra) = self.mode.shifts(i);
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
         if let Some(target) = &node.link {
             // Only the part of the box shown on this page.
@@ -266,10 +316,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             dx: self.dx,
             dy: self.dy,
             shift,
-            line_shifts: match (self.override_shift, self.placement) {
-                (None, Some(pl)) => pl.line_shifts[i as usize].as_slice(),
-                _ => &[][..],
-            },
+            line_shifts: self.mode.line_shifts(i),
             window,
             opacity: self.opacity,
         };
@@ -277,11 +324,11 @@ impl BoxPainter<'_, '_, '_, '_> {
         let tree = self.tree;
         if has_z(tree, i) {
             for c in paint_order(tree, i) {
-                self.node(c, as_fixed);
+                self.node(c);
             }
         } else {
             for c in tree.children(i) {
-                self.node(c, as_fixed);
+                self.node(c);
             }
         }
         if let Some(t) = &table {
@@ -293,19 +340,6 @@ impl BoxPainter<'_, '_, '_, '_> {
         }
         self.opacity = outer_opacity;
         self.ctm = outer_ctm;
-    }
-
-    /// Shift of node `i` into paged space, and its growth from being split
-    /// across pages.
-    fn shifts(&self, i: NodeIdx) -> (f32, f32) {
-        match (self.override_shift, self.placement) {
-            (Some(o), _) => (o, 0.0),
-            (None, Some(pl)) => {
-                let st = pl.shift_top[i as usize];
-                (st, pl.shift_bottom[i as usize] - st)
-            }
-            (None, None) => (0.0, 0.0),
-        }
     }
 
     /// Records the boxes of a node for its `debug` outline. `window` is the
@@ -340,46 +374,17 @@ impl BoxPainter<'_, '_, '_, '_> {
         });
     }
 
-    /// Shift of table row `r` (paged space).
-    fn row_shift(&self, rows: &[NodeIdx], r: usize) -> f32 {
-        match (self.override_shift, self.placement) {
-            (Some(o), _) => o,
-            (None, Some(pl)) => pl.shift_top[rows[r] as usize],
-            (None, None) => 0.0,
-        }
-    }
-
-    /// Growth of table row `r` from splitting it across pages.
-    fn row_extra(&self, rows: &[NodeIdx], r: usize) -> f32 {
-        match (self.override_shift, self.placement) {
-            (None, Some(pl)) => {
-                let i = rows[r] as usize;
-                pl.shift_bottom[i] - pl.shift_top[i]
-            }
-            _ => 0.0,
-        }
-    }
-
-    fn row_visible(&self, rows: &[NodeIdx], r: usize) -> bool {
-        match (self.override_shift, self.placement) {
-            (None, Some(pl)) => pl.on_page(rows[r], self.page),
-            _ => true,
-        }
-    }
-
     /// Row and cell backgrounds and collapsed borders of the rows on this
     /// page (or of the header rows, when repeating them).
     fn table_body(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
         let n = rows.len();
-        let range = if self.override_shift.is_some() {
-            0..t.header_rows
-        } else {
-            0..n
-        };
+        let mode = self.mode;
+        let header_pass = matches!(mode, Mode::Header { .. });
+        let range = if header_pass { 0..t.header_rows } else { 0..n };
         // Rows on this page. Only `lo..hi` is scanned below, so painting a
         // long table costs O(rows on the page), not O(rows) per page.
-        let in_page = |r: usize| range.contains(&r) && self.row_visible(&rows, r);
+        let in_page = |r: usize| range.contains(&r) && mode.shows_row(rows[r]);
         let lo = range.clone().find(|&r| in_page(r)).unwrap_or(n);
         let hi = range
             .clone()
@@ -387,8 +392,8 @@ impl BoxPainter<'_, '_, '_, '_> {
             .find(|&r| in_page(r))
             .map_or(lo, |r| r + 1);
         let visible = |r: usize| r >= lo && r < hi && in_page(r);
-        let shift = |r: usize| self.row_shift(&rows, r);
-        let extra = |r: usize| self.row_extra(&rows, r);
+        let shift = |r: usize| mode.shifts(rows[r]).0;
+        let extra = |r: usize| mode.shifts(rows[r]).1;
         // Shift of the bottom of row `r`.
         let bshift = |r: usize| shift(r) + extra(r);
         let (cx, cy, _, _) = g.content_box();
@@ -437,7 +442,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             }
         }
 
-        let repeating_header = t.header_rows > 0 && self.override_shift.is_none();
+        let repeating_header = t.header_rows > 0 && !header_pass;
         let first_h = t.h_edges.partition_point(|e| e.line < lo);
         for e in t.h_edges[first_h..].iter().take_while(|e| e.line <= hi) {
             let (x, w) = (ox + t.col_x[e.col], t.col_w[e.col]);
@@ -548,34 +553,33 @@ impl BoxPainter<'_, '_, '_, '_> {
     /// On continuation pages, repaints the header rows at the top of the
     /// page, above the first body row (which pagination pushed down).
     fn repeat_header(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
-        let (Some(pl), None) = (self.placement, self.override_shift) else {
+        let Some((pl, page)) = self.mode.paged() else {
             return;
         };
         if t.header_rows == 0 {
             return;
         }
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
-        let page_top = self.page as f32 * pl.page_h;
+        let page_top = pl.page_top(page);
         // First body row on this page, if it starts below a reserved header.
-        let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], self.page))
-        else {
+        let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], page)) else {
             return;
         };
         let (_, cy, _, _) = g.content_box();
-        let fr = rows[first] as usize;
-        let first_top = cy + t.row_y[first] + pl.shift_top[fr];
+        let fr = rows[first];
+        let first_top = cy + t.row_y[first] + pl.shift(fr);
         // A row split across pages continues below a repeated header.
-        let continued = pl.page_range[fr].0 < self.page && pl.shift_bottom[fr] > pl.shift_top[fr];
+        let continued = pl.first_page(fr) < page && pl.is_split(fr);
         if !continued && (first_top - (page_top + t.header_height())).abs() > crate::paginate::EPS {
             return;
         }
         let shift = page_top - (cy + t.row_y[0]);
-        self.override_shift = Some(shift);
+        let outer = std::mem::replace(&mut self.mode, Mode::Header { shift });
         self.table_body(i, g, t);
         for &r in &rows[..t.header_rows] {
-            self.node(r, false);
+            self.node(r);
         }
-        self.override_shift = None;
+        self.mode = outer;
     }
 
     fn fill(&mut self, path: Path, color: Color) {

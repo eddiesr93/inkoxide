@@ -59,6 +59,49 @@ impl Placement {
         let (a, b) = self.page_range[i as usize];
         a <= page && page <= b
     }
+
+    /// First page node `i` or any descendant touches.
+    pub fn first_page(&self, i: NodeIdx) -> u32 {
+        self.page_range[i as usize].0
+    }
+
+    /// Shift of node `i` into paged space (at its top).
+    pub fn shift(&self, i: NodeIdx) -> f32 {
+        self.shift_top[i as usize]
+    }
+
+    /// Growth of node `i` from being split across pages.
+    pub fn growth(&self, i: NodeIdx) -> f32 {
+        self.shift_bottom[i as usize] - self.shift_top[i as usize]
+    }
+
+    /// Whether node `i` is split across pages.
+    pub fn is_split(&self, i: NodeIdx) -> bool {
+        self.shift_bottom[i as usize] > self.shift_top[i as usize]
+    }
+
+    /// Per-line shifts of node `i`, a split paragraph (empty: use
+    /// [`Placement::shift`]).
+    pub fn line_shifts(&self, i: NodeIdx) -> &[f32] {
+        &self.line_shifts[i as usize]
+    }
+
+    /// Paged y of the top of page `page`.
+    pub fn page_top(&self, page: u32) -> f32 {
+        page as f32 * self.page_h
+    }
+
+    /// Paged y range `[top, bottom)` shown on page `page`.
+    pub fn window(&self, page: u32) -> (f32, f32) {
+        (self.page_top(page), self.page_top(page + 1))
+    }
+
+    /// The first page of node `i`, and where flow y `y` of the node lands
+    /// on it, from the page's top.
+    pub fn locate(&self, i: NodeIdx, y: f32) -> (u32, f32) {
+        let page = self.first_page(i);
+        (page, y + self.shift(i) - self.page_top(page))
+    }
 }
 
 /// Supplies line layouts of text nodes at their laid-out width.

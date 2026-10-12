@@ -266,11 +266,7 @@ fn collect_marks<'d>(l: &Laid<'d>, first: u32, out: &mut Marks<'d>) {
         if let Some((_, o)) = overlays.next_if(|(i, _)| *i == k) {
             subtree_marks(l, &o.tree, 1, first, |_, y| (0, y), out);
         } else if let Some(c) = flow_nodes.next() {
-            let at = |i: NodeIdx, y: f32| {
-                let page = pl.page_range[i as usize].0;
-                (page, y + pl.shift_top[i as usize] - page as f32 * pl.page_h)
-            };
-            subtree_marks(l, flow, c, first, at, out);
+            subtree_marks(l, flow, c, first, |i, y| pl.locate(i, y), out);
         }
     }
 }
