@@ -178,6 +178,16 @@ describe('grid placement', () => {
     expect(tw('col-span-3 col-start-1 col-end-3')).toEqual({ gridColumn: { start: 1, end: 3 } });
     expect(tw('row-span-2 row-end-4')).toEqual({ gridRow: { span: 2, end: 4 } });
   });
+
+  it('ignores a span at the end when the start is a span, as in CSS', () => {
+    expect(tw('col-start-[span_2] col-end-[span_3]')).toEqual({ gridColumn: { span: 2 } });
+    expect(tw('row-start-[span_2] row-end-[span_4]')).toEqual({ gridRow: { span: 2 } });
+    expect(tw('col-span-2 col-end-[span_3]')).toEqual({ gridColumn: { span: 2 } });
+    expect(tw('col-start-[span_2] col-end-5')).toEqual({ gridColumn: { span: 2, end: 5 } });
+    expect(tw('col-start-3 col-end-[span_2]')).toEqual({ gridColumn: { start: 3, span: 2 } });
+    expect(tw('col-end-[span_3]')).toEqual({ gridColumn: { span: 3 } });
+    expect(errorOf('col-start-[1/2]').reason).toBe('grid-column-start: 1/2');
+  });
 });
 
 describe('the flex shorthand', () => {

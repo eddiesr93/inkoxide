@@ -193,9 +193,10 @@ All notable changes to the packages in this repository. The format follows
   `rotate-none` works, and lengths above 10000pt are no longer cut to 10000pt (`h-[12000pt]`).
 - **Tailwind mapping:** a class or style value outside what the engine takes fails where it is
   read, naming the class: `line-clamp-0`, `line-clamp-[2.5]`, `opacity-[1.5]`, `col-span-0`,
-  `aspect-[0]` and a skew of ±90deg or more. `grid-flow-dense` works. Switching strict mode on
-  checks class strings cached while it was off. Only selector problems that style children
-  suggest `gap`; `container` says that media queries have no meaning in a PDF.
+  `aspect-[0]`, a skew of ±90deg or more, and a percentage or negative grow or shrink
+  (`grow-[30%]`, `shrink-[-1]`), which CSS rejects. `grid-flow-dense` works. Switching strict
+  mode on checks class strings cached while it was off. Only selector problems that style
+  children suggest `gap`; `container` says that media queries have no meaning in a PDF.
 - **Style values:** `transformOrigin: 'center left'` and `'center right'` work, and names such
   as `toString` are not taken as keywords by `transformOrigin` or `fontWeight`. Colour keywords
   are case-insensitive (`'Transparent'`).

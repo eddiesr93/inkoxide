@@ -1,4 +1,3 @@
-import type { GridPlacement } from '@inkoxide/schema';
 import {
   type FlatStyle,
   parseFlex,
@@ -104,8 +103,14 @@ function sidesOf(logical: string): readonly Side[] {
   }
 }
 
-/** Applies one resolved declaration to the style being built, with its lengths in `units`. */
-function applyDecl(s: FlatStyle, prop: string, value: string, units: Units): void {
+/** The two halves of each grid placement as written, `auto` where unset. */
+type GridLines = Partial<Record<'gridColumn' | 'gridRow', readonly [start: string, end: string]>>;
+
+/**
+ * Applies one resolved declaration to the style being built, with its lengths in `units`. `lines`
+ * holds the grid placements as written, for a longhand to replace one half of.
+ */
+function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, lines: GridLines): void {
   const r = new Reader(prop, units);
   // The style by key, for the keys built from the property name (`paddingTop`, `insetLeft`).
   const keyed = s as Record<string, unknown>;
@@ -217,29 +222,28 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units): voi
       s.gridAutoFlow = r.oneOf('gridAutoFlow', v === 'dense' ? 'row dense' : v);
       return;
     case 'grid-column':
-      s.gridColumn = r.placement(v);
+    case 'grid-row': {
+      const key = prop === 'grid-column' ? 'gridColumn' : 'gridRow';
+      s[key] = r.placement(v);
+      const [start = 'auto', end = 'auto'] = v.split('/').map((x) => x.trim());
+      lines[key] = [start, end];
       return;
-    case 'grid-row':
-      s.gridRow = r.placement(v);
-      return;
+    }
     case 'grid-column-start':
     case 'grid-column-end':
     case 'grid-row-start':
     case 'grid-row-end': {
       const key = prop.startsWith('grid-column') ? 'gridColumn' : 'gridRow';
-      const p: GridPlacement = { ...s[key] };
-      const one = r.placement(v);
-      if (prop.endsWith('start')) {
-        delete p.start;
-        Object.assign(p, one);
-      } else {
-        delete p.end;
-        if (one.start !== undefined) p.end = one.start;
-        else if (one.span !== undefined) p.span = one.span;
-      }
-      // Two lines replace a span set before them (`col-span-3 col-start-1 col-end-3` is 1 / 3).
-      if (p.start !== undefined && p.end !== undefined) delete p.span;
-      s[key] = p;
+      // One half alone, read first so that an error names it.
+      if (v.includes('/')) throw r.error(`${prop}: ${v}`);
+      r.placement(v);
+      const [start, end] = lines[key] ?? ['auto', 'auto'];
+      const both = prop.endsWith('start') ? ([v, end] as const) : ([start, v] as const);
+      lines[key] = both;
+      // Read as `<start> / <end>`, as CSS does: two lines replace a span set before them
+      // (`col-span-3 col-start-1 col-end-3` is 1 / 3), and a span at the end is ignored after one
+      // at the start.
+      s[key] = r.placement(`${both[0]} / ${both[1]}`);
       return;
     }
     case 'background-color':
@@ -566,6 +570,7 @@ function applyClasses(
   unitsFor: (prop: string) => Units,
 ): FlatStyle {
   let style: FlatStyle = {};
+  let lines: GridLines = {};
   for (const cls of ordered) {
     const r = compiler.candidate(cls);
     if (!r.ok) continue;
@@ -577,6 +582,7 @@ function applyClasses(
       decls.some(([p, v]) => p === 'white-space' && v.trim() === 'nowrap');
     // Apply into a scratch copy so a failing class leaves no partial result behind.
     const next: FlatStyle = { ...style };
+    const nextLines: GridLines = { ...lines };
     try {
       if (clamp) {
         const n = clamp[1].trim();
@@ -600,7 +606,13 @@ function applyClasses(
         // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
         const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
         try {
-          applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, lookup), unitsFor(prop));
+          applyDecl(
+            next,
+            sideStyle ? 'border-style' : prop,
+            substituteVars(raw, lookup),
+            unitsFor(prop),
+            nextLines,
+          );
         } catch (e) {
           // A value that does not parse at all (`var()` with no value, five edges): name the property.
           if (e instanceof ValueError)
@@ -609,6 +621,7 @@ function applyClasses(
         }
       }
       style = next;
+      lines = nextLines;
     } catch (e) {
       if (e instanceof UnsupportedValueError) onError(new UnsupportedUtilityError(cls, e.detail, e.property));
       else if (e instanceof ValueError) onError(new UnsupportedUtilityError(cls, e.message));
