@@ -61,7 +61,8 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
   `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
   percentage. A page's `size` takes the units that do not depend on the font or the page.
-- **Arrays.** Falsy entries are skipped and later entries win.
+- **Arrays.** Falsy entries are skipped and later entries win, over `className` too, as a
+  later CSS rule does: a later `borderRadius: 8` replaces an earlier corner's radius.
 - **Shorthands.** `padding`, `margin`, `paddingHorizontal`/`paddingVertical`, per-side keys and
   `flex: 1` (meaning `1 1 0%`) all work. `border` and `borderTop`, `borderRight`,
   `borderBottom`, `borderLeft` take CSS strings (`'1px solid #e5e7eb'`, `'2pt dashed red'`,

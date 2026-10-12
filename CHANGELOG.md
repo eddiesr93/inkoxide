@@ -13,6 +13,9 @@ All notable changes to the packages in this repository. The format follows
   template error that names it, or the `<Suspense>` boundary it is in, and says that templates
   cannot wait for data. Without a boundary the error blamed a missing `<Document>`; with one,
   the PDF showed the fallback and the process crashed shortly afterwards.
+- A later `border`, `borderStyle` or `borderRadius` for every side, in a style array or over
+  `className`, replaces the per-side styles and per-corner radii set before it, and a per-corner
+  `borderRadius` object keeps the corners it does not name instead of setting them to 0.
 
 ## 0.5.0 - 2026-10-12
 

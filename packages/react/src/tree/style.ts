@@ -535,12 +535,31 @@ export function withStyleProp(
   }
   const units: Units = { em, page };
   let s = base;
-  for (const p of list) s = { ...s, ...fromStyleProp(p, units, outer) };
+  for (const p of list) s = over(s, fromStyleProp(p, units, outer));
   for (const [key, v] of Object.entries(s)) {
     const bad = nonFinite(v);
     if (bad !== undefined) throw new Error(`${key}: ${bad} is not a finite number`);
   }
   return s;
+}
+
+/** Keys for every side or corner at once, and the per-side or per-corner keys they replace. */
+const ALL_SIDES: ReadonlyArray<readonly [keyof TwStyle, ReadonlyArray<keyof TwStyle>]> = [
+  ['borderStyle', BORDER_STYLE.map(([, k]) => k)],
+  ['borderRadius', CORNER_KEYS.map(([, k]) => k)],
+];
+
+/**
+ * `next` over `s`, as a later CSS rule: a `borderStyle` or `borderRadius` for every side or
+ * corner replaces the per-side and per-corner values `s` has, which would otherwise win.
+ */
+function over(s: TwStyle, next: TwStyle): TwStyle {
+  const out: Record<string, unknown> = { ...s, ...next };
+  for (const [all, each] of ALL_SIDES) {
+    if (next[all] === undefined) continue;
+    for (const k of each) if (next[k] === undefined) delete out[k];
+  }
+  return out as TwStyle;
 }
 
 /**
@@ -707,7 +726,6 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): T
     if (r.topRight !== undefined) out.borderTopRightRadius = len(r.topRight);
     if (r.bottomRight !== undefined) out.borderBottomRightRadius = len(r.bottomRight);
     if (r.bottomLeft !== undefined) out.borderBottomLeftRadius = len(r.bottomLeft);
-    if (Object.keys(r).length < 4) out.borderRadius = 0;
   } else if (borderRadius !== undefined) {
     out.borderRadius = len(borderRadius);
   }

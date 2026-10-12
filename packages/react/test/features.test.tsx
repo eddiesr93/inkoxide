@@ -97,6 +97,43 @@ describe('paint styles', () => {
     });
   });
 
+  it('lets a later border style or radius for every side replace earlier per-side values', () => {
+    const r = tree(
+      <>
+        <View style={[{ borderTop: '2px solid blue' }, { border: '1px dashed red' }]} />
+        <View style={[{ borderWidth: 1, borderStyle: { top: 'dotted' } }, { borderStyle: 'dashed' }]} />
+        <View style={[{ borderRadius: { topLeft: 4 } }, { borderRadius: 8 }]} />
+        <View className="rounded-tl-lg" style={{ borderRadius: 8 }} />
+        <View
+          className="border-dotted [border-top-style:dashed]"
+          style={{ borderWidth: 1, borderStyle: 'solid' }}
+        />
+      </>,
+    );
+    const [a, b, c, d, e] = (body(r) as BoxNode[]).map((n) => n.style);
+    expect(a?.borderStyle).toBe('dashed');
+    expect(a?.borderColor?.top).toEqual(parseColor('red'));
+    expect(b?.borderStyle).toBe('dashed');
+    expect(c?.borderRadius).toBe(8);
+    expect(d?.borderRadius).toBe(8);
+    expect(e?.borderStyle).toBeUndefined();
+  });
+
+  it('keeps the corners a per-corner radius does not name', () => {
+    const r = tree(
+      <>
+        <View className="rounded-lg" style={{ borderRadius: { topLeft: 0 } }} />
+        <View style={[{ borderRadius: 6 }, { borderRadius: { topLeft: 0 } }]} />
+        <View className="px-4" style={{ padding: { top: 5 } }} />
+      </>,
+    );
+    const [a, b, c] = (body(r) as BoxNode[]).map((n) => n.style);
+    const corners = { topLeft: 0, topRight: 6, bottomRight: 6, bottomLeft: 6 };
+    expect(a?.borderRadius).toEqual(corners);
+    expect(b?.borderRadius).toEqual(corners);
+    expect(c?.padding).toEqual({ top: 5, right: 12, left: 12 });
+  });
+
   it('accepts lengths with units and CSS transform strings in the style prop', () => {
     const r = tree(
       <View
