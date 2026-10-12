@@ -1,9 +1,13 @@
+import type { PagePreset } from '../components/index.ts';
+
+type Size = { width: number; height: number };
+
 /**
  * Page presets in points, portrait: the ISO 216 A and B series, the ISO 269 C series, RA and
  * SRA (ISO 217), the US sizes, Folio and ID-1 (ISO/IEC 7810). Millimetre sizes are rounded to
  * 0.01 pt.
  */
-export const PAGE_SIZES: Record<string, { width: number; height: number }> = {
+export const PAGE_SIZES: Record<string, Size> = {
   '4A0': { width: 4767.87, height: 6740.79 },
   '2A0': { width: 3370.39, height: 4767.87 },
   A0: { width: 2383.94, height: 3370.39 },
@@ -55,11 +59,24 @@ export const PAGE_SIZES: Record<string, { width: number; height: number }> = {
   Executive: { width: 522, height: 756 },
   Folio: { width: 612, height: 936 },
   ID1: { width: 153.01, height: 242.65 },
-};
+} satisfies Record<PagePreset, Size>;
 
-/** The presets, for error messages. */
-export const PRESET_NAMES =
-  '4A0, 2A0, A0–A10, B0–B10, C0–C10, RA0–RA4, SRA0–SRA4, Letter, Legal, Tabloid, Executive, Folio, ID1';
+/** The presets, for error messages, with each series as a range: `4A0, 2A0, A0–A10, …, ID1`. */
+export const PRESET_NAMES = presetNames(Object.keys(PAGE_SIZES));
+
+function presetNames(names: readonly string[]): string {
+  const groups: Array<{ series: string; names: string[] }> = [];
+  for (const name of names) {
+    // `A` for `A4`; a name outside a series is a group of its own.
+    const series = /^([A-Z]+)\d+$/.exec(name)?.[1] ?? name;
+    const last = groups.at(-1);
+    if (last?.series === series) last.names.push(name);
+    else groups.push({ series, names: [name] });
+  }
+  return groups
+    .map(({ names: [first, ...rest] }) => (rest.length > 0 ? `${first}–${rest.at(-1)}` : first))
+    .join(', ');
+}
 
 /** `PAGE_SIZES` by lower-case name: preset names match in any case. */
 const PRESETS = new Map(Object.entries(PAGE_SIZES).map(([name, size]) => [name.toLowerCase(), size]));
@@ -68,7 +85,7 @@ const PRESETS = new Map(Object.entries(PAGE_SIZES).map(([name, size]) => [name.t
  * The size of a preset name, in any case, optionally with `-landscape` (`'a4'`,
  * `'Letter-landscape'`); undefined for any other string.
  */
-export function presetSize(name: string): { width: number; height: number } | undefined {
+export function presetSize(name: string): Size | undefined {
   const [base = '', orient, ...rest] = name.toLowerCase().split('-');
   const preset = PRESETS.get(base);
   if (!preset || rest.length > 0 || (orient !== undefined && orient !== 'landscape')) return undefined;
