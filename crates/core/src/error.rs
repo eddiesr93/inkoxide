@@ -57,7 +57,8 @@ validation_codes! {
     FontNotRegistered = "FONT_NOT_REGISTERED",
     /// An image `src` is not present in the render-time image map.
     UnknownImage = "UNKNOWN_IMAGE",
-    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
+    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG, or do
+    /// not decode. A JPEG is not decoded: its structure is checked.
     InvalidImage = "INVALID_IMAGE",
     /// An image has more than 50 million pixels (width × height).
     ImageTooLarge = "IMAGE_TOO_LARGE",

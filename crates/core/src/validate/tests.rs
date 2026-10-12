@@ -415,6 +415,104 @@ fn images_over_the_pixel_limit_are_too_large() {
     assert!(e[0].message.contains("megapixels"), "{}", e[0].message);
 }
 
+/// A PNG with a valid header and an `IDAT` that is not zlib data.
+const CORRUPT_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVRnYXJiYWdlLW5vdC16bGlinTtYuwAAAABJRU5ErkJggg==";
+
+#[test]
+fn images_that_do_not_decode_are_invalid() {
+    let fixture = crate::test_fixtures::fixture;
+    let photo = fixture("images/photo.jpg");
+    let sos = photo.windows(2).position(|w| w == [0xFF, 0xDA]).unwrap();
+    // Cut 20 bytes into the image data and padded with junk.
+    let mut cut_jpeg = photo[..sos + 20].to_vec();
+    cut_jpeg.extend_from_slice(&[0x5A; 64]);
+    // Lossless coding: the frame marker made SOF3.
+    let mut lossless = photo.clone();
+    let sof = lossless.windows(2).position(|w| w == [0xFF, 0xC0]).unwrap();
+    lossless[sof + 1] = 0xC3;
+    let mut images = ImageStore::new();
+    images.insert(
+        "corrupt",
+        crate::images::base64::decode(CORRUPT_PNG).unwrap(),
+    );
+    images.insert("cut-png", fixture("images/logo.png")[..60].to_vec());
+    images.insert("cut-jpeg", cut_jpeg);
+    images.insert("lossless", lossless);
+    images.insert("photo", photo);
+    let doc = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":100,"height":100}},"children":[
+          {{"type":"image","src":"corrupt"}},{{"type":"image","data":"{CORRUPT_PNG}"}},
+          {{"type":"image","src":"cut-png"}},{{"type":"image","src":"cut-jpeg"}},
+          {{"type":"image","src":"lossless"}},{{"type":"image","src":"photo"}}]}}]}}"#
+    );
+    let e = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &FontStore::new(),
+        &images,
+    );
+    let got: Vec<(&str, &str)> = e
+        .iter()
+        .map(|e| (e.code.as_str(), e.path.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("INVALID_IMAGE", "pages[0].children[0].src"),
+            ("INVALID_IMAGE", "pages[0].children[1].data"),
+            ("INVALID_IMAGE", "pages[0].children[2].src"),
+            ("INVALID_IMAGE", "pages[0].children[3].src"),
+            ("INVALID_IMAGE", "pages[0].children[4].src"),
+        ]
+    );
+    assert!(
+        e[0].message
+            .starts_with("image `corrupt`: PNG could not be decoded"),
+        "{}",
+        e[0].message
+    );
+    assert!(e[3].message.contains("truncated"), "{}", e[3].message);
+    assert!(e[4].message.contains("lossless"), "{}", e[4].message);
+
+    // Render reports the same problem, at its path.
+    let err = crate::render(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &crate::RenderOptions::default(),
+        &FontStore::new(),
+        &images,
+    )
+    .unwrap_err();
+    assert_eq!(
+        (
+            err.code(),
+            err.to_string().contains("pages[0].children[0].src")
+        ),
+        ("INVALID_IMAGE", true)
+    );
+}
+
+#[test]
+fn validate_without_images_checks_everything_else() {
+    // More image references than the error cap, then an undeclared font.
+    let images = vec![r#"{"type":"image","src":"logo"}"#; 100].join(",");
+    let d = doc(&format!(
+        r#"{images},{{"type":"image","data":"!!"}},
+        {{"type":"text","runs":[{{"text":"x","font":"nope","size":9}}]}}"#
+    ));
+    let e: Vec<_> = crate::validate_without_images(d.as_bytes(), InputFormat::Json, &fonts())
+        .into_iter()
+        .map(|e| (e.code, e.path))
+        .collect();
+    assert_eq!(
+        e,
+        [
+            (C::InvalidImage, "pages[0].children[100].data".into()),
+            (C::UnknownFont, "pages[0].children[101].runs[0].font".into()),
+        ]
+    );
+}
+
 #[test]
 fn links_and_bookmarks() {
     let ok = doc(

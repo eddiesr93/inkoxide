@@ -1,7 +1,8 @@
 //! Thread pools for `RenderOptions::threads`. `None` uses rayon's global
-//! pool and `Some(1)` the calling thread (no pool); any other size gets its
-//! own pool, built once per size and kept for the life of the process
-//! (pools are expensive to start).
+//! pool and `Some(0)` or `Some(1)` the calling thread (no pool); any other
+//! size gets its own pool, built once per size and kept for the life of
+//! the process (pools are expensive to start). Sizes above
+//! [`MAX_THREADS`] share the pool of that size.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,7 +11,8 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::InkoxideError;
 
-/// Upper bound on a requested pool size.
+/// Upper bound on a requested pool size (stated in the `RenderOptions::threads`
+/// docs, docs/API.md and the Node binding, which rejects larger values).
 const MAX_THREADS: usize = 256;
 
 static POOLS: Mutex<Option<HashMap<usize, Arc<ThreadPool>>>> = Mutex::new(None);

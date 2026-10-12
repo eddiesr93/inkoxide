@@ -47,16 +47,19 @@ export interface RenderOptions {
   format?: 'json' | 'msgpack';
   /** Flate-compress page content streams. Default `true`. */
   compress?: boolean;
-  /** Flate level 0–9, used when `compress` is on. Default `6`. */
+  /** Flate level, an integer from 0 to 9, used when `compress` is on. Default `6`. */
   compressionLevel?: number;
   /**
    * RFC 3339 timestamp written as the creation date; overrides
    * `meta.creationDate`. With neither set no date is written. Default: none.
+   * Another string is `INVALID_ARGUMENT`.
    */
   creationDate?: string;
   /**
-   * Worker threads for this render. Default: all cores. `1` renders on the libuv thread that
-   * runs it, with no parallelism inside, so concurrent renders do not wait for each other.
+   * Worker threads for this render, an integer from 1 to 256. Default: all cores. `1` renders
+   * on the libuv thread that runs it, with no parallelism inside, so concurrent renders do not
+   * wait for each other. Any other number uses a pool of that size, kept for the life of the
+   * process and shared by the renders that ask for the same number.
    */
   threads?: number;
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
@@ -105,8 +108,11 @@ export function registerHyphenationPatterns(lang: string, data: Uint8Array | str
 export function unregisterHyphenationPatterns(lang: string): boolean;
 /**
  * Validates a document against the schema and the registered fonts. Image
- * references are checked only when `images` is given. Returns at most 100
- * problems; one in the document's structure is returned alone.
+ * references (`src`) are checked only when `images` is given: each must be
+ * there and decode. Inline images (`data`) are always checked. Returns at
+ * most 100 problems; one in the document's structure is returned alone. An
+ * empty array means the document is valid; `render` can still fail on an
+ * option, the page limit or a font that cannot be embedded.
  */
 export function validate(
   doc: Uint8Array | string,

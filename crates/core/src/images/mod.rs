@@ -2,7 +2,7 @@
 //! the per-render set of unique images (deduplicated by content hash).
 //!
 //! JPEG is never decoded: its bytes go into the PDF as `DCTDecode` and only
-//! the headers are read. PNG is decoded behind [`ImageDecoder`] and
+//! its markers are read. PNG is decoded behind [`ImageDecoder`] and
 //! written as Flate-compressed samples plus an optional alpha `SMask`.
 
 pub(crate) mod base64;
@@ -79,7 +79,10 @@ impl ImageStore {
     }
 
     /// Adds (or replaces) image `id`. Bytes are checked when a document
-    /// uses them: [`crate::validate`] reports undecodable images.
+    /// uses them: [`crate::validate`] reports images that do not decode
+    /// (`INVALID_IMAGE`). A JPEG is not decoded, only its structure is
+    /// checked, so corrupt compressed data inside a complete JPEG is
+    /// embedded as it is.
     pub fn insert(&mut self, id: impl Into<String>, bytes: impl Into<Arc<[u8]>>) {
         self.images
             .insert(id.into(), Arc::new(ImageData::new(bytes.into())));

@@ -7,6 +7,32 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- `inkoxide` (Rust): `validate_without_images`, which validates a document without looking up
+  its image ids, as the Node `validate` does when it is given no `images`.
+
+### Fixed
+
+- `validate` decodes the images a document uses, so an image that does not decode is
+  `INVALID_IMAGE` at its path. Until now only the header was read: a corrupt or truncated PNG
+  passed validation and failed the render with `IMAGE_ERROR` and no path. A JPEG is still
+  embedded without decoding, but its structure is checked: a JPEG cut short, or coded in a way
+  PDF readers cannot show (lossless, hierarchical or arithmetic), is `INVALID_IMAGE`. The decode
+  is cached, so the render that follows does not decode again.
+- Node: `validate` without `images` found nothing past 100 image references. It counted the
+  `UNKNOWN_IMAGE` errors it then dropped against the 100-error cap; it now skips the image
+  lookups instead.
+- Node: `threads` and `compressionLevel` that are not integers in range (`threads` 1–256,
+  `compressionLevel` 0–9) are `INVALID_ARGUMENT`. They were converted: `threads: -1` started a
+  256-thread pool, and `1.5`, `NaN` or `2 ** 32 + 3` were truncated or wrapped. An invalid
+  `creationDate` is `INVALID_ARGUMENT` too, like every other bad option, not the document code
+  `INVALID_VALUE`.
+- Node: `InkoxideError` no longer has an undocumented `detail` property (the same text as
+  `message`).
+- Rust: the `RenderOptions::threads` docs state that a pool has at most 256 threads and that
+  `Some(0)` renders on the calling thread, as `Some(1)` does.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and

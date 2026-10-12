@@ -3,15 +3,17 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
+use crate::images::{ImageCrateDecoder, ImageData};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, Color, ColumnWidth,
-    Document, Field, FieldKind, GridTrack, Length, LengthPercent, Node, NodeKind, ObjectPosition,
-    OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
-    SCHEMA_VERSION,
+    Document, Field, FieldKind, GridTrack, ImageSource, Length, LengthPercent, Node, NodeKind,
+    ObjectPosition, OptEdges, PageSpec, RepeatCount, Style, Table, TextRun, TrackBreadth,
+    TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -77,10 +79,12 @@ impl From<TrackBreadth> for Len {
     }
 }
 
+/// Checks `doc`. Without `images`, image ids are not looked up (inline
+/// `data` is still checked).
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
-    images: &ImageStore,
+    images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
         path: String::with_capacity(128),
@@ -102,7 +106,7 @@ struct Checker<'a> {
     errors: Vec<ValidationError>,
     declared: BTreeSet<&'a str>,
     fonts: &'a FontStore,
-    images: &'a ImageStore,
+    images: Option<&'a ImageStore>,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -464,29 +468,40 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn image_source(&mut self, source: &crate::schema::ImageSource) {
-        match source {
-            crate::schema::ImageSource::Ref(id) if !self.id(Some("src"), id) => {} // reported by `id`
-            crate::schema::ImageSource::Ref(id) => match self.images.get(id) {
-                None => self.err(
-                    Code::UnknownImage,
-                    Some("src"),
-                    format!("image `{id}` was not provided in the render options"),
-                ),
-                Some(data) => {
-                    if let Err(e) = crate::images::probe(&data.bytes) {
-                        self.err(probe_code(&e), Some("src"), format!("image `{id}`: {e}"));
-                    }
+    /// An image's bytes must decode: its header first, which is cheap and
+    /// tells a too large image apart, then the image itself. The decode is
+    /// cached, so the render that follows reuses it.
+    fn image_source(&mut self, source: &ImageSource) {
+        let (field, data, id) = match source {
+            ImageSource::Ref(id) if !self.id(Some("src"), id) => return, // reported by `id`
+            ImageSource::Ref(id) => {
+                let Some(images) = self.images else { return };
+                let Some(data) = images.get(id) else {
+                    self.err(
+                        Code::UnknownImage,
+                        Some("src"),
+                        format!("image `{id}` was not provided in the render options"),
+                    );
+                    return;
+                };
+                ("src", data.clone(), Some(id))
+            }
+            ImageSource::Inline(b64) => match crate::images::base64::decode(b64) {
+                Ok(bytes) => ("data", Arc::new(ImageData::new(bytes.into())), None),
+                Err(e) => {
+                    self.err(Code::InvalidImage, Some("data"), e);
+                    return;
                 }
             },
-            crate::schema::ImageSource::Inline(data) => match crate::images::base64::decode(data) {
-                Err(e) => self.err(Code::InvalidImage, Some("data"), e),
-                Ok(bytes) => {
-                    if let Err(e) = crate::images::probe(&bytes) {
-                        self.err(probe_code(&e), Some("data"), e.to_string());
-                    }
-                }
-            },
+        };
+        let message = |e: &dyn std::fmt::Display| match id {
+            Some(id) => format!("image `{id}`: {e}"),
+            None => e.to_string(),
+        };
+        if let Err(e) = crate::images::probe(&data.bytes) {
+            self.err(probe_code(&e), Some(field), message(&e));
+        } else if let Err(e) = data.decoded(&ImageCrateDecoder) {
+            self.err(Code::InvalidImage, Some(field), message(&e));
         }
     }
 

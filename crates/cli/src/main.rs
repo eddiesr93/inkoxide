@@ -75,7 +75,8 @@ enum Cmd {
         /// Resolution for --png-dir.
         #[arg(long, default_value_t = 72)]
         dpi: u32,
-        /// Worker threads (default: all cores).
+        /// Worker threads (default: all cores; 0 and 1 render on the calling
+        /// thread; a pool has at most 256).
         #[arg(long)]
         threads: Option<usize>,
     },
@@ -95,7 +96,8 @@ enum Cmd {
         res: Resources,
         #[arg(long, default_value_t = 30)]
         iterations: u32,
-        /// Worker threads (default: all cores).
+        /// Worker threads (default: all cores; 0 and 1 render on the calling
+        /// thread; a pool has at most 256).
         #[arg(long)]
         threads: Option<usize>,
     },

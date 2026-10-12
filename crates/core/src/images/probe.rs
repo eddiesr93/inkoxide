@@ -1,6 +1,7 @@
-//! Header-only inspection of JPEG, PNG, GIF and WebP files (SVG is parsed): format, pixel size,
-//! components and EXIF orientation. Used by validation (cheap, no decode)
-//! and by the JPEG passthrough path.
+//! Header inspection of JPEG, PNG, GIF and WebP files (SVG is parsed): format, pixel size,
+//! components and EXIF orientation. Cheap, no decode: validation runs it
+//! before decoding, and the JPEG passthrough path relies on it (for JPEG it
+//! also checks the marker structure, as JPEG is never decoded).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ImageFormat {
@@ -185,10 +186,16 @@ fn probe_webp(b: &[u8]) -> Result<ImageInfo, String> {
     Ok(raster(ImageFormat::WebP, w, h))
 }
 
+/// Reads the frame header and walks the whole marker structure, so that a
+/// file cut short (no end-of-image marker) or coded in a way `DCTDecode`
+/// cannot show is rejected. The compressed image data itself is not
+/// decoded: it goes into the PDF as it is.
 fn probe_jpeg(b: &[u8]) -> Result<ImageInfo, String> {
     let mut i = 2;
     let mut adobe = false;
     let mut orientation = 1;
+    let mut frame = None;
+    let mut scanned = false;
     loop {
         // Skip fill bytes before a marker.
         while b.get(i) == Some(&0xFF) && b.get(i + 1) == Some(&0xFF) {
@@ -203,8 +210,22 @@ fn probe_jpeg(b: &[u8]) -> Result<ImageInfo, String> {
         if marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
             continue;
         }
-        if marker == 0xD9 || marker == 0xDA {
+        if frame.is_none() && (marker == 0xD9 || marker == 0xDA) {
             return Err("JPEG has no frame header before its image data".into());
+        }
+        if marker == 0xD9 {
+            if !scanned {
+                return Err("JPEG has no image data".into());
+            }
+            let (width, height, components) = frame.unwrap_or_default();
+            return Ok(ImageInfo {
+                format: ImageFormat::Jpeg,
+                width,
+                height,
+                components,
+                adobe,
+                orientation,
+            });
         }
         let len = be16(b, i).ok_or("JPEG is truncated")? as usize;
         if len < 2 || i + len > b.len() {
@@ -212,8 +233,12 @@ fn probe_jpeg(b: &[u8]) -> Result<ImageInfo, String> {
         }
         let seg = &b[i + 2..i + len];
         match marker {
-            // SOFn (not DHT/JPG/DAC).
-            0xC0..=0xCF if !matches!(marker, 0xC4 | 0xC8 | 0xCC) => {
+            // Baseline, extended and progressive Huffman coding: what
+            // `DCTDecode` reads.
+            0xC0..=0xC2 => {
+                if frame.is_some() {
+                    return Err("JPEG has more than one frame header".into());
+                }
                 if seg.len() < 6 {
                     return Err("JPEG frame header is truncated".into());
                 }
@@ -229,14 +254,15 @@ fn probe_jpeg(b: &[u8]) -> Result<ImageInfo, String> {
                         seg[0]
                     ));
                 }
-                return Ok(ImageInfo {
-                    format: ImageFormat::Jpeg,
-                    width: w,
-                    height: h,
-                    components,
-                    adobe,
-                    orientation,
-                });
+                frame = Some((w, h, components));
+            }
+            // The other SOFn (not DHT/JPG/DAC): lossless, hierarchical or
+            // arithmetic coding.
+            0xC3..=0xCF if !matches!(marker, 0xC4 | 0xC8 | 0xCC) => {
+                return Err(
+                    "JPEG uses lossless, hierarchical or arithmetic coding; only baseline and progressive JPEGs are supported"
+                        .into(),
+                );
             }
             0xEE if seg.starts_with(b"Adobe") => adobe = true,
             0xE1 if seg.starts_with(b"Exif\0\0") => {
@@ -245,6 +271,27 @@ fn probe_jpeg(b: &[u8]) -> Result<ImageInfo, String> {
             _ => {}
         }
         i += len;
+        if marker == 0xDA {
+            i = scan_end(b, i)?;
+            scanned = true;
+        }
+    }
+}
+
+/// Where the compressed data of a scan that starts at `i` ends: at the
+/// first marker other than a restart marker.
+fn scan_end(b: &[u8], mut i: usize) -> Result<usize, String> {
+    const TRUNCATED: &str = "JPEG is truncated (its image data has no end marker)";
+    loop {
+        i += b[i..].iter().position(|&x| x == 0xFF).ok_or(TRUNCATED)?;
+        match b.get(i + 1) {
+            None => return Err(TRUNCATED.into()),
+            // A stuffed 0xFF byte or a restart marker.
+            Some(0x00 | 0xD0..=0xD7) => i += 2,
+            // Fill bytes before a marker.
+            Some(0xFF) => i += 1,
+            Some(_) => return Ok(i),
+        }
     }
 }
 
