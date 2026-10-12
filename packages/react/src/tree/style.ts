@@ -4,8 +4,6 @@ import {
   type BorderStyle,
   type ColorValue,
   type LenPercent,
-  type LetterSpacing,
-  type LineHeight,
   OBJECT_FITS,
   type ObjectFit,
   type ObjectPosition,
