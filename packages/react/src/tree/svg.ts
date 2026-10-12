@@ -2,8 +2,11 @@ import { escapeXml } from '../canvas.ts';
 import { HOST, type SvgPresentation, type SvgProps } from '../components/index.ts';
 import type { Instance, Node } from '../reconciler/instance.ts';
 
-/** SVG element name of each primitive host type. */
-export const SVG_TAGS: Record<string, string> = {
+/**
+ * SVG element name of each primitive host type. The reconciler lets these, and nothing else, into
+ * an `<Svg>`.
+ */
+export const SVG_TAGS: Readonly<Record<string, string>> = {
   [HOST.G]: 'g',
   [HOST.Path]: 'path',
   [HOST.Rect]: 'rect',
@@ -64,26 +67,21 @@ function attrs(props: Record<string, unknown>, skip: ReadonlySet<string>): strin
 
 const CHILD_SKIP = new Set(['children']);
 
-function element(n: Node, fail: (inst: Instance | undefined, msg: string) => never, owner: Instance): string {
-  if (n.kind === 'text') {
-    if (n.text.trim() === '') return '';
-    return fail(owner, 'Text inside <Svg> is not supported; place a <Text> over the drawing instead.');
+function element(n: Node): string {
+  const tag = n.kind === 'element' ? SVG_TAGS[n.type] : undefined;
+  if (n.kind === 'text' || tag === undefined) {
+    throw new Error(
+      `Internal error: the reconciler let ${n.kind === 'text' ? 'text' : `<${n.type}>`} into an <Svg>.`,
+    );
   }
-  const tag = SVG_TAGS[n.type];
-  if (!tag) return fail(n, `Only SVG primitives (Path, Rect, Circle, G, …) can be inside <Svg>.`);
-  const body = n.children.map((c) => element(c, fail, n)).join('');
+  const body = n.children.map(element).join('');
   const a = attrs(n.props, CHILD_SKIP);
   return body === '' ? `<${tag}${a}/>` : `<${tag}${a}>${body}</${tag}>`;
 }
 
 /** The SVG document of an `<Svg>` element, sized `width` × `height` points. */
-export function svgMarkup(
-  inst: Instance,
-  width: number,
-  height: number,
-  fail: (inst: Instance | undefined, msg: string) => never,
-): string {
-  const body = inst.children.map((c) => element(c, fail, inst)).join('');
+export function svgMarkup(inst: Instance, width: number, height: number): string {
+  const body = inst.children.map(element).join('');
   return svgDocument(width, height, body, inst.props.viewBox !== undefined, attrs(inst.props, BOX_PROPS));
 }
 

@@ -671,7 +671,7 @@ class Builder {
         return this.mark(n, inst);
       }
       default:
-        return this.fail(inst, `<${HOST_NAME[inst.type] ?? inst.type}> cannot be used here.`);
+        throw new Error(`Internal error: the reconciler let <${inst.type}> into the flow.`);
     }
   }
 
@@ -801,7 +801,7 @@ class Builder {
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
           break;
         default:
-          this.fail(n, `<${HOST_NAME[n.type]}> cannot be inside <Text>.`);
+          throw new Error(`Internal error: the reconciler let <${n.type}> into a <Text>.`);
       }
     }
   }
@@ -1017,7 +1017,7 @@ class Builder {
       }
       markup = svgDocument(w, h, painter.toSvgBody());
     } else {
-      markup = svgMarkup(inst, w, h, (at, msg) => this.fail(at ?? inst, msg));
+      markup = svgMarkup(inst, w, h);
     }
     const node: ImageNode = { type: 'image', data: svgDataUrl(markup) };
     const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };
