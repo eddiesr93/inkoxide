@@ -16,6 +16,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [Debugging layout](#debugging-layout)
 - [API](#api)
 - [Errors](#errors)
+- [Serving templates](#serving-templates)
 - [FAQ](#faq)
 - [Limitations](#limitations)
 
@@ -29,7 +30,7 @@ take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stro
 
 | Component | What it is |
 |---|---|
-| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `lang` (`"en-US"`). |
+| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `lang` (`"en-US"`), `creationDate` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)). |
 | `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
@@ -41,7 +42,7 @@ take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stro
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
-| `TextField`, `Checkbox`, `Radio`, `Select` | Fillable form fields (AcroForm). |
+| `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link` and
 other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
@@ -99,7 +100,7 @@ Four families ship with the package, so nothing needs registering:
 | Inter | regular, italic, bold | the default (`font-sans`) |
 | Inter Display | bold | `font-display`, for large headings |
 | Roboto Mono | regular | `font-mono` |
-| Noto Sans | regular | automatic, for characters Inter lacks |
+| Noto Sans | regular | automatic, for characters Inter lacks ([`fallbackFonts`](#links-bookmarks-and-metadata)) |
 
 `font-semibold` and other weights without a face of their own use the nearest one (bold), as in
 CSS.
@@ -183,8 +184,9 @@ const logo = readFileSync('logo.png');
   template wrote it, and is the same for a missing file and a file outside the folders:
   `Cannot read the image ../secret.png: no such file in the localImages folders.`
   (`IMAGE_READ_FAILED`).
-- **Ids first.** A string that names an image in the `images` option (or a template's `images`)
-  is that image, even when it looks like a path or a URL. No file is read for it.
+- **Ids first.** A string that names an image in the `images` option (or a
+  [template's](#serving-templates) `images`) is that image, even when it looks like a path or a
+  URL. No file is read for it.
 - **Requests.** `{ uri, method, headers, body }` fetches `uri` with that method, headers and
   body. It follows the same rules as a URL string: the allowlist, the timeout and the size limit.
 - **Functions and promises.** A function is called once per render, after the tree is built and
@@ -228,11 +230,28 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
   column) overrides that.
 - **Showing on some pages.** `pages="first" | "notFirst" | "last" | "notLast" | "odd" | "even"`,
   or a list of page numbers, shows an element in a header, a footer or a
-  [fixed element](#on-every-page-fixed) only on those pages.
+  [fixed element](#on-every-page-fixed) only on those pages. Page numbers count from 1 across
+  the whole document; a negative number counts from the end, so `pages={[1, -1]}` is the first
+  and the last page. `0` and an empty list are errors.
+- **In the page body.** `pages` works on any element of the body too. The element keeps its
+  place in the layout on every page and is painted only on those pages: on others it leaves an
+  empty space, and of a box split across pages only the parts on those pages are drawn.
 - **Paragraphs.** `orphans` and `widows` keep at least that many lines together at the foot and
   head of a page.
 - **Content that depends on the page.** Use `render={({ pageNumber, totalPages }) => …}` on a
-  `Text` or `View` in a header, a footer or a fixed element.
+  `Text` or `View` in a header, a footer or a fixed element. A component rendered by a `render`
+  prop can read the same numbers with the `usePage()` hook, which throws anywhere else:
+
+  ```tsx
+  function Folio() {
+    const { pageNumber, totalPages } = usePage();
+    return <Text>{pageNumber === totalPages ? 'Last page' : `Page ${pageNumber}`}</Text>;
+  }
+
+  <Footer>
+    <View render={() => <Folio />} />
+  </Footer>
+  ```
 
 ### On every page: `fixed`
 
@@ -358,6 +377,25 @@ with that `id`.
 Bookmarks become the PDF outline in the viewer's sidebar. With `{ pdfA: true }`, the output is
 PDF/A-2b, for archiving.
 
+`Document` writes `title`, `author`, `subject`, `keywords` and `creator` (the application that
+made the file) into the PDF's properties. `creationDate` (an RFC 3339 timestamp,
+`"2026-10-12T09:30:00Z"`) dates it, as the `creationDate` option does; without either, the same
+input gives byte-identical output.
+
+`fallbackFonts` lists the fonts tried, in order, for characters a run's font lacks. The default is
+`['NotoSans-Regular']`. The entries are font ids: the bundled `Inter-Regular`, `Inter-Italic`,
+`Inter-Bold`, `InterDisplay-Bold`, `NotoSans-Regular` and `RobotoMono-Regular`, or a face added
+with `Font.register`, whose id is its family with spaces as hyphens, its weight, and `-italic` for
+an italic face:
+
+```tsx
+Font.register({ family: 'Noto Sans Arabic', src: './fonts/NotoSansArabic-Regular.ttf' });
+
+<Document fallbackFonts={['NotoSans-Regular', 'Noto-Sans-Arabic-400']}>…</Document>
+```
+
+An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fallback off.
+
 ## Text: hyphenation and direction
 
 ```tsx
@@ -426,6 +464,8 @@ can also go straight into `<Image src={svgBytes} />`.
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
 must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
 `maxLength` and `password`; size, border, background and text style come from the classes.
+`Field` is any of the four, picked by its `kind` (`"text"`, `"checkbox"`, `"radio"`,
+`"select"`), for forms built from data: `<Field kind={q.kind} name={q.name} … />`.
 
 ## Debugging layout
 
@@ -486,7 +526,37 @@ All three take the same options:
 **`StyleSheet.create(styles)`** returns the styles unchanged, with their types.
 
 **`init()`** loads Tailwind's compiler, the engine and the fonts. The first render does it
-anyway; call it at server startup so the first request does not wait (about 150 ms).
+anyway; call it at server startup so the first request does not wait (about 150 ms). It resolves
+to the same status as `engineStatus()`.
+
+**Health checks.** `version()` returns `{ engine, schema, gitSha }`: the engine's version, the
+document schema version it reads and the commit it was built from. `engineStatus()` returns
+`undefined` until the engine has started (the first `init` or render), then `{ version, fonts,
+hyphenation, warnings }`: the font ids registered, which hyphenation languages loaded
+(`{ en: true }`), and start-up warnings such as a missing bundled font.
+
+```ts
+app.get('/health', (_req, res) => {
+  const status = engineStatus();
+  res.status(status ? 200 : 503).json(status ?? { starting: true });
+});
+```
+
+**`countPages(pdf)`** is the page count of a PDF made by `renderToBuffer`. It reads the page
+tree the engine writes, so it is not a general PDF parser.
+
+**Types.** The props of a component are exported as a type named after it (`DocumentProps`,
+`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `CanvasProps` and so on); `PolyProps`
+serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresentation` the
+attributes every SVG shape takes. Also exported:
+
+- styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
+  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
+- `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
+  `ImageRequest`, and `Painter`, the painter a `Canvas` draws with;
+- options and results: `RenderToBufferOptions`, `LocalImageOptions`, `RemoteImageOptions`,
+  `FontRegistration`, `FontSource`, `FontSrc`, `FontWeight`, `HyphenationCallback`,
+  `EngineStatus`, `EngineVersion`, `RenderErrorCode` and `DataIssue`.
 
 **Concurrency.** A render runs on Node's thread pool, so many can run at once. `threads` sets
 how many cores one render uses; with `threads: 1` each render stays on its own pool thread.
@@ -526,10 +596,87 @@ apply:
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
 | `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), `renderToFile` could not write the file, or a bug |
 
-`INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. `Font.register` and
-`Font.registerHyphenationCallback` check their arguments when you call them and throw a plain
-`Error` straight away: a missing family name or `src`, an unknown weight, or a face already
-registered from another source.
+`INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. Besides `code`,
+`status`, `message`, `path`, `component` and `componentStack`, a `RenderError` may have
+`className` (the Tailwind class that failed), `engineCode` (the engine's own code, for
+`ENGINE_REJECTED` and some `INTERNAL` errors) and `issues` (for `INVALID_DATA`). It turns into
+JSON with only its fields that are set (`res.status(e.status).json(e)`): `code`, `message`,
+`path`, `component`, `componentStack`, `className`, `engineCode` and `issues`, but not `status`
+or the stack. Two more codes come from [templates](#serving-templates): `INVALID_DATA` (400) and
+`UNKNOWN_TEMPLATE` (404).
+
+`Font.register` and `Font.registerHyphenationCallback` check their arguments when you call them
+and throw a plain `Error` straight away: a missing family name or `src`, an unknown weight, or a
+face already registered from another source.
+
+## Serving templates
+
+An advanced API, for a server that renders templates by id from JSON data, such as
+`POST /pdf/invoice`. It lives in its own entry, `@inkoxide/render/templates`, and checks the
+data with a [zod](https://zod.dev) schema before React renders anything.
+
+```tsx
+import { readFileSync } from 'node:fs';
+
+import { Document, Image, Page, RenderError, Text } from '@inkoxide/render';
+import { generate, type TemplateLike } from '@inkoxide/render/templates';
+import { z } from 'zod';
+
+const schema = z.object({ number: z.string(), total: z.number() });
+
+const invoice: TemplateLike<typeof schema> = {
+  meta: { id: 'invoice' },
+  schema,
+  Template: ({ data }) => (
+    <Document>
+      <Page>
+        <Image src="logo" className="h-10 w-10" />
+        <Text>Invoice {data.number}: {data.total}</Text>
+      </Page>
+    </Document>
+  ),
+  images: { logo: readFileSync('logo.png') },
+};
+
+const templates = new Map<string, TemplateLike>([[invoice.meta.id, invoice]]);
+
+app.post('/pdf/:id', async (req, res) => {
+  try {
+    const template = templates.get(req.params.id);
+    if (!template) throw new RenderError('UNKNOWN_TEMPLATE', `No template "${req.params.id}".`);
+    const { pdf } = await generate(template, req.body);
+    res.type('application/pdf').send(Buffer.from(pdf));
+  } catch (e) {
+    if (!(e instanceof RenderError)) throw e;
+    res.status(e.status).json(e);
+  }
+});
+```
+
+A template is `{ meta: { id }, schema, Template, images? }`: the component receives the parsed
+data as `data`, and `images` are its static images by id (a logo). An image passed in the render
+options under the same id replaces the template's.
+
+- **`generate(template, data, options?)`** checks `data`, renders and resolves to
+  `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, schemaVersion,
+  engineVersion }`. `timings` has the milliseconds of each stage: `reactMs`, `treeMs`,
+  `validateMs`, `engineMs`, `fetchMs` and `totalMs`. The options are those of `renderToBuffer`.
+- **`parseData(template, data)`** only checks the data, and returns it parsed, with the
+  schema's defaults applied.
+- **`renderTree(template, data, options?)`** builds the document tree without rendering it, for
+  snapshots and previews. Its `document` is the tree, and its `images` the images it uses.
+  `renderSettled(tree, images, options?)` renders it, and renders again with the page count
+  while `render` props change it; `images` are more images by id (`{}` when there are none), and
+  it resolves to `{ pdf, pages, passes, tree, fetchMs }`. Pass both the same options.
+- **`renderDocument(document, images?, options?)`** renders a document tree that is already
+  built, such as a stored `result.document` with the images it names, and resolves to
+  `{ pdf, pages, engineMs }`.
+
+Data that does not match the schema fails with `INVALID_DATA` (400) before anything renders. Its
+`issues` list every problem as `{ path, message, code }`, with readable messages:
+`{ path: 'items[0].qty', message: 'Missing: expected a number', code: 'invalid_type' }`.
+`UNKNOWN_TEMPLATE` (404) is never thrown by the package; it is there for your own lookup, as
+above, so that every error has the same shape.
 
 ## FAQ
 

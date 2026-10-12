@@ -7,6 +7,40 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- `@inkoxide/render/templates`, a second entry of `@inkoxide/render` for serving templates by
+  id with a zod schema for their data: `generate`, `parseData`, `renderTree`, `renderSettled`,
+  `renderDocument` and the types `TemplateLike`, `GenerateOptions`, `RenderOpts`,
+  `RenderResult`, `Timings` and `TreeResult`. The guide documents it under
+  [Serving templates](packages/render/GUIDE.md#serving-templates).
+- The `@inkoxide/render` guide documents the rest of what the package exports: `usePage`,
+  `Field`, `version`, `engineStatus` and `countPages` (health checks), the `RenderError` fields
+  `className`, `engineCode` and `issues` and its JSON form, the exported types, the `Document`
+  props `creator`, `creationDate` and `fallbackFonts`, and `pages` on elements of the page
+  body, with negative page numbers counting from the end.
+
+### Changed
+
+- **`@inkoxide/render` exports only what its guide documents**, a list now pinned by a test.
+  This breaks only code that used undocumented names:
+  - `generate`, `parseData`, `renderTree`, `renderSettled`, `renderDocument`, `TemplateLike`,
+    `GenerateOptions`, `RenderOpts`, `RenderResult` and `Timings` moved to
+    `@inkoxide/render/templates`.
+  - `renderTemplate`, `renderToTree`, `assertValidTree`, `validateTree`, `SchemaProblem`,
+    `TemplateError`, `TemplateErrorKind`, `fonts`, `FontRegistry`, `FontFace`, `ResolvedFont`,
+    `HOST`, `HOST_NAME`, `HostType`, `isImagePath`, `remoteAllowed`, `RemoteImagePolicy`,
+    `PendingImage`, `parsePath`, `fontWeightValue`, `TreeOptions`, `TreeResult` and `Located`
+    are no longer re-exported; import them from `@inkoxide/react` (`TreeResult` is also in
+    `@inkoxide/render/templates`).
+  - `SCHEMA_VERSION` is no longer re-exported; import it from `@inkoxide/schema`, or read
+    `version().schema`.
+  - `initEngine`, `assetsDir`, `DEFAULT_FACES` and `RenderErrorInit` are no longer exported:
+    `init()` starts the engine, and `INKOXIDE_ASSETS_DIR` still sets where the bundled fonts
+    are read from.
+  - The deprecated aliases `StudioError` and `StudioErrorCode` are removed; use `RenderError`
+    and `RenderErrorCode`.
+
 ## 0.4.0 - 2026-10-12
 
 `inkoxide` 0.4.0, `@inkoxide/schema` 2.2.0, `@inkoxide/tailwind` 0.2.1, `@inkoxide/react` 0.2.1
