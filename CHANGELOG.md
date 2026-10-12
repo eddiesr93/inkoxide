@@ -46,9 +46,6 @@ All notable changes to the packages in this repository. The format follows
 - The default Tailwind theme's colours `ink`, `ink-muted`, `brand`, `field`, `field-line`,
   `rule` and `head` (`bg-brand`, `text-ink`, …), made for the engine's test documents, will be
   removed from it. Set them in your own theme (`initTailwind({ css })`) to keep using them.
-
-### Deprecated
-
 - `@inkoxide/react`: `FontRegistry.loadDirectory` and the `file` field of `FontFace` that it
   reads. Read the font files yourself and pass their bytes to `FontRegistry.register`;
   `@inkoxide/render` now loads its bundled fonts that way.
