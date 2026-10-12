@@ -18,6 +18,11 @@ All notable changes to the packages in this repository. The format follows
   font `family` is not empty (`INVALID_VALUE`), and a grid `span` is at least 1
   (`OUT_OF_RANGE`; `span: 0` was laid out as 1). The schema states the engine's bounds of grid
   lines: within ±32767 and not 0, and a `span` of at most 65535.
+- The documentation states that `validate` returns at most 100 problems, and only the first
+  when the document's structure cannot be read. The schema, `SCHEMA.md` and `API.md` describe
+  the rules the engine applies beyond the schema's shapes: `break` and `pageBreak` in headers,
+  footers and table cells, margins that leave no room for content, and repeated form field
+  names.
 
 ## 0.3.0 - 2026-10-12
 

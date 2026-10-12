@@ -296,7 +296,8 @@
           "$ref": "#/$defs/Size"
         },
         "margin": {
-          "$ref": "#/$defs/EdgesNumber"
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "`left + right` must be less than the page width and `top + bottom` less than its height; margins that leave no room for content are `OUT_OF_RANGE` at `margin`."
         },
         "background": {
           "$ref": "#/$defs/Color"
@@ -306,11 +307,11 @@
           "description": "Draws the boxes of the page (its margins and content area) and of every element on it, the header and footer included."
         },
         "header": {
-          "description": "Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it.",
+          "description": "Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.",
           "$ref": "#/$defs/Node"
         },
         "footer": {
-          "description": "Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page.",
+          "description": "Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.",
           "$ref": "#/$defs/Node"
         },
         "children": {
@@ -322,6 +323,7 @@
       }
     },
     "Break": {
+      "description": "Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1427,6 +1429,7 @@
       }
     },
     "PageBreakNode": {
+      "description": "Starts a new page. Flowing content only: in a header, a footer, a table cell or a fixed overlay it is `INVALID_NODE`.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1520,7 +1523,7 @@
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[^.]+$",
-          "description": "Field name (no `.`); unique in the document except for the buttons of one radio group."
+          "description": "Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`."
         },
         "kind": {
           "enum": [

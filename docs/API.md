@@ -142,7 +142,26 @@ The fields of a Node error are:
 - `name`: always `'InkoxideError'`.
 
 `render` reports only the first validation problem; call `validate` to
-get the full list.
+get the others. `validate` returns at most 100 problems. It reads the
+document's structure first, and a problem found there (input that does
+not parse, an unknown or missing property, a wrong type, a value the
+reader rejects) is returned alone, as the rest cannot be checked.
+
+Some rules are checked by the engine but not by the JSON Schema, so a
+document that passes the schema can still fail validation. The schema's
+descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
+
+- `break` with a value other than its defaults, on a header or footer,
+  on a node in a table cell, or on any node inside these, is
+  `INVALID_VALUE`; a `pageBreak` there is `INVALID_NODE`.
+- Page margins that leave no room for content (`left + right` at least
+  the page width, or `top + bottom` at least its height) are
+  `OUT_OF_RANGE` at `margin`.
+- `DUPLICATE_ID` is a font id declared twice, or a form field `name`
+  used twice (the buttons of one radio group share theirs).
+- Fonts, images and `#id` links must resolve: `UNKNOWN_FONT`,
+  `FONT_NOT_REGISTERED`, `UNKNOWN_IMAGE`, `INVALID_IMAGE`,
+  `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`.
 
 ## Not part of the API
 

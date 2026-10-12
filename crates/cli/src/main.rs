@@ -79,7 +79,7 @@ enum Cmd {
         #[arg(long)]
         threads: Option<usize>,
     },
-    /// Validate a document; prints every problem found.
+    /// Validate a document; prints the problems found (at most 100).
     Validate {
         doc: PathBuf,
         #[command(flatten)]

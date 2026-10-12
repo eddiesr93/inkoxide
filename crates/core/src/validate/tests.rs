@@ -251,6 +251,41 @@ fn page_breaks_only_in_flow() {
 }
 
 #[test]
+fn pagination_controls_only_apply_in_the_flow() {
+    let page = |fixed: &str, children: &str| {
+        format!(
+            r#"{{"version":1,"pages":[{{"size":{{"width":100,"height":100}}{fixed},"children":[{children}]}}]}}"#
+        )
+    };
+    let brk = r#""break":{"inside":"avoid"}"#;
+    let deep = format!(r#"{{"type":"box","children":[{{"type":"box",{brk}}}]}}"#);
+    let cell = |child: &str| {
+        format!(
+            r#"{{"type":"table","columns":[{{"width":10}}],"rows":[{{"cells":[{{"children":[{child}]}}]}}]}}"#
+        )
+    };
+    for (d, path) in [
+        (
+            page(&format!(r#","header":{{"type":"box",{brk}}}"#), ""),
+            "pages[0].header.break",
+        ),
+        (
+            page(&format!(r#","footer":{deep}"#), ""),
+            "pages[0].footer.children[0].break",
+        ),
+        (
+            page("", &cell(&deep)),
+            "pages[0].children[0].rows[0].cells[0].children[0].children[0].break",
+        ),
+    ] {
+        assert_eq!(one(&d), (C::InvalidValue, path.into()), "{d}");
+    }
+    // The defaults are not pagination controls.
+    let defaults = r#"{"type":"box","break":{"before":"auto","inside":"auto","fixed":false}}"#;
+    assert_eq!(run(&page("", &cell(defaults))), vec![]);
+}
+
+#[test]
 fn pagination_controls_do_not_apply_in_overlays() {
     // An overlay: fixed and absolutely positioned, directly in the page.
     let overlay = |brk: &str, children: &str| {

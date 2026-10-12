@@ -43,9 +43,9 @@
 | `UNKNOWN_FIELD` | Property not allowed at this position |
 | `MISSING_FIELD` | Required property missing |
 | `INVALID_TYPE` | Wrong JSON type |
-| `INVALID_VALUE` | Value not in the allowed set / wrong format |
-| `OUT_OF_RANGE` | Number outside its allowed range |
-| `DUPLICATE_ID` | Font id declared twice |
+| `INVALID_VALUE` | Value not in the allowed set / wrong format; `break` where pagination does not apply (headers, footers, table cells, fixed overlays) |
+| `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
+| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
@@ -57,7 +57,11 @@
 | `UNKNOWN_ANCHOR` | A `#id` link names no node `id` in the document |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
-`pages[0].children[3].runs[1].font`.
+`pages[0].children[3].runs[1].font`. Validation returns at most 100
+errors. A problem found while reading the document's structure (input
+that does not parse, an unknown or missing property, a wrong type, a
+value the reader rejects) is returned alone, as the rest cannot be
+checked.
 
 ## Document (top level)
 
@@ -205,14 +209,16 @@ A page template. Its content flows across as many physical pages as needed.
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `size` | [`Size`](#size) | yes |  |
-| `margin` | [`EdgesNumber`](#edgesnumber) |  |  |
+| `margin` | [`EdgesNumber`](#edgesnumber) |  | `left + right` must be less than the page width and `top + bottom` less than its height; margins that leave no room for content are `OUT_OF_RANGE` at `margin`. |
 | `background` | [`Color`](#color) |  |  |
 | `debug` | [`Debug`](#debug) |  | Draws the boxes of the page (its margins and content area) and of every element on it, the header and footer included. |
-| `header` | [`Node`](#node) |  | Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. |
-| `footer` | [`Node`](#node) |  | Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. |
+| `header` | [`Node`](#node) |  | Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth. |
+| `footer` | [`Node`](#node) |  | Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth. |
 | `children` | array of [`Node`](#node) |  |  |
 
 ### Break
+
+Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
@@ -443,6 +449,8 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 
 ### PageBreakNode
 
+Starts a new page. Flowing content only: in a header, a footer, a table cell or a fixed overlay it is `INVALID_NODE`.
+
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `type` | `"pageBreak"` | yes |  |
@@ -481,7 +489,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. |
+| `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
 | `value` | `string` |  | text: the initial text; select: the selected option (one of `options`); radio: the value this button exports when selected. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |

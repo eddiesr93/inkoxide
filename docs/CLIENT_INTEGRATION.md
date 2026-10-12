@@ -80,7 +80,7 @@ const pdf = await render(doc, {
   pass the encoded bytes with `{ format: 'msgpack' }`. Encode them with
   any library that writes plain maps, arrays and strings.
 - **Validating before rendering.** For example, in a form or an editor:
-  - `validate(doc)` returns every problem at once, as
+  - `validate(doc)` returns the problems at once (at most 100), as
     `[{ code, path, message }]`, without rendering.
   - Client-side, ajv with the schema from `@inkoxide/schema` reports the
     same paths through `enginePath(error)`
