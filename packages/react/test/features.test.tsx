@@ -665,6 +665,18 @@ describe('page filters, sizes and per-page content', () => {
     expect(thrown(() => tree(null, { page: { size: ['10'] } })).message).toContain(
       'size: 10 (expected a length',
     );
+    // `infinity` is a length only inside calc(), in a page size and a style.
+    expect(thrown(() => tree(null, { page: { size: 'infinity' } })).message).toContain(
+      'Unknown page size "infinity"',
+    );
+    expect(thrown(() => tree(null, { page: { size: ['infinity'] } })).message).toContain(
+      'size: infinity (infinity is only allowed inside calc())',
+    );
+    for (const width of ['infinity', '-infinity']) {
+      expect(thrown(() => tree(<View style={{ width: width as never }} />)).message).toContain(
+        `width: ${width} (infinity is only allowed inside calc())`,
+      );
+    }
     // A page has no font size or page to be relative to, and the types say so.
     expect(thrown(() => tree(null, { page: { size: '10em' } })).message).toContain(
       'Unknown page size "10em"',

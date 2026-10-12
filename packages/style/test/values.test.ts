@@ -70,6 +70,15 @@ describe('lengths', () => {
     expect(r.len('calc(infinity * 1px)')).toBe(1e4);
   });
 
+  it('take infinity only inside calc(), as CSS does', () => {
+    const r = new Reader('width');
+    expect(r.len('calc(-infinity * 1px)')).toBe(-1e4);
+    expect(r.len('calc((infinity) * 1pt)')).toBe(1e4);
+    for (const bad of ['infinity', '-infinity', 'infinity * 1px', '(infinity * 1px)']) {
+      expect(() => r.len(bad), bad).toThrow(`width: ${bad} (infinity is only allowed inside calc())`);
+    }
+  });
+
   it('are kept above 10000pt in a transform', () => {
     expect(parseTransform('transform', 'translate(20000pt, 0)')).toEqual([{ translate: [20000, 0] }]);
   });

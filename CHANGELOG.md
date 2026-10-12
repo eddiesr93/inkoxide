@@ -34,10 +34,11 @@ All notable changes to the packages in this repository. The format follows
   (`'5PX'`) and exponents (`'1e1pt'`), and `em`, `vw` and `vh` in a `transform` or
   `transformOrigin` string. Classes now take `em`, `vw` and `vh` (`w-[2em]`, `h-[10vh]`; `tw()`
   takes the font and page sizes as a second argument) and a space before the unit
-  (`w-[5_pt]`). A number too large for a float (`'1e999pt'`) is an error in both, and `style`
-  length errors name the property (`width: 3ex (unsupported unit "ex")`). `textDecoration` and
-  `objectFit` in `style` are read as their classes are, and `text-decoration-line` in a class
-  takes both lines (`underline line-through`), as `style` does.
+  (`w-[5_pt]`). A number too large for a float (`'1e999pt'`) is an error in both, as is a bare
+  `infinity` (`w-[infinity]`), which CSS takes only inside `calc()`, and `style` length errors
+  name the property (`width: 3ex (unsupported unit "ex")`). `textDecoration` and `objectFit` in
+  `style` are read as their classes are, and `text-decoration-line` in a class takes both lines
+  (`underline line-through`), as `style` does.
 
 ### Deprecated
 

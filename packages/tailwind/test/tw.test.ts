@@ -226,6 +226,12 @@ describe('arbitrary lengths', () => {
     expect(tw('rounded-full')).toEqual({ borderRadius: 1e4 });
   });
 
+  it('take infinity only inside calc(), as CSS does', () => {
+    expect(tw('w-[calc(infinity*1pt)]')).toEqual({ width: 1e4 });
+    expect(errorOf('w-[infinity]').reason).toBe('width: infinity (infinity is only allowed inside calc())');
+    expect(errorOf('rounded-[infinity]').property).toBe('border-radius');
+  });
+
   it('take units in any case, exponents and a space before the unit, as the style prop does', () => {
     expect(tw('w-[5PX]')).toEqual({ width: 3.75 });
     expect(tw('w-[1e1pt]')).toEqual({ width: 10 });
