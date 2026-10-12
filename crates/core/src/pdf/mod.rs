@@ -413,7 +413,7 @@ impl PdfSink for PdfWriterSink {
         }
         inf.producer(TextStr(producer));
         if let Some(t) = doc.creation_date {
-            inf.creation_date(pdf_date(t));
+            inf.pair(Name(b"CreationDate"), Str(pdf_date(t).as_bytes()));
         }
         inf.finish();
 
@@ -554,20 +554,22 @@ fn write_outline(
     Some(root)
 }
 
-fn pdf_date(t: Timestamp) -> pdf_writer::Date {
+/// A PDF date string (`D:YYYYMMDDHHmmSS` and `Z` or `±HH'mm`). Written by
+/// hand: `pdf_writer::Date` takes the offset's sign from its hours, so an
+/// offset under an hour west of UTC (`-00:30`) would come out east of it.
+fn pdf_date(t: Timestamp) -> String {
     let off = t.offset_minutes;
-    let date = pdf_writer::Date::new(t.year)
-        .month(t.month)
-        .day(t.day)
-        .hour(t.hour)
-        .minute(t.minute)
-        .second(t.second);
-    if off == 0 {
-        date.utc_offset_hour(0).utc_offset_minute(0)
+    let zone = if off == 0 {
+        "Z".to_string()
     } else {
-        date.utc_offset_hour((off / 60) as i8)
-            .utc_offset_minute((off.unsigned_abs() % 60) as u8)
-    }
+        let sign = if off < 0 { '-' } else { '+' };
+        let a = off.unsigned_abs();
+        format!("{sign}{:02}'{:02}", a / 60, a % 60)
+    };
+    format!(
+        "D:{:04}{:02}{:02}{:02}{:02}{:02}{zone}",
+        t.year, t.month, t.day, t.hour, t.minute, t.second
+    )
 }
 
 pub(crate) fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {
@@ -837,6 +839,46 @@ mod tests {
             assert_eq!(q(v), 0.0);
             assert_eq!(round_to(v, 1e5), 0.0);
         }
+    }
+
+    #[test]
+    fn dates_keep_the_sign_of_offsets_under_an_hour() {
+        let t = Timestamp {
+            year: 2026,
+            month: 10,
+            day: 12,
+            hour: 9,
+            minute: 30,
+            second: 0,
+            offset_minutes: -30,
+        };
+        assert_eq!(pdf_date(t), "D:20261012093000-00'30");
+        for (off, zone) in [(0, "Z"), (30, "+00'30"), (-90, "-01'30"), (150, "+02'30")] {
+            let t = Timestamp {
+                offset_minutes: off,
+                ..t
+            };
+            assert_eq!(pdf_date(t), format!("D:20261012093000{zone}"));
+        }
+        // The information dictionary and XMP name the same instant.
+        let doc = br#"{"version":1,"pages":[{"size":{"width":10,"height":10}}]}"#;
+        let options = crate::RenderOptions::default()
+            .with_creation_date("2026-10-12T09:30:00-00:30")
+            .with_pdf_a(true);
+        let pdf = crate::render(
+            doc,
+            crate::InputFormat::Json,
+            &options,
+            &crate::FontStore::new(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        assert!(
+            pdf.contains("/CreationDate (D:20261012093000-00'30)"),
+            "{pdf}"
+        );
+        assert!(pdf.contains("<xmp:CreateDate>2026-10-12T09:30:00-00:30</xmp:CreateDate>"));
     }
 
     #[test]

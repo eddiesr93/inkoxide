@@ -7,6 +7,17 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- A creation date with an offset under an hour west of UTC (`-00:30`) is written with its sign
+  in the PDF information dictionary; it was written east of UTC, an hour off the XMP date that
+  PDF/A requires it to match.
+- Registering a font collection (`.ttc`) fails with `FONT_ERROR`. It was accepted, only its first
+  face could be used, and with `subsetFonts: false` the whole collection was embedded where the
+  PDF needs a single TrueType program.
+- `borderRadius` rounds an image's corners without `overflow: hidden`: the image is clipped to
+  the rounded content box, as in CSS.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and

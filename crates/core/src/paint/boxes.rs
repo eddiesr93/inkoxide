@@ -770,6 +770,20 @@ fn radii(s: &Style, w: f32, h: f32) -> Radii {
     }
 }
 
+/// Corner radii of a node's content box: its `borderRadius` inset by the
+/// border and padding. Replaced content (images) is clipped to them, as in
+/// CSS.
+pub(crate) fn content_radii(s: &Style, g: &Geometry) -> Radii {
+    let (b, p) = (g.border, g.padding);
+    let inset = Edges {
+        top: b.top + p.top,
+        right: b.right + p.right,
+        bottom: b.bottom + p.bottom,
+        left: b.left + p.left,
+    };
+    inset_radii(&radii(s, g.w, g.h), inset)
+}
+
 /// `a · b`: applies `b` first, then `a` (PDF matrix order `[a b c d e f]`).
 fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
     [

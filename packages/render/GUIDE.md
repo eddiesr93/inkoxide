@@ -134,7 +134,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
 
 - **Sources.** `src` is a file path, a `file:` or `https:` URL, or the bytes (`Uint8Array` or
   `ArrayBuffer`). Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
-  (`.woff2`). Variable fonts are not supported: register the static instances.
+  (`.woff2`). Variable fonts are not supported: register the static instances. Font collections
+  (`.ttc`) are not supported either: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
   registered with it still load, and later renders can use them.

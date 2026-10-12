@@ -264,8 +264,15 @@ impl ImageSet {
         }
         let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
         let (rect, clip) = fit_rect(*fit, *object_position, bx, intrinsic);
+        // `borderRadius` rounds the image without `overflow: hidden`.
+        let radii = crate::paint::content_radii(&node.style, geo);
         ops.push(Op::Save);
-        if clip {
+        if !crate::paint::is_square(&radii) {
+            ops.push(Op::ClipPath {
+                path: crate::paint::rounded_rect(bx, &radii),
+                rule: crate::paint::FillRule::NonZero,
+            });
+        } else if clip {
             ops.push(Op::ClipRect(bx));
         }
         ops.push(Op::Image {
