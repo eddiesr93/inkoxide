@@ -11,6 +11,10 @@
 //! copy, its own nested images included. `usvg` resolves the URL again
 //! for most copies, so the resolver also counts what it actually decodes,
 //! in one [`Meter`] for the whole SVG.
+//!
+//! Where mirroring `usvg` would be fragile, the input is refused instead:
+//! entities that expand to more than a little text, `href` chains that
+//! loop, and radii so large that an arc becomes millions of curves.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -23,15 +27,33 @@ use usvg::roxmltree::{self, Document, Node, NodeId};
 const MAX_EXPANDED: usize = 250_000;
 /// Most `data:` URL bytes decoded, counting every copy.
 const MAX_DATA_BYTES: usize = 128 << 20;
-/// Most path data (`d`, `points`) and `style` attributes parsed,
-/// counting every copy: `usvg` parses them again for each.
+/// Most attribute text parsed, counting every copy: `usvg` parses an
+/// element's attributes again for each copy, and stores inherited ones
+/// again on every shape beneath them.
 const MAX_PARSED_BYTES: usize = 32 << 20;
+/// Most style sheet declaration text copied onto elements: `usvg` stores
+/// the declarations of every matching rule on each element, counting every
+/// copy.
+const MAX_COPIED_BYTES: usize = 256 << 20;
+/// Most text all entity references expand to.
+const MAX_ENTITY_TEXT: usize = 1 << 20;
+/// Largest number in path data and in radii (`r`, `rx`, `ry`): an arc is
+/// split into more curves the larger its radius (about 50 at this size,
+/// in inches).
+const MAX_COORDINATE: f64 = 1e7;
+/// Most vertices of a rectangle, circle or ellipse (four arcs at most
+/// [`MAX_COORDINATE`]).
+const SHAPE_VERTICES: usize = 300;
+/// Vertices per number in path data with arcs: an arc takes seven numbers
+/// and becomes at most about 50 curves.
+const ARC_VERTICES_PER_NUMBER: usize = 10;
 /// Most style parsing work, in declarations × bytes for each `style`
 /// attribute and sheet, counting every copy: the CSS parser `usvg` uses
 /// scans the text from its start again for each declaration.
 const MAX_STYLE_WORK: usize = 2_000_000_000;
-/// Most style sheet rules matched, counting every copy: `usvg` matches
-/// every rule against each element it copies.
+/// Most style sheet matching work, counting every copy: `usvg` matches
+/// every selector against each element it copies, and a selector with `k`
+/// descendant or sibling combinators may try `depthᵏ` ancestors.
 const MAX_RULE_MATCHES: usize = 50_000_000;
 /// Most pixels of distinct raster images in one SVG, nested SVGs included
 /// (the PDF writer decodes each once).
@@ -83,6 +105,7 @@ struct Cost {
     elements: usize,
     data_bytes: usize,
     parsed_bytes: usize,
+    copied_bytes: usize,
     style_work: usize,
     rule_matches: usize,
 }
@@ -92,6 +115,7 @@ impl Cost {
         self.elements = self.elements.saturating_add(other.elements);
         self.data_bytes = self.data_bytes.saturating_add(other.data_bytes);
         self.parsed_bytes = self.parsed_bytes.saturating_add(other.parsed_bytes);
+        self.copied_bytes = self.copied_bytes.saturating_add(other.copied_bytes);
         self.style_work = self.style_work.saturating_add(other.style_work);
         self.rule_matches = self.rule_matches.saturating_add(other.rule_matches);
         self.check()
@@ -112,8 +136,15 @@ impl Cost {
         }
         if self.parsed_bytes > MAX_PARSED_BYTES {
             return Err(too_complex(&format!(
-                "more than {} MiB of path data and styles once references are expanded",
+                "more than {} MiB of path data, styles and other attributes once references \
+                 are expanded",
                 MAX_PARSED_BYTES >> 20
+            )));
+        }
+        if self.copied_bytes > MAX_COPIED_BYTES {
+            return Err(too_complex(&format!(
+                "style sheets copy more than {} MiB onto elements once references are expanded",
+                MAX_COPIED_BYTES >> 20
             )));
         }
         if self.style_work > MAX_STYLE_WORK {
@@ -123,7 +154,8 @@ impl Cost {
         }
         if self.rule_matches > MAX_RULE_MATCHES {
             return Err(too_complex(&format!(
-                "more than {MAX_RULE_MATCHES} style rule matches once references are expanded"
+                "more than {MAX_RULE_MATCHES} style rule matches once references are expanded \
+                 (selectors with many descendant combinators count more)"
             )));
         }
         Ok(())
@@ -209,12 +241,62 @@ fn parse_xml(bytes: &[u8]) -> Result<Document<'_>, Reject> {
     let text =
         std::str::from_utf8(bytes).map_err(|_| Reject::Invalid("SVG is not valid UTF-8".into()))?;
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    check_entities(text)?;
     let opts = roxmltree::ParsingOptions {
         allow_dtd: true,
         nodes_limit: MAX_XML_NODES,
         entity_resolver: None,
     };
     Document::parse_with_options(text, opts).map_err(|e| Reject::Invalid(format!("SVG: {e}")))
+}
+
+/// Refuses entities that expand to more than [`MAX_ENTITY_TEXT`] in all,
+/// before the XML parser expands them. Entities may not refer to other
+/// entities, so each reference expands to its own value; the short
+/// namespace entities of drawing programs pass.
+fn check_entities(text: &str) -> Result<(), Reject> {
+    if !text.contains("<!ENTITY") {
+        return Ok(());
+    }
+    let mut values: HashMap<&str, usize> = HashMap::new();
+    for decl in text.split("<!ENTITY").skip(1) {
+        let decl = decl.trim_start();
+        if decl.starts_with('%') {
+            return Err(Reject::Invalid(
+                "SVG: parameter entities are not supported".into(),
+            ));
+        }
+        let name_end = decl
+            .find(|c: char| c.is_whitespace() || c == '>')
+            .unwrap_or(decl.len());
+        let (name, rest) = decl.split_at(name_end);
+        let rest = rest.trim_start();
+        let Some(quote) = rest.chars().next().filter(|c| matches!(c, '"' | '\'')) else {
+            // External entities are not resolved.
+            continue;
+        };
+        let value = rest[1..].split(quote).next().unwrap_or("");
+        if value.contains(['&', '%']) {
+            return Err(too_complex("an entity refers to other entities"));
+        }
+        values.insert(name, value.len());
+    }
+    let mut total = 0usize;
+    for r in text.split('&').skip(1) {
+        let Some((name, _)) = r.split_once(';') else {
+            continue;
+        };
+        if let Some(&len) = values.get(name) {
+            total = total.saturating_add(len);
+            if total > MAX_ENTITY_TEXT {
+                return Err(too_complex(&format!(
+                    "entities expand to more than {} MiB",
+                    MAX_ENTITY_TEXT >> 20
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<usvg::Tree, Reject> {
@@ -348,6 +430,11 @@ struct Checked {
     images: usize,
 }
 
+/// Elements by `id`, in document order. `use` takes the first element with
+/// an id and every other reference the last (as `usvg` does); the checks
+/// follow all of them for those, which counts at least as much.
+type Ids<'d> = HashMap<&'d str, Vec<NodeId>>;
+
 /// Rejects input `usvg` would expand beyond the limits, and text, which
 /// needs fonts this conversion does not have. `level` and `depth` place
 /// the document inside the outermost SVG.
@@ -356,12 +443,21 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
     if root.tag_name().name() != "svg" {
         return Err(Reject::Invalid("SVG: the root element is not <svg>".into()));
     }
-    let mut ids: HashMap<&str, NodeId> = HashMap::new();
+    let mut ids: Ids<'_> = HashMap::new();
+    let mut depths: HashMap<NodeId, usize> = HashMap::new();
+    let mut deepest = 1;
     let mut sheet = Drawn::default();
-    let (mut rules, mut sheet_len, mut sheet_declarations) = (0, 0, 0);
+    let mut selectors: Vec<usize> = Vec::new();
+    let (mut sheet_len, mut sheet_declarations, mut sheet_values) = (0, 0, 0);
     for n in root.descendants().filter(Node::is_element) {
+        let d = n
+            .parent_element()
+            .and_then(|p| depths.get(&p.id()))
+            .map_or(1, |d| d + 1);
+        depths.insert(n.id(), d);
+        deepest = deepest.max(d);
         if let Some(id) = n.attribute("id") {
-            ids.entry(id).or_insert(n.id());
+            ids.entry(id).or_default().push(n.id());
         }
         let name = n.tag_name().name();
         if is_svg_ns(n) && name == "text" && n.descendants().any(|d| has_text(&d)) {
@@ -372,9 +468,13 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         if name == "style" {
             let mut rest = Vec::new();
             for t in n.descendants().filter_map(|d| d.text()) {
-                rules += t.matches('{').count();
                 sheet_len += t.len();
                 sheet_declarations += t.matches(':').count();
+                for block in t.split('}') {
+                    let (selector, body) = block.split_once('{').unwrap_or(("", block));
+                    selectors.extend(selector.split(',').map(combinators));
+                    sheet_values += body.len();
+                }
                 for (p, v) in declarations(t) {
                     sheet.sort(p, v, &mut rest);
                 }
@@ -384,17 +484,22 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         }
     }
     sheet.resolve(doc, &ids);
-    let infos: HashMap<NodeId, Info<'_>> = root
-        .descendants()
-        .filter(Node::is_element)
-        .map(|n| (n.id(), Info::read(n, doc, &ids)))
-        .collect();
+    // Matching a selector may try `deepest` ancestors per combinator.
+    let rule_matches = selectors.iter().fold(0usize, |sum, &k| {
+        sum.saturating_add(deepest.saturating_pow(u32::try_from(k).unwrap_or(u32::MAX)))
+    });
+    let mut infos: HashMap<NodeId, Info<'_>> = HashMap::new();
+    for n in root.descendants().filter(Node::is_element) {
+        infos.insert(n.id(), Info::read(n, doc, &ids)?);
+    }
+    check_href_loops(&infos, &ids)?;
     let mut walk = Walk {
         doc,
         ids: &ids,
         infos: &infos,
         sheet: &sheet,
-        rules,
+        rule_matches,
+        sheet_values,
         level,
         cost: Cost::default(),
         own: 0,
@@ -407,12 +512,68 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         style_work: sheet_len.saturating_mul(sheet_declarations),
         ..Cost::default()
     })?;
-    walk.visit(root, &mut Vec::new(), depth, false)?;
+    walk.visit(root, &mut Vec::new(), 0, depth, false)?;
     Ok(Checked {
         cost: walk.cost,
         own: walk.own,
         images: walk.images,
     })
+}
+
+/// Descendant and sibling combinators in a selector (child combinators
+/// counted too, which only overestimates).
+fn combinators(selector: &str) -> usize {
+    selector
+        .split(|c: char| c.is_whitespace() || matches!(c, '>' | '+' | '~'))
+        .filter(|part| !part.is_empty())
+        .count()
+        .saturating_sub(1)
+}
+
+/// Refuses `href` chains (gradients, patterns, filters) that loop: `usvg`
+/// follows them until they come back to where they started, which a loop
+/// further down never does.
+fn check_href_loops(infos: &HashMap<NodeId, Info<'_>>, ids: &Ids<'_>) -> Result<(), Reject> {
+    let next = |n: NodeId| -> &[NodeId] {
+        infos
+            .get(&n)
+            .and_then(|i| i.chain)
+            .and_then(|r| ids.get(r))
+            .map_or(&[], Vec::as_slice)
+    };
+    // 1: on the current path, 2: done.
+    let mut state: HashMap<NodeId, u8> = HashMap::new();
+    for &start in infos.keys() {
+        if state.contains_key(&start) {
+            continue;
+        }
+        state.insert(start, 1);
+        let mut path = vec![(start, 0usize)];
+        while let Some(top) = path.last_mut() {
+            let (n, i) = *top;
+            let Some(&t) = next(n).get(i) else {
+                state.insert(n, 2);
+                path.pop();
+                continue;
+            };
+            top.1 += 1;
+            if t == n {
+                // `usvg` stops at an element that names itself.
+                continue;
+            }
+            match state.get(&t) {
+                Some(1) => {
+                    return Err(Reject::Invalid("SVG: `href` references form a loop".into()));
+                }
+                Some(_) => {}
+                None => {
+                    state.insert(t, 1);
+                    path.push((t, 0));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The cost of the SVG image in `url`, nothing for anything else.
@@ -447,12 +608,39 @@ fn has_text(n: &Node<'_, '_>) -> bool {
     n.is_text() && n.text().is_some_and(|t| !t.trim().is_empty())
 }
 
-/// Ids named by `url(#id)` in a value.
+/// XML white space, as the SVG value parsers skip it.
+fn is_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\n' | b'\r')
+}
+
+/// The id an `href` names (`#id`), read as `usvg` reads an IRI.
+fn iri(v: &str) -> Option<&str> {
+    let v = v.trim_start_matches(|c: char| c.is_ascii() && is_space(c as u8));
+    let link = v.strip_prefix('#')?;
+    let end = link.find(' ').unwrap_or(link.len());
+    let (link, rest) = link.split_at(end);
+    let rest_is_space = rest.bytes().all(is_space);
+    (!link.is_empty() && rest_is_space).then_some(link)
+}
+
+/// Ids named by `url(#id)` in a value, read as `usvg` reads a `FuncIRI`
+/// (spaces and quotes around the link).
 fn url_refs(v: &str) -> impl Iterator<Item = &str> {
     v.split("url(").skip(1).filter_map(|rest| {
-        let inner = rest.split(')').next()?;
-        let inner = inner.trim().trim_matches(|c| c == '"' || c == '\'');
-        inner.strip_prefix('#')
+        let rest = rest.trim_start_matches(|c: char| c.is_ascii() && is_space(c as u8));
+        let (quote, rest) = match rest.chars().next() {
+            Some(q @ ('"' | '\'')) => (
+                Some(q),
+                rest[1..].trim_start_matches(|c: char| c.is_ascii() && is_space(c as u8)),
+            ),
+            _ => (None, rest),
+        };
+        let rest = rest.strip_prefix('#')?;
+        let link = match quote {
+            Some(q) => rest.split(q).next()?.trim_end(),
+            None => rest.split([' ', ')']).next()?,
+        };
+        (!link.is_empty() && !link.contains(['"', '\''])).then_some(link)
     })
 }
 
@@ -461,36 +649,95 @@ fn declarations(css: &str) -> impl Iterator<Item = (&str, &str)> {
     css.split([';', '{', '}']).filter_map(|d| d.split_once(':'))
 }
 
-/// Numbers in path data or a point list: at least one per vertex `usvg`
-/// draws markers at (an arc of five or more becomes at most four curves).
-fn count_numbers(v: &str) -> usize {
-    let (mut count, mut number, mut dot, mut exp) = (0, false, false, false);
-    let mut prev = b' ';
-    for &c in v.as_bytes() {
+/// Numbers in path data, a point list or a length: how many (at least one
+/// per vertex `usvg` draws markers at, arcs aside), and the largest
+/// magnitude (infinite for one too large for `f64`).
+fn scan_numbers(v: &str) -> (usize, f64) {
+    let bytes = v.as_bytes();
+    let (mut count, mut largest) = (0, 0f64);
+    let mut start = None;
+    let (mut dot, mut exp) = (false, false);
+    let mut end_number = |from: usize, to: usize, count: &mut usize| {
+        *count += 1;
+        let text = v[from..to].trim_end_matches(['e', 'E', '+', '-']);
+        if let Ok(x) = text.parse::<f64>() {
+            largest = largest.max(x.abs());
+        }
+    };
+    for (i, &c) in bytes.iter().enumerate() {
+        let in_number = start.is_some();
         match c {
-            b'0'..=b'9' if !number => {
-                (count, number, dot, exp) = (count + 1, true, false, false);
-            }
+            b'0'..=b'9' if !in_number => (start, dot, exp) = (Some(i), false, false),
             b'0'..=b'9' => {}
-            b'.' if !number || dot || exp => {
-                (count, number, dot, exp) = (count + 1, true, true, false);
+            b'.' if !in_number || dot || exp => {
+                if let Some(s) = start {
+                    end_number(s, i, &mut count);
+                }
+                (start, dot, exp) = (Some(i), true, false);
             }
             b'.' => dot = true,
-            b'e' | b'E' if number && !exp => exp = true,
-            b'+' | b'-' if number && matches!(prev, b'e' | b'E') => {}
-            _ => number = false,
+            b'e' | b'E' if in_number && !exp => exp = true,
+            b'+' | b'-' if in_number && matches!(bytes[i - 1], b'e' | b'E') => {}
+            _ => {
+                if let Some(s) = start.take() {
+                    end_number(s, i, &mut count);
+                }
+            }
         }
-        prev = c;
     }
-    count
+    if let Some(s) = start {
+        end_number(s, bytes.len(), &mut count);
+    }
+    (count, largest)
+}
+
+fn too_large() -> Reject {
+    too_complex(&format!(
+        "a radius or path coordinate is larger than {MAX_COORDINATE}"
+    ))
 }
 
 const SHAPES: &[&str] = &[
     "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "image",
 ];
-/// Shapes that draw markers.
-const MARKED: &[&str] = &["path", "line", "polyline", "polygon"];
+/// Shapes `usvg` draws markers on, and the most vertices of the basic
+/// ones (path data is counted).
+const MARKED: &[&str] = &[
+    "path", "line", "polyline", "polygon", "rect", "circle", "ellipse",
+];
 const PAINT_SERVERS: &[&str] = &["linearGradient", "radialGradient", "pattern"];
+/// Attributes that are not inherited; every other one is stored again on
+/// each shape beneath it (an overestimate for the rest).
+const NOT_INHERITED: &[&str] = &[
+    "id",
+    "class",
+    "href",
+    "d",
+    "points",
+    "transform",
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "width",
+    "height",
+    "viewBox",
+    "preserveAspectRatio",
+    "offset",
+    "gradientTransform",
+    "patternTransform",
+    "clip-path",
+    "mask",
+    "filter",
+    "opacity",
+];
 
 /// `url(#…)` references the shapes inside an element draw.
 #[derive(Default)]
@@ -521,11 +768,13 @@ impl<'d> Drawn<'d> {
 
     /// Keeps references `usvg` follows (to elements of the right kind),
     /// once each.
-    fn resolve(&mut self, doc: &Document<'_>, ids: &HashMap<&str, NodeId>) {
+    fn resolve(&mut self, doc: &Document<'_>, ids: &Ids<'_>) {
         let is = |r: &&str, tags: &[&str]| {
-            ids.get(r)
-                .and_then(|&id| doc.get_node(id))
-                .is_some_and(|n| tags.contains(&n.tag_name().name()))
+            ids.get(r).is_some_and(|all| {
+                all.iter()
+                    .filter_map(|&id| doc.get_node(id))
+                    .any(|n| tags.contains(&n.tag_name().name()))
+            })
         };
         // Other references in styles (`clip-path`, `mask`, `filter`) are
         // kept with the paint.
@@ -550,12 +799,16 @@ struct Info<'d> {
     refs: Vec<&'d str>,
     /// `use`: the copied element, which inherits from it.
     link: Option<&'d str>,
+    /// Any other element's `href="#…"`, which `usvg` follows as a chain.
+    chain: Option<&'d str>,
     drawn: Drawn<'d>,
     /// An `href` that is not a fragment, and whether `usvg` resolves it
     /// (`image` and `feImage`).
     url: Option<(&'d str, bool)>,
-    /// Length of its path data and `style`.
+    /// Length of its attributes, `href` aside.
     parsed_bytes: usize,
+    /// Length of the attributes shapes beneath it inherit.
+    inherited_bytes: usize,
     /// Work to parse its `style` (see [`MAX_STYLE_WORK`]).
     style_work: usize,
     /// Most vertices it draws markers at.
@@ -563,59 +816,96 @@ struct Info<'d> {
 }
 
 impl<'d> Info<'d> {
-    fn read(n: Node<'d, '_>, doc: &Document<'_>, ids: &HashMap<&str, NodeId>) -> Self {
+    fn read(n: Node<'d, '_>, doc: &Document<'_>, ids: &Ids<'_>) -> Result<Self, Reject> {
         let tag = n.tag_name().name();
         let mut info = Info::default();
         let mut styled = Vec::new();
         let mut vertices = 0;
+        // A plain `href` wins over `xlink:href`, wherever it is.
+        let mut href = None;
         for a in n.attributes() {
             let v: &'d str = a.value();
-            match a.name() {
+            let name = a.name();
+            if name == "href" {
+                match a.namespace() {
+                    None => href = Some(v),
+                    Some(XLINK_NS) => href = href.or(Some(v)),
+                    _ => {}
+                }
+                continue;
+            }
+            info.parsed_bytes += v.len();
+            if !NOT_INHERITED.contains(&name) {
+                info.inherited_bytes += v.len();
+            }
+            match name {
                 "style" => {
-                    info.parsed_bytes += v.len();
                     info.style_work = v.len().saturating_mul(v.matches(':').count());
                     for (p, value) in declarations(v) {
+                        let prop = p.trim().to_ascii_lowercase();
+                        if matches!(prop.as_str(), "r" | "rx" | "ry" | "d")
+                            && scan_numbers(value).1 > MAX_COORDINATE
+                        {
+                            return Err(too_large());
+                        }
                         info.drawn.sort(p, value, &mut styled);
                     }
                 }
-                "href" if matches!(a.namespace(), None | Some(XLINK_NS)) => {
-                    match v.strip_prefix('#') {
-                        Some(r) if tag == "use" => info.link = Some(r),
-                        Some(r) => info.refs.push(r),
-                        None => info.url = Some((v, matches!(tag, "image" | "feImage"))),
-                    }
-                }
                 "d" | "points" => {
-                    info.parsed_bytes += v.len();
-                    vertices += count_numbers(v);
+                    let (numbers, largest) = scan_numbers(v);
+                    if largest > MAX_COORDINATE {
+                        return Err(too_large());
+                    }
+                    vertices += numbers;
                     if tag == "path" {
+                        if v.contains(['a', 'A']) {
+                            vertices += numbers.saturating_mul(ARC_VERTICES_PER_NUMBER);
+                        }
                         vertices += v.bytes().filter(|c| matches!(c, b'z' | b'Z')).count();
                     }
                 }
-                name => info.drawn.sort(name, v, &mut info.refs),
+                "r" | "rx" | "ry" => {
+                    if scan_numbers(v).1 > MAX_COORDINATE {
+                        return Err(too_large());
+                    }
+                }
+                _ => info.drawn.sort(name, v, &mut info.refs),
+            }
+        }
+        if let Some(v) = href {
+            match iri(v) {
+                Some(r) if tag == "use" => info.link = Some(r),
+                Some(r) => {
+                    info.refs.push(r);
+                    info.chain = Some(r);
+                }
+                None => info.url = Some((v, matches!(tag, "image" | "feImage"))),
             }
         }
         // Style references were always inherited, like paint.
         info.drawn.paint.extend(styled);
         info.drawn.resolve(doc, ids);
         info.refs.retain(|r| ids.contains_key(r));
-        info.vertices = if MARKED.contains(&tag) {
-            vertices + 2
-        } else {
-            0
+        info.vertices = match tag {
+            "path" | "line" | "polyline" | "polygon" => vertices + 2,
+            "rect" | "circle" | "ellipse" => SHAPE_VERTICES,
+            _ => 0,
         };
-        info
+        Ok(info)
     }
 }
 
 struct Walk<'d, 'i, 'w> {
     doc: &'d Document<'i>,
-    ids: &'w HashMap<&'d str, NodeId>,
+    ids: &'w Ids<'d>,
     infos: &'w HashMap<NodeId, Info<'d>>,
     /// References in style sheets.
     sheet: &'w Drawn<'d>,
-    /// Style sheet rules, matched against every element.
-    rules: usize,
+    /// Style sheet matching work per element.
+    rule_matches: usize,
+    /// Declaration text of the style sheets, copied onto the elements
+    /// rules match (charged to each).
+    sheet_values: usize,
     /// SVG images around this document.
     level: usize,
     cost: Cost,
@@ -627,18 +917,21 @@ struct Walk<'d, 'i, 'w> {
     /// share its images and path data.
     painted: HashSet<NodeId>,
     /// Elements being expanded (reference cycles are skipped, as `usvg`
-    /// does).
+    /// does for `use`, clip paths, masks and filters; `href` chains that
+    /// loop are refused before).
     active: Vec<NodeId>,
 }
 
 impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
     /// Counts `n` and everything it pulls in. `chain` holds what its
-    /// ancestors pass on to shapes; `shared` is set inside a paint server
-    /// drawn before.
+    /// ancestors pass on to shapes and `inherited` the length of their
+    /// inherited attributes; `shared` is set inside a paint server drawn
+    /// before.
     fn visit(
         &mut self,
         n: Node<'d, 'i>,
         chain: &mut Vec<&'w Drawn<'d>>,
+        inherited: usize,
         depth: usize,
         shared: bool,
     ) -> Result<(), Reject> {
@@ -662,11 +955,16 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         }
         self.active.push(n.id());
         self.own += 1;
+        let tag = n.tag_name().name();
+        let shape = SHAPES.contains(&tag);
         if !shared {
             self.cost.add(Cost {
-                parsed_bytes: info.parsed_bytes,
+                parsed_bytes: info
+                    .parsed_bytes
+                    .saturating_add(if shape { inherited } else { 0 }),
+                copied_bytes: self.sheet_values,
                 style_work: info.style_work,
-                rule_matches: self.rules,
+                rule_matches: self.rule_matches,
                 ..Cost::default()
             })?;
         }
@@ -679,49 +977,49 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
             cost.data_bytes = cost.data_bytes.saturating_add(url.len());
             if shared {
                 // Converted once; only the tree is copied.
-                cost.data_bytes = 0;
-                cost.parsed_bytes = 0;
-                cost.style_work = 0;
-                cost.rule_matches = 0;
+                cost = Cost {
+                    elements: cost.elements,
+                    ..Cost::default()
+                };
             }
             self.cost.add(cost)?;
         }
         for r in &info.refs {
-            self.follow(r, &mut Vec::new(), depth, shared)?;
+            self.follow(r, false, &mut Vec::new(), 0, depth, shared)?;
         }
         let pushed = !info.drawn.is_empty();
         if pushed {
             chain.push(&info.drawn);
         }
+        let inherited = inherited.saturating_add(info.inherited_bytes);
         if let Some(r) = info.link {
-            self.follow(r, chain, depth, shared)?;
+            self.follow(r, true, chain, inherited, depth, shared)?;
         }
-        let tag = n.tag_name().name();
-        if SHAPES.contains(&tag) {
+        if shape {
             for i in 0..=chain.len() {
                 let drawn = chain.get(i).copied().unwrap_or(self.sheet);
                 for r in &drawn.paint {
-                    let painted = self.ids.get(r).is_some_and(|&id| {
-                        let paint = self.doc.get_node(id);
-                        paint.is_some_and(|p| PAINT_SERVERS.contains(&p.tag_name().name()))
-                            && !self.painted.insert(id)
-                    });
-                    self.follow(r, &mut Vec::new(), depth, shared || painted)?;
+                    for t in self.targets(r, false) {
+                        let painted = self.doc.get_node(t).is_some_and(|p| {
+                            PAINT_SERVERS.contains(&p.tag_name().name()) && !self.painted.insert(t)
+                        });
+                        self.visit_target(t, &mut Vec::new(), 0, depth, shared || painted)?;
+                    }
                 }
                 if MARKED.contains(&tag) {
                     for r in &drawn.ends {
-                        self.follow(r, &mut Vec::new(), depth, shared)?;
+                        self.follow(r, false, &mut Vec::new(), 0, depth, shared)?;
                     }
                     for r in &drawn.mids {
                         for _ in 0..info.vertices {
-                            self.follow(r, &mut Vec::new(), depth, shared)?;
+                            self.follow(r, false, &mut Vec::new(), 0, depth, shared)?;
                         }
                     }
                 }
             }
         }
         for c in n.children().filter(Node::is_element) {
-            self.visit(c, chain, depth + 1, shared)?;
+            self.visit(c, chain, inherited, depth + 1, shared)?;
         }
         if pushed {
             chain.pop();
@@ -730,16 +1028,41 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         Ok(())
     }
 
+    /// The elements reference `r` may name: the first for `use`, all of
+    /// them otherwise.
+    fn targets(&self, r: &str, first: bool) -> Vec<NodeId> {
+        match self.ids.get(r) {
+            Some(all) if first => all.first().copied().into_iter().collect(),
+            Some(all) => all.clone(),
+            None => Vec::new(),
+        }
+    }
+
     fn follow(
         &mut self,
         r: &str,
+        first: bool,
         chain: &mut Vec<&'w Drawn<'d>>,
+        inherited: usize,
         depth: usize,
         shared: bool,
     ) -> Result<(), Reject> {
-        let target = self.ids.get(r).and_then(|&id| self.doc.get_node(id));
-        match target {
-            Some(t) => self.visit(t, chain, depth + 1, shared),
+        for t in self.targets(r, first) {
+            self.visit_target(t, chain, inherited, depth, shared)?;
+        }
+        Ok(())
+    }
+
+    fn visit_target(
+        &mut self,
+        t: NodeId,
+        chain: &mut Vec<&'w Drawn<'d>>,
+        inherited: usize,
+        depth: usize,
+        shared: bool,
+    ) -> Result<(), Reject> {
+        match self.doc.get_node(t) {
+            Some(t) => self.visit(t, chain, inherited, depth + 1, shared),
             None => Ok(()),
         }
     }
@@ -1069,12 +1392,150 @@ mod tests {
         parse(doc(100).as_bytes()).unwrap();
 
         // Every style sheet rule is matched against each copy.
-        let sheet = format!("<style>{}</style>", ".a{fill:red}".repeat(2_000));
+        let sheet = format!("<style>{}</style>", ".a{}".repeat(2_000));
         let uses = r##"<use href="#r"/>"##.repeat(30_000);
         let e = rejected(&svg(&format!(
             r#"{sheet}<defs><rect id="r"/></defs>{uses}"#
         )));
         assert!(e.contains("rule matches"), "{e}");
         parse(svg(&format!("{sheet}<rect/>")).as_bytes()).unwrap();
+
+        // Declarations are copied onto every element they match.
+        let sheet = format!("<style>{}</style>", ".a{fill:red}".repeat(2_000));
+        let e = rejected(&svg(&format!(
+            r#"{sheet}<defs><rect id="r"/></defs>{uses}"#
+        )));
+        assert!(e.contains("copy more than"), "{e}");
+    }
+
+    #[test]
+    fn weighs_selectors_by_their_combinators() {
+        // Each descendant combinator may try every ancestor.
+        let groups = 60;
+        let deep = format!("{}<rect/>{}", "<g>".repeat(groups), "</g>".repeat(groups));
+        let selector = vec!["*"; 30].join(" ");
+        let t = std::time::Instant::now();
+        let e = rejected(&svg(&format!("<style>{selector} {{}}</style>{deep}")));
+        assert!(e.contains("rule matches"), "{e}");
+        // A selector list is one rule per selector.
+        let list = vec!["g rect"; 20_000].join(",");
+        let flat = "<rect/>".repeat(3_000);
+        let e = rejected(&svg(&format!("<style>{list} {{}}</style>{flat}")));
+        assert!(e.contains("rule matches"), "{e}");
+        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+        // Ordinary sheets fit.
+        let sheet = "<style>.st0{fill:#fff} svg g .st1{stroke:red} #a > path{fill:none}</style>";
+        parse(svg(&format!("{sheet}{deep}{flat}")).as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn refuses_huge_radii() {
+        for shape in [
+            r#"<path d="M0 0A1e60 1e60 0 1 1 1e60 0"/>"#,
+            r#"<path d="M0 0a1e30,1e30 0 1,1 1,0"/>"#,
+            r#"<circle r="3e38"/>"#,
+            r#"<ellipse rx="1" ry="1e300"/>"#,
+            r#"<rect width="5" height="5" rx="1e9"/>"#,
+            r#"<circle style="r: 1e20"/>"#,
+        ] {
+            let t = std::time::Instant::now();
+            let e = rejected(&svg(shape));
+            assert!(e.contains("larger than"), "{shape}: {e}");
+            assert!(t.elapsed().as_secs() < 2, "{shape} took {:?}", t.elapsed());
+        }
+        parse(svg(r#"<path d="M0 0A5 5 0 1 1 10 0"/><circle r="4"/>"#).as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn counts_markers_on_every_shape() {
+        let marker = r#"<defs><marker id="m"><path d="M0 0h1"/></marker></defs>"#;
+        let shapes = r#"<circle r="2" marker-mid="url(#m)"/>"#.repeat(2_000);
+        let e = rejected(&svg(&format!("{marker}{shapes}")));
+        assert!(e.contains("too complex"), "{e}");
+        // Arcs in path data become several curves, each with a vertex.
+        let arcs = format!(
+            r#"<path d="M0 0{}" marker-mid="url(#m)"/>"#,
+            "A1 1 0 0 1 1 1".repeat(3_000)
+        );
+        let e = rejected(&svg(&format!("{marker}{arcs}")));
+        assert!(e.contains("too complex"), "{e}");
+        let few = r#"<circle r="2" marker-mid="url(#m)"/>"#.repeat(10);
+        parse(svg(&format!("{marker}{few}")).as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn follows_links_as_usvg_reads_them() {
+        // Spaces around a link, quotes in `url()`, and a plain `href` that
+        // wins over `xlink:href` all reach the referenced element.
+        let bomb = bomb(5);
+        let body = &bomb[bomb.find("<defs>").unwrap()..bomb.rfind("<use").unwrap()];
+        for user in [
+            r#"<use href=" #l5 "/>"#,
+            r##"<use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#l0" href="#l5"/>"##,
+            r#"<rect width="1" height="1" fill="url( '#p ' )"/>"#,
+        ] {
+            let pattern = r##"<pattern id="p" width="1" height="1"><use href="#l5"/></pattern>"##;
+            let doc = svg(&format!("{body}<defs>{pattern}</defs>{}", user.repeat(3)));
+            let e = rejected(&doc);
+            assert!(e.contains("too complex"), "{user}: {e}");
+        }
+        // The last of two elements with one id is followed too.
+        let doc = svg(&format!(
+            r##"{body}<defs><marker id="m"/><marker id="m"><use href="#l5"/></marker></defs><path d="M0 0h1h1" marker-mid="url(#m)"/>"##
+        ));
+        let e = rejected(&doc);
+        assert!(e.contains("too complex"), "{e}");
+    }
+
+    #[test]
+    fn refuses_href_loops() {
+        let e = rejected(&svg(
+            r##"<defs><linearGradient id="a" href="#b"/><linearGradient id="b" href="#c"/><linearGradient id="c" href="#b"/></defs><rect width="5" height="5" fill="url(#a)"/>"##,
+        ));
+        assert!(e.contains("loop"), "{e}");
+        // A chain that ends, or an element naming itself, is fine.
+        parse(
+            svg(r##"<defs><linearGradient id="a" href="#b"/><linearGradient id="b" href="#b"><stop offset="0"/></linearGradient></defs><rect width="5" height="5" fill="url(#a)"/>"##)
+                .as_bytes(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn limits_entities() {
+        let entity = |value: &str, uses: usize| {
+            format!(
+                r#"<!DOCTYPE svg [<!ENTITY e "{value}">]><svg xmlns="http://www.w3.org/2000/svg" width="5" height="5"><g class="{}"/></svg>"#,
+                "&e;".repeat(uses)
+            )
+        };
+        let e = rejected(&entity(&"x".repeat(1024), 2_000));
+        assert!(e.contains("entities expand"), "{e}");
+        let e = rejected(&entity("&amp;&amp;", 1));
+        assert!(e.contains("other entities"), "{e}");
+        // The namespace entities of drawing programs.
+        let illustrator = r#"<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+            <!ENTITY ns_svg "http://www.w3.org/2000/svg">
+            <!ENTITY ns_xlink "http://www.w3.org/1999/xlink">
+        ]><svg xmlns="&ns_svg;" xmlns:xlink="&ns_xlink;" width="5" height="5"><rect width="5" height="5"/></svg>"#;
+        parse(illustrator.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn charges_inherited_attributes_per_shape() {
+        // An inherited attribute is stored again on every shape.
+        let dashes = "1 ".repeat(100_000);
+        let rects = r#"<rect width="1" height="1"/>"#.repeat(300);
+        let e = rejected(&svg(&format!(
+            r#"<g stroke="red" stroke-dasharray="{dashes}">{rects}</g>"#
+        )));
+        assert!(e.contains("attributes"), "{e}");
+        parse(
+            svg(&format!(
+                r#"<g stroke="red" stroke-dasharray="1 2">{rects}</g>"#
+            ))
+            .as_bytes(),
+        )
+        .unwrap();
     }
 }
