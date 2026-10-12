@@ -5,7 +5,8 @@
   "type": "module",
   "description": "React components to PDF with the native Inkoxide engine: renderToBuffer, renderToFile, Font.register.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./templates": "./src/templates.ts"
   },
   "dependencies": {
     "@inkoxide/react": "workspace:*",

@@ -132,10 +132,18 @@ function manifest(name, pkg, dist) {
     if (!dev) fail(`@inkoxide/${name} imports ${used}, which is not in its package.json.`);
     deps[used] = resolveVersion(used, dev);
   }
-  const exports = {
-    '.': { types: './dist/index.d.ts', default: './dist/index.js' },
-    './package.json': './package.json',
-  };
+  // Each workspace entry `./src/<file>.ts` (`.` and subpaths such as `./templates`) is
+  // `./dist/<file>.js` with its declarations.
+  const exports = {};
+  for (const [key, target] of Object.entries(pkg.exports ?? {})) {
+    if (key === './*') continue;
+    const m = typeof target === 'string' ? /^\.\/src\/(.+)\.tsx?$/.exec(target) : null;
+    if (!m) fail(`${pkg.name}: the export "${key}" is not a ./src/*.ts file.`);
+    const file = join(dist, `${m[1]}.js`);
+    if (!existsSync(file)) fail(`${pkg.name}: the export "${key}" has no ${relative(ROOT, file)}.`);
+    exports[key] = { types: `./dist/${m[1]}.d.ts`, default: `./dist/${m[1]}.js` };
+  }
+  exports['./package.json'] = './package.json';
   if (pkg.exports?.['./*']) exports['./*'] = './dist/*';
   const out = {
     name: pkg.name,

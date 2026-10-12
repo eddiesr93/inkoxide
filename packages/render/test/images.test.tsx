@@ -13,7 +13,6 @@ import { z } from 'zod';
 import {
   countPages,
   Document,
-  generate,
   Header,
   type ImageSrc,
   Image,
@@ -21,13 +20,12 @@ import {
   Page,
   PageBreak,
   RenderError,
-  renderSettled,
   type RenderToBufferOptions,
   renderToBuffer,
-  renderTree,
   Text,
   View,
 } from '../src/index.ts';
+import { generate, renderSettled, renderTree } from '../src/templates.ts';
 
 const fixtures = resolve(import.meta.dirname, '../../../fixtures/images');
 const logoPath = join(fixtures, 'logo.png');
