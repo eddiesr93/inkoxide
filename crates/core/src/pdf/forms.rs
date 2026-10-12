@@ -21,23 +21,17 @@ pub(super) struct Form {
 }
 
 /// Writes every field; appends widget refs to `annots` (per page).
-/// `None` when the document has no fields. With `pdf_a`, appearance
-/// streams leave out `.notdef` glyphs, as page content does.
-#[allow(clippy::too_many_arguments)]
+/// `None` when the document has no fields.
 pub(super) fn write_fields(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
-    pages: &[EncodedPage],
-    page_refs: &[(Ref, Ref)],
-    font_refs: &BTreeMap<FontKey, Ref>,
-    fonts: &FontSet<'_>,
-    pdf_a: bool,
+    ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
 ) -> Option<Form> {
     // Widgets grouped by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
     let mut groups: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
-    for (i, page) in pages.iter().enumerate() {
+    for (i, page) in ctx.pages.iter().enumerate() {
         for f in &page.fields {
             let name = f.field.name.as_str();
             let g = groups.entry(name).or_default();
@@ -54,18 +48,11 @@ pub(super) fn write_fields(
         fields: Vec::new(),
         fonts: Vec::new(),
     };
-    let ctx = Ctx {
-        pages,
-        page_refs,
-        font_refs,
-        fonts,
-        pdf_a,
-    };
     for name in order {
         let widgets = &groups[name];
         let first = widgets[0].1;
         if let Some(k) = first.font {
-            if font_refs.contains_key(&k) && !form.fonts.contains(&k) {
+            if ctx.font_refs.contains_key(&k) && !form.fonts.contains(&k) {
                 form.fonts.push(k);
             }
         }
@@ -178,13 +165,15 @@ fn default_appearance(op: &FieldOp) -> String {
     )
 }
 
-struct Ctx<'r, 'f, 'a> {
-    pages: &'r [EncodedPage],
-    page_refs: &'r [(Ref, Ref)],
-    font_refs: &'r BTreeMap<FontKey, Ref>,
-    fonts: &'f FontSet<'a>,
-    /// Writing PDF/A: leave `.notdef` glyphs out of appearance streams.
-    pdf_a: bool,
+/// What the fields' widgets and appearance streams refer to.
+pub(super) struct Ctx<'r, 'f, 'a> {
+    pub pages: &'r [EncodedPage],
+    pub page_refs: &'r [(Ref, Ref)],
+    pub font_refs: &'r BTreeMap<FontKey, Ref>,
+    pub fonts: &'f FontSet<'a>,
+    /// Writing PDF/A: leave `.notdef` glyphs out of appearance streams, as
+    /// page content does.
+    pub pdf_a: bool,
 }
 
 /// Appearance streams of one widget: `(state, stream)`; the state is

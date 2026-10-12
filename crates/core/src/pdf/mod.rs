@@ -286,16 +286,14 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
-        let form = forms::write_fields(
-            &mut pdf,
-            &mut alloc,
-            doc.pages,
-            &page_refs,
-            &font_refs,
-            doc.fonts,
-            self.pdf_a,
-            &mut annots,
-        );
+        let fields = forms::Ctx {
+            pages: doc.pages,
+            page_refs: &page_refs,
+            font_refs: &font_refs,
+            fonts: doc.fonts,
+            pdf_a: self.pdf_a,
+        };
+        let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots);
         let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
 
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
