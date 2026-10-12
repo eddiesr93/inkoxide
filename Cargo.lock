@@ -594,6 +594,7 @@ name = "inkoxide"
 version = "0.3.0"
 dependencies = [
  "criterion",
+ "data-url",
  "flate2",
  "hypher",
  "image",

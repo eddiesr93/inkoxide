@@ -29,6 +29,7 @@ xxhash-rust.workspace = true
 rayon.workspace = true
 subsetter.workspace = true
 usvg.workspace = true
+data-url.workspace = true
 rmp-serde.workspace = true
 wuff.workspace = true
 
