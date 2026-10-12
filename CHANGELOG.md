@@ -103,10 +103,12 @@ All notable changes to the packages in this repository. The format follows
 - A `PageBreak`, `break="page-before"` or `break="page-after"` inside a `View` that fits on the
   page starts a new page; it was ignored. It also breaks inside `break="avoid"`
   (`wrap={false}`), as in CSS, and a break before a `View`'s first child takes the `View` to the
-  new page instead of leaving its top padding behind. Inside a `flex-row`, grid or wrapping
-  `View`, and inside or on an absolutely positioned, rotated or transformed element, where it
-  did nothing, it is now an error.
-- A page break at the end of the content no longer adds a blank last page.
+  new page instead of leaving its top padding behind. Inside a `flex-row`, grid, wrapping or
+  reversed `View`, and inside an absolutely positioned, rotated or transformed element, where it
+  did nothing, it is now an error, as is `break="page-before"` or `break="page-after"` on an
+  absolutely positioned element.
+- A page break at the end of the content, or one with nothing above it on its page (at the top
+  of the first page, below a top margin), no longer adds a blank page.
 - An absolutely positioned element of the page body written after a page break is placed from
   the top of the body, like one written first; it moved with the break and could be cut across
   two pages.

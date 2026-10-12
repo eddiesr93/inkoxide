@@ -161,6 +161,29 @@ describe('renderToBuffer', () => {
     expect(bytes.match(/\/Title ?\((Stamp|Body)\)/g)).toEqual(['/Title (Stamp)', '/Title (Body)']);
   });
 
+  it('adds no blank page for a page break with nothing after it', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page size="A6" style={{ padding: 24 }}>
+          <Text>1</Text>
+          <View>
+            <PageBreak />
+          </View>
+          <Text>2</Text>
+          <View>
+            <PageBreak />
+          </View>
+          <Footer>
+            <Text>
+              <PageNumber />
+            </Text>
+          </Footer>
+        </Page>
+      </Document>,
+    );
+    expect(countPages(pdf)).toBe(2);
+  });
+
   it('renders the fixed watermark, border and page numbers of the guide', async () => {
     const pdf = await renderToBuffer(
       <Document>
