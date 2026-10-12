@@ -171,7 +171,7 @@ fn errors(doc: &str, ids: &[&str]) -> Vec<(String, String)> {
         fonts.register(*id, font).unwrap();
         images.insert(*id, std::fs::read(dir.join("images/logo.png")).unwrap());
     }
-    inkoxide::validate(doc.as_bytes(), InputFormat::Json, &fonts, &images)
+    validate(doc.as_bytes(), InputFormat::Json, &fonts, &images)
         .into_iter()
         .map(|e| (e.code.as_str().to_string(), e.path))
         .collect()
