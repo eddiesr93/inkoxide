@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import { Document, Footer, Page, renderToFile, Text, View } from '@inkoxide/render';
 
 export interface LetterProps {
@@ -61,4 +63,5 @@ export const sample: LetterProps = {
   sender: { name: 'Margaret Hamilton', title: 'Director of Engineering' },
 };
 
-if (process.argv[1] === import.meta.filename) await renderToFile(<Letter {...sample} />, 'letter.pdf');
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
+  await renderToFile(<Letter {...sample} />, 'letter.pdf');

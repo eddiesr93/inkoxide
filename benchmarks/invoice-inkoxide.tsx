@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 
 import {
   Cell,
@@ -132,6 +132,7 @@ export function Invoice(inv: typeof invoice) {
   );
 }
 
-// Run directly: writes the PDF. Imported (bench.tsx): only exports Invoice.
-if (process.argv[1] === import.meta.filename)
+// Run directly, by its path or through a symlink: writes the PDF. Imported (bench.tsx): only
+// exports Invoice.
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
   await renderToFile(<Invoice {...invoice} />, 'invoice-inkoxide.pdf');

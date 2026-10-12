@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import {
   Cell,
   Document,
@@ -190,4 +192,5 @@ export const sample: ReportProps = {
   })),
 };
 
-if (process.argv[1] === import.meta.filename) await renderToFile(<Report {...sample} />, 'report.pdf');
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
+  await renderToFile(<Report {...sample} />, 'report.pdf');

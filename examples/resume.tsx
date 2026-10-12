@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
 
 interface Job {
@@ -156,4 +158,5 @@ export const sample: ResumeProps = {
   ],
 };
 
-if (process.argv[1] === import.meta.filename) await renderToFile(<Resume {...sample} />, 'resume.pdf');
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
+  await renderToFile(<Resume {...sample} />, 'resume.pdf');

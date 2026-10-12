@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import {
   Cell,
   Circle,
@@ -181,4 +183,5 @@ export const sample: InvoiceProps = {
   taxRate: 0.08,
 };
 
-if (process.argv[1] === import.meta.filename) await renderToFile(<Invoice {...sample} />, 'invoice.pdf');
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename)
+  await renderToFile(<Invoice {...sample} />, 'invoice.pdf');
