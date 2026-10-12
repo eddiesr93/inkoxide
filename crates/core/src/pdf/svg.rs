@@ -29,7 +29,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{finite, RefAlloc};
+use super::{alpha_key, finite, key_alpha, RefAlloc};
 use crate::images::ContentKey;
 use crate::{flate, InkoxideError};
 
@@ -61,7 +61,7 @@ pub(crate) fn write_svg(
         pdf_a,
     };
     let mut cv = Canvas::new();
-    s.group(&mut cv, tree.root(), Transform::identity(), 0, false)?;
+    s.group(&mut cv, tree.root(), Scope::form(0, false))?;
     let id = s.alloc.next();
     s.write_form(
         id,
@@ -73,47 +73,84 @@ pub(crate) fn write_svg(
     Ok(id)
 }
 
+/// The kinds of resource a form's content names, in the order its
+/// resource dictionary lists them.
+#[derive(Clone, Copy)]
+enum ResKind {
+    GraphicsState,
+    XObject,
+    Pattern,
+    Shading,
+}
+
+impl ResKind {
+    const ALL: [Self; 4] = [
+        Self::GraphicsState,
+        Self::XObject,
+        Self::Pattern,
+        Self::Shading,
+    ];
+
+    /// The resource names of this kind are the prefix and a number.
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::GraphicsState => "G",
+            Self::XObject => "X",
+            Self::Pattern => "P",
+            Self::Shading => "S",
+        }
+    }
+
+    /// The dictionary of `res` that holds resources of this kind.
+    fn dict<'a>(self, res: &'a mut pdf_writer::writers::Resources<'_>) -> pdf_writer::Dict<'a> {
+        match self {
+            Self::GraphicsState => res.ext_g_states(),
+            Self::XObject => res.x_objects(),
+            Self::Pattern => res.patterns(),
+            Self::Shading => res.shadings(),
+        }
+    }
+}
+
 /// A content stream under construction and the resources it names.
 struct Canvas {
     c: Content,
-    gs: Vec<Ref>,
-    xobjects: Vec<Ref>,
-    patterns: Vec<Ref>,
-    shadings: Vec<Ref>,
-}
-
-fn slot(list: &mut Vec<Ref>, r: Ref) -> usize {
-    if let Some(i) = list.iter().position(|&x| x == r) {
-        i
-    } else {
-        list.push(r);
-        list.len() - 1
-    }
+    /// Resources by kind (see [`ResKind::ALL`]); a resource's position is
+    /// the number in its name.
+    res: [Vec<Ref>; 4],
 }
 
 impl Canvas {
     fn new() -> Self {
         Self {
             c: Content::new(),
-            gs: Vec::new(),
-            xobjects: Vec::new(),
-            patterns: Vec::new(),
-            shadings: Vec::new(),
+            res: Default::default(),
         }
     }
 
+    /// The name `r` goes by in this content, added to its resources the
+    /// first time.
+    fn name(&mut self, kind: ResKind, r: Ref) -> String {
+        let list = &mut self.res[kind as usize];
+        let i = list.iter().position(|&x| x == r).unwrap_or_else(|| {
+            list.push(r);
+            list.len() - 1
+        });
+        format!("{}{i}", kind.prefix())
+    }
+
     fn set_gs(&mut self, r: Ref) {
-        let name = format!("G{}", slot(&mut self.gs, r));
+        let name = self.name(ResKind::GraphicsState, r);
         self.c.set_parameters(Name(name.as_bytes()));
     }
 
     fn draw_xobject(&mut self, r: Ref) {
-        let name = format!("X{}", slot(&mut self.xobjects, r));
+        let name = self.name(ResKind::XObject, r);
         self.c.x_object(Name(name.as_bytes()));
     }
 
     fn set_pattern(&mut self, r: Ref, stroke: bool) {
-        let name = format!("P{}", slot(&mut self.patterns, r));
+        let name = self.name(ResKind::Pattern, r);
         if stroke {
             self.c.set_stroke_color_space(ColorSpaceOperand::Pattern);
             self.c.set_stroke_pattern(None, Name(name.as_bytes()));
@@ -124,29 +161,19 @@ impl Canvas {
     }
 
     fn paint_shading(&mut self, r: Ref) {
-        let name = format!("S{}", slot(&mut self.shadings, r));
+        let name = self.name(ResKind::Shading, r);
         self.c.shading(Name(name.as_bytes()));
     }
 
     fn write_resources(&self, mut res: pdf_writer::writers::Resources<'_>) {
-        let lists: [(&[Ref], &str); 4] = [
-            (&self.gs, "G"),
-            (&self.xobjects, "X"),
-            (&self.patterns, "P"),
-            (&self.shadings, "S"),
-        ];
-        for (list, prefix) in lists {
+        for kind in ResKind::ALL {
+            let list = &self.res[kind as usize];
             if list.is_empty() {
                 continue;
             }
-            let mut d = match prefix {
-                "G" => res.ext_g_states(),
-                "X" => res.x_objects(),
-                "P" => res.patterns(),
-                _ => res.shadings(),
-            };
+            let mut d = kind.dict(&mut res);
             for (i, r) in list.iter().enumerate() {
-                d.pair(Name(format!("{prefix}{i}").as_bytes()), *r);
+                d.pair(Name(format!("{}{i}", kind.prefix()).as_bytes()), *r);
             }
         }
     }
@@ -282,6 +309,34 @@ fn simple_clip(clip: &usvg::ClipPath) -> Option<(tiny_skia_path::Path, usvg::Fil
     Some((path, rule))
 }
 
+/// Where a node is drawn: the transform from the current form's space
+/// (`ts`), how deep in groups, and whether as part of a clip path, where
+/// everything is filled opaque black (the content of an alpha soft mask).
+#[derive(Clone, Copy)]
+struct Scope {
+    ts: Transform,
+    depth: u32,
+    clip: bool,
+}
+
+impl Scope {
+    /// The top of a new form, `depth` groups deep.
+    fn form(depth: u32, clip: bool) -> Self {
+        Self {
+            ts: Transform::identity(),
+            depth,
+            clip,
+        }
+    }
+
+    fn deeper(self) -> Self {
+        Self {
+            depth: self.depth + 1,
+            ..self
+        }
+    }
+}
+
 struct Svg<'a> {
     pdf: &'a mut Pdf,
     alloc: &'a mut RefAlloc,
@@ -343,18 +398,14 @@ impl Svg<'_> {
 
     /// Graphics state with constant alphas and a blend mode (shared).
     fn alpha_gs(&mut self, fill: f32, stroke: f32, blend: usvg::BlendMode) -> Ref {
-        let key = (
-            (fill.clamp(0.0, 1.0) * 1000.0).round() as u16,
-            (stroke.clamp(0.0, 1.0) * 1000.0).round() as u16,
-            blend as u8,
-        );
+        let key = (alpha_key(fill), alpha_key(stroke), blend as u8);
         if let Some(&r) = self.alphas.get(&key) {
             return r;
         }
         let r = self.next();
         let mut gs = self.pdf.ext_graphics(r);
-        gs.non_stroking_alpha(f32::from(key.0) / 1000.0)
-            .stroking_alpha(f32::from(key.1) / 1000.0);
+        gs.non_stroking_alpha(key_alpha(key.0))
+            .stroking_alpha(key_alpha(key.1));
         if blend != usvg::BlendMode::Normal {
             gs.blend_mode(blend_mode(blend));
         }
@@ -417,13 +468,16 @@ impl Svg<'_> {
         Ok(())
     }
 
-    /// Draws a group. In `clip` mode everything is filled opaque black
-    /// (the content of an alpha soft mask built from a clip path).
-    fn group(&mut self, cv: &mut Canvas, g: &Group, ts: Transform, depth: u32, clip: bool) -> Res {
+    /// Draws a group.
+    fn group(&mut self, cv: &mut Canvas, g: &Group, at: Scope) -> Res {
+        let Scope { ts, depth, clip } = at;
         if depth > MAX_DEPTH {
             return Ok(());
         }
-        let ts = ts.pre_concat(g.transform());
+        let at = Scope {
+            ts: ts.pre_concat(g.transform()),
+            ..at
+        };
         cv.c.save_state();
         if !g.transform().is_identity() {
             cv.c.transform(matrix(g.transform()));
@@ -460,9 +514,9 @@ impl Svg<'_> {
         let last = (opacity < 1.0 || blend != usvg::BlendMode::Normal)
             .then(|| self.alpha_gs(opacity, opacity, blend));
         if masks.is_empty() && last.is_none() && (clip || !g.isolate()) {
-            self.children(cv, g, ts, depth, clip)?;
+            self.children(cv, g, at)?;
         } else {
-            self.layered(cv, &masks, last, bbox, g, depth, clip)?;
+            self.layered(cv, &masks, last, bbox, g, at)?;
         }
         cv.c.restore_state();
         Ok(())
@@ -471,7 +525,6 @@ impl Svg<'_> {
     /// Applies `masks[0]`, then draws the rest of the layers as a
     /// transparency group under it; the innermost group holds `g`'s
     /// children and is painted with `last` (opacity, blend mode).
-    #[allow(clippy::too_many_arguments)]
     fn layered(
         &mut self,
         cv: &mut Canvas,
@@ -479,20 +532,17 @@ impl Svg<'_> {
         last: Option<Ref>,
         bbox: Rect,
         g: &Group,
-        depth: u32,
-        clip: bool,
+        at: Scope,
     ) -> Res {
         let form = if let Some((&m, rest)) = masks.split_first() {
             cv.set_gs(m);
-            self.sub_form(bbox, |s, inner| {
-                s.layered(inner, rest, last, bbox, g, depth, clip)
-            })?
+            self.sub_form(bbox, |s, inner| s.layered(inner, rest, last, bbox, g, at))?
         } else {
             if let Some(l) = last {
                 cv.set_gs(l);
             }
             self.sub_form(bbox, |s, inner| {
-                s.children(inner, g, Transform::identity(), depth, clip)
+                s.children(inner, g, Scope::form(at.depth, at.clip))
             })?
         };
         cv.draw_xobject(form);
@@ -515,7 +565,12 @@ impl Svg<'_> {
             inner.c.set_fill_gray(0.0);
             inner.c.save_state();
             inner.c.transform(matrix(cp.transform()));
-            s.group(inner, cp.root(), cp.transform(), depth + 1, true)?;
+            let at = Scope {
+                ts: cp.transform(),
+                depth: depth + 1,
+                clip: true,
+            };
+            s.group(inner, cp.root(), at)?;
             inner.c.restore_state();
             Ok(())
         })?;
@@ -537,7 +592,7 @@ impl Svg<'_> {
             inner.c.rect(r.x(), r.y(), r.width(), r.height());
             inner.c.clip_nonzero();
             inner.c.end_path();
-            s.group(inner, m.root(), Transform::identity(), depth + 1, false)
+            s.group(inner, m.root(), Scope::form(depth + 1, false))
         })?;
         let kind = match m.kind() {
             usvg::MaskType::Luminance => MaskType::Luminosity,
@@ -551,18 +606,11 @@ impl Svg<'_> {
         Ok(())
     }
 
-    fn children(
-        &mut self,
-        cv: &mut Canvas,
-        g: &Group,
-        ts: Transform,
-        depth: u32,
-        clip: bool,
-    ) -> Res {
+    fn children(&mut self, cv: &mut Canvas, g: &Group, at: Scope) -> Res {
         for n in g.children() {
             match n {
-                Node::Group(child) => self.group(cv, child, ts, depth + 1, clip)?,
-                Node::Path(p) if clip => {
+                Node::Group(child) => self.group(cv, child, at.deeper())?,
+                Node::Path(p) if at.clip => {
                     if let (true, Some(fill)) = (p.is_visible(), p.fill()) {
                         self.emit_path(&mut cv.c, p.data())?;
                         match fill.rule() {
@@ -571,16 +619,16 @@ impl Svg<'_> {
                         };
                     }
                 }
-                Node::Path(p) => self.path(cv, p, ts, depth)?,
-                Node::Image(img) if !clip => self.image(cv, img, ts, depth)?,
+                Node::Path(p) => self.path(cv, p, at)?,
+                Node::Image(img) if !at.clip => self.image(cv, img, at)?,
                 Node::Image(_) => {}
-                Node::Text(t) => self.group(cv, t.flattened(), ts, depth + 1, clip)?,
+                Node::Text(t) => self.group(cv, t.flattened(), at.deeper())?,
             }
         }
         Ok(())
     }
 
-    fn path(&mut self, cv: &mut Canvas, p: &usvg::Path, ts: Transform, depth: u32) -> Res {
+    fn path(&mut self, cv: &mut Canvas, p: &usvg::Path, at: Scope) -> Res {
         if !p.is_visible() {
             return Ok(());
         }
@@ -589,7 +637,7 @@ impl Svg<'_> {
         let fill = |s: &mut Self, cv: &mut Canvas| -> Res {
             let Some(f) = p.fill() else { return Ok(()) };
             cv.c.save_state();
-            s.set_paint(cv, f.paint(), f.opacity().get(), false, ts, bbox, depth)?;
+            s.set_paint(cv, f.paint(), f.opacity().get(), false, bbox, at)?;
             s.emit_path(&mut cv.c, p.data())?;
             match f.rule() {
                 usvg::FillRule::NonZero => cv.c.fill_nonzero(),
@@ -601,7 +649,7 @@ impl Svg<'_> {
         let stroke = |s: &mut Self, cv: &mut Canvas| -> Res {
             let Some(st) = p.stroke() else { return Ok(()) };
             cv.c.save_state();
-            s.set_paint(cv, st.paint(), st.opacity().get(), true, ts, bbox, depth)?;
+            s.set_paint(cv, st.paint(), st.opacity().get(), true, bbox, at)?;
             cv.c.set_line_width(finite(st.width().get()));
             cv.c.set_line_cap(match st.linecap() {
                 usvg::LineCap::Butt => LineCapStyle::ButtCap,
@@ -636,16 +684,14 @@ impl Svg<'_> {
 
     /// Sets the fill or stroke paint and its opacity. `bbox` bounds what
     /// will be painted (for gradient opacity masks).
-    #[allow(clippy::too_many_arguments)]
     fn set_paint(
         &mut self,
         cv: &mut Canvas,
         paint: &Paint,
         opacity: f32,
         stroke: bool,
-        ts: Transform,
         bbox: Rect,
-        depth: u32,
+        at: Scope,
     ) -> Res {
         let (f, s) = if stroke {
             (1.0, opacity)
@@ -690,7 +736,7 @@ impl Svg<'_> {
                 self.pdf
                     .shading_pattern(pattern)
                     .shading_ref(shading)
-                    .matrix(matrix(ts.pre_concat(gt)));
+                    .matrix(matrix(at.ts.pre_concat(gt)));
                 cv.set_pattern(pattern, stroke);
                 if stops.iter().any(|s| s.opacity().get() < 1.0) {
                     let alpha = self.shading(stops, &kind, periods, true);
@@ -703,7 +749,7 @@ impl Svg<'_> {
                 }
             }
             Paint::Pattern(pt) => {
-                let pattern = self.tiling(pt, ts, depth)?;
+                let pattern = self.tiling(pt, at)?;
                 cv.set_pattern(pattern, stroke);
             }
         }
@@ -821,15 +867,10 @@ impl Svg<'_> {
         id
     }
 
-    fn tiling(
-        &mut self,
-        pt: &usvg::Pattern,
-        ts: Transform,
-        depth: u32,
-    ) -> Result<Ref, InkoxideError> {
+    fn tiling(&mut self, pt: &usvg::Pattern, at: Scope) -> Result<Ref, InkoxideError> {
         let r = pt.rect();
         let mut cv = Canvas::new();
-        self.group(&mut cv, pt.root(), Transform::identity(), depth + 1, false)?;
+        self.group(&mut cv, pt.root(), Scope::form(at.depth + 1, false))?;
         let data = super::deflate(
             &std::mem::replace(&mut cv.c, Content::new()).finish(),
             flate::LEVEL,
@@ -843,7 +884,7 @@ impl Svg<'_> {
             .x_step(r.width())
             .y_step(r.height())
             .matrix(matrix(
-                ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
+                at.ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
             ));
         cv.write_resources(t.resources());
         Ok(id)
@@ -865,7 +906,7 @@ impl Svg<'_> {
         Ok(r)
     }
 
-    fn image(&mut self, cv: &mut Canvas, img: &usvg::Image, ts: Transform, depth: u32) -> Res {
+    fn image(&mut self, cv: &mut Canvas, img: &usvg::Image, at: Scope) -> Res {
         if !img.is_visible() {
             return Ok(());
         }
@@ -894,7 +935,11 @@ impl Svg<'_> {
                 cv.c.clip_nonzero();
                 cv.c.end_path();
                 cv.c.transform(matrix(scale));
-                self.group(cv, tree.root(), ts.pre_concat(scale), depth + 1, false)?;
+                let inner = Scope {
+                    ts: at.ts.pre_concat(scale),
+                    ..at.deeper()
+                };
+                self.group(cv, tree.root(), inner)?;
                 cv.c.restore_state();
             }
         }

@@ -4,7 +4,7 @@ use super::{Path, PathSeg, Rect};
 use crate::schema::Edges;
 
 /// Bézier circle approximation constant.
-const KAPPA: f32 = 0.552_284_8;
+pub(crate) const KAPPA: f32 = 0.552_284_8;
 
 /// Corner radii `(rx, ry)` in order top-left, top-right, bottom-right,
 /// bottom-left.
