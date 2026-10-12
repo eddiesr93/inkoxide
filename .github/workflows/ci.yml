@@ -75,6 +75,7 @@ jobs:
       - name: Generated files are up to date
         run: |
           python scripts/gen-schema-doc.py --check
+          python scripts/gen-fuzz-dict.py --check
           python scripts/fixtures/report_realistic.py >/dev/null
           git diff --exit-code -- fixtures/docs/report-100p-realistic.json
 

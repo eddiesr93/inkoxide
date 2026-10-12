@@ -73,9 +73,12 @@ Targets (in `fuzz/`, outside the workspace, with the workspace's lints;
 the `ci` workflow builds them and runs clippy on them):
 
 - `render_json`: raw bytes, seeded with `fixtures/docs`, with a dictionary
-  of schema keys (`fuzz/render_json.dict`).
+  of schema keys and enum values (`fuzz/render_json.dict`, generated from
+  the schema by `scripts/gen-fuzz-dict.py`; ci fails when it is stale).
 - `render_tree`: a structure-aware generator of schema-shaped documents
-  (edge values, long words, mixed scripts, big tables, deep nesting).
+  (edge values, long words, mixed scripts, big tables, deep nesting, form
+  fields, page filters). A unit test checks that its valid documents
+  reach the newer parts of the schema; extend its list with the generator.
 - `render_svg`: raw bytes registered as an image and drawn twice; seeded
   with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
 - `render_svg_tree`: a structure-aware SVG generator that combines what

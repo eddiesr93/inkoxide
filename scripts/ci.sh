@@ -62,6 +62,7 @@ fi
 
 step "schema docs up to date"
 python3 scripts/gen-schema-doc.py --check
+python3 scripts/gen-fuzz-dict.py --check
 
 step "generated fixtures up to date"
 python3 scripts/fixtures/report_realistic.py >/dev/null
