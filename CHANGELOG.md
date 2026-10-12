@@ -35,6 +35,14 @@ All notable changes to the packages in this repository. The format follows
   its proportions, as in CSS: the box becomes its viewport, and its `preserveAspectRatio`
   (centred and whole by default) places the drawing. It was stretched to the box, so an `<Svg>`
   given `width: '100%'` came out squashed.
+- An SVG element with a `filter` (a drop shadow, a blur) is drawn without the filter; it was left
+  out with its children, so a logo with a shadow showed as a blank box.
+- SVG gradients with `spreadMethod="repeat"` or `"reflect"` repeat or mirror their stops over
+  what they paint; they were drawn as `pad`, one ramp and then a flat colour.
+- GIF and WebP images embedded in an SVG as `data:` URLs are drawn; they were left out.
+- An SVG fails with `INVALID_IMAGE` when an SVG image nested in it has text, as it does with text
+  of its own, and when an image embedded in it is over 50 megapixels; both were left out
+  silently. The guide lists what SVG drawing does not support.
 
 ## 0.5.0 - 2026-10-12
 

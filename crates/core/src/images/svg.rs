@@ -6,8 +6,8 @@
 //! clones paint servers, clip paths and masks per element, so a small file
 //! can describe a huge tree.
 //!
-//! Nothing is read from disk: `href`s to files are ignored and only
-//! `data:` URLs are resolved. The checks count a nested SVG image once per
+//! Nothing is read from disk: `href`s to files and URLs are ignored and
+//! only `data:` URLs are resolved. The checks count a nested SVG image once per
 //! copy, its own nested images included. `usvg` resolves the URL again
 //! for most copies, so the resolver also counts what it actually decodes,
 //! in one [`Meter`] for the whole SVG.
@@ -81,17 +81,19 @@ pub(crate) fn is_svg(bytes: &[u8]) -> bool {
     start.is_some_and(|i| b[i] == b'<')
 }
 
-/// Why an SVG was rejected. A limit fails the outermost SVG; anything else
-/// only leaves a nested SVG out, as `usvg` does.
+/// Why an SVG was rejected. A limit or unsupported content fails the
+/// outermost SVG, so a nested SVG fails as it would on its own; anything
+/// else only leaves a nested SVG out, as `usvg` does.
 enum Reject {
     Limit(String),
+    Unsupported(String),
     Invalid(String),
 }
 
 impl Reject {
     fn message(self) -> String {
         match self {
-            Reject::Limit(e) | Reject::Invalid(e) => e,
+            Reject::Limit(e) | Reject::Unsupported(e) | Reject::Invalid(e) => e,
         }
     }
 }
@@ -173,8 +175,9 @@ struct Meter {
     pixels: AtomicU64,
     /// Raster images seen, by content hash.
     rasters: Mutex<HashMap<u64, Vec<Arc<Vec<u8>>>>>,
-    /// The first limit exceeded. A nested SVG that fails is left out, so
-    /// this carries the error out to the outermost SVG.
+    /// The first limit exceeded or unsupported content met. A nested SVG
+    /// that fails is left out, so this carries the error out to the
+    /// outermost SVG.
     error: OnceLock<String>,
 }
 
@@ -439,7 +442,24 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<Vie
 enum Embedded {
     Jpeg,
     Png,
+    Gif,
+    WebP,
     Svg,
+}
+
+/// The raster format `data` starts like.
+fn sniff_raster(data: &[u8]) -> Option<Embedded> {
+    if data.starts_with(b"\x89PNG") {
+        Some(Embedded::Png)
+    } else if data.starts_with(&[0xFF, 0xD8]) {
+        Some(Embedded::Jpeg)
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        Some(Embedded::Gif)
+    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
+        Some(Embedded::WebP)
+    } else {
+        None
+    }
 }
 
 /// What a decoded `data:` URL holds, as the resolver reads it.
@@ -447,18 +467,10 @@ fn embedded(mime: &str, data: &[u8]) -> Option<Embedded> {
     match mime {
         "image/jpg" | "image/jpeg" => Some(Embedded::Jpeg),
         "image/png" => Some(Embedded::Png),
+        "image/gif" => Some(Embedded::Gif),
+        "image/webp" => Some(Embedded::WebP),
         "image/svg+xml" => Some(Embedded::Svg),
-        "text/plain" | "" => {
-            if data.starts_with(b"\x89PNG") {
-                Some(Embedded::Png)
-            } else if data.starts_with(&[0xFF, 0xD8]) {
-                Some(Embedded::Jpeg)
-            } else if is_svg(data) {
-                Some(Embedded::Svg)
-            } else {
-                None
-            }
-        }
+        "text/plain" | "" => sniff_raster(data).or(is_svg(data).then_some(Embedded::Svg)),
         _ => None,
     }
 }
@@ -469,9 +481,9 @@ fn too_deep() -> Reject {
     ))
 }
 
-/// `data:` URLs inside an SVG: JPEG and PNG are kept for the PDF writer,
-/// nested SVGs are parsed at `at` with the same limits, other formats are
-/// dropped. Everything is charged to the meter, every time.
+/// `data:` URLs inside an SVG: JPEG, PNG, GIF and WebP are kept for the PDF
+/// writer, nested SVGs are parsed at `at` with the same limits, other
+/// formats are dropped. Everything is charged to the meter, every time.
 fn resolve_data(mime: &str, data: Arc<Vec<u8>>, at: Nesting<'_>) -> Option<usvg::ImageKind> {
     // Over a limit: the SVG fails anyway, so skip the remaining copies.
     if at.meter.error.get().is_some() {
@@ -483,7 +495,7 @@ fn resolve_data(mime: &str, data: Arc<Vec<u8>>, at: Nesting<'_>) -> Option<usvg:
         .and_then(|()| resolve(mime, data, at));
     match kind {
         Ok(kind) => kind,
-        Err(Reject::Limit(e)) => {
+        Err(Reject::Limit(e) | Reject::Unsupported(e)) => {
             let _ = at.meter.error.set(e);
             None
         }
@@ -499,6 +511,8 @@ fn resolve(
     Ok(match embedded(mime, &data) {
         Some(Embedded::Jpeg) => raster(&data, at.meter)?.then_some(usvg::ImageKind::JPEG(data)),
         Some(Embedded::Png) => raster(&data, at.meter)?.then_some(usvg::ImageKind::PNG(data)),
+        Some(Embedded::Gif) => raster(&data, at.meter)?.then_some(usvg::ImageKind::GIF(data)),
+        Some(Embedded::WebP) => raster(&data, at.meter)?.then_some(usvg::ImageKind::WEBP(data)),
         Some(Embedded::Svg) => {
             if at.level > MAX_NESTING {
                 return Err(too_deep());
@@ -510,14 +524,19 @@ fn resolve(
 }
 
 /// Reads a raster image's header and charges its pixels. `false` leaves
-/// out what the PDF writer could not decode either.
+/// out what the PDF writer could not decode either; an image over the
+/// pixel limit fails the SVG, as it would on its own.
 fn raster(data: &Arc<Vec<u8>>, meter: &Meter) -> Result<bool, Reject> {
-    // `probe` would parse an SVG; only JPEG and PNG are drawn.
-    if !(data.starts_with(b"\x89PNG") || data.starts_with(&[0xFF, 0xD8])) {
+    // `probe` would parse an SVG.
+    if sniff_raster(data).is_none() {
         return Ok(false);
     }
-    let Ok(info) = super::probe(data) else {
-        return Ok(false);
+    let info = match super::probe(data) {
+        Ok(info) => info,
+        Err(super::ProbeError::TooLarge(e)) => {
+            return Err(Reject::Limit(format!("SVG image: {e}")));
+        }
+        Err(super::ProbeError::Invalid(_)) => return Ok(false),
     };
     meter.charge_raster(data, u64::from(info.width) * u64::from(info.height))?;
     Ok(true)
@@ -564,7 +583,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         }
         let name = n.tag_name().name();
         if is_svg_ns(n) && name == "text" && n.descendants().any(|d| has_text(&d)) {
-            return Err(Reject::Invalid(
+            return Err(Reject::Unsupported(
                 "SVG <text> is not supported; convert the text to outlines (paths)".into(),
             ));
         }
@@ -1235,6 +1254,24 @@ mod tests {
         assert!(parse(b"<svg").is_err());
         assert!(parse(b"<html/>").is_err());
         assert!(parse(&[0xFF, 0xFE, 0x3C]).is_err());
+        // Nested, text fails the SVG too, rather than leaving the image out.
+        let e = rejected(&image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0));
+        assert!(e.contains("<text>"), "{e}");
+    }
+
+    #[test]
+    fn an_embedded_raster_over_the_pixel_limit_fails_the_svg() {
+        // A PNG header of 10000 × 10000 pixels: probing reads no further.
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        png.extend(10_000u32.to_be_bytes());
+        png.extend(10_000u32.to_be_bytes());
+        png.extend([8, 2, 0, 0, 0, 0, 0, 0, 0]);
+        let body = format!(
+            r#"<image width="4" height="4" href="{}"/>"#,
+            url_of("image/png", &png)
+        );
+        let e = rejected(&svg(&body));
+        assert!(e.contains("megapixels"), "{e}");
     }
 
     #[test]

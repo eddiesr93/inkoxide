@@ -379,8 +379,8 @@ pub(crate) fn image_matrix(orientation: u8, rect: Rect) -> [f32; 6] {
     ]
 }
 
-/// Decodes a JPEG or PNG embedded in an SVG, through the process-wide
-/// cache.
+/// Decodes a JPEG, PNG, GIF or WebP embedded in an SVG, through the
+/// process-wide cache.
 pub(crate) fn decode_embedded(bytes: &[u8]) -> Result<Arc<DecodedImage>, String> {
     ImageData::new(bytes.into()).decoded(&ImageCrateDecoder)
 }

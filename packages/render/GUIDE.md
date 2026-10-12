@@ -463,6 +463,15 @@ The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`)
 `<Svg>` is not supported yet. `Canvas` draws in code with a pdfkit-style painter. An SVG file
 can also go straight into `<Image src={svgBytes} />`.
 
+In an SVG, whether in `<Svg>` or an image file:
+
+- **Text** (`<text>`) fails the render with `INVALID_IMAGE`, in a nested SVG image too: convert
+  text to outlines (paths) in your design tool.
+- **Filters** (`filter`: drop shadows, blurs) are not applied: the element is drawn without them.
+- **Images** inside the SVG must be embedded as `data:` URLs (JPEG, PNG, GIF, WebP or SVG).
+  Links to files or URLs are left out, and an embedded image over 50 megapixels fails the
+  render.
+
 ## Forms
 
 ```tsx
@@ -738,7 +747,9 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
-- **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet.
+- **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet. SVG filters are not
+  applied, and an SVG only shows images embedded as `data:` URLs (see
+  [Drawing](#drawing-svg-and-canvas)).
 - **Tailwind.** Variants (`md:`, `hover:`), shadows and gradients are not supported.
 - **Output.** The engine produces the whole PDF at once: `renderToStream` streams the finished
   file, it does not send pages while later ones are still being laid out.
