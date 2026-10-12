@@ -54,8 +54,12 @@ millisecond; a 98-page report with 40 tables in about 130 ms.
 ### With React
 
 ```sh
-npm install @inkoxide/render react
-npm install -D tsx @types/react
+npm install @inkoxide/render
+```
+
+In a new project, make it an ES module and turn on React's automatic JSX runtime:
+
+```sh
 npm pkg set type=module
 echo '{ "compilerOptions": { "jsx": "react-jsx" } }' > tsconfig.json
 ```

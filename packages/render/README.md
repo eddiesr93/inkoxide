@@ -50,8 +50,7 @@ A one-page invoice renders in about a millisecond, a 43-page report in about 33 
 ## Quick start
 
 ```sh
-npm install @inkoxide/render react
-npm install -D tsx @types/react
+npm install @inkoxide/render
 ```
 
 In a new project, make it an ES module and turn on React's automatic JSX runtime:
