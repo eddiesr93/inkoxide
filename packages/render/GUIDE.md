@@ -717,7 +717,9 @@ compiler, so there is no config and no CSS build. Without it, style with `style`
 **Can I use my own components and hooks?**
 Yes. A document is ordinary React: components, props, context, `.map` and conditionals all work,
 as do hooks that compute during render (`useMemo`, `useContext`). The PDF is built from that
-first render, so state updates and effects do not change it.
+first render, so state updates and effects do not change it, and nothing can wait for data:
+a component that suspends (`use()` of a promise, a `lazy` component, inside `<Suspense>` or
+not) fails the render with `TEMPLATE_ERROR`. Load the data first and pass it in as props.
 
 **How much room does a page number take?**
 Its own digits. In a header, a footer or a fixed element, the text is laid out again on every

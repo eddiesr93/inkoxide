@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -650,6 +650,41 @@ describe('errors carry component stacks', () => {
     expect(e.kind).toBe('render');
     expect(e.message).toContain('data.child is undefined');
     expect(e.componentStack).toContain('in Broken');
+  });
+
+  it('reports a component that suspends, with or without a Suspense boundary', async () => {
+    const settled = Promise.resolve('late');
+    function Late({ p }: { p: Promise<string> }) {
+      return <Text>{use(p)}</Text>;
+    }
+    function Card({ p }: { p: Promise<string> }) {
+      return (
+        <View>
+          <Text>before</Text>
+          <Late p={p} />
+        </View>
+      );
+    }
+    const bare = thrown(() => render(<Card p={settled} />));
+    expect(bare.kind).toBe('render');
+    expect(bare.message).toMatch(/^Late suspended\. Suspense, use\(\) with a promise/);
+    expect(bare.componentStack).toBe('\n    in Late\n    in View\n    in Card\n    in Page\n    in Document');
+    const LazyCard = lazy(async () => ({ default: Card }));
+    expect(thrown(() => render(<LazyCard p={settled} />)).message).toContain('suspended.');
+
+    const pending = new Promise<string>(() => {});
+    const inBoundary = thrown(() =>
+      render(
+        <Suspense fallback={<Text>loading</Text>}>
+          <Card p={pending} />
+        </Suspense>,
+      ),
+    );
+    expect(inBoundary.kind).toBe('render');
+    expect(inBoundary.message).toContain('A component inside <Suspense> suspended');
+    expect(inBoundary.componentStack).toBe('\n    in Suspense\n    in Page\n    in Document');
+    // React retries the boundary later, from a timer: that must not crash the process.
+    await new Promise((ok) => setTimeout(ok, 500));
   });
 
   it('rejects layout utilities on inline Text', () => {

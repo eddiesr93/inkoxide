@@ -275,4 +275,7 @@ export const hostConfig = {
   suspendInstance: (): void => {},
   waitForCommitToBeReady: (): null => null,
   getSuspendedCommitReason: (): null => null,
+  // React calls it when it commits work it retries after a suspension; a template that suspends
+  // fails before then, but the retry can still run.
+  suspendOnActiveViewTransition: (): void => {},
 };

@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- A component that suspends (`use()` of a promise, a `lazy` component) fails the render with a
+  template error that names it, or the `<Suspense>` boundary it is in, and says that templates
+  cannot wait for data. Without a boundary the error blamed a missing `<Document>`; with one,
+  the PDF showed the fallback and the process crashed shortly afterwards.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and
