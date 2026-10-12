@@ -67,16 +67,18 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     }
 }
 
-/// Leaf painting: text and images.
+/// Leaf painting: text through `T`, images and form fields.
 struct Content<'x, T: ContentPainter> {
     text: T,
     images: &'x ImageSet,
+    fonts: &'x FontSet<'x>,
 }
 
 impl<T: ContentPainter> ContentPainter for Content<'_, T> {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
+            NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             _ => self.text.paint(node, geo, ctx, ops),
         }
     }
@@ -186,7 +188,7 @@ pub(crate) fn run<'d, T: Send>(
         let m = spec.margin;
         let content_w = spec.size.width - m.left - m.right;
         let content_h = spec.size.height - m.top - m.bottom;
-        let mut flow = Tree::build_from(spec.children.iter().filter(|n| !is_overlay(n)));
+        let mut flow = Tree::build(spec.children.iter().filter(|n| !is_overlay(n)));
         let mut leaves = Leaves { text, images };
         TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
         let header = spec
@@ -321,27 +323,14 @@ fn subtree_marks<'d>(
 
 /// Text nodes under `node`, in document order.
 fn collect_texts<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
-    if node.style.display == Some(Display::None) {
+    if node.hidden() {
         return;
     }
-    match &node.kind {
-        NodeKind::Text { .. } => out.push(node),
-        NodeKind::Box { children } => {
-            for c in children {
-                collect_texts(c, out);
-            }
-        }
-        NodeKind::Table(t) => {
-            for c in t.rows.iter().flat_map(|r| &r.cells) {
-                if c.style.display == Some(Display::None) {
-                    continue;
-                }
-                for n in &c.children {
-                    collect_texts(n, out);
-                }
-            }
-        }
-        _ => {}
+    if let NodeKind::Text { .. } = node.kind {
+        out.push(node);
+    }
+    for c in node.shown_children() {
+        collect_texts(c, out);
     }
 }
 
@@ -400,6 +389,7 @@ fn paint_page(
             numbers,
         },
         images,
+        fonts,
     };
 
     // `debug` outlines, drawn over everything once the page is painted.

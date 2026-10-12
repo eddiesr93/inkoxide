@@ -207,6 +207,45 @@ pub struct Node {
     pub kind: NodeKind,
 }
 
+impl Node {
+    /// Whether `display: none` hides the node.
+    pub fn hidden(&self) -> bool {
+        self.style.display == Some(Display::None)
+    }
+
+    /// The nodes one level down, in document order: a box's children, or
+    /// the contents of a table's cells, row by row. Other kinds have none.
+    pub fn children(&self) -> impl Iterator<Item = &Node> {
+        let (children, rows) = self.parts();
+        children
+            .iter()
+            .chain(rows.iter().flat_map(|r| &r.cells).flat_map(|c| &c.children))
+    }
+
+    /// [`Node::children`] that are displayed: without the nodes, and the
+    /// contents of the cells, that `display: none` hides.
+    pub fn shown_children(&self) -> impl Iterator<Item = &Node> {
+        let (children, rows) = self.parts();
+        let cells = rows
+            .iter()
+            .flat_map(|r| &r.cells)
+            .filter(|c| c.style.display != Some(Display::None));
+        children
+            .iter()
+            .chain(cells.flat_map(|c| &c.children))
+            .filter(|n| !n.hidden())
+    }
+
+    /// A box's children, or a table's rows.
+    fn parts(&self) -> (&[Node], &[TableRow]) {
+        match &self.kind {
+            NodeKind::Box { children } => (children, &[]),
+            NodeKind::Table(t) => (&[], &t.rows),
+            _ => (&[], &[]),
+        }
+    }
+}
+
 /// Which pages show a node, by physical page number (as `pageNumber`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageFilter {

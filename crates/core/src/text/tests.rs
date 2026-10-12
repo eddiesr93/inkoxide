@@ -3,16 +3,7 @@ use crate::schema::Document;
 use crate::{FontStore, InputFormat};
 
 fn store() -> FontStore {
-    let mut s = FontStore::new();
-    for name in ["Inter-Regular", "Inter-Bold", "NotoSans-Regular"] {
-        let bytes = std::fs::read(format!(
-            "{}/../../fixtures/fonts/{name}.ttf",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
-        s.register(name, bytes).unwrap();
-    }
-    s
+    crate::test_fixtures::fonts(&["Inter-Regular", "Inter-Bold", "NotoSans-Regular"])
 }
 
 fn doc(text_node: &str) -> Document {
@@ -253,18 +244,13 @@ fn empty_text_has_no_height() {
 /// The closed-form cell layout (layout/fast.rs) must match Taffy exactly.
 #[test]
 fn simple_cell_fast_path_matches_taffy() {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/");
-    let mut store = FontStore::new();
-    for name in [
+    let store = crate::test_fixtures::fonts(&[
         "Inter-Regular",
         "Inter-Bold",
         "Inter-Italic",
         "NotoSans-Regular",
         "RobotoMono-Regular",
-    ] {
-        let bytes = std::fs::read(format!("{dir}fonts/{name}.ttf")).unwrap();
-        store.register(name, bytes).unwrap();
-    }
+    ]);
     let cell = |style: &str, text: &str| {
         format!(
             r#"{{"style":{{{style}}},"children":[{{"type":"text","style":{{"maxLines":2,"ellipsis":true}},"runs":[{{"text":"{text}","font":"Inter-Regular","size":9}}]}}]}}"#
@@ -296,7 +282,7 @@ fn simple_cell_fast_path_matches_taffy() {
     );
     let mut docs = vec![synthetic.into_bytes()];
     for f in ["table-basic", "table-split-header-repeat", "invoice"] {
-        docs.push(std::fs::read(format!("{dir}docs/{f}.json")).unwrap());
+        docs.push(crate::test_fixtures::fixture(&format!("docs/{f}.json")));
     }
     for json in docs {
         let d = crate::validate::parse(&json, InputFormat::Json).unwrap();

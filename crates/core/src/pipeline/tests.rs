@@ -12,15 +12,7 @@ const H: f32 = 100.0;
 const PAD: f32 = 10.0;
 
 fn store() -> FontStore {
-    let mut s = FontStore::new();
-    for name in ["Inter-Regular", "NotoSansHebrew-Regular"] {
-        let path = format!(
-            "{}/../../fixtures/fonts/{name}.ttf",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        s.register(name, std::fs::read(path).unwrap()).unwrap();
-    }
-    s
+    crate::test_fixtures::fonts(&["Inter-Regular", "NotoSansHebrew-Regular"])
 }
 
 /// A document of `pages` pages whose footer is `footer` (a node).

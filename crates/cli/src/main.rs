@@ -123,7 +123,7 @@ fn load_resources(res: &Resources) -> Result<(FontStore, ImageStore), String> {
             if !matches!(ext.as_str(), "ttf" | "otf" | "woff" | "woff2") {
                 continue;
             }
-            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let bytes = read(&path)?;
             fonts
                 .register(stem, bytes)
                 .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -132,8 +132,7 @@ fn load_resources(res: &Resources) -> Result<(FontStore, ImageStore), String> {
     let mut images = ImageStore::new();
     for dir in &res.images {
         for (stem, path) in dir_files(dir)? {
-            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            images.insert(stem, bytes);
+            images.insert(stem, read(&path)?);
         }
     }
     Ok((fonts, images))

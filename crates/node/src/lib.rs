@@ -64,6 +64,13 @@ fn from_engine(e: InkoxideError) -> Error {
     }
 }
 
+/// Runs engine code, turning a panic into an `INTERNAL` error instead of
+/// letting it unwind into Node.
+fn catch_panic<T>(f: impl FnOnce() -> T) -> Result<T> {
+    catch_unwind(AssertUnwindSafe(f))
+        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))
+}
+
 fn invalid_arg(path: &str, message: &str) -> Error {
     engine_error("INVALID_ARGUMENT", path, message)
 }
@@ -185,7 +192,7 @@ impl RenderJob {
     }
 
     fn run(&self) -> Result<Vec<u8>> {
-        catch_unwind(AssertUnwindSafe(|| {
+        catch_panic(|| {
             inkoxide::render(
                 &self.doc,
                 self.format,
@@ -193,8 +200,7 @@ impl RenderJob {
                 &self.fonts,
                 &self.images,
             )
-        }))
-        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?
+        })?
         .map_err(from_engine)
     }
 }
@@ -222,9 +228,7 @@ pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
         .map_err(|_| engine_error("INTERNAL", "", "font registry poisoned"))?;
     // The panic is caught while the guard is still held, so it does not
     // poison the registry, and a font is only inserted once it has parsed.
-    catch_unwind(AssertUnwindSafe(|| fonts.register(id, bytes)))
-        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?
-        .map_err(from_engine)
+    catch_panic(|| fonts.register(id, bytes))?.map_err(from_engine)
 }
 
 /// Removes a registered font; returns whether it existed.
@@ -241,9 +245,7 @@ pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, Stri
     let mut store = HYPHENATION
         .write()
         .map_err(|_| engine_error("INTERNAL", "", "hyphenation registry poisoned"))?;
-    catch_unwind(AssertUnwindSafe(|| store.register(&lang, &bytes)))
-        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?
-        .map_err(from_engine)
+    catch_panic(|| store.register(&lang, &bytes))?.map_err(from_engine)
 }
 
 /// Removes the patterns registered for exactly `lang`; returns whether
@@ -270,10 +272,7 @@ pub fn validate(
     for (id, b) in images.unwrap_or_default() {
         store.insert(id, b.to_vec());
     }
-    let errors = catch_unwind(AssertUnwindSafe(|| {
-        inkoxide::validate(&bytes, format, &fonts, &store)
-    }))
-    .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))?;
+    let errors = catch_panic(|| inkoxide::validate(&bytes, format, &fonts, &store))?;
     Ok(errors
         .into_iter()
         .filter(|e| check_images || e.code != inkoxide::ValidationCode::UnknownImage)
@@ -313,12 +312,11 @@ pub fn version() -> Version {
     }
 }
 
-/// Panics inside `catch_unwind`, exactly like an engine bug would, so the
+/// Panics inside `catch_panic`, exactly like an engine bug would, so the
 /// tests can check that a panic surfaces as an `INTERNAL` error instead of
 /// taking the process down. Not part of the public API.
 #[doc(hidden)]
 #[napi(js_name = "__testPanic")]
 pub fn test_panic() -> Result<()> {
-    catch_unwind(|| -> () { panic!("test panic") })
-        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))
+    catch_panic(|| panic!("test panic"))
 }

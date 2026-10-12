@@ -1358,11 +1358,7 @@ mod tests {
         };
         let rects = |n| r#"<rect width="5" height="5" fill="url(#p)"/>"#.repeat(n);
         // `usvg` converts a pattern once: its image is decoded once.
-        let mut png = std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/images/logo.png"
-        ))
-        .unwrap();
+        let mut png = crate::test_fixtures::fixture("images/logo.png");
         png.resize(1 << 20, 0);
         let png = url_of("image/png", &png);
         parse(svg(&(pattern(&png) + &rects(200))).as_bytes()).unwrap();

@@ -12,6 +12,10 @@ use crate::schema::{
     VerticalAlign,
 };
 
+/// A set height short of the content by less than this (points) is float
+/// noise: the content still fits.
+const HEIGHT_EPS: f32 = 1e-3;
+
 /// The text child of cell `idx` and the cell's padding, when the cell
 /// qualifies.
 pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, Edges<f32>)> {
@@ -134,7 +138,7 @@ pub(super) fn cell(
     };
     let natural = text.height + edge_h;
     let h = match height {
-        Some(h) if h + 1e-3 < natural => return None,
+        Some(h) if h + HEIGHT_EPS < natural => return None,
         Some(h) => h,
         None => natural,
     };

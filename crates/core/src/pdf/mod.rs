@@ -29,6 +29,10 @@ use crate::InkoxideError;
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 const PAGE_TREE_FANOUT: usize = 50;
 
+/// A glyph closer than this (points) to where the previous glyph's advance
+/// puts it needs no `TJ` adjustment.
+const KERN_EPS: f32 = 1e-3;
+
 /// A painted page reduced to what the writer needs: its compressed
 /// content stream and the resources it names. Pages are encoded as soon as
 /// they are painted (in parallel), so the display lists never pile up.
@@ -123,6 +127,7 @@ fn round_to(v: f32, per: f32) -> f32 {
     }
 }
 
+/// Hands out object numbers in order, from 1.
 struct RefAlloc(i32);
 
 impl RefAlloc {
@@ -241,7 +246,7 @@ impl PdfSink for PdfWriterSink {
         for ((key, glyphs), program) in used.iter().zip(&programs) {
             let r = font::write_font(
                 &mut pdf,
-                &mut || alloc.next(),
+                &mut alloc,
                 doc.fonts.get(*key),
                 program,
                 glyphs,
@@ -258,12 +263,7 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in &mut image_refs {
-            *r = image::write_image(
-                &mut pdf,
-                &mut || alloc.next(),
-                doc.images.get(*key),
-                self.pdf_a,
-            )?;
+            *r = image::write_image(&mut pdf, &mut alloc, doc.images.get(*key), self.pdf_a)?;
         }
 
         // Link annotations, numbered in page order.
@@ -286,16 +286,14 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
-        let form = forms::write_fields(
-            &mut pdf,
-            &mut alloc,
-            doc.pages,
-            &page_refs,
-            &font_refs,
-            doc.fonts,
-            self.pdf_a,
-            &mut annots,
-        );
+        let fields = forms::Ctx {
+            pages: doc.pages,
+            page_refs: &page_refs,
+            font_refs: &font_refs,
+            fonts: doc.fonts,
+            pdf_a: self.pdf_a,
+        };
+        let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots);
         let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
 
         for (i, (page, (page_ref, content_ref))) in doc.pages.iter().zip(&page_refs).enumerate() {
@@ -698,7 +696,7 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool
                 continue;
             }
             let delta = g.x - pen;
-            if delta.abs() > 1e-3 {
+            if delta.abs() > KERN_EPS {
                 if !buf.is_empty() {
                     items.show(Str(&buf));
                     buf.clear();

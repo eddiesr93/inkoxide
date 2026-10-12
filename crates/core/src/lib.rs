@@ -24,6 +24,8 @@ mod pdf;
 mod pipeline;
 mod pool;
 mod schema;
+#[cfg(test)]
+mod test_fixtures;
 mod text;
 mod validate;
 

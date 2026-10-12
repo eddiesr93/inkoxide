@@ -1,15 +1,6 @@
 use crate::{validate, FontStore, ImageStore, InputFormat, ValidationCode as C, ValidationError};
 
-fn fonts() -> FontStore {
-    let mut f = FontStore::new();
-    let bytes = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/fonts/Inter-Regular.ttf"
-    ))
-    .unwrap();
-    f.register("Inter-Regular", bytes).unwrap();
-    f
-}
+use crate::test_fixtures::inter as fonts;
 
 fn run(doc: &str) -> Vec<ValidationError> {
     let mut images = ImageStore::new();

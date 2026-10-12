@@ -2,7 +2,8 @@
 //! justification and page-number placeholders.
 
 use super::{
-    Ellipsis, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
+    ExtraGlyph, Line, PageText, Prepared, TextCache, TextShaper, GLYPH_INVISIBLE, GLYPH_SPACE,
+    WIDTH_EPS,
 };
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
@@ -29,10 +30,6 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
 
 impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
-        if let NodeKind::Field(f) = &node.kind {
-            crate::forms::paint(f, geo, ctx, self.fonts, ops);
-            return;
-        }
         let NodeKind::Text { runs } = &node.kind else {
             return;
         };
@@ -293,7 +290,7 @@ fn paint_line(
     }
 }
 
-fn extra_piece(e: &Ellipsis) -> Piece {
+fn extra_piece(e: &ExtraGlyph) -> Piece {
     let glyphs = (0..e.count)
         .map(|i| TextGlyph {
             id: e.glyph,
@@ -398,7 +395,7 @@ fn decoration(
             let mut segs = vec![PathSeg::MoveTo(x, mid)];
             let mut cx = x;
             let mut up = true;
-            while cx < x + w - 1e-3 {
+            while cx < x + w - WIDTH_EPS {
                 let nx = (cx + half).min(x + w);
                 let k = (nx - cx) / half;
                 let dy = if up { -amp } else { amp } * k;

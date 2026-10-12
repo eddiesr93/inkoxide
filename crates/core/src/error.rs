@@ -1,96 +1,74 @@
 use std::fmt;
 
-/// Machine-readable validation error codes. The string form (e.g.
-/// `UNKNOWN_FONT`) is part of the public contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum ValidationCode {
-    /// The input is not well-formed JSON / `MessagePack`.
-    ParseError,
-    /// `version` is missing or not supported by this engine.
-    UnsupportedVersion,
-    /// A property the schema does not define.
-    UnknownField,
-    /// A required property is absent.
-    MissingField,
-    /// A value has the wrong JSON type.
-    InvalidType,
-    /// A value has the right type but is not accepted (an unknown enum
-    /// string, a malformed colour, a misplaced pagination control).
-    InvalidValue,
-    /// A number is outside its allowed range, or page margins leave no room
-    /// for content.
-    OutOfRange,
-    /// A font id is declared twice, or a form field name is used twice
-    /// (other than by the buttons of one radio group).
-    DuplicateId,
-    /// A run or `fallbackFonts` references a font id not declared in `fonts`.
-    UnknownFont,
-    /// A declared font has no bytes registered with the engine.
-    FontNotRegistered,
-    /// An image `src` is not present in the render-time image map.
-    UnknownImage,
-    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
-    InvalidImage,
-    /// An image has more than 50 million pixels (width × height).
-    ImageTooLarge,
-    /// A style property was set on a node type it does not apply to.
-    StyleNotApplicable,
-    /// Table structure is inconsistent (spans, column counts, header rows).
-    InvalidTable,
-    /// A node type is not allowed where it appears.
-    InvalidNode,
-    /// A `#id` link names no node in the document.
-    UnknownAnchor,
+/// Declares [`ValidationCode`] from one list of variants and their string
+/// forms, so `as_str` and `from_str` cannot drift apart.
+macro_rules! validation_codes {
+    ($($(#[$m:meta])* $variant:ident = $s:literal,)+) => {
+        /// Machine-readable validation error codes. The string form (e.g.
+        /// `UNKNOWN_FONT`) is part of the public contract.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[non_exhaustive]
+        pub enum ValidationCode {
+            $($(#[$m])* $variant,)+
+        }
+
+        impl ValidationCode {
+            /// The stable string form, e.g. `UNKNOWN_FONT`.
+            #[must_use]
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $s,)+
+                }
+            }
+
+            pub(crate) fn from_str(s: &str) -> Option<Self> {
+                match s {
+                    $($s => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+        }
+    };
 }
 
-impl ValidationCode {
-    /// The stable string form, e.g. `UNKNOWN_FONT`.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ParseError => "PARSE_ERROR",
-            Self::UnsupportedVersion => "UNSUPPORTED_VERSION",
-            Self::UnknownField => "UNKNOWN_FIELD",
-            Self::MissingField => "MISSING_FIELD",
-            Self::InvalidType => "INVALID_TYPE",
-            Self::InvalidValue => "INVALID_VALUE",
-            Self::OutOfRange => "OUT_OF_RANGE",
-            Self::DuplicateId => "DUPLICATE_ID",
-            Self::UnknownFont => "UNKNOWN_FONT",
-            Self::FontNotRegistered => "FONT_NOT_REGISTERED",
-            Self::UnknownImage => "UNKNOWN_IMAGE",
-            Self::InvalidImage => "INVALID_IMAGE",
-            Self::ImageTooLarge => "IMAGE_TOO_LARGE",
-            Self::StyleNotApplicable => "STYLE_NOT_APPLICABLE",
-            Self::InvalidTable => "INVALID_TABLE",
-            Self::InvalidNode => "INVALID_NODE",
-            Self::UnknownAnchor => "UNKNOWN_ANCHOR",
-        }
-    }
-
-    pub(crate) fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "PARSE_ERROR" => Self::ParseError,
-            "UNSUPPORTED_VERSION" => Self::UnsupportedVersion,
-            "UNKNOWN_FIELD" => Self::UnknownField,
-            "MISSING_FIELD" => Self::MissingField,
-            "INVALID_TYPE" => Self::InvalidType,
-            "INVALID_VALUE" => Self::InvalidValue,
-            "OUT_OF_RANGE" => Self::OutOfRange,
-            "DUPLICATE_ID" => Self::DuplicateId,
-            "UNKNOWN_FONT" => Self::UnknownFont,
-            "FONT_NOT_REGISTERED" => Self::FontNotRegistered,
-            "UNKNOWN_IMAGE" => Self::UnknownImage,
-            "INVALID_IMAGE" => Self::InvalidImage,
-            "IMAGE_TOO_LARGE" => Self::ImageTooLarge,
-            "STYLE_NOT_APPLICABLE" => Self::StyleNotApplicable,
-            "INVALID_TABLE" => Self::InvalidTable,
-            "INVALID_NODE" => Self::InvalidNode,
-            "UNKNOWN_ANCHOR" => Self::UnknownAnchor,
-            _ => return None,
-        })
-    }
+validation_codes! {
+    /// The input is not well-formed JSON / `MessagePack`.
+    ParseError = "PARSE_ERROR",
+    /// `version` is missing or not supported by this engine.
+    UnsupportedVersion = "UNSUPPORTED_VERSION",
+    /// A property the schema does not define.
+    UnknownField = "UNKNOWN_FIELD",
+    /// A required property is absent.
+    MissingField = "MISSING_FIELD",
+    /// A value has the wrong JSON type.
+    InvalidType = "INVALID_TYPE",
+    /// A value has the right type but is not accepted (an unknown enum
+    /// string, a malformed colour, a misplaced pagination control).
+    InvalidValue = "INVALID_VALUE",
+    /// A number is outside its allowed range, or page margins leave no room
+    /// for content.
+    OutOfRange = "OUT_OF_RANGE",
+    /// A font id is declared twice, or a form field name is used twice
+    /// (other than by the buttons of one radio group).
+    DuplicateId = "DUPLICATE_ID",
+    /// A run or `fallbackFonts` references a font id not declared in `fonts`.
+    UnknownFont = "UNKNOWN_FONT",
+    /// A declared font has no bytes registered with the engine.
+    FontNotRegistered = "FONT_NOT_REGISTERED",
+    /// An image `src` is not present in the render-time image map.
+    UnknownImage = "UNKNOWN_IMAGE",
+    /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG.
+    InvalidImage = "INVALID_IMAGE",
+    /// An image has more than 50 million pixels (width × height).
+    ImageTooLarge = "IMAGE_TOO_LARGE",
+    /// A style property was set on a node type it does not apply to.
+    StyleNotApplicable = "STYLE_NOT_APPLICABLE",
+    /// Table structure is inconsistent (spans, column counts, header rows).
+    InvalidTable = "INVALID_TABLE",
+    /// A node type is not allowed where it appears.
+    InvalidNode = "INVALID_NODE",
+    /// A `#id` link names no node in the document.
+    UnknownAnchor = "UNKNOWN_ANCHOR",
 }
 
 impl fmt::Display for ValidationCode {

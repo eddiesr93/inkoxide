@@ -111,13 +111,7 @@ pub(crate) struct Tree<'a> {
 
 impl<'a> Tree<'a> {
     /// Builds the arena for a flow (`root_children` under a synthetic root).
-    pub fn build(root_children: &'a [Node]) -> Self {
-        Self::build_from(root_children)
-    }
-
-    /// [`Tree::build`] from any sequence of nodes (a flow without the
-    /// fixed nodes laid out on their own).
-    pub fn build_from(root_children: impl IntoIterator<Item = &'a Node>) -> Self {
+    pub fn build(root_children: impl IntoIterator<Item = &'a Node>) -> Self {
         let mut root_children = Some(root_children.into_iter());
         let mut nodes = vec![LNode {
             node: None,

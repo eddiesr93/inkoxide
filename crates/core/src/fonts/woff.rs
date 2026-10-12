@@ -116,11 +116,7 @@ mod tests {
 
     #[test]
     fn woff_tables_inflate_within_the_limit() {
-        let sfnt = std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/fonts/NotoSansHebrew-Regular.ttf"
-        ))
-        .unwrap();
+        let sfnt = crate::test_fixtures::fixture("fonts/NotoSansHebrew-Regular.ttf");
         assert!(decode(&woff_from_sfnt(&sfnt, true, None))
             .unwrap()
             .is_some());
