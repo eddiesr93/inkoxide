@@ -6,6 +6,7 @@
  * `inkoxide` and `@inkoxide/schema` are released by scripts/npm-release.mjs.
  *
  *   node scripts/release/stage.mjs
+ *   node scripts/release/stage.mjs --list   # the package names, in publish order
  *
  * Plain Node, no dependencies: TypeScript's own `tsc` does the build.
  */
@@ -20,7 +21,10 @@ const TSC = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 /** `github:eddiesr93/inkoxide`, in the object form npm would otherwise normalise it to. */
 const REPOSITORY_URL = 'git+https://github.com/eddiesr93/inkoxide.git';
 
-/** In dependency order: each package only depends on the ones before it. */
+/**
+ * In dependency order: each package only depends on the ones before it. scripts/release/publish.sh
+ * publishes them in this order (`--list`).
+ */
 const PACKAGES = ['tailwind', 'react', 'render'];
 
 /** Packages with no import-time side effects (module state only, no I/O or globals). */
@@ -28,7 +32,6 @@ const SIDE_EFFECT_FREE = new Set(['tailwind', 'react']);
 
 /** Licence files that must ship with the fonts. */
 const FONT_LICENCES = ['Inter-OFL.txt', 'NotoSans-OFL.txt', 'RobotoMono-OFL.txt'];
-const HYPHENATION_FILES = ['hyph-en-us.tex'];
 
 const rootPkg = readJson(join(ROOT, 'package.json'));
 const NODE_ENGINE = rootPkg.engines?.node;
@@ -167,10 +170,11 @@ function manifest(name, pkg, dist) {
 async function stageAssets(stageDir, dist) {
   const src = join(ROOT, 'packages', 'render', 'assets');
   const { DEFAULT_FACES } = await import(pathToFileURL(join(dist, 'fonts.js')).href);
+  const { HYPHENATION_FILES } = await import(pathToFileURL(join(dist, 'hyphenation.js')).href);
   const fonts = DEFAULT_FACES.map((f) => f.file).filter(Boolean);
   const wanted = [
     ...[...fonts, ...FONT_LICENCES].map((f) => join('fonts', f)),
-    ...HYPHENATION_FILES.map((f) => join('hyphenation', f)),
+    ...Object.values(HYPHENATION_FILES).map((f) => join('hyphenation', f)),
   ];
   const missing = wanted.filter((f) => !existsSync(join(src, f)));
   if (missing.length > 0) {
@@ -291,6 +295,10 @@ async function stage(name) {
   console.log(`stage: ${pkg.name}@${pkg.version} -> ${relative(ROOT, stageDir)}`);
 }
 
+if (process.argv.includes('--list')) {
+  console.log(PACKAGES.join('\n'));
+  process.exit(0);
+}
 if (!existsSync(TSC)) fail(`${TSC} not found; run pnpm install.`);
 mkdirSync(OUT, { recursive: true });
 for (const name of PACKAGES) await stage(name);

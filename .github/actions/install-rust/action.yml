@@ -1,0 +1,31 @@
+# Installs the Rust toolchain of rust-toolchain.toml with rustup, which is preinstalled on the
+# runners, and adds the targets a job cross-compiles to. Run it after actions/checkout.
+name: Install Rust
+description: Installs the pinned Rust toolchain, its components and extra targets.
+
+inputs:
+  components:
+    description: >-
+      Components to install with the toolchain, comma-separated (rustup adds the ones
+      rust-toolchain.toml lists anyway).
+    default: ''
+  targets:
+    description: Targets to add, space-separated.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust
+      shell: bash
+      env:
+        COMPONENTS: ${{ inputs.components }}
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        args=(--profile minimal --no-self-update)
+        if [[ -n $COMPONENTS ]]; then args+=(--component "$COMPONENTS"); fi
+        rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" "${args[@]}"
+        if [[ -n $TARGETS ]]; then
+          read -ra targets <<<"$TARGETS"
+          rustup target add "${targets[@]}"
+        fi

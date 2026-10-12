@@ -9,19 +9,15 @@ import { open, realpath } from 'node:fs/promises';
 import { delimiter, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_MAX_IMAGE_BYTES, envList } from './policy.ts';
 import type { LocalImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
 /** The local-image policy from the options, else from `INKOXIDE_LOCAL_IMAGES`. */
 export function localPolicy(opts: LocalImageOptions | undefined): LocalImageOptions | undefined {
   if (opts) return opts;
-  const env = process.env.INKOXIDE_LOCAL_IMAGES;
-  if (!env) return undefined;
-  const root = env
-    .split(delimiter)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  return root.length > 0 ? { root } : undefined;
+  const root = envList('INKOXIDE_LOCAL_IMAGES', delimiter);
+  return root ? { root } : undefined;
 }
 
 // Opening a FIFO without O_NONBLOCK waits for a writer; O_NOFOLLOW refuses a file swapped for a
@@ -40,7 +36,7 @@ function inside(path: string, root: string): boolean {
  * `file://host/…`) are refused, so a path never makes a network request.
  */
 export async function readLocalImage(src: string, opts: LocalImageOptions): Promise<Uint8Array> {
-  const maxBytes = opts.maxBytes ?? 20 * 1024 * 1024;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
   const fail = (why: string, cause?: unknown): never => {
     throw new RenderError('IMAGE_READ_FAILED', `Cannot read the image ${src}: ${why}.`, { cause });
   };

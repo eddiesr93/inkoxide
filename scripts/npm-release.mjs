@@ -15,24 +15,19 @@
 // --publish publishes platform packages first, then inkoxide, then
 // @inkoxide/schema, skipping any name@version already on the registry.
 
-import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { platforms } from './platforms.mjs';
+import { isPublished, npm, REGISTRY } from './release/registry.mjs';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCOPE = '@inkoxide';
-const REGISTRY = 'https://registry.npmjs.org';
 
-// Triple (as packages/inkoxide/index.js platformTriple() names it) -> npm platform fields.
-const PLATFORMS = {
-  'linux-x64-gnu': { os: 'linux', cpu: 'x64', libc: 'glibc', label: 'Linux x64 (glibc)' },
-  'linux-x64-musl': { os: 'linux', cpu: 'x64', libc: 'musl', label: 'Linux x64 (musl)' },
-  'linux-arm64-gnu': { os: 'linux', cpu: 'arm64', libc: 'glibc', label: 'Linux arm64 (glibc)' },
-  'darwin-arm64': { os: 'darwin', cpu: 'arm64', label: 'macOS arm64' },
-  'darwin-x64': { os: 'darwin', cpu: 'x64', label: 'macOS x64' },
-  'win32-x64-msvc': { os: 'win32', cpu: 'x64', label: 'Windows x64' },
-};
+// Triple (as packages/inkoxide/index.js platformTriple() names it) -> npm platform fields, for
+// every target in packages/inkoxide/package.json napi.targets.
+const PLATFORMS = Object.fromEntries(platforms().map((p) => [p.triple, p]));
 
 function fail(msg) {
   console.error(`npm-release: ${msg}`);
@@ -134,35 +129,18 @@ function stageSchema(stageDir) {
   return { name: pkg.name, version: pkg.version, dir };
 }
 
-function npm(args, opts = {}) {
-  // shell: true lets Windows find npm.cmd; every argument here is ours.
-  return spawnSync('npm', args, { encoding: 'utf8', shell: process.platform === 'win32', ...opts });
-}
-
-// true when name@version is on the registry, false on a 404 or an unknown
-// version; anything else (network, auth) aborts rather than guessing.
-function isPublished(name, version) {
-  const r = npm(['view', `${name}@${version}`, 'version', '--json', `--registry=${REGISTRY}`]);
-  if (r.error) fail(`could not run npm view: ${r.error.message}`);
-  const out = (r.stdout || '').trim();
-  let parsed;
+// The registry check, with npm-release's error handling.
+function published(name, version) {
   try {
-    parsed = out ? JSON.parse(out) : undefined;
-  } catch {
-    parsed = undefined;
+    return isPublished(name, version);
+  } catch (e) {
+    fail(e.message);
   }
-  if (r.status === 0) {
-    // An existing package without that version prints nothing.
-    return parsed === version || (Array.isArray(parsed) && parsed.includes(version));
-  }
-  const code = parsed?.error?.code;
-  if (code === 'E404' || /\bE404\b/.test(r.stderr || '')) return false;
-  fail(`npm view ${name}@${version} failed (exit ${r.status}):\n${r.stderr || out}`);
 }
 
 function publish(pkg, dryRun) {
   const id = `${pkg.name}@${pkg.version}`;
-  if (isPublished(pkg.name, pkg.version)) {
+  if (published(pkg.name, pkg.version)) {
     console.log(`skip ${id}: already on the registry`);
     return;
   }

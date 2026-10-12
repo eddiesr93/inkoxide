@@ -7,6 +7,11 @@
 # CHANGELOG.md section.
 # Manual dispatch only; it runs no tests, so dispatch it from a commit that
 # passed the ci workflow.
+#
+# The platforms are packages/inkoxide/package.json's napi.targets (see
+# scripts/platforms.mjs). The build jobs list the targets they compile, each
+# with its own toolchains; scripts/npm-release.mjs refuses to publish when a
+# platform's binary is missing.
 name: release
 
 on:
@@ -64,12 +69,11 @@ jobs:
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=-C target-feature=-crt-static -C link-arg=-L$RUNNER_TEMP/musl-libgcc" >> "$GITHUB_ENV"
       - name: Install Rust toolchain and targets
         # Version and components come from rust-toolchain.toml (rustup would
-        # add the listed components anyway; they are not run). rustup is
-        # preinstalled on the runners.
-        run: |
-          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
-            --profile minimal --component rustfmt,clippy --no-self-update
-          rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu
+        # add the listed components anyway; they are not run).
+        uses: ./.github/actions/install-rust
+        with:
+          components: rustfmt,clippy
+          targets: x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu
       - name: Build
         run: |
           mkdir -p out
@@ -102,12 +106,11 @@ jobs:
           persist-credentials: false
       - name: Install Rust toolchain and targets
         # Version and components come from rust-toolchain.toml (rustup would
-        # add the listed components anyway; they are not run). rustup is
-        # preinstalled on the runners.
-        run: |
-          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
-            --profile minimal --component rustfmt,clippy --no-self-update
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+        # add the listed components anyway; they are not run).
+        uses: ./.github/actions/install-rust
+        with:
+          components: rustfmt,clippy
+          targets: aarch64-apple-darwin x86_64-apple-darwin
       - name: Build
         run: |
           mkdir -p out
@@ -135,12 +138,11 @@ jobs:
           persist-credentials: false
       - name: Install Rust toolchain and target
         # Version and components come from rust-toolchain.toml (rustup would
-        # add the listed components anyway; they are not run). rustup is
-        # preinstalled on the runners.
-        run: |
-          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" \
-            --profile minimal --component rustfmt,clippy --no-self-update
-          rustup target add x86_64-pc-windows-msvc
+        # add the listed components anyway; they are not run).
+        uses: ./.github/actions/install-rust
+        with:
+          components: rustfmt,clippy
+          targets: x86_64-pc-windows-msvc
       - name: Build
         run: |
           mkdir -p out

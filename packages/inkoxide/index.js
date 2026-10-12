@@ -18,6 +18,8 @@ function isMusl() {
   }
 }
 
+// The names of scripts/platforms.mjs, which the build and release scripts use; this copy stays
+// here because the published loader cannot import them.
 function platformTriple() {
   const { platform, arch } = process;
   if (platform === 'linux') return `linux-${arch}-${isMusl() ? 'musl' : 'gnu'}`;

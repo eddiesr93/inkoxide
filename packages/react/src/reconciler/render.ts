@@ -5,7 +5,7 @@ import { ConcurrentRoot } from 'react-reconciler/constants.js';
 import { HOST_NAME } from '../components/index.ts';
 import { TemplateError } from '../errors.ts';
 import { hostConfig } from './host-config.ts';
-import type { Container } from './instance.ts';
+import { type Container, formatStack } from './instance.ts';
 
 // oxlint-disable-next-line typescript/no-explicit-any -- the reconciler's generic host-config typing is not worth replicating.
 const reconciler = Reconciler(hostConfig as any);
@@ -24,7 +24,7 @@ export function normalizeStack(stack: string | null | undefined): string | undef
     const name = HOST_NAME[m[1]] ?? m[1];
     if (names[names.length - 1] !== name) names.push(name);
   }
-  return names.length ? names.map((n) => `\n    in ${n}`).join('') : undefined;
+  return names.length ? formatStack(names) : undefined;
 }
 
 interface Captured {

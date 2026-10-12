@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 
 import {
   assertValidTree,
+  innermostComponent,
   renderTemplate,
   TemplateError,
   type TreeOptions,
@@ -17,6 +18,7 @@ import { countPages, type EngineStatus, initEngine, renderPdf, startupError, ver
 import { loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
+import { DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
 import { remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
@@ -106,7 +108,7 @@ function fromTemplateError(e: unknown, id?: string): never {
     throw new RenderError(e.kind === 'schema' ? 'INVALID_TREE' : 'TEMPLATE_ERROR', e.message, {
       path: e.path,
       componentStack: e.componentStack,
-      component: e.componentStack?.split('\n')[1]?.trim().replace(/^in /, ''),
+      component: innermostComponent(e.componentStack),
       className: e.className,
       cause: e,
     });
@@ -135,7 +137,7 @@ function imagePolicies(opts: RenderOpts): ImagePolicies {
   return {
     remote: remotePolicy(opts.remoteImages),
     local: localPolicy(opts.localImages),
-    timeoutMs: opts.imageTimeoutMs ?? 10_000,
+    timeoutMs: opts.imageTimeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS,
   };
 }
 

@@ -37,7 +37,13 @@ import {
 import { TemplateError } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
 import { PageContext, RenderCall } from '../page.ts';
-import { type Container, componentStack, type Instance, type Node } from '../reconciler/instance.ts';
+import {
+  type Container,
+  componentNames,
+  componentStack,
+  type Instance,
+  type Node,
+} from '../reconciler/instance.ts';
 import { renderToInstances } from '../reconciler/render.ts';
 import { ImageIds, ImageTable, type PendingImage, type RemoteImagePolicy } from './images.ts';
 import { PRESET_NAMES, presetSize } from './page-sizes.ts';
@@ -227,9 +233,8 @@ class Builder {
     ctx.fontId = r.id;
     if (!r.exact && r.wanted && !this.warned.has(r.wanted)) {
       this.warned.add(r.wanted);
-      const where = inst
-        ? ` (${HOST_NAME[inst.type]}${componentStack(inst).split('\n')[2]?.trim().replace(/^in /, ' in ') ?? ''})`
-        : '';
+      const parent = inst ? componentNames(inst)[1] : undefined;
+      const where = inst ? ` (${HOST_NAME[inst.type]}${parent === undefined ? '' : ` in ${parent}`})` : '';
       this.warnings.push(`Font "${r.wanted}" is not registered; using ${r.id}${where}.`);
     }
     this.used.add(r.id);
@@ -281,20 +286,6 @@ class Builder {
       fontStyle: 'normal',
       fontSize: 12,
       color: [0, 0, 0, 1],
-      lineHeight: undefined,
-      letterSpacing: undefined,
-      textAlign: undefined,
-      textDecoration: undefined,
-      textTransform: undefined,
-      whiteSpace: undefined,
-      hyphenate: undefined,
-      decorationColor: undefined,
-      decorationThickness: undefined,
-      decorationStyle: undefined,
-      textIndent: undefined,
-      direction: undefined,
-      orphans: undefined,
-      widows: undefined,
       lang: meta.lang,
       hyphenation: this.opts.hyphenationCallback,
       link: undefined,

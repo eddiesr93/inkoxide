@@ -154,7 +154,10 @@ export interface TwStyle {
 
 export type TwKey = keyof TwStyle;
 
-/** Keys that cascade to descendants, like inherited CSS properties. */
+/**
+ * Keys that cascade to descendants, like inherited CSS properties. The React tree builder's text
+ * context follows this list, so a key added here is inherited without other changes.
+ */
 export const TEXT_INHERITED = [
   'fontFamily',
   'fontWeight',

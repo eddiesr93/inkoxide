@@ -3,8 +3,6 @@ import {
   type BorderStyle,
   type ColorValue,
   type LenPercent,
-  type LetterSpacing,
-  type LineHeight,
   type ObjectFit,
   type ObjectPosition,
   parseColor,
@@ -21,27 +19,23 @@ import {
 
 import type { HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
 
-/** The text properties in effect at a point of the tree, after inheritance. */
-export interface TextCtx {
+/** A text property that cascades from an element to its content. */
+type InheritedKey = (typeof TEXT_INHERITED)[number];
+
+/** The keys of `TEXT_INHERITED` that are set at the top of every document. */
+type RootKey = 'fontFamily' | 'fontWeight' | 'fontStyle' | 'fontSize' | 'color';
+
+/**
+ * The text properties in effect at a point of the tree, after inheritance: every
+ * `TEXT_INHERITED` key, unset until an element sets one, apart from the font and the colour,
+ * which the document sets.
+ */
+export interface TextCtx extends Omit<{ [K in InheritedKey]?: TwStyle[K] }, RootKey> {
   fontFamily: readonly string[];
   fontWeight: number;
   fontStyle: 'normal' | 'italic';
   fontSize: number;
   color: Color;
-  lineHeight: LineHeight | undefined;
-  letterSpacing: LetterSpacing | undefined;
-  textAlign: TwStyle['textAlign'];
-  textDecoration: TwStyle['textDecoration'];
-  textTransform: TwStyle['textTransform'];
-  whiteSpace: TwStyle['whiteSpace'];
-  hyphenate: boolean | undefined;
-  decorationColor: Color | undefined;
-  decorationThickness: number | undefined;
-  decorationStyle: TwStyle['decorationStyle'];
-  textIndent: number | undefined;
-  direction: TwStyle['direction'];
-  orphans: number | undefined;
-  widows: number | undefined;
   lang: string | undefined;
   /**
    * Splits words into syllables in place of the built-in patterns (`hyphenationCallback`), unless
@@ -85,28 +79,12 @@ export function inherit(parent: TextCtx, own: TwStyle, extra?: InheritExtra): Te
   }
   const c: TextCtx = { ...parent };
   if (changes) {
+    // Another face: the builder resolves the font again.
     if (own.fontFamily !== undefined || own.fontWeight !== undefined || own.fontStyle !== undefined) {
       c.fontId = undefined;
-      if (own.fontFamily !== undefined) c.fontFamily = own.fontFamily;
-      if (own.fontWeight !== undefined) c.fontWeight = own.fontWeight;
-      if (own.fontStyle !== undefined) c.fontStyle = own.fontStyle;
     }
-    if (own.fontSize !== undefined) c.fontSize = own.fontSize;
-    if (own.color !== undefined) c.color = own.color;
-    if (own.lineHeight !== undefined) c.lineHeight = own.lineHeight;
-    if (own.letterSpacing !== undefined) c.letterSpacing = own.letterSpacing;
-    if (own.textAlign !== undefined) c.textAlign = own.textAlign;
-    if (own.textDecoration !== undefined) c.textDecoration = own.textDecoration;
-    if (own.textTransform !== undefined) c.textTransform = own.textTransform;
-    if (own.whiteSpace !== undefined) c.whiteSpace = own.whiteSpace;
-    if (own.hyphenate !== undefined) c.hyphenate = own.hyphenate;
-    if (own.decorationColor !== undefined) c.decorationColor = own.decorationColor;
-    if (own.decorationThickness !== undefined) c.decorationThickness = own.decorationThickness;
-    if (own.decorationStyle !== undefined) c.decorationStyle = own.decorationStyle;
-    if (own.textIndent !== undefined) c.textIndent = own.textIndent;
-    if (own.direction !== undefined) c.direction = own.direction;
-    if (own.orphans !== undefined) c.orphans = own.orphans;
-    if (own.widows !== undefined) c.widows = own.widows;
+    const set = c as Record<InheritedKey, unknown>;
+    for (const k of TEXT_INHERITED) if (own[k] !== undefined) set[k] = own[k];
   }
   if (extra) {
     if (extra.lang !== undefined) c.lang = extra.lang;
