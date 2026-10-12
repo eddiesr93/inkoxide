@@ -38,7 +38,13 @@ function problemReason(p: CandidateProblem): string {
     case 'variant':
       return `variants and media queries have no meaning in a PDF (${p.detail})`;
     case 'selector':
-      return `it styles other elements (${p.detail}); use gap instead of space-x/y and divide-*`;
+      if (p.detail.startsWith('@media')) return `media queries have no meaning in a PDF (${p.detail})`;
+      if (p.detail.startsWith('@')) return `at-rules have no meaning in a PDF (${p.detail})`;
+      // `space-x-*` and `divide-*` style the element's children.
+      if (/[>+~]/.test(p.detail)) {
+        return `it styles other elements (${p.detail}); use gap instead of space-x/y and divide-*`;
+      }
+      return `it styles a part of the element that a PDF does not have (${p.detail})`;
   }
 }
 
@@ -179,7 +185,9 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'aspect-ratio': {
       const [a, b] = v.split('/').map((x) => x.trim());
       if (a === undefined || a === 'auto') throw r.error(`aspect-ratio: ${v}`);
-      s.aspectRatio = round(r.num(a) / (b === undefined ? 1 : r.num(b)));
+      const ratio = round(r.num(a) / (b === undefined ? 1 : r.num(b)));
+      if (!(ratio > 0 && ratio <= 1e6)) throw r.error(`aspect-ratio: ${v} (a ratio above 0)`);
+      s.aspectRatio = ratio;
       return;
     }
     case 'position':
@@ -206,7 +214,8 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
       s.gridAutoRows = splitTopLevel(v, ' ').map((t) => r.trackSize(t));
       return;
     case 'grid-auto-flow':
-      s.gridAutoFlow = r.oneOf('gridAutoFlow', v);
+      // `dense` alone is `row dense`.
+      s.gridAutoFlow = r.oneOf('gridAutoFlow', v === 'dense' ? 'row dense' : v);
       return;
     case 'grid-column':
       s.gridColumn = r.placement(v);
@@ -237,9 +246,12 @@ function applyDecl(s: TwStyle, prop: string, value: string): void {
     case 'background-color':
       s.backgroundColor = r.color(v);
       return;
-    case 'opacity':
-      s.opacity = r.num(v);
+    case 'opacity': {
+      const n = r.num(v);
+      if (n < 0 || n > 1) throw r.error(`opacity: ${v} (between 0 and 1, or 0% and 100%)`);
+      s.opacity = n;
       return;
+    }
     case 'border-radius': {
       if (v.includes('/')) throw r.error(`border-radius: ${v} (elliptical corners are not supported)`);
       const [tl, tr, br, bl] = edges(v).map((x) => r.radius(x)) as [number, number, number, number];
@@ -527,7 +539,7 @@ export function mapClasses(
           delete next.maxLines;
           delete next.ellipsis;
         } else {
-          next.maxLines = new Reader('-webkit-line-clamp').num(n);
+          next.maxLines = new Reader('-webkit-line-clamp').integer(n, 1);
           next.ellipsis = true;
         }
       } else if (ellipsis) {

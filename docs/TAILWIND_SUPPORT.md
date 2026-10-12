@@ -98,7 +98,7 @@ that are supported and tested; each example is a unit test.
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
 | `text-{size}`, `text-[11pt]`, `text-{size}/{leading}` | run `size` (and `lineHeight` when the size utility sets one) | `text-xs` → `{"fontSize":9,"lineHeight":{"mult":1.333333}}` | `text-base` is 12pt. Named sizes also set Tailwind's line height; `leading-*` overrides it. |
-| `font-sans`, `font-serif`, `font-mono`, `font-display`, `font-[…]` | run `font` (through the FontRegistry) | `font-sans` → `{"fontFamily":["Inter","Noto Sans"]}` | The first family of the stack that is registered wins. |
+| `font-sans`, `font-serif`, `font-mono`, `font-display`, `font-[…]` | run `font` (through the FontRegistry) | `font-sans` → `{"fontFamily":["Inter","Noto Sans"]}` | The first family of the stack that is registered wins. No serif face is bundled, so the default theme sets `font-serif` to Noto Sans: register a serif and set `--font-serif` in your theme. |
 | `font-thin` … `font-black`, `font-[650]` | run `font` (weight) | `font-light` → `{"fontWeight":300}` | A missing weight falls back to the nearest registered one. |
 | `italic`, `not-italic` | run `font` (style) | `italic` → `{"fontStyle":"italic"}` |  |
 | `text-{colour}`, `text-[#…]` | run `color` | `text-black` → `{"color":[0,0,0,1]}` |  |

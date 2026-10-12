@@ -182,6 +182,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     examples: {
       'grid-flow-col': { gridAutoFlow: 'column' },
       'grid-flow-row-dense': { gridAutoFlow: 'row dense' },
+      'grid-flow-dense': { gridAutoFlow: 'row dense' },
       'auto-rows-fr': { gridAutoRows: [{ min: 0, max: '1fr' }] },
       'auto-cols-auto': { gridAutoColumns: ['auto'] },
     },
@@ -511,9 +512,11 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Text',
     utilities: '`font-sans`, `font-serif`, `font-mono`, `font-display`, `font-[…]`',
     maps: 'run `font` (through the FontRegistry)',
-    notes: 'The first family of the stack that is registered wins.',
+    notes:
+      'The first family of the stack that is registered wins. No serif face is bundled, so the default theme sets `font-serif` to Noto Sans: register a serif and set `--font-serif` in your theme.',
     examples: {
       'font-sans': { fontFamily: ['Inter', 'Noto Sans'] },
+      'font-serif': { fontFamily: ['Noto Sans'] },
       'font-mono': { fontFamily: ['Roboto Mono'] },
     },
   },

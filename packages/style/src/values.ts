@@ -286,7 +286,8 @@ export function parseColor(value: string): Color | 'currentColor' {
     const pct = m?.[2] !== undefined ? Number(m[2]) / 100 : 0.5;
     return [base[0], base[1], base[2], round(base[3] * pct)];
   }
-  const parsed = parseCssColor(v);
+  // Colour keywords are case-insensitive, as in CSS; culori reads `transparent` only in lower case.
+  const parsed = parseCssColor(/^[a-z]+$/i.test(v) ? v.toLowerCase() : v);
   if (!parsed) throw new ValueError(`cannot parse colour "${v}"`);
   const rgb = clampRgb(toRgb(parsed));
   const c = (x: number | undefined): number => round(Math.min(1, Math.max(0, x ?? 0)));

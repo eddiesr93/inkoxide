@@ -744,7 +744,8 @@ const WEIGHTS: Readonly<Record<string, number>> = {
 
 /** A numeric weight, or a CSS name (`'bold'`). */
 export function weightOf(w: number | string): number {
-  const n = typeof w === 'number' ? w : WEIGHTS[w.toLowerCase()];
+  const name = typeof w === 'string' ? w.toLowerCase() : '';
+  const n = typeof w === 'number' ? w : Object.hasOwn(WEIGHTS, name) ? WEIGHTS[name] : undefined;
   if (n === undefined)
     throw new Error(`fontWeight "${w}" is not a number or a CSS weight name (bold, light, …)`);
   return n;

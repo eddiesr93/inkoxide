@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseFlex, parseTransform, Reader, UnsupportedValueError } from '../src/index.ts';
+import {
+  parseColor,
+  parseFlex,
+  parseOrigin,
+  parseTransform,
+  Reader,
+  UnsupportedValueError,
+} from '../src/index.ts';
 
 describe('Reader.placement', () => {
   it('reads both halves of a grid placement', () => {
@@ -62,5 +69,42 @@ describe('lengths', () => {
 
   it('are kept above 10000pt in a transform', () => {
     expect(parseTransform('transform', 'translate(20000pt, 0)')).toEqual([{ translate: [20000, 0] }]);
+  });
+});
+
+describe('skew', () => {
+  it('takes angles strictly between -90deg and 90deg', () => {
+    expect(parseTransform('transform', 'skewX(89deg)')).toEqual([{ skew: [89, 0] }]);
+    for (const bad of ['skewX(90deg)', 'skewY(-90deg)', 'skew(10deg, 135deg)']) {
+      expect(() => parseTransform('transform', bad), bad).toThrow(/between -90deg and 90deg/);
+    }
+  });
+});
+
+describe('parseColor', () => {
+  it('reads keywords in any case', () => {
+    expect(parseColor('Transparent')).toEqual([0, 0, 0, 0]);
+    expect(parseColor('TRANSPARENT')).toEqual([0, 0, 0, 0]);
+    expect(parseColor('Red')).toEqual([1, 0, 0, 1]);
+    expect(parseColor('CURRENTCOLOR')).toBe('currentColor');
+  });
+});
+
+describe('parseOrigin', () => {
+  const origin = (v: string) => parseOrigin('transformOrigin', v);
+
+  it('takes keywords in either order', () => {
+    expect(origin('center left')).toEqual([0, '50%']);
+    expect(origin('center right')).toEqual(['100%', '50%']);
+    expect(origin('left center')).toEqual([0, '50%']);
+    expect(origin('top left')).toEqual([0, 0]);
+    expect(origin('bottom')).toEqual(['50%', '100%']);
+    expect(origin('right 10%')).toEqual(['100%', '10%']);
+  });
+
+  it('rejects names that are not keywords', () => {
+    for (const bad of ['left toString', 'constructor', 'valueOf top', 'center __proto__']) {
+      expect(() => origin(bad), bad).toThrow(UnsupportedValueError);
+    }
   });
 });

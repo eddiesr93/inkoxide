@@ -115,6 +115,18 @@ describe('paint styles', () => {
       transformOrigin: ['100%', '100%'],
     });
     expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain('not a length');
+    // Keywords in either order; names of Object.prototype are not keywords.
+    const centerLeft = tree(<View style={{ transformOrigin: 'center left', rotate: 10 }} />);
+    expect(first<BoxNode>(centerLeft).style?.transformOrigin).toEqual([0, '50%']);
+    expect(
+      thrown(() => tree(<View style={{ transformOrigin: 'left toString', rotate: 10 }} />)).message,
+    ).toContain('transformOrigin: toString');
+    expect(
+      thrown(() => tree(<Text style={{ fontWeight: 'constructor' as never }}>x</Text>)).message,
+    ).toContain('CSS weight name');
+    // Colour keywords are case-insensitive.
+    const clear = tree(<View style={{ backgroundColor: 'Transparent' }} />);
+    expect(first<BoxNode>(clear).style?.backgroundColor).toEqual([0, 0, 0, 0]);
   });
 
   it('accepts the wrap, break and minPresenceAhead aliases and weight names', () => {

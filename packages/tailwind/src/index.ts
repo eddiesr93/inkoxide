@@ -71,7 +71,7 @@ const EMPTY: TwStyle = Object.freeze({}) as TwStyle;
  * or `base` keeps the theme loaded or being loaded, so it can run alongside one that sets a theme.
  */
 export async function initTailwind(opts: TailwindOptions = {}): Promise<void> {
-  if (opts.strict !== undefined) strict = opts.strict;
+  if (opts.strict !== undefined) setTailwindStrict(opts.strict);
   if (opts.cacheSize !== undefined) cache = new Lru<TwStyle>(opts.cacheSize);
   if (opts.css !== undefined || opts.base !== undefined) {
     loading = TailwindCompiler.load(opts.css ?? DEFAULT_THEME_CSS, opts.base);
@@ -137,5 +137,7 @@ tw.cacheSize = (): number => cache.size;
 
 /** Switches strict mode at runtime (for tests). */
 export function setTailwindStrict(value: boolean): void {
+  // Cached styles skipped the classes they could not map, so check them again.
+  if (value !== strict) cache.clear();
   strict = value;
 }

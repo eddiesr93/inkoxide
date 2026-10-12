@@ -13,6 +13,12 @@ version 2.
   `end`, and ignores `span`, as CSS does when both lines are set after a span. The engine used
   `start` and `span` and ignored `end`. The description also says that `span` can go with `end`
   alone, which the engine already supported.
+- **Page numbers in flow text** (engine 0.5.0): a `placeholder` run in a page's flow is laid
+  out with the digits of the page it lands on, as in headers and footers, and the flow is
+  paginated again when those digits move it. Until then flow text kept the width of a
+  three-digit stand-in, so a box sized by its text was too wide for a short number and a number
+  of four digits or more could overflow. Text painted on several pages (a fixed node, a table's
+  header rows) keeps the stand-in width.
 
 ## 2.2.0 - 2026-10-12
 

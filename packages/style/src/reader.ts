@@ -235,6 +235,11 @@ export class Reader {
 /** Parses a CSS transform function list (`skewX(12deg) translate(2pt, 50%)`). */
 export function parseTransform(prop: string, value: string): TransformOp[] {
   const r = new Reader(prop);
+  const skew = (v: string): number => {
+    const a = r.angle(v);
+    if (a <= -90 || a >= 90) throw r.error(`${prop}: ${value} (a skew angle is between -90deg and 90deg)`);
+    return a;
+  };
   const out: TransformOp[] = [];
   for (const fn of splitTopLevel(value, ' ')) {
     const m = /^([a-zA-Z0-9]+)\((.*)\)$/.exec(fn);
@@ -266,13 +271,13 @@ export function parseTransform(prop: string, value: string): TransformOp[] {
         out.push({ rotate: r.angle(a) });
         break;
       case 'skew':
-        out.push({ skew: [r.angle(a), r.angle(b ?? '0')] });
+        out.push({ skew: [skew(a), skew(b ?? '0')] });
         break;
       case 'skewX':
-        out.push({ skew: [r.angle(a), 0] });
+        out.push({ skew: [skew(a), 0] });
         break;
       case 'skewY':
-        out.push({ skew: [0, r.angle(a)] });
+        out.push({ skew: [0, skew(a)] });
         break;
       case 'matrix': {
         const n = args.map((x) => r.num(x));
@@ -287,8 +292,16 @@ export function parseTransform(prop: string, value: string): TransformOp[] {
   return out;
 }
 
-const ORIGIN_X: Record<string, LenPercent> = { left: 0, center: '50%', right: '100%' };
-const ORIGIN_Y: Record<string, LenPercent> = { top: 0, center: '50%', bottom: '100%' };
+const ORIGIN_X: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
+  ['left', 0],
+  ['center', '50%'],
+  ['right', '100%'],
+]);
+const ORIGIN_Y: ReadonlyMap<string, LenPercent> = new Map<string, LenPercent>([
+  ['top', 0],
+  ['center', '50%'],
+  ['bottom', '100%'],
+]);
 
 /** Parses `transform-origin` (keywords in either order, lengths, percentages). */
 export function parseOrigin(prop: string, value: string): [LenPercent, LenPercent] {
@@ -299,13 +312,17 @@ export function parseOrigin(prop: string, value: string): [LenPercent, LenPercen
     throw r.error(`${prop}: ${value} (no z offset)`);
   }
   let [a = 'center', b = 'center'] = parts;
-  // `top left` and `bottom 10%`: a vertical keyword first means the order is y x.
-  if (a in ORIGIN_Y && a !== 'center' && (parts.length === 1 || !(b in ORIGIN_Y) || b === 'center')) {
+  // `top left` and `bottom 10%`: a vertical keyword first means the order is y x, and so does a
+  // horizontal one after `center` (`center left`).
+  const yFirst =
+    (ORIGIN_Y.has(a) && a !== 'center' && (parts.length === 1 || !ORIGIN_Y.has(b) || b === 'center')) ||
+    (a === 'center' && b !== 'center' && ORIGIN_X.has(b));
+  if (yFirst) {
     if (parts.length === 1) b = 'center';
     [a, b] = [b, a];
   }
-  const x = ORIGIN_X[a] ?? r.lenPercent(a);
-  const y = ORIGIN_Y[b] ?? r.lenPercent(b);
+  const x = ORIGIN_X.get(a) ?? r.lenPercent(a);
+  const y = ORIGIN_Y.get(b) ?? r.lenPercent(b);
   return [x, y];
 }
 

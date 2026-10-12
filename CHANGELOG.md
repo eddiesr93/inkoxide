@@ -23,6 +23,17 @@ All notable changes to the packages in this repository. The format follows
   (`leading-[abc]`, `rotate-[abc]`, `p-[1pt_2pt_3pt_4pt_5pt]`, `m-[var(--nope)]`), and
   `parseTransform` throws `UnsupportedValueError` for a bad angle (`rotate(1grad)`).
   `rotate-none` works, and lengths above 10000pt are no longer cut to 10000pt (`h-[12000pt]`).
+- **Tailwind mapping:** a class or style value outside what the engine takes fails where it is
+  read, naming the class: `line-clamp-0`, `line-clamp-[2.5]`, `opacity-[1.5]`, `col-span-0`,
+  `aspect-[0]` and a skew of ±90deg or more. `grid-flow-dense` works. Switching strict mode on
+  checks class strings cached while it was off. Only selector problems that style children
+  suggest `gap`; `container` says that media queries have no meaning in a PDF.
+- **Style values:** `transformOrigin: 'center left'` and `'center right'` work, and names such
+  as `toString` are not taken as keywords by `transformOrigin` or `fontWeight`. Colour keywords
+  are case-insensitive (`'Transparent'`).
+- **Docs:** the Fonts section and the Tailwind support table say that `font-serif` is Noto Sans,
+  since no serif face is bundled, and the `@inkoxide/schema` README's ajv example type-checks
+  with `module: nodenext`.
 
 ## 0.5.0 - 2026-10-12
 

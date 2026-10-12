@@ -227,3 +227,42 @@ describe('arbitrary lengths', () => {
     expect(tw('rounded-full')).toEqual({ borderRadius: 1e4 });
   });
 });
+
+describe('values out of the range the engine takes', () => {
+  it('fail where the class is read, naming the property', () => {
+    expect(errorOf('line-clamp-0').property).toBe('-webkit-line-clamp');
+    expect(errorOf('line-clamp-[2.5]').property).toBe('-webkit-line-clamp');
+    expect(errorOf('opacity-[1.5]').property).toBe('opacity');
+    expect(errorOf('col-span-0').property).toBe('grid-column');
+    expect(errorOf('aspect-[0]').property).toBe('aspect-ratio');
+    expect(errorOf('skew-x-[90deg]').property).toBe('transform');
+  });
+});
+
+describe('unsupported-class reasons', () => {
+  it('suggest gap only for classes that style children', () => {
+    expect(errorOf('space-x-2').reason).toContain('use gap');
+    expect(errorOf('container').reason).toMatch(/^media queries have no meaning in a PDF/);
+    expect(errorOf('placeholder-red-500').reason).not.toContain('gap');
+  });
+});
+
+describe('strict mode', () => {
+  it('checks class strings cached while it was off', () => {
+    setTailwindStrict(false);
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      expect(tw('p-1 shadow-xl')).toEqual({
+        paddingTop: 3,
+        paddingRight: 3,
+        paddingBottom: 3,
+        paddingLeft: 3,
+      });
+    } finally {
+      console.warn = warn;
+      setTailwindStrict(true);
+    }
+    expect(() => tw('p-1 shadow-xl')).toThrow(UnsupportedUtilityError);
+  });
+});
