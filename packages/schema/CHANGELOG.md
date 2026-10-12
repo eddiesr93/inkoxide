@@ -7,6 +7,10 @@ version 2.
 
 ## Unreleased
 
+## 2.3.0 - 2026-10-13
+
+Still document schema version 1.
+
 ### Added
 
 - `Meta.producer`, `Meta.pageMode` and `Meta.pageLayout`: the PDF producer (default

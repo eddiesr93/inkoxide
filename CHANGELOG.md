@@ -7,6 +7,16 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-13
+
+`inkoxide` and `@inkoxide/render` 0.6.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.4.0,
+`@inkoxide/style` 0.2.0 and `@inkoxide/schema` 2.3.0. Upgrading: validation is stricter where
+the engine used to ignore a value silently (forced page breaks where they do nothing, styles a
+table cell does not apply, `opacity` outside 0–1, out-of-range `threads` and
+`compressionLevel`, fonts with malformed layout tables), and a `remoteImages.allow` URL entry
+now matches by origin and path (see **Changed**). The names listed under **Deprecated** still
+work.
+
 ### Added
 
 - Document metadata `producer`, `pageMode` and `pageLayout` (`meta` in the document, props of
