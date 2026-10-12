@@ -185,9 +185,7 @@ pub(crate) fn run<'d, T: Send>(
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
         let _span = tracing::debug_span!("layout+paginate").entered();
-        let m = spec.margin;
-        let content_w = spec.size.width - m.left - m.right;
-        let content_h = spec.size.height - m.top - m.bottom;
+        let (content_w, content_h) = spec.content_size();
         let (flow, placement) = lay_out_flow(spec, text, images)?;
         let mut leaves = Leaves { text, images };
         let header = spec
@@ -261,9 +259,7 @@ fn lay_out_flow<'a>(
     text: &mut Cache<'_, '_, '_>,
     images: &ImageSet,
 ) -> Result<(Tree<'a>, Placement), InkoxideError> {
-    let m = spec.margin;
-    let content_w = spec.size.width - m.left - m.right;
-    let content_h = spec.size.height - m.top - m.bottom;
+    let (content_w, content_h) = spec.content_size();
     let mut flow = Tree::build(spec.children.iter().filter(|n| !is_overlay(n)));
     let mut leaves = Leaves { text, images };
     TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
@@ -592,7 +588,7 @@ fn paint_page(
 
     let mut labels = paint::DebugLabels::default();
     if spec.debug {
-        let page_box = paint::debug_page_box(pw, ph, m);
+        let page_box = paint::debug_page_box(spec);
         paint::draw_debug(std::slice::from_ref(&page_box), &mut page.ops, &mut labels);
     }
     paint::draw_debug(&under_boxes, &mut page.ops, &mut labels);

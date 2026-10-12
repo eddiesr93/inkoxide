@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use super::{FillRule, Op, Path, PathSeg, Rect};
-use crate::schema::{Color, Edges};
+use crate::schema::{Color, Edges, PageSpec};
 
 /// Margin: orange, like browser developer tools.
 pub(crate) const MARGIN: Color = [0.96, 0.62, 0.26, 0.3];
@@ -155,20 +155,16 @@ pub(crate) fn draw(boxes: &[DebugBox], ops: &mut Vec<Op>, labels: &mut Labels) {
 }
 
 /// The page's own boxes: its margins and content area, with its size.
-pub(crate) fn page_box(width: f32, height: f32, margin: Edges<f32>) -> DebugBox {
-    let m = margin;
+pub(crate) fn page_box(spec: &PageSpec) -> DebugBox {
+    let (m, s) = (spec.margin, spec.size);
+    let (w, h) = spec.content_size();
     DebugBox {
-        rect: Rect::new(
-            m.left,
-            m.top,
-            width - m.left - m.right,
-            height - m.top - m.bottom,
-        ),
+        rect: Rect::new(m.left, m.top, w, h),
         border: Edges::default(),
         padding: Edges::default(),
-        margin,
-        size: [width, height],
-        shown: (0.0, height),
+        margin: m,
+        size: [s.width, s.height],
+        shown: (0.0, s.height),
         ctm: None,
     }
 }
