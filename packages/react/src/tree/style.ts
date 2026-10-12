@@ -867,7 +867,10 @@ function borderShorthand(
 
 /** CSS `flex`: a number is `n 1 0%`; strings are read by `parseFlex`, with plain numbers for grow and shrink. */
 function flexShorthand(v: number | string, units: Units | undefined): [number, number, number | string] {
-  if (typeof v === 'number') return [v, 1, '0%'];
+  if (typeof v === 'number') {
+    if (v < 0) throw new Error(`flex ${v}: grow and shrink cannot be negative`);
+    return [v, 1, '0%'];
+  }
   const number = (x: string): number => {
     const n = Number(x);
     if (!Number.isFinite(n)) throw new Error(`flex "${v}" is not a number or "grow shrink basis"`);

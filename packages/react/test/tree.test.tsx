@@ -98,6 +98,28 @@ describe('text inheritance and runs', () => {
     expect(first<TextNode>(r).runs[0]?.text).toBe('CAFÉ AND NAÏVE');
   });
 
+  it('cases text in a lang Intl does not take by the default rules', () => {
+    const doc = renderTemplate(
+      <Document lang="en_US">
+        <Page>
+          <Text style={{ textTransform: 'uppercase' }}>istanbul</Text>
+          <Text lang="!!" className="capitalize">
+            hello world
+          </Text>
+          <Text lang="tr" className="uppercase">
+            istanbul
+          </Text>
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(body(doc).map((n) => (n as TextNode).runs[0]?.text)).toEqual([
+      'ISTANBUL',
+      'Hello World',
+      'İSTANBUL',
+    ]);
+  });
+
   it('supports links on nested runs and on blocks, and bookmarks', () => {
     const r = render(
       <Text id="intro" bookmark="Introduction" href="#intro">
@@ -788,6 +810,35 @@ describe('errors carry component stacks', () => {
       ),
     );
     expect(link.message).toContain('A <Link> inside <Text> is an inline run');
+  });
+
+  it('rejects truncate and line clamping on a Page, Row or Spacer, as on other boxes', () => {
+    const page = (props: { className?: string; style?: object }) => () =>
+      renderTemplate(
+        <Document>
+          <Page {...props}>
+            <Text>x</Text>
+          </Page>
+        </Document>,
+        { fonts },
+      );
+    expect(thrown(page({ className: 'truncate' })).message).toBe(
+      'truncate and line-clamp-* apply to <Text>, not <Page> (className="truncate").',
+    );
+    expect(thrown(page({ style: { maxLines: 2, ellipsis: true } })).message).toBe(
+      'maxLines and ellipsis apply to <Text>, not <Page> (from its style).',
+    );
+    const row = () =>
+      render(
+        <Table columns={[1]}>
+          <Row style={{ maxLines: 1 }}>
+            <Cell />
+          </Row>
+        </Table>,
+      );
+    expect(thrown(row).message).toBe('maxLines applies to <Text>, not <Row> (from its style).');
+    const spacer = () => render(<Spacer style={{ maxLines: 1 }} />);
+    expect(thrown(spacer).message).toBe('maxLines applies to <Text>, not <Spacer> (from its style).');
   });
 
   it('rejects the props of a paragraph on an inline Text or Link', () => {

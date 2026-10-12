@@ -2,8 +2,30 @@ import type { HyphenationCallback } from '../components/index.ts';
 import type { TemplateErrorInit } from '../errors.ts';
 import type { TextCtx } from './style.ts';
 
+const locales = new Map<string, string | undefined>();
+
+/**
+ * `lang` when Intl takes it as a language tag. The engine also takes tags Intl does not
+ * (`en_US`); text in those is cased by the default rules.
+ */
+function caseLocale(lang: string | undefined): string | undefined {
+  if (lang === undefined) return undefined;
+  if (!locales.has(lang)) {
+    let ok: string | undefined;
+    try {
+      Intl.getCanonicalLocales(lang);
+      ok = lang;
+    } catch {
+      // Not a BCP 47 tag.
+    }
+    locales.set(lang, ok);
+  }
+  return locales.get(lang);
+}
+
 /** Text as `textTransform` displays it, cased by the rules of `lang`. */
-export function transformText(text: string, how: TextCtx['textTransform'], lang: string | undefined): string {
+export function transformText(text: string, how: TextCtx['textTransform'], tag: string | undefined): string {
+  const lang = how === undefined || how === 'none' ? undefined : caseLocale(tag);
   switch (how) {
     case 'uppercase':
       return text.toLocaleUpperCase(lang);

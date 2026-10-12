@@ -371,6 +371,7 @@ class Builder {
     }
     this.pageBox = size;
     const own = this.styleOf(inst, parent);
+    this.noTextOnly(inst, own);
     // Padding on a Page is its margin (`<Page style={{ padding: 48 }}>`).
     this.onlyKeys(
       inst,
@@ -654,6 +655,7 @@ class Builder {
       }
       case HOST.Spacer: {
         const own = this.styleOf(inst, ctx);
+        this.noTextOnly(inst, own);
         const s: Style = { ...boxStyle(own, ctx.color) };
         const units = this.units(own, ctx);
         if (inst.props.h !== undefined) s.height = this.length(inst, inst.props.h as Length, units);
@@ -866,6 +868,7 @@ class Builder {
     for (const r of inst.children) {
       if (r.kind !== 'element') continue;
       const rOwn = this.styleOf(r, ctx);
+      this.noTextOnly(r, rOwn);
       this.onlyKeys(
         r,
         rOwn,

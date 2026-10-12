@@ -8,7 +8,10 @@ import {
   Cell,
   Checkbox,
   Circle,
+  ClipPath,
+  type ClipPathProps,
   Defs,
+  type DefsProps,
   Document,
   Field,
   Footer,
@@ -192,6 +195,11 @@ describe('paint styles', () => {
     expect(d?.style).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
     // Grow and shrink are never negative, in a style or a class.
     expect(thrown(() => tree(<View style={{ flex: '-1' }} />)).message).toContain('cannot be negative');
+    const numeric = thrown(() => tree(<View style={{ flex: -1 }} />));
+    expect([numeric.kind, numeric.message]).toEqual([
+      'props',
+      'Invalid style prop on <View>: flex -1: grow and shrink cannot be negative',
+    ]);
     expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');
     expect(thrown(() => tree(<View style={{ boxShadow: '0 1px 2px black' } as never} />)).message).toContain(
       'unknown style property "boxShadow"',
@@ -888,6 +896,22 @@ describe('drawings', () => {
       ).message,
     ).toContain('Text inside <Svg>');
     expect(thrown(() => tree(<Rect width={1} height={1} />)).message).toContain('goes inside <Svg>');
+  });
+
+  it('takes clipPathUnits on a ClipPath, typed by its exported props', () => {
+    const clip: ClipPathProps = { id: 'c', clipPathUnits: 'objectBoundingBox' };
+    const defs: DefsProps = {};
+    const r = tree(
+      <Svg width={10} height={10}>
+        <Defs {...defs}>
+          <ClipPath {...clip}>
+            <Circle cx={0.5} cy={0.5} r={0.5} />
+          </ClipPath>
+        </Defs>
+        <Rect width={10} height={10} clipPath="url(#c)" />
+      </Svg>,
+    );
+    expect(decode(first<ImageNode>(r).data)).toContain('<clipPath id="c" clipPathUnits="objectBoundingBox">');
   });
 
   it('keeps the layout props of Svg out of the drawing', () => {

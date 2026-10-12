@@ -31,6 +31,13 @@ All notable changes to the packages in this repository. The format follows
   `widows`, `break`, `wrap={false}` or `minPresenceAhead` is a template error that names the
   prop; these need a paragraph of their own and were dropped. A run in another `lang` inside a
   hyphenated paragraph is no longer hyphenated with the paragraph's patterns.
+- `textTransform` with a `lang` that JavaScript does not take as a language tag (`en_US`) cases
+  the text by the default rules instead of failing with an internal error.
+- `truncate`, `line-clamp-*`, `maxLines` and `ellipsis` on a `Page`, `Row` or `Spacer` are a
+  template error, as on other elements, instead of doing nothing; a negative numeric `flex`
+  (`style={{ flex: -1 }}`) is rejected where the style is read, like `flex: '-1'`.
+- `ClipPath` and `Defs` have exported props types, `ClipPathProps` and `DefsProps` (also from
+  `@inkoxide/render`), and `ClipPath` takes `clipPathUnits`.
 
 ## 0.5.0 - 2026-10-12
 
