@@ -17,16 +17,17 @@ INKOXIDE_VISUAL_TOLERANCE (per-channel difference, default 24).
 
 For long generated fixtures only the first MAX_PAGES pages are stored, plus
 the page count in `<name>.pages`.
+
+Needs poppler (pdftoppm, pdfinfo), numpy and Pillow; without them it skips.
 """
+import importlib.util
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
-
-import numpy as np
-from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PDFS = ROOT / "target/fixtures"
@@ -64,6 +65,9 @@ def page_count(pdf: pathlib.Path) -> int:
 
 
 def diff_ratio(a: pathlib.Path, b: pathlib.Path, diff_out: pathlib.Path):
+    import numpy as np
+    from PIL import Image
+
     ia = np.asarray(Image.open(a).convert("RGB"), dtype=np.int16)
     ib = np.asarray(Image.open(b).convert("RGB"), dtype=np.int16)
     if ia.shape != ib.shape:
@@ -86,17 +90,26 @@ def main() -> int:
     if shutil.which("pdftoppm") is None:
         print("pdftoppm not installed; skipped")
         return 0
+    missing = [m for m in ("numpy", "PIL") if importlib.util.find_spec(m) is None]
+    if missing:
+        print(f"{' and '.join(missing)} not installed; skipped (pip install numpy Pillow)")
+        return 0
     if OUT.exists():
         shutil.rmtree(OUT)
     failures = 0
     for pdf in pdfs:
         name = pdf.stem
+        before = failures
         count = page_count(pdf)
         with tempfile.TemporaryDirectory() as tmp:
             pages = rasterise(pdf, pathlib.Path(tmp))
             if update:
+                # This fixture's pages only, not those of a fixture whose
+                # name starts with `<name>-`.
+                own = re.compile(rf"{re.escape(name)}-\d+\.png")
                 for old in EXPECTED.glob(f"{name}-*.png"):
-                    old.unlink()
+                    if own.fullmatch(old.name):
+                        old.unlink()
                 EXPECTED.mkdir(parents=True, exist_ok=True)
                 for p in pages:
                     shutil.copy(p, EXPECTED / p.name)
@@ -125,7 +138,7 @@ def main() -> int:
                     shutil.copy(p, OUT / p.name)
                     print(f"FAIL {p.stem}: {ratio * 100:.3f}% pixels differ (see target/visual/{p.stem}-diff.png)")
                     failures += 1
-            if failures == 0:
+            if failures == before:
                 print(f"ok   {name} ({count} page(s))")
     return 1 if failures else 0
 
