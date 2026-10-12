@@ -43,10 +43,8 @@ export interface TemplateLike<S extends z.ZodType = z.ZodType> {
   images?: Record<string, Uint8Array>;
 }
 
-export interface GenerateOptions extends RenderOpts {
-  /** Validate the tree with ajv before the engine (default: outside production). */
-  validate?: boolean;
-}
+/** The options of `generate`: those of `renderToBuffer`. */
+export type GenerateOptions = RenderToBufferOptions;
 
 let engine: Promise<EngineStatus> | undefined;
 
@@ -234,11 +232,11 @@ export async function generate<S extends z.ZodType>(
   return {
     pdf,
     timings: {
-      // Rebuilds reuse the first React render; count the first build and the final rebuild.
+      // Rebuilds reuse the first React render: they count as tree time, not engine time.
       reactMs: first.timings.reactMs,
-      treeMs: first.timings.treeMs + (tree === first ? 0 : tree.timings.treeMs),
+      treeMs: first.timings.treeMs + settled.treeMs,
       validateMs,
-      engineMs: e1 - e0 - fetchMs,
+      engineMs: e1 - e0 - fetchMs - settled.treeMs,
       fetchMs,
       totalMs: e1 - t0,
     },
@@ -259,7 +257,8 @@ export async function generate<S extends z.ZodType>(
  * stops changing (at most MAX_PASSES renders). Before each render, loads the images of the tree it
  * does not have yet (a rebuild can add some) under the policies of `opts`. `images` are images by
  * id besides `opts.images` and the tree's own. Returns the tree that produced the PDF, the images
- * it was rendered with by id, and the time spent loading images.
+ * it was rendered with by id, the time spent loading images and the time spent rebuilding the
+ * tree for the page count.
  */
 export async function renderSettled(
   first: TreeResult,
@@ -272,6 +271,7 @@ export async function renderSettled(
   passes: number;
   images: Record<string, Uint8Array>;
   fetchMs: number;
+  treeMs: number;
 }> {
   await init();
   const registered = { ...images, ...opts.images };
@@ -294,14 +294,17 @@ export async function renderSettled(
   let tree = first;
   let pdf = await render(tree);
   let passes = 1;
+  let treeMs = 0;
   while (tree.dynamic && passes < MAX_PASSES) {
     const pages = countPages(pdf);
     if (pages === tree.pageCount) break;
+    const r0 = performance.now();
     try {
       tree = tree.rebuild(pages);
     } catch (e) {
       fromTemplateError(e);
     }
+    treeMs += performance.now() - r0;
     pdf = await render(tree);
     passes++;
   }
@@ -311,7 +314,7 @@ export async function renderSettled(
       `render props did not settle on a page count after ${MAX_PASSES} passes; page numbers they show may be off.`,
     );
   }
-  return { tree, pdf, pages, passes, images: all, fetchMs };
+  return { tree, pdf, pages, passes, images: all, fetchMs, treeMs };
 }
 
 /**
@@ -353,8 +356,6 @@ function locateEngineError(e: unknown, tree: TreeResult): unknown {
 }
 
 export interface RenderToBufferOptions extends RenderOpts {
-  /** Images the document refers to by id (`<Image src="logo">`). */
-  images?: Record<string, Uint8Array>;
   /** Check the tree against the engine schema first (default: outside production). */
   validate?: boolean;
 }
@@ -422,9 +423,15 @@ export async function renderToStream(
   return Readable.from([Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength)], { objectMode: false });
 }
 
+/** The name of the element's component, for errors; JavaScript callers can pass anything. */
 function componentName(element: ReactElement): string {
-  const t = element.type as string | { displayName?: string; name?: string };
-  return typeof t === 'string' ? t : (t.displayName ?? t.name ?? 'document');
+  const t = (element as { type?: unknown } | null | undefined)?.type as
+    | string
+    | { displayName?: string; name?: string }
+    | null
+    | undefined;
+  if (typeof t === 'string') return t;
+  return (t && (t.displayName ?? t.name)) || 'document';
 }
 
 /**

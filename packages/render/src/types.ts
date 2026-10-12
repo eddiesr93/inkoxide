@@ -54,11 +54,14 @@ export interface RemoteImageOptions {
 export interface Timings {
   /** React render to host instances. */
   reactMs: number;
-  /** Instances to the schema tree, Tailwind resolution included. */
+  /**
+   * Instances to the schema tree, Tailwind resolution included, and the rebuilds for the page
+   * count (`render` props).
+   */
   treeMs: number;
-  /** ajv validation (dev only; 0 in production). */
+  /** ajv validation; 0 when `validate` is off, as it is by default in production. */
   validateMs: number;
-  /** The engine render (every pass, with `render` props). */
+  /** The engine render (every pass, with `render` props), without the rebuilds between them. */
   engineMs: number;
   /** Loading images: remote URLs and requests, files, functions and promises. */
   fetchMs: number;
@@ -77,7 +80,11 @@ export interface RenderResult {
   engineVersion: string;
   /** Font ids the document uses. */
   fonts: string[];
-  /** Non-fatal problems (font fallbacks, missing hyphenation patterns). */
+  /**
+   * Non-fatal problems of this document: font fallbacks, and `render` props that did not settle
+   * on a page count. Start-up problems, such as missing hyphenation patterns, are in
+   * `engineStatus().warnings`.
+   */
   warnings: string[];
   /** The document tree that was rendered. */
   document: Document;

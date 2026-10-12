@@ -39,6 +39,14 @@ All notable changes to the packages in this repository. The format follows
   ignored), and for a `src` that is not a path, a URL or bytes (`null` failed the next render
   with a `TypeError`). A registration that throws adds none of its faces. The guide gives font
   weights as 1–1000, the range the code accepts.
+- `@inkoxide/render`: `renderToBuffer(null)`, or a string or a number in place of an element,
+  fails with a `TEMPLATE_ERROR` RenderError instead of a `TypeError`.
+- `@inkoxide/render/templates`: `generate`'s `timings.engineMs` no longer includes the tree
+  rebuilds for the page count, and `treeMs` counts each rebuild once, so the stages add up.
+  `renderSettled` resolves with that rebuild time as `treeMs`. `GenerateOptions` is the same
+  type as `RenderToBufferOptions`.
+- `@inkoxide/render`: the start-up error for missing fonts says what `INKOXIDE_ASSETS_DIR` must
+  point to, and the guide's FAQ explains when to set it (a bundled deployment).
 
 ## 0.5.0 - 2026-10-12
 

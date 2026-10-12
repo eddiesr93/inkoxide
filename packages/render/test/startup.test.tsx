@@ -2,7 +2,7 @@
  * An engine that cannot start fails every render with an `INTERNAL` RenderError. Its own file:
  * `init` runs once per module graph, and Vitest gives each test file a fresh one.
  */
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -36,6 +36,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  rmSync(empty, { recursive: true, force: true });
   if (before === undefined) delete process.env.INKOXIDE_ASSETS_DIR;
   else process.env.INKOXIDE_ASSETS_DIR = before;
 });
@@ -53,7 +54,7 @@ describe('engine start-up', () => {
       expect(err).toBeInstanceOf(RenderError);
       expect(err).toMatchObject({ code: 'INTERNAL', status: 500 });
       expect((err as RenderError).message).toBe(
-        `The engine could not start: No fonts found in ${join(empty, 'fonts')}. Set INKOXIDE_ASSETS_DIR.`,
+        `The engine could not start: No fonts found in ${join(empty, 'fonts')}. Set INKOXIDE_ASSETS_DIR to a folder with the package's fonts/ and hyphenation/ folders (its assets/).`,
       );
     }
   });

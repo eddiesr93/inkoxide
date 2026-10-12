@@ -684,8 +684,10 @@ options under the same id replaces the template's.
 
 - **`generate(template, data, options?)`** checks `data`, renders and resolves to
   `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, images, schemaVersion,
-  engineVersion }`. `timings` has the milliseconds of each stage: `reactMs`, `treeMs`,
-  `validateMs`, `engineMs`, `fetchMs` and `totalMs`. `document` is the tree that was rendered,
+  engineVersion }`. `timings` has the milliseconds of each stage, each counted once: `reactMs`,
+  `treeMs` (with the rebuilds for the page count), `validateMs` (0 when `validate` is off),
+  `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks and `render`
+  props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,
   and `images` the images it was rendered with, by id: the tree names an image given as bytes,
   a file, a URL or a function by an id it made up (`image-0`, `remote-0`), and `images` has the
   bytes behind those ids. The options are those of `renderToBuffer`.
@@ -697,7 +699,8 @@ options under the same id replaces the template's.
   after `Font.register`. Otherwise it throws an `INTERNAL` RenderError that says so.
   `renderSettled(tree, images, options?)` renders it, and renders again with the page count
   while `render` props change it; `images` are more images by id (`{}` when there are none), and
-  it resolves to `{ pdf, pages, passes, tree, images, fetchMs }`. Pass both the same options.
+  it resolves to `{ pdf, pages, passes, tree, images, fetchMs, treeMs }` (`treeMs`: the
+  rebuilds for the page count). Pass both the same options.
 - **`renderDocument(document, images?, options?)`** renders a document tree that is already
   built, such as a stored `result.document`, and resolves to `{ pdf, pages, engineMs }`. The
   document names its images by id, so pass their bytes in `images` or the `images` option
@@ -732,6 +735,15 @@ Linux arm64 (glibc) and Windows x64. npm installs the right one as an optional d
 is missing if you install with `--omit=optional`, or copy `node_modules` from one platform to
 another (from macOS into a Linux Docker image, say). Run `npm install` on the platform that runs
 the code.
+
+**Every render fails with "No fonts found … Set INKOXIDE_ASSETS_DIR".**
+The bundled fonts and hyphenation patterns are files in the package's `assets/` folder
+(`node_modules/@inkoxide/render/assets`), found next to its code. When a bundler (esbuild,
+webpack) moves the code into one file, for a serverless function say, they are no longer there.
+Copy that folder into the deployment and point the `INKOXIDE_ASSETS_DIR` environment variable at
+the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyphenation/`
+(`hyph-en-us.tex`). Without the hyphenation patterns, text still renders with the engine's
+built-in ones, and `engineStatus().warnings` says so.
 
 **Do I need Tailwind installed?**
 Only to style with `className`: then `npm install @inkoxide/tailwind`. It brings the Tailwind

@@ -13,16 +13,27 @@ import { assetsDir } from '../src/engine.ts';
 import {
   countPages,
   Document,
+  engineStatus,
   Font,
+  Footer,
   Image,
   type ImageSrc,
   init,
   Page,
+  PageBreak,
   RenderError,
   Text,
+  version,
   View,
 } from '../src/index.ts';
-import { generate, renderDocument, renderSettled, renderTree, type TemplateLike } from '../src/templates.ts';
+import {
+  generate,
+  parseData,
+  renderDocument,
+  renderSettled,
+  renderTree,
+  type TemplateLike,
+} from '../src/templates.ts';
 
 const styled: TemplateLike = {
   meta: { id: 'styled' },
@@ -95,6 +106,134 @@ const template = (src: ImageSrc, images?: Record<string, Uint8Array>): TemplateL
   schema: z.object({}),
   Template: () => <Logo src={src} />,
   images,
+});
+
+describe('parseData', () => {
+  const invoice: TemplateLike = {
+    meta: { id: 'invoice' },
+    schema: z.object({
+      number: z.string(),
+      items: z.array(z.object({ name: z.string(), qty: z.number() })),
+      note: z.string().default(''),
+    }),
+    Template: () => null,
+  };
+
+  it('returns the data parsed, with the defaults applied', () => {
+    const data = { number: 'A-1', items: [{ name: 'Tea', qty: 2 }] };
+    expect(parseData(invoice, data)).toEqual({ ...data, note: '' });
+  });
+
+  it('fails with INVALID_DATA, every issue and its path', () => {
+    const err = (() => {
+      try {
+        parseData(invoice, { number: 7, items: [{ name: 'Tea' }] });
+      } catch (e) {
+        return e;
+      }
+    })() as RenderError;
+    expect(err).toBeInstanceOf(RenderError);
+    expect(err).toMatchObject({ code: 'INVALID_DATA', status: 400 });
+    expect(err.message).toBe(
+      'The data does not match the "invoice" schema: number: Expected a string, got a number.',
+    );
+    expect(err.issues).toEqual([
+      { path: 'number', message: 'Expected a string, got a number', code: 'invalid_type' },
+      { path: 'items[0].qty', message: 'Missing: expected a number', code: 'invalid_type' },
+    ]);
+    // As a server sends it: the fields that are set, without status or the stack.
+    expect(JSON.parse(JSON.stringify(err))).toEqual({
+      code: 'INVALID_DATA',
+      message: err.message,
+      issues: err.issues,
+    });
+  });
+
+  it('names the root when the data itself is wrong', () => {
+    expect(() => parseData(invoice, null)).toThrow(
+      'The data does not match the "invoice" schema: (root): Expected an object, got null.',
+    );
+  });
+});
+
+describe('RenderError', () => {
+  it('turns into JSON with only the fields that are set', () => {
+    const e = new RenderError('TEMPLATE_ERROR', 'Bad', {
+      path: 'pages[0]',
+      component: 'Invoice',
+      componentStack: '\n    in Invoice',
+      className: 'p-x',
+      engineCode: 'X',
+      cause: new Error('inner'),
+    });
+    expect(e.status).toBe(400);
+    expect(JSON.parse(JSON.stringify(e))).toEqual({
+      code: 'TEMPLATE_ERROR',
+      message: 'Bad',
+      path: 'pages[0]',
+      component: 'Invoice',
+      componentStack: '\n    in Invoice',
+      className: 'p-x',
+      engineCode: 'X',
+    });
+    expect(JSON.parse(JSON.stringify(new RenderError('UNKNOWN_TEMPLATE', 'No template "x".')))).toEqual({
+      code: 'UNKNOWN_TEMPLATE',
+      message: 'No template "x".',
+    });
+    expect(new RenderError('UNKNOWN_TEMPLATE', '').status).toBe(404);
+    expect(new RenderError('IMAGE_FETCH_FAILED', '').status).toBe(502);
+    expect(new RenderError('INTERNAL', '').status).toBe(500);
+  });
+});
+
+describe('health checks', () => {
+  it('report the engine version and, once started, its status', async () => {
+    const v = version();
+    expect(v).toMatchObject({ engine: expect.any(String), schema: 1, gitSha: expect.any(String) });
+    const status = await init();
+    expect(engineStatus()).toBe(status);
+    expect(status.version).toEqual(v);
+    expect(status.fonts).toEqual(expect.arrayContaining(['Inter-Regular', 'Inter-Bold']));
+    expect(status.hyphenation).toEqual({ en: true });
+    expect(status.warnings).toEqual([]);
+  });
+});
+
+describe('generate', () => {
+  it('counts each stage once: rebuilds for the page count are tree time, not engine time', async () => {
+    const spin = (ms: number) => {
+      const end = performance.now() + ms;
+      while (performance.now() < end);
+    };
+    const folio: TemplateLike = {
+      meta: { id: 'folio' },
+      schema: z.object({}),
+      Template: () => (
+        <Document>
+          <Page>
+            <Footer>
+              <Text
+                render={({ pageNumber, totalPages }) => {
+                  spin(10);
+                  return `${pageNumber} / ${totalPages}`;
+                }}
+              />
+            </Footer>
+            <Text>One</Text>
+            <PageBreak />
+            <Text>Two</Text>
+          </Page>
+        </Document>
+      ),
+    };
+    const { passes, timings } = await generate(folio, {}, { validate: false });
+    expect(passes).toBe(2);
+    expect(timings.validateMs).toBe(0);
+    // The first build and the rebuild call the render prop once per page: 1 + 2 times.
+    expect(timings.treeMs).toBeGreaterThanOrEqual(30);
+    const { reactMs, treeMs, validateMs, engineMs, fetchMs, totalMs } = timings;
+    expect(reactMs + treeMs + validateMs + engineMs + fetchMs).toBeLessThanOrEqual(totalMs + 0.5);
+  });
 });
 
 describe('renderDocument', () => {

@@ -75,7 +75,9 @@ function startEngine(): EngineStatus {
   const { missing } = fonts.loadDirectory(fontsDir, DEFAULT_FACES);
   const warnings: string[] = [];
   if (fonts.ids().length === 0) {
-    throw new Error(`No fonts found in ${fontsDir}. Set INKOXIDE_ASSETS_DIR.`);
+    throw new Error(
+      `No fonts found in ${fontsDir}. Set INKOXIDE_ASSETS_DIR to a folder with the package's fonts/ and hyphenation/ folders (its assets/).`,
+    );
   }
   if (missing.length > 0) warnings.push(`Fonts missing from ${fontsDir}: ${missing.join(', ')}`);
   for (const id of fonts.ids()) {
