@@ -41,5 +41,8 @@
       "x86_64-pc-windows-msvc"
     ]
   },
-  "optionalDependencies": {}
+  "optionalDependencies": {},
+  "devDependencies": {
+    "ajv": "8.20.0"
+  }
 }
