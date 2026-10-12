@@ -25,8 +25,10 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 Components take `className`, `style` and `id`, and those with a box also take `debug`
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
 `Page` and `Canvas` have no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
-take no props; and the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
-`transform`, `id`) instead of `className` and `style`.
+take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
+`transform`, `id`) instead of `className` and `style`; and a `Text` or `Link` inside a `Text`,
+a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
+`hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
 
 | Component | What it is |
 |---|---|
@@ -418,7 +420,9 @@ An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fall
 - **Hyphenation** is off by default. Turn it on per `Text` with `hyphenate` (or the class
   `hyphens-auto`); it follows the `lang` of the text or the document. US English patterns ship
   with the package and serve every English `lang`; other languages use the engine's built-in
-  patterns. A soft hyphen
+  patterns. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
+  `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
+  `hyphenationCallback`. A soft hyphen
   (`\u00AD`) in the text is always a possible break.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
   word into the parts a line may break between, for every `Text`; `[word]` keeps a word whole.

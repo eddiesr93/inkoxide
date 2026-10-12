@@ -105,6 +105,29 @@ export interface BuildResult {
 
 type Inline = Instance | { kind: 'text'; text: string; fiber: unknown };
 
+/**
+ * Props of a `Text` or `Link` that need a node of its own: an inline run inside a `Text` has
+ * none. `debug` is left out: on a run it draws nothing, as the guide says.
+ */
+const BLOCK_ONLY = [
+  'id',
+  'bookmark',
+  'pages',
+  'render',
+  'dir',
+  'orphans',
+  'widows',
+  'break',
+  'wrap',
+  'minPresenceAhead',
+] as const;
+
+/** Whether a block-only prop is set to something other than its default (`wrap`, `break={false}`). */
+function blockOnly(props: Record<string, unknown>, key: (typeof BLOCK_ONLY)[number]): boolean {
+  const v = props[key];
+  return v !== undefined && !(key === 'wrap' && v === true) && !(key === 'break' && v === false);
+}
+
 const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
 
 function sameColor(a: Color | undefined, b: Color | undefined): boolean {
@@ -696,8 +719,8 @@ class Builder {
   /**
    * Flattens inline content into runs, merging neighbours with the same resolved style. `para`
    * is whether the paragraph uses the engine's patterns, and its language; a run that differs
-   * says so itself. Runs carry no language, so a run in another language never turns the
-   * patterns on: they would be the paragraph's.
+   * says so itself. Runs carry no language, so a run in another language never uses the
+   * patterns: they would be the paragraph's.
    */
   private runs(
     nodes: readonly Inline[],
@@ -713,9 +736,8 @@ class Builder {
         const text = transformText(n.text, ctx.textTransform, ctx.lang);
         // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
         const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : callbackOf(ctx);
-        const patterns = usesPatterns(ctx);
-        const hyphenate =
-          patterns === para.patterns || (patterns && ctx.lang !== para.lang) ? undefined : patterns;
+        const patterns = usesPatterns(ctx) && ctx.lang === para.lang;
+        const hyphenate = patterns === para.patterns ? undefined : patterns;
         const shown = cb ? this.hyphenator.apply(text, cb, (msg, init) => this.fail(owner, msg, init)) : text;
         this.push(out, shown, ctx, owner, undefined, hyphenate);
         continue;
@@ -730,10 +752,18 @@ class Builder {
               { kind: 'props' },
             );
           }
+          const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
+          const prop = BLOCK_ONLY.find((k) => blockOnly(n.props, k));
+          if (prop) {
+            this.fail(
+              n,
+              `${what} is an inline run of the paragraph, so \`${prop}\` has nothing to apply to. Put it on the outer <Text>, or make this text a <Text> of its own.`,
+              { kind: 'props' },
+            );
+          }
           const own = this.styleOf(n, ctx);
           const bad = [...boxKeys(own), ...textOnlyKeys(own)];
           if (bad[0] !== undefined) {
-            const what = n.type === HOST.Link ? 'A <Link> inside <Text>' : 'A nested <Text>';
             const { fromClass, init } = this.source(n, own, bad[0]);
             this.fail(
               n,

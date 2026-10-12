@@ -320,20 +320,31 @@ describe('hyphenation callback', () => {
     ]);
   });
 
-  it('never turns the patterns on for a run in another language', () => {
+  it('never uses the patterns for a run in another language', () => {
     const r = render(
-      <Text lang="en">
-        hello{' '}
-        <Text lang="de" hyphenate>
-          Donaudampfschifffahrt
-        </Text>{' '}
-        <Text hyphenate>documentation</Text>
-      </Text>,
+      <>
+        <Text lang="en">
+          hello{' '}
+          <Text lang="de" hyphenate>
+            Donaudampfschifffahrt
+          </Text>{' '}
+          <Text hyphenate>documentation</Text>
+        </Text>
+        <Text lang="en" hyphenate>
+          documentation <Text lang="de">Donaudampfschifffahrt</Text>
+        </Text>
+      </>,
     );
     // Runs carry no language: the paragraph's English patterns would break the German word.
-    expect(first<TextNode>(r).runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+    const [on, off] = body(r) as TextNode[];
+    expect(on?.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
       { text: 'hello Donaudampfschifffahrt ', hyphenate: undefined },
       { text: 'documentation', hyphenate: true },
+    ]);
+    expect(off?.style).toEqual({ hyphenate: true, lang: 'en' });
+    expect(off?.runs.map(({ text, hyphenate }) => ({ text, hyphenate }))).toEqual([
+      { text: 'documentation ', hyphenate: undefined },
+      { text: 'Donaudampfschifffahrt', hyphenate: false },
     ]);
   });
 
@@ -777,6 +788,56 @@ describe('errors carry component stacks', () => {
       ),
     );
     expect(link.message).toContain('A <Link> inside <Text> is an inline run');
+  });
+
+  it('rejects the props of a paragraph on an inline Text or Link', () => {
+    const inline =
+      (props: Record<string, unknown>, link = false) =>
+      () =>
+        render(
+          <Text>
+            a{' '}
+            {link ? (
+              <Link href="#a" {...props}>
+                b
+              </Link>
+            ) : (
+              <Text {...props}>b</Text>
+            )}
+          </Text>,
+        );
+    const cases: Record<string, unknown>[] = [
+      { id: 'terms' },
+      { bookmark: 'Terms' },
+      { pages: 'first' },
+      { render: () => 'x' },
+      { dir: 'rtl' },
+      { orphans: 2 },
+      { widows: 2 },
+      { break: 'page-before' },
+      { wrap: false },
+      { minPresenceAhead: 20 },
+    ];
+    for (const props of cases) {
+      const [key] = Object.keys(props);
+      const e = thrown(inline(props));
+      expect(e.kind).toBe('props');
+      expect(e.message).toBe(
+        `A nested <Text> is an inline run of the paragraph, so \`${key}\` has nothing to apply to. Put it on the outer <Text>, or make this text a <Text> of its own.`,
+      );
+      expect(e.componentStack).toMatch(/^\n {4}in Text\n {4}in Page/);
+    }
+    expect(thrown(inline({ id: 'x' }, true)).message).toMatch(/^A <Link> inside <Text> is an inline run/);
+    // Defaults, `debug`, and the props of a run are fine.
+    const ok = render(
+      <Text>
+        a{' '}
+        <Text wrap break={false} debug lang="de" href="#a">
+          b
+        </Text>
+      </Text>,
+    );
+    expect(first<TextNode>(ok).runs.map((r) => r.link)).toEqual([undefined, '#a']);
   });
 
   it('blames a style key the element does not take on its style, and a class on its className', () => {

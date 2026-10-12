@@ -27,6 +27,10 @@ All notable changes to the packages in this repository. The format follows
   page width on every side, as in CSS, instead of being dropped, which also left the header and
   footer unaligned. A percentage minimum height on a `Row` (`min-h-[10%]`), which has no table
   height to resolve against, is a template error instead of being dropped.
+- A `Text` or `Link` inside a `Text` with `id`, `bookmark`, `pages`, `render`, `dir`, `orphans`,
+  `widows`, `break`, `wrap={false}` or `minPresenceAhead` is a template error that names the
+  prop; these need a paragraph of their own and were dropped. A run in another `lang` inside a
+  hyphenated paragraph is no longer hyphenated with the paragraph's patterns.
 
 ## 0.5.0 - 2026-10-12
 
