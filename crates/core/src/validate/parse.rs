@@ -65,7 +65,7 @@ fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
         // An array with more items than its fixed length, as in JSON.
         E::LengthMismatch(_) if !path.is_empty() => Err(too_many_items(path)),
         // A reserved marker (0xc1) is malformed input, not a type error.
-        E::TypeMismatch(marker) if !path.is_empty() && format!("{marker:?}") != "Reserved" => {
+        E::TypeMismatch(marker) if !path.is_empty() && marker.to_u8() != 0xc1 => {
             Err(ValidationError {
                 code: Code::InvalidType,
                 path,

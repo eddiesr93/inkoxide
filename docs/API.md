@@ -179,8 +179,8 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
 - Fonts, images and `#id` links must resolve: `UNKNOWN_FONT`,
   `FONT_NOT_REGISTERED`, `UNKNOWN_IMAGE`, `INVALID_IMAGE`,
   `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`. A `#id` link must name a node
-  in the flowing content that is displayed: an id in a header or footer,
-  or under `display: none`, is not a destination.
+  in the page body (the flow or an overlay) that is displayed: an id in
+  a header or footer, or under `display: none`, is not a destination.
 - A radio button needs a non-empty `value` (`MISSING_FIELD`), and a text
   field's `value` is at most `maxLength` characters (`OUT_OF_RANGE`).
 - `gridArea` cannot be combined with `gridRow` or `gridColumn`
