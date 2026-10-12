@@ -5,6 +5,7 @@ import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constant
 
 import { HOST, type HostType } from '../components/index.ts';
 import { TemplateError } from '../errors.ts';
+import { SVG_TAGS } from '../tree/svg.ts';
 import {
   type Container,
   hostName,
@@ -59,14 +60,8 @@ const SVG_SHAPES = new Set<string>([
   HOST.Polyline,
   HOST.Polygon,
 ]);
-const SVG_CONTENT = new Set<string>([
-  ...SVG_SHAPES,
-  HOST.G,
-  HOST.Defs,
-  HOST.ClipPath,
-  HOST.LinearGradient,
-  HOST.RadialGradient,
-]);
+/** What goes in an `<Svg>`, `<G>`, `<Defs>` or `<ClipPath>`: every SVG primitive but `<Stop>`. */
+const SVG_CONTENT = new Set<string>(Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop));
 const LEAF = new Set<string>([
   HOST.Image,
   HOST.PageBreak,
@@ -157,7 +152,7 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
   if (child === HOST.PageNumber || child === HOST.TotalPages) {
     return new TemplateError(`${name(child)} must be inside a <Text>.`);
   }
-  if (SVG_CONTENT.has(child) || child === HOST.Stop) {
+  if (Object.hasOwn(SVG_TAGS, child)) {
     return new TemplateError(`${name(child)} is an SVG primitive: it goes inside <Svg>.`);
   }
   if (parent === HOST.Svg || SVG_CONTENT.has(parent)) {

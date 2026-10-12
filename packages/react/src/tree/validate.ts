@@ -27,12 +27,16 @@ const BRANCH_KEYWORDS: Readonly<Record<string, number>> = { type: 1, const: 1, e
 /** Depth of the value an error is about. */
 const depth = (e: ErrorObject) => e.instancePath.split('/').length;
 
+/** The definition (`Percent`) whose `pattern` a `pattern` error is from. */
+const patternDef = (e: ErrorObject): string | undefined =>
+  /^#\/\$defs\/(\w+)\/pattern$/.exec(e.schemaPath)?.[1];
+
 /**
  * A `pattern` error on a described definition (`Percent`) says what the pattern means
  * ("must be a percentage within ±10000%…") rather than quoting the regular expression.
  */
 function message(e: ErrorObject): string {
-  const def = /^#\/\$defs\/(\w+)\/pattern$/.exec(e.schemaPath)?.[1];
+  const def = patternDef(e);
   const defs = schema.$defs as Record<string, { description?: string }>;
   const description = def === undefined ? undefined : defs[def]?.description;
   if (!description) return e.message ?? e.keyword;
@@ -57,7 +61,7 @@ const SUFFIXED: Readonly<Record<string, string>> = { Percent: '%', Fr: 'fr' };
  * `Fr`), so it comes before one from a sibling definition (`Percent`); 1 otherwise.
  */
 function suffixRank(e: ErrorObject, doc: unknown): number {
-  const def = /^#\/\$defs\/(\w+)\/pattern$/.exec(e.schemaPath)?.[1];
+  const def = patternDef(e);
   const suffix = def === undefined ? undefined : SUFFIXED[def];
   if (suffix === undefined) return 1;
   const value = valueAt(doc, e.instancePath);

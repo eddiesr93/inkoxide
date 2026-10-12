@@ -72,7 +72,18 @@ function startEngine(): EngineStatus {
     );
   }
   const fontsDir = join(assetsDir(), 'fonts');
-  const { missing } = fonts.loadDirectory(fontsDir, DEFAULT_FACES);
+  const missing: string[] = [];
+  for (const { file, ...face } of DEFAULT_FACES) {
+    if (fonts.has(face.id)) continue;
+    let bytes: Uint8Array;
+    try {
+      bytes = readFileSync(join(fontsDir, file));
+    } catch {
+      missing.push(face.id);
+      continue;
+    }
+    fonts.register(face, bytes);
+  }
   const warnings: string[] = [];
   if (fonts.ids().length === 0) {
     throw new Error(

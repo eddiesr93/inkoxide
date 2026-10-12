@@ -7,7 +7,7 @@ import { type Container, componentStack, innermostComponent, type Instance } fro
 import { renderToInstances } from './reconciler/render.ts';
 import { loadTailwind } from './tailwind.ts';
 import { type BuildResult, buildTree } from './tree/build.ts';
-import { ImageIds, type RemoteImagePolicy } from './tree/images.ts';
+import { ImageIds, type ImageTableOptions, type RemoteImagePolicy } from './tree/images.ts';
 import { locate } from './tree/locate.ts';
 import { type SchemaProblem, validateTree } from './tree/validate.ts';
 
@@ -81,32 +81,34 @@ export interface TreeResult extends Omit<BuildResult, 'origin'> {
 export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): TreeResult {
   const t0 = performance.now();
   const container = renderToInstances(element);
-  return fromContainer(container, opts, performance.now() - t0, new ImageIds(new Set(opts.imageIds)));
+  const registered = new Set(opts.imageIds);
+  const images: ImageTableOptions = {
+    registered,
+    generated: new ImageIds(registered),
+    remoteImages: opts.remoteImages,
+    localImages: opts.localImages,
+  };
+  return fromContainer(container, opts, performance.now() - t0, images);
 }
 
+/** `images` is shared with the rebuilds, so an image keeps its id on every pass. */
 function fromContainer(
   container: Container,
   opts: TreeOptions,
   reactMs: number,
-  generatedIds: ImageIds,
+  images: ImageTableOptions,
 ): TreeResult {
-  const registry = opts.fonts ?? defaultFonts;
   const t1 = performance.now();
-  const build = {
-    fonts: registry,
-    pageCount: opts.pageCount,
-    remoteImages: opts.remoteImages,
-    localImages: opts.localImages,
-    hyphenationCallback: registry.hyphenationCallback,
-    imageIds: opts.imageIds,
-    generatedIds,
-  };
+  const build = { fonts: opts.fonts ?? defaultFonts, pageCount: opts.pageCount, images };
   const built = buildTree(container, build);
   const t2 = performance.now();
   let tracked: { doc: Document; origin: Map<object, Instance> } | undefined;
   const locateFn = (path: string): Located | undefined => {
     // Tracking runs `render` props again; the functions they create need not stay in the table.
-    tracked ??= track(container, { ...build, generatedIds: new ImageIds(new Set(opts.imageIds)) });
+    tracked ??= track(container, {
+      ...build,
+      images: { ...images, generated: new ImageIds(images.registered) },
+    });
     const inst = locate(tracked.doc, path, tracked.origin);
     if (!inst) return undefined;
     const stack = componentStack(inst);
@@ -127,7 +129,7 @@ function fromContainer(
     timings: { reactMs, treeMs: t2 - t1 },
     locate: locateFn,
     validate: () => validateTree(built.document).map((p) => ({ ...p, ...locateFn(p.path) })),
-    rebuild: (pageCount) => fromContainer(container, { ...opts, pageCount }, 0, generatedIds),
+    rebuild: (pageCount) => fromContainer(container, { ...opts, pageCount }, 0, images),
   };
 }
 
