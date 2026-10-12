@@ -32,6 +32,19 @@ fn lpa(l: Option<Length>, default: LengthPercentageAuto) -> LengthPercentageAuto
     }
 }
 
+/// A table cell's minimum height. Its `height` is one too, as in CSS:
+/// the row grows to fit the content. With both in points, the larger wins.
+pub(super) fn cell_min_height(s: &S) -> LengthPercentageAuto {
+    let auto = LengthPercentageAuto::auto();
+    match (s.height, s.min_height) {
+        (Some(Length::Points(h)), Some(Length::Points(m))) => {
+            LengthPercentageAuto::length(h.max(m))
+        }
+        (h, None) | (None, h) => lpa(h, auto),
+        (_, m) => lpa(m, auto),
+    }
+}
+
 fn lp(l: Option<LengthPercent>) -> LengthPercentage {
     match l {
         Some(LengthPercent::Points(v)) => LengthPercentage::length(v),

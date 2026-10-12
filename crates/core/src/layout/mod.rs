@@ -516,6 +516,8 @@ fn root_style(ln: &LNode<'_>, mode: RootMode) -> taffy::Style {
                 AvailableSpace::Definite(w) => Dimension::length(w),
                 _ => Dimension::auto(),
             };
+            s.size.height = Dimension::auto();
+            s.min_size.height = style::cell_min_height(ln.style());
             if let Some(h) = height {
                 s.size.height = Dimension::length(h);
                 s.min_size.height = LengthPercentageAuto::length(h);

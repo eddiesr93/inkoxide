@@ -7,6 +7,15 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- **Table cells:** `TableCell.style` says how a cell is sized. A cell's `height` is a minimum
+  (the row grows to fit the content) instead of a fixed height that let the content overlap the
+  next row. The styles a cell ignored are `STYLE_NOT_APPLICABLE`: `width`, `maxHeight`,
+  `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`,
+  `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity` and `rotate`, as
+  `transform`, `transformOrigin` and `zIndex` already were.
+
 ## 2.2.0 - 2026-10-12
 
 Still document schema version 1.

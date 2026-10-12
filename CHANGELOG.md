@@ -7,6 +7,15 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- A table cell's `height` is a minimum, as in CSS: the row grows to fit the cell's content.
+  Until now it fixed the row's height, and taller content ran over the next row.
+- Styles a table cell ignored are validation errors (`STYLE_NOT_APPLICABLE`), like `transform`
+  and `zIndex` already were: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`,
+  `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`,
+  `overflow`, `opacity` and `rotate`. They passed validation and had no effect.
+
 ## 0.5.0 - 2026-10-12
 
 `inkoxide` 0.5.0, `@inkoxide/render` 0.5.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.3.0, and

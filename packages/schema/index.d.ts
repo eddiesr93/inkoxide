@@ -659,6 +659,9 @@ export interface TableCell {
   debug?: Debug;
   colSpan?: number;
   rowSpan?: number;
+  /**
+   * The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`.
+   */
   style?: Style;
   children?: Node[];
 }
