@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- `@inkoxide/style`, the style values that `@inkoxide/react` and `@inkoxide/tailwind` share: the
+  readers of CSS lengths, colours, `flex`, transforms, transform origins and object positions,
+  and the style object type. They moved out of `@inkoxide/tailwind`, which still exports the same
+  names.
+
 ### Changed
 
 - Page numbers in the page body (`<PageNumber />` and `<TotalPages />` in a `Text`) are laid out
@@ -16,6 +23,13 @@ All notable changes to the packages in this repository. The format follows
   sized by its text was too wide for a short number, and a number of four digits or more could
   overflow it. Text the body repeats on several pages (a table's header rows) still keeps that
   room, since each page draws its own digits in it.
+- **Tailwind is optional.** `@inkoxide/render` and `@inkoxide/react` no longer install
+  `@inkoxide/tailwind`: they load it when it is installed, for `className`. Templates styled with
+  `style` alone need nothing more, and the install is about 10 MB smaller (no Tailwind compiler,
+  Lightning CSS or PostCSS). **Upgrading:** if you use `className`, run
+  `npm install @inkoxide/tailwind`; without it, a `className` fails with a template error that
+  says so. `renderToTree` in `@inkoxide/react` loads Tailwind itself, as `@inkoxide/render`
+  does; before the synchronous `renderTemplate`, call the new `loadTailwind()` once.
 
 ## 0.4.1 - 2026-10-12
 

@@ -1,6 +1,6 @@
-import { initTailwind, setTailwindStrict } from '@inkoxide/tailwind';
+import { setTailwindStrict } from '@inkoxide/tailwind';
 
-import { FontRegistry, TemplateError, type TreeResult } from '../src/index.ts';
+import { FontRegistry, loadTailwind, TemplateError, type TreeResult } from '../src/index.ts';
 
 export const FACES = [
   { id: 'Inter-Regular', family: 'Inter', file: 'Inter-Regular.ttf' },
@@ -17,7 +17,7 @@ export function registry(): FontRegistry {
 }
 
 export async function setup(): Promise<void> {
-  await initTailwind();
+  await loadTailwind();
   setTailwindStrict(true);
 }
 

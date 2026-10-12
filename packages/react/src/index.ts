@@ -5,6 +5,7 @@ import { TemplateError } from './errors.ts';
 import { fonts as defaultFonts, type FontRegistry } from './fonts/index.ts';
 import { type Container, componentStack, innermostComponent, type Instance } from './reconciler/instance.ts';
 import { renderToInstances } from './reconciler/render.ts';
+import { loadTailwind } from './tailwind.ts';
 import { type BuildResult, buildTree } from './tree/build.ts';
 import { ImageIds, type RemoteImagePolicy } from './tree/images.ts';
 import { locate } from './tree/locate.ts';
@@ -16,6 +17,7 @@ export { TemplateError, type TemplateErrorKind } from './errors.ts';
 export * from './fonts/index.ts';
 export { usePage } from './page.ts';
 export { innermostComponent } from './reconciler/instance.ts';
+export { loadTailwind } from './tailwind.ts';
 export {
   type ImageSource,
   imageSource,
@@ -138,10 +140,12 @@ function track(
 }
 
 /**
- * The document tree of a template element (the simple API). Building is synchronous; the
- * function stays `async` so that a template error is a rejected promise, not a throw.
+ * The document tree of a template element (the simple API). Loads Tailwind first when it is
+ * installed (`loadTailwind`). Building is synchronous; a template error is a rejected promise,
+ * not a throw.
  */
 export async function renderToTree(element: ReactNode, opts: TreeOptions = {}): Promise<Document> {
+  await loadTailwind();
   return renderTemplate(element, opts).document;
 }
 

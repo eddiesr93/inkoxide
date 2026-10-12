@@ -1,5 +1,5 @@
 import type { Break, Color, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { TwStyle } from '@inkoxide/tailwind';
+import type { TwStyle } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 /**

@@ -1,4 +1,4 @@
-import type { TwStyle } from './types.ts';
+import type { TwStyle } from '@inkoxide/style';
 
 /**
  * The supported Tailwind subset, one entry per utility family. This table is the single source

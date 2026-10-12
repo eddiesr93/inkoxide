@@ -1,19 +1,48 @@
+import type { TwStyle } from '@inkoxide/style';
+
 import { Lru } from './cache.ts';
 import { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
 import { mapClasses, splitClasses, type UnsupportedUtilityError } from './parse.ts';
-import type { TwStyle } from './types.ts';
 
 export { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
+export { UnsupportedUtilityError } from './parse.ts';
+export { SUPPORTED, type SupportedFamily, UNSUPPORTED } from './supported.ts';
+// The style values it shares with @inkoxide/react, from @inkoxide/style.
 export {
+  BORDER_STYLES,
+  type BorderStyle,
+  type Color,
+  type ColorValue,
+  type DecorationStyle,
+  type Direction,
+  type LenPercent,
+  type Len,
+  type LetterSpacing,
+  type LineHeight,
+  OBJECT_FITS,
+  type ObjectFit,
+  type ObjectPosition,
+  PT_PER_PX,
+  PT_PER_REM,
+  PT_PER_UNIT,
+  parseColor,
+  parseFlex,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
-  UnsupportedUtilityError,
+  round,
+  splitTopLevel,
+  TEXT_INHERITED,
+  TEXT_ONLY,
+  type TextAlign,
+  type TextDecoration,
+  type TextTransform,
+  type TransformOp,
+  type TwKey,
+  type TwStyle,
   UnsupportedValueError,
-} from './parse.ts';
-export { SUPPORTED, type SupportedFamily, UNSUPPORTED } from './supported.ts';
-export * from './types.ts';
-export { PT_PER_PX, PT_PER_REM, PT_PER_UNIT, parseColor, parseFlex, round, splitTopLevel } from './values.ts';
+  type WhiteSpace,
+} from '@inkoxide/style';
 
 export interface TailwindOptions {
   /** Theme CSS (`@import "tailwindcss/theme"; @theme { … }`). Defaults to the bundled theme. */

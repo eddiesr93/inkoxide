@@ -8,13 +8,12 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@inkoxide/style": "workspace:*",
     "@tailwindcss/node": "4.3.3",
-    "culori": "4.0.2",
     "postcss": "8.5.29",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@inkoxide/schema": "workspace:*",
-    "@types/culori": "4.0.1"
+    "@inkoxide/schema": "workspace:*"
   }
 }

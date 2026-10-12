@@ -11,12 +11,20 @@
   "dependencies": {
     "@inkoxide/react": "workspace:*",
     "@inkoxide/schema": "workspace:*",
-    "@inkoxide/tailwind": "workspace:*",
     "inkoxide": "workspace:*",
     "react": "19.3.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@inkoxide/tailwind": "workspace:*",
     "@types/react": "19.3.0"
+  },
+  "peerDependencies": {
+    "@inkoxide/tailwind": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@inkoxide/tailwind": {
+      "optional": true
+    }
   }
 }

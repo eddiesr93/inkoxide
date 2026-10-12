@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Builds the TypeScript packages (tailwind, react, render) and writes publish-ready copies into
+ * Builds the TypeScript packages (style, tailwind, react, render) and writes publish-ready copies into
  * tmp/release/<pkg>/. The workspace stays as it is: its `exports` keep pointing at src/ and its
  * workspace: links stay. Only the staged copies point at dist/ and carry registry versions.
  * `inkoxide` and `@inkoxide/schema` are released by scripts/npm-release.mjs.
@@ -25,10 +25,10 @@ const REPOSITORY_URL = 'git+https://github.com/eddiesr93/inkoxide.git';
  * In dependency order: each package only depends on the ones before it. scripts/release/publish.sh
  * publishes them in this order (`--list`).
  */
-const PACKAGES = ['tailwind', 'react', 'render'];
+const PACKAGES = ['style', 'tailwind', 'react', 'render'];
 
 /** Packages with no import-time side effects (module state only, no I/O or globals). */
-const SIDE_EFFECT_FREE = new Set(['tailwind', 'react']);
+const SIDE_EFFECT_FREE = new Set(['style', 'tailwind', 'react']);
 
 /** Licence files that must ship with the fonts. */
 const FONT_LICENCES = ['Inter-OFL.txt', 'NotoSans-OFL.txt', 'RobotoMono-OFL.txt'];
@@ -127,10 +127,16 @@ function manifest(name, pkg, dist) {
   for (const [dep, spec] of Object.entries(pkg.dependencies ?? {})) {
     deps[dep] = resolveVersion(dep, spec);
   }
+  // Workspace peers (an optional @inkoxide/tailwind, imported only when installed) take the
+  // versions released with this one and later compatible ones.
+  const peers = {};
+  for (const [dep, spec] of Object.entries(pkg.peerDependencies ?? {})) {
+    peers[dep] = `^${resolveVersion(dep, spec)}`;
+  }
   // A dev dependency that the emitted code or declarations import (types such as
   // @inkoxide/schema in @inkoxide/tailwind's .d.ts) is a runtime dependency of the published copy.
   for (const used of importedPackages(dist)) {
-    if (deps[used]) continue;
+    if (deps[used] || peers[used]) continue;
     const dev = pkg.devDependencies?.[used];
     if (!dev) fail(`@inkoxide/${name} imports ${used}, which is not in its package.json.`);
     deps[used] = resolveVersion(used, dev);
@@ -170,13 +176,15 @@ function manifest(name, pkg, dist) {
   if (SIDE_EFFECT_FREE.has(name)) out.sideEffects = false;
   // React is a peer: the reconciler and the user's components must share one copy. The range
   // matches react-reconciler's own peer range; the workspace keeps the exact pin.
-  const peers = {};
   if (deps.react) {
     peers.react = `^${deps.react}`;
     delete deps.react;
   }
   out.dependencies = Object.fromEntries(Object.entries(deps).sort(([a], [b]) => a.localeCompare(b)));
-  if (Object.keys(peers).length > 0) out.peerDependencies = peers;
+  if (Object.keys(peers).length > 0) {
+    out.peerDependencies = Object.fromEntries(Object.entries(peers).sort(([a], [b]) => a.localeCompare(b)));
+  }
+  if (pkg.peerDependenciesMeta) out.peerDependenciesMeta = pkg.peerDependenciesMeta;
   return out;
 }
 
@@ -217,11 +225,23 @@ These files are not covered by the package's MIT licence; each keeps its own lic
 `;
 
 const READMES = {
+  style: {
+    blurb:
+      'Reads CSS values into Inkoxide styles: lengths and units, colours, `flex`, transforms, ' +
+      'transform origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
+      '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
+    install: 'npm install @inkoxide/style',
+    example: `import { parseColor, parseTransform, PT_PER_UNIT } from '@inkoxide/style';
+
+parseColor('#f80'); // [1, 0.533333, 0, 1]
+parseTransform('transform', 'rotate(10deg) translate(4px, 50%)'); // [{ rotate: 10 }, { translate: [3, '50%'] }]
+PT_PER_UNIT.mm; // 2.834646`,
+  },
   tailwind: {
     blurb:
       'Turns Tailwind class strings into Inkoxide style objects, using the real Tailwind v4 compiler. ' +
       'Unsupported classes throw outside production and are ignored with a warning in production. ' +
-      'To make PDFs, install `@inkoxide/render`, which uses this package.',
+      'Install it next to `@inkoxide/render` to style with `className`; without it, `style` works alone.',
     install: 'npm install @inkoxide/tailwind',
     example: `import { initTailwind, tw } from '@inkoxide/tailwind';
 
@@ -232,18 +252,17 @@ console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, c
   react: {
     blurb:
       'React components and a custom reconciler that build Inkoxide document trees. ' +
-      'Style with `className` (Tailwind) or `style`; fonts come from a registry. ' +
+      'Style with `style`, or with `className` when `@inkoxide/tailwind` is installed; fonts come ' +
+      'from a registry. ' +
       'To make PDFs, install `@inkoxide/render`, which re-exports these components.',
-    install: 'npm install @inkoxide/react @inkoxide/tailwind react',
+    install: 'npm install @inkoxide/react',
     example: `import { readFileSync } from 'node:fs';
 import { createElement as h } from 'react';
 import { Document, Page, Text, fonts, renderToTree } from '@inkoxide/react';
-import { initTailwind } from '@inkoxide/tailwind';
 
-await initTailwind();
 fonts.register({ id: 'Inter-Regular', family: 'Inter' }, readFileSync('Inter-Regular.ttf'));
 const doc = await renderToTree(
-  h(Document, null, h(Page, { size: 'A4', margin: '20mm' }, h(Text, { className: 'text-2xl' }, 'Hello'))),
+  h(Document, null, h(Page, { size: 'A4', margin: '20mm' }, h(Text, { style: { fontSize: 18 } }, 'Hello'))),
 );
 console.log(JSON.stringify(doc)); // an Inkoxide document (schema v1); @inkoxide/render turns it into a PDF`,
   },

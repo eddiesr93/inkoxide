@@ -80,7 +80,15 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
 
 ### Tailwind
 
-Write the classes you would write on the web. They are resolved by the Tailwind v4 compiler.
+Write the classes you would write on the web. They are resolved by the Tailwind v4 compiler, in
+`@inkoxide/tailwind`, which you install next to `@inkoxide/render` when you use `className`:
+
+```sh
+npm install @inkoxide/tailwind
+```
+
+Without it, `style` works the same, and a `className` fails with an error that says to install
+it.
 
 - **Units are tuned for print:** `1rem = 12pt` and `1px = 0.75pt`. So `p-4` is 12pt, `text-sm`
   is 10.5pt and `text-xs` is 9pt. Use arbitrary values for exact sizes: `text-[9.5pt]`,
@@ -525,8 +533,8 @@ All three take the same options:
 
 **`StyleSheet.create(styles)`** returns the styles unchanged, with their types.
 
-**`init()`** loads Tailwind's compiler, the engine and the fonts. The first render does it
-anyway; call it at server startup so the first request does not wait (about 150 ms). It resolves
+**`init()`** loads Tailwind's compiler (when `@inkoxide/tailwind` is installed), the engine and
+the fonts. The first render does it anyway; call it at server startup so the first request does not wait (about 150 ms). It resolves
 to the same status as `engineStatus()`.
 
 **Health checks.** `version()` returns `{ engine, schema, gitSha }`: the engine's version, the
@@ -703,7 +711,8 @@ another (from macOS into a Linux Docker image, say). Run `npm install` on the pl
 the code.
 
 **Do I need Tailwind installed?**
-No. The Tailwind compiler ships with the package: write classes, with no config and no CSS build.
+Only to style with `className`: then `npm install @inkoxide/tailwind`. It brings the Tailwind
+compiler, so there is no config and no CSS build. Without it, style with `style`.
 
 **Can I use my own components and hooks?**
 Yes. A document is ordinary React: components, props, context, `.map` and conditionals all work,

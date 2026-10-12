@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@inkoxide/render": "workspace:*",
+    "@inkoxide/tailwind": "workspace:*",
     "react": "19.3.0"
   },
   "devDependencies": {

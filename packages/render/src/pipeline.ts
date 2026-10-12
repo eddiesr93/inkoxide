@@ -4,13 +4,13 @@ import { Readable } from 'node:stream';
 import {
   assertValidTree,
   innermostComponent,
+  loadTailwind,
   renderTemplate,
   TemplateError,
   type TreeOptions,
   type TreeResult,
 } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
-import { initTailwind } from '@inkoxide/tailwind';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
@@ -43,14 +43,15 @@ export interface GenerateOptions extends RenderOpts {
 let engine: Promise<EngineStatus> | undefined;
 
 /**
- * Tailwind's design system, the bundled fonts and hyphenation patterns and the schema check,
- * once per process; then the fonts added with `Font.register` since the last call. Every render
- * calls it, so calling it yourself only moves that cost to startup. A start-up failure is an
+ * Tailwind's design system (when `@inkoxide/tailwind` is installed), the bundled fonts and
+ * hyphenation patterns and the schema check, once per process; then the fonts added with
+ * `Font.register` since the last call. Every render calls it, so calling it yourself only moves
+ * that cost to startup. A start-up failure is an
  * `INTERNAL` RenderError; a font that cannot be loaded, `INVALID_FONT`.
  */
 export async function init(): Promise<EngineStatus> {
   engine ??= (async () => {
-    await initTailwind();
+    await loadTailwind();
     return initEngine();
   })().catch((e: unknown) => {
     throw startupError(e);

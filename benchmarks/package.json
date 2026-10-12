@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@inkoxide/render": "workspace:*",
+    "@inkoxide/tailwind": "workspace:*",
     "@react-pdf/renderer": "4.9.0",
     "react": "19.3.0",
     "react-pdf-tailwind": "3.0.0"

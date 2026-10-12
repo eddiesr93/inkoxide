@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Stages and publishes @inkoxide/tailwind, @inkoxide/react and @inkoxide/render to npm. The
-# release workflow runs it after publishing the engine packages.
+# Stages and publishes @inkoxide/style, @inkoxide/tailwind, @inkoxide/react and @inkoxide/render
+# to npm. The release workflow runs it after publishing the engine packages.
 #   scripts/release/publish.sh            # publish
 #   scripts/release/publish.sh --dry-run  # stage and run npm publish --dry-run
 #
-# Order: stage.mjs --list (tailwind, react, render; each depends only on the ones before it).
+# Order: stage.mjs --list (style, tailwind, react, render; each depends only on the ones before it).
 # A name@version already on the registry is skipped, so a failed run can simply be repeated.
 # Auth: in GitHub Actions, npm trusted publishing (OIDC, with provenance); locally, the user
 # `npm login` set up, with 2FA in the browser.

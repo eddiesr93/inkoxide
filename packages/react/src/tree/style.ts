@@ -19,7 +19,7 @@ import {
   TEXT_ONLY,
   type TextDecoration,
   type TwStyle,
-} from '@inkoxide/tailwind';
+} from '@inkoxide/style';
 
 import type { HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
 

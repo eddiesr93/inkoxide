@@ -13,7 +13,8 @@ how the pieces fit together, for contributors.
 | `crates/node` | The napi-rs binding, published as the npm package `inkoxide`. |
 | `packages/inkoxide` | The npm package for the binding: loader, types and tests. |
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
-| `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`. |
+| `packages/style` | Style values: CSS lengths, colours and transforms read into engine styles: `@inkoxide/style`. |
+| `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`, optional. |
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
 | `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`. |
 | `examples` | Example documents in React; they produce the screenshots in the READMEs. |
@@ -22,17 +23,20 @@ how the pieces fit together, for contributors.
 | `fuzz` | cargo-fuzz targets (nightly, outside the Cargo workspace). |
 
 The npm packages depend on each other in this order:
-`@inkoxide/schema` → `@inkoxide/tailwind` → `@inkoxide/react` → `@inkoxide/render`,
-which also depends on `inkoxide`.
+`@inkoxide/schema` → `@inkoxide/style` → `@inkoxide/react` → `@inkoxide/render`,
+which also depends on `inkoxide`. `@inkoxide/tailwind` depends on `@inkoxide/style`, and
+`@inkoxide/react` and `@inkoxide/render` load it only when it is installed (an optional peer
+dependency), for `className`.
 
 ## From React to a document tree
 
 `@inkoxide/react` is a React reconciler whose host components (`Document`,
 `Page`, `View`, `Text`, `Image`, `Table`, …) build an in-memory tree. After
 React commits, the tree is converted into a schema v1 document: `className`
-strings go through `@inkoxide/tailwind` (the real Tailwind compiler turns
-classes into CSS, and the CSS declarations are mapped to engine styles),
-style objects are normalised, and fonts are resolved against the font
+strings go through `@inkoxide/tailwind` when it is installed (the real
+Tailwind compiler turns classes into CSS, and the CSS declarations are
+mapped to engine styles), style objects are normalised with
+`@inkoxide/style`, and fonts are resolved against the font
 registry with CSS font matching. In development the tree is validated
 against the JSON Schema, and errors carry the component stack.
 

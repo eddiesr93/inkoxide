@@ -38,6 +38,9 @@ importers:
       '@inkoxide/render':
         specifier: workspace:*
         version: link:../packages/render
+      '@inkoxide/tailwind':
+        specifier: workspace:*
+        version: link:../packages/tailwind
       '@react-pdf/renderer':
         specifier: 4.9.0
         version: 4.9.0(react@19.3.0)
@@ -60,6 +63,9 @@ importers:
       '@inkoxide/render':
         specifier: workspace:*
         version: link:../packages/render
+      '@inkoxide/tailwind':
+        specifier: workspace:*
+        version: link:../packages/tailwind
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -78,9 +84,9 @@ importers:
       '@inkoxide/schema':
         specifier: workspace:*
         version: link:../schema
-      '@inkoxide/tailwind':
+      '@inkoxide/style':
         specifier: workspace:*
-        version: link:../tailwind
+        version: link:../style
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -94,6 +100,9 @@ importers:
         specifier: 0.34.0
         version: 0.34.0(react@19.3.0)
     devDependencies:
+      '@inkoxide/tailwind':
+        specifier: workspace:*
+        version: link:../tailwind
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -109,9 +118,6 @@ importers:
       '@inkoxide/schema':
         specifier: workspace:*
         version: link:../schema
-      '@inkoxide/tailwind':
-        specifier: workspace:*
-        version: link:../tailwind
       inkoxide:
         specifier: workspace:*
         version: link:../inkoxide
@@ -122,20 +128,36 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
+      '@inkoxide/tailwind':
+        specifier: workspace:*
+        version: link:../tailwind
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
 
   packages/schema: {}
 
-  packages/tailwind:
+  packages/style:
     dependencies:
-      '@tailwindcss/node':
-        specifier: 4.3.3
-        version: 4.3.3
       culori:
         specifier: 4.0.2
         version: 4.0.2
+    devDependencies:
+      '@inkoxide/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@types/culori':
+        specifier: 4.0.1
+        version: 4.0.1
+
+  packages/tailwind:
+    dependencies:
+      '@inkoxide/style':
+        specifier: workspace:*
+        version: link:../style
+      '@tailwindcss/node':
+        specifier: 4.3.3
+        version: 4.3.3
       postcss:
         specifier: 8.5.29
         version: 8.5.29
@@ -146,9 +168,6 @@ importers:
       '@inkoxide/schema':
         specifier: workspace:*
         version: link:../schema
-      '@types/culori':
-        specifier: 4.0.1
-        version: 4.0.1
 
 packages:
 

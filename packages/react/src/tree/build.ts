@@ -17,7 +17,7 @@ import type {
   TextNode,
   TextRun,
 } from '@inkoxide/schema';
-import { round, type TwStyle, tw, UnsupportedUtilityError } from '@inkoxide/tailwind';
+import { round, type TwStyle } from '@inkoxide/style';
 import { createElement } from 'react';
 
 import { Painter } from '../canvas.ts';
@@ -45,6 +45,7 @@ import {
   type Node,
 } from '../reconciler/instance.ts';
 import { renderToInstances } from '../reconciler/render.ts';
+import { classStyle, defaultFamily, isUnsupportedClass } from '../tailwind.ts';
 import { ImageIds, ImageTable, type PendingImage, type RemoteImagePolicy } from './images.ts';
 import { PRESET_NAMES, presetSize } from './page-sizes.ts';
 import {
@@ -186,18 +187,28 @@ class Builder {
   /** The element's own style: its classes, then its `style` prop. `parent` is the inherited context. */
   private styleOf(inst: Instance, parent: TextCtx): TwStyle {
     const className = inst.props.className as string | undefined;
-    let s: TwStyle;
-    try {
-      s = tw(className);
-    } catch (e) {
-      if (e instanceof UnsupportedUtilityError) {
-        this.fail(inst, `${e.message}. In className="${className}" on <${HOST_NAME[inst.type]}>.`, {
+    let s: TwStyle = {};
+    if (className?.trim()) {
+      let classes: TwStyle | string;
+      try {
+        classes = classStyle(className);
+      } catch (e) {
+        if (isUnsupportedClass(e)) {
+          this.fail(inst, `${e.message}. In className="${className}" on <${HOST_NAME[inst.type]}>.`, {
+            kind: 'tailwind',
+            className,
+            cause: e,
+          });
+        }
+        throw e;
+      }
+      if (typeof classes === 'string') {
+        this.fail(inst, `className="${className}" on <${HOST_NAME[inst.type]}> needs Tailwind: ${classes}.`, {
           kind: 'tailwind',
           className,
-          cause: e,
         });
       }
-      throw e;
+      s = classes;
     }
     const style = inst.props.style as StyleInput | undefined;
     if (style) {
@@ -279,7 +290,7 @@ class Builder {
     }
     this.docLang = meta.lang;
     this.debugAll = p.debug === true;
-    const family = this.opts.defaultFamily ?? tw('font-sans').fontFamily ?? ['Inter'];
+    const family = this.opts.defaultFamily ?? defaultFamily();
     const ctx: TextCtx = {
       fontFamily: family,
       fontWeight: 400,

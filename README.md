@@ -57,6 +57,12 @@ millisecond; a 98-page report with 40 tables in about 130 ms.
 npm install @inkoxide/render
 ```
 
+To style with Tailwind classes (`className`), as the example does, add:
+
+```sh
+npm install @inkoxide/tailwind
+```
+
 Save this as `receipt.tsx`:
 
 ```tsx
@@ -149,7 +155,8 @@ MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and 
 |---|---|
 | [`@inkoxide/render`](packages/render) | React components to PDF: `renderToBuffer`, `renderToFile`, `Font.register`, bundled fonts |
 | [`@inkoxide/react`](packages/react) | The React components and reconciler that build document trees |
-| [`@inkoxide/tailwind`](packages/tailwind) | Tailwind class strings to engine styles, with the Tailwind v4 compiler |
+| [`@inkoxide/tailwind`](packages/tailwind) | Optional: Tailwind class strings (`className`) to engine styles, with the Tailwind v4 compiler |
+| [`@inkoxide/style`](packages/style) | Style values: CSS lengths, colours and transforms read into engine styles |
 | [`inkoxide`](packages/inkoxide) | The engine for Node.js: a JSON or MessagePack document tree in, PDF bytes out |
 | [`@inkoxide/schema`](packages/schema) | TypeScript types and JSON Schema of the document tree |
 | [`inkoxide` crate](crates/core) | The engine as a Rust library |

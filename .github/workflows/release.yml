@@ -1,6 +1,6 @@
 # Builds the native Node bindings on every platform and publishes every npm
 # package: the platform binaries, `inkoxide` and `@inkoxide/schema`, then
-# `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
+# `@inkoxide/style`, `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
 # already on the registry are skipped. npm trusts this workflow (trusted
 # publishing), so no token is stored and every package gets provenance.
 # Finally it tags the commit and creates the GitHub release from the newest
