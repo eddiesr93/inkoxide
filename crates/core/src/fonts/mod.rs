@@ -393,8 +393,8 @@ pub(crate) struct FontMatch {
 /// CSS font matching (CSS Fonts 4 §5.2) over `faces`, the family, weight
 /// and style of each face in order: the first family of `families` that
 /// has a face (else the first face's family), then the faces of `style`
-/// (else every face of the family), then the nearest weight. Families
-/// match by exact name. The same algorithm as `FontRegistry` in
+/// (else every face of the family), then the nearest weight. Family names
+/// match ignoring ASCII case, as in CSS. The same algorithm as `FontRegistry` in
 /// `@inkoxide/react`; `fixtures/fonts/matching.json` holds the cases both
 /// are tested with. Returns the index of the face, and whether it is exact.
 #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
@@ -407,9 +407,9 @@ fn match_face(
     let first = faces.first()?;
     let (family, family_exact) = families
         .iter()
-        .position(|f| faces.iter().any(|x| x.0 == *f))
+        .position(|f| faces.iter().any(|x| x.0.eq_ignore_ascii_case(f)))
         .map_or((first.0, false), |i| (families[i], i == 0));
-    let in_family = || (0..faces.len()).filter(|&i| faces[i].0 == family);
+    let in_family = || (0..faces.len()).filter(|&i| faces[i].0.eq_ignore_ascii_case(family));
     let same_style: Vec<usize> = in_family().filter(|&i| faces[i].2 == style).collect();
     let style_exact = !same_style.is_empty();
     let pool = if style_exact {

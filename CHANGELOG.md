@@ -25,6 +25,9 @@ All notable changes to the packages in this repository. The format follows
 - Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
   pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
   mitred instead of bevelled. `miterLimit(4)` gives the old joins.
+- Font family names match ignoring ASCII case, as in CSS: `fontFamily: 'inter'` picks Inter
+  instead of falling back with a warning. `Font.register` refuses a family that differs from
+  a registered or bundled one only in case, for the same weight and style.
 
 ## 0.6.5 - 2026-10-13
 
