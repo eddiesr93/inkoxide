@@ -1059,6 +1059,132 @@ fn form_fields() {
     ] {
         assert_eq!(one(&doc(node)), (code, format!("{f}.{path}")), "{node}");
     }
+    // Formats: on single-line text fields, with the keys of their type,
+    // and a value that fits.
+    let text = |format: &str, value: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","format":{format}{value}}}}}"#
+        ))
+    };
+    for (format, value) in [
+        (
+            r#"{"type":"number","decimals":0,"separators":"1.234,56","negative":"parensRed","currency":"€","currencyBefore":false}"#,
+            r#","value":"-1234.5""#,
+        ),
+        (r#"{"type":"percent","decimals":1}"#, r#","value":"0.125""#),
+        (
+            r#"{"type":"date","pattern":"dd/mm/yyyy"}"#,
+            r#","value":"2026-10-14""#,
+        ),
+        (
+            r#"{"type":"time","pattern":"hh:MM tt"}"#,
+            r#","value":"18:30""#,
+        ),
+        (r#"{"type":"zip"}"#, r#","value":"02134""#),
+        (r#"{"type":"ssn"}"#, ""),
+    ] {
+        assert_eq!(run(&text(format, value)), vec![], "{format}");
+    }
+    for (format, value, code, path) in [
+        (
+            r#"{"type":"number"}"#,
+            r#","value":"1,000""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"date","pattern":"dd"}"#,
+            r#","value":"2026-02-30""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"zip"}"#,
+            r#","value":"1234""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (r#"{"type":"date"}"#, "", C::MissingField, "format.pattern"),
+        (
+            r#"{"type":"date","pattern":"dd\");app.alert(1);//"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"time","pattern":"dd HH"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"number","currency":"\""}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"number","currency":"\n"}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"number","pattern":"dd"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"percent","currency":"$"}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"zip","decimals":2}"#,
+            "",
+            C::InvalidValue,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"number","decimals":11}"#,
+            "",
+            C::OutOfRange,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"number","decimals":-1}"#,
+            "",
+            C::OutOfRange,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"phone"}"#,
+            r#","multiline":true"#,
+            C::InvalidValue,
+            "format",
+        ),
+        (
+            r#"{"type":"phone"}"#,
+            r#","password":true"#,
+            C::InvalidValue,
+            "format",
+        ),
+        (r#"{"type":"money"}"#, "", C::InvalidValue, "format.type"),
+    ] {
+        assert_eq!(
+            one(&text(format, value)),
+            (code, format!("{f}.{path}")),
+            "{format}"
+        );
+    }
+    assert_eq!(
+        one(&doc(
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["1"],"format":{"type":"zip"}}}"#
+        )),
+        (C::InvalidValue, format!("{f}.format"))
+    );
     // Options and values are bounded.
     let select = |options: &[String]| {
         doc(&format!(

@@ -38,7 +38,7 @@ string, which is read as UTF-8 JSON.
 | `creation_date` / `with_creation_date` | `creationDate` | none | RFC 3339 timestamp; overrides `meta.creationDate`. With neither, no date is written. Another string fails the render: `INVALID_VALUE` at `options.creationDate` in Rust, `INVALID_ARGUMENT` in Node |
 | `threads` / `with_threads` | `threads` | all cores | Worker threads for this render. `1` runs it on the calling thread (in Node, its libuv thread) with no parallelism inside, so concurrent renders do not wait for each other; a larger number uses a pool of that size, shared by renders that ask for the same number and kept for the life of the process. A pool has at most 256 threads. Rust: `0` is `1`, and a number above 256 uses the 256-thread pool; Node: an integer from 1 to 256, other values are `INVALID_ARGUMENT` |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
-| `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b |
+| `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b. PDF/A forbids scripts, so text fields with a `format` keep their formatted text and value but not the form scripts that format what the user types |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
@@ -187,6 +187,10 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   The `value` of a select or list field is one of its `options`; an
   array `value` needs a list with `multiSelect` and names each option at
   most once (`INVALID_VALUE`).
+- A `format` applies to single-line text fields that are not passwords,
+  with the keys of its `type`; a date or time `format` needs a `pattern`
+  (`MISSING_FIELD`) made of the documented letters and ` .,/:-`, and the
+  field's `value` must fit the format (`INVALID_VALUE`).
 - `gridArea` cannot be combined with `gridRow` or `gridColumn`
   (`INVALID_VALUE`), and `gridTemplateAreas` has at most 10000 cells
   (`OUT_OF_RANGE`).

@@ -32,6 +32,11 @@ All notable changes to the packages in this repository. The format follows
 - List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
   without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
   array and several options can be selected.
+- Formats on text fields: `format` shows a number (decimals, separators, negative style,
+  currency), a percent, a date or a time (with a pattern such as `dd/mm/yyyy`), a postal code, a
+  phone number or a social security number, and viewers format what the user types with the
+  standard form scripts. PDF/A output keeps the formatted text and value but leaves the scripts
+  out, as PDF/A requires.
 - Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
   author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
   corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints

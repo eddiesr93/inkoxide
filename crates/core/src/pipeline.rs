@@ -37,6 +37,8 @@ const ITEM_BYTES: u64 = 16;
 const LINK_BYTES: u64 = 256;
 /// and a `debug` outline, a form field widget or a background image.
 const BOX_BYTES: u64 = 768;
+/// Estimated output of the scripts of a field format, in bytes.
+const SCRIPT_BYTES: u64 = 512;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -395,6 +397,10 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // appearance.
                     let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
                     size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
+                    if f.format.is_some() {
+                        // Its two scripts.
+                        size = size.saturating_add(SCRIPT_BYTES);
+                    }
                 }
                 NodeKind::Note(note) => {
                     let text = note.contents.len() + note.author.as_ref().map_or(0, String::len);

@@ -1,7 +1,6 @@
 //! Interactive form fields (`AcroForm`): intrinsic size and the
 //! widget ops painting hands to the PDF writer.
 
-#[cfg_attr(not(test), expect(dead_code, reason = "text fields use it next"))]
 pub(crate) mod format;
 
 use crate::fonts::{FontKey, FontSet, LoadedFont};
@@ -17,6 +16,8 @@ const DEFAULT_WIDTH: f32 = 150.0;
 const MULTILINE_ROWS: f32 = 3.0;
 /// Most options a list box without a height shows.
 const LIST_ROWS: usize = 4;
+/// The colour of a negative number in a red style.
+const RED: Color = [1.0, 0.0, 0.0, 1.0];
 /// Background of the selected options of a list box.
 pub(crate) const HIGHLIGHT: Color = [0.6, 0.75, 0.86, 1.0];
 /// Line height of a field's text, as a multiple of its font size.
@@ -127,9 +128,20 @@ pub(crate) fn paint(
         let m = &lf.data.metrics;
         let scale = lf.scale(f.size);
         let (asc, desc) = (m.ascender * scale, -m.descender * scale);
-        let color = f.color.unwrap_or(BLACK);
-        let shown = match (f.kind, f.password) {
-            (FieldKind::Text | FieldKind::Select, false) => f.value_str().unwrap_or(""),
+        // A formatted value shows formatted, in red for a negative number
+        // in a red style.
+        let formatted = f
+            .format
+            .as_deref()
+            .zip(f.value_str())
+            .and_then(|(fmt, v)| format::display(fmt, v));
+        let color = match &formatted {
+            Some(s) if s.red => RED,
+            _ => f.color.unwrap_or(BLACK),
+        };
+        let shown = match (f.kind, f.password, &formatted) {
+            (FieldKind::Text, false, Some(s)) => s.text.as_str(),
+            (FieldKind::Text | FieldKind::Select, false, _) => f.value_str().unwrap_or(""),
             _ => "",
         };
         let rows = f.multiline || f.kind == FieldKind::List;
@@ -340,6 +352,24 @@ mod tests {
             .height
         };
         assert_eq!([size(1), size(4), size(9)], [16.0, 52.0, 52.0]);
+    }
+
+    #[test]
+    fn formatted_values_show_formatted() {
+        let text = |op: &FieldOp| op.text.iter().map(|t| t.glyphs.len()).sum::<usize>();
+        let (op, _) = painted(
+            r#"{"name":"n","kind":"text","font":"Inter-Regular","value":"-1234.5","format":{"type":"number","negative":"parensRed"}}"#,
+            "",
+        );
+        // `(1,234.50)`, in red.
+        assert_eq!(text(&op), 10);
+        assert_eq!(op.text[0].color, RED);
+        let (op, _) = painted(
+            r#"{"name":"n","kind":"text","font":"Inter-Regular","value":"1234.5","format":{"type":"number","negative":"parensRed"}}"#,
+            "",
+        );
+        assert_eq!(text(&op), 8);
+        assert_eq!(op.text[0].color, BLACK);
     }
 
     #[test]

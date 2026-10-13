@@ -410,6 +410,8 @@ pub struct Field {
     #[serde(default = "default_field_size")]
     pub size: f32,
     pub color: Option<Color>,
+    /// Text: how the value shows and is typed (boxed: rare).
+    pub format: Option<Box<FieldFormat>>,
 }
 
 impl Field {

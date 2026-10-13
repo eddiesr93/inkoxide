@@ -4,13 +4,13 @@
 
 use std::collections::BTreeMap;
 
-use pdf_writer::types::{AnnotationFlags, FieldFlags, FieldType};
+use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType};
 use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
 
 use super::{font_name, q, set_fill, show_text, EncodedPage, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
-use crate::forms::FieldOp;
+use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
 use crate::schema::{FieldKind, FieldValue, BLACK};
 
@@ -133,7 +133,7 @@ pub(super) fn write_fields(
             if let Some(p) = parent {
                 f.parent(p);
             }
-            field_entries(&mut f, name, widgets, &states);
+            field_entries(&mut f, name, widgets, &states, ctx.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps);
             annot.finish();
@@ -156,7 +156,7 @@ pub(super) fn write_fields(
         if let Some(p) = parent {
             f.parent(p);
         }
-        field_entries(&mut f, name, widgets, &states);
+        field_entries(&mut f, name, widgets, &states, ctx.scripts());
         f.children(kids);
         f.finish();
     }
@@ -205,12 +205,14 @@ fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
     }
 }
 
-/// The field-level entries: type, name, flags, value, default appearance.
+/// The field-level entries: type, name, flags, value, default appearance,
+/// and with `scripts` the actions of a format.
 fn field_entries(
     f: &mut FieldWriter<'_>,
     name: &str,
     widgets: &[(usize, &FieldOp)],
     states: &OnStates,
+    scripts: bool,
 ) {
     let op = widgets[0].1;
     let spec = &op.field;
@@ -236,8 +238,26 @@ fn field_entries(
             }
             if let Some(v) = spec.value_str() {
                 if !spec.password {
-                    f.text_value(TextStr(v));
+                    match spec
+                        .format
+                        .as_deref()
+                        .and_then(|fmt| format::stored(fmt, v))
+                    {
+                        Some(stored) => f.text_value(TextStr(&stored)),
+                        None => f.text_value(TextStr(v)),
+                    };
                 }
+            }
+            if let (Some(fmt), true) = (spec.format.as_deref(), scripts) {
+                // The keystroke and format actions viewers run.
+                let (keystroke, format) = format::scripts(fmt);
+                let mut aa = f.additional_actions();
+                aa.form_calculate_partial()
+                    .action_type(ActionType::JavaScript)
+                    .js_string(TextStr(&keystroke));
+                aa.form_format()
+                    .action_type(ActionType::JavaScript)
+                    .js_string(TextStr(&format));
             }
         }
         FieldKind::Select => {
@@ -339,6 +359,13 @@ pub(super) struct Ctx<'r, 'f, 'a> {
 type Appearances = Vec<(Option<String>, Ref)>;
 
 impl Ctx<'_, '_, '_> {
+    /// Whether fields may carry scripts: not in PDF/A, which forbids
+    /// JavaScript actions and `/AA` (ISO 19005-2). A
+    /// format keeps its formatted text and value there.
+    fn scripts(&self) -> bool {
+        !self.pdf_a
+    }
+
     /// The appearance streams of widget `op`, whose on state is `on`
     /// (checkboxes and radio buttons).
     fn appearances(
@@ -496,7 +523,7 @@ mod tests {
     /// The PDF (uncompressed, as text) of a 200 × 200 pt page holding
     /// `children`.
     fn render(children: &str) -> String {
-        render_with(children, "", &crate::FontStore::new())
+        render_with(children, "", &crate::FontStore::new(), false)
     }
 
     /// [`render`], with `Inter-Regular` declared.
@@ -505,14 +532,17 @@ mod tests {
             children,
             r#""fonts":[{"id":"Inter-Regular","family":"Inter"}],"#,
             &crate::test_fixtures::inter(),
+            false,
         )
     }
 
-    fn render_with(children: &str, fonts: &str, store: &crate::FontStore) -> String {
+    fn render_with(children: &str, fonts: &str, store: &crate::FontStore, pdf_a: bool) -> String {
         let doc = format!(
             r#"{{"version":1,{fonts}"pages":[{{"size":{{"width":200,"height":200}},"children":[{children}]}}]}}"#
         );
-        let options = crate::RenderOptions::default().with_compress(false);
+        let options = crate::RenderOptions::default()
+            .with_compress(false)
+            .with_pdf_a(pdf_a);
         let pdf = crate::render(
             doc.as_bytes(),
             crate::InputFormat::Json,
@@ -652,6 +682,47 @@ mod tests {
         // The highlight is drawn behind the selected row.
         let pdf = list(r#","value":"a""#);
         assert!(pdf.contains("0.6 0.75 0.86 rg"), "{pdf}");
+    }
+
+    #[test]
+    fn formats_add_their_scripts_except_in_pdf_a() {
+        let field = r#"{"type":"field","style":{"height":20},"field":{"name":"d","kind":"text","font":"Inter-Regular","value":"2026-10-14","format":{"type":"date","pattern":"dd mmm yyyy"}}}"#;
+        let pdf = render_inter(field);
+        assert!(pdf.contains("/V (14 Oct 2026)"), "{pdf}");
+        assert!(pdf.contains("/AA <<"), "{pdf}");
+        assert!(
+            pdf.contains("/K <<") && pdf.contains("/S /JavaScript"),
+            "{pdf}"
+        );
+        assert!(
+            pdf.contains(r#"/JS (AFDate_KeystrokeEx("dd mmm yyyy");)"#),
+            "{pdf}"
+        );
+        assert!(
+            pdf.contains(r#"/JS (AFDate_FormatEx("dd mmm yyyy");)"#),
+            "{pdf}"
+        );
+        // PDF/A forbids scripts: the formatted value stays.
+        let pdf = render_with(
+            field,
+            r#""fonts":[{"id":"Inter-Regular","family":"Inter"}],"#,
+            &crate::test_fixtures::inter(),
+            true,
+        );
+        assert!(pdf.contains("/V (14 Oct 2026)"), "{pdf}");
+        assert!(
+            !pdf.contains("/AA <<") && !pdf.contains("/S /JavaScript"),
+            "{pdf}"
+        );
+        // Numbers keep their value; the viewer formats it.
+        let pdf = render_inter(
+            r#"{"type":"field","field":{"name":"n","kind":"text","font":"Inter-Regular","value":"-1234.5","format":{"type":"number","currency":"$"}}}"#,
+        );
+        assert!(pdf.contains("/V (-1234.5)"), "{pdf}");
+        assert!(
+            pdf.contains(r#"AFNumber_Format(2, 0, 0, 0, "$", true);"#),
+            "{pdf}"
+        );
     }
 
     #[test]

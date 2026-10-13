@@ -863,6 +863,40 @@ export interface Field {
    * text and mark colour; default black
    */
   color?: Color;
+  format?: FieldFormat;
+}
+/**
+ * Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "FieldFormat".
+ */
+export interface FieldFormat {
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'phone' | 'ssn';
+  /**
+   * number and percent: digits after the decimal separator, rounded half away from zero; default 2
+   */
+  decimals?: number;
+  /**
+   * number and percent: the thousands and decimal separators, by example; default `1,234.56`
+   */
+  separators?: '1,234.56' | '1234.56' | '1.234,56' | '1234,56';
+  /**
+   * number: how a negative number shows: `-1.00`, `1.00` in red, `(1.00)` or `(1.00)` in red; default `minus`
+   */
+  negative?: 'minus' | 'red' | 'parens' | 'parensRed';
+  /**
+   * number: a currency symbol, shown as it is (add a space to separate it); no control characters, quotes or backslashes
+   */
+  currency?: string;
+  /**
+   * number: the currency goes before the number
+   */
+  currencyBefore?: boolean;
+  /**
+   * date and time (required there): how the value shows, with `d`, `dd`, `ddd` (Mon), `dddd` (Monday), `m`, `mm`, `mmm` (Jan), `mmmm` (January), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; a time shows only `H`, `h`, `M`, `s` and `t`. Names are English.
+   */
+  pattern?: string;
 }
 /**
  * A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.

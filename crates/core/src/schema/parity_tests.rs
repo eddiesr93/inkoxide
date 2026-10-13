@@ -151,6 +151,11 @@ fn structs_match_schema() {
     );
     check(
         &s,
+        Some("FieldFormat"),
+        &node(r#"{"type":"field","field":{"name":"n","kind":"text","format":{@"type":"zip"}}}"#),
+    );
+    check(
+        &s,
         Some("Note"),
         &node(r#"{"type":"note","note":{@"contents":"n"}}"#),
     );
@@ -349,6 +354,7 @@ type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
 #[test]
 #[allow(clippy::cast_precision_loss)]
 fn named_bounds_match_schema() {
+    use crate::forms::format::{MAX_CURRENCY, MAX_DECIMALS, MAX_PATTERN};
     use crate::validate::rules::{
         MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FIELD_NAME,
         MAX_FIELD_OPTION, MAX_FIELD_OPTIONS, MAX_FIELD_VALUE, MAX_FONT_SIZE, MAX_LETTER_SPACING,
@@ -374,6 +380,14 @@ fn named_bounds_match_schema() {
         )
     };
     let chars = |n: f64| "x".repeat(n as usize);
+    let format = |f: &str| {
+        doc(
+            font,
+            &format!(
+                r#"{{"type":"field","field":{{"name":"n","kind":"text","font":"f","format":{{{f}}}}}}}"#
+            ),
+        )
+    };
     let select = |options: &[String]| {
         doc(
             font,
@@ -467,6 +481,35 @@ fn named_bounds_match_schema() {
             MAX_FIELD_OPTIONS as f64 + 1.0,
             "INVALID_VALUE",
             "pages[0].children[0].field.value".into(),
+        ),
+        (
+            "/$defs/FieldFormat/properties/decimals/maximum",
+            f64::from(MAX_DECIMALS),
+            Box::new(|v| format(&format!(r#""type":"number","decimals":{v}"#))),
+            f64::from(MAX_DECIMALS) + 1.0,
+            "OUT_OF_RANGE",
+            "pages[0].children[0].field.format.decimals".into(),
+        ),
+        (
+            "/$defs/FieldFormat/properties/currency/maxLength",
+            MAX_CURRENCY as f64,
+            Box::new(|n| format(&format!(r#""type":"number","currency":"{}""#, chars(n)))),
+            MAX_CURRENCY as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.format.currency".into(),
+        ),
+        (
+            "/$defs/FieldFormat/properties/pattern/maxLength",
+            MAX_PATTERN as f64,
+            Box::new(|n| {
+                let pattern: String = (0..n as usize)
+                    .map(|i| if i % 2 == 0 { 'd' } else { '/' })
+                    .collect();
+                format(&format!(r#""type":"date","pattern":"{pattern}""#))
+            }),
+            MAX_PATTERN as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.format.pattern".into(),
         ),
         (
             "/$defs/Note/properties/contents/maxLength",

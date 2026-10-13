@@ -1706,6 +1706,72 @@
         "color": {
           "$ref": "#/$defs/Color",
           "description": "text and mark colour; default black"
+        },
+        "format": {
+          "$ref": "#/$defs/FieldFormat"
+        }
+      }
+    },
+    "FieldFormat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.",
+      "properties": {
+        "type": {
+          "enum": [
+            "number",
+            "percent",
+            "date",
+            "time",
+            "zip",
+            "zipPlus4",
+            "phone",
+            "ssn"
+          ]
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "number and percent: digits after the decimal separator, rounded half away from zero; default 2"
+        },
+        "separators": {
+          "enum": [
+            "1,234.56",
+            "1234.56",
+            "1.234,56",
+            "1234,56"
+          ],
+          "description": "number and percent: the thousands and decimal separators, by example; default `1,234.56`"
+        },
+        "negative": {
+          "enum": [
+            "minus",
+            "red",
+            "parens",
+            "parensRed"
+          ],
+          "description": "number: how a negative number shows: `-1.00`, `1.00` in red, `(1.00)` or `(1.00)` in red; default `minus`"
+        },
+        "currency": {
+          "type": "string",
+          "maxLength": 8,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\"'\\\\\\u2028\\u2029]*$",
+          "description": "number: a currency symbol, shown as it is (add a space to separate it); no control characters, quotes or backslashes"
+        },
+        "currencyBefore": {
+          "type": "boolean",
+          "default": true,
+          "description": "number: the currency goes before the number"
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "date and time (required there): how the value shows, with `d`, `dd`, `ddd` (Mon), `dddd` (Monday), `m`, `mm`, `mmm` (Jan), `mmmm` (January), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; a time shows only `H`, `h`, `M`, `s` and `t`. Names are English."
         }
       }
     },

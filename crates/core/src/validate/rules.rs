@@ -7,12 +7,14 @@ use std::fmt::Write as _;
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
+use crate::forms::format;
 use crate::images::ImageCrateDecoder;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
-    ColumnWidth, Document, Field, FieldKind, FieldValue, GridTrack, ImageSource, Length,
-    LengthPercent, Node, NodeKind, Note, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount,
-    Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
+    ColumnWidth, Document, Field, FieldFormat, FieldKind, FieldValue, FormatKind, GridTrack,
+    ImageSource, Length, LengthPercent, Node, NodeKind, Note, ObjectPosition, OptEdges, PageSpec,
+    Position, RepeatCount, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
+    SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -775,6 +777,25 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+        if let Some(format) = &f.format {
+            if !is(FieldKind::Text) || f.multiline || f.password {
+                self.err(
+                    Code::InvalidValue,
+                    Some("format"),
+                    "`format` only applies to single-line text fields that are not passwords",
+                );
+            } else if self.at("format", |c| c.field_format(format)) {
+                if let Some(v) = f.value_str() {
+                    if format::display(format, v).is_none() {
+                        self.err(
+                            Code::InvalidValue,
+                            Some("value"),
+                            format!("`{v}` does not fit the field's format"),
+                        );
+                    }
+                }
+            }
+        }
         match f.kind {
             FieldKind::Radio if f.value_str().is_none_or(str::is_empty) => {
                 if !matches!(f.value, Some(FieldValue::Many(_))) {
@@ -816,6 +837,78 @@ impl<'a> Checker<'a> {
             },
             _ => {}
         }
+    }
+
+    /// Checks a text field's format; true when it is valid.
+    fn field_format(&mut self, f: &FieldFormat) -> bool {
+        let errors = self.errors.len();
+        let (number, percent) = (f.kind == FormatKind::Number, f.kind == FormatKind::Percent);
+        let dated = matches!(f.kind, FormatKind::Date | FormatKind::Time);
+        for (key, set, applies, kinds) in [
+            (
+                "decimals",
+                f.decimals.is_some(),
+                number || percent,
+                "number and percent",
+            ),
+            (
+                "separators",
+                f.separators.is_some(),
+                number || percent,
+                "number and percent",
+            ),
+            ("negative", f.negative.is_some(), number, "number"),
+            ("currency", f.currency.is_some(), number, "number"),
+            (
+                "currencyBefore",
+                f.currency_before.is_some(),
+                number,
+                "number",
+            ),
+            ("pattern", f.pattern.is_some(), dated, "date and time"),
+        ] {
+            if set && !applies {
+                self.err(
+                    Code::InvalidValue,
+                    Some(key),
+                    format!("`{key}` only applies to {kinds} formats"),
+                );
+            }
+        }
+        if f.decimals.is_some_and(|d| d > format::MAX_DECIMALS) {
+            self.err(
+                Code::OutOfRange,
+                Some("decimals"),
+                format!("decimals must be within 0..={}", format::MAX_DECIMALS),
+            );
+        }
+        if f.currency
+            .as_deref()
+            .is_some_and(|c| !format::currency_ok(c))
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("currency"),
+                format!(
+                    "a currency is at most {} characters, without control characters, quotes or backslashes",
+                    format::MAX_CURRENCY
+                ),
+            );
+        }
+        match &f.pattern {
+            Some(p) if dated => {
+                if let Err(e) = format::check_pattern(p, f.kind) {
+                    self.err(Code::InvalidValue, Some("pattern"), e);
+                }
+            }
+            None if dated => self.err(
+                Code::MissingField,
+                Some("pattern"),
+                "date and time formats require `pattern`",
+            ),
+            _ => {}
+        }
+        self.errors.len() == errors
     }
 
     fn note(&mut self, n: &Note) {

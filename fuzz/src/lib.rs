@@ -145,6 +145,144 @@ pub fn check_font(bytes: &[u8]) -> usize {
     registered
 }
 
+/// Every script of `pdf` (uncompressed) is a call of a standard form
+/// function with plain arguments: integers, booleans and string literals
+/// that cannot end early. PDF/A output has no scripts and no `/AA`.
+fn check_scripts(pdf: &[u8], pdf_a: bool) {
+    let text = String::from_utf8_lossy(pdf);
+    if pdf_a {
+        assert!(
+            !text.contains("/AA <<") && !text.contains("/S /JavaScript") && !text.contains("/JS ("),
+            "PDF/A output with a script"
+        );
+    }
+    for part in text.split("/JS (").skip(1) {
+        let script = pdf_literal(part).expect("an unterminated /JS string");
+        assert!(
+            form_call(&script),
+            "a script that is not a form function call: {script:?}"
+        );
+    }
+}
+
+/// The text of the PDF literal string that `s` starts with, after its
+/// opening parenthesis.
+fn pdf_literal(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut depth = 1;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                d @ '0'..='7' => {
+                    // Up to three octal digits; scripts are ASCII.
+                    let mut v = d.to_digit(8)?;
+                    let rest = chars.as_str();
+                    let more = rest.chars().take(2).take_while(|c| c.is_digit(8)).count();
+                    for c in rest.chars().take(more) {
+                        v = v * 8 + c.to_digit(8)?;
+                    }
+                    chars = rest[more..].chars();
+                    out.push(char::from_u32(v)?);
+                }
+                c => out.push(c),
+            },
+            '(' => {
+                depth += 1;
+                out.push(c);
+            }
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(out);
+                }
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    None
+}
+
+/// Whether `script` is one call of a standard form function, ending with
+/// `;`, whose arguments are integers, booleans or string literals.
+fn form_call(script: &str) -> bool {
+    const FUNCTIONS: &[&str] = &[
+        "AFNumber_Keystroke",
+        "AFNumber_Format",
+        "AFPercent_Keystroke",
+        "AFPercent_Format",
+        "AFDate_KeystrokeEx",
+        "AFDate_FormatEx",
+        "AFTime_KeystrokeEx",
+        "AFTime_FormatEx",
+        "AFSpecial_Keystroke",
+        "AFSpecial_Format",
+    ];
+    let Some((name, mut rest)) = script.split_once('(') else {
+        return false;
+    };
+    if !FUNCTIONS.contains(&name) {
+        return false;
+    }
+    loop {
+        let arg_end = if let Some(string) = rest.strip_prefix('"') {
+            // A string literal: printable ASCII, with quotes and
+            // backslashes escaped.
+            let mut chars = string.char_indices();
+            let mut end = None;
+            while let Some((i, c)) = chars.next() {
+                match c {
+                    '"' => {
+                        end = Some(i + 2);
+                        break;
+                    }
+                    '\\' => match chars.next() {
+                        Some((_, '\\' | '"' | '\'')) => {}
+                        Some((_, 'u')) => {
+                            let hex = (0..4)
+                                .filter_map(|_| chars.next())
+                                .filter(|(_, c)| c.is_ascii_hexdigit());
+                            if hex.count() != 4 {
+                                return false;
+                            }
+                        }
+                        _ => return false,
+                    },
+                    '\'' => return false,
+                    ' '..='~' => {}
+                    _ => return false,
+                }
+            }
+            let Some(end) = end else { return false };
+            end
+        } else {
+            let end = rest.find([',', ')']).unwrap_or(rest.len());
+            let arg = &rest[..end];
+            if !(arg == "true"
+                || arg == "false"
+                || (!arg.is_empty() && arg.bytes().all(|b| b.is_ascii_digit())))
+            {
+                return false;
+            }
+            end
+        };
+        rest = &rest[arg_end..];
+        if rest == ");" {
+            return true;
+        }
+        let Some(next) = rest.strip_prefix(", ") else {
+            return false;
+        };
+        rest = next;
+    }
+}
+
 fn render(doc: &[u8], format: InputFormat, pdf_a: bool) -> Result<Vec<u8>, InkoxideError> {
     render_with(doc, format, &FONTS, &IMAGES, pdf_a)
 }
@@ -170,6 +308,7 @@ fn render_with(
             );
             assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
             assert_finite_numbers(pdf, true);
+            check_scripts(pdf, pdf_a);
         }
         Err(InkoxideError::Validation(e)) => {
             assert!(
@@ -969,7 +1108,123 @@ fn field(s: &mut Src) -> Value {
     if s.chance(50) {
         m.insert("color".into(), color(s));
     }
+    if (kind == "text" || s.chaos) && s.chance(50) {
+        let (format, value) = field_format(s);
+        m.insert("format".into(), format);
+        if !s.chaos {
+            // Formats take a single line, shown, and a value that fits.
+            for key in ["multiline", "password", "maxLength"] {
+                m.remove(key);
+            }
+        }
+        match value {
+            Some(v) => m.insert("value".into(), v),
+            None => m.remove("value"),
+        };
+    }
     Value::Object(m)
+}
+
+/// A text field format and a value that fits it, or none. In chaos mode,
+/// values that do not fit, and patterns and currencies that would end a
+/// script string or add a call to it.
+fn field_format(s: &mut Src) -> (Value, Option<Value>) {
+    const BREAKOUTS: &[&str] = &[
+        "\");app.alert(1);//",
+        "'",
+        "\\",
+        "\n",
+        "\u{2028}",
+        "dd\"",
+        "</script>",
+        "123456789",
+    ];
+    let mut m = Map::new();
+    let kind = s.pick(&[
+        "number", "percent", "date", "time", "zip", "zipPlus4", "phone", "ssn",
+    ]);
+    m.insert("type".into(), json!(kind));
+    let value = match kind {
+        "number" | "percent" => {
+            if s.chance(128) {
+                let decimals = if s.chaos {
+                    json!(s.pick(&[11, -1, 255]))
+                } else {
+                    json!(s.below(11))
+                };
+                m.insert("decimals".into(), decimals);
+            }
+            if s.chance(100) {
+                let sep = s.pick(&["1,234.56", "1234.56", "1.234,56", "1234,56"]);
+                m.insert("separators".into(), json!(sep));
+            }
+            if kind == "number" || s.chaos {
+                if s.chance(100) {
+                    let neg = s.pick(&["minus", "red", "parens", "parensRed"]);
+                    m.insert("negative".into(), json!(neg));
+                }
+                if s.chance(128) {
+                    let currency = if s.chaos {
+                        s.pick(BREAKOUTS)
+                    } else {
+                        s.pick(&["$", "€ ", " EUR", "CHF", ""])
+                    };
+                    m.insert("currency".into(), json!(currency));
+                }
+                if s.chance(60) {
+                    m.insert("currencyBefore".into(), json!(s.chance(128)));
+                }
+            }
+            let mut values = vec![
+                "0",
+                "-1234.5",
+                "999.995",
+                "0.125",
+                "-0.004",
+                "123456789012345.123456789012345",
+            ];
+            if s.chaos {
+                values.extend(["1e5", "1,000", "", "1234567890123456"]);
+            }
+            json!(s.pick(&values))
+        }
+        "date" | "time" => {
+            let pattern = if s.chaos && s.chance(100) {
+                s.pick(BREAKOUTS)
+            } else if kind == "date" {
+                s.pick(&[
+                    "dd/mm/yyyy",
+                    "d mmm yy",
+                    "dddd, mmmm d, yyyy",
+                    "yyyy-mm-dd HH:MM tt",
+                ])
+            } else {
+                s.pick(&["HH:MM", "h:MM tt", "HH:MM:ss", "h t"])
+            };
+            if !s.chaos || s.chance(200) {
+                m.insert("pattern".into(), json!(pattern));
+            }
+            let values: &[&str] = match (kind, s.chaos) {
+                ("date", false) => &["2026-10-14", "2024-02-29T23:59:59", "0001-01-01"],
+                ("time", false) => &["18:30", "00:00:00", "2026-10-14T07:05"],
+                _ => &["2026-02-30", "24:00", "2026-10-14T10:00Z", ""],
+            };
+            json!(s.pick(values))
+        }
+        _ => {
+            let n = match kind {
+                "zip" => 5,
+                "phone" => 10,
+                _ => 9,
+            };
+            let n = if s.chaos { n + 1 } else { n };
+            json!((0..n)
+                .map(|i| char::from(b'0' + (i % 10) as u8))
+                .collect::<String>())
+        }
+    };
+    let value = s.chance(200).then_some(value);
+    (Value::Object(m), value)
 }
 
 /// A text note: contents at their limit and past it, control characters,
@@ -1334,6 +1589,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn scripts_are_checked_against_the_form_call_grammar() {
+        for ok in [
+            r#"AFNumber_Format(2, 0, 3, 0, "\u20ac ", true);"#,
+            r#"AFDate_FormatEx("dd/mm/yyyy");"#,
+            r#"AFNumber_Keystroke(0, 1, 0, 0, "\"\'\\", false);"#,
+            "AFSpecial_Format(2);",
+        ] {
+            assert!(form_call(ok), "{ok}");
+        }
+        for bad in [
+            r#"AFDate_FormatEx("dd");app.alert(1);//");"#,
+            r#"AFDate_FormatEx("dd" + x);"#,
+            r"app.alert(1);",
+            r"AFSpecial_Format(2)",
+            r"AFSpecial_Format(x);",
+            r#"AFDate_FormatEx("d'd");"#,
+            r#"AFDate_FormatEx("\x41");"#,
+            "AFDate_FormatEx(\"\u{2028}\");",
+        ] {
+            assert!(!form_call(bad), "{bad}");
+        }
+        assert_eq!(
+            pdf_literal(r"AF\(1\) (a) \134 \101b)rest").as_deref(),
+            Some(r"AF(1) (a) \ Ab")
+        );
+        check_scripts(b"/JS (AFSpecial_Format\\(0\\);)", false);
+    }
+
+    #[test]
     fn check_image_says_why_it_did_not_render() {
         let Err(InkoxideError::Validation(e)) = check_image(b"abc") else {
             panic!("rendered an image that is not one");
@@ -1358,6 +1642,10 @@ mod tests {
             r#""value":["#,
             r#""kind":"radio""#,
             r#""name":"set0.sub"#,
+            r#""type":"number""#,
+            r#""currency":"#,
+            r#""pattern":"#,
+            r#""type":"zip"#,
             r#""pages":"odd""#,
             r#""pages":[-"#,
             r#""zIndex":"#,
