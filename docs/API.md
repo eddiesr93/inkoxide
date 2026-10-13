@@ -175,7 +175,8 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   the page width, or `top + bottom` at least its height) are
   `OUT_OF_RANGE` at `margin`.
 - `DUPLICATE_ID` is a font id declared twice, or a form field `name`
-  used twice (the buttons of one radio group share theirs).
+  used twice (the buttons of one radio group share theirs) or used both
+  for a field and for a group of fields (`a` and `a.b`).
 - Fonts, images and `#id` links must resolve: `UNKNOWN_FONT`,
   `FONT_NOT_REGISTERED`, `UNKNOWN_IMAGE`, `INVALID_IMAGE`,
   `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`. A `#id` link must name a node
@@ -183,6 +184,9 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   a header or footer, or under `display: none`, is not a destination.
 - A radio button needs a non-empty `value` (`MISSING_FIELD`), and a text
   field's `value` is at most `maxLength` characters (`OUT_OF_RANGE`).
+  The `value` of a select or list field is one of its `options`; an
+  array `value` needs a list with `multiSelect` and names each option at
+  most once (`INVALID_VALUE`).
 - `gridArea` cannot be combined with `gridRow` or `gridColumn`
   (`INVALID_VALUE`), and `gridTemplateAreas` has at most 10000 cells
   (`OUT_OF_RANGE`).

@@ -64,7 +64,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
-| PDF | `pdf` | Pages and content streams (encoded in parallel), links, outline, forms, PDF/A-2b |
+| PDF | `pdf` | Pages and content streams (encoded in parallel), links, notes, outline, forms, PDF/A-2b |
 | Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects |
 
 ## Public API (core)
