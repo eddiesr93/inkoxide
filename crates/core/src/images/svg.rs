@@ -58,6 +58,9 @@ const MAX_STYLE_WORK: usize = 200_000_000;
 /// every selector against each element it copies, and a selector with `k`
 /// descendant or sibling combinators may try `depthᵏ` ancestors.
 const MAX_RULE_MATCHES: usize = 50_000_000;
+/// Most characters of SVG text, counting every copy (`use`, markers,
+/// patterns) and nested SVG images.
+const MAX_TEXT_CHARS: usize = 1_000_000;
 /// Most pixels of distinct raster images in one SVG, nested SVGs included
 /// (the PDF writer decodes each once).
 const MAX_RASTER_PIXELS: u64 = 4 * super::MAX_PIXELS;
@@ -119,6 +122,7 @@ struct Cost {
     copied_bytes: usize,
     style_work: usize,
     rule_matches: usize,
+    text_chars: usize,
 }
 
 impl Cost {
@@ -129,6 +133,7 @@ impl Cost {
         self.copied_bytes = self.copied_bytes.saturating_add(other.copied_bytes);
         self.style_work = self.style_work.saturating_add(other.style_work);
         self.rule_matches = self.rule_matches.saturating_add(other.rule_matches);
+        self.text_chars = self.text_chars.saturating_add(other.text_chars);
         self.check()
     }
 
@@ -162,6 +167,11 @@ impl Cost {
             return Err(too_complex(
                 "style attributes or sheets are too long once references are expanded",
             ));
+        }
+        if self.text_chars > MAX_TEXT_CHARS {
+            return Err(too_complex(&format!(
+                "more than {MAX_TEXT_CHARS} characters of text once references are expanded"
+            )));
         }
         if self.rule_matches > MAX_RULE_MATCHES {
             return Err(too_complex(&format!(
@@ -239,7 +249,7 @@ pub(crate) struct ViewBox {
 impl ViewBox {
     /// Reads the root element's `viewBox` and `preserveAspectRatio`.
     /// `None` without a usable `viewBox`.
-    fn of(svg: Node<'_, '_>) -> Option<Self> {
+    pub(crate) fn of(svg: Node<'_, '_>) -> Option<Self> {
         let v: Vec<f32> = svg
             .attribute("viewBox")?
             .split(|c: char| c.is_ascii_whitespace() || c == ',')
@@ -563,6 +573,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
     let mut depths: HashMap<NodeId, usize> = HashMap::new();
     let mut deepest = 1;
     let mut sheet = Drawn::default();
+    let mut text_found = false;
     let mut selectors: Vec<usize> = Vec::new();
     let (mut sheet_work, mut sheet_values) = (0usize, 0);
     for n in root.descendants().filter(Node::is_element) {
@@ -577,9 +588,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         }
         let name = n.tag_name().name();
         if is_svg_ns(n) && name == "text" && n.descendants().any(|d| has_text(&d)) {
-            return Err(Reject::Unsupported(
-                "SVG <text> is not supported; convert the text to outlines (paths)".into(),
-            ));
+            text_found = true;
         }
         if name == "style" {
             let mut rest = Vec::new();
@@ -633,6 +642,20 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         shared: false,
     };
     walk.visit(root, &mut Vec::new(), at)?;
+    if text_found {
+        // Reading the text matches its elements against the sheets once
+        // more.
+        let (_, work) = super::svg_text::extract(doc).map_err(|e| match e {
+            super::svg_text::TextError::Unsupported(m) => Reject::Unsupported(m),
+        })?;
+        walk.cost.add(Cost {
+            rule_matches: work.matched.saturating_mul(rule_matches),
+            ..Cost::default()
+        })?;
+        return Err(Reject::Unsupported(
+            "SVG <text> is not supported; convert the text to outlines (paths)".into(),
+        ));
+    }
     Ok(Checked {
         cost: walk.cost,
         own: walk.own,
@@ -946,6 +969,8 @@ struct Info<'d> {
     style_work: usize,
     /// Most vertices it draws markers at; `None`: it draws no markers.
     vertices: Option<usize>,
+    /// A `text`: the characters in it.
+    text_chars: usize,
 }
 
 impl<'d> Info<'d> {
@@ -1020,6 +1045,13 @@ impl<'d> Info<'d> {
         info.drawn.resolve(doc, ids);
         info.refs.retain(|r| ids.contains_key(r));
         info.vertices = marker_vertices(tag, vertices);
+        if tag == "text" && is_svg_ns(n) {
+            info.text_chars = n
+                .descendants()
+                .filter_map(|d| d.text().filter(|_| d.is_text()))
+                .map(|t| t.chars().count())
+                .sum();
+        }
         Ok(info)
     }
 }
@@ -1138,6 +1170,11 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
                 ..Cost::default()
             })?;
         }
+        // Every copy of a text is laid out and drawn.
+        self.cost.add(Cost {
+            text_chars: info.text_chars,
+            ..Cost::default()
+        })?;
         if let Some((url, resolved)) = info.url {
             let mut cost = Cost::default();
             if resolved {
@@ -1318,6 +1355,28 @@ mod tests {
         // Nested, text fails the SVG too, rather than leaving the image out.
         let e = rejected(&image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0));
         assert!(e.contains("<text>"), "{e}");
+        // Text on a path and vertical text say so.
+        let e = rejected(&svg(
+            "<path id='p' d='M0 0H9'/><text><textPath href='#p'>Hi</textPath></text>",
+        ));
+        assert!(e.contains("<textPath>"), "{e}");
+        let e = rejected(&svg("<text writing-mode='tb'>Hi</text>"));
+        assert!(e.contains("vertical"), "{e}");
+    }
+
+    #[test]
+    fn counts_text_per_copy() {
+        let text = "x".repeat(10_000);
+        let copies = |n: usize| {
+            svg(&format!(
+                r#"<defs><text id="t">{text}</text></defs>{}"#,
+                r##"<use href="#t"/>"##.repeat(n)
+            ))
+        };
+        // Under the limit, the text is still refused for now.
+        assert!(rejected(&copies(90)).contains("<text>"));
+        let e = rejected(&copies(110));
+        assert!(e.contains("characters of text"), "{e}");
     }
 
     #[test]
