@@ -82,6 +82,8 @@ fn plain_item(s: &Style) -> bool {
         && s.position.is_none()
         && s.inset.is_none()
         && s.border_width.is_none()
+        && s.float.is_none()
+        && s.clear.is_none()
 }
 
 /// Lays out a qualifying cell. `None` when the closed form does not hold

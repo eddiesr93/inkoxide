@@ -5,7 +5,7 @@ use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
 use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
-use crate::layout::Geometry;
+use crate::layout::{Geometry, LineBoxes};
 use crate::paint::{
     ContentCtx, ContentPainter, Dash, DebugLine, Op, Path, PathSeg, Rect, TextGlyph, TextOp,
 };
@@ -58,10 +58,17 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             w: cw,
             h: ch,
         } = geo.content_box();
+        let plain;
+        let boxes = if let Some(b) = ctx.line_boxes {
+            b
+        } else {
+            plain = LineBoxes::plain(cw);
+            &plain
+        };
         let paragraph = self
             .page
-            .and_then(|page| page.paragraph(node, cw))
-            .or_else(|| self.cache.paragraph(node, cw));
+            .and_then(|page| page.paragraph(node, boxes))
+            .or_else(|| self.cache.paragraph(node, boxes));
         let Some((layout, prepared, style)) = paragraph else {
             return;
         };

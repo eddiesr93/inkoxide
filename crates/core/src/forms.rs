@@ -197,6 +197,7 @@ mod tests {
             line_shifts: &[],
             window: None,
             opacity: 1.0,
+            line_boxes: None,
         };
         let mut ops = Vec::new();
         paint(f, &geo, &ctx, &fonts, &mut ops);

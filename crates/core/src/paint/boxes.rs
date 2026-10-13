@@ -7,7 +7,7 @@ use super::shapes::{
 };
 use super::{with_alpha, Dash, FillRule, Op, Path, Rect};
 use crate::layout::table::TableLayout;
-use crate::layout::{Geometry, NodeIdx, Part, Tree};
+use crate::layout::{Geometry, LineBoxes, NodeIdx, Part, Tree};
 use crate::paginate::{PageWindow, Placement, PAGED_EPS};
 use crate::schema::{
     BorderRadius, BorderStyle, BorderStyles, Color, Display, Edges, LengthPercent, Node, Overflow,
@@ -33,6 +33,9 @@ pub(crate) struct ContentCtx<'p> {
     pub window: Option<PageWindow>,
     /// Cumulative opacity in effect; content with its own alpha multiplies it.
     pub opacity: f32,
+    /// The line boxes of text laid out beside floats (`None`: its content
+    /// width).
+    pub line_boxes: Option<&'p LineBoxes>,
 }
 
 /// Paints leaf content (text, images, tables) inside a node's content box.
@@ -323,6 +326,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             line_shifts: self.mode.line_shifts(i),
             window,
             opacity: self.opacity,
+            line_boxes: self.tree.wraps.get(&i).map(|b| &**b),
         };
         match outlined.and_then(|k| self.debug.boxes.get_mut(k)) {
             Some(b) => self
@@ -744,13 +748,20 @@ fn z_index(tree: &Tree<'_>, j: NodeIdx) -> i32 {
 
 /// Whether a child of `i` sets a non-zero `zIndex`.
 fn has_z(tree: &Tree<'_>, i: NodeIdx) -> bool {
-    tree.children(i).any(|j| z_index(tree, j) != 0)
+    tree.holds_floats(i) || tree.children(i).any(|j| z_index(tree, j) != 0)
 }
 
-/// The children of `i` in paint order: by `zIndex`, then document order.
+/// The children of `i` in paint order: by `zIndex`, floats after the
+/// other children of their `zIndex` (so that a paragraph's background does
+/// not cover the float it wraps around), then document order.
 fn paint_order(tree: &Tree<'_>, i: NodeIdx) -> Vec<NodeIdx> {
     let mut c: Vec<NodeIdx> = tree.children(i).collect();
-    c.sort_by_key(|&j| z_index(tree, j));
+    let floats = |j: NodeIdx| {
+        tree.nodes[j as usize]
+            .node()
+            .is_some_and(|n| n.style.floats().is_some())
+    };
+    c.sort_by_key(|&j| (z_index(tree, j), floats(j)));
     c
 }
 

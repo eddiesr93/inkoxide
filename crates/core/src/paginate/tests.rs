@@ -17,7 +17,11 @@ fn doc(children: &str) -> Document {
 
 struct NoLines;
 impl LineSource for NoLines {
-    fn lines(&mut self, _: &Node, _: f32) -> Option<std::sync::Arc<LineLayout>> {
+    fn lines(
+        &mut self,
+        _: &Node,
+        _: &crate::layout::LineBoxes,
+    ) -> Option<std::sync::Arc<LineLayout>> {
         None
     }
 }

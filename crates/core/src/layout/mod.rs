@@ -14,6 +14,7 @@
 
 mod fast;
 pub(crate) mod float;
+mod flow;
 mod style;
 pub(crate) mod table;
 
@@ -25,6 +26,7 @@ use taffy::prelude::{NodeId as TaffyId, Size as TSize, TaffyTree};
 use taffy::{LayoutInput, LayoutOutput};
 
 pub(crate) use float::LineBoxes;
+pub(crate) use flow::Wrapped;
 pub(crate) use table::TableLayout;
 
 use crate::paint::Rect;
@@ -184,6 +186,14 @@ pub(crate) struct Tree<'a> {
     pub nodes: Vec<LNode<'a>>,
     /// Final layouts of the tables in this tree, by table node.
     pub tables: BTreeMap<NodeIdx, Arc<TableLayout>>,
+    /// Per node: whether it holds floats (`flow.rs` lays out its children).
+    pub floats: Vec<bool>,
+    /// The line boxes of text laid out beside floats, by text node.
+    pub wraps: BTreeMap<NodeIdx, Arc<LineBoxes>>,
+    /// Per float: the flow y where its group ends (the floats beside it,
+    /// and the lines and boxes beside them), which moves to a new page
+    /// with it.
+    pub float_groups: BTreeMap<NodeIdx, f32>,
 }
 
 impl<'a> Tree<'a> {
@@ -227,10 +237,17 @@ impl<'a> Tree<'a> {
             nodes[i].children = start..nodes.len() as NodeIdx;
             i += 1;
         }
-        Tree {
+        let mut tree = Tree {
             nodes,
             tables: BTreeMap::new(),
-        }
+            floats: Vec::new(),
+            wraps: BTreeMap::new(),
+            float_groups: BTreeMap::new(),
+        };
+        tree.floats = (0..tree.nodes.len())
+            .map(|i| flow::holds_floats(&tree, i))
+            .collect();
+        tree
     }
 
     /// Builds the arena for a single node (a header, footer or overlay).
@@ -240,6 +257,20 @@ impl<'a> Tree<'a> {
 
     pub fn children(&self, i: NodeIdx) -> impl DoubleEndedIterator<Item = NodeIdx> {
         self.nodes[i as usize].children.clone()
+    }
+
+    /// Whether node `i` holds floats.
+    pub fn holds_floats(&self, i: NodeIdx) -> bool {
+        self.floats.get(i as usize).copied().unwrap_or(false)
+    }
+
+    /// The line boxes text node `i` was laid out in: the bands of the
+    /// floats beside it, or its content width.
+    pub fn line_boxes(&self, i: NodeIdx) -> LineBoxes {
+        match self.wraps.get(&i) {
+            Some(b) => LineBoxes::clone(b),
+            None => LineBoxes::plain(self.nodes[i as usize].geo.content_box().w),
+        }
     }
 }
 
@@ -252,6 +283,21 @@ pub(crate) trait LeafMeasure {
         known: Size<Option<f32>>,
         available: Size<AvailableSpace>,
     ) -> Size<f32>;
+
+    /// The content height of text leaf `node` laid out in `boxes`, beside
+    /// floats, and the bottom of its last line that starts beside one.
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        let width = AvailableSpace::Definite(boxes.width);
+        let available = Size {
+            width,
+            height: AvailableSpace::MaxContent,
+        };
+        let height = self.measure(node, Size::NONE, available).height;
+        Wrapped {
+            height,
+            wrapped: height,
+        }
+    }
 }
 
 /// Leaves with no intrinsic content (empty boxes, spacers, page breaks).
@@ -304,6 +350,17 @@ pub(crate) enum RootMode {
     Flow { width: f32, min_height: f32 },
     /// A table cell.
     Cell(CellSpace),
+    /// A child of a float container, laid out at the width the container
+    /// gives it (border box), or at its intrinsic width; with `fit`, a
+    /// definite width is only the room it may take, as a leaf measures in.
+    /// At a set height for its final layout. Percentage heights are of
+    /// `parent_h`.
+    Item {
+        width: AvailableSpace,
+        fit: bool,
+        height: Option<f32>,
+        parent_h: Option<f32>,
+    },
 }
 
 /// The space a table gives one of its cells.
@@ -327,6 +384,12 @@ pub(crate) struct LayoutCtx<'m> {
     cells: HashMap<(NodeIdx, SpaceKey), Size<f32>>,
     /// Closed-form layout of simple cells (`fast.rs`); off only in tests.
     pub fast_cells: bool,
+    /// Float container sizes by (container, width key).
+    flow_sizes: HashMap<(NodeIdx, SpaceKey), Size<f32>>,
+    /// Lay out every column box as a float container: only tests, to check
+    /// `flow.rs` against Taffy.
+    #[cfg(test)]
+    pub flow_all: bool,
 }
 
 /// Cache key of a layout width. Exact: bucketing could round below a
@@ -369,6 +432,60 @@ impl<'m> LayoutCtx<'m> {
             tables: HashMap::new(),
             cells: HashMap::new(),
             fast_cells: true,
+            flow_sizes: HashMap::new(),
+            #[cfg(test)]
+            flow_all: false,
+        }
+    }
+
+    /// Whether `flow.rs` lays out the children of node `idx`.
+    #[cfg_attr(
+        not(test),
+        expect(clippy::unused_self, reason = "tests flow every box")
+    )]
+    fn flows(&self, tree: &Tree<'_>, idx: NodeIdx) -> bool {
+        #[cfg(test)]
+        if self.flow_all && flow::column_box(tree, idx) {
+            return true;
+        }
+        tree.holds_floats(idx)
+    }
+
+    /// Content size of float container `idx` in `available` space.
+    fn flow_size(
+        &mut self,
+        tree: &Tree<'_>,
+        idx: NodeIdx,
+        available: Size<AvailableSpace>,
+        parent_h: Option<f32>,
+    ) -> Size<f32> {
+        let key = (idx, space_key(available.width));
+        if let Some(s) = self.flow_sizes.get(&key) {
+            return *s;
+        }
+        let size = match self.flow_width(tree, idx, available.width, parent_h) {
+            Ok(w) => flow::layout(self, tree, idx, w, None, parent_h, false).map(|l| l.size),
+            Err(e) => Err(e),
+        };
+        let size = size.unwrap_or_else(|e| {
+            tracing::warn!("float container layout failed: {e}");
+            Size::ZERO
+        });
+        self.flow_sizes.insert(key, size);
+        size
+    }
+
+    /// The content width float container `idx` lays its children out in.
+    fn flow_width(
+        &mut self,
+        tree: &Tree<'_>,
+        idx: NodeIdx,
+        width: AvailableSpace,
+        parent_h: Option<f32>,
+    ) -> Result<f32, InkoxideError> {
+        match width {
+            AvailableSpace::Definite(w) => Ok(w.max(0.0)),
+            mode => flow::intrinsic_width(self, tree, idx, mode, parent_h),
         }
     }
 
@@ -394,7 +511,8 @@ impl<'m> LayoutCtx<'m> {
         while k < list.len() {
             let idx = list[k].0;
             let ln = &tree.nodes[idx as usize];
-            let leaf_table = ln.is_table();
+            // Tables and float containers are leaves here.
+            let leaf_table = ln.is_table() || self.flows(tree, idx);
             let start = list.len();
             if !leaf_table {
                 list.extend(ln.children.clone().map(|c| (c, 0, 0)));
@@ -411,7 +529,13 @@ impl<'m> LayoutCtx<'m> {
             let (idx, start, len) = list[k];
             let ln = &tree.nodes[idx as usize];
             let kids = &ids[start..start + len];
-            let id = if k == 0 {
+            let leaf_root = len == 0
+                && (matches!(mode, RootMode::Item { .. })
+                    || ln.is_table()
+                    || self.flows(tree, idx));
+            let id = if k == 0 && leaf_root {
+                taffy.new_leaf_with_context(root_style(ln, mode), idx)
+            } else if k == 0 {
                 taffy.new_with_children(root_style(ln, mode), kids)
             } else {
                 let mut s = match mode {
@@ -445,6 +569,17 @@ impl<'m> LayoutCtx<'m> {
         let width = match mode {
             RootMode::Flow { width, .. } => AvailableSpace::Definite(width),
             RootMode::Cell(space) => space.width,
+            RootMode::Item { width, .. } => width,
+        };
+        // The height the children of a float container resolve their
+        // percentages against: the page's, for the flow root.
+        let parent_h_of = |i: NodeIdx| -> Option<f32> {
+            match mode {
+                RootMode::Flow { min_height, .. } if i == root && min_height > 0.0 => {
+                    Some(min_height)
+                }
+                _ => flow::definite_content_height(tree, i),
+            }
         };
         let available = TSize {
             width: width.into(),
@@ -477,6 +612,11 @@ impl<'m> LayoutCtx<'m> {
                                 width: available.width.into(),
                                 height: available.height.into(),
                             };
+                            if self.flows(tree, idx) {
+                                return self
+                                    .flow_size(tree, idx, available, parent_h_of(idx))
+                                    .into();
+                            }
                             match nodes[idx as usize].node() {
                                 Some(n) if matches!(n.kind, NodeKind::Table(_)) => {
                                     self.table_size(tree, idx, available)
@@ -647,6 +787,32 @@ fn root_style(ln: &LNode<'_>, mode: RootMode) -> taffy::Style {
             });
             s
         }
+        RootMode::Item {
+            width,
+            fit,
+            height,
+            parent_h,
+        } => {
+            let mut s = match parent_h {
+                Some(h) => style::to_taffy_on_page(ln.style(), h),
+                None => style::to_taffy(ln.style()),
+            };
+            // The container places it: no margins or offsets of its own.
+            s.margin = taffy::geometry::Rect::zero();
+            s.inset = taffy::geometry::Rect::auto();
+            s.position = taffy::style::Position::Relative;
+            if let (AvailableSpace::Definite(w), false) = (width, fit) {
+                s.size.width = Dimension::length(w);
+                s.min_size.width = LengthPercentageAuto::auto();
+                s.max_size.width = LengthPercentageAuto::auto();
+            }
+            if let Some(h) = height {
+                s.size.height = Dimension::length(h);
+                s.min_size.height = LengthPercentageAuto::length(h);
+                s.max_size.height = LengthPercentageAuto::length(h);
+            }
+            s
+        }
     }
 }
 
@@ -673,6 +839,30 @@ fn compute_tree(
 ) -> Result<(), InkoxideError> {
     let mut ctx = LayoutCtx::new(measure);
     ctx.fast_cells = fast_cells;
+    lay_out_tree(&mut ctx, tree, width, min_height)
+}
+
+/// [`compute_tree`] with every column box laid out by `flow.rs`, for
+/// tests that check it against Taffy.
+#[cfg(test)]
+fn compute_tree_flowing(
+    tree: &mut Tree<'_>,
+    width: f32,
+    min_height: f32,
+    measure: &mut dyn LeafMeasure,
+) -> Result<(), InkoxideError> {
+    let mut ctx = LayoutCtx::new(measure);
+    ctx.flow_all = true;
+    lay_out_tree(&mut ctx, tree, width, min_height)
+}
+
+/// Lays out `tree` with `ctx`, writing every node's geometry.
+fn lay_out_tree(
+    ctx: &mut LayoutCtx<'_>,
+    tree: &mut Tree<'_>,
+    width: f32,
+    min_height: f32,
+) -> Result<(), InkoxideError> {
     let sub = ctx.layout_subtree(tree, 0, RootMode::Flow { width, min_height }, true)?;
     for (idx, g) in sub.geos {
         tree.nodes[idx as usize].geo = g;
@@ -714,6 +904,24 @@ fn compute_tree(
                 }
             }
             tree.tables.insert(idx, layout);
+        }
+        if ctx.flows(tree, i as NodeIdx) {
+            // A float container: its children, at its final size.
+            let idx = i as NodeIdx;
+            let cb = tree.nodes[i].geo.content_box();
+            let parent_h = if i == 0 && min_height > 0.0 {
+                Some(min_height)
+            } else {
+                flow::definite_content_height(tree, idx)
+            };
+            let fl = flow::layout(ctx, tree, idx, cb.w, Some(cb.h), parent_h, true)?;
+            for (n, g) in fl.geos {
+                tree.nodes[n as usize].geo = g.offset(cb.x, cb.y);
+            }
+            tree.wraps.extend(fl.wraps);
+            for (f, end) in fl.groups {
+                tree.float_groups.insert(f, cb.y + end);
+            }
         }
         i += 1;
     }

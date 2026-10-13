@@ -74,7 +74,6 @@ impl LineBoxes {
 }
 
 /// The side a float goes to.
-#[cfg_attr(not(test), expect(dead_code, reason = "float containers come next"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Side {
     Left,
@@ -83,7 +82,6 @@ pub(crate) enum Side {
 
 /// A float placed in its container: its side and its margin box, in the
 /// container's content box.
-#[cfg_attr(not(test), expect(dead_code, reason = "float containers come next"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Placed {
     pub side: Side,
@@ -93,7 +91,6 @@ pub(crate) struct Placed {
     pub h: f32,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "float containers come next"))]
 impl Placed {
     pub fn bottom(&self) -> f32 {
         self.y + self.h
@@ -102,11 +99,9 @@ impl Placed {
 
 /// Height a zero-height float or box counts as when looking for room, so
 /// that it still meets the floats at its top.
-#[cfg_attr(not(test), expect(dead_code, reason = "float containers come next"))]
 const HAIR: f32 = 1e-3;
 
 /// The floats of one container, in its content box `width` wide.
-#[cfg_attr(not(test), expect(dead_code, reason = "float containers come next"))]
 #[derive(Debug, Clone)]
 pub(crate) struct FloatContext {
     width: f32,
@@ -116,7 +111,6 @@ pub(crate) struct FloatContext {
     last_top: f32,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "float containers come next"))]
 impl FloatContext {
     pub fn new(width: f32) -> Self {
         Self {

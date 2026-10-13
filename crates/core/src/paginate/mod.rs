@@ -39,7 +39,7 @@
 //!   its cells: each cell's content paginates like a column from the row
 //!   top, and the row ends below the longest cell.
 
-use crate::layout::{NodeIdx, Tree};
+use crate::layout::{LineBoxes, NodeIdx, Tree};
 use crate::paint::Rect;
 use crate::schema::{
     BreakMode, Display, FlexDirection, FlexWrap, InsideMode, Node, NodeKind, Position,
@@ -182,12 +182,12 @@ impl PageWindow {
 
 /// Supplies line layouts of text nodes at their laid-out width.
 pub(crate) trait LineSource {
-    fn lines(&mut self, node: &Node, width: f32) -> Option<std::sync::Arc<LineLayout>>;
+    fn lines(&mut self, node: &Node, boxes: &LineBoxes) -> Option<std::sync::Arc<LineLayout>>;
 }
 
 impl<S: TextShaper> LineSource for TextCache<'_, S> {
-    fn lines(&mut self, node: &Node, width: f32) -> Option<std::sync::Arc<LineLayout>> {
-        self.layout(node, width)
+    fn lines(&mut self, node: &Node, boxes: &LineBoxes) -> Option<std::sync::Arc<LineLayout>> {
+        self.layout_in(node, boxes)
     }
 }
 
@@ -440,9 +440,9 @@ impl Paginator<'_, '_, '_> {
         }
         match &node.kind {
             NodeKind::Text { .. } => {
-                let Rect { y: cy, w: cw, .. } = g.content_box();
+                let Rect { y: cy, .. } = g.content_box();
                 let (orphans, widows) = Self::orphans_widows(node);
-                match self.lines.lines(node, cw) {
+                match self.lines.lines(node, &self.tree.line_boxes(i)) {
                     // Too short to leave `orphans` and carry `widows` lines:
                     // it moves whole.
                     Some(l) if l.lines.len() >= orphans + widows => {
@@ -799,8 +799,8 @@ impl Paginator<'_, '_, '_> {
     /// keeps `orphans` lines (CSS Fragmentation §4.4).
     fn split_text(&mut self, i: NodeIdx, node: &Node) {
         let g = self.tree.nodes[i as usize].geo;
-        let Rect { y: cy, w: cw, .. } = g.content_box();
-        let Some(layout) = self.lines.lines(node, cw) else {
+        let Rect { y: cy, .. } = g.content_box();
+        let Some(layout) = self.lines.lines(node, &self.tree.line_boxes(i)) else {
             return;
         };
         let (orphans, widows) = Self::orphans_widows(node);

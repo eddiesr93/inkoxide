@@ -441,6 +441,14 @@ export interface Style {
   justifySelf?:
     'auto' | 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch' | 'start' | 'end';
   overflow?: 'visible' | 'hidden';
+  /**
+   * Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page.
+   */
+  float?: 'left' | 'right' | 'none';
+  /**
+   * Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides.
+   */
+  clear?: 'left' | 'right' | 'both' | 'none';
   backgroundColor?: Color;
   opacity?: number;
   borderWidth?: EdgesNumber;

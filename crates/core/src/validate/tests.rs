@@ -1434,3 +1434,68 @@ fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
         )
     );
 }
+
+#[test]
+fn floats_go_in_column_boxes_with_children_that_do_not_grow() {
+    let ok = doc(r#"{"type":"box","children":[
+            {"type":"box","style":{"float":"left","width":10,"height":10}},
+            {"type":"text","style":{"clear":"both"},"runs":[{"text":"x","font":"Inter-Regular","size":10}]},
+            {"type":"box","style":{"float":"none","flexShrink":1}}]},
+           {"type":"image","src":"logo","style":{"float":"right","width":20}}"#);
+    assert_eq!(run(&ok), vec![]);
+    let float = r#"{"type":"box","style":{"float":"left"}}"#;
+    for (json, code, path) in [
+        (
+            format!(r#"{{"type":"box","style":{{"flexDirection":"row"}},"children":[{float}]}}"#),
+            C::InvalidValue,
+            "pages[0].children[0].children[0].style.float",
+        ),
+        (
+            format!(r#"{{"type":"box","style":{{"justifyContent":"center"}},"children":[{float}]}}"#),
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.justifyContent",
+        ),
+        (
+            format!(r#"{{"type":"box","children":[{float},{{"type":"box","style":{{"flexBasis":10}}}}]}}"#),
+            C::StyleNotApplicable,
+            "pages[0].children[0].children[1].style.flexBasis",
+        ),
+        (
+            r#"{"type":"box","style":{"float":"left","position":"absolute"}}"#.into(),
+            C::InvalidValue,
+            "pages[0].children[0].style.float",
+        ),
+        (
+            r#"{"type":"box","style":{"float":"left"},"break":{"before":"page"}}"#.into(),
+            C::InvalidValue,
+            "pages[0].children[0].style.float",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"style":{"float":"left"}}]}]}"#.into(),
+            C::StyleNotApplicable,
+            "pages[0].children[0].rows[0].cells[0].style.float",
+        ),
+    ] {
+        assert_eq!(one(&doc(&json)), (code, path.into()), "{json}");
+    }
+    // A forced break inside a float does nothing.
+    let (code, path) = one(&doc(
+        r#"{"type":"box","style":{"float":"left"},"children":[{"type":"pageBreak"},{"type":"box"}]}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidNode, "pages[0].children[0].children[0]")
+    );
+}
+
+#[test]
+fn a_box_holds_a_bounded_number_of_floats() {
+    use crate::validate::rules::MAX_FLOATS;
+    let floats = |n: usize| vec![r#"{"type":"box","style":{"float":"left"}}"#; n].join(",");
+    let d = |n: usize| doc(&format!(r#"{{"type":"box","children":[{}]}}"#, floats(n)));
+    assert_eq!(run(&d(MAX_FLOATS)), vec![]);
+    assert_eq!(
+        one(&d(MAX_FLOATS + 1)),
+        (C::OutOfRange, "pages[0].children[0].children".into())
+    );
+}

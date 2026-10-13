@@ -24,7 +24,7 @@ use rayon::prelude::*;
 pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
-use crate::layout::{AvailableSpace, LeafMeasure, LineBoxes, Size};
+use crate::layout::{AvailableSpace, LeafMeasure, LineBoxes, Size, Wrapped};
 use crate::schema::{
     Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, TextWrap, WhiteSpace,
 };
@@ -670,6 +670,8 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         (entry, self.shaper.fonts())
     }
 
+    /// The lines of text node `node` at `width`, cached.
+    #[cfg(test)]
     pub fn layout(&mut self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
         self.layout_in(node, &LineBoxes::plain(width))
     }
@@ -683,21 +685,21 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         Some(entry.layout(fonts, runs, boxes))
     }
 
-    /// Read-only [`layout`](Self::layout) for painting (which runs in
-    /// parallel): the cached layout at `width`, or one computed without
+    /// Read-only [`layout_in`](Self::layout_in) for painting (which runs
+    /// in parallel): the cached layout in `boxes`, or one computed without
     /// caching, with the text and style it was broken from. Layout has
-    /// already measured every painted text at its final width, so the
+    /// already measured every painted text in its final boxes, so the
     /// fallback is rare.
     pub fn paragraph(
         &self,
         node: &Node,
-        width: f32,
+        boxes: &LineBoxes,
     ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
         let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.shaper.fonts(), runs, &LineBoxes::plain(width)))
+        Some(e.paragraph(self.shaper.fonts(), runs, boxes))
     }
 
     /// How many glyphs text node `node` shaped to, once it is shaped.
@@ -727,6 +729,32 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
         let (entry, fonts) = self.entry(node, runs);
         entry.measure(fonts, runs, known, available)
     }
+
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        match self.layout_in(node, boxes) {
+            Some(l) => wrapped(&l, boxes),
+            None => Wrapped {
+                height: 0.0,
+                wrapped: 0.0,
+            },
+        }
+    }
+}
+
+/// What text laid out in `boxes` reports to a float container: its height,
+/// and the bottom of its last line that starts beside a band.
+fn wrapped(l: &LineLayout, boxes: &LineBoxes) -> Wrapped {
+    let end = boxes.bands.iter().map(|b| b.bottom).fold(0.0f32, f32::max);
+    let wrapped = l
+        .lines
+        .iter()
+        .filter(|line| line.top < end)
+        .map(|line| line.top + line.height)
+        .fold(0.0f32, f32::max);
+    Wrapped {
+        height: l.height,
+        wrapped,
+    }
 }
 
 /// The text of one page's headers, footers and overlays, for laying them
@@ -751,17 +779,17 @@ impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
     }
 
     /// For a paragraph with placeholders measured on this page: its lines
-    /// at `width`, and the text and style they were broken from.
+    /// in `boxes`, and the text and style they were broken from.
     pub fn paragraph(
         &self,
         node: &Node,
-        width: f32,
+        boxes: &LineBoxes,
     ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
         let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.cache.shaper.fonts(), runs, &LineBoxes::plain(width)))
+        Some(e.paragraph(self.cache.shaper.fonts(), runs, boxes))
     }
 }
 
@@ -790,6 +818,33 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
             .entry(key)
             .or_insert_with(|| shared.with_numbers(fonts, runs, numbers))
             .measure(fonts, runs, known, available)
+    }
+
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        let NodeKind::Text { runs } = &node.kind else {
+            return Wrapped {
+                height: 0.0,
+                wrapped: 0.0,
+            };
+        };
+        let key = node_key(node);
+        let Some(shared) = self.cache.entries.get(&key) else {
+            return Wrapped {
+                height: 0.0,
+                wrapped: 0.0,
+            };
+        };
+        let fonts = self.cache.shaper.fonts();
+        if !shared.prepared.placeholders {
+            return wrapped(&shared.layout_at(fonts, runs, boxes), boxes);
+        }
+        let numbers = self.numbers;
+        let l = self
+            .entries
+            .entry(key)
+            .or_insert_with(|| shared.with_numbers(fonts, runs, numbers))
+            .layout(fonts, runs, boxes);
+        wrapped(&l, boxes)
     }
 }
 

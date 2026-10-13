@@ -152,6 +152,9 @@ pub(crate) const MAX_FONT_FEATURES: usize = 32;
 /// Largest value of a font feature.
 pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
 
+/// Most floated children of one box: placing each looks at the others.
+pub(crate) const MAX_FLOATS: usize = 1000;
+
 /// Most different sets of `fontFeatures` in a document: each is shaped
 /// with plans and words of its own.
 pub(crate) const MAX_FEATURE_SETS: usize = 64;
@@ -169,7 +172,7 @@ fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
 }
 
 /// Error message for a forced page break in [`Ctx::Whole`].
-const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node";
+const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node";
 
 /// Where a node sits; some node types are only valid in the flow.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -361,6 +364,7 @@ impl<'a> Checker<'a> {
         let areas = parent
             .and_then(|p| p.grid_template_areas.as_deref())
             .and_then(|rows| parse_areas(rows).ok());
+        self.floats(parent, children);
         self.at("children", |c| {
             for (i, n) in children.iter().enumerate() {
                 c.at_index(i, |c| {
@@ -379,6 +383,90 @@ impl<'a> Checker<'a> {
                                 format!("the parent's `gridTemplateAreas` has no area `{name}`"),
                             );
                         });
+                    }
+                });
+            }
+        });
+    }
+
+    /// Checks the floated children of a box with `parent` style (`None`:
+    /// the page): they float in a column only, a box holds at most
+    /// [`MAX_FLOATS`], and a box with floats lays its children out in
+    /// order, so it takes no `justifyContent` or `alignContent` and they
+    /// no `flexGrow` or `flexBasis`.
+    fn floats(&mut self, parent: Option<&Style>, children: &[Node]) {
+        let floated = |n: &Node| {
+            n.style.floats().is_some() && n.style.display != Some(crate::schema::Display::None)
+        };
+        let count = children.iter().filter(|n| floated(n)).count();
+        if count == 0 {
+            return;
+        }
+        if count > MAX_FLOATS {
+            self.err(
+                Code::OutOfRange,
+                Some("children"),
+                format!("a box holds at most {MAX_FLOATS} floated children"),
+            );
+        }
+        let column = parent.is_none_or(|s| {
+            s.display != Some(crate::schema::Display::Grid)
+                && matches!(
+                    s.flex_direction,
+                    None | Some(crate::schema::FlexDirection::Column)
+                )
+                && matches!(s.flex_wrap, None | Some(crate::schema::FlexWrap::NoWrap))
+        });
+        if let Some(p) = parent.filter(|_| column) {
+            for (name, set) in [
+                ("justifyContent", p.justify_content.is_some()),
+                ("alignContent", p.align_content.is_some()),
+            ] {
+                if set {
+                    self.at("style", |c| {
+                        c.err(
+                            Code::StyleNotApplicable,
+                            Some(name),
+                            format!("`{name}` does not apply to a box with floated children: they stack in order"),
+                        );
+                    });
+                }
+            }
+        }
+        self.at("children", |c| {
+            for (i, n) in children.iter().enumerate() {
+                c.at_index(i, |c| {
+                    let s = &n.style;
+                    if column {
+                        for (name, set) in [
+                            ("flexGrow", s.flex_grow.is_some()),
+                            ("flexBasis", s.flex_basis.is_some()),
+                        ] {
+                            if set {
+                                c.at("style", |c| {
+                                    c.err(
+                                        Code::StyleNotApplicable,
+                                        Some(name),
+                                        format!("`{name}` does not apply in a box with floated children"),
+                                    );
+                                });
+                            }
+                        }
+                    }
+                    if !floated(n) {
+                        return;
+                    }
+                    let problem = if !column {
+                        Some("floats only apply to children of a column box, not of a row, grid, wrapping or reversed box")
+                    } else if s.position == Some(Position::Absolute) {
+                        Some("a float cannot be absolutely positioned")
+                    } else if n.brk.before == BreakMode::Page || n.brk.after == BreakMode::Page {
+                        Some("a float cannot force a page break")
+                    } else {
+                        None
+                    };
+                    if let Some(message) = problem {
+                        c.at("style", |c| c.err(Code::InvalidValue, Some("float"), message));
                     }
                 });
             }
@@ -471,6 +559,7 @@ impl<'a> Checker<'a> {
                 || node.brk.fixed
                 || node.style.rotate.is_some_and(|r| r % 360.0 != 0.0)
                 || node.style.transform.as_ref().is_some_and(|t| !t.is_empty())
+                || node.style.floats().is_some()
                 || crate::paginate::banded(node))
         {
             Ctx::Whole
@@ -1154,6 +1243,8 @@ impl<'a> Checker<'a> {
                 ("rotate", s.rotate.is_some()),
                 ("opacity", s.opacity.is_some()),
                 ("overflow", s.overflow.is_some()),
+                ("float", s.float.is_some()),
+                ("clear", s.clear.is_some()),
                 ("margin", s.margin.is_some()),
                 ("position", s.position.is_some()),
                 ("inset", s.inset.is_some()),

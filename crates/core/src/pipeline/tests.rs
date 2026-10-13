@@ -942,3 +942,37 @@ fn justified_pretty_lines_are_painted_within_their_box() {
     }
     assert_ne!(painted_lines(&json("wrap")), painted_lines(&json("pretty")));
 }
+
+#[test]
+fn text_beside_a_float_is_painted_beside_it_and_the_float_over_backgrounds() {
+    let words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+        tempor incididunt ut labore et dolore magna aliqua.";
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+              {{"type":"box","style":{{"float":"left","width":60,"height":30,"backgroundColor":[1,0,0,1]}}}},
+              {{"type":"text","style":{{"backgroundColor":[0,0,1,1]}},
+                "runs":[{{"text":"{words}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+    );
+    let lines = painted_lines(&json);
+    assert!(lines[0].len() > 3);
+    for &(y, x0, _) in &lines[0] {
+        if y < 30.0 {
+            assert!(x0 >= 60.0 - 1e-3, "{y}: {x0}");
+        }
+    }
+    assert!(lines[0].iter().any(|&(y, x0, _)| y > 30.0 && x0 < 1.0));
+    // The float is painted after the paragraph's background.
+    let pages = render_with(&store(), &json, |pages, _, _| pages);
+    let fills: Vec<_> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::FillPath { color, .. } | Op::FillRect { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    let red = fills.iter().position(|c| *c == [1.0, 0.0, 0.0, 1.0]);
+    let blue = fills.iter().position(|c| *c == [0.0, 0.0, 1.0, 1.0]);
+    assert!(blue < red, "{fills:?}");
+}
