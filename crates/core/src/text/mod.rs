@@ -10,6 +10,7 @@ mod hyphen;
 pub use hyphen::HyphenationStore;
 pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
+mod optimal;
 mod paint;
 mod prepare;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
@@ -24,7 +25,9 @@ pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::{AvailableSpace, LeafMeasure, LineBoxes, Size};
-use crate::schema::{Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, WhiteSpace};
+use crate::schema::{
+    Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, TextWrap, WhiteSpace,
+};
 use crate::InkoxideError;
 
 const GLYPH_SPACE: u8 = 1;
@@ -193,6 +196,7 @@ pub(crate) struct ParaStyle {
     pub max_lines: Option<u32>,
     pub ellipsis: bool,
     pub white_space: WhiteSpace,
+    pub text_wrap: TextWrap,
     pub indent: f32,
     pub direction: Direction,
     /// Whether the paragraph's words are hyphenated; a run's own
@@ -217,6 +221,7 @@ impl ParaStyle {
             max_lines: s.max_lines,
             ellipsis: s.ellipsis.unwrap_or(false),
             white_space,
+            text_wrap: s.text_wrap.unwrap_or(TextWrap::Wrap),
             indent: s.text_indent.unwrap_or(0.0),
             direction: s.direction.unwrap_or(Direction::Ltr),
             hyphenate: s.hyphenate == Some(true),

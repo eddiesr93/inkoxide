@@ -1,6 +1,9 @@
-//! Line breaking (greedy, first fit) and line metrics.
+//! Line breaking (greedy, first fit, or optimal with `optimal.rs`) and
+//! line metrics.
 
-use super::{baseline_shift, BreakKind, BreakPoint, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS};
+use super::{
+    baseline_shift, optimal, BreakKind, BreakPoint, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS,
+};
 use crate::layout::LineBoxes;
 
 /// Shown at the end of a truncated line; three dots in fonts without it.
@@ -17,6 +20,8 @@ pub(crate) fn break_lines(para: &Para<'_>, boxes: &LineBoxes) -> LineLayout {
         return LineLayout::default();
     }
     let mut b = Breaker::new(para, boxes);
+    // What `textWrap: pretty` may spend on this paragraph.
+    let mut budget = optimal::Budget::new();
     let n = p.glyphs.len();
     let mut start = 0usize;
     let mut first = 0usize;
@@ -35,7 +40,14 @@ pub(crate) fn break_lines(para: &Para<'_>, boxes: &LineBoxes) -> LineLayout {
         // The opportunities inside the chunk.
         let inside = &p.breaks[first..last];
         first = (last + 1).min(p.breaks.len());
-        b.greedy(start, end, inside);
+        match optimal::lines(&b, start, end, inside, &mut budget) {
+            Some(lines) => {
+                for (s, e, kind) in lines {
+                    b.push(s, e, kind);
+                }
+            }
+            None => b.greedy(start, end, inside),
+        }
         start = end;
     }
     b.finish()
@@ -118,6 +130,43 @@ impl<'a, 'p> Breaker<'a, 'p> {
         } else {
             w
         }
+    }
+
+    /// The room for the glyphs of line `index` with its top at `y`, as
+    /// [`limit`](Self::limit) gives it once the lines before are set.
+    pub fn limit_at(&self, index: usize, y: f32) -> f32 {
+        let w = if self.boxes.banded() {
+            self.boxes.at(y, self.tallest).1
+        } else {
+            self.boxes.width
+        };
+        if index == 0 {
+            w - self.para.style.indent
+        } else {
+            w
+        }
+    }
+
+    /// Whether the boxes have bands: line widths depend on where lines go.
+    pub fn banded(&self) -> bool {
+        self.boxes.banded()
+    }
+
+    /// Lines so far.
+    pub fn count(&self) -> usize {
+        self.lines.len()
+    }
+
+    /// Top of the next line.
+    pub fn top(&self) -> f32 {
+        self.y
+    }
+
+    /// Height of glyphs `start..end` as a line.
+    pub fn height(&self, start: usize, end: usize) -> f32 {
+        let mut l = empty_line(start, self.para.prepared.visible_end(start, end));
+        metrics(&mut l, self.para);
+        l.height
     }
 
     /// Moves the next line down to where the boxes change, when a band is

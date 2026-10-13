@@ -670,6 +670,7 @@ kebab_enum!(WhiteSpace {
     PreWrap = "pre-wrap",
     PreLine = "pre-line",
 });
+kebab_enum!(TextWrap { Wrap = "wrap", Pretty = "pretty" });
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
@@ -890,6 +891,10 @@ pub struct Style {
     pub hyphenate: Option<bool>,
     pub lang: Option<String>,
     pub white_space: Option<WhiteSpace>,
+    /// How lines break: first fit (`wrap`), or over the whole paragraph
+    /// (`pretty`).
+    #[serde(skip)]
+    pub text_wrap: Option<TextWrap>,
     /// Indent of the first line, points (negative: hanging).
     pub text_indent: Option<f32>,
     pub direction: Option<Direction>,

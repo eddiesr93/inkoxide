@@ -555,3 +555,168 @@ fn indent_and_ellipsis_use_the_line_box() {
     assert!(line.width + line.indent <= 120.0 + 1e-3, "{line:?}");
     assert_eq!(l.boxes[0], (50.0, 120.0));
 }
+
+/// `node`, with `textWrap: pretty`.
+fn pretty(mut d: Document) -> Document {
+    let node = &mut d.pages[0].children[0];
+    let style = crate::schema::Style {
+        text_wrap: Some(crate::schema::TextWrap::Pretty),
+        ..(*node.style).clone()
+    };
+    node.style = crate::schema::NodeStyle::new(style);
+    d
+}
+
+/// Every line fits its box: the content width, less the indent on the
+/// first line.
+fn assert_fits(l: &LineLayout, width: f32) {
+    for (i, line) in l.lines.iter().enumerate() {
+        let avail = l.boxes.get(i).map_or(width, |b| b.1);
+        assert!(
+            line.width + line.indent <= avail + 1e-3,
+            "line {i}: {line:?} in {avail}"
+        );
+    }
+}
+
+/// Sum of the squared room left on every line but the last.
+fn raggedness(l: &LineLayout, width: f32) -> f32 {
+    let n = l.lines.len().saturating_sub(1);
+    l.lines[..n]
+        .iter()
+        .map(|x| (width - x.width - x.indent).powi(2))
+        .sum()
+}
+
+const PROSE: &str = "In olden times when wishing still helped one, there lived a king \
+    whose daughters were all beautiful, but the youngest was so beautiful that the sun \
+    itself, which has seen so much, was astonished whenever it shone in her face. Close \
+    by the king's castle lay a great dark forest, and under an old lime tree in the forest \
+    was a well, and when the day was very warm, the king's child went out into the forest";
+
+#[test]
+fn pretty_lines_are_more_even_than_first_fit() {
+    let s = store();
+    for (width, style) in [
+        (150.0, ""),
+        (210.0, ""),
+        (150.0, r#""textAlign":"justify""#),
+        (180.0, r#""textAlign":"justify","textIndent":15"#),
+    ] {
+        let d = doc(&para(PROSE, style));
+        let (greedy_texts, greedy) = lines(&d, &s, width);
+        let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_eq!(texts.join(" "), greedy_texts.join(" "));
+        assert_fits(&l, width);
+        assert!(
+            raggedness(&l, width) <= raggedness(&greedy, width) + 1e-3,
+            "{width} {style}: {texts:#?}"
+        );
+    }
+    // Here first fit leaves short lines in the middle that pretty evens out.
+    let d = doc(&para(PROSE, ""));
+    let (_, greedy) = lines(&d, &s, 140.0);
+    let (_, l) = lines(&pretty(doc(&para(PROSE, ""))), &s, 140.0);
+    assert!(raggedness(&l, 140.0) < 0.9 * raggedness(&greedy, 140.0));
+}
+
+#[test]
+fn pretty_matches_first_fit_when_that_is_already_best() {
+    // Equal words, three to a line exactly.
+    let s = store();
+    let word_doc = doc(&para("mmm", ""));
+    let (_, one) = lines(&word_doc, &s, f32::INFINITY);
+    let space = lines(&doc(&para("mmm mmm", "")), &s, f32::INFINITY).1.width - 2.0 * one.width;
+    let width = 3.0 * one.width + 2.0 * space + 0.01;
+    let text = ["mmm"; 9].join(" ");
+    let (greedy, _) = lines(&doc(&para(&text, "")), &s, width);
+    let (texts, l) = lines(&pretty(doc(&para(&text, ""))), &s, width);
+    assert_eq!(texts, greedy);
+    assert_eq!(texts.len(), 3);
+    assert_fits(&l, width);
+}
+
+#[test]
+fn pretty_falls_back_to_first_fit() {
+    let s = store();
+    // A word wider than the line breaks anywhere, as first fit breaks it.
+    let long = "Supercalifragilisticexpialidocious and words";
+    let (greedy, _) = lines(&doc(&para(long, "")), &s, 60.0);
+    let (texts, _) = lines(&pretty(doc(&para(long, ""))), &s, 60.0);
+    assert_eq!(texts, greedy);
+    // Text without spaces, justified, has nothing to stretch.
+    let cjk = "\u{4e00}\u{4e8c}\u{4e09}\u{56db}\u{4e94}\u{516d}\u{4e03}\u{516b}\u{4e5d}\u{5341}";
+    let justified = r#""textAlign":"justify""#;
+    let (greedy, _) = lines(&doc(&para(cjk, justified)), &s, 35.0);
+    let (texts, _) = lines(&pretty(doc(&para(cjk, justified))), &s, 35.0);
+    assert_eq!(texts, greedy);
+    // `nowrap` does not break.
+    let (texts, _) = lines(
+        &pretty(doc(&para(PROSE, r#""whiteSpace":"nowrap""#))),
+        &s,
+        100.0,
+    );
+    assert_eq!(texts.len(), 1);
+}
+
+#[test]
+fn pretty_keeps_hyphens_apart_and_off_the_last_lines() {
+    let s = store();
+    let style = r#""hyphenate":true,"lang":"en","textAlign":"justify""#;
+    for width in [140.0, 170.0] {
+        let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_fits(&l, width);
+        assert!(
+            l.lines.iter().any(|x| x.hyphen.is_some()),
+            "{width}: {texts:#?}"
+        );
+        // Two hyphens in a row, and one on the line before the last, cost
+        // more than evener spaces gain.
+        for w in l.lines.windows(2) {
+            assert!(
+                w[0].hyphen.is_none() || w[1].hyphen.is_none(),
+                "{width}: {texts:#?}"
+            );
+        }
+        let n = l.lines.len();
+        assert!(l.lines[n - 2].hyphen.is_none(), "{width}: {texts:#?}");
+    }
+}
+
+#[test]
+fn pretty_lines_follow_forced_breaks_ellipsis_and_bands() {
+    let s = store();
+    let text = format!("{PROSE}\\n{PROSE}");
+    let (greedy, _) = lines(&doc(&para(&text, "")), &s, 160.0);
+    let (texts, l) = lines(&pretty(doc(&para(&text, ""))), &s, 160.0);
+    assert_fits(&l, 160.0);
+    // The forced break ends a line in both.
+    let ends = |t: &[String]| t.iter().filter(|x| x.ends_with("forest")).count();
+    assert_eq!(ends(&texts), ends(&greedy));
+    // `maxLines` and the ellipsis cut the optimal lines.
+    let cut = r#""maxLines":2,"ellipsis":true"#;
+    let (texts, l) = lines(&pretty(doc(&para(PROSE, cut))), &s, 160.0);
+    assert_eq!(texts.len(), 2);
+    assert!(texts[1].ends_with('…'));
+    assert_fits(&l, 160.0);
+    // Beside a band, lines fit their own boxes.
+    let boxes = banded(200.0, &[(0.0, 40.0, 60.0, 0.0), (40.0, 70.0, 0.0, 30.0)]);
+    let (texts, l) = lines_in(&pretty(doc(&para(PROSE, r#""textIndent":12"#))), &s, &boxes);
+    assert!(texts.len() > 4);
+    assert_fits(&l, 200.0);
+}
+
+#[test]
+fn a_long_pretty_paragraph_is_quick() {
+    let s = store();
+    let text = [PROSE; 40].join(" ");
+    let start = std::time::Instant::now();
+    let (_, l) = lines(
+        &pretty(doc(&para(&text, r#""textAlign":"justify""#))),
+        &s,
+        300.0,
+    );
+    assert!(l.lines.len() > 100);
+    assert_fits(&l, 300.0);
+    assert!(start.elapsed().as_secs_f32() < 5.0, "{:?}", start.elapsed());
+}
