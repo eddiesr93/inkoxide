@@ -1,6 +1,9 @@
 //! Interactive form fields (`AcroForm`): intrinsic size and the
 //! widget ops painting hands to the PDF writer.
 
+#[cfg_attr(not(test), expect(dead_code, reason = "text fields use it next"))]
+pub(crate) mod format;
+
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::layout::{AvailableSpace, Geometry, Size};
 use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};

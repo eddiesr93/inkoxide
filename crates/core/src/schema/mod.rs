@@ -462,6 +462,70 @@ pub enum FieldKind {
     List,
 }
 
+/// How a text field shows and takes its value: a number, a date, a postal
+/// code… Viewers apply it as the user types, through the standard form
+/// scripts.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct FieldFormat {
+    #[serde(rename = "type")]
+    pub kind: FormatKind,
+    /// Number and percent: digits after the decimal separator (default 2).
+    #[serde(default, deserialize_with = "de::opt_int")]
+    pub decimals: Option<u8>,
+    /// Number and percent: the separators (default `1,234.56`).
+    pub separators: Option<Separators>,
+    /// Number: how negative numbers show (default a minus sign).
+    pub negative: Option<NegativeStyle>,
+    /// Number: a currency symbol.
+    pub currency: Option<String>,
+    /// Number: the currency goes before the number (default `true`).
+    pub currency_before: Option<bool>,
+    /// Date and time: how the value shows (`dd/mm/yyyy`, `HH:MM`).
+    pub pattern: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FormatKind {
+    Number,
+    Percent,
+    Date,
+    Time,
+    Zip,
+    ZipPlus4,
+    Phone,
+    Ssn,
+}
+
+/// The thousands and decimal separators of a number, by example.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+pub enum Separators {
+    #[default]
+    #[serde(rename = "1,234.56")]
+    CommaDot,
+    #[serde(rename = "1234.56")]
+    Dot,
+    #[serde(rename = "1.234,56")]
+    DotComma,
+    #[serde(rename = "1234,56")]
+    Comma,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NegativeStyle {
+    /// `-1,234.56`.
+    #[default]
+    Minus,
+    /// `1,234.56` in red.
+    Red,
+    /// `(1,234.56)`.
+    Parens,
+    /// `(1,234.56)` in red.
+    ParensRed,
+}
+
 #[derive(Debug, Clone)]
 pub enum ImageSource {
     /// Key into the render-time image map.
