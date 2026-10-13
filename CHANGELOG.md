@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.6.4 - 2026-10-13
+
+`inkoxide` and `@inkoxide/render` 0.6.4; the other packages are unchanged. Upgrading: a form
+field taller than a page is one widget, on its first page (see **Fixed**).
+
 ### Fixed
 
 - A form field taller than a page is one widget, on the page it starts on: it was a widget on
