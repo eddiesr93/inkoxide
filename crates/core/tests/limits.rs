@@ -44,6 +44,29 @@ fn runaway_page_count_is_an_error() {
     assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
 }
 
+/// What is painted on every page is bounded too: a few kilobytes repeated
+/// on each of thousands of pages would make gigabytes.
+#[test]
+fn runaway_repeated_content_is_an_error() {
+    let fixed = |pages: &str| {
+        let text = "x".repeat(1000);
+        format!(
+            r#"{{"type":"text","break":{{"fixed":true}},{pages}
+                "runs":[{{"text":"{text}","font":"Inter-Regular","size":10,"link":"https://example.com"}}]}}"#
+        )
+    };
+    // About 2400 pages.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let t = std::time::Instant::now();
+    let err = render(&doc(&format!("{},{tall}", fixed(""))), Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 256 MB"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    // Shown on the first page only, it is painted once.
+    let once = doc(&format!("{},{tall}", fixed(r#""pages":"first","#)));
+    render(&once, Some(1)).unwrap();
+}
+
 /// The parser's recursion limit bounds node depth; everything below it
 /// (layout, pagination, paint) must fit a 2 MiB stack at that depth.
 #[test]

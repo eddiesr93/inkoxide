@@ -7,11 +7,13 @@ use rayon::prelude::*;
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
 use crate::layout::{
-    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Size, TaffyLayout, Tree,
+    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Part, Size, TaffyLayout, Tree,
 };
 use crate::paginate::{paginate, Placement};
 use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
-use crate::schema::{Display, Document, Node, NodeKind, PageSpec, Position};
+use crate::schema::{
+    Display, Document, Node, NodeKind, PageFilter, PagePattern, PageSpec, Position,
+};
 use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
 use crate::InkoxideError;
 
@@ -19,6 +21,22 @@ use crate::InkoxideError;
 /// sizes (a 10¹¹ pt box), checked before anything is painted. Far above
 /// any real document; ~2 GB of output at typical page sizes.
 pub(crate) const MAX_PAGES: u32 = 100_000;
+
+/// Most bytes the content painted on every page (headers, footers,
+/// overlays, fixed nodes, repeated table header rows) may add to one
+/// document, estimated before anything is painted: a memory guard like
+/// [`MAX_PAGES`], since a few kilobytes repeated on every page of a long
+/// document would otherwise make gigabytes.
+pub(crate) const MAX_REPEATED: u64 = 256 << 20;
+
+/// Estimated output, in bytes per page, of what a repeated node paints: a
+/// node or a character of text,
+const ITEM_BYTES: u64 = 16;
+/// a link (a linked run at worst puts one on every line, a line per
+/// character),
+const LINK_BYTES: u64 = 256;
+/// and a `debug` outline or a form field widget.
+const BOX_BYTES: u64 = 768;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -221,6 +239,7 @@ pub(crate) fn run<'d, T: Send>(
     // The painter draws each page's digits in placeholders, and headers
     // and footers that show them are laid out per page.
     let total = page_count(&laid)?;
+    repeated_size(&laid)?;
     let mut marks = Marks::default();
     let mut first = 0;
     for l in &laid {
@@ -277,6 +296,93 @@ fn page_count(laid: &[Laid<'_>]) -> Result<u32, InkoxideError> {
         )));
     }
     Ok(total as u32)
+}
+
+/// Checks that the content painted on every page stays within
+/// [`MAX_REPEATED`].
+fn repeated_size(laid: &[Laid<'_>]) -> Result<(), InkoxideError> {
+    let mut total: u64 = 0;
+    for l in laid {
+        let (all, pages) = (l.spec.debug, u64::from(l.placement.pages));
+        let bands = l.header.iter().chain(&l.footer);
+        let bands = bands.chain(l.overlays.iter().map(|(_, b)| b));
+        for b in bands {
+            total = total.saturating_add(repeated(&b.tree, 0, pages, all));
+        }
+        for &i in &l.placement.fixed {
+            total = total.saturating_add(repeated(&l.flow, i, pages, all));
+        }
+        // Header rows, again on every page after a table's first.
+        for (&t, table) in &l.flow.tables {
+            let (first, last) = l.placement.page_range[t as usize];
+            for r in l.flow.children(t).take(table.header_rows) {
+                let size = repeated(&l.flow, r, u64::from(last - first), all);
+                total = total.saturating_add(size);
+            }
+        }
+    }
+    if total > MAX_REPEATED {
+        return Err(InkoxideError::Layout(format!(
+            "the headers, footers and fixed elements repeated on every page add about {} MB; \
+             the limit is {} MB",
+            total >> 20,
+            MAX_REPEATED >> 20
+        )));
+    }
+    Ok(())
+}
+
+/// Estimated output, in bytes, of node `i` of `tree` and its descendants
+/// painted on `pages` pages (fewer for nodes shown on some pages only);
+/// `all`: every box has a `debug` outline.
+fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool) -> u64 {
+    let mut total: u64 = 0;
+    let mut stack = vec![(i, pages)];
+    while let Some((j, pages)) = stack.pop() {
+        let ln = &tree.nodes[j as usize];
+        let debug = all
+            || match ln.part {
+                Part::Node(n) => n.debug,
+                Part::Row(r) => r.debug,
+                Part::Cell(c) => c.debug,
+                Part::Root => false,
+            };
+        let mut pages = pages;
+        let mut size = if debug { BOX_BYTES } else { ITEM_BYTES };
+        if let Some(n) = ln.node() {
+            if let Some(most) = n.pages.as_deref().and_then(most_pages) {
+                pages = pages.min(most);
+            }
+            if n.link.is_some() {
+                size += LINK_BYTES;
+            }
+            match &n.kind {
+                NodeKind::Text { runs } => {
+                    for r in runs {
+                        // A placeholder shows a page number.
+                        let chars = r.text.as_ref().map_or(8, String::len) as u64;
+                        let each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
+                        size = size.saturating_add(chars * each);
+                    }
+                }
+                NodeKind::Field(_) => size += BOX_BYTES,
+                _ => {}
+            }
+        }
+        total = total.saturating_add(size.saturating_mul(pages));
+        stack.extend(tree.children(j).map(|c| (c, pages)));
+    }
+    total
+}
+
+/// Most pages a node with page filter `f` is painted on, when that is a
+/// fixed number.
+fn most_pages(f: &PageFilter) -> Option<u64> {
+    match f {
+        PageFilter::Pattern(PagePattern::First | PagePattern::Last) => Some(1),
+        PageFilter::List(list) => Some(list.len() as u64),
+        PageFilter::Pattern(_) => None,
+    }
 }
 
 /// Most times the flows are laid out again for the page numbers their text

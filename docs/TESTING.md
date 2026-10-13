@@ -19,8 +19,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   renders as PDF/A-2b; with `VERAPDF` pointing at a veraPDF command
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
   output must pass veraPDF's `2b` profile.
-- `crates/core/tests/limits.rs`: memory guards (page limit, deepest
-  accepted nesting on a small stack).
+- `crates/core/tests/limits.rs`: memory guards (page limit, content
+  repeated on every page, deepest accepted nesting on a small stack).
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
   finite (one `inf` or `NaN` operand makes a page invalid) and one
   readers parse (an integer within 32 bits or a real within ±10¹¹), with

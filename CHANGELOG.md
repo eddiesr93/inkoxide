@@ -7,6 +7,15 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Security
+
+- What is painted on every page (headers, footers, overlays, fixed elements and repeated table
+  header rows) is held to a limit of about 256 MB over the whole document, estimated before
+  anything is painted; a document over it fails with `LAYOUT_ERROR`. Repeated on every one of
+  thousands of pages, a few kilobytes of content (a fixed element taller than its page, links
+  on every line) made a PDF of several gigabytes. Elements shown on some pages only (`pages`)
+  count for those pages. Found by the `render_tree` fuzz target.
+
 ## 0.6.0 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.0, `@inkoxide/react` and `@inkoxide/tailwind` 0.4.0,

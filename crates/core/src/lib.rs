@@ -169,8 +169,9 @@ impl RenderOptions {
 /// Validates a document against the schema and the registered resources:
 /// every font must be registered, and every image must exist and decode.
 /// Returns every problem found (capped at 100). Empty means the document
-/// is valid; [`render`] can still fail on the options, on the page limit,
-/// or when a font cannot be shaped or embedded.
+/// is valid; [`render`] can still fail on the options, on the page limit
+/// or the limit on content repeated on every page, or when a font cannot be
+/// shaped or embedded.
 #[must_use]
 pub fn validate(
     doc: &[u8],

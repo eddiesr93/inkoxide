@@ -147,8 +147,9 @@ try {
 - **Few large documents.** For a 500-page export, keep the default.
 - **Memory.** Peak memory grows with the document: about 210 MB for a
   435-page table (see [BENCHMARKS.md](BENCHMARKS.md)). The engine
-  refuses documents that would exceed its page limit, with
-  `LAYOUT_ERROR`.
+  refuses documents that would exceed its page limit, or whose
+  headers, footers and fixed elements would add more than about 256 MB
+  repeated on every page, with `LAYOUT_ERROR`.
 
 ## Determinism
 

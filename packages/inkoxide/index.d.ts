@@ -112,7 +112,8 @@ export function unregisterHyphenationPatterns(lang: string): boolean;
  * there and decode. Inline images (`data`) are always checked. Returns at
  * most 100 problems; one in the document's structure is returned alone. An
  * empty array means the document is valid; `render` can still fail on an
- * option, the page limit or a font that cannot be embedded.
+ * option, the page limit, the limit on content repeated on every page or a
+ * font that cannot be embedded.
  */
 export function validate(
   doc: Uint8Array | string,

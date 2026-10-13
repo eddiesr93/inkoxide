@@ -130,7 +130,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font (the message names it) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
-| `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit was exceeded |
+| `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
@@ -159,7 +159,7 @@ inside a complete JPEG is not found. Without images (Node `validate`
 with no `images`, Rust `validate_without_images`), image ids are not
 looked up and everything else is checked. An empty result means the
 document is valid; `render` can still fail on an option, on the page
-limit (`LAYOUT_ERROR`), or on a font that cannot be shaped or embedded
+limit or the limit on content repeated on every page (`LAYOUT_ERROR`), or on a font that cannot be shaped or embedded
 (`FONT_ERROR`). `validate` reads the document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the
 reader rejects) is returned alone, as the rest cannot be checked.
