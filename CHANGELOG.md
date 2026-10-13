@@ -18,6 +18,9 @@ All notable changes to the packages in this repository. The format follows
   array and several options can be selected.
 - `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
   fields inside it, at any depth (`address.street`); sets nest.
+- `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
+  takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
+  `TextInput` is another name for `TextField`.
 
 ### Security
 

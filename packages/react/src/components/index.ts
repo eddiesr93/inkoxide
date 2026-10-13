@@ -536,10 +536,30 @@ export interface RadioProps extends FieldCommon {
   checked?: boolean;
 }
 
-export interface SelectProps extends FieldCommon {
-  options: string[];
-  value?: string;
-}
+/** The choices of a `Select` or a `List`: `options`, or its other name `select`. */
+type Choices = { options: string[]; select?: never } | { select: string[]; options?: never };
+
+export type SelectProps = FieldCommon &
+  Choices & {
+    /** The selected option. */
+    value?: string;
+  };
+
+export type ListProps = FieldCommon &
+  Choices &
+  (
+    | {
+        multiSelect?: false;
+        /** The selected option. */
+        value?: string;
+      }
+    | {
+        /** Several options can be selected at once. */
+        multiSelect: true;
+        /** The selected options, or one. */
+        value?: string | string[];
+      }
+  );
 
 export interface FieldSetProps extends Flow {
   /** The group's name, put in front of the name of every field inside it: `address.street`. */
@@ -551,7 +571,8 @@ export type FieldProps =
   | ({ kind: 'text' } & TextFieldProps)
   | ({ kind: 'checkbox' } & CheckboxProps)
   | ({ kind: 'radio' } & RadioProps)
-  | ({ kind: 'select' } & SelectProps);
+  | ({ kind: 'select' } & SelectProps)
+  | ({ kind: 'list' } & ListProps);
 
 type SvgPaint = string;
 /** SVG presentation attributes, camelCase (`strokeWidth`), as in React DOM. */
@@ -724,9 +745,13 @@ function field<P extends object>(kind: FieldProps['kind'], displayName: string):
 }
 /** A text field. */
 export const TextField: FC<TextFieldProps> = field('text', 'TextField');
+/** The same as `TextField`. */
+export const TextInput: FC<TextFieldProps> = field('text', 'TextInput');
 /** A checkbox. */
 export const Checkbox: FC<CheckboxProps> = field('checkbox', 'Checkbox');
 /** One button of a radio group (buttons share `name`). */
 export const Radio: FC<RadioProps> = field('radio', 'Radio');
 /** A drop-down list. */
 export const Select: FC<SelectProps> = field('select', 'Select');
+/** A list box: several options in view (four without a height), one or several selected. */
+export const List: FC<ListProps> = field('list', 'List');

@@ -44,7 +44,7 @@ a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
-| `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
+| `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
 | `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link` and
@@ -542,6 +542,7 @@ In an SVG, whether in `<Svg>` or an image file:
 ```tsx
 <TextField name="email" className="h-6 w-full rounded border border-gray-300 px-1" />
 <Select name="plan" options={['Starter', 'Team']} value="Team" className="h-6 w-40 border" />
+<List name="days" options={['Mon', 'Tue', 'Wed']} multiSelect value={['Mon', 'Wed']} className="w-40 border" />
 <Checkbox name="terms" className="h-3.5 w-3.5 border" />
 <Radio name="billing" value="yearly" checked className="h-3.5 w-3.5 rounded-full border" />
 ```
@@ -549,8 +550,14 @@ In an SVG, whether in `<Svg>` or an image file:
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
 must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
 `maxLength` and `password`; size, border, background and text style come from the classes.
-`Field` is any of the four, picked by its `kind` (`"text"`, `"checkbox"`, `"radio"`,
-`"select"`), for forms built from data: `<Field kind={q.kind} name={q.name} … />`.
+`TextInput` is another name for `TextField`.
+
+`Select` is a drop-down list and `List` a list box, which shows several options at once (four
+rows without a height) and starts at the first selected one. Both take their choices as
+`options`, or `select`, and the selected one as `value`; a `List` with `multiSelect` takes an
+array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkbox"`,
+`"radio"`, `"select"`, `"list"`), for forms built from data:
+`<Field kind={q.kind} name={q.name} … />`.
 
 A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
 the name of every field inside it, at any depth. Viewers show and export the fields by those

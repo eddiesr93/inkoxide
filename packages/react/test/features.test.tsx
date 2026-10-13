@@ -24,6 +24,7 @@ import {
   isImagePath,
   LinearGradient,
   Link,
+  List,
   PAGE_SIZES,
   Page,
   PageBreak,
@@ -42,6 +43,7 @@ import {
   Table,
   Text,
   TextField,
+  TextInput,
   TotalPages,
   usePage,
   View,
@@ -970,6 +972,36 @@ describe('form fields', () => {
     expect(s?.field).toMatchObject({ kind: 'select', options: ['Ohio', 'Iowa'], required: true });
     expect(m?.field).toMatchObject({ multiline: true, readOnly: true });
     expect(r.validate()).toEqual([]);
+  });
+
+  it('builds list boxes, and takes select for options and TextInput for TextField', () => {
+    const r = tree(
+      <View>
+        <List name="days" options={['Mon', 'Tue', 'Wed']} value="Tue" />
+        <List name="tags" select={['a', 'b', 'c']} multiSelect value={['c', 'a']} className="h-20" />
+        <Select name="plan" select={['Starter', 'Team']} value="Team" />
+        <TextInput name="email" value="a@b.c" />
+        <Field kind="list" name="any" options={['x']} />
+      </View>,
+    );
+    const [days, tags, plan, email, any] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(days?.field).toEqual({
+      name: 'days',
+      kind: 'list',
+      options: ['Mon', 'Tue', 'Wed'],
+      value: 'Tue',
+      font: 'Inter-Regular',
+    });
+    expect(tags?.field).toMatchObject({ options: ['a', 'b', 'c'], multiSelect: true, value: ['c', 'a'] });
+    expect(tags?.style).toEqual({ height: 60 });
+    expect(plan?.field).toMatchObject({ kind: 'select', options: ['Starter', 'Team'], value: 'Team' });
+    expect(email?.field).toMatchObject({ kind: 'text', value: 'a@b.c' });
+    expect(any?.field).toMatchObject({ kind: 'list', options: ['x'] });
+    expect(r.validate()).toEqual([]);
+    const several = thrown(() =>
+      tree(<List name="x" options={['a', 'b']} value={['a', 'b'] as unknown as string} />),
+    );
+    expect(several.message).toContain('need multiSelect');
   });
 
   it('puts the names of field sets in front of the names of their fields', () => {

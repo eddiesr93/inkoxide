@@ -13,6 +13,7 @@ import {
   FieldSet,
   Footer,
   Link,
+  List,
   Page,
   PageBreak,
   PageNumber,
@@ -156,6 +157,23 @@ describe('renderToBuffer', () => {
     const ref = /(\d+) 0 obj/.exec(group)?.[1];
     expect(bytes.split(`/Parent ${ref} 0 R`)).toHaveLength(3);
     expect(bytes).not.toContain('address.street');
+  });
+
+  it('writes a list box, and rejects a value that is not one of its options', async () => {
+    const list = (value: string[]) => (
+      <Document>
+        <Page>
+          <List name="days" options={['Mon', 'Tue', 'Wed']} multiSelect value={value} />
+        </Page>
+      </Document>
+    );
+    const bytes = Buffer.from(await renderToBuffer(list(['Wed', 'Mon']))).toString('latin1');
+    expect(bytes).toContain('/FT /Ch');
+    expect(bytes).toContain('/V [(Wed) (Mon)]');
+    expect(bytes).toContain('/I [0 2]');
+    const err = await renderToBuffer(list(['Sun'])).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect((err as RenderError).message).toContain('is not one of `options`');
   });
 
   it('repeats a fixed element with its link on every page, and its bookmark once', async () => {
