@@ -65,7 +65,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
 | PDF | `pdf` | Pages and content streams (encoded in parallel), links, outline, forms, PDF/A-2b |
-| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects |
+| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
 
 ## Public API (core)
 
@@ -108,6 +108,18 @@ threads. `pdf` depends on `fonts` and `images`, never the reverse: `fonts`
 subsets font programs and caches the compressed whole program, and the PDF
 writer supplies the compression; the writer and `images` both compress
 through `flate.rs`.
+
+SVG text goes through the same shaper. `images/svg_text` reads each
+`<text>` of an SVG once, when the SVG is decoded: the cascade of its text
+properties (simplecss and svgtypes are used only in its `extract.rs`, at
+the versions usvg uses), white space and character positions. Each render
+lays the text out with its fonts before layout (`text/svg.rs`, one
+`TextShaper::prepare` call per chunk, so fallback fonts, bidi, the glyph
+limit and ToUnicode apply), replaces each `<text>` with a "probe" path
+over its ink, and converts the SVG again (cached by the rewritten source).
+usvg resolves the probes' paint; the PDF writer draws each probe's text in
+its place as PDF text (`pdf/svg.rs`). See
+[ADR 0001](adr/0001-svg-text-probes.md).
 
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
 for min-content / max-content / definite widths and gets the paragraph's

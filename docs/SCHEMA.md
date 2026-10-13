@@ -127,9 +127,9 @@ Type: `boolean` (default `false`)
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) | yes |  |
-| `family` | `string` | yes | min length 1 |
-| `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400` |
-| `style` | `"normal"` \| `"italic"` |  | default `"normal"` |
+| `family` | `string` | yes | min length 1; The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts. |
+| `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400`; The weight SVG text's `font-weight` is matched against. |
+| `style` | `"normal"` \| `"italic"` |  | default `"normal"`; The style SVG text's `font-style` is matched against. |
 
 ### NonNegative
 

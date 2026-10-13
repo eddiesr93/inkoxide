@@ -21,7 +21,7 @@ over by changing the import. This page lists what has another name, and what is 
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Works with `@inkoxide/tailwind` installed: `npm install @inkoxide/tailwind` |
 | `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points |
-| `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
+| `<Svg>`, `<Canvas>` | The same; `<Text>` and `<Tspan>` inside `<Svg>` are SVG text, see [Drawing](GUIDE.md#drawing-svg-and-canvas) | Works. SVG text is real PDF text in the registered fonts; `<textPath>` and vertical text are not supported. The `<Canvas>` painter's `text` draws one line, its top at `y`: it does not wrap, and a line break in it throws. Mitred strokes default to PDF's miter limit of 10 |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
 **Not available:**

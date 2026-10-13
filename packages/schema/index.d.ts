@@ -289,8 +289,17 @@ export interface Meta {
  */
 export interface FontDecl {
   id: Id;
+  /**
+   * The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts.
+   */
   family: string;
+  /**
+   * The weight SVG text's `font-weight` is matched against.
+   */
   weight?: number;
+  /**
+   * The style SVG text's `font-style` is matched against.
+   */
   style?: 'normal' | 'italic';
 }
 /**
