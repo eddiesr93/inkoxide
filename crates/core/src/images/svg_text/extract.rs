@@ -103,11 +103,19 @@ pub(crate) fn extract(doc: &Document<'_>) -> Result<(SvgTextDoc, Work), TextErro
     let root = doc.root_element();
     let mut cascade = Cascade::new(doc);
     let viewport = viewport(root);
-    let mut texts = Vec::new();
+    let mut texts: Vec<SvgText> = Vec::new();
     for n in root.descendants().filter(|n| is_svg(*n, "text")) {
         // A text inside a text is not drawn.
         if n.ancestors().skip(1).any(|a| is_svg(a, "text")) {
             continue;
+        }
+        // Each text is replaced where it is in the source: one an entity
+        // expands to is somewhere else.
+        let after = texts.last().map_or(root.range().start, |t| t.range.end);
+        if n.range().start < after {
+            return Err(TextError::Unsupported(
+                "SVG <text> from an entity is not supported; write it in the SVG itself".into(),
+            ));
         }
         texts.push(read_text(n, &mut cascade, viewport)?);
     }

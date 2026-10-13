@@ -264,3 +264,17 @@ fn ignores_elements_other_than_spans() {
     assert_eq!(string(&t), "ab");
     assert_eq!(texts("<text>a<text>b</text></text>").len(), 1);
 }
+
+#[test]
+fn refuses_text_from_entities() {
+    let src = r#"<!DOCTYPE svg [<!ENTITY t "<text>hi</text>">]><svg xmlns="http://www.w3.org/2000/svg">&t;<text>b</text></svg>"#;
+    let opts = usvg::roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let doc = Document::parse_with_options(src, opts).unwrap();
+    let Err(TextError::Unsupported(e)) = extract(&doc) else {
+        panic!("accepted text from an entity");
+    };
+    assert!(e.contains("entity"), "{e}");
+}
