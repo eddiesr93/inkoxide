@@ -264,9 +264,14 @@ impl ImageSet {
 
     /// Intrinsic size in points (96 dpi, after EXIF orientation).
     pub fn intrinsic(&self, node: &Node) -> Option<(f32, f32)> {
-        let img = self.get(self.key(node)?);
-        let (w, h) = img.display_size();
-        Some((w * PT_PER_PX, h * PT_PER_PX))
+        Some(self.intrinsic_of(self.key(node)?))
+    }
+
+    /// Intrinsic size of image `key` in points (96 dpi, after EXIF
+    /// orientation).
+    pub fn intrinsic_of(&self, key: ImageKey) -> (f32, f32) {
+        let (w, h) = self.get(key).display_size();
+        (w * PT_PER_PX, h * PT_PER_PX)
     }
 
     /// Size of an image leaf: an explicit dimension wins and the other
@@ -311,7 +316,6 @@ impl ImageSet {
         ctx: &crate::paint::ContentCtx<'_>,
         ops: &mut Vec<crate::paint::Op>,
     ) {
-        use crate::paint::Op;
         let NodeKind::Image {
             fit,
             object_position,
@@ -320,7 +324,7 @@ impl ImageSet {
         else {
             return;
         };
-        let (Some(key), Some(intrinsic)) = (self.key(node), self.intrinsic(node)) else {
+        let Some(key) = self.key(node) else {
             return;
         };
         let Rect {
@@ -329,11 +333,30 @@ impl ImageSet {
             w: cw,
             h: ch,
         } = geo.content_box();
-        if cw <= 0.0 || ch <= 0.0 {
+        let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
+        // `borderRadius` rounds the image without `overflow: hidden`.
+        let radii = crate::paint::content_radii(&node.style, geo);
+        self.paint_in(key, bx, *fit, *object_position, &radii, ops);
+    }
+
+    /// Paints image `key` into `bx` (page coordinates) according to `fit`
+    /// and `position`, clipped to `bx` rounded by `radii`.
+    pub fn paint_in(
+        &self,
+        key: ImageKey,
+        bx: Rect,
+        fit: ImageFit,
+        position: ObjectPosition,
+        radii: &crate::paint::Radii,
+        ops: &mut Vec<crate::paint::Op>,
+    ) {
+        use crate::paint::Op;
+        if bx.w <= 0.0 || bx.h <= 0.0 {
             return;
         }
-        let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
-        let (rect, clip) = match (&self.get(key).body, fit) {
+        let img = self.get(key);
+        let intrinsic = self.intrinsic_of(key);
+        let (rect, clip) = match (&img.body, fit) {
             // The box is the SVG's viewport, which its `viewBox` fits.
             (
                 ImageBody::Svg {
@@ -341,14 +364,12 @@ impl ImageSet {
                 },
                 ImageFit::Fill,
             ) => vb.place(intrinsic, bx),
-            _ => fit_rect(*fit, *object_position, bx, intrinsic),
+            _ => fit_rect(fit, position, bx, intrinsic),
         };
-        // `borderRadius` rounds the image without `overflow: hidden`.
-        let radii = crate::paint::content_radii(&node.style, geo);
         ops.push(Op::Save);
-        if !crate::paint::is_square(&radii) {
+        if !crate::paint::is_square(radii) {
             ops.push(Op::ClipPath {
-                path: crate::paint::rounded_rect(bx, &radii),
+                path: crate::paint::rounded_rect(bx, radii),
                 rule: crate::paint::FillRule::NonZero,
             });
         } else if clip {
@@ -356,7 +377,7 @@ impl ImageSet {
         }
         ops.push(Op::Image {
             key,
-            matrix: image_matrix(self.get(key).orientation, rect),
+            matrix: image_matrix(img.orientation, rect),
         });
         ops.push(Op::Restore);
     }
