@@ -188,11 +188,13 @@ impl ImageStore {
 pub(crate) type ImageKey = u32;
 
 /// The unique images of one document, decoded, with the image each node
-/// shows.
+/// shows and the background image each box paints.
 pub(crate) struct ImageSet {
     pub images: Vec<Arc<DecodedImage>>,
-    /// Node address → image.
+    /// Image node address → image.
     by_node: HashMap<usize, ImageKey>,
+    /// Box address → its background image.
+    by_background: HashMap<usize, ImageKey>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -207,7 +209,18 @@ impl ImageSet {
         store: &ImageStore,
         decoder: &dyn ImageDecoder,
     ) -> Result<Self, InkoxideError> {
+        let source_data = |source: &ImageSource| match source {
+            ImageSource::Ref(id) => store
+                .get(id)
+                .cloned()
+                .ok_or_else(|| InkoxideError::Image(format!("image `{id}` is not registered"))),
+            ImageSource::Inline(inline) => inline
+                .data()
+                .map_err(|e| InkoxideError::Image(format!("inline image: {e}")))
+                .cloned(),
+        };
         let mut found: Vec<(usize, Arc<ImageData>)> = Vec::new();
+        let mut backgrounds: Vec<(usize, Arc<ImageData>)> = Vec::new();
         let mut stack: Vec<&Node> = Vec::new();
         for p in pages {
             stack.extend(p.children.iter());
@@ -215,19 +228,11 @@ impl ImageSet {
             stack.extend(p.footer.as_deref());
         }
         while let Some(n) = stack.pop() {
+            if let Some(bg) = &n.background_image {
+                backgrounds.push((node_key(n), source_data(&bg.source)?));
+            }
             match &n.kind {
-                NodeKind::Image { source, .. } => {
-                    let data = match source {
-                        ImageSource::Ref(id) => store.get(id).cloned().ok_or_else(|| {
-                            InkoxideError::Image(format!("image `{id}` is not registered"))
-                        })?,
-                        ImageSource::Inline(inline) => inline
-                            .data()
-                            .map_err(|e| InkoxideError::Image(format!("inline image: {e}")))?
-                            .clone(),
-                    };
-                    found.push((node_key(n), data));
-                }
+                NodeKind::Image { source, .. } => found.push((node_key(n), source_data(source)?)),
                 _ => stack.extend(n.children()),
             }
         }
@@ -235,7 +240,7 @@ impl ImageSet {
         // Dedupe by content hash; keys follow first appearance in hash
         // order so numbering is deterministic.
         let mut unique: BTreeMap<u64, Arc<ImageData>> = BTreeMap::new();
-        for (_, d) in &found {
+        for (_, d) in found.iter().chain(&backgrounds) {
             unique.entry(d.hash).or_insert_with(|| d.clone());
         }
         let mut key_of: HashMap<u64, ImageKey> = HashMap::new();
@@ -247,15 +252,26 @@ impl ImageSet {
             images.push(img);
             key_of.insert(*hash, i as ImageKey);
         }
-        let by_node = found
-            .into_iter()
-            .map(|(n, d)| (n, key_of[&d.hash]))
-            .collect();
-        Ok(Self { images, by_node })
+        let keys = |found: Vec<(usize, Arc<ImageData>)>| {
+            found
+                .into_iter()
+                .map(|(n, d)| (n, key_of[&d.hash]))
+                .collect()
+        };
+        Ok(Self {
+            images,
+            by_node: keys(found),
+            by_background: keys(backgrounds),
+        })
     }
 
     pub fn key(&self, node: &Node) -> Option<ImageKey> {
         self.by_node.get(&node_key(node)).copied()
+    }
+
+    /// The background image of box `node`.
+    pub fn background_key(&self, node: &Node) -> Option<ImageKey> {
+        self.by_background.get(&node_key(node)).copied()
     }
 
     pub fn get(&self, key: ImageKey) -> &DecodedImage {

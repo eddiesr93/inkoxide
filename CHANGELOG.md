@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- Background images: `backgroundImage` on a box node of the document (`src` or `data`, `fit`,
+  `objectPosition`) paints an image behind the box's children, over its background colour and
+  under its borders. It fills the padding box, clipped to it and rounded by `borderRadius`, and a
+  box split across pages is sliced with its image, like its background colour.
+
 ## 0.6.5 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that

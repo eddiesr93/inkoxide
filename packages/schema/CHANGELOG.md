@@ -7,6 +7,16 @@ version 2.
 
 ## Unreleased
 
+Still document schema version 1.
+
+### Added
+
+- `BoxNode.backgroundImage` (`$defs/BackgroundImage`): an image painted into the box's padding
+  box, over its `backgroundColor` and under its borders and children, clipped to the padding box
+  rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
+  (default `fill`) and `objectPosition`, with the same bounds as on an `image` node. Optional;
+  documents without it render as before.
+
 ## 2.3.0 - 2026-10-13
 
 Still document schema version 1.

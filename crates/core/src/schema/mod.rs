@@ -237,6 +237,8 @@ pub struct Node {
     pub pages: Option<Box<PageFilter>>,
     /// Draws the node's boxes over the page (a development aid).
     pub debug: bool,
+    /// An image behind a box's children (boxed: rare). Only boxes take one.
+    pub background_image: Option<Box<BackgroundImage>>,
     pub kind: NodeKind,
 }
 
@@ -410,6 +412,16 @@ pub enum ImageSource {
     Ref(String),
     /// Inline base64 payload, decoded once, when validation first reads it.
     Inline(InlineImage),
+}
+
+/// A box's `backgroundImage`: painted into its padding box, over its
+/// `backgroundColor` and under its borders and children.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "de::RawBackgroundImage")]
+pub struct BackgroundImage {
+    pub source: ImageSource,
+    pub fit: ImageFit,
+    pub object_position: ObjectPosition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
