@@ -303,7 +303,8 @@ fn render_inner(
     };
     let shaper = RustybuzzShaper::new(&font_set)?.with_hyphenator(&hyphenator);
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
-    let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
+    let mut image_set =
+        images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
@@ -314,7 +315,7 @@ fn render_inner(
         &document,
         &font_set,
         &mut text,
-        &image_set,
+        &mut image_set,
         parallel,
         |page| sink.encode_page(&page, &font_set),
     )?;

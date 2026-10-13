@@ -85,8 +85,8 @@ pub(super) fn render_with<R>(
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
-    let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, marks) = run(&doc, &fonts, &mut text, &mut images, true, Ok).unwrap();
     f(pages, &marks, &fonts)
 }
 
@@ -793,8 +793,8 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageStore::new();
     images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
-    let images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
-    let (pages, _) = run(&doc, &fonts, &mut text, &images, false, Ok).unwrap();
+    let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+    let (pages, _) = run(&doc, &fonts, &mut text, &mut images, false, Ok).unwrap();
     pages.into_iter().map(|p| p.ops).collect()
 }
 
@@ -872,4 +872,95 @@ fn a_box_without_a_background_image_paints_no_image() {
     );
     let pages = ops_with_logo(&json);
     assert!(!pages[0].iter().any(|op| matches!(op, Op::Image { .. })));
+}
+
+/// The ops of each page of `text` in Inter at 20 pt, with the colour test
+/// font `fallback` as fallback.
+fn emoji_ops(text: &str, fallback: &str) -> (Vec<Vec<Op>>, Vec<String>) {
+    let mut store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+    for id in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        let bytes = crate::test_fixtures::fixture(&format!("fonts/{id}.ttf"));
+        store.register(id, bytes).unwrap();
+    }
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"EmojiTest-COLR","family":"Emoji"}},{{"id":"EmojiTest-CBDT","family":"Emoji Bitmap"}}],
+            "fallbackFonts":["{fallback}"],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","runs":[{{"text":"{text}","font":"Inter-Regular","size":20}}]}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, _) = run(&doc, &fonts, &mut text, &mut images, false, Ok).unwrap();
+    let ids = (0..fonts.fonts.len())
+        .map(|k| fonts.get(k as u16).id.to_string())
+        .collect();
+    (pages.into_iter().map(|p| p.ops).collect(), ids)
+}
+
+#[test]
+fn colour_glyphs_are_images_in_spans_with_their_text() {
+    for fallback in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        let (pages, ids) = emoji_ops("a \u{1F600}\u{1F1EB}\u{1F1F7} b", fallback);
+        let ops = &pages[0];
+        // Each colour glyph: a span with its text, the image, and an
+        // invisible space of Inter as wide as the glyph's advance (22 pt:
+        // 1100 units of a 1000-unit em at 20 pt).
+        let spans: Vec<&str> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Span { actual_text } => Some(&**actual_text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spans, ["\u{1F600}", "\u{1F1EB}\u{1F1F7}"], "{fallback}");
+        let images = ops
+            .iter()
+            .filter(|op| matches!(op, Op::Image { .. }))
+            .count();
+        assert_eq!(images, 2, "{fallback}");
+        for op in ops {
+            if let Op::InvisibleText(g) = op {
+                assert_eq!(ids[g.font as usize], "Inter-Regular");
+                assert!(close(g.width, 22.0), "{}", g.width);
+            }
+        }
+        let at = |want: fn(&Op) -> bool| ops.iter().position(want).unwrap();
+        let (span, image) = (
+            at(|op| matches!(op, Op::Span { .. })),
+            at(|op| matches!(op, Op::Image { .. })),
+        );
+        let (space, end) = (
+            at(|op| matches!(op, Op::InvisibleText(_))),
+            at(|op| matches!(op, Op::EndSpan)),
+        );
+        assert!(span < image && image < space && space < end, "{ops:#?}");
+        // The image fills the glyph's box: 1000 units from x 50 (COLR) or
+        // 46.875 (CBDT), at 20 pt.
+        let Op::Image { matrix, .. } = &ops[image] else {
+            unreachable!()
+        };
+        assert!(close(matrix[0], 20.0), "{fallback}: {matrix:?}");
+        // The letters stay text in Inter; the colour font draws no text
+        // but the spaces next to the emoji.
+        for op in ops {
+            if let Op::Text(t) = op {
+                if ids[t.font as usize] != "Inter-Regular" {
+                    assert_eq!(fallback, "EmojiTest-COLR");
+                    assert_eq!(t.glyphs.len(), 1, "{t:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn text_without_colour_fonts_paints_no_spans() {
+    let (pages, _) = emoji_ops("plain text", "EmojiTest-COLR");
+    assert!(!pages[0].iter().any(|op| matches!(
+        op,
+        Op::Span { .. } | Op::Image { .. } | Op::InvisibleText(_)
+    )));
 }

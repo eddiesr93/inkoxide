@@ -6,6 +6,7 @@
 //! it, only `prepare.rs` uses rustybuzz; it builds its shaping faces from
 //! the font bytes, and takes glyph lookups and advances from `fonts`.
 
+mod color;
 mod emoji;
 mod hyphen;
 pub use hyphen::HyphenationStore;
@@ -15,12 +16,13 @@ mod paint;
 mod prepare;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
 use rayon::prelude::*;
 
+pub(crate) use color::ColorGlyphs;
 pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
@@ -561,6 +563,11 @@ impl TextCache<'_, RustybuzzShaper<'_, '_>> {
     pub fn into_unicode(self) -> UnicodeMap {
         self.shaper.unicode
     }
+
+    /// The glyph → text mappings of the paragraphs shaped so far.
+    pub fn unicode(&self) -> &UnicodeMap {
+        &self.shaper.unicode
+    }
 }
 
 impl<'s, S: TextShaper> TextCache<'s, S> {
@@ -647,6 +654,36 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         };
         let e = self.entries.get(&node_key(node))?;
         Some(e.paragraph(self.shaper.fonts(), runs, width))
+    }
+
+    /// The glyphs of the fonts `wanted` that the paragraphs shaped so far
+    /// use, by font.
+    pub fn glyphs_of(&self, wanted: impl Fn(FontKey) -> bool) -> BTreeMap<FontKey, BTreeSet<u16>> {
+        let mut out: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
+        for e in self.entries.values() {
+            let p = &e.prepared;
+            for seg in p.segments.iter().filter(|s| wanted(s.font)) {
+                let glyphs = &p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize];
+                out.entry(seg.font)
+                    .or_default()
+                    .extend(glyphs.iter().map(|g| g.id));
+            }
+        }
+        out
+    }
+
+    /// How many glyphs of colour fonts text node `node` shaped to, once
+    /// it is shaped: each may be drawn as an image.
+    pub fn color_glyph_count(&self, node: &Node) -> usize {
+        let fonts = self.shaper.fonts();
+        self.entries.get(&node_key(node)).map_or(0, |e| {
+            let p = &e.prepared;
+            p.segments
+                .iter()
+                .filter(|s| fonts.get(s.font).data.metrics.color)
+                .map(|s| (s.glyphs.end - s.glyphs.start) as usize)
+                .sum()
+        })
     }
 
     /// How many glyphs text node `node` shaped to, once it is shaped.

@@ -265,6 +265,13 @@ impl ImageSet {
         })
     }
 
+    /// Adds an image the engine draws of its own accord (a colour
+    /// glyph); returns its key.
+    pub fn add(&mut self, image: Arc<DecodedImage>) -> ImageKey {
+        self.images.push(image);
+        (self.images.len() - 1) as ImageKey
+    }
+
     pub fn key(&self, node: &Node) -> Option<ImageKey> {
         self.by_node.get(&node_key(node)).copied()
     }

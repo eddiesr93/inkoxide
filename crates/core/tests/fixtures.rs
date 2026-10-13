@@ -298,3 +298,45 @@ fn msgpack_errors_match_json() {
         assert_eq!(e[0].code.as_str(), "PARSE_ERROR", "{e:?}");
     }
 }
+
+/// Colour emoji are images, but extract as their text (`ActualText`):
+/// checked with poppler's `pdftotext` when it is installed.
+#[test]
+fn colour_emoji_extract_as_text() {
+    if Command::new("pdftotext").arg("-v").output().is_err() {
+        return;
+    }
+    let (fonts, images) = stores();
+    let dir = root().join("target/fixtures-text");
+    fs::create_dir_all(&dir).unwrap();
+    for (name, want) in [
+        (
+            "emoji-colr",
+            "thumbs 👍 👍🏽 flag 🇫🇷 keycap 1\u{FE0F}\u{20E3} coder",
+        ),
+        (
+            "emoji-cbdt",
+            "smile 😀 heart ❤\u{FE0F} thumbs 👍 flag 🇫🇷 end",
+        ),
+    ] {
+        let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
+        let pdf = inkoxide::render(
+            &input,
+            InputFormat::Json,
+            &RenderOptions::default(),
+            &fonts,
+            &images,
+        )
+        .unwrap();
+        let file = dir.join(format!("{name}.pdf"));
+        fs::write(&file, pdf).unwrap();
+        let out = Command::new("pdftotext")
+            .args(["-enc", "UTF-8"])
+            .arg(&file)
+            .arg("-")
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains(want), "{name}: {text}");
+    }
+}

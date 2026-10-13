@@ -18,6 +18,14 @@ fn fonts() -> FontStore {
     ))
     .unwrap();
     f.register("Doubling", bytes).unwrap();
+    // A COLR glyph whose layers paint the next level 255 times, eight
+    // levels deep.
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/limits/colr-fanout.ttf"
+    ))
+    .unwrap();
+    f.register("Fanout", bytes).unwrap();
     f
 }
 
@@ -176,5 +184,34 @@ fn deepest_accepted_nesting_renders_on_a_small_stack() {
             .unwrap()
             .join()
             .unwrap();
+    }
+}
+
+/// A colour glyph that would take 10^19 paints stops at the painter's
+/// work budget: it draws without colour, as its outline, and fast.
+#[test]
+fn colour_glyphs_that_fan_out_draw_without_colour() {
+    let d = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"Fanout","family":"Fanout"}],
+        "fallbackFonts":["Fanout"],
+        "pages":[{"size":{"width":595,"height":842},"children":[
+          {"type":"text","runs":[{"text":"a \u{1F600} b \u{1F600}","font":"Inter-Regular","size":10}]}]}]}"#
+        .replace("\\u{1F600}", "\u{1F600}");
+    for threads in [Some(1), Some(4)] {
+        let t = std::time::Instant::now();
+        let options = RenderOptions::default()
+            .with_threads(threads)
+            .with_compress(false);
+        let pdf = inkoxide::render(
+            d.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &ImageStore::new(),
+        )
+        .unwrap();
+        let has = |needle: &[u8]| pdf.windows(needle.len()).any(|w| w == needle);
+        assert!(!has(b"/Subtype /Image") && !has(b"/Subtype /Form"));
+        assert!(has(b"COLRFanout-Regular"));
+        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
     }
 }

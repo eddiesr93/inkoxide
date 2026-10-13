@@ -14,7 +14,9 @@ use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, P
 use crate::schema::{
     Display, Document, Node, NodeKind, PageFilter, PagePattern, PageSpec, Position,
 };
-use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
+use crate::text::{
+    ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter, UnicodeMap,
+};
 use crate::InkoxideError;
 
 /// Most pages one render may produce: a memory guard against runaway
@@ -33,7 +35,7 @@ pub(crate) const MAX_REPEATED: u64 = 64 << 20;
 /// node, or a character or glyph of text,
 const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
-/// character),
+/// character) or a colour glyph (an image in a span),
 const LINK_BYTES: u64 = 256;
 /// and a `debug` outline, a form field widget or a background image.
 const BOX_BYTES: u64 = 768;
@@ -86,11 +88,14 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     }
 }
 
-/// Leaf painting: text through `T`, images and form fields.
+/// Leaf painting: text through `T`, with its colour glyphs as images;
+/// images and form fields.
 struct Content<'x, T: ContentPainter> {
     text: T,
     images: &'x ImageSet,
     fonts: &'x FontSet<'x>,
+    colors: &'x ColorGlyphs,
+    unicode: &'x UnicodeMap,
 }
 
 impl<T: ContentPainter> ContentPainter for Content<'_, T> {
@@ -98,7 +103,12 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
-            _ => self.text.paint(node, geo, ctx, ops),
+            _ => {
+                let from = ops.len();
+                self.text.paint(node, geo, ctx, ops);
+                self.colors
+                    .substitute(ops, from, self.fonts, self.images, self.unicode);
+            }
         }
     }
 
@@ -198,7 +208,7 @@ pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
-    images: &ImageSet,
+    images: &mut ImageSet,
     parallel: bool,
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
 ) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
@@ -213,6 +223,13 @@ pub(crate) fn run<'d, T: Send>(
     }
     text.prepare_all(&texts, parallel);
     drop(texts);
+    let colors = ColorGlyphs::load(
+        fonts,
+        &text.glyphs_of(|k| fonts.get(k).data.metrics.color),
+        images,
+        parallel,
+    );
+    let images: &ImageSet = images;
 
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
@@ -269,7 +286,7 @@ pub(crate) fn run<'d, T: Send>(
             current: i as u32 + 1,
             total,
         };
-        encode(paint_page(l, k, numbers, fonts, text, images)?)
+        encode(paint_page(l, k, numbers, fonts, text, images, &colors)?)
     };
     let pages = if parallel {
         jobs.par_iter()
@@ -386,6 +403,8 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // can multiply them.
                     let glyphs = text.glyph_count(n).unwrap_or(0) as u64;
                     size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
+                    let colored = text.color_glyph_count(n) as u64;
+                    size = size.saturating_add(colored * LINK_BYTES);
                 }
                 NodeKind::Field(f) => {
                     let options: usize = f.options.iter().map(String::len).sum();
@@ -593,6 +612,7 @@ fn paint_page(
     fonts: &FontSet<'_>,
     text: &Cache<'_, '_, '_>,
     images: &ImageSet,
+    colors: &ColorGlyphs,
 ) -> Result<PageContent, InkoxideError> {
     let spec = l.spec;
     let (pw, ph) = (spec.size.width, spec.size.height);
@@ -630,6 +650,8 @@ fn paint_page(
         },
         images,
         fonts,
+        colors,
+        unicode: text.unicode(),
     };
 
     // `debug` outlines, drawn over everything once the page is painted.
