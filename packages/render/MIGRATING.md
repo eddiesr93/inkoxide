@@ -21,15 +21,23 @@ over by changing the import. This page lists what has another name, and what is 
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Works with `@inkoxide/tailwind` installed: `npm install @inkoxide/tailwind` |
 | `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points |
-| `<Svg>`, `<Canvas>` | The same | No `<Text>` inside `<Svg>` yet |
+| `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>`, `<Tspan>` or `<Marker>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms and opacity; it has no `text`, `font`, `fontSize`, `clip`, `linearGradient`, `radialGradient` or `miterLimit`, and calling one throws |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
 **Not available:**
 - **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.
 - **Other output forms:** `pdf().toBuffer()`. Use `renderToBuffer`.
-- **Fonts and annotations:**
+- **Document options:** `ownerPassword`, `userPassword` and `permissions` (encryption); `conformance` other than PDF/A-2b (use the `pdfA` render option for 2b); `pdfVersion`; `onRender`.
+- **Text:**
+  - `verticalAlign: 'super'` and `'sub'` (`verticalAlign` is for table cells here).
+  - `fontFeatureSettings`.
+  - `Image` inside `Text`.
   - `Font.registerEmojiSource`: there are no colour emoji yet.
-  - `<Note>`.
+  - Knuth–Plass line breaking: lines break first-fit, so a paragraph can wrap differently.
+- **Layout:** `float`, `clear` and `shapeOutside`; `<ImageBackground>`.
+- **Forms:** `<List>`, `<FieldSet>`, and `format` on a text field.
+- **Annotations:** `<Note>`.
+- **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document
 can break onto a different number of pages. Any style key that is not supported throws, naming
