@@ -419,7 +419,7 @@ fn named_bounds_match_schema() {
             "pages[0].children[0].field.options[0]".into(),
         ),
         (
-            "/$defs/Field/properties/value/maxLength",
+            "/$defs/Field/properties/value/oneOf/0/maxLength",
             MAX_FIELD_VALUE as f64,
             Box::new(|n| {
                 doc(
@@ -431,6 +431,29 @@ fn named_bounds_match_schema() {
                 )
             }),
             MAX_FIELD_VALUE as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.value".into(),
+        ),
+        (
+            "/$defs/Field/properties/value/oneOf/1/maxItems",
+            MAX_FIELD_OPTIONS as f64,
+            Box::new(|n| {
+                let options: Vec<String> = (0..(n as usize).min(MAX_FIELD_OPTIONS))
+                    .map(|i| format!("o{i}"))
+                    .collect();
+                let values: Vec<String> = (0..n as usize)
+                    .map(|i| format!("o{}", i % MAX_FIELD_OPTIONS))
+                    .collect();
+                doc(
+                    font,
+                    &format!(
+                        r#"{{"type":"field","field":{{"name":"n","kind":"list","multiSelect":true,"font":"f","options":{},"value":{}}}}}"#,
+                        serde_json::to_string(&options).unwrap(),
+                        serde_json::to_string(&values).unwrap()
+                    ),
+                )
+            }),
+            MAX_FIELD_OPTIONS as f64 + 1.0,
             "INVALID_VALUE",
             "pages[0].children[0].field.value".into(),
         ),

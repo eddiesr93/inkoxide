@@ -13,6 +13,10 @@ version 2.
   `street` in the group `address`. A name has at most 32 parts of 1 to 128 characters, and at
   most 512 characters in all (it was one part of at most 128). A name that is both a field and a
   group (`a` and `a.b`) is `DUPLICATE_ID`. Documents without dots render as before.
+- `Field.kind: "list"`, a list box: `options` (required) and `font` (required) as for `select`,
+  and `value`, the selected option. `Field.multiSelect` (list only) lets several options be
+  selected; `value` is then an array of options, each at most once (at most 1000). An array
+  `value` on any other field is `INVALID_VALUE`.
 
 ### Changed
 

@@ -983,6 +983,82 @@ fn form_fields() {
     for (node, code, field) in cases {
         assert_eq!(one(&doc(node)), (code, format!("{f}.{field}")), "{node}");
     }
+    // List boxes: one value, or several with `multiSelect`.
+    let list = |extra: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"l","kind":"list","font":"Inter-Regular","options":["x","y","z"]{extra}}}}}"#
+        ))
+    };
+    for ok in [
+        "",
+        r#","value":"y""#,
+        r#","multiSelect":true"#,
+        r#","multiSelect":true,"value":"y""#,
+        r#","multiSelect":true,"value":["z","x"]"#,
+        r#","multiSelect":true,"value":[]"#,
+    ] {
+        assert_eq!(run(&list(ok)), vec![], "{ok}");
+    }
+    for (extra, code, path) in [
+        (r#","value":"w""#, C::InvalidValue, "value"),
+        (r#","value":["x"]"#, C::InvalidValue, "value"),
+        (
+            r#","multiSelect":true,"value":["x","w"]"#,
+            C::InvalidValue,
+            "value[1]",
+        ),
+        (
+            r#","multiSelect":true,"value":["x","x"]"#,
+            C::InvalidValue,
+            "value[1]",
+        ),
+        (
+            r#","multiSelect":true,"multiline":true"#,
+            C::InvalidValue,
+            "multiline",
+        ),
+    ] {
+        assert_eq!(one(&list(extra)), (code, format!("{f}.{path}")), "{extra}");
+    }
+    for (node, code, path) in [
+        (
+            r#"{"type":"field","field":{"name":"l","kind":"list","font":"Inter-Regular"}}"#,
+            C::MissingField,
+            "options",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"l","kind":"list","options":["x"]}}"#,
+            C::MissingField,
+            "font",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x"],"multiSelect":true}}"#,
+            C::InvalidValue,
+            "multiSelect",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x"],"value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"t","kind":"text","font":"Inter-Regular","value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"r","kind":"radio","value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"t","kind":"text","font":"Inter-Regular","value":[1]}}"#,
+            C::InvalidType,
+            "value[0]",
+        ),
+    ] {
+        assert_eq!(one(&doc(node)), (code, format!("{f}.{path}")), "{node}");
+    }
     // Options and values are bounded.
     let select = |options: &[String]| {
         doc(&format!(

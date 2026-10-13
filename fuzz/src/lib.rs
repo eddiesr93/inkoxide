@@ -868,7 +868,8 @@ fn run(s: &mut Src) -> Value {
 /// fields in groups of fields (dotted names).
 fn field(s: &mut Src) -> Value {
     let mut m = Map::new();
-    let kind = s.pick(&["text", "checkbox", "radio", "select"]);
+    let kind = s.pick(&["text", "checkbox", "radio", "select", "list"]);
+    let choice = matches!(kind, "select" | "list");
     m.insert("kind".into(), json!(kind));
     // A group of fields, nested at most two deep.
     let set = match s.below(4) {
@@ -905,19 +906,39 @@ fn field(s: &mut Src) -> Value {
             options.push(json!("o".repeat(1000 + past)));
         }
     }
-    if kind == "select" || (s.chaos && s.chance(20)) {
+    if choice || (s.chaos && s.chance(20)) {
         m.insert("options".into(), Value::Array(options.clone()));
+    }
+    let multi = (kind == "list" || s.chaos) && s.chance(100);
+    if multi {
+        m.insert("multiSelect".into(), json!(true));
     }
     if s.chance(150) {
         let value = match kind {
-            "select" if !s.chaos => options[s.below(options.len())].clone(),
+            // Some of the options, each once.
+            "list" if multi && !s.chaos && s.chance(160) => {
+                let mut seen = Vec::new();
+                for o in &options {
+                    if !seen.contains(o) && s.chance(100) {
+                        seen.push(o.clone());
+                    }
+                }
+                Value::Array(seen)
+            }
+            "select" | "list" if !s.chaos => options[s.below(options.len())].clone(),
             "radio" => json!(s.pick(&["yes", "no", "maybe"])),
+            // Values not among the options, twice, or on a field that
+            // takes one value.
+            _ if s.chaos && s.chance(20) => {
+                let v = text(s);
+                json!([v.clone(), v, options[0].clone()])
+            }
             _ if s.chance(4) => json!("v".repeat(8000 + usize::from(s.chaos))),
             _ => json!(text(s)),
         };
         m.insert("value".into(), value);
     }
-    if matches!(kind, "text" | "select") || s.chance(30) {
+    if matches!(kind, "text" | "select" | "list") || s.chance(30) {
         m.insert("font".into(), font(s));
     }
     for (key, of256) in [
@@ -1284,6 +1305,9 @@ mod tests {
         let features = [
             r#""type":"field""#,
             r#""kind":"select""#,
+            r#""kind":"list""#,
+            r#""multiSelect":true"#,
+            r#""value":["#,
             r#""kind":"radio""#,
             r#""name":"set0.sub"#,
             r#""pages":"odd""#,

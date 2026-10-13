@@ -372,8 +372,10 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
                 }
                 NodeKind::Field(f) => {
-                    let options: usize = f.options.iter().map(String::len).sum();
-                    size = size.saturating_add(BOX_BYTES + options as u64 * ITEM_BYTES);
+                    // Its options and values, in the field and in its
+                    // appearance.
+                    let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
+                    size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
                 }
                 _ => {}
             }

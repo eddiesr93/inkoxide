@@ -363,17 +363,22 @@ pub enum NodeKind {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Field {
+    /// The full name: dots separate the groups it is in (`a.b.c`).
     pub name: String,
     pub kind: FieldKind,
-    /// Text: the initial text. Select: the selected option. Radio: the
-    /// value this button exports when selected.
-    pub value: Option<String>,
+    /// Text: the initial text. Select and list: the selected option (or
+    /// options: a list with `multi_select`). Radio: the value this button
+    /// exports when selected.
+    pub value: Option<FieldValue>,
     /// Checkbox and radio: initially on.
     #[serde(default)]
     pub checked: bool,
-    /// Select: the choices.
+    /// Select and list: the choices.
     #[serde(default)]
     pub options: Vec<String>,
+    /// List: several options can be selected.
+    #[serde(default)]
+    pub multi_select: bool,
     #[serde(default)]
     pub multiline: bool,
     #[serde(default)]
@@ -384,11 +389,46 @@ pub struct Field {
     pub read_only: bool,
     #[serde(default)]
     pub required: bool,
-    /// Text and select: a declared font id.
+    /// Text, select and list: a declared font id.
     pub font: Option<String>,
     #[serde(default = "default_field_size")]
     pub size: f32,
     pub color: Option<Color>,
+}
+
+impl Field {
+    /// The value when it is one string.
+    pub fn value_str(&self) -> Option<&str> {
+        match &self.value {
+            Some(FieldValue::One(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Every value: none, the one string, or the strings of an array.
+    pub fn values(&self) -> &[String] {
+        match &self.value {
+            None => &[],
+            Some(FieldValue::One(v)) => std::slice::from_ref(v),
+            Some(FieldValue::Many(v)) => v,
+        }
+    }
+
+    /// Whether the field shows text: a text field, or a choice of options.
+    pub fn is_text_like(&self) -> bool {
+        matches!(
+            self.kind,
+            FieldKind::Text | FieldKind::Select | FieldKind::List
+        )
+    }
+}
+
+/// A field `value`: a string, or the options selected in a list that
+/// takes several (read as a string or an array in `de.rs`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldValue {
+    One(String),
+    Many(Vec<String>),
 }
 
 fn default_field_size() -> f32 {
@@ -402,6 +442,8 @@ pub enum FieldKind {
     Checkbox,
     Radio,
     Select,
+    /// A list box: several options in view, and possibly selected.
+    List,
 }
 
 #[derive(Debug, Clone)]

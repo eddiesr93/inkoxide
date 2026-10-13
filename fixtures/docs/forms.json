@@ -981,6 +981,209 @@
        1
       ]
      }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "COURSES",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 10,
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 3,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ]
+         },
+         "field": {
+          "name": "course.list",
+          "kind": "list",
+          "font": "Inter-Regular",
+          "size": 10,
+          "options": [
+           "Mathematics",
+           "Physics",
+           "Chemistry",
+           "Biology",
+           "History"
+          ],
+          "multiSelect": true,
+          "value": [
+           "Physics",
+           "History"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "START WEEK",
+           "font": "Inter-Bold",
+           "size": 8,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ],
+         "style": {
+          "margin": {
+           "top": 10,
+           "bottom": 3
+          }
+         }
+        },
+        {
+         "type": "field",
+         "style": {
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          },
+          "borderRadius": 3,
+          "padding": {
+           "top": 2,
+           "right": 2,
+           "bottom": 2,
+           "left": 2
+          },
+          "backgroundColor": [
+           0.97,
+           0.98,
+           1,
+           1
+          ],
+          "height": 40
+         },
+         "field": {
+          "name": "course.start",
+          "kind": "list",
+          "font": "Inter-Regular",
+          "size": 10,
+          "options": [
+           "Week 1",
+           "Week 2",
+           "Week 3",
+           "Week 4",
+           "Week 5",
+           "Week 6"
+          ],
+          "value": "Week 5"
+         }
+        }
+       ]
+      }
+     ]
     }
    ]
   }

@@ -10,9 +10,9 @@ use crate::error::{ValidationCode as Code, ValidationError};
 use crate::images::ImageCrateDecoder;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
-    ColumnWidth, Document, Field, FieldKind, GridTrack, ImageSource, Length, LengthPercent, Node,
-    NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount, Style, Table, TextRun,
-    TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
+    ColumnWidth, Document, Field, FieldKind, FieldValue, GridTrack, ImageSource, Length,
+    LengthPercent, Node, NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount,
+    Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -653,13 +653,12 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);
-        match (&f.font, text_like) {
+        match (&f.font, f.is_text_like()) {
             (Some(font), _) => self.font_ref(Some("font"), font),
             (None, true) => self.err(
                 Code::MissingField,
                 Some("font"),
-                "text and select fields require `font`",
+                "text, select and list fields require `font`",
             ),
             _ => {}
         }
@@ -677,6 +676,7 @@ impl<'a> Checker<'a> {
             }
         };
         let is = |k: FieldKind| f.kind == k;
+        let choice = matches!(f.kind, FieldKind::Select | FieldKind::List);
         only(
             self,
             !is(FieldKind::Text) && (f.multiline || f.password || f.max_length.is_some()),
@@ -691,9 +691,15 @@ impl<'a> Checker<'a> {
         );
         only(
             self,
-            !is(FieldKind::Select) && !f.options.is_empty(),
+            !choice && !f.options.is_empty(),
             "options",
-            "select",
+            "select and list",
+        );
+        only(
+            self,
+            !is(FieldKind::List) && f.multi_select,
+            "multiSelect",
+            "list",
         );
         only(
             self,
@@ -705,7 +711,7 @@ impl<'a> Checker<'a> {
             self,
             is(FieldKind::Checkbox) && f.value.is_some(),
             "value",
-            "text, select and radio",
+            "text, select, list and radio",
         );
         if f.options.len() > MAX_FIELD_OPTIONS {
             self.err(
@@ -727,20 +733,28 @@ impl<'a> Checker<'a> {
                 });
             }
         }
-        if f.value
-            .as_ref()
-            .is_some_and(|v| v.chars().count() > MAX_FIELD_VALUE)
-        {
-            self.err(
+        match &f.value {
+            Some(FieldValue::One(v)) if v.chars().count() > MAX_FIELD_VALUE => self.err(
                 Code::InvalidValue,
                 Some("value"),
                 format!("a field value is at most {MAX_FIELD_VALUE} characters"),
-            );
+            ),
+            Some(FieldValue::Many(_)) if !(is(FieldKind::List) && f.multi_select) => self.err(
+                Code::InvalidValue,
+                Some("value"),
+                "an array of values needs a list with `multiSelect`",
+            ),
+            Some(FieldValue::Many(v)) if v.len() > MAX_FIELD_OPTIONS => self.err(
+                Code::InvalidValue,
+                Some("value"),
+                format!("a field has at most {MAX_FIELD_OPTIONS} values"),
+            ),
+            _ => {}
         }
         if f.max_length == Some(0) {
             self.err(Code::OutOfRange, Some("maxLength"), "must be at least 1");
         }
-        if let (Some(max), Some(v)) = (f.max_length, &f.value) {
+        if let (Some(max), Some(v)) = (f.max_length, f.value_str()) {
             if v.chars().count() > max as usize {
                 self.err(
                     Code::OutOfRange,
@@ -750,24 +764,44 @@ impl<'a> Checker<'a> {
             }
         }
         match f.kind {
-            FieldKind::Radio if f.value.as_deref().is_none_or(str::is_empty) => self.err(
-                Code::MissingField,
-                Some("value"),
-                "a radio button requires a non-empty `value` (what it exports)",
-            ),
-            FieldKind::Select => {
-                if f.options.is_empty() {
+            FieldKind::Radio if f.value_str().is_none_or(str::is_empty) => {
+                if !matches!(f.value, Some(FieldValue::Many(_))) {
                     self.err(
                         Code::MissingField,
-                        Some("options"),
-                        "a select field requires `options`",
+                        Some("value"),
+                        "a radio button requires a non-empty `value` (what it exports)",
                     );
-                } else if let Some(v) = &f.value {
-                    if !f.options.contains(v) {
-                        self.err(Code::InvalidValue, Some("value"), "is not one of `options`");
-                    }
                 }
             }
+            FieldKind::Select | FieldKind::List if f.options.is_empty() => self.err(
+                Code::MissingField,
+                Some("options"),
+                "select and list fields require `options`",
+            ),
+            FieldKind::Select | FieldKind::List => match &f.value {
+                Some(FieldValue::One(v)) if !f.options.contains(v) => {
+                    self.err(Code::InvalidValue, Some("value"), "is not one of `options`");
+                }
+                Some(FieldValue::Many(values))
+                    if f.multi_select && values.len() <= MAX_FIELD_OPTIONS =>
+                {
+                    let options: HashSet<&str> = f.options.iter().map(String::as_str).collect();
+                    let mut seen = HashSet::new();
+                    for (i, v) in values.iter().enumerate() {
+                        let message = if !options.contains(v.as_str()) {
+                            "is not one of `options`"
+                        } else if !seen.insert(v.as_str()) {
+                            "is already selected: each option is selected at most once"
+                        } else {
+                            continue;
+                        };
+                        self.at("value", |c| {
+                            c.at_index(i, |c| c.err(Code::InvalidValue, None, message));
+                        });
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }

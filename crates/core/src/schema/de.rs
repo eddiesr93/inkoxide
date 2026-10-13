@@ -11,8 +11,8 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, ImageFit, ImageSource, InlineImage, Node, NodeKind, ObjectPosition, OptEdges,
-    PageFilter, PagePattern, Style, Table, TableRow, TextRun, TransformOp,
+    Field, FieldValue, ImageFit, ImageSource, InlineImage, Node, NodeKind, ObjectPosition,
+    OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -261,6 +261,29 @@ impl<'de> Deserialize<'de> for PageFilter {
             fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<PageFilter, A::Error> {
                 Vec::<Int<i32>>::deserialize(de::value::SeqAccessDeserializer::new(seq))
                     .map(|v| PageFilter::List(v.into_iter().map(|i| i.0).collect()))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for FieldValue {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = FieldValue;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string, or an array of strings")
+            }
+            fn visit_str<E: de::Error>(self, s: &str) -> Result<FieldValue, E> {
+                Ok(FieldValue::One(s.to_string()))
+            }
+            fn visit_string<E: de::Error>(self, s: String) -> Result<FieldValue, E> {
+                Ok(FieldValue::One(s))
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<FieldValue, A::Error> {
+                Vec::<String>::deserialize(de::value::SeqAccessDeserializer::new(seq))
+                    .map(|v| FieldValue::Many(shrink(v)))
             }
         }
         d.deserialize_any(V)

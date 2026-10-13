@@ -12,7 +12,7 @@ use super::{font_name, q, set_fill, show_text, EncodedPage, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::FieldOp;
 use crate::paint::{polygon, PathSeg, KAPPA};
-use crate::schema::{FieldKind, BLACK};
+use crate::schema::{FieldKind, FieldValue, BLACK};
 
 /// Longest PDF name, in bytes (ISO 32000-1, Annex C; PDF/A-2 holds files
 /// to it).
@@ -184,7 +184,7 @@ struct OnStates {
 /// state, and a name has at most [`MAX_NAME`] bytes) makes every button of
 /// its group use its position instead, with the values in `/Opt`.
 fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
-    let value = |op: &FieldOp| op.field.value.clone().unwrap_or_default();
+    let value = |op: &FieldOp| op.field.value_str().unwrap_or_default().to_string();
     if widgets[0].1.field.kind != FieldKind::Radio {
         return OnStates {
             names: vec!["Yes".to_string(); widgets.len()],
@@ -234,7 +234,7 @@ fn field_entries(
             if let Some(max) = spec.max_length {
                 f.text_max_len(i32::try_from(max).unwrap_or(i32::MAX));
             }
-            if let Some(v) = &spec.value {
+            if let Some(v) = spec.value_str() {
                 if !spec.password {
                     f.text_value(TextStr(v));
                 }
@@ -245,7 +245,31 @@ fn field_entries(
             flags |= FieldFlags::COMBO;
             f.choice_options()
                 .options(spec.options.iter().map(|o| TextStr(o)));
-            f.choice_value(spec.value.as_deref().map(TextStr));
+            f.choice_value(spec.value_str().map(TextStr));
+        }
+        FieldKind::List => {
+            f.field_type(FieldType::Choice);
+            if spec.multi_select {
+                flags |= FieldFlags::MULTI_SELECT;
+            }
+            f.choice_options()
+                .options(spec.options.iter().map(|o| TextStr(o)));
+            match &spec.value {
+                Some(FieldValue::Many(v)) => {
+                    f.choice_values(v.iter().map(|v| TextStr(v)));
+                }
+                Some(FieldValue::One(v)) => {
+                    f.choice_value(Some(TextStr(v)));
+                }
+                None => {}
+            }
+            let selected = crate::forms::selected(spec);
+            if !selected.is_empty() {
+                f.choice_indices(selected.iter().map(|&i| index(i)));
+            }
+            if op.top > 0 {
+                f.choice_top_index(index(op.top));
+            }
         }
         FieldKind::Checkbox => {
             f.field_type(FieldType::Button);
@@ -268,7 +292,7 @@ fn field_entries(
                 f.button_options(
                     widgets
                         .iter()
-                        .map(|(_, w)| TextStr(w.field.value.as_deref().unwrap_or(""))),
+                        .map(|(_, w)| TextStr(w.field.value_str().unwrap_or(""))),
                 );
             }
         }
@@ -276,9 +300,14 @@ fn field_entries(
     if !flags.is_empty() {
         f.field_flags(flags);
     }
-    if matches!(spec.kind, FieldKind::Text | FieldKind::Select) {
+    if spec.is_text_like() {
         f.vartext_default_appearance(Str(default_appearance(op).as_bytes()));
     }
+}
+
+/// An index into `/Opt` (at most 1000 options).
+fn index(i: usize) -> i32 {
+    i32::try_from(i).unwrap_or(i32::MAX)
 }
 
 /// `/DA`: font, size and colour viewers use for edited text.
@@ -306,7 +335,7 @@ pub(super) struct Ctx<'r, 'f, 'a> {
 }
 
 /// Appearance streams of one widget: `(state, stream)`; the state is
-/// `None` for text and select widgets (a single appearance).
+/// `None` for text, select and list widgets (a single appearance).
 type Appearances = Vec<(Option<String>, Ref)>;
 
 impl Ctx<'_, '_, '_> {
@@ -346,7 +375,7 @@ impl Ctx<'_, '_, '_> {
             r
         };
         match op.field.kind {
-            FieldKind::Text | FieldKind::Select => {
+            FieldKind::Text | FieldKind::Select | FieldKind::List => {
                 let mut c = Content::new();
                 c.begin_marked_content(Name(b"Tx"));
                 c.save_state();
@@ -355,6 +384,13 @@ impl Ctx<'_, '_, '_> {
                 c.end_path();
                 // Widget space is y-up; the text ops are top-left based.
                 c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(h)]);
+                if !op.highlights.is_empty() {
+                    set_fill(&mut c, &crate::forms::HIGHLIGHT);
+                    for r in &op.highlights {
+                        c.rect(q(r.x), q(r.y), q(r.w), q(r.h));
+                    }
+                    c.fill_nonzero();
+                }
                 for t in &op.text {
                     show_text(&mut c, t, self.fonts, self.pdf_a);
                 }
@@ -460,15 +496,28 @@ mod tests {
     /// The PDF (uncompressed, as text) of a 200 × 200 pt page holding
     /// `children`.
     fn render(children: &str) -> String {
+        render_with(children, "", &crate::FontStore::new())
+    }
+
+    /// [`render`], with `Inter-Regular` declared.
+    fn render_inter(children: &str) -> String {
+        render_with(
+            children,
+            r#""fonts":[{"id":"Inter-Regular","family":"Inter"}],"#,
+            &crate::test_fixtures::inter(),
+        )
+    }
+
+    fn render_with(children: &str, fonts: &str, store: &crate::FontStore) -> String {
         let doc = format!(
-            r#"{{"version":1,"pages":[{{"size":{{"width":200,"height":200}},"children":[{children}]}}]}}"#
+            r#"{{"version":1,{fonts}"pages":[{{"size":{{"width":200,"height":200}},"children":[{children}]}}]}}"#
         );
         let options = crate::RenderOptions::default().with_compress(false);
         let pdf = crate::render(
             doc.as_bytes(),
             crate::InputFormat::Json,
             &options,
-            &crate::FontStore::new(),
+            store,
             &crate::ImageStore::new(),
         )
         .unwrap();
@@ -577,6 +626,32 @@ mod tests {
         // The radio group holds its two buttons.
         assert_eq!(o[&d].matches(" 0 R").count(), 3, "{}", o[&d]);
         assert!(!pdf.contains("(a.b.c)") && !pdf.contains("(a.d)"));
+    }
+
+    #[test]
+    fn list_boxes_are_choice_fields_without_the_combo_flag() {
+        let list = |extra: &str| {
+            render_inter(&format!(
+                r#"{{"type":"field","style":{{"height":20}},"field":{{"name":"l","kind":"list","font":"Inter-Regular","options":["a","b","c","d"]{extra}}}}}"#
+            ))
+        };
+        let pdf = list(r#","multiSelect":true,"value":["d","b"]"#);
+        assert!(pdf.contains("/FT /Ch"), "{pdf}");
+        assert!(pdf.contains("/Opt [(a) (b) (c) (d)]"), "{pdf}");
+        assert!(pdf.contains("/V [(d) (b)]"), "{pdf}");
+        assert!(pdf.contains("/I [1 3]"), "{pdf}");
+        // Multiple selection is bit 22; the top index makes `b` visible.
+        assert!(pdf.contains(&format!("/Ff {}", 1 << 21)), "{pdf}");
+        assert!(pdf.contains("/TI 1"), "{pdf}");
+        let pdf = list(r#","value":"a""#);
+        assert!(pdf.contains("/V (a)") && pdf.contains("/I [0]"), "{pdf}");
+        // (The font program is binary: look for whole entries.)
+        assert!(!pdf.contains("/Ff ") && !pdf.contains("/TI "), "{pdf}");
+        let pdf = list("");
+        assert!(!pdf.contains("/V (") && !pdf.contains("/I ["), "{pdf}");
+        // The highlight is drawn behind the selected row.
+        let pdf = list(r#","value":"a""#);
+        assert!(pdf.contains("0.6 0.75 0.86 rg"), "{pdf}");
     }
 
     #[test]

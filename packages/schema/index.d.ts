@@ -792,22 +792,29 @@ export interface Field {
    * Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`.
    */
   name: string;
-  kind: 'text' | 'checkbox' | 'radio' | 'select';
   /**
-   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). At most 8000 characters.
+   * `select` is a drop-down list, `list` a list box that shows several options at once
    */
-  value?: string;
+  kind: 'text' | 'checkbox' | 'radio' | 'select' | 'list';
+  /**
+   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters.
+   */
+  value?: string | string[];
   /**
    * checkbox and radio: initially selected
    */
   checked?: boolean;
   /**
-   * select only: the choices, at most 1000 of at most 1000 characters each
+   * select and list only (required there): the choices, at most 1000 of at most 1000 characters each
    *
    * @minItems 1
    * @maxItems 1000
    */
   options?: [string, ...string[]];
+  /**
+   * list only: several options can be selected at once
+   */
+  multiSelect?: boolean;
   /**
    * text only
    */
@@ -823,7 +830,7 @@ export interface Field {
   readOnly?: boolean;
   required?: boolean;
   /**
-   * text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display.
+   * text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display.
    */
   font?: Id;
   /**

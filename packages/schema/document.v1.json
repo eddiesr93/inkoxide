@@ -1568,13 +1568,27 @@
             "text",
             "checkbox",
             "radio",
-            "select"
-          ]
+            "select",
+            "list"
+          ],
+          "description": "`select` is a drop-down list, `list` a list box that shows several options at once"
         },
         "value": {
-          "type": "string",
-          "maxLength": 8000,
-          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). At most 8000 characters."
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 8000
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "maxItems": 1000
+            }
+          ],
+          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters."
         },
         "checked": {
           "type": "boolean",
@@ -1589,7 +1603,12 @@
           },
           "minItems": 1,
           "maxItems": 1000,
-          "description": "select only: the choices, at most 1000 of at most 1000 characters each"
+          "description": "select and list only (required there): the choices, at most 1000 of at most 1000 characters each"
+        },
+        "multiSelect": {
+          "type": "boolean",
+          "default": false,
+          "description": "list only: several options can be selected at once"
         },
         "multiline": {
           "type": "boolean",
@@ -1617,7 +1636,7 @@
         },
         "font": {
           "$ref": "#/$defs/Id",
-          "description": "text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display."
+          "description": "text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display."
         },
         "size": {
           "type": "number",
