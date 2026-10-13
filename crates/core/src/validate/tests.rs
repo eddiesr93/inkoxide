@@ -1332,3 +1332,128 @@ fn form_fields_need_a_font_with_outlines() {
         [(C::InvalidValue, "pages[0].children[1].field.font")]
     );
 }
+
+/// A text node whose one run has the extra properties `extra`.
+fn text_run(extra: &str) -> String {
+    doc(&format!(
+        r#"{{"type":"text","runs":[{{"text":"x","font":"Inter-Regular","size":10{extra}}}]}}"#
+    ))
+}
+
+#[test]
+fn vertical_align_of_a_run_is_baseline_super_or_sub() {
+    for v in ["baseline", "super", "sub"] {
+        assert_eq!(
+            run(&text_run(&format!(r#","verticalAlign":"{v}""#))),
+            vec![]
+        );
+    }
+    // The cell values are not run values.
+    for v in ["middle", "top", "Super"] {
+        assert_eq!(
+            one(&text_run(&format!(r#","verticalAlign":"{v}""#))),
+            (
+                C::InvalidValue,
+                "pages[0].children[0].runs[0].verticalAlign".into()
+            ),
+            "{v}"
+        );
+    }
+}
+
+#[test]
+fn font_features_are_tags_with_values() {
+    let path = "pages[0].children[0].runs[0].fontFeatures";
+    let ok = text_run(r#","fontFeatures":{"tnum":1,"liga":0,"salt":3,"ss01":1,"cv 1":65535}"#);
+    assert_eq!(run(&ok), vec![]);
+    assert_eq!(run(&text_run(r#","fontFeatures":{}"#)), vec![]);
+    for (features, code) in [
+        (r#"{"tnu":1}"#, C::InvalidValue),
+        (r#"{"tnums":1}"#, C::InvalidValue),
+        (r#"{"tné":1}"#, C::InvalidValue),
+        (r#"{"tn\u0000m":1}"#, C::InvalidValue),
+        (r#"{"tnum":65536}"#, C::OutOfRange),
+        (r#"{"tnum":1,"tnum":0}"#, C::InvalidValue),
+    ] {
+        assert_eq!(
+            one(&text_run(&format!(r#","fontFeatures":{features}"#))),
+            (code, path.into()),
+            "{features}"
+        );
+    }
+    for features in [r#"{"tnum":-1}"#, r#"{"tnum":5000000000}"#] {
+        let (code, p) = one(&text_run(&format!(r#","fontFeatures":{features}"#)));
+        assert_eq!(code, C::OutOfRange, "{features}");
+        assert!(p.starts_with(path), "{p}");
+    }
+    for features in [
+        r#"{"tnum":true}"#,
+        r#"{"tnum":1.5}"#,
+        r#"["tnum"]"#,
+        r#""tnum""#,
+    ] {
+        let (code, p) = one(&text_run(&format!(r#","fontFeatures":{features}"#)));
+        assert!(
+            matches!(code, C::InvalidType | C::InvalidValue),
+            "{features}: {code:?}"
+        );
+        assert!(p.starts_with(path), "{p}");
+    }
+}
+
+#[test]
+fn a_document_uses_a_bounded_number_of_feature_sets() {
+    use crate::validate::rules::MAX_FEATURE_SETS;
+    let runs = |n: usize| {
+        (0..n)
+            .map(|k| {
+                format!(
+                    r#"{{"text":"x","font":"Inter-Regular","size":10,"fontFeatures":{{"salt":{k}}}}}"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let text = |n: usize| doc(&format!(r#"{{"type":"text","runs":[{}]}}"#, runs(n)));
+    assert_eq!(run(&text(MAX_FEATURE_SETS)), vec![]);
+    // The same sets again, in another node and order, are not new.
+    let again = doc(&format!(
+        r#"{{"type":"text","runs":[{}]}},{{"type":"text","runs":[{}]}}"#,
+        runs(MAX_FEATURE_SETS),
+        runs(MAX_FEATURE_SETS)
+    ));
+    assert_eq!(run(&again), vec![]);
+    assert_eq!(
+        one(&text(MAX_FEATURE_SETS + 1)),
+        (
+            C::OutOfRange,
+            format!("pages[0].children[0].runs[{MAX_FEATURE_SETS}].fontFeatures")
+        )
+    );
+}
+
+#[test]
+fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
+    let text = |v: &str| {
+        doc(&format!(
+            r#"{{"type":"text","style":{{"textWrap":{v}}},"runs":[{{"text":"x","font":"Inter-Regular","size":10}}]}}"#
+        ))
+    };
+    assert_eq!(run(&text(r#""wrap""#)), vec![]);
+    assert_eq!(run(&text(r#""pretty""#)), vec![]);
+    // `balance` is reserved.
+    assert_eq!(
+        one(&text(r#""balance""#)),
+        (
+            C::InvalidValue,
+            "pages[0].children[0].style.textWrap".into()
+        )
+    );
+    assert_eq!(
+        one(&doc(r#"{"type":"box","style":{"textWrap":"pretty"}}"#)),
+        (
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.textWrap".into()
+        )
+    );
+}

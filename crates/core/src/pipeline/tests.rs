@@ -964,3 +964,72 @@ fn text_without_colour_fonts_paints_no_spans() {
         Op::Span { .. } | Op::Image { .. } | Op::InvisibleText(_)
     )));
 }
+
+#[test]
+fn superscripts_and_subscripts_are_painted_off_the_baseline() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+              {{"type":"text","runs":[
+                {{"text":"x","font":"Inter-Regular","size":10}},
+                {{"text":"2","font":"Inter-Regular","size":6,"verticalAlign":"super","decoration":"underline"}},
+                {{"text":"y","font":"Inter-Regular","size":10}},
+                {{"text":"3","font":"Inter-Regular","size":6,"verticalAlign":"sub"}}]}}]}}]}}"#
+    );
+    let pages = render_with(&store(), &json, |pages, _, _| pages);
+    let ys: Vec<f32> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Text(t) => Some(t.y),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ys.len(), 4, "{ys:?}");
+    // Inter's OS/2 offsets for a size of 1229 units: 717 up, 154 down.
+    let (up, down) = (6.0 * 717.0 / 1229.0, 6.0 * 154.0 / 1229.0);
+    assert_eq!(ys[0], ys[2]);
+    assert!((ys[0] - ys[1] - up).abs() < 1e-3, "{ys:?}");
+    assert!((ys[3] - ys[0] - down).abs() < 1e-3, "{ys:?}");
+    // The superscript's underline is drawn under its own baseline.
+    let underline = pages[0]
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            Op::FillRect { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .unwrap();
+    assert!(underline.y > ys[1] && underline.y < ys[0], "{underline:?}");
+}
+
+#[test]
+fn justified_pretty_lines_are_painted_within_their_box() {
+    let prose = "In olden times when wishing still helped one, there lived a king whose \
+        daughters were all beautiful, but the youngest was so beautiful that the sun itself, \
+        which has seen so much, was astonished whenever it shone in her face.";
+    let json = |wrap: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"margin":{{"left":20,"right":20}},"children":[
+              {{"type":"text","style":{{"textAlign":"justify","textWrap":"{wrap}"}},
+                "runs":[{{"text":"{prose}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        )
+    };
+    for wrap in ["wrap", "pretty"] {
+        let lines = painted_lines(&json(wrap));
+        assert!(lines[0].len() > 4, "{wrap}");
+        let n = lines[0].len();
+        for (k, &(_, x0, x1)) in lines[0].iter().enumerate() {
+            assert!(x0 >= 20.0 - 1e-3, "{wrap} {k}: {x0}");
+            // Justified lines but the last end at the right edge, the
+            // spaces of some shrunk to get there.
+            if k + 1 < n {
+                assert!((x1 - (W - 20.0)).abs() < 0.5, "{wrap} {k}: {x1}");
+            } else {
+                assert!(x1 <= W - 20.0, "{wrap} {k}: {x1}");
+            }
+        }
+    }
+    assert_ne!(painted_lines(&json("wrap")), painted_lines(&json("pretty")));
+}

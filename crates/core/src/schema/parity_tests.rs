@@ -344,9 +344,9 @@ type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
 #[allow(clippy::cast_precision_loss)]
 fn named_bounds_match_schema() {
     use crate::validate::rules::{
-        MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FIELD_NAME,
-        MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT,
-        MAX_WEIGHT,
+        MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FEATURE_VALUE,
+        MAX_FIELD_NAME, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT,
+        MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -368,6 +368,13 @@ fn named_bounds_match_schema() {
         )
     };
     let chars = |n: f64| "x".repeat(n as usize);
+    // `n` features, each with a tag of its own.
+    let features = |n: f64| {
+        (0..n as usize)
+            .map(|k| format!(r#""f{k:03}":1"#))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
     let run = "pages[0].children[0].runs[0]";
     let style = "pages[0].children[0].style";
     // (schema pointer, the engine's bound, the document with a value, the
@@ -467,6 +474,22 @@ fn named_bounds_match_schema() {
             -f64::from(MAX_LETTER_SPACING) - 0.5,
             "OUT_OF_RANGE",
             format!("{run}.letterSpacing"),
+        ),
+        (
+            "/$defs/TextRun/properties/fontFeatures/maxProperties",
+            MAX_FONT_FEATURES as f64,
+            Box::new(|n| text("", &format!(r#","fontFeatures":{{{}}}"#, features(n)))),
+            MAX_FONT_FEATURES as f64 + 1.0,
+            "OUT_OF_RANGE",
+            format!("{run}.fontFeatures"),
+        ),
+        (
+            "/$defs/TextRun/properties/fontFeatures/additionalProperties/maximum",
+            f64::from(MAX_FEATURE_VALUE),
+            Box::new(|v| text("", &format!(r#","fontFeatures":{{"salt":{v}}}"#))),
+            f64::from(MAX_FEATURE_VALUE) + 1.0,
+            "OUT_OF_RANGE",
+            format!("{run}.fontFeatures"),
         ),
         (
             "/$defs/Style/properties/lineHeight/maximum",

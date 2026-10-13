@@ -489,6 +489,33 @@ pub struct TextRun {
     pub link: Option<String>,
     /// Overrides the paragraph's `hyphenate` for this run's words.
     pub hyphenate: Option<bool>,
+    /// Where the run sits on its line; default its baseline on the line's.
+    pub vertical_align: Option<RunAlign>,
+    /// OpenType features to turn on or off, in the order written.
+    #[serde(default, deserialize_with = "de::font_features")]
+    pub font_features: Option<Box<[FontFeature]>>,
+}
+
+/// Where a run sits on its line (CSS `vertical-align` on an inline box):
+/// its baseline on the line's, or moved up or down.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RunAlign {
+    #[default]
+    Baseline,
+    /// Raised by the font's superscript offset.
+    Super,
+    /// Lowered by the font's subscript offset.
+    Sub,
+}
+
+/// An OpenType feature setting (CSS `font-feature-settings`): 0 turns the
+/// feature off, 1 on, and a larger value picks an alternate.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FontFeature {
+    /// Four printable ASCII characters, once validated.
+    pub tag: String,
+    pub value: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -643,6 +670,7 @@ kebab_enum!(WhiteSpace {
     PreWrap = "pre-wrap",
     PreLine = "pre-line",
 });
+kebab_enum!(TextWrap { Wrap = "wrap", Pretty = "pretty" });
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
@@ -863,6 +891,9 @@ pub struct Style {
     pub hyphenate: Option<bool>,
     pub lang: Option<String>,
     pub white_space: Option<WhiteSpace>,
+    /// How lines break: first fit (`wrap`), or over the whole paragraph
+    /// (`pretty`).
+    pub text_wrap: Option<TextWrap>,
     /// Indent of the first line, points (negative: hanging).
     pub text_indent: Option<f32>,
     pub direction: Option<Direction>,
@@ -892,6 +923,7 @@ impl Style {
             ("hyphenate", self.hyphenate.is_some()),
             ("lang", self.lang.is_some()),
             ("whiteSpace", self.white_space.is_some()),
+            ("textWrap", self.text_wrap.is_some()),
             ("textIndent", self.text_indent.is_some()),
             ("direction", self.direction.is_some()),
             ("orphans", self.orphans.is_some()),

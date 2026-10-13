@@ -4,7 +4,7 @@
 use super::tests::render_with;
 use super::*;
 use crate::images::ImageStore;
-use crate::paint::debug::{BORDER, CONTENT, LABEL_BG, MARGIN, PADDING};
+use crate::paint::debug::{BASELINE, BORDER, CONTENT, LABEL_BG, LINE, MARGIN, PADDING, RUN};
 use crate::paint::{PathSeg, Rect};
 use crate::test_fixtures::inter;
 use crate::{InputFormat, RenderOptions};
@@ -85,6 +85,130 @@ fn labels(page: &PageContent) -> Vec<Rect> {
             _ => None,
         })
         .collect()
+}
+
+/// The rectangles in the paths filled or stroked in `color`; a line (a
+/// baseline) is a rectangle with no height.
+fn shapes(page: &PageContent, color: crate::schema::Color) -> Vec<Rect> {
+    let mut out = Vec::new();
+    for op in &page.ops {
+        let path = match op {
+            Op::FillPath { path, color: c, .. } | Op::StrokePath { path, color: c, .. }
+                if *c == color =>
+            {
+                path
+            }
+            _ => continue,
+        };
+        for (i, seg) in path.segs.iter().enumerate() {
+            let PathSeg::MoveTo(x, y) = *seg else {
+                continue;
+            };
+            out.push(match path.segs[i..] {
+                [_, PathSeg::LineTo(..), PathSeg::LineTo(..), ..] => first_rect(&path.segs[i..]),
+                [_, PathSeg::LineTo(r, b), ..] => Rect::new(x, y, r - x, b - y),
+                _ => panic!("{:?}", &path.segs[i..]),
+            });
+        }
+    }
+    out
+}
+
+/// A text node with `debug` and `runs` (Inter at `size`), in the page.
+fn paragraph(page: &str, style: &str, runs: &[(&str, f32)]) -> String {
+    let runs: Vec<String> = runs
+        .iter()
+        .map(|(t, size)| format!(r#"{{"text":"{t}","font":"Inter-Regular","size":{size}}}"#))
+        .collect();
+    format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}}{page},"children":[
+              {{"type":"text","debug":true,"style":{{{style}}},"runs":[{}]}}]}}]}}"#,
+        runs.join(",")
+    )
+}
+
+#[test]
+fn a_paragraph_outlines_each_line_and_the_runs_on_it() {
+    let json = paragraph(
+        r#","margin":{"left":10,"top":10}"#,
+        r#""textAlign":"center""#,
+        &[
+            ("Small words ", 8.0),
+            ("and larger words that wrap onto ", 14.0),
+            ("more lines than one or two, in a smaller size", 8.0),
+        ],
+    );
+    let pages = pages(&json);
+    let p = &pages[0];
+    let content = outlines(p)[0].content;
+    let lines = shapes(p, LINE);
+    let baselines = shapes(p, BASELINE);
+    assert!(lines.len() >= 3, "{lines:?}");
+    assert_eq!(baselines.len(), lines.len());
+    // Line boxes stack from the top of the content box, centred in it.
+    let mut top = content.y;
+    for (l, b) in lines.iter().zip(&baselines) {
+        assert!((l.y - top).abs() < 1e-3, "{l:?}");
+        top += l.h;
+        let (left, right) = (l.x - content.x, content.x + content.w - l.x - l.w);
+        assert!((left - right).abs() < 1e-3, "{l:?} in {content:?}");
+        // The baseline crosses the line box.
+        assert_eq!((b.x, b.w), (l.x, l.w));
+        assert!(b.y > l.y && b.y < l.y + l.h);
+    }
+    assert!((top - (content.y + content.h)).abs() < 1e-3);
+    // Runs alternate colours; each is in a line box, as high as its size
+    // (Inter: ascender 1984, descender -494, 2048 units per em).
+    let even = shapes(p, RUN[0]);
+    let odd = shapes(p, RUN[1]);
+    let inter = |size: f32| size * (1984.0 + 494.0) / 2048.0;
+    assert!(
+        even.iter().all(|r| (r.h - inter(8.0)).abs() < 1e-3),
+        "{even:?}"
+    );
+    assert!(
+        odd.iter().all(|r| (r.h - inter(14.0)).abs() < 1e-3),
+        "{odd:?}"
+    );
+    assert!(even.len() >= 2 && !odd.is_empty());
+    for r in even.iter().chain(&odd) {
+        let line = lines
+            .iter()
+            .find(|l| r.y >= l.y - 1e-3 && r.y < l.y + l.h)
+            .unwrap_or_else(|| panic!("{r:?} in no line"));
+        assert!(r.x >= line.x - 1e-3 && r.x + r.w <= line.x + line.w + 1e-3);
+    }
+    // Still one outlined content box, and no text drawn for the outline.
+    assert_eq!(outlines(p).len(), 1);
+}
+
+#[test]
+fn a_paragraph_split_across_pages_outlines_the_lines_on_each_page() {
+    let words = "word ".repeat(120);
+    let json = paragraph("", "", &[(words.as_str(), 10.0)]);
+    let pages = pages(&json);
+    assert!(pages.len() > 1);
+    let mut total = 0;
+    for (k, p) in pages.iter().enumerate() {
+        let lines = shapes(p, LINE);
+        assert!(!lines.is_empty(), "page {k}");
+        for l in &lines {
+            assert!(l.y >= -1e-3 && l.y + l.h <= H + 1e-3, "page {k}: {l:?}");
+        }
+        total += lines.len();
+    }
+    // One line outline per line of the paragraph: one run in one font
+    // draws one text op per line.
+    let texts: usize = pages
+        .iter()
+        .map(|p| p.ops.iter().filter(|op| matches!(op, Op::Text(_))).count())
+        .sum();
+    assert_eq!(total, texts);
+    // Without `debug`, nothing of it.
+    for p in &self::pages(&json.replace(r#""debug":true"#, r#""debug":false"#)) {
+        assert!(shapes(p, LINE).is_empty() && shapes(p, RUN[0]).is_empty());
+    }
 }
 
 #[test]

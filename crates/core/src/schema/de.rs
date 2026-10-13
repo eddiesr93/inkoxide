@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
-    ColumnWidth, Corners, Field, ImageFit, ImageSource, InlineImage, Node, NodeKind,
+    ColumnWidth, Corners, Field, FontFeature, ImageFit, ImageSource, InlineImage, Node, NodeKind,
     ObjectPosition, OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun,
     TransformOp,
 };
@@ -500,6 +500,35 @@ pub(super) fn opt_int<'de, D: Deserializer<'de>, T: TryFrom<i128>>(
     d: D,
 ) -> Result<Option<T>, D::Error> {
     Option::<Int<T>>::deserialize(d).map(|o| o.map(|i| i.0))
+}
+
+/// `deserialize_with` for [`TextRun::font_features`]: an object of feature
+/// tags to integer values, kept in the order written (validation checks
+/// the tags, values and count).
+pub(super) fn font_features<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Box<[FontFeature]>>, D::Error> {
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = Box<[FontFeature]>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("an object of OpenType feature tags to integers")
+        }
+        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut out = Vec::new();
+            while let Some((tag, Int(value))) = map.next_entry::<String, Int<u32>>()? {
+                out.push(FontFeature { tag, value });
+            }
+            Ok(out.into_boxed_slice())
+        }
+    }
+    struct Features(Box<[FontFeature]>);
+    impl<'de> Deserialize<'de> for Features {
+        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            d.deserialize_map(V).map(Features)
+        }
+    }
+    Option::<Features>::deserialize(d).map(|o| o.map(|f| f.0))
 }
 
 /// `deserialize_with` for [`super::GridPlacement::span`]: at least one track.

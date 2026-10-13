@@ -1,6 +1,8 @@
 import {
   type FlatStyle,
   parseFlex,
+  parseFontFeatureSettings,
+  parseFontVariantNumeric,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
@@ -354,8 +356,16 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       return;
     }
     case 'vertical-align':
-      if (v !== 'top' && v !== 'middle' && v !== 'bottom') throw r.error(`vertical-align: ${v}`);
-      s.verticalAlign = v;
+      // `top`, `middle` and `bottom` for a cell; `baseline`, `super` and `sub` for text.
+      if (!['top', 'middle', 'bottom', 'baseline', 'super', 'sub'].includes(v))
+        throw r.error(`vertical-align: ${v}`);
+      s.verticalAlign = v as NonNullable<FlatStyle['verticalAlign']>;
+      return;
+    case 'font-feature-settings':
+      s.fontFeatureSettings = parseFontFeatureSettings(prop, v);
+      return;
+    case 'font-variant-numeric':
+      s.fontVariantNumeric = parseFontVariantNumeric(prop, v);
       return;
     case 'background-image':
       throw r.error('gradients and background images are not supported (use bg-<colour>)');
@@ -426,6 +436,13 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       return;
     case 'white-space':
       s.whiteSpace = r.oneOf('whiteSpace', v);
+      return;
+    case 'text-wrap':
+      // `text-nowrap` is white space that does not wrap.
+      if (v === 'nowrap') s.whiteSpace = 'nowrap';
+      else if (v === 'balance')
+        throw r.error('text-wrap: balance (not supported yet; text-pretty evens lines)');
+      else s.textWrap = r.oneOf('textWrap', v);
       return;
     case 'hyphens':
       s.hyphenate = v === 'auto';

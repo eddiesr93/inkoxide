@@ -12,6 +12,7 @@ mod hyphen;
 pub use hyphen::HyphenationStore;
 pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
+mod optimal;
 mod paint;
 mod prepare;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
@@ -26,8 +27,10 @@ pub(crate) use color::ColorGlyphs;
 pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
-use crate::layout::{width_key, AvailableSpace, LeafMeasure, Size};
-use crate::schema::{Direction, Node, NodeKind, Style, TextAlign, TextRun, WhiteSpace};
+use crate::layout::{AvailableSpace, LeafMeasure, LineBoxes, Size};
+use crate::schema::{
+    Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, TextWrap, WhiteSpace,
+};
 use crate::InkoxideError;
 
 const GLYPH_SPACE: u8 = 1;
@@ -179,9 +182,13 @@ pub(crate) struct Line {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LineLayout {
     pub lines: Vec<Line>,
-    /// Widest line.
+    /// Widest line, from the left of the content box.
     pub width: f32,
     pub height: f32,
+    /// Each line's box, its left edge and width, when the boxes the lines
+    /// were broken in have bands; empty when every line is as wide as the
+    /// content box.
+    pub boxes: Vec<(f32, f32)>,
 }
 
 /// Paragraph-level settings resolved from the node style.
@@ -192,6 +199,7 @@ pub(crate) struct ParaStyle {
     pub max_lines: Option<u32>,
     pub ellipsis: bool,
     pub white_space: WhiteSpace,
+    pub text_wrap: TextWrap,
     pub indent: f32,
     pub direction: Direction,
     /// Whether the paragraph's words are hyphenated; a run's own
@@ -216,6 +224,7 @@ impl ParaStyle {
             max_lines: s.max_lines,
             ellipsis: s.ellipsis.unwrap_or(false),
             white_space,
+            text_wrap: s.text_wrap.unwrap_or(TextWrap::Wrap),
             indent: s.text_indent.unwrap_or(0.0),
             direction: s.direction.unwrap_or(Direction::Ltr),
             hyphenate: s.hyphenate == Some(true),
@@ -235,6 +244,22 @@ pub(crate) struct Para<'p> {
     pub runs: &'p [TextRun],
     pub style: &'p ParaStyle,
     pub fonts: &'p FontSet<'p>,
+}
+
+/// How far `run`'s baseline sits above the line's, in points (negative:
+/// below): its `verticalAlign`, by its font's superscript or subscript
+/// offset for text of its size.
+pub(crate) fn baseline_shift(run: &TextRun, fonts: &FontSet<'_>) -> f32 {
+    // Validation checks that the run's font is declared.
+    let Some(key) = fonts.key(&run.font) else {
+        return 0.0;
+    };
+    let m = &fonts.get(key).data.metrics;
+    match run.vertical_align.unwrap_or_default() {
+        RunAlign::Baseline => 0.0,
+        RunAlign::Super => m.superscript_shift() * run.size,
+        RunAlign::Sub => -m.subscript_shift() * run.size,
+    }
 }
 
 /// Glyph → text mappings per font, for the PDF `ToUnicode` `CMaps`.
@@ -356,7 +381,8 @@ struct Entry {
     prepared: Prepared,
     /// Widest unbreakable piece (min-content width).
     min_content: f32,
-    layouts: Vec<(u32, Arc<LineLayout>)>,
+    /// Line layouts by the boxes they were broken in.
+    layouts: Vec<(LineBoxes, Arc<LineLayout>)>,
 }
 
 impl Entry {
@@ -403,32 +429,45 @@ impl Entry {
         }
     }
 
-    fn cached(&self, width: f32) -> Option<Arc<LineLayout>> {
-        let key = width_key(width);
+    fn cached(&self, boxes: &LineBoxes) -> Option<Arc<LineLayout>> {
         self.layouts
             .iter()
-            .find(|(k, _)| *k == key)
+            .find(|(k, _)| k.same(boxes))
             .map(|(_, l)| l.clone())
     }
 
-    fn break_lines(&self, fonts: &FontSet<'_>, runs: &[TextRun], width: f32) -> LineLayout {
-        lines::break_lines(&self.para(fonts, runs), width.max(0.0))
+    fn break_lines(&self, fonts: &FontSet<'_>, runs: &[TextRun], boxes: &LineBoxes) -> LineLayout {
+        let boxes = LineBoxes {
+            width: boxes.width.max(0.0),
+            ..boxes.clone()
+        };
+        lines::break_lines(&self.para(fonts, runs), &boxes)
     }
 
-    /// The lines at `width`, cached.
-    fn layout(&mut self, fonts: &FontSet<'_>, runs: &[TextRun], width: f32) -> Arc<LineLayout> {
-        if let Some(l) = self.cached(width) {
+    /// The lines in `boxes`, cached.
+    fn layout(
+        &mut self,
+        fonts: &FontSet<'_>,
+        runs: &[TextRun],
+        boxes: &LineBoxes,
+    ) -> Arc<LineLayout> {
+        if let Some(l) = self.cached(boxes) {
             return l;
         }
-        let layout = Arc::new(self.break_lines(fonts, runs, width));
-        self.layouts.push((width_key(width), layout.clone()));
+        let layout = Arc::new(self.break_lines(fonts, runs, boxes));
+        self.layouts.push((boxes.clone(), layout.clone()));
         layout
     }
 
-    /// The lines at `width`: cached, or computed without caching.
-    fn layout_at(&self, fonts: &FontSet<'_>, runs: &[TextRun], width: f32) -> Arc<LineLayout> {
-        self.cached(width)
-            .unwrap_or_else(|| Arc::new(self.break_lines(fonts, runs, width)))
+    /// The lines in `boxes`: cached, or computed without caching.
+    fn layout_at(
+        &self,
+        fonts: &FontSet<'_>,
+        runs: &[TextRun],
+        boxes: &LineBoxes,
+    ) -> Arc<LineLayout> {
+        self.cached(boxes)
+            .unwrap_or_else(|| Arc::new(self.break_lines(fonts, runs, boxes)))
     }
 
     /// [`layout_at`](Self::layout_at), with the text and style the lines
@@ -437,10 +476,10 @@ impl Entry {
         &self,
         fonts: &FontSet<'_>,
         runs: &[TextRun],
-        width: f32,
+        boxes: &LineBoxes,
     ) -> (Arc<LineLayout>, &Prepared, &ParaStyle) {
         (
-            self.layout_at(fonts, runs, width),
+            self.layout_at(fonts, runs, boxes),
             &self.prepared,
             &self.style,
         )
@@ -466,7 +505,11 @@ impl Entry {
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
         let width = self.width_in(available.width);
-        leaf_size(&self.layout(fonts, runs, width), known, width)
+        leaf_size(
+            &self.layout(fonts, runs, &LineBoxes::plain(width)),
+            known,
+            width,
+        )
     }
 
     /// [`measure`](Self::measure) for an entry only read: its lines are
@@ -479,7 +522,11 @@ impl Entry {
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
         let width = self.width_in(available.width);
-        leaf_size(&self.layout_at(fonts, runs, width), known, width)
+        leaf_size(
+            &self.layout_at(fonts, runs, &LineBoxes::plain(width)),
+            known,
+            width,
+        )
     }
 }
 
@@ -632,11 +679,16 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
     }
 
     pub fn layout(&mut self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
+        self.layout_in(node, &LineBoxes::plain(width))
+    }
+
+    /// The lines of text node `node` in `boxes`, cached.
+    pub fn layout_in(&mut self, node: &Node, boxes: &LineBoxes) -> Option<Arc<LineLayout>> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
         let (entry, fonts) = self.entry(node, runs);
-        Some(entry.layout(fonts, runs, width))
+        Some(entry.layout(fonts, runs, boxes))
     }
 
     /// Read-only [`layout`](Self::layout) for painting (which runs in
@@ -653,7 +705,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             return None;
         };
         let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.shaper.fonts(), runs, width))
+        Some(e.paragraph(self.shaper.fonts(), runs, &LineBoxes::plain(width)))
     }
 
     /// The glyphs of the fonts `wanted` that the paragraphs shaped so far
@@ -747,7 +799,7 @@ impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
             return None;
         };
         let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.cache.shaper.fonts(), runs, width))
+        Some(e.paragraph(self.cache.shaper.fonts(), runs, &LineBoxes::plain(width)))
     }
 }
 

@@ -17,7 +17,7 @@ use super::{
     GLYPH_SPACE, GLYPH_TAB,
 };
 use crate::fonts::{FontKey, FontSet, LoadedFont};
-use crate::schema::{Direction, TextRun, WhiteSpace};
+use crate::schema::{Direction, FontFeature, TextRun, WhiteSpace};
 use crate::InkoxideError;
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
@@ -252,8 +252,13 @@ pub(crate) enum ShapingCause {
     TooManyGlyphs,
 }
 
-/// Font, direction and text of a shaped word.
-type WordKey = (FontKey, Option<bool>, Box<str>);
+/// Font, direction, feature set ([`ShapeCache::features`]) and text of a
+/// shaped word.
+type WordKey = (FontKey, Option<bool>, FeatureSet, Box<str>);
+
+/// Index of a run's OpenType features in [`ShapeCache::features`]; 0 is
+/// none. Validation bounds the different sets of a document.
+type FeatureSet = u16;
 
 /// Shaping faces of a render's fonts, indexed by [`FontKey`]: parsed once
 /// per render and shared by every [`ShapeCache`] (one per shaping thread).
@@ -281,8 +286,8 @@ impl<'a> Faces<'a> {
     }
 }
 
-/// Per-thread shaping cache: shape plans per (font, direction, script) and
-/// shaped words per (font, text). Documents repeat words constantly
+/// Per-thread shaping cache: shape plans per (font, features, direction,
+/// script) and shaped words per (font, direction, features, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
 /// reusing results removes most shaping work.
 pub(super) struct ShapeCache<'a> {
@@ -290,11 +295,23 @@ pub(super) struct ShapeCache<'a> {
     /// Glyphs the render's text has shaped to beyond one per byte, shared
     /// by the caches of its threads: against [`MAX_EXTRA_GLYPHS`].
     extra: Arc<AtomicU64>,
-    plans:
-        HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
+    plans: HashMap<
+        (
+            FontKey,
+            FeatureSet,
+            rustybuzz::Direction,
+            Option<rustybuzz::Script>,
+        ),
+        rustybuzz::ShapePlan,
+    >,
     /// Keyed by font, direction (`Some(true)`: right to left; `None`:
-    /// guessed from the text) and text.
+    /// guessed from the text), features and text.
     words: HashMap<WordKey, Arc<[UnitGlyph]>>,
+    /// The feature sets of the runs shaped so far, by [`FeatureSet`]; the
+    /// first is empty.
+    features: Vec<Box<[rustybuzz::Feature]>>,
+    /// Each run's features, sorted by tag, to their [`FeatureSet`].
+    feature_sets: HashMap<Box<[FontFeature]>, FeatureSet>,
 }
 
 impl<'a> ShapeCache<'a> {
@@ -304,7 +321,34 @@ impl<'a> ShapeCache<'a> {
             extra: Arc::default(),
             plans: HashMap::new(),
             words: HashMap::new(),
+            features: vec![Box::default()],
+            feature_sets: HashMap::new(),
         }
+    }
+
+    /// The [`FeatureSet`] of `run`'s `fontFeatures`.
+    fn feature_set(&mut self, run: &TextRun) -> FeatureSet {
+        let Some(list) = run.font_features.as_deref().filter(|f| !f.is_empty()) else {
+            return 0;
+        };
+        // One set whatever the order: validation rejects a tag set twice.
+        let mut sorted = list.to_vec();
+        sorted.sort_by(|a, b| a.tag.cmp(&b.tag));
+        if let Some(&set) = self.feature_sets.get(sorted.as_slice()) {
+            return set;
+        }
+        let features = sorted
+            .iter()
+            .filter_map(|f| {
+                let tag: [u8; 4] = f.tag.as_bytes().try_into().ok()?;
+                let tag = rustybuzz::ttf_parser::Tag::from_bytes(&tag);
+                Some(rustybuzz::Feature::new(tag, f.value, ..))
+            })
+            .collect();
+        let set = FeatureSet::try_from(self.features.len()).unwrap_or(FeatureSet::MAX);
+        self.features.push(features);
+        self.feature_sets.insert(sorted.into(), set);
+        set
     }
 
     /// An empty cache for another thread of the same render: the same
@@ -332,9 +376,10 @@ impl<'a> ShapeCache<'a> {
         key: FontKey,
         word: &str,
         rtl: Option<bool>,
+        set: FeatureSet,
         unicode: &mut super::UnicodeMap,
     ) -> Arc<[UnitGlyph]> {
-        if let Some(g) = self.words.get(&(key, rtl, Box::from(word))) {
+        if let Some(g) = self.words.get(&(key, rtl, set, Box::from(word))) {
             return g.clone();
         }
         let face = &self.faces.0[usize::from(key)];
@@ -349,11 +394,15 @@ impl<'a> ShapeCache<'a> {
             });
         }
         let reversed = buf.direction() == rustybuzz::Direction::RightToLeft && rtl.is_some();
+        let features = self
+            .features
+            .get(usize::from(set))
+            .map_or(&[][..], |f| &f[..]);
         let plan = self
             .plans
-            .entry((key, buf.direction(), Some(buf.script())))
+            .entry((key, set, buf.direction(), Some(buf.script())))
             .or_insert_with(|| {
-                rustybuzz::ShapePlan::new(face, buf.direction(), Some(buf.script()), None, &[])
+                rustybuzz::ShapePlan::new(face, buf.direction(), Some(buf.script()), None, features)
             });
         let shaped = rustybuzz::shape_with_plan(face, plan, buf);
         let infos = shaped.glyph_infos();
@@ -393,7 +442,7 @@ impl<'a> ShapeCache<'a> {
             unicode.record(key, g.id, &word[cluster..end]);
         }
         self.words
-            .insert((key, rtl, Box::from(word)), glyphs.clone());
+            .insert((key, rtl, set, Box::from(word)), glyphs.clone());
         glyphs
     }
 }
@@ -435,8 +484,10 @@ pub(crate) fn prepare(
     let mut segments = itemize(&text, &run_ranges, opts.runs, fonts, levels.as_deref());
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(text.len());
 
+    let sets: Vec<FeatureSet> = opts.runs.iter().map(|r| cache.feature_set(r)).collect();
     for seg in &mut segments {
         let run = &opts.runs[seg.run as usize];
+        let set = sets[seg.run as usize];
         let scale = fonts.get(seg.font).scale(run.size);
         let letter_spacing = run.letter_spacing.unwrap_or(0.0);
         let seg_text = &text[seg.text.start as usize..seg.text.end as usize];
@@ -451,7 +502,7 @@ pub(crate) fn prepare(
                 }))
             };
             let shaped = catch_unwind(AssertUnwindSafe(|| {
-                cache.word(seg.font, word, dir, unicode)
+                cache.word(seg.font, word, dir, set, unicode)
             }))
             .unwrap_or_else(|_| fail(ShapingCause::Panicked));
             // Every occurrence counts: each copies its glyphs.
@@ -763,6 +814,8 @@ mod tests {
             placeholder: None,
             link: None,
             hyphenate: None,
+            vertical_align: None,
+            font_features: None,
         }
     }
 

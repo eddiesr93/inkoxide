@@ -244,11 +244,11 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
     }
 
     // As wide as the numbers written out, and wrapped like them.
-    let one_line = lines::break_lines(&paragraph(&filled), f32::INFINITY);
+    let one_line = lines::break_lines(&paragraph(&filled), &LineBoxes::plain(f32::INFINITY));
     let written = lines(&doc(&para("Page 7 of 1234", "")), &s, 500.0).1;
     assert!((one_line.width - written.width).abs() < 0.01);
     let narrow = lines(&doc(&para("Page 7 of", "")), &s, 500.0).1.width + 1.0;
-    let wrapped = lines::break_lines(&paragraph(&filled), narrow);
+    let wrapped = lines::break_lines(&paragraph(&filled), &LineBoxes::plain(narrow));
     assert_eq!(line_texts(&filled, &wrapped), ["Page 7 of", "1234"]);
 }
 
@@ -467,4 +467,402 @@ fn emoji_presentation_prefers_a_colour_fallback() {
         segments("\u{2764}\u{FE0F}", &fallbacks)[0].1,
         "EmojiTest-COLR"
     );
+}
+
+/// A text node of `runs`, each `(text, extra run properties)` in Inter at
+/// 10 points.
+fn runs(runs: &[(&str, &str)]) -> String {
+    let runs: Vec<String> = runs
+        .iter()
+        .map(|(t, extra)| format!(r#"{{"text":"{t}","font":"Inter-Regular","size":10{extra}}}"#))
+        .collect();
+    format!(r#"{{"type":"text","runs":[{}]}}"#, runs.join(","))
+}
+
+#[test]
+fn superscripts_and_subscripts_move_the_baseline_and_grow_the_line() {
+    let s = store();
+    let (_, plain) = lines(&doc(&runs(&[("H2O", "")])), &s, f32::INFINITY);
+    let (_, sup) = lines(
+        &doc(&runs(&[("x", ""), ("2", r#","verticalAlign":"super""#)])),
+        &s,
+        f32::INFINITY,
+    );
+    let (_, sub) = lines(
+        &doc(&runs(&[("H", ""), ("2", r#","verticalAlign":"sub""#)])),
+        &s,
+        f32::INFINITY,
+    );
+    let (p, sup, sub) = (&plain.lines[0], &sup.lines[0], &sub.lines[0]);
+    // Inter's OS/2: superscripts 717 up and subscripts 154 down, for a
+    // size of 1229 (units of 2048 per em).
+    let up = 10.0 * 717.0 / 1229.0;
+    let down = 10.0 * 154.0 / 1229.0;
+    assert!((sup.ascent - (p.ascent + up)).abs() < 1e-3, "{sup:?}");
+    assert!((sup.height - (p.height + up)).abs() < 1e-3);
+    assert!((sub.ascent - p.ascent).abs() < 1e-3);
+    assert!((sub.height - (p.height + down)).abs() < 1e-3, "{sub:?}");
+    // `baseline` is the default.
+    let (_, base) = lines(
+        &doc(&runs(&[("H2O", r#","verticalAlign":"baseline""#)])),
+        &s,
+        f32::INFINITY,
+    );
+    assert_eq!(base.lines[0].height, p.height);
+}
+
+#[test]
+fn a_smaller_superscript_stays_within_the_line() {
+    // A superscript at 6 points next to 10-point text: raised by its own
+    // size's offset, it reaches no higher than the larger text.
+    let s = store();
+    let one = r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10},
+        {"text":"2","font":"Inter-Regular","size":6,"verticalAlign":"super"}]}"#;
+    let (_, l) = lines(&doc(one), &s, f32::INFINITY);
+    let (_, p) = lines(&doc(&runs(&[("x", "")])), &s, f32::INFINITY);
+    assert_eq!(l.lines[0].height, p.lines[0].height);
+}
+
+/// The advances of the glyphs a paragraph of `runs` shapes to.
+fn advances(runs_json: &str) -> Vec<f32> {
+    let s = store();
+    let d = doc(runs_json);
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    cache.layout(node, f32::INFINITY);
+    let (p, _) = cache.prepared(node).unwrap();
+    p.glyphs.iter().map(|g| g.advance).collect()
+}
+
+#[test]
+fn font_features_reach_the_shaper() {
+    // Inter's digits are proportional; `tnum` makes them one width.
+    let plain = advances(&runs(&[("1180", "")]));
+    assert!(
+        plain.windows(2).any(|w| (w[0] - w[1]).abs() > 1e-3),
+        "{plain:?}"
+    );
+    let tnum = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1}"#)]));
+    assert!(
+        tnum.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-3),
+        "{tnum:?}"
+    );
+    // Turned off, or in another order, the same set.
+    let off = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":0}"#)]));
+    assert_eq!(off, plain);
+    let ordered = advances(&runs(&[("1180", r#","fontFeatures":{"zero":1,"tnum":1}"#)]));
+    let reordered = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1,"zero":1}"#)]));
+    assert_eq!(ordered, reordered);
+    assert_eq!(ordered, tnum);
+}
+
+#[test]
+fn the_same_word_shapes_apart_with_other_features() {
+    // One paragraph, one word in two runs: the shaped word is cached by
+    // its features too.
+    let both = advances(&runs(&[
+        ("1180 ", ""),
+        ("1180", r#","fontFeatures":{"tnum":1}"#),
+    ]));
+    let plain = advances(&runs(&[("1180", "")]));
+    let tnum = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1}"#)]));
+    assert_eq!(&both[..4], &plain[..]);
+    assert_eq!(&both[5..], &tnum[..]);
+}
+
+/// Lays out the document's first node in `boxes`; returns line texts and
+/// the layout.
+fn lines_in(d: &Document, store: &FontStore, boxes: &LineBoxes) -> (Vec<String>, LineLayout) {
+    let fonts = FontSet::load(d, store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let layout = (*cache.layout_in(node, boxes).unwrap()).clone();
+    let (p, _) = cache.prepared(node).unwrap();
+    (line_texts(p, &layout), layout)
+}
+
+fn banded(width: f32, bands: &[(f32, f32, f32, f32)]) -> LineBoxes {
+    LineBoxes {
+        width,
+        bands: bands
+            .iter()
+            .map(|&(top, bottom, left, right)| crate::layout::float::Band {
+                top,
+                bottom,
+                left,
+                right,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn lines_beside_a_band_are_narrower_and_the_rest_full_width() {
+    let s = store();
+    let d = doc(&para(&format!("{LOREM} {LOREM}"), ""));
+    let boxes = banded(200.0, &[(0.0, 30.0, 80.0, 0.0)]);
+    let (texts, l) = lines_in(&d, &s, &boxes);
+    let (plain, _) = lines(&d, &s, 200.0);
+    assert_eq!(texts.join(" "), plain.join(" "));
+    assert_eq!(l.boxes.len(), l.lines.len());
+    let mut narrow = 0;
+    for (line, &(left, avail)) in l.lines.iter().zip(&l.boxes) {
+        assert!(line.width <= avail + 1e-3, "{line:?} in {avail}");
+        if line.top < 30.0 {
+            assert_eq!((left, avail), (80.0, 120.0));
+            narrow += 1;
+        } else {
+            assert_eq!((left, avail), (0.0, 200.0));
+        }
+    }
+    assert!(narrow >= 2 && texts.len() > plain.len(), "{texts:?}");
+    // Without bands, the layout keeps no boxes.
+    assert!(lines(&d, &s, 200.0).1.boxes.is_empty());
+}
+
+#[test]
+fn a_line_that_does_not_fit_beside_a_band_moves_below_it() {
+    let s = store();
+    let d = doc(&para("Unbreakable words", ""));
+    // Only 10 points free over the first 25: no word fits there.
+    let boxes = banded(200.0, &[(0.0, 25.0, 0.0, 190.0)]);
+    let (texts, l) = lines_in(&d, &s, &boxes);
+    assert_eq!(texts, ["Unbreakable words"]);
+    assert_eq!(l.lines[0].top, 25.0);
+    assert_eq!(l.boxes[0], (0.0, 200.0));
+    assert!((l.height - (25.0 + l.lines[0].height)).abs() < 1e-4);
+    // A band that ends leaves room to every later line; with no band below,
+    // a word too wide for the line breaks anyway.
+    let (texts, _) = lines_in(&d, &s, &banded(30.0, &[(0.0, 5.0, 0.0, 20.0)]));
+    assert!(texts.len() > 2, "{texts:?}");
+}
+
+#[test]
+fn indent_and_ellipsis_use_the_line_box() {
+    let s = store();
+    let d = doc(&para(
+        LOREM,
+        r#""textIndent":20,"maxLines":1,"ellipsis":true"#,
+    ));
+    let boxes = banded(200.0, &[(0.0, 100.0, 50.0, 30.0)]);
+    let (texts, l) = lines_in(&d, &s, &boxes);
+    assert_eq!(texts.len(), 1);
+    assert!(texts[0].ends_with('…'), "{texts:?}");
+    let line = &l.lines[0];
+    assert!(line.width + line.indent <= 120.0 + 1e-3, "{line:?}");
+    assert_eq!(l.boxes[0], (50.0, 120.0));
+}
+
+/// `node`, with `textWrap: pretty`.
+fn pretty(mut d: Document) -> Document {
+    let node = &mut d.pages[0].children[0];
+    let style = crate::schema::Style {
+        text_wrap: Some(crate::schema::TextWrap::Pretty),
+        ..(*node.style).clone()
+    };
+    node.style = crate::schema::NodeStyle::new(style);
+    d
+}
+
+/// Every line fits its box: the content width, less the indent on the
+/// first line.
+fn assert_fits(l: &LineLayout, width: f32) {
+    assert_fits_shrunk(l, width, &[]);
+}
+
+/// [`assert_fits`], for lines that may shrink their spaces (`shrink[i]`
+/// for line `i`) by up to a third.
+fn assert_fits_shrunk(l: &LineLayout, width: f32, spaces: &[f32]) {
+    for (i, line) in l.lines.iter().enumerate() {
+        let avail = l.boxes.get(i).map_or(width, |b| b.1);
+        let shrink = spaces.get(i).map_or(0.0, |s| s / 3.0);
+        assert!(
+            line.width + line.indent <= avail + shrink + 1e-3,
+            "line {i}: {line:?} in {avail}"
+        );
+    }
+}
+
+/// The advance of the spaces on each line of the document's first node at
+/// `width`.
+fn line_spaces(d: &Document, store: &FontStore, width: f32) -> (LineLayout, Vec<f32>) {
+    let fonts = FontSet::load(d, store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let layout = (*cache.layout(node, width).unwrap()).clone();
+    let (p, _) = cache.prepared(node).unwrap();
+    let spaces = layout
+        .lines
+        .iter()
+        .map(|l| {
+            p.glyphs[l.start as usize..l.end as usize]
+                .iter()
+                .filter(|g| g.is_space())
+                .map(|g| g.advance)
+                .sum()
+        })
+        .collect();
+    (layout, spaces)
+}
+
+/// Sum of the squared room left on every line but the last.
+fn raggedness(l: &LineLayout, width: f32) -> f32 {
+    let n = l.lines.len().saturating_sub(1);
+    l.lines[..n]
+        .iter()
+        .map(|x| (width - x.width - x.indent).powi(2))
+        .sum()
+}
+
+const PROSE: &str = "In olden times when wishing still helped one, there lived a king \
+    whose daughters were all beautiful, but the youngest was so beautiful that the sun \
+    itself, which has seen so much, was astonished whenever it shone in her face. Close \
+    by the king's castle lay a great dark forest, and under an old lime tree in the forest \
+    was a well, and when the day was very warm, the king's child went out into the forest";
+
+#[test]
+fn pretty_lines_are_more_even_than_first_fit() {
+    let s = store();
+    for (width, style) in [
+        (150.0, ""),
+        (210.0, ""),
+        (150.0, r#""textAlign":"justify""#),
+        (180.0, r#""textAlign":"justify","textIndent":15"#),
+    ] {
+        let d = doc(&para(PROSE, style));
+        let (greedy_texts, greedy) = lines(&d, &s, width);
+        let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_eq!(texts.join(" "), greedy_texts.join(" "));
+        let (_, spaces) = line_spaces(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_fits_shrunk(&l, width, &spaces);
+        // Justified lines shrink as well as stretch: compare ragged ones.
+        assert!(
+            !style.is_empty() || raggedness(&l, width) <= raggedness(&greedy, width) + 1e-3,
+            "{width} {style}: {texts:#?}"
+        );
+    }
+    // Here first fit leaves short lines in the middle that pretty evens out.
+    let d = doc(&para(PROSE, ""));
+    let (_, greedy) = lines(&d, &s, 140.0);
+    let (_, l) = lines(&pretty(doc(&para(PROSE, ""))), &s, 140.0);
+    assert!(raggedness(&l, 140.0) < 0.9 * raggedness(&greedy, 140.0));
+}
+
+#[test]
+fn pretty_matches_first_fit_when_that_is_already_best() {
+    // Equal words, three to a line exactly.
+    let s = store();
+    let word_doc = doc(&para("mmm", ""));
+    let (_, one) = lines(&word_doc, &s, f32::INFINITY);
+    let space = lines(&doc(&para("mmm mmm", "")), &s, f32::INFINITY).1.width - 2.0 * one.width;
+    let width = 3.0 * one.width + 2.0 * space + 0.01;
+    let text = ["mmm"; 9].join(" ");
+    let (greedy, _) = lines(&doc(&para(&text, "")), &s, width);
+    let (texts, l) = lines(&pretty(doc(&para(&text, ""))), &s, width);
+    assert_eq!(texts, greedy);
+    assert_eq!(texts.len(), 3);
+    assert_fits(&l, width);
+}
+
+#[test]
+fn pretty_falls_back_to_first_fit() {
+    let s = store();
+    // A word wider than the line breaks anywhere, as first fit breaks it.
+    let long = "Supercalifragilisticexpialidocious and words";
+    let (greedy, _) = lines(&doc(&para(long, "")), &s, 60.0);
+    let (texts, _) = lines(&pretty(doc(&para(long, ""))), &s, 60.0);
+    assert_eq!(texts, greedy);
+    // Text without spaces, justified, has nothing to stretch.
+    let cjk = "\u{4e00}\u{4e8c}\u{4e09}\u{56db}\u{4e94}\u{516d}\u{4e03}\u{516b}\u{4e5d}\u{5341}";
+    let justified = r#""textAlign":"justify""#;
+    let (greedy, _) = lines(&doc(&para(cjk, justified)), &s, 35.0);
+    let (texts, _) = lines(&pretty(doc(&para(cjk, justified))), &s, 35.0);
+    assert_eq!(texts, greedy);
+    // `nowrap` does not break.
+    let (texts, _) = lines(
+        &pretty(doc(&para(PROSE, r#""whiteSpace":"nowrap""#))),
+        &s,
+        100.0,
+    );
+    assert_eq!(texts.len(), 1);
+}
+
+#[test]
+fn pretty_keeps_hyphens_apart() {
+    let s = store();
+    let style = r#""hyphenate":true,"lang":"en","textAlign":"justify""#;
+    for width in [140.0, 170.0] {
+        let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
+        let (_, spaces) = line_spaces(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_fits_shrunk(&l, width, &spaces);
+        assert!(
+            l.lines.iter().any(|x| x.hyphen.is_some()),
+            "{width}: {texts:#?}"
+        );
+        // Two hyphens in a row cost more than evener spaces gain here.
+        for w in l.lines.windows(2) {
+            assert!(
+                w[0].hyphen.is_none() || w[1].hyphen.is_none(),
+                "{width}: {texts:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn pretty_lines_follow_forced_breaks_ellipsis_and_bands() {
+    let s = store();
+    let text = format!("{PROSE}\\n{PROSE}");
+    let (greedy, _) = lines(&doc(&para(&text, "")), &s, 160.0);
+    let (texts, l) = lines(&pretty(doc(&para(&text, ""))), &s, 160.0);
+    assert_fits(&l, 160.0);
+    // The forced break ends a line in both.
+    let ends = |t: &[String]| t.iter().filter(|x| x.ends_with("forest")).count();
+    assert_eq!(ends(&texts), ends(&greedy));
+    // `maxLines` and the ellipsis cut the optimal lines.
+    let cut = r#""maxLines":2,"ellipsis":true"#;
+    let (texts, l) = lines(&pretty(doc(&para(PROSE, cut))), &s, 160.0);
+    assert_eq!(texts.len(), 2);
+    assert!(texts[1].ends_with('…'));
+    assert_fits(&l, 160.0);
+    // Beside a band, lines fit their own boxes.
+    let boxes = banded(200.0, &[(0.0, 40.0, 60.0, 0.0), (40.0, 70.0, 0.0, 30.0)]);
+    let (texts, l) = lines_in(&pretty(doc(&para(PROSE, r#""textIndent":12"#))), &s, &boxes);
+    assert!(texts.len() > 4);
+    assert_fits(&l, 200.0);
+}
+
+#[test]
+fn a_long_pretty_paragraph_is_quick() {
+    let s = store();
+    let text = [PROSE; 40].join(" ");
+    let start = std::time::Instant::now();
+    let (l, spaces) = line_spaces(
+        &pretty(doc(&para(&text, r#""textAlign":"justify""#))),
+        &s,
+        300.0,
+    );
+    assert!(l.lines.len() > 100);
+    assert_fits_shrunk(&l, 300.0, &spaces);
+    assert!(start.elapsed().as_secs_f32() < 5.0, "{:?}", start.elapsed());
+}
+
+#[test]
+fn justified_pretty_lines_may_shrink_their_spaces_by_a_third() {
+    let s = store();
+    let style = r#""textAlign":"justify""#;
+    let mut shrunk = 0;
+    for width in [130.0, 150.0, 170.0, 190.0, 230.0] {
+        let d = pretty(doc(&para(PROSE, style)));
+        let (l, spaces) = line_spaces(&d, &s, width);
+        assert_fits_shrunk(&l, width, &spaces);
+        shrunk += l.lines.iter().filter(|x| x.width > width + 1e-3).count();
+        // The last line keeps its spaces.
+        assert!(l.lines.last().unwrap().width <= width);
+        // Ragged lines never shrink.
+        let (_, l) = lines(&pretty(doc(&para(PROSE, ""))), &s, width);
+        assert_fits(&l, width);
+    }
+    assert!(shrunk > 0);
 }

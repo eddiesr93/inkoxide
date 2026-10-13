@@ -48,16 +48,12 @@ pub(crate) struct FontMetrics {
     #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub x_height: f32,
     /// How far subscripts sit below the baseline (OS/2 `ySubscriptYOffset`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub subscript_offset: f32,
     /// Em size of subscripts (OS/2 `ySubscriptYSize`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub subscript_size: f32,
     /// How far superscripts sit above the baseline (OS/2 `ySuperscriptYOffset`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub superscript_offset: f32,
     /// Em size of superscripts (OS/2 `ySuperscriptYSize`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub superscript_size: f32,
     /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
     pub cff: bool,
@@ -67,6 +63,38 @@ pub(crate) struct FontMetrics {
     /// Colour glyphs and no outlines: the font is never embedded, and its
     /// glyphs without colour are not drawn.
     pub color_only: bool,
+}
+
+/// Defaults of the script metrics, in ems, for fonts without them: close
+/// to what browsers use.
+const SUBSCRIPT_OFFSET: f32 = 0.2;
+const SUPERSCRIPT_OFFSET: f32 = 0.34;
+const SCRIPT_SIZE: f32 = 0.65;
+
+impl FontMetrics {
+    /// How far a superscript's baseline is raised, as a fraction of the
+    /// superscript's own size: the OS/2 offset over the OS/2 size.
+    pub fn superscript_shift(&self) -> f32 {
+        script_shift(
+            self.superscript_offset,
+            self.superscript_size,
+            SUPERSCRIPT_OFFSET,
+        )
+    }
+
+    /// How far a subscript's baseline is lowered, as a fraction of the
+    /// subscript's own size.
+    pub fn subscript_shift(&self) -> f32 {
+        script_shift(self.subscript_offset, self.subscript_size, SUBSCRIPT_OFFSET)
+    }
+}
+
+/// `offset` over `size`, or the defaults' ratio where that is out of
+/// (0, 1] (a malformed or unusual OS/2 table).
+fn script_shift(offset: f32, size: f32, default_offset: f32) -> f32 {
+    Some(offset / size)
+        .filter(|r| *r > 0.0 && *r <= 1.0)
+        .unwrap_or(default_offset / SCRIPT_SIZE)
 }
 
 /// A registered font face.
@@ -160,12 +188,13 @@ impl FontData {
         // to what browsers use.
         let script = |m: Option<ttf_parser::ScriptMetrics>, offset: f32| {
             m.filter(|m| m.y_size > 0)
-                .map_or((upem * offset, upem * 0.65), |m| {
+                .map_or((upem * offset, upem * SCRIPT_SIZE), |m| {
                     (f32::from(m.y_offset), f32::from(m.y_size))
                 })
         };
-        let (subscript_offset, subscript_size) = script(face.subscript_metrics(), 0.2);
-        let (superscript_offset, superscript_size) = script(face.superscript_metrics(), 0.34);
+        let (subscript_offset, subscript_size) = script(face.subscript_metrics(), SUBSCRIPT_OFFSET);
+        let (superscript_offset, superscript_size) =
+            script(face.superscript_metrics(), SUPERSCRIPT_OFFSET);
         let metrics = FontMetrics {
             units_per_em: upem,
             ascender,

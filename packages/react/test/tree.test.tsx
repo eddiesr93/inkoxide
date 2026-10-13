@@ -216,6 +216,164 @@ describe('text inheritance and runs', () => {
   });
 });
 
+describe('superscript, subscript and font features', () => {
+  const runs = (r: ReturnType<typeof render>) =>
+    first<TextNode>(r).runs.map(({ text, size, verticalAlign, fontFeatures }) => ({
+      text,
+      size,
+      ...(verticalAlign && { verticalAlign }),
+      ...(fontFeatures && { fontFeatures }),
+    }));
+
+  it('puts a nested Text on a raised or lowered baseline, with what is inside it', () => {
+    const r = render(
+      <Text>
+        x<Text style={{ verticalAlign: 'super', fontSize: 6 }}>2</Text> H
+        <Text className="align-sub text-[6pt]">
+          2<Text className="font-bold">!</Text>
+        </Text>
+        O <Text style={{ verticalAlign: 'baseline' }}>y</Text>
+      </Text>,
+    );
+    expect(runs(r)).toEqual([
+      { text: 'x', size: 10 },
+      { text: '2', size: 6, verticalAlign: 'super' },
+      { text: ' H', size: 10 },
+      { text: '2', size: 6, verticalAlign: 'sub' },
+      { text: '!', size: 6, verticalAlign: 'sub' },
+      { text: 'O y', size: 10 },
+    ]);
+  });
+
+  it('applies verticalAlign on the outer Text to all its runs', () => {
+    const r = render(
+      <Text style={{ verticalAlign: 'super' }}>
+        a<Text style={{ verticalAlign: 'baseline' }}>b</Text>
+      </Text>,
+    );
+    expect(runs(r)).toEqual([
+      { text: 'a', size: 10, verticalAlign: 'super' },
+      { text: 'b', size: 10 },
+    ]);
+  });
+
+  it("keeps a cell's verticalAlign off its text, and a run's off a cell", () => {
+    const r = render(
+      <Table columns={[50]}>
+        <Row>
+          <Cell className="align-middle">
+            <Text>x</Text>
+          </Cell>
+        </Row>
+      </Table>,
+    );
+    const cell = first<TableNode>(r).rows[0]?.cells[0];
+    expect(cell?.style?.verticalAlign).toBe('middle');
+    const text = cell?.children?.[0] as TextNode | undefined;
+    expect(text?.runs[0]).toEqual({ text: 'x', font: 'Inter-Regular', size: 10, color: [0, 0, 0, 1] });
+    const e = thrown(() =>
+      render(
+        <Table columns={[50]}>
+          <Row>
+            <Cell className="align-super" />
+          </Row>
+        </Table>,
+      ),
+    );
+    expect(e.message).toMatch(
+      /<Cell>: verticalAlign "super" \(from className="align-super"\).*top, middle or bottom/,
+    );
+    const nested = thrown(() =>
+      render(
+        <Text>
+          a<Text style={{ verticalAlign: 'middle' }}>b</Text>
+        </Text>,
+      ),
+    );
+    expect(nested.message).toMatch(/inline run: only text styles apply, not "verticalAlign"/);
+    expect(() => render(<Text style={{ verticalAlign: 'sup' as 'super' }}>a</Text>)).toThrow(
+      /verticalAlign "sup" is not supported/,
+    );
+  });
+
+  it('reads fontFeatureSettings in every form, inherited, replaced by a Text that sets its own', () => {
+    const r = render(
+      <View style={{ fontFeatureSettings: "'tnum' 1, 'liga' off" }}>
+        <Text>
+          a<Text style={{ fontFeatureSettings: ['smcp'] }}>b</Text>
+          <Text style={{ fontFeatureSettings: { ss01: true, salt: 2 } }}>c</Text>
+          <Text style={{ fontFeatureSettings: 'normal' }}>d</Text>
+        </Text>
+      </View>,
+    );
+    const text = (first<BoxNode>(r).children?.[0] ?? {}) as TextNode;
+    expect(text.runs.map((x) => [x.text, x.fontFeatures])).toEqual([
+      ['a', { tnum: 1, liga: 0 }],
+      ['b', { smcp: 1 }],
+      ['c', { ss01: 1, salt: 2 }],
+      ['d', undefined],
+    ]);
+  });
+
+  it('combines fontVariantNumeric and Tailwind numeric classes, with fontFeatureSettings winning', () => {
+    const r = render(
+      <Text className="tabular-nums slashed-zero">
+        1<Text style={{ fontFeatureSettings: { tnum: 0 } }}>2</Text>
+        <Text className="font-features-['ss01']">3</Text>
+        <Text style={{ fontVariantNumeric: 'oldstyle-nums' }}>4</Text>
+      </Text>,
+    );
+    expect(first<TextNode>(r).runs.map((x) => [x.text, x.fontFeatures])).toEqual([
+      ['1', { tnum: 1, zero: 1 }],
+      ['2', { tnum: 0, zero: 1 }],
+      ['3', { tnum: 1, zero: 1, ss01: 1 }],
+      ['4', { onum: 1 }],
+    ]);
+  });
+
+  it('merges neighbouring runs with the same features, in any order', () => {
+    const r = render(
+      <Text style={{ fontFeatureSettings: { tnum: 1, zero: 1 } }}>
+        a<Text style={{ fontFeatureSettings: { zero: 1, tnum: 1 } }}>b</Text>
+      </Text>,
+    );
+    expect(runs(r)).toEqual([{ text: 'ab', size: 10, fontFeatures: { tnum: 1, zero: 1 } }]);
+  });
+
+  it('rejects settings that are not features', () => {
+    expect(() => render(<Text style={{ fontFeatureSettings: 'tnum' }}>a</Text>)).toThrow(
+      /fontFeatureSettings: tnum \(expected a quoted tag/,
+    );
+    expect(() => render(<Text style={{ fontFeatureSettings: { tnums: 1 } }}>a</Text>)).toThrow(
+      /"tnums" is not a feature tag/,
+    );
+  });
+});
+
+describe('textWrap', () => {
+  it('cascades from the page to its paragraphs, and a Text sets its own', () => {
+    const r = render(
+      <View>
+        <Text>a</Text>
+        <Text style={{ textWrap: 'wrap' }}>b</Text>
+        <Text className="text-wrap">c</Text>
+      </View>,
+      'text-[10pt] text-pretty',
+    );
+    const texts = (first<BoxNode>(r).children ?? []) as TextNode[];
+    expect(texts.map((t) => t.style?.textWrap)).toEqual(['pretty', undefined, undefined]);
+    const plain = render(<Text>a</Text>);
+    expect(first<TextNode>(plain).style?.textWrap).toBeUndefined();
+  });
+
+  it('rejects balance, which is reserved', () => {
+    expect(() => render(<Text style={{ textWrap: 'balance' }}>a</Text>)).toThrow(
+      /textWrap "balance" is not supported/,
+    );
+    expect(() => render(<Text className="text-balance">a</Text>)).toThrow(/text-balance/);
+  });
+});
+
 describe('placeholders', () => {
   it('emits pageNumber and totalPages runs inside Text', () => {
     const r = render(
