@@ -7,6 +7,13 @@ version 2.
 
 ## Unreleased
 
+### Added
+
+- `Field.name` may contain dots, which make groups of fields: `address.street` is the field
+  `street` in the group `address`. A name has at most 32 parts of 1 to 128 characters, and at
+  most 512 characters in all (it was one part of at most 128). A name that is both a field and a
+  group (`a` and `a.b`) is `DUPLICATE_ID`. Documents without dots render as before.
+
 ### Changed
 
 - `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`

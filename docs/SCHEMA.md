@@ -497,7 +497,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
+| `name` | `string` matching `^[^.]{1,128}(\.[^.]{1,128}){0,31}$` | yes | min length 1, max length 512; Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
 | `value` | `string` |  | max length 8000; text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). At most 8000 characters. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |

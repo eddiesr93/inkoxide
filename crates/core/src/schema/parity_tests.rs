@@ -389,12 +389,13 @@ fn named_bounds_match_schema() {
             "/$defs/Field/properties/name/maxLength",
             MAX_FIELD_NAME as f64,
             Box::new(|n| {
+                // Parts short enough, with a dot every 128 characters.
+                let name: String = (0..n as usize)
+                    .map(|i| if i % 128 == 64 { '.' } else { 'x' })
+                    .collect();
                 doc(
                     "",
-                    &format!(
-                        r#"{{"type":"field","field":{{"name":"{}","kind":"checkbox"}}}}"#,
-                        chars(n)
-                    ),
+                    &format!(r#"{{"type":"field","field":{{"name":"{name}","kind":"checkbox"}}}}"#),
                 )
             }),
             MAX_FIELD_NAME as f64 + 1.0,
@@ -557,6 +558,47 @@ fn named_bounds_match_schema() {
             one(code, &path),
             "{pointer}: {past}"
         );
+    }
+}
+
+/// The schema's pattern for field names states the engine's bounds on
+/// their parts, and the engine enforces them.
+#[test]
+fn field_name_parts_match_schema() {
+    use crate::validate::rules::{MAX_FIELD_PART, MAX_FIELD_PARTS};
+    let s = schema();
+    let pattern = s
+        .pointer("/$defs/Field/properties/name/pattern")
+        .and_then(serde_json::Value::as_str)
+        .unwrap();
+    assert_eq!(
+        pattern,
+        format!(
+            r"^[^.]{{1,{MAX_FIELD_PART}}}(\.[^.]{{1,{MAX_FIELD_PART}}}){{0,{}}}$",
+            MAX_FIELD_PARTS - 1
+        )
+    );
+    let doc = |name: &str| {
+        format!(
+            r#"{{"version":1,"pages":[{{{PAGE},"children":[{{"type":"field","field":{{"name":"{name}","kind":"checkbox"}}}}]}}]}}"#
+        )
+    };
+    let path = "pages[0].children[0].field.name";
+    let part = "p".repeat(MAX_FIELD_PART);
+    let parts = |n: usize| vec!["p"; n].join(".");
+    for ok in [part.clone(), format!("a.{part}"), parts(MAX_FIELD_PARTS)] {
+        assert_eq!(errors(&doc(&ok), &[]), [], "{ok}");
+    }
+    for bad in [
+        format!("{part}p"),
+        format!("a.{part}p"),
+        parts(MAX_FIELD_PARTS + 1),
+        "a..b".into(),
+        ".a".into(),
+        "a.".into(),
+        String::new(),
+    ] {
+        assert_eq!(errors(&doc(&bad), &[]), one("INVALID_VALUE", path), "{bad}");
     }
 }
 

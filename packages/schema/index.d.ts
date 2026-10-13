@@ -789,7 +789,7 @@ export interface FieldNode {
  */
 export interface Field {
   /**
-   * Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`.
+   * Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`.
    */
   name: string;
   kind: 'text' | 'checkbox' | 'radio' | 'select';

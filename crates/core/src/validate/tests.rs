@@ -945,7 +945,7 @@ fn form_fields() {
     let f = "pages[0].children[0].field";
     let cases = [
         (
-            r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}}"#,
+            r#"{"type":"field","field":{"name":"a..b","kind":"checkbox"}}"#,
             C::InvalidValue,
             "name",
         ),
@@ -1016,6 +1016,34 @@ fn form_fields() {
             "pages[0].children[1].field.name".to_string()
         )
     );
+    // Dots make groups; a name is either a field or a group.
+    let ok = doc(
+        r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}},
+           {"type":"field","field":{"name":"a.c.d","kind":"checkbox"}},
+           {"type":"field","field":{"name":"a.r","kind":"radio","value":"1"}},
+           {"type":"field","field":{"name":"a.r","kind":"radio","value":"2"}},
+           {"type":"field","field":{"name":"b","kind":"checkbox"}}"#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    for pair in [
+        r#""a","a.b""#,
+        r#""a.b","a""#,
+        r#""a.b","a.b.c""#,
+        r#""a.b.c","a.b""#,
+    ] {
+        let (first, second) = pair.split_once(',').unwrap();
+        let dup = doc(&format!(
+            r#"{{"type":"field","field":{{"name":{first},"kind":"checkbox"}}}},{{"type":"field","field":{{"name":{second},"kind":"checkbox"}}}}"#
+        ));
+        assert_eq!(
+            one(&dup),
+            (
+                C::DuplicateId,
+                "pages[0].children[1].field.name".to_string()
+            ),
+            "{pair}"
+        );
+    }
     let (code, path) = one(&doc(
         r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
     ));

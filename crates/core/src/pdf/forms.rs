@@ -24,6 +24,62 @@ pub(super) struct Form {
     pub fonts: Vec<FontKey>,
 }
 
+/// A non-terminal field: the group a dot in field names makes.
+struct Group<'n> {
+    r: Ref,
+    /// Its own part of the name (`/T`).
+    part: &'n str,
+    parent: Option<Ref>,
+    kids: Vec<Ref>,
+}
+
+/// The groups of a field tree, made as names reach them.
+#[derive(Default)]
+struct Groups<'n> {
+    list: Vec<Group<'n>>,
+    /// Index in `list` by full name (`a.b`).
+    by_name: BTreeMap<&'n str, usize>,
+}
+
+impl<'n> Groups<'n> {
+    /// The group that holds the field named `name` (`None`: a root
+    /// field), and the field's own part of the name. Groups not made yet
+    /// are made from the top down; new root groups join `roots`.
+    fn parent_of(
+        &mut self,
+        alloc: &mut RefAlloc,
+        roots: &mut Vec<Ref>,
+        name: &'n str,
+    ) -> (Option<usize>, &'n str) {
+        let mut parent = None;
+        let mut start = 0;
+        for (i, _) in name.match_indices('.') {
+            let full = &name[..i];
+            let g = if let Some(&g) = self.by_name.get(full) {
+                g
+            } else {
+                let g = self.list.len();
+                let r = alloc.next();
+                self.list.push(Group {
+                    r,
+                    part: &name[start..i],
+                    parent: parent.map(|p: usize| self.list[p].r),
+                    kids: Vec::new(),
+                });
+                match parent {
+                    Some(p) => self.list[p].kids.push(r),
+                    None => roots.push(r),
+                }
+                self.by_name.insert(full, g);
+                g
+            };
+            parent = Some(g);
+            start = i + 1;
+        }
+        (parent, &name[start..])
+    }
+}
+
 /// Writes every field; appends widget refs to `annots` (per page).
 /// `None` when the document has no fields.
 pub(super) fn write_fields(
@@ -52,8 +108,9 @@ pub(super) fn write_fields(
         fields: Vec::new(),
         fonts: Vec::new(),
     };
-    for name in order {
-        let widgets = &groups[name];
+    let mut tree = Groups::default();
+    for full in order {
+        let widgets = &groups[full];
         let states = on_states(widgets);
         let first = widgets[0].1;
         if let Some(k) = first.font {
@@ -61,12 +118,21 @@ pub(super) fn write_fields(
                 form.fonts.push(k);
             }
         }
+        // Only root fields and groups are listed in the form.
+        let (group, name) = tree.parent_of(alloc, &mut form.fields, full);
+        let parent = group.map(|g| tree.list[g].r);
         let field_ref = alloc.next();
-        form.fields.push(field_ref);
+        match group {
+            Some(g) => tree.list[g].kids.push(field_ref),
+            None => form.fields.push(field_ref),
+        }
         if widgets.len() == 1 && first.field.kind != FieldKind::Radio {
             // Field and widget merged in one dictionary.
             let aps = ctx.appearances(pdf, alloc, first, &states.names[0]);
             let mut f = pdf.form_field(field_ref);
+            if let Some(p) = parent {
+                f.parent(p);
+            }
             field_entries(&mut f, name, widgets, &states);
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps);
@@ -87,9 +153,20 @@ pub(super) fn write_fields(
             kids.push(kid);
         }
         let mut f = pdf.form_field(field_ref);
+        if let Some(p) = parent {
+            f.parent(p);
+        }
         field_entries(&mut f, name, widgets, &states);
         f.children(kids);
         f.finish();
+    }
+    for g in &tree.list {
+        let mut f = pdf.form_field(g.r);
+        f.partial_name(TextStr(g.part));
+        if let Some(p) = g.parent {
+            f.parent(p);
+        }
+        f.children(g.kids.iter().copied());
     }
     Some(form)
 }
@@ -431,6 +508,75 @@ mod tests {
             v.clone().fold(f32::MIN, f32::max) - v.fold(f32::MAX, f32::min)
         };
         (span(|p| p.0), span(|p| p.1))
+    }
+
+    /// The text of each object of `pdf`, by number.
+    fn objects(pdf: &str) -> BTreeMap<i32, &str> {
+        pdf.split("endobj")
+            .filter_map(|o| {
+                let (head, body) = o.split_once(" 0 obj")?;
+                let n = head.rsplit(char::is_whitespace).next()?.parse().ok()?;
+                Some((n, body))
+            })
+            .collect()
+    }
+
+    /// The number of the object whose partial name is `t`.
+    fn named(objects: &BTreeMap<i32, &str>, t: &str) -> i32 {
+        let key = format!("/T ({t})");
+        let found: Vec<i32> = objects
+            .iter()
+            .filter(|(_, o)| o.contains(&key))
+            .map(|(n, _)| *n)
+            .collect();
+        assert_eq!(found.len(), 1, "{t}: {found:?}");
+        found[0]
+    }
+
+    #[test]
+    fn dotted_names_make_a_field_tree() {
+        let field = |name: &str, kind: &str| {
+            format!(r#"{{"type":"field","field":{{"name":"{name}","kind":"{kind}"}}}}"#)
+        };
+        let radio = |value: &str| {
+            format!(
+                r#"{{"type":"field","field":{{"name":"a.d","kind":"radio","value":"{value}"}}}}"#
+            )
+        };
+        let pdf = render(
+            &[
+                field("a.b.c", "checkbox"),
+                field("e", "checkbox"),
+                radio("x"),
+                radio("y"),
+            ]
+            .join(","),
+        );
+        let o = objects(&pdf);
+        let [a, b, c, d, e] = ["a", "b", "c", "d", "e"].map(|t| named(&o, t));
+        // Only the root field and group are in the form, in order.
+        assert!(pdf.contains(&format!("/Fields [{a} 0 R {e} 0 R]")), "{pdf}");
+        let parent = |n: i32| {
+            o[&n]
+                .split("/Parent ")
+                .nth(1)
+                .map(|p| p.split(' ').next().unwrap().parse::<i32>().unwrap())
+        };
+        assert_eq!(
+            [a, b, c, d, e].map(parent),
+            [None, Some(a), Some(b), Some(a), None]
+        );
+        assert!(
+            o[&a].contains(&format!("/Kids [{b} 0 R {d} 0 R]")),
+            "{}",
+            o[&a]
+        );
+        assert!(o[&b].contains(&format!("/Kids [{c} 0 R]")), "{}", o[&b]);
+        // A group is no field of its own.
+        assert!(!o[&a].contains("/FT") && !o[&b].contains("/Subtype"));
+        // The radio group holds its two buttons.
+        assert_eq!(o[&d].matches(" 0 R").count(), 3, "{}", o[&d]);
+        assert!(!pdf.contains("(a.b.c)") && !pdf.contains("(a.d)"));
     }
 
     #[test]

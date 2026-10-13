@@ -95,6 +95,7 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
+        field_groups: HashSet::new(),
     };
     c.document(doc);
     c.errors
@@ -113,6 +114,9 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
+    /// The groups field names make: every name before one of its dots
+    /// (`a` and `a.b` for `a.b.c`).
+    field_groups: HashSet<String>,
 }
 
 /// Longest link target accepted.
@@ -127,7 +131,11 @@ const MAX_ID: usize = 256;
 /// Font weights are `1..=MAX_WEIGHT` (`FontDecl.weight`).
 pub(crate) const MAX_WEIGHT: u16 = 1000;
 /// Longest form field `name`, in characters.
-pub(crate) const MAX_FIELD_NAME: usize = 128;
+pub(crate) const MAX_FIELD_NAME: usize = 512;
+/// Longest part of a form field `name` between dots, in characters.
+pub(crate) const MAX_FIELD_PART: usize = 128;
+/// Most parts of a form field `name`: groups nest at most one less deep.
+pub(crate) const MAX_FIELD_PARTS: usize = 32;
 /// Most `options` of a form field.
 pub(crate) const MAX_FIELD_OPTIONS: usize = 1000;
 /// Longest option of a form field, in characters.
@@ -595,24 +603,54 @@ impl<'a> Checker<'a> {
     }
 
     fn field(&mut self, f: &Field) {
-        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > MAX_FIELD_NAME {
+        let parts = f.name.split('.').count();
+        if f.name.chars().count() > MAX_FIELD_NAME
+            || parts > MAX_FIELD_PARTS
+            || f.name
+                .split('.')
+                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART)
+        {
             self.err(
                 Code::InvalidValue,
                 Some("name"),
-                format!("a field name is 1 to {MAX_FIELD_NAME} characters, without `.`"),
+                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
             );
         }
-        match self.fields.get(&f.name) {
-            Some(&k) if k != FieldKind::Radio || f.kind != FieldKind::Radio => self.err(
+        // The groups the name is in: what comes before each of its dots.
+        let groups = f.name.match_indices('.').map(|(i, _)| &f.name[..i]);
+        if let Some(g) = groups.clone().find(|g| self.fields.contains_key(*g)) {
+            self.err(
+                Code::DuplicateId,
+                Some("name"),
+                format!("`{g}` is already the name of a field, so it cannot be a group"),
+            );
+        } else if self.field_groups.contains(&f.name) {
+            self.err(
                 Code::DuplicateId,
                 Some("name"),
                 format!(
-                    "field name `{}` is already used (only radio buttons share a name)",
-                    f.name
+                    "`{}` is already the name of a group of fields (`{}.…`)",
+                    f.name, f.name
                 ),
-            ),
-            _ => {
-                self.fields.insert(f.name.clone(), f.kind);
+            );
+        } else {
+            match self.fields.get(&f.name) {
+                Some(&k) if k != FieldKind::Radio || f.kind != FieldKind::Radio => self.err(
+                    Code::DuplicateId,
+                    Some("name"),
+                    format!(
+                        "field name `{}` is already used (only radio buttons share a name)",
+                        f.name
+                    ),
+                ),
+                _ => {
+                    self.fields.insert(f.name.clone(), f.kind);
+                    for g in groups {
+                        if !self.field_groups.contains(g) {
+                            self.field_groups.insert(g.to_string());
+                        }
+                    }
+                }
             }
         }
         let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);

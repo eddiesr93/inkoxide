@@ -864,17 +864,35 @@ fn run(s: &mut Src) -> Value {
     Value::Object(m)
 }
 
-/// A form field: names mostly unique, radio buttons in two groups.
+/// A form field: names mostly unique, radio buttons in two groups, some
+/// fields in groups of fields (dotted names).
 fn field(s: &mut Src) -> Value {
     let mut m = Map::new();
     let kind = s.pick(&["text", "checkbox", "radio", "select"]);
     m.insert("kind".into(), json!(kind));
+    // A group of fields, nested at most two deep.
+    let set = match s.below(4) {
+        0 => format!("set{}.", s.below(2)),
+        1 => format!("set{}.sub{}.", s.below(2), s.below(2)),
+        _ => String::new(),
+    };
     let name = if s.chaos && s.chance(40) {
-        json!(s.pick(&["", "a.b", "f0", "n".repeat(129).as_str()]))
+        // Malformed names, and a field that is also a group (`a`, `a.b`).
+        json!(s.pick(&[
+            "",
+            "a.b",
+            "a",
+            "a..b",
+            ".a",
+            "a.",
+            "f0",
+            "n".repeat(129).as_str(),
+            vec!["n"; 33].join(".").as_str(),
+        ]))
     } else if kind == "radio" {
-        json!(format!("group{}", s.below(2)))
+        json!(format!("{set}group{}", s.below(2)))
     } else {
-        json!(format!("f{}", s.below(1000)))
+        json!(format!("{set}f{}", s.below(1000)))
     };
     m.insert("name".into(), name);
     let mut options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
@@ -1267,6 +1285,7 @@ mod tests {
             r#""type":"field""#,
             r#""kind":"select""#,
             r#""kind":"radio""#,
+            r#""name":"set0.sub"#,
             r#""pages":"odd""#,
             r#""pages":[-"#,
             r#""zIndex":"#,

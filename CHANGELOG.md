@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
+  field names. `address.street` and `address.city` are the fields `street` and `city` of the
+  group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
+  show and export by their full names.
+
 ### Security
 
 - Field options and values are limited to 1000 options of at most 1000 characters each, and a

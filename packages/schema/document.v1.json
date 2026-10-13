@@ -1559,9 +1559,9 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[^.]+$",
-          "description": "Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`."
+          "maxLength": 512,
+          "pattern": "^[^.]{1,128}(\\.[^.]{1,128}){0,31}$",
+          "description": "Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`."
         },
         "kind": {
           "enum": [

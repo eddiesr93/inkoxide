@@ -230,7 +230,7 @@
           ]
          },
          "field": {
-          "name": "student_id",
+          "name": "student.id",
           "kind": "text",
           "maxLength": 13,
           "font": "Inter-Regular",
@@ -317,7 +317,7 @@
           ]
          },
          "field": {
-          "name": "state",
+          "name": "student.state",
           "kind": "select",
           "options": [
            "California",
