@@ -119,7 +119,9 @@ the `ci` workflow builds them and runs clippy on them):
   the complexity limits.
 - `register_font`: raw bytes registered as a font, as they are and with
   the WOFF and WOFF2 signatures over its first bytes, so every input reaches both
-  decoders; each font that registers sets a line of text. Seeded with
+  decoders; each font that registers sets a line of text, and is the
+  fallback of a line of emoji sequences (flags, keycaps, skin tones, ZWJ
+  sequences), which a colour font draws from its colour tables. Seeded with
   `fixtures/fonts`.
 
 All share one oracle: no panic; `render` succeeds only when `validate`

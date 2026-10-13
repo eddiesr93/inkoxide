@@ -35,6 +35,19 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &[u8])] = &[
         400,
         include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf"),
     ),
+    // Colour fonts: COLR layers with outlines, PNG bitmaps without.
+    (
+        "EmojiTest-COLR",
+        "Emoji Test",
+        400,
+        include_bytes!("../../fixtures/fonts/EmojiTest-COLR.ttf"),
+    ),
+    (
+        "EmojiTest-CBDT",
+        "Emoji Test Bitmap",
+        400,
+        include_bytes!("../../fixtures/fonts/EmojiTest-CBDT.ttf"),
+    ),
 ];
 
 pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
@@ -124,7 +137,13 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
 /// Registers arbitrary bytes as a font, as they are and with the WOFF and
 /// WOFF2 signatures in place of their first four bytes, so the decoders
 /// are reached from any input. Each font that registers sets a line of
-/// text; same oracle as [`check`]. Returns how many registered.
+/// text, and is the fallback of a line in Inter with emoji sequences (a
+/// colour font's glyphs are drawn from its colour tables); same oracle as
+/// [`check`]. Returns how many registered.
+///
+/// # Panics
+///
+/// On a finding.
 pub fn check_font(bytes: &[u8]) -> usize {
     let mut variants = vec![bytes.to_vec()];
     if let Some(rest) = bytes.get(4..) {
@@ -132,11 +151,15 @@ pub fn check_font(bytes: &[u8]) -> usize {
             variants.push([&signature[..], rest].concat());
         }
     }
-    let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"}],"pages":[{"size":{"width":300,"height":200},"children":[
-        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]}]}]}"#;
+    let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"},{"id":"Inter-Regular","family":"Inter"}],
+        "fallbackFonts":["fz"],"pages":[{"size":{"width":300,"height":200},"children":[
+        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]},
+        {"type":"text","runs":[{"text":"😀 👩‍💻 🇫🇷 1️⃣ #⃣ 👍🏽 ❤️ ☺︎ 🏴󠁧󠁢󠁥󠁮󠁧󠁿","font":"Inter-Regular","size":12}]}]}]}"#;
     let mut registered = 0;
     for v in variants {
         let mut fonts = FontStore::new();
+        let (_, _, _, inter) = FIXTURE_FONTS[0];
+        fonts.register("Inter-Regular", inter.to_vec()).unwrap();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
             let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, false);
@@ -764,6 +787,13 @@ const WORDS: &[&str] = &[
     "مرحبا",
     "日本語",
     "😀",
+    "👩\u{200D}💻",
+    "🇫🇷",
+    "1\u{FE0F}\u{20E3}",
+    "👍🏽",
+    "❤\u{FE0F}",
+    "❤\u{FE0E}",
+    "\u{200D}",
     "fi",
     "AV",
     "-",
@@ -1236,10 +1266,17 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         .iter()
         .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
         .collect();
+    let fallbacks: &[&str] = match s.below(4) {
+        0 => &[],
+        1 => &["NotoSans-Regular", "EmojiTest-COLR"],
+        2 => &["EmojiTest-CBDT", "EmojiTest-COLR"],
+        _ => &["Inter-Regular", "EmojiTest-CBDT"],
+    };
     let doc = json!({
         "version": 1,
         "meta": meta,
         "fonts": fonts,
+        "fallbackFonts": fallbacks,
         "pages": pages,
     });
     doc.to_string().into_bytes()
@@ -1256,6 +1293,15 @@ mod tests {
         };
         assert!(e.message.contains("unsupported image format"), "{e}");
         assert!(check_image(include_bytes!("../../fixtures/images/logo.png")).is_ok());
+    }
+
+    /// Colour fonts register, and render as the run's font and as the
+    /// fallback for emoji sequences.
+    #[test]
+    fn check_font_renders_colour_fonts() {
+        for (id, _, _, bytes) in &FIXTURE_FONTS[4..] {
+            assert_eq!(check_font(bytes), 1, "{id}");
+        }
     }
 
     /// The generator reaches the newer parts of the schema with documents
@@ -1279,6 +1325,8 @@ mod tests {
             r#""decorationThickness":"#,
             r#""whiteSpace":"pre-wrap""#,
             r#""backgroundImage":{"#,
+            r#""fallbackFonts":["EmojiTest-CBDT""#,
+            "👩\u{200D}💻",
         ];
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
