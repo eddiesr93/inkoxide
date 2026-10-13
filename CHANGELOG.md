@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.6.3 - 2026-10-13
+
+`inkoxide` and `@inkoxide/render` 0.6.3; the other packages are unchanged. Upgrading: CFF fonts
+with a number out of range in a DICT are rejected when they are registered (see **Fixed**).
+
 ### Fixed
 
 - A CFF font with a number in its Top, Font or Private DICT that overflows a 32-bit float (or
