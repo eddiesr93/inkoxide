@@ -33,6 +33,7 @@ import {
   type HyphenationCallback,
   type Length,
   type PageSize,
+  type Permissions,
   type RenderProp,
   type Style as StyleInput,
 } from '../components/index.ts';
@@ -87,6 +88,32 @@ export interface BuildOptions {
 export interface OutputOptions {
   /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
   pdfA?: PdfALevel;
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
+   * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
+   */
+  encryption?: EncryptionOptions;
+}
+
+/** The encryption render option (the `inkoxide` binding's `EncryptionOptions`). */
+export interface EncryptionOptions {
+  userPassword?: string;
+  ownerPassword?: string;
+  permissions?: Permissions;
+}
+
+const REDACTED = '<redacted>';
+
+/** Output options whose JSON and `util.inspect` view hide the passwords. */
+function outputOptions(): OutputOptions {
+  const redacted = function (this: OutputOptions): object {
+    return this.encryption === undefined ? { ...this } : { ...this, encryption: REDACTED };
+  };
+  const out: OutputOptions = {};
+  for (const key of ['toJSON', Symbol.for('nodejs.util.inspect.custom')]) {
+    Object.defineProperty(out, key, { value: redacted, enumerable: false });
+  }
+  return out;
 }
 
 /** A PDF/A part and conformance level the engine writes. */
@@ -332,7 +359,7 @@ class Builder {
   }
 
   /** What the `<Document>` sets besides the tree; filled by `build`. */
-  readonly output: OutputOptions = {};
+  readonly output: OutputOptions = outputOptions();
 
   build(container: Container): Document {
     const [root, ...extra] = container.children.filter((c) => !(c.kind === 'text' && c.text.trim() === ''));
@@ -355,6 +382,8 @@ class Builder {
       if (typeof v === 'string') meta[k] = v;
     }
     if (p.conformance !== undefined) this.output.pdfA = this.conformance(root, p.conformance);
+    const encryption = this.encryption(root, p);
+    if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
@@ -387,6 +416,28 @@ class Builder {
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
+  }
+
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`, its types checked;
+   * the engine checks the values. Messages never show a password.
+   */
+  private encryption(root: Instance, p: Record<string, unknown>): EncryptionOptions | undefined {
+    const out: EncryptionOptions = {};
+    for (const key of ['userPassword', 'ownerPassword'] as const) {
+      const v = p[key];
+      if (v === undefined) continue;
+      if (typeof v !== 'string') this.fail(root, `<Document ${key}> must be a string.`);
+      out[key] = v;
+    }
+    if (p.permissions !== undefined) {
+      const perms = p.permissions;
+      if (typeof perms !== 'object' || perms === null || Array.isArray(perms)) {
+        this.fail(root, '<Document permissions> must be an object.');
+      }
+      out.permissions = { ...(perms as Permissions) };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
   }
 
   /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */

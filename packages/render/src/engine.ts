@@ -154,7 +154,7 @@ export function toRenderError(e: unknown): RenderError {
 
 /**
  * Renders a document tree to PDF bytes on the libuv pool. `output` holds the render options its
- * `<Document>` set (`conformance`); `opts` wins over them.
+ * `<Document>` set (`conformance`, the passwords and permissions); `opts` wins over them.
  */
 export async function renderPdf(
   doc: Document,
@@ -169,6 +169,8 @@ export async function renderPdf(
   if (opts.subsetFonts !== undefined) options.subsetFonts = opts.subsetFonts;
   const pdfA = opts.pdfA ?? output.pdfA;
   if (pdfA !== undefined) options.pdfA = pdfA;
+  const encryption = opts.encryption ?? output.encryption;
+  if (encryption !== undefined) options.encryption = encryption;
   try {
     return await ink.render(JSON.stringify(doc), options);
   } catch (e) {

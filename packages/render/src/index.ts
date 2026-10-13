@@ -60,6 +60,7 @@ export {
   type PageSize,
   type Painter,
   Path,
+  type Permissions,
   type PathProps,
   Polygon,
   Polyline,

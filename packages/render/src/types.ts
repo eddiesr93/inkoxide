@@ -1,3 +1,4 @@
+import type { EncryptionOptions } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 
 export interface RenderOpts {
@@ -21,6 +22,13 @@ export interface RenderOpts {
    * `options.pdfA`.
    */
   pdfA?: boolean | '1b' | '2b' | '3b';
+  /**
+   * Encrypt the PDF with AES-256: `{ userPassword, ownerPassword, permissions }` (see the
+   * guide). Replaces `<Document userPassword ownerPassword permissions>` as a whole. Not with
+   * `pdfA`. A bad value fails the render with `ENGINE_REJECTED` at its path, never with the
+   * password in the message.
+   */
+  encryption?: EncryptionOptions;
   /**
    * Extra image bytes by id, for `<Image src="id">`. An id wins over a file path or URL with the
    * same text.

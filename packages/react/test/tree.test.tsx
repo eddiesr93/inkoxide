@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { inspect } from 'node:util';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
 import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
@@ -597,6 +598,54 @@ describe('pages, images and structure', () => {
     }
     for (const bad of ['PDF/A-4', 'pdf/a-2b', 'PDF/UA-1', '2b', true]) {
       expect(() => output(bad)).toThrow(/is not a PDF\/A level: use 'PDF\/A-1b', 'PDF\/A-2b' or 'PDF\/A-3b'/);
+    }
+  });
+
+  it('moves the passwords and permissions into output options that never show them', () => {
+    const secret = 's3cret-marker';
+    const r = renderTemplate(
+      <Document
+        title="A"
+        userPassword={secret}
+        ownerPassword={`${secret}-owner`}
+        permissions={{ copying: true }}
+      >
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(r.output.encryption).toEqual({
+      userPassword: secret,
+      ownerPassword: `${secret}-owner`,
+      permissions: { copying: true },
+    });
+    expect(r.document.meta).toEqual({ title: 'A' });
+    expect(JSON.stringify(r.document)).not.toContain(secret);
+    for (const shown of [JSON.stringify(r), JSON.stringify(r.output), inspect(r), inspect(r.output)]) {
+      expect(shown).not.toContain(secret);
+    }
+    expect(JSON.parse(JSON.stringify(r.output))).toEqual({ encryption: '<redacted>' });
+    expect(r.rebuild(2).output.encryption?.userPassword).toBe(secret);
+    // Without the props there is no encryption.
+    const plain = renderTemplate(
+      <Document>
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(plain.output.encryption).toBeUndefined();
+    // Wrong types fail without showing the value.
+    for (const props of [{ userPassword: 12345 }, { ownerPassword: [secret] }, { permissions: secret }]) {
+      const e = thrown(() =>
+        renderTemplate(
+          <Document {...(props as object)}>
+            <Page />
+          </Document>,
+          { fonts },
+        ),
+      );
+      expect(e.message).toMatch(/<Document (userPassword|ownerPassword|permissions)> must be/);
+      expect(e.message).not.toContain(secret);
     }
   });
 

@@ -108,6 +108,7 @@ const MAIN_TYPES = [
   'PageSize',
   'Painter',
   'PathProps',
+  'Permissions',
   'PolyProps',
   'RadioProps',
   'RectProps',

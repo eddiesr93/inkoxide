@@ -375,6 +375,46 @@ describe('renderToBuffer', () => {
     expect(await part(undefined, { pdfA: true })).toBe('2');
   });
 
+  it('encrypts with the Document passwords, unless the encryption option replaces them', async () => {
+    const secret = 's3cret-marker';
+    const doc = (props: Partial<DocumentProps>) => (
+      <Document title="Locked" {...props}>
+        <Page>
+          <Text>Private</Text>
+        </Page>
+      </Document>
+    );
+    const text = async (element: ReturnType<typeof doc>, opts: RenderToBufferOptions = {}) =>
+      Buffer.from(await renderToBuffer(element, opts)).toString('latin1');
+    const props = {
+      userPassword: secret,
+      ownerPassword: 'owner',
+      permissions: { printing: 'lowResolution' as const },
+    };
+    const locked = await text(doc(props));
+    expect(locked).toMatch(/\/Encrypt \d+ 0 R/);
+    expect(locked).toMatch(/\/P -3388\b/);
+    expect(locked).not.toContain(secret);
+    expect(locked).not.toContain('Locked');
+    expect(await text(doc(props))).toBe(locked);
+    // The option replaces the props as a whole: no permissions now.
+    const replaced = await text(doc(props), { encryption: { userPassword: 'other' } });
+    expect(replaced).toMatch(/\/P -3392\b/);
+    expect(await text(doc({}))).not.toMatch(/\/Encrypt/);
+    // A bad value names its path and never the password.
+    for (const [p, opts, path] of [
+      [{ userPassword: secret, permissions: {} }, {}, 'options.encryption.permissions'],
+      [{ userPassword: `${secret}é` }, {}, 'options.encryption.userPassword'],
+      [{}, { encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
+    ] as const) {
+      const err = await renderToBuffer(doc(p), opts).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RenderError);
+      expect(err).toMatchObject({ code: 'ENGINE_REJECTED', engineCode: 'INVALID_ARGUMENT', path });
+      expect(JSON.stringify(err)).not.toContain(secret);
+      expect((err as Error).message).not.toContain(secret);
+    }
+  });
+
   it('names the component PDF/A-1b rejects for its transparency', async () => {
     function Faded() {
       return <View style={{ opacity: 0.5, height: 10 }} />;

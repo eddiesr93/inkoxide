@@ -300,6 +300,20 @@ interface Flow extends Common {
   bookmark?: BookmarkProp;
 }
 
+/**
+ * What a reader who opens an encrypted PDF without the owner password may do. Every permission
+ * is off unless set, except `contentAccessibility`, which is on. Readers enforce them.
+ */
+export interface Permissions {
+  printing?: 'lowResolution' | 'highResolution';
+  modifying?: boolean;
+  copying?: boolean;
+  annotating?: boolean;
+  fillingForms?: boolean;
+  contentAccessibility?: boolean;
+  documentAssembly?: boolean;
+}
+
 /** A PDF/A part and conformance level; a bare part (`'PDF/A-2'`) is level b. */
 export type Conformance = 'PDF/A-1' | 'PDF/A-1b' | 'PDF/A-2' | 'PDF/A-2b' | 'PDF/A-3' | 'PDF/A-3b';
 
@@ -336,6 +350,16 @@ export interface DocumentProps {
    * wins over this prop. Default: plain PDF.
    */
   conformance?: Conformance;
+  /**
+   * Encrypts the PDF (AES-256): the password that opens it. Printable ASCII, at most 127 bytes.
+   * Not part of the document tree, and never in the render result. The render option
+   * `encryption` replaces these three props.
+   */
+  userPassword?: string;
+  /** The password that lifts `permissions`. Default: the user password. */
+  ownerPassword?: string;
+  /** What a reader without the owner password may do; needs `ownerPassword`. */
+  permissions?: Permissions;
   children?: ReactNode;
 }
 
