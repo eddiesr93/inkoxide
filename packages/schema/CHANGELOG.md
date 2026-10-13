@@ -7,8 +7,15 @@ version 2.
 
 ## Unreleased
 
+Still document schema version 1.
+
 ### Added
 
+- `BoxNode.backgroundImage` (`$defs/BackgroundImage`): an image painted into the box's padding
+  box, over its `backgroundColor` and under its borders and children, clipped to the padding box
+  rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
+  (default `fill`) and `objectPosition`, with the same bounds as on an `image` node. Optional;
+  documents without it render as before.
 - `Field.name` may contain dots, which make groups of fields: `address.street` is the field
   `street` in the group `address`. A name has at most 32 parts of 1 to 128 characters, and at
   most 512 characters in all (it was one part of at most 128). A name that is both a field and a
@@ -17,7 +24,6 @@ version 2.
   and `value`, the selected option. `Field.multiSelect` (list only) lets several options be
   selected; `value` is then an array of options, each at most once (at most 1000). An array
   `value` on any other field is `INVALID_VALUE`.
-
 - A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
   `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
   at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or

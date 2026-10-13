@@ -8,22 +8,28 @@ import { pipeline } from 'node:stream/promises';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import {
+  Canvas,
   countPages,
+  Defs,
   Document,
   FieldSet,
   Footer,
+  Line,
   Link,
   List,
+  Marker,
   Note,
   Page,
   PageBreak,
   PageNumber,
+  Path,
   RenderError,
   type RenderToBufferOptions,
   renderToBuffer,
   renderToFile,
   renderToStream,
   StyleSheet,
+  Svg,
   Text,
   TextField,
   TotalPages,
@@ -297,6 +303,44 @@ describe('renderToBuffer', () => {
     // Labels are drawn with lines: no font is added.
     const fonts = (pdf: Uint8Array) => text(pdf).match(/\/Type ?\/Font\b/g)?.length;
     expect(fonts(debug)).toBe(fonts(plain));
+  });
+
+  it('draws markers, and Canvas clips and gradients', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <Svg width={120} height={40}>
+            <Defs>
+              <Marker id="a" viewBox="0 0 10 10" refX={10} refY={5} orient="auto-start-reverse">
+                <Path d="M0 0L10 5L0 10Z" fill="context-stroke" />
+              </Marker>
+            </Defs>
+            <Line
+              x1={10}
+              y1={20}
+              x2={110}
+              y2={20}
+              stroke="#4f46e5"
+              strokeWidth={2}
+              markerStart="url(#a)"
+              markerEnd="url(#a)"
+            />
+          </Svg>
+          <Canvas
+            width={120}
+            height={60}
+            paint={(p, w, h) => {
+              const g = p.linearGradient(0, 0, w, 0).stop(0, '#4f46e5').stop(1, '#c7d2fe', 0.5);
+              p.save().roundedRect(0, 0, w, h, 8).clip();
+              p.rect(0, 0, w, h).fill(g);
+              p.restore().miterLimit(4).lineWidth(3).polygon([10, 50], [60, 10], [110, 50]).stroke(g);
+            }}
+          />
+        </Page>
+      </Document>,
+    );
+    expect(countPages(pdf)).toBe(1);
+    expect(Buffer.from(pdf).toString('latin1')).toMatch(/\/ShadingType ?2/);
   });
 
   it('names the component when the structure is wrong', async () => {

@@ -17,6 +17,7 @@ export const SVG_TAGS: Readonly<Record<string, string>> = {
   [HOST.Polygon]: 'polygon',
   [HOST.Defs]: 'defs',
   [HOST.ClipPath]: 'clipPath',
+  [HOST.Marker]: 'marker',
   [HOST.LinearGradient]: 'linearGradient',
   [HOST.RadialGradient]: 'radialGradient',
   [HOST.Stop]: 'stop',
@@ -30,6 +31,11 @@ const CAMEL_ATTRS = new Set([
   'gradientTransform',
   'clipPathUnits',
   'pathLength',
+  'refX',
+  'refY',
+  'markerWidth',
+  'markerHeight',
+  'markerUnits',
 ]);
 
 /** The props `<Svg>` adds to the SVG presentation attributes, apart from its own SVG ones. */

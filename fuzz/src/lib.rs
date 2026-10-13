@@ -1147,6 +1147,11 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     }
     match kind {
         "box" => {
+            if s.chance(24) {
+                let mut bg = Map::new();
+                image_props(s, &mut bg);
+                m.insert("backgroundImage".into(), Value::Object(bg));
+            }
             let n = if s.chance(15) {
                 40 + s.below(200)
             } else {
@@ -1184,59 +1189,7 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         "note" => {
             m.insert("note".into(), note(s));
         }
-        "image" => {
-            if s.chaos && s.chance(30) {
-                m.insert(
-                    "data".into(),
-                    json!(s.pick(&[
-                        "",
-                        "iVBORw0KGgo=",
-                        "data:image/png;base64,AAAA",
-                        "!!",
-                        "data:image/svg+xml;base64,PHN2Zy8+",
-                        "PHN2ZyB3aWR0aD0iMCIvPg==",
-                    ])),
-                );
-            } else {
-                m.insert(
-                    "src".into(),
-                    json!(if s.chaos {
-                        s.pick(&["bad", "badsvg", "missing"])
-                    } else {
-                        s.pick(&["logo", "palette", "photo", "chart"])
-                    }),
-                );
-            }
-            if s.chance(128) {
-                m.insert(
-                    "fit".into(),
-                    json!(s.pick(&["fill", "contain", "cover", "none"])),
-                );
-            }
-            if s.chance(96) {
-                let mut axis = |keywords: [&str; 3]| match s.below(4) {
-                    0 => json!(s.pick(&keywords)),
-                    1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1000.5%"])),
-                    // The bounds (±10000 %, ±14400 pt), just past them, and
-                    // values far past them that would overflow f32 if
-                    // validation let them through.
-                    2 => match s.below(8) {
-                        0 => json!("10000%"),
-                        1 => json!("-10000%"),
-                        2 => json!("10000.01%"),
-                        3 => json!("-9999999999999999999999999999999999999%"),
-                        4 => json!(14_400),
-                        5 => json!(-14_400),
-                        6 => json!(14_400.01),
-                        _ => json!(-1e30),
-                    },
-                    _ => num(s),
-                };
-                let x = axis(["left", "center", "right"]);
-                let y = axis(["top", "center", "bottom"]);
-                m.insert("objectPosition".into(), json!({ "x": x, "y": y }));
-            }
-        }
+        "image" => image_props(s, &mut m),
         "table" => {
             m.extend(table(s, depth, budget));
             if s.chance(60) {
@@ -1253,6 +1206,62 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         _ => {}
     }
     Value::Object(m)
+}
+
+/// The image properties shared by `image` nodes and `backgroundImage`:
+/// `src` or `data`, `fit` and `objectPosition`.
+fn image_props(s: &mut Src, m: &mut Map<String, Value>) {
+    if s.chaos && s.chance(30) {
+        m.insert(
+            "data".into(),
+            json!(s.pick(&[
+                "",
+                "iVBORw0KGgo=",
+                "data:image/png;base64,AAAA",
+                "!!",
+                "data:image/svg+xml;base64,PHN2Zy8+",
+                "PHN2ZyB3aWR0aD0iMCIvPg==",
+            ])),
+        );
+    } else {
+        m.insert(
+            "src".into(),
+            json!(if s.chaos {
+                s.pick(&["bad", "badsvg", "missing"])
+            } else {
+                s.pick(&["logo", "palette", "photo", "chart"])
+            }),
+        );
+    }
+    if s.chance(128) {
+        m.insert(
+            "fit".into(),
+            json!(s.pick(&["fill", "contain", "cover", "none"])),
+        );
+    }
+    if s.chance(96) {
+        let mut axis = |keywords: [&str; 3]| match s.below(4) {
+            0 => json!(s.pick(&keywords)),
+            1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1000.5%"])),
+            // The bounds (±10000 %, ±14400 pt), just past them, and
+            // values far past them that would overflow f32 if
+            // validation let them through.
+            2 => match s.below(8) {
+                0 => json!("10000%"),
+                1 => json!("-10000%"),
+                2 => json!("10000.01%"),
+                3 => json!("-9999999999999999999999999999999999999%"),
+                4 => json!(14_400),
+                5 => json!(-14_400),
+                6 => json!(14_400.01),
+                _ => json!(-1e30),
+            },
+            _ => num(s),
+        };
+        let x = axis(["left", "center", "right"]);
+        let y = axis(["top", "center", "bottom"]);
+        m.insert("objectPosition".into(), json!({ "x": x, "y": y }));
+    }
 }
 
 /// A schema-shaped document driven by `data`: mostly valid, with edge
@@ -1359,12 +1368,19 @@ mod tests {
             r#""decorationColor":"#,
             r#""decorationThickness":"#,
             r#""whiteSpace":"pre-wrap""#,
+            r#""backgroundImage":{"#,
         ];
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
         let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
-        for i in 0..1500 {
-            let data: Vec<u8> = (0..64 << (i % 5))
+        // Documents until every feature has shown up in a valid one, and at
+        // least `FEW`; at most `MOST`, so a feature the generator no longer
+        // reaches fails the test instead of hanging it.
+        const FEW: usize = 1000;
+        const MOST: usize = 20_000;
+        let mut tried = 0;
+        while tried < MOST && (tried < FEW || seen.contains(&false)) {
+            let data: Vec<u8> = (0..64 << (tried % 5))
                 .map(|_| {
                     // xorshift64
                     x ^= x << 13;
@@ -1373,6 +1389,7 @@ mod tests {
                     x as u8
                 })
                 .collect();
+            tried += 1;
             let doc = document(&data);
             if !inkoxide::validate(&doc, InputFormat::Json, &FONTS, &IMAGES).is_empty() {
                 continue;
@@ -1390,8 +1407,11 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "no valid document has {missing:?} ({valid} valid)"
+            "no valid document of {tried} has {missing:?}"
         );
-        assert!(valid >= 100, "{valid} of 1500 documents are valid");
+        assert!(
+            valid * 10 >= tried,
+            "{valid} of {tried} documents are valid"
+        );
     }
 }

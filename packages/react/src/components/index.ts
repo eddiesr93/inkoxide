@@ -15,6 +15,7 @@ export const HOST = {
   Text: 'ink-text',
   Link: 'ink-link',
   Image: 'ink-image',
+  ImageBackground: 'ink-image-background',
   Table: 'ink-table',
   Row: 'ink-row',
   Cell: 'ink-cell',
@@ -37,6 +38,7 @@ export const HOST = {
   Polygon: 'ink-svg-polygon',
   Defs: 'ink-svg-defs',
   ClipPath: 'ink-svg-clip-path',
+  Marker: 'ink-svg-marker',
   LinearGradient: 'ink-svg-linear-gradient',
   RadialGradient: 'ink-svg-radial-gradient',
   Stop: 'ink-svg-stop',
@@ -206,8 +208,9 @@ export interface StyleProp extends Omit<
   /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
   transformOrigin?: [LengthPercent, LengthPercent] | string;
   /**
-   * `Image` only: where a `contain`, `cover` or `none` image sits in its box, as CSS
-   * `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default centred.
+   * `Image` and `ImageBackground` only: where a `contain`, `cover` or `none` image sits in its
+   * box, as CSS `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default
+   * centred.
    */
   objectPosition?: string;
 }
@@ -469,6 +472,16 @@ export interface ImageProps extends Omit<Flow, 'children'> {
   fit?: 'fill' | 'contain' | 'cover' | 'none';
 }
 
+export interface ImageBackgroundProps extends Flow {
+  /** The image, in any form `<Image src>` takes. */
+  src: ImageSrc;
+  /**
+   * How the image fills the padding box: `fill` (default) stretches it, `contain` and `cover`
+   * keep its aspect ratio, `none` keeps its size. Wins over `objectFit`.
+   */
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+}
+
 export interface TableProps extends Flow {
   /** Column widths: points, `'1fr'`-style fractions, or `'auto'`. */
   columns: Array<number | string>;
@@ -602,6 +615,12 @@ export interface SvgPresentation {
   transform?: string;
   clipPath?: string;
   clipRule?: 'nonzero' | 'evenodd';
+  /** A `<Marker>` drawn at the first vertex of a path, line or poly shape: `url(#id)`. */
+  markerStart?: string;
+  /** A `<Marker>` drawn at every vertex between the first and the last: `url(#id)`. */
+  markerMid?: string;
+  /** A `<Marker>` drawn at the last vertex: `url(#id)`. */
+  markerEnd?: string;
   id?: string;
   children?: ReactNode;
 }
@@ -665,6 +684,25 @@ export interface ClipPathProps {
   clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
   children?: ReactNode;
 }
+export interface MarkerProps extends SvgPresentation {
+  /** Referenced as `markerStart="url(#id)"` (or `markerMid`, `markerEnd`). */
+  id: string;
+  viewBox?: string;
+  preserveAspectRatio?: string;
+  /** The point of the marker's contents placed on the vertex, in `viewBox` units. */
+  refX?: number | string;
+  refY?: number | string;
+  /** The size of the marker's viewport; 3 × 3 by default. */
+  markerWidth?: number | string;
+  markerHeight?: number | string;
+  /**
+   * Turns the marker with the path's direction at the vertex (`'auto'`), the same but reversed at
+   * the start (`'auto-start-reverse'`, for arrows at both ends), or by a fixed angle in degrees.
+   */
+  orient?: 'auto' | 'auto-start-reverse' | number | string;
+  /** `strokeWidth` (default) scales the marker by the shape's stroke width; `userSpaceOnUse` does not. */
+  markerUnits?: 'strokeWidth' | 'userSpaceOnUse';
+}
 export interface GradientProps {
   id: string;
   x1?: number | string;
@@ -676,6 +714,8 @@ export interface GradientProps {
   r?: number | string;
   fx?: number | string;
   fy?: number | string;
+  /** Radius of the focal circle of a radial gradient. */
+  fr?: number | string;
   gradientUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
   gradientTransform?: string;
   children?: ReactNode;
@@ -708,6 +748,12 @@ export const Text = host<TextProps>(HOST.Text);
  */
 export const Link = host<LinkProps>(HOST.Link);
 export const Image = host<ImageProps>(HOST.Image);
+/**
+ * A `View` with an image behind its children: the image fills the padding box (inside the
+ * borders), placed by `fit` and `objectPosition`, over the background colour and under the
+ * borders, clipped to the box and its `borderRadius`.
+ */
+export const ImageBackground = host<ImageBackgroundProps>(HOST.ImageBackground);
 export const Table = host<TableProps>(HOST.Table);
 export const Row = host<RowProps>(HOST.Row);
 export const Cell = host<CellProps>(HOST.Cell);
@@ -748,6 +794,11 @@ export const Polyline = host<PolyProps>(HOST.Polyline);
 export const Polygon = host<PolyProps>(HOST.Polygon);
 export const Defs = host<DefsProps>(HOST.Defs);
 export const ClipPath = host<ClipPathProps>(HOST.ClipPath);
+/**
+ * A shape drawn at the vertices of the paths, lines and poly shapes that reference it through
+ * `markerStart`, `markerMid` or `markerEnd`. Defined once, in `Defs`.
+ */
+export const Marker = host<MarkerProps>(HOST.Marker);
 export const LinearGradient = host<GradientProps>(HOST.LinearGradient);
 export const RadialGradient = host<GradientProps>(HOST.RadialGradient);
 export const Stop = host<StopProps>(HOST.Stop);

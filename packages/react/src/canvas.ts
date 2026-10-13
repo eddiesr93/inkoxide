@@ -9,15 +9,63 @@ const fmt = (n: number): string => String(Math.round(n * 1000) / 1000);
 export const escapeXml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** What a `CanvasGradient` writes: its element, its geometry attributes and its stops so far. */
+interface GradientDef {
+  tag: 'linearGradient' | 'radialGradient';
+  geometry: string;
+  stops: string[];
+}
+// Kept out of the class, so a gradient's public API is `stop()` alone.
+const defs = new WeakMap<CanvasGradient, GradientDef>();
+
+/**
+ * A gradient from `painter.linearGradient(…)` or `painter.radialGradient(…)`, for `fill`, `stroke`,
+ * `fillAndStroke`, `fillColor` and `strokeColor`. Its coordinates are in the user space of the
+ * shape it paints, at the time it is painted, as in pdfkit.
+ */
+export class CanvasGradient {
+  /** Use `painter.linearGradient` or `painter.radialGradient`. */
+  private constructor() {}
+
+  /** @internal */
+  static create(tag: GradientDef['tag'], geometry: string): CanvasGradient {
+    const g = new CanvasGradient();
+    defs.set(g, { tag, geometry, stops: [] });
+    return g;
+  }
+
+  /** Adds a colour stop at `offset` (0 to 1), with an opacity from 0 to 1. */
+  stop(offset: number, color: string, opacity?: number): this {
+    let s = `<stop offset="${fmt(offset)}" stop-color="${escapeXml(color)}"`;
+    if (opacity !== undefined) s += ` stop-opacity="${fmt(opacity)}"`;
+    defs.get(this)?.stops.push(`${s}/>`);
+    return this;
+  }
+}
+
+/** A gradient's element with the id `id`, as it is now. */
+function gradientMarkup(g: CanvasGradient, id: string): string {
+  const d = defs.get(g);
+  if (!d) {
+    throw new TypeError(
+      'A paint is a colour string, or a gradient from painter.linearGradient or painter.radialGradient.',
+    );
+  }
+  return `<${d.tag} id="${id}" gradientUnits="userSpaceOnUse"${d.geometry}>${d.stops.join('')}</${d.tag}>`;
+}
+
+type Paint = string | CanvasGradient;
+
 interface State {
-  fill: string;
-  stroke: string;
+  fill: Paint;
+  stroke: Paint;
   fillOpacity: number;
   strokeOpacity: number;
   opacity: number;
   lineWidth: number;
   lineCap: 'butt' | 'round' | 'square';
   lineJoin: 'miter' | 'round' | 'bevel';
+  miterLimit: number;
   dash: number[] | undefined;
 }
 
@@ -30,6 +78,8 @@ const INITIAL: State = {
   lineWidth: 1,
   lineCap: 'butt',
   lineJoin: 'miter',
+  // PDF's default, as in pdfkit; SVG's is 4.
+  miterLimit: 10,
   dash: undefined,
 };
 
@@ -37,9 +87,13 @@ export class Painter {
   private d = '';
   private state: State = { ...INITIAL };
   private readonly stack: Array<{ state: State; groups: number }> = [];
-  /** Open `<g transform>` elements since the last save(). */
+  /** Open `<g transform>` and `<g clip-path>` elements since the last save(). */
   private groups = 0;
   private out = '';
+  /** Clip paths written so far, for their ids. */
+  private clips = 0;
+  /** The id of each gradient written so far, by its markup without the id. */
+  private readonly gradients = new Map<string, string>();
 
   // Path construction ---------------------------------------------------------------------------
 
@@ -111,13 +165,13 @@ export class Painter {
 
   // State -----------------------------------------------------------------------------------------
 
-  fillColor(color: string, opacity?: number): this {
+  fillColor(color: Paint, opacity?: number): this {
     this.state.fill = color;
     if (opacity !== undefined) this.state.fillOpacity = opacity;
     return this;
   }
 
-  strokeColor(color: string, opacity?: number): this {
+  strokeColor(color: Paint, opacity?: number): this {
     this.state.stroke = color;
     if (opacity !== undefined) this.state.strokeOpacity = opacity;
     return this;
@@ -150,6 +204,12 @@ export class Painter {
 
   lineJoin(j: State['lineJoin']): this {
     this.state.lineJoin = j;
+    return this;
+  }
+
+  /** How far a mitred join may reach, as a multiple of the line width, before it is bevelled. */
+  miterLimit(m: number): this {
+    this.state.miterLimit = m;
     return this;
   }
 
@@ -199,19 +259,66 @@ export class Painter {
     return this;
   }
 
+  // Clipping and gradients ----------------------------------------------------------------------
+
+  /** Clips what is painted after it to the current path, until restore(). Ends the path. */
+  clip(rule: 'nonzero' | 'evenodd' = 'nonzero'): this {
+    const id = `ink-c${++this.clips}`;
+    const path =
+      this.d === ''
+        ? ''
+        : `<path d="${escapeXml(this.d)}"${rule === 'evenodd' ? ' clip-rule="evenodd"' : ''}/>`;
+    this.out += `<clipPath id="${id}">${path}</clipPath><g clip-path="url(#${id})">`;
+    this.groups++;
+    this.d = '';
+    return this;
+  }
+
+  /** A linear gradient from (`x1`, `y1`) to (`x2`, `y2`); add colours with `stop()`. */
+  linearGradient(x1: number, y1: number, x2: number, y2: number): CanvasGradient {
+    return CanvasGradient.create(
+      'linearGradient',
+      ` x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}"`,
+    );
+  }
+
+  /**
+   * A radial gradient from the circle at (`x1`, `y1`) with radius `r1` to the circle at (`x2`,
+   * `y2`) with radius `r2`; add colours with `stop()`.
+   */
+  radialGradient(x1: number, y1: number, r1: number, x2: number, y2: number, r2: number): CanvasGradient {
+    return CanvasGradient.create(
+      'radialGradient',
+      ` fx="${fmt(x1)}" fy="${fmt(y1)}" fr="${fmt(r1)}" cx="${fmt(x2)}" cy="${fmt(y2)}" r="${fmt(r2)}"`,
+    );
+  }
+
+  /** The value of a `fill` or `stroke` attribute, writing a gradient's element the first time. */
+  private paint(p: Paint): string {
+    if (typeof p === 'string') return escapeXml(p);
+    const key = gradientMarkup(p, '');
+    let id = this.gradients.get(key);
+    if (id === undefined) {
+      id = `ink-g${this.gradients.size + 1}`;
+      this.gradients.set(key, id);
+      this.out += `<defs>${gradientMarkup(p, id)}</defs>`;
+    }
+    return `url(#${id})`;
+  }
+
   // Painting --------------------------------------------------------------------------------------
 
-  fill(color?: string, rule: 'nonzero' | 'evenodd' = 'nonzero'): this {
+  fill(color?: Paint, rule: 'nonzero' | 'evenodd' = 'nonzero'): this {
     if (color !== undefined) this.state.fill = color;
     return this.emit(true, false, rule);
   }
 
-  stroke(color?: string): this {
+  stroke(color?: Paint): this {
     if (color !== undefined) this.state.stroke = color;
     return this.emit(false, true, 'nonzero');
   }
 
-  fillAndStroke(fill?: string, stroke: string | undefined = fill): this {
+  fillAndStroke(fill?: Paint, stroke: Paint | undefined = fill): this {
     if (fill !== undefined) this.state.fill = fill;
     if (stroke !== undefined) this.state.stroke = stroke;
     return this.emit(true, true, 'nonzero');
@@ -220,14 +327,18 @@ export class Painter {
   private emit(fill: boolean, stroke: boolean, rule: 'nonzero' | 'evenodd'): this {
     if (this.d === '') return this;
     const s = this.state;
-    let a = `<path d="${escapeXml(this.d)}" fill="${fill ? escapeXml(s.fill) : 'none'}"`;
+    // Gradients are written before the path that uses them.
+    const fillPaint = fill ? this.paint(s.fill) : 'none';
+    const strokePaint = stroke ? this.paint(s.stroke) : '';
+    let a = `<path d="${escapeXml(this.d)}" fill="${fillPaint}"`;
     if (fill && s.fillOpacity !== 1) a += ` fill-opacity="${fmt(s.fillOpacity)}"`;
     if (fill && rule === 'evenodd') a += ' fill-rule="evenodd"';
     if (stroke) {
-      a += ` stroke="${escapeXml(s.stroke)}" stroke-width="${fmt(s.lineWidth)}"`;
+      a += ` stroke="${strokePaint}" stroke-width="${fmt(s.lineWidth)}"`;
       if (s.strokeOpacity !== 1) a += ` stroke-opacity="${fmt(s.strokeOpacity)}"`;
       if (s.lineCap !== 'butt') a += ` stroke-linecap="${s.lineCap}"`;
-      if (s.lineJoin !== 'miter') a += ` stroke-linejoin="${s.lineJoin}"`;
+      if (s.lineJoin === 'miter') a += ` stroke-miterlimit="${fmt(s.miterLimit)}"`;
+      else a += ` stroke-linejoin="${s.lineJoin}"`;
       if (s.dash) a += ` stroke-dasharray="${s.dash.map(fmt).join(' ')}"`;
     }
     if (s.opacity !== 1) a += ` opacity="${fmt(s.opacity)}"`;

@@ -35,7 +35,7 @@ const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
 /// character),
 const LINK_BYTES: u64 = 256;
-/// and a `debug` outline or a form field widget.
+/// and a `debug` outline, a form field widget or a background image.
 const BOX_BYTES: u64 = 768;
 
 /// A link or outline destination: a page and the top-left corner of the
@@ -102,6 +102,19 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),
+        }
+    }
+
+    fn background(
+        &mut self,
+        node: &Node,
+        padding_box: Rect,
+        radii: &paint::Radii,
+        ops: &mut Vec<Op>,
+    ) {
+        if let (Some(bg), Some(key)) = (&node.background_image, self.images.background_key(node)) {
+            self.images
+                .paint_in(key, padding_box, bg.fit, bg.object_position, radii, ops);
         }
     }
 
@@ -358,6 +371,9 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
             }
             if n.link.is_some() {
                 size += LINK_BYTES;
+            }
+            if n.background_image.is_some() {
+                size += BOX_BYTES;
             }
             match &n.kind {
                 NodeKind::Text { runs } => {

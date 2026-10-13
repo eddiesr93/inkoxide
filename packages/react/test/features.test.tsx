@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   Canvas,
+  type CanvasGradient,
   Cell,
   Checkbox,
   Circle,
@@ -19,18 +20,24 @@ import {
   G,
   Header,
   Image,
+  ImageBackground,
   type ImageSrc,
   imageSource,
   isImagePath,
   LinearGradient,
   Link,
   List,
+  Marker,
+  type MarkerProps,
   Note,
   PAGE_SIZES,
   Page,
   PageBreak,
   PageNumber,
+  type Painter,
   Path,
+  Polyline,
+  RadialGradient,
   Radio,
   Rect,
   remoteAllowed,
@@ -497,7 +504,7 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(a?.fit).toBe('cover');
     expect(b?.fit).toBe('contain');
     expect(thrown(() => tree(<View style={{ objectFit: 'cover' }} />)).message).toContain(
-      'objectFit applies to <Image>, not <View>',
+      'objectFit applies to <Image> and <ImageBackground>, not <View>',
     );
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectFit: 'scale-down' as never }} />)).message,
@@ -539,10 +546,10 @@ describe('CSS names and shorthands in the style prop', () => {
 
   it('throws on objectPosition off an Image or in a form the engine cannot place', () => {
     expect(thrown(() => tree(<View style={{ objectPosition: 'left' }} />)).message).toContain(
-      'objectPosition applies to <Image>, not <View>',
+      'objectPosition applies to <Image> and <ImageBackground>, not <View>',
     );
     expect(thrown(() => tree(<Text className="object-top">x</Text>)).message).toContain(
-      'objectPosition applies to <Image>, not <Text>',
+      'objectPosition applies to <Image> and <ImageBackground>, not <Text>',
     );
     for (const bad of ['top 25%', '25% left', 'left right', 'right 10px top', 'middle', '10', 'auto', '']) {
       expect(thrown(() => tree(<Image src="logo" style={{ objectPosition: bad }} />)).message, bad).toContain(
@@ -552,6 +559,75 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectPosition: ['left', 'top'] as never }} />)).message,
     ).toContain('objectPosition must be a CSS string');
+  });
+});
+
+describe('ImageBackground', () => {
+  it('is a box with a background image, placed by fit, objectFit and objectPosition', () => {
+    const r = tree(
+      <>
+        <ImageBackground src="logo" className="rounded-lg border p-4" style={{ height: 80 }} href="#x">
+          over the image
+        </ImageBackground>
+        <ImageBackground src="logo" fit="contain" className="object-cover object-left-top" />
+        <ImageBackground src="logo" style={{ objectFit: 'none', objectPosition: '25% 75%' }}>
+          <View />
+        </ImageBackground>
+        <ImageBackground src="data:image/png;base64,AAAA" />
+        <ImageBackground src={new Uint8Array([1, 2, 3])} />
+      </>,
+    );
+    const [a, b, c, d, e] = body(r) as BoxNode[];
+    expect(a).toMatchObject({ type: 'box', backgroundImage: { src: 'logo' }, link: '#x' });
+    expect(a?.style).toMatchObject({ height: 80, borderRadius: 6 });
+    expect((a?.children?.[0] as TextNode | undefined)?.runs[0]?.text).toBe('over the image');
+    // The fit prop wins over objectFit; both stay off the box style.
+    expect(b?.backgroundImage).toEqual({
+      src: 'logo',
+      fit: 'contain',
+      objectPosition: { x: 'left', y: 'top' },
+    });
+    expect(c?.backgroundImage).toEqual({ src: 'logo', fit: 'none', objectPosition: { x: '25%', y: '75%' } });
+    expect(c?.children).toHaveLength(1);
+    for (const n of [a, b, c]) expect(n?.style ?? {}).not.toHaveProperty('objectFit');
+    expect(d?.backgroundImage).toEqual({ data: 'data:image/png;base64,AAAA' });
+    expect(e?.backgroundImage?.src).toBeTypeOf('string');
+    expect(r.images[e?.backgroundImage?.src as string]).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('needs a src, and points the props of other libraries to src and style', () => {
+    expect(thrown(() => tree(<ImageBackground {...({} as { src: string })} />)).message).toContain(
+      '<ImageBackground> needs a src',
+    );
+    for (const key of ['source', 'imageStyle', 'srcSet']) {
+      const props = { src: 'logo', [key]: key === 'imageStyle' ? { opacity: 0.5 } : 'logo' };
+      expect(thrown(() => tree(<ImageBackground {...props} />)).message, key).toContain(
+        `<ImageBackground> does not take ${key}: pass the image as src`,
+      );
+    }
+  });
+
+  it('goes where a View goes and takes what a View takes', () => {
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <ImageBackground src="logo" />
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<ImageBackground> cannot be inside <Text>');
+    const r = tree(
+      <Table columns={[100]}>
+        <Row>
+          <Cell>
+            <ImageBackground src="logo" className="h-10" />
+          </Cell>
+        </Row>
+      </Table>,
+    );
+    const cell = (first<TableNode>(r).rows[0]?.cells[0]?.children ?? [])[0] as BoxNode;
+    expect(cell.backgroundImage).toEqual({ src: 'logo' });
   });
 });
 
@@ -1144,6 +1220,61 @@ describe('drawings', () => {
     expect(decode(first<ImageNode>(r).data)).toContain('<clipPath id="c" clipPathUnits="objectBoundingBox">');
   });
 
+  it('writes a Marker and the shapes that reference it', () => {
+    const arrow: MarkerProps = {
+      id: 'arrow',
+      viewBox: '0 0 10 10',
+      refX: 10,
+      refY: 5,
+      markerWidth: 6,
+      markerHeight: 6,
+      orient: 'auto-start-reverse',
+      markerUnits: 'strokeWidth',
+    };
+    const r = tree(
+      <Svg width={100} height={40}>
+        <Defs>
+          <Marker {...arrow}>
+            <Path d="M0 0L10 5L0 10Z" fill="context-stroke" />
+          </Marker>
+          <Marker id="dot" markerWidth={4} markerHeight={4} refX={2} refY={2} orient={30}>
+            <Circle cx={2} cy={2} r={2} />
+          </Marker>
+          <RadialGradient id="r" cx={0.5} cy={0.5} r={0.5} fx={0.3} fy={0.3} fr={0.1}>
+            <Stop offset={0} stopColor="white" />
+          </RadialGradient>
+        </Defs>
+        <Polyline
+          points={[10, 30, 50, 10, 90, 30]}
+          fill="none"
+          stroke="black"
+          markerStart="url(#arrow)"
+          markerMid="url(#dot)"
+          markerEnd="url(#arrow)"
+        />
+      </Svg>,
+    );
+    const svg = decode(first<ImageNode>(r).data);
+    expect(svg).toContain(
+      '<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0L10 5L0 10Z" fill="context-stroke"/></marker>',
+    );
+    expect(svg).toContain('<marker id="dot" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="30">');
+    expect(svg).toContain('fx="0.3" fy="0.3" fr="0.1"');
+    expect(svg).toContain('marker-start="url(#arrow)" marker-mid="url(#dot)" marker-end="url(#arrow)"/>');
+    expect(r.validate()).toEqual([]);
+    expect(
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            <Marker id="m">
+              <Stop offset={0} stopColor="red" />
+            </Marker>
+          </Svg>,
+        ),
+      ).message,
+    ).toContain('<Stop>');
+  });
+
   it('keeps the layout props of Svg out of the drawing', () => {
     // A fixed element takes no break, so the layout props come in two drawings.
     const r = tree(
@@ -1192,8 +1323,79 @@ describe('drawings', () => {
       '<g transform="translate(40 20)"><path d="M-10 0A10 10 0 1 0 10 0A10 10 0 1 0 -10 0Z" fill="#c00"/></g>',
     );
     expect(svg).toContain(
-      '<path d="M0 0L80 40" fill="none" stroke="blue" stroke-width="2" stroke-dasharray="3 3"/>',
+      '<path d="M0 0L80 40" fill="none" stroke="blue" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="3 3"/>',
     );
+  });
+
+  const paint = (fn: (p: Painter) => void): string =>
+    decode(first<ImageNode>(tree(<Canvas width={100} height={100} paint={fn} />)).data);
+
+  it('sets the miter limit of mitred strokes, 10 by default', () => {
+    const svg = paint((p) => {
+      p.rect(0, 0, 10, 10).stroke();
+      p.miterLimit(2.5).rect(0, 0, 10, 10).stroke();
+      p.lineJoin('round').rect(0, 0, 10, 10).stroke();
+      p.rect(0, 0, 10, 10).fill();
+    });
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-miterlimit="10"/>');
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-miterlimit="2.5"/>');
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-linejoin="round"/>');
+    expect(svg).toContain('<path d="M0 0h10v10h-10Z" fill="black"/>');
+  });
+
+  it('clips to the current path until restore, nested clips included', () => {
+    const svg = paint((p) => {
+      p.save().circle(50, 50, 40).clip();
+      p.save().rect(0, 0, 50, 100).clip('evenodd');
+      p.rect(0, 0, 100, 100).fill('red');
+      p.restore();
+      p.rect(0, 0, 100, 100).fill('blue');
+      p.restore().rect(0, 0, 10, 10).fill('green');
+      // A clip outside save() lasts to the end of the drawing.
+      p.clip();
+    });
+    expect(svg).toContain(
+      '<clipPath id="ink-c1"><path d="M10 50A40 40 0 1 0 90 50A40 40 0 1 0 10 50Z"/></clipPath><g clip-path="url(#ink-c1)">' +
+        '<clipPath id="ink-c2"><path d="M0 0h50v100h-50Z" clip-rule="evenodd"/></clipPath><g clip-path="url(#ink-c2)">' +
+        '<path d="M0 0h100v100h-100Z" fill="red"/></g>' +
+        '<path d="M0 0h100v100h-100Z" fill="blue"/></g>' +
+        '<path d="M0 0h10v10h-10Z" fill="green"/>' +
+        '<clipPath id="ink-c3"></clipPath><g clip-path="url(#ink-c3)"></g></svg>',
+    );
+  });
+
+  it('paints with linear and radial gradients, written once each', () => {
+    let shared: CanvasGradient | undefined;
+    const svg = paint((p) => {
+      const g = p.linearGradient(0, 0, 100, 0).stop(0, 'white').stop(1, '#1e4a99', 0.5);
+      shared = g;
+      p.rect(0, 0, 50, 50).fill(g);
+      p.translate(50, 0).fillColor(g).rect(0, 0, 50, 50).fill();
+      const r = p.radialGradient(30, 30, 5, 50, 50, 40).stop(0, 'red').stop(1, '<"&>');
+      p.lineWidth(4).circle(50, 50, 20).fillAndStroke(r, g);
+      // A stop added after the gradient was used makes a new one.
+      g.stop(0.5, 'red');
+      p.strokeColor(g).moveTo(0, 0).lineTo(10, 10).stroke();
+    });
+    expect(shared).toBeDefined();
+    expect(svg).toContain(
+      '<defs><linearGradient id="ink-g1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="0">' +
+        '<stop offset="0" stop-color="white"/><stop offset="1" stop-color="#1e4a99" stop-opacity="0.5"/></linearGradient></defs>' +
+        '<path d="M0 0h50v50h-50Z" fill="url(#ink-g1)"/>' +
+        '<g transform="translate(50 0)"><path d="M0 0h50v50h-50Z" fill="url(#ink-g1)"/>',
+    );
+    expect(svg).toContain(
+      '<defs><radialGradient id="ink-g2" gradientUnits="userSpaceOnUse" fx="30" fy="30" fr="5" cx="50" cy="50" r="40">' +
+        '<stop offset="0" stop-color="red"/><stop offset="1" stop-color="&lt;&quot;&amp;&gt;"/></radialGradient></defs>',
+    );
+    expect(svg).toContain('fill="url(#ink-g2)" stroke="url(#ink-g1)" stroke-width="4"');
+    expect(svg).toContain(
+      '<stop offset="0.5" stop-color="red"/></linearGradient></defs><path d="M0 0L10 10" fill="none" stroke="url(#ink-g3)"',
+    );
+    expect(svg.match(/<linearGradient /g)).toHaveLength(2);
+    expect(
+      thrown(() => paint((p) => p.rect(0, 0, 1, 1).fill([1, 0, 0] as unknown as string))).message,
+    ).toContain('A paint is a colour string, or a gradient');
   });
 });
 

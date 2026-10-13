@@ -352,6 +352,7 @@ export interface BoxNode {
   pages?: PageFilter;
   debug?: Debug;
   children?: Node[];
+  backgroundImage?: BackgroundImage;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -605,6 +606,37 @@ export interface Bookmark {
   level?: number;
 }
 /**
+ * An image painted behind the box's children and over its `backgroundColor`, under its borders. It fills the padding box (inside the borders), placed by `fit` and `objectPosition`, and is clipped to that box, rounded by `borderRadius`. A box split across pages is sliced, like its background colour.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "BackgroundImage".
+ */
+export interface BackgroundImage {
+  /**
+   * Key into the render option `images`.
+   */
+  src?: Id;
+  /**
+   * Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted.
+   */
+  data?: string;
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * Where the image sits in the padding box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
+   */
+  objectPosition?: ObjectPosition;
+}
+/**
+ * Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). Points are within ±14400 and percentages within ±10000%. What falls outside the box is clipped.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "ObjectPosition".
+ */
+export interface ObjectPosition {
+  x?: ('left' | 'center' | 'right') | number | Percent;
+  y?: ('top' | 'center' | 'bottom') | number | Percent;
+}
+/**
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TextNode".
  */
@@ -678,16 +710,6 @@ export interface ImageNode {
    * Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
    */
   objectPosition?: ObjectPosition;
-}
-/**
- * Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). Points are within ±14400 and percentages within ±10000%. What falls outside the box is clipped.
- *
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "ObjectPosition".
- */
-export interface ObjectPosition {
-  x?: ('left' | 'center' | 'right') | number | Percent;
-  y?: ('top' | 'center' | 'bottom') | number | Percent;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

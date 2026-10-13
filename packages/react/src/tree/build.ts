@@ -1,4 +1,5 @@
 import type {
+  BackgroundImage,
   Bookmark,
   BoxNode,
   Break,
@@ -258,10 +259,12 @@ class Builder {
         { kind: 'props' },
       );
     }
-    if (inst.type !== HOST.Image) {
+    if (inst.type !== HOST.Image && inst.type !== HOST.ImageBackground) {
       for (const key of ['objectFit', 'objectPosition'] as const) {
         if (s[key] !== undefined) {
-          this.fail(inst, `${key} applies to <Image>, not <${HOST_NAME[inst.type]}>.`, { kind: 'props' });
+          this.fail(inst, `${key} applies to <Image> and <ImageBackground>, not <${HOST_NAME[inst.type]}>.`, {
+            kind: 'props',
+          });
         }
       }
     }
@@ -643,6 +646,7 @@ class Builder {
     }
     switch (inst.type) {
       case HOST.View:
+      case HOST.ImageBackground:
       case HOST.Link:
         return this.box(inst, ctx);
       case HOST.FieldSet:
@@ -693,10 +697,16 @@ class Builder {
     const own = { ...defaults, ...this.styleOf(inst, parent) };
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
-    const node: SchemaNode = { type: 'box' };
+    const node: BoxNode = { type: 'box' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    if (inst.type === HOST.View || inst.type === HOST.Link || inst.type === HOST.FieldSet) {
+    if (inst.type === HOST.ImageBackground) node.backgroundImage = this.backgroundImage(inst, own);
+    if (
+      inst.type === HOST.View ||
+      inst.type === HOST.ImageBackground ||
+      inst.type === HOST.Link ||
+      inst.type === HOST.FieldSet
+    ) {
       this.flowProps(node, inst);
     } else {
       // <Header> and <Footer>.
@@ -937,6 +947,24 @@ class Builder {
     }
     if (children.length > 0) cell.children = children;
     return this.mark(cell, inst);
+  }
+
+  /** An `<ImageBackground>`'s image: its `src`, with `fit` and `objectPosition` from its props and style. */
+  private backgroundImage(inst: Instance, own: FlatStyle): BackgroundImage {
+    const fail = (msg: string): never => this.fail(inst, msg, { kind: 'props' });
+    for (const key of ['source', 'imageStyle', 'srcSet']) {
+      if (inst.props[key] !== undefined) {
+        fail(
+          `<ImageBackground> does not take ${key}: pass the image as src, and place it with fit and objectPosition (style or object-* classes).`,
+        );
+      }
+    }
+    const src = this.imageTable.resolve(inst.props.src, fail, 'ImageBackground');
+    const bg: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
+    const fit = (inst.props.fit as BackgroundImage['fit']) ?? own.objectFit;
+    if (fit) bg.fit = fit;
+    if (own.objectPosition) bg.objectPosition = own.objectPosition;
+    return bg;
   }
 
   private image(inst: Instance, ctx: TextCtx): ImageNode {

@@ -398,6 +398,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
+| `backgroundImage` | [`BackgroundImage`](#backgroundimage) |  |  |
 
 ### TextNode
 
@@ -438,6 +439,17 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 |---|---|---|---|
 | `x` | `"left"` \| `"center"` \| `"right"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
 | `y` | `"top"` \| `"center"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
+
+### BackgroundImage
+
+An image painted behind the box's children and over its `backgroundColor`, under its borders. It fills the padding box (inside the borders), placed by `fit` and `objectPosition`, and is clipped to that box, rounded by `borderRadius`. A box split across pages is sliced, like its background colour.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `src` | [`Id`](#id) |  | Key into the render option `images`. |
+| `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
+| `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
+| `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in the padding box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
 
 ### TableNode
 

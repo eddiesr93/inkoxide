@@ -9,6 +9,22 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- **`<Marker>`** in `<Svg>`: a shape drawn at the start, middle or end vertices of a path, line
+  or poly shape, referenced with the new `markerStart`, `markerMid` and `markerEnd` props. It
+  takes `viewBox`, `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `markerUnits`.
+  `Marker` and `MarkerProps` are exported.
+- `fr`, the radius of the focal circle, on `RadialGradient`.
+- The `<Canvas>` painter clips and paints gradients: `clip(rule?)` clips what follows to the
+  current path until `restore()`, and `linearGradient(x1, y1, x2, y2)` and
+  `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
+  takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
+  `miterLimit(n)` sets how far mitred joins reach.
+- Background images: `<ImageBackground src fit>`, a `View` with an image behind its children,
+  and `backgroundImage` on a box node of the document (`src` or `data`, `fit`, `objectPosition`).
+  The image fills the padding box, over the background colour and under the borders, clipped to
+  it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
+  background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
+  `objectPosition` and the `object-*` classes place it as on an `Image`.
 - Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
   field names. `address.street` and `address.city` are the fields `street` and `city` of the
   group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
@@ -27,6 +43,12 @@ All notable changes to the packages in this repository. The format follows
   `TextInput` is another name for `TextField`.
 - `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
   its `backgroundColor` as its colour.
+
+### Changed
+
+- Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
+  pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
+  mitred instead of bevelled. `miterLimit(4)` gives the old joins.
 
 ### Security
 

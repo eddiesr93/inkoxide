@@ -33,7 +33,9 @@ interface Face extends Required<Omit<FontFace, 'file'>> {
 /**
  * Maps family + weight + style to registered font ids, and holds the font bytes until the
  * engine registers them. Matching follows the CSS Fonts 4 algorithm: the first
- * registered family of the stack, then the style, then the nearest weight.
+ * registered family of the stack, then the style, then the nearest weight. The engine's
+ * `FontSet::select` matches the same way; `fixtures/fonts/matching.json` holds the cases both
+ * are tested with.
  */
 export class FontRegistry {
   private readonly faces: Face[] = [];
