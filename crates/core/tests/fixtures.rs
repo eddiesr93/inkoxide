@@ -118,6 +118,10 @@ fn all_fixtures_render() {
 /// path of the first thing that does.
 const NOT_PDF_A_1B: &[(&str, &str)] = &[
     (
+        "background-image",
+        "pages[0].children[2].children[0].children[1].backgroundImage.src",
+    ),
+    (
         "boxes-nested",
         "pages[0].children[0].children[0].style.backgroundColor",
     ),

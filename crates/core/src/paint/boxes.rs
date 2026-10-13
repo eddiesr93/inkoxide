@@ -39,6 +39,11 @@ pub(crate) struct ContentCtx<'p> {
 pub(crate) trait ContentPainter {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>);
 
+    /// Paints the `backgroundImage` of `node` into `padding_box` (page
+    /// coordinates), clipped to it rounded by `radii`.
+    fn background(&mut self, _node: &Node, _padding_box: Rect, _radii: &Radii, _ops: &mut Vec<Op>) {
+    }
+
     /// The physical page number and the page count of the page painted:
     /// placeholders show them, and nodes shown on some pages only are
     /// painted by them.
@@ -275,12 +280,16 @@ impl BoxPainter<'_, '_, '_, '_> {
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
             self.fill(rounded_rect(border_box, &radii), bg);
         }
+        let padding_box = border_box.inset(g.border);
+        let inner = inset_radii(&radii, g.border);
+        if node.background_image.is_some() {
+            self.content.background(node, padding_box, &inner, self.ops);
+        }
         self.borders(s, g.border, border_box, &radii);
 
         if clip {
-            let inner = inset_radii(&radii, g.border);
             self.ops.push(Op::ClipPath {
-                path: rounded_rect(border_box.inset(g.border), &inner),
+                path: rounded_rect(padding_box, &inner),
                 rule: FillRule::NonZero,
             });
         }

@@ -11,7 +11,7 @@ mod shapes;
 pub(crate) use boxes::{content_radii, mul, paint_flow, ContentCtx, ContentPainter, FlowPart};
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
 pub(crate) use debug::{DebugBoxes, Labels as DebugLabels};
-pub(crate) use shapes::{is_square, polygon, rounded_rect, KAPPA};
+pub(crate) use shapes::{is_square, polygon, rounded_rect, Radii, KAPPA};
 
 use crate::schema::{Color, Edges};
 
@@ -122,6 +122,90 @@ pub(crate) enum Op {
     /// annotation with its appearance, transformed like the content
     /// around it).
     Field(Box<crate::forms::FieldOp>),
+    /// Starts a span whose text, when the page is copied, searched or read
+    /// aloud, is `actual_text` instead of what the span draws (`/Span` with
+    /// `/ActualText`). Closed by [`Op::EndSpan`]; spans pair up like
+    /// `Save` and `Restore` and enclose whole save levels. See [`span`].
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "inline images and emoji use it next")
+    )]
+    Span {
+        actual_text: Box<str>,
+    },
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "inline images and emoji use it next")
+    )]
+    EndSpan,
+    /// One glyph drawn invisibly, stretched to a width: text that can be
+    /// selected and extracted where nothing shows it (see [`span`]).
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "inline images and emoji use it next")
+    )]
+    InvisibleText(InvisibleGlyph),
+}
+
+/// A glyph of `font` at `size`, drawn invisibly (text rendering mode 3)
+/// with its baseline origin at (`x`, `y`) and stretched to `width` points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct InvisibleGlyph {
+    pub font: crate::fonts::FontKey,
+    pub size: f32,
+    pub x: f32,
+    pub y: f32,
+    pub glyph: u16,
+    pub width: f32,
+}
+
+impl InvisibleGlyph {
+    /// The space of `font` at `size`, `width` wide on the baseline at
+    /// (`x`, `y`); `None` when the font has no space with an advance.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "inline images and emoji use it next")
+    )]
+    pub fn space(
+        fonts: &crate::fonts::FontSet<'_>,
+        font: crate::fonts::FontKey,
+        size: f32,
+        (x, y): (f32, f32),
+        width: f32,
+    ) -> Option<Self> {
+        let f = fonts.get(font);
+        let glyph = f.glyph(' ').filter(|&g| g != 0 && f.advance(g) > 0.0)?;
+        Some(Self {
+            font,
+            size,
+            x,
+            y,
+            glyph,
+            width,
+        })
+    }
+}
+
+/// Pushes what `draw` draws inside a span whose text is `actual_text`
+/// (for an image, its alternative text). With `text`, the span also holds
+/// that invisible glyph, laid over the drawing: some extractors read
+/// `ActualText` only off a span that contains text.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "inline images and emoji use it next")
+)]
+pub(crate) fn span(
+    ops: &mut Vec<Op>,
+    actual_text: &str,
+    text: Option<InvisibleGlyph>,
+    draw: impl FnOnce(&mut Vec<Op>),
+) {
+    ops.push(Op::Span {
+        actual_text: actual_text.into(),
+    });
+    draw(ops);
+    ops.extend(text.map(Op::InvisibleText));
+    ops.push(Op::EndSpan);
 }
 
 /// Runs `f`, which draws in a colour of alpha `alpha`, with that alpha

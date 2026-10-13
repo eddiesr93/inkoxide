@@ -72,6 +72,15 @@ impl Profile {
         self.level != Some(PdfALevel::A1b)
     }
 
+    /// The largest real number the output may hold.
+    pub fn max_real(self) -> f32 {
+        if self.level == Some(PdfALevel::A1b) {
+            limits::REAL
+        } else {
+            super::MAX_NUMBER
+        }
+    }
+
     /// The most entries an array may have (PDF/A-1), if limited.
     pub fn max_array(self) -> Option<usize> {
         (self.level == Some(PdfALevel::A1b)).then_some(limits::ARRAY)

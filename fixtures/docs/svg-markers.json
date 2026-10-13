@@ -1,0 +1,56 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "SVG markers"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter",
+   "weight": 400,
+   "style": "normal"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "SVG markers: arrows at both ends, vertex dots, ticks in user space, a fixed angle; a radial gradient with fr",
+       "font": "Inter-Regular",
+       "size": 13,
+       "color": [
+        0,
+        0,
+        0,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "src": "markers",
+     "style": {
+      "width": 400,
+      "margin": {
+       "top": 12
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

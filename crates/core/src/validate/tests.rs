@@ -1325,6 +1325,12 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
             "children[0].src",
             "image `veil` (group opacity)",
         ),
+        (
+            r#"{"type":"box","backgroundImage":{"src":"logo"},"style":{"width":10,"height":10}}"#
+                .into(),
+            "children[0].backgroundImage.src",
+            "image `logo` (an alpha channel)",
+        ),
         // The first use is reported.
         (
             format!(r#"{{"type":"box","children":[{},{{"type":"box","style":{{"opacity":0.5}}}}]}}"#, text(r#","color":[0,0,0,0.5]"#)),
@@ -1363,6 +1369,7 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
         r#"{"type":"box","style":{"backgroundColor":[0,0,0,0]}}"#,
         r#"{"type":"box","style":{"opacity":0},"children":[{"type":"image","src":"photo"}]}"#,
         r#"{"type":"image","src":"photo"}"#,
+        r#"{"type":"box","backgroundImage":{"src":"photo"},"style":{"width":10,"height":10}}"#,
         r#"{"type":"field","field":{"name":"a","kind":"checkbox","color":[0,0,0,0.5]}}"#,
     ] {
         render_1b(&doc(child)).unwrap_or_else(|e| panic!("{child}: {e}"));
@@ -1374,4 +1381,66 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
     // Another problem wins over transparency.
     let e = render_1b(&doc(r#"{"type":"box","debug":true,"style":{"width":-1}}"#)).unwrap_err();
     assert_eq!(e.code(), "OUT_OF_RANGE");
+}
+
+#[test]
+fn background_images_are_checked_like_images() {
+    let bg = |b: &str| doc(&format!(r#"{{"type":"box","backgroundImage":{b}}}"#));
+    // A 4 × 4 SVG.
+    let data = "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0JyBoZWlnaHQ9JzQnPjxyZWN0IHdpZHRoPSc0JyBoZWlnaHQ9JzQnIGZpbGw9J3JlZCcvPjwvc3ZnPg==";
+    for ok in [
+        r#"{"src":"logo"}"#.to_string(),
+        r#"{"src":"logo","fit":"cover","objectPosition":{"x":"left","y":"25%"}}"#.to_string(),
+        format!(r#"{{"data":"{data}","fit":"contain"}}"#),
+    ] {
+        assert_eq!(run(&bg(&ok)), vec![], "{ok}");
+    }
+    let p = "pages[0].children[0].backgroundImage";
+    for (bad, code, path) in [
+        (r#"{"src":"nope"}"#, C::UnknownImage, format!("{p}.src")),
+        (r#"{"data":"%%%"}"#, C::InvalidImage, format!("{p}.data")),
+        (r#"{"data":"AAAA"}"#, C::InvalidImage, format!("{p}.data")),
+        (
+            r#"{"src":"logo","data":"AAAA"}"#,
+            C::InvalidValue,
+            format!("{p}.data"),
+        ),
+        (r"{}", C::MissingField, p.to_string()),
+        (
+            r#"{"src":"logo","fit":"tile"}"#,
+            C::InvalidValue,
+            format!("{p}.fit"),
+        ),
+        (
+            r#"{"src":"logo","repeat":true}"#,
+            C::UnknownField,
+            format!("{p}.repeat"),
+        ),
+        (
+            r#"{"src":"logo","objectPosition":{"x":20000}}"#,
+            C::OutOfRange,
+            format!("{p}.objectPosition.x"),
+        ),
+        (
+            r#"{"src":"logo","objectPosition":{"y":"-10001%"}}"#,
+            C::OutOfRange,
+            format!("{p}.objectPosition.y"),
+        ),
+    ] {
+        let (c, got) = one(&bg(bad));
+        assert_eq!((c, got.as_str()), (code, path.as_str()), "{bad}");
+    }
+    // Boxes only.
+    for node in [
+        r#"{"type":"text","runs":[],"backgroundImage":{"src":"logo"}}"#,
+        r#"{"type":"image","src":"logo","backgroundImage":{"src":"logo"}}"#,
+        r#"{"type":"spacer","backgroundImage":{"src":"logo"}}"#,
+    ] {
+        let (c, got) = one(&doc(node));
+        assert_eq!(
+            (c, got.as_str()),
+            (C::UnknownField, "pages[0].children[0].backgroundImage"),
+            "{node}"
+        );
+    }
 }

@@ -60,6 +60,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   check that each decodes to the same metrics and outlines as the `.ttf`.
 - `fixtures/fonts/malformed/`: fuzz findings, minimised, that registration
   must reject. Each is a broken copy of a font above, under its licence.
+- `fixtures/fonts/matching.json`: CSS font matching cases (family stacks,
+  style and weight fallbacks), which the engine's `FontSet::select` and
+  `FontRegistry.resolve` in `@inkoxide/react` both pass.
 - `fixtures/fonts/limits/glyph-doubling.ttf`: a font made with fontTools
   for the shaping limit in `limits.rs`. Its GSUB substitutes `A` with
   `AA` in 14 lookups, so `A` shapes to 16 384 glyphs.

@@ -16,6 +16,7 @@ import {
   Header,
   type ImageSrc,
   Image,
+  ImageBackground,
   init,
   type LocalImageOptions,
   Page,
@@ -519,6 +520,25 @@ describe('images in fixed elements', () => {
       [LOGO, PHOTO],
       [LOGO, PALETTE],
     ]);
+  });
+});
+
+describe('ImageBackground', () => {
+  it('draws its image on every page a split box is on, from bytes, a file or a function', async () => {
+    const files = { localImages: { root: fixtures } } satisfies RenderToBufferOptions;
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page size={[200, 200]}>
+          <ImageBackground src={logo} className="rounded-xl border-2 p-2" style={{ height: 300 }}>
+            <Text>over the logo</Text>
+          </ImageBackground>
+          <ImageBackground src="./palette.png" fit="cover" className="h-10" />
+          <ImageBackground src={() => photo} className="h-10 object-contain object-left" />
+        </Page>
+      </Document>,
+      { ...files, compress: false },
+    );
+    expect(pageImages(pdf)).toEqual([[LOGO], [LOGO, PALETTE, PHOTO]]);
   });
 });
 

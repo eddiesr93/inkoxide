@@ -16,11 +16,33 @@ All notable changes to the packages in this repository. The format follows
   the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
   `TEMPLATE_ERROR`.
 - PDF/A-1b has no transparency: a render at 1b fails with the new code `PDFA_CONFLICT` at the
-  path of the first colour with alpha below 1, `opacity` between 0 and 1, `debug`, image with an
-  alpha channel, or SVG drawn with opacity, a mask or a blend mode (`ENGINE_REJECTED` with the
-  component in `@inkoxide/render`). `validate` does not know the level and does not report it.
-  A PDF/A-1b file also keeps within the limits of PDF/A-1 (numbers, strings, arrays,
-  dictionaries, graphics state nesting) or fails with `PDF_ERROR`.
+  path of the first colour with alpha below 1, `opacity` between 0 and 1, `debug`, image (or
+  background image) with an alpha channel, or SVG drawn with opacity, a mask or a blend mode
+  (`ENGINE_REJECTED` with the component in `@inkoxide/render`). `validate` does not know the
+  level and does not report it. A PDF/A-1b file also keeps within the limits of PDF/A-1
+  (numbers, strings, arrays, dictionaries, graphics state nesting) or fails with `PDF_ERROR`.
+- **`<Marker>`** in `<Svg>`: a shape drawn at the start, middle or end vertices of a path, line
+  or poly shape, referenced with the new `markerStart`, `markerMid` and `markerEnd` props. It
+  takes `viewBox`, `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `markerUnits`.
+  `Marker` and `MarkerProps` are exported.
+- `fr`, the radius of the focal circle, on `RadialGradient`.
+- The `<Canvas>` painter clips and paints gradients: `clip(rule?)` clips what follows to the
+  current path until `restore()`, and `linearGradient(x1, y1, x2, y2)` and
+  `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
+  takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
+  `miterLimit(n)` sets how far mitred joins reach.
+- Background images: `<ImageBackground src fit>`, a `View` with an image behind its children,
+  and `backgroundImage` on a box node of the document (`src` or `data`, `fit`, `objectPosition`).
+  The image fills the padding box, over the background colour and under the borders, clipped to
+  it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
+  background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
+  `objectPosition` and the `object-*` classes place it as on an `Image`.
+
+### Changed
+
+- Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
+  pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
+  mitred instead of bevelled. `miterLimit(4)` gives the old joins.
 
 ## 0.6.5 - 2026-10-13
 

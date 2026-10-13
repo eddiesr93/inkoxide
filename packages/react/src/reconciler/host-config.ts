@@ -43,6 +43,7 @@ const FLOW = new Set<string>([
   HOST.Text,
   HOST.Link,
   HOST.Image,
+  HOST.ImageBackground,
   HOST.Table,
   HOST.PageBreak,
   HOST.Spacer,
@@ -60,7 +61,10 @@ const SVG_SHAPES = new Set<string>([
   HOST.Polyline,
   HOST.Polygon,
 ]);
-/** What goes in an `<Svg>`, `<G>`, `<Defs>` or `<ClipPath>`: every SVG primitive but `<Stop>`. */
+/**
+ * What goes in an `<Svg>`, `<G>`, `<Defs>`, `<ClipPath>` or `<Marker>`: every SVG primitive but
+ * `<Stop>`.
+ */
 const SVG_CONTENT = new Set<string>(Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop));
 const LEAF = new Set<string>([
   HOST.Image,
@@ -92,6 +96,7 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
     case HOST.Header:
     case HOST.Footer:
     case HOST.View:
+    case HOST.ImageBackground:
     case HOST.Link:
     case HOST.Cell:
       return FLOW.has(child);
@@ -99,6 +104,7 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
     case HOST.G:
     case HOST.Defs:
     case HOST.ClipPath:
+    case HOST.Marker:
       return SVG_CONTENT.has(child);
     case HOST.LinearGradient:
     case HOST.RadialGradient:
@@ -112,6 +118,7 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
 const TEXT_PARENTS = new Set<string>([
   HOST.Text,
   HOST.View,
+  HOST.ImageBackground,
   HOST.Link,
   HOST.Cell,
   HOST.Header,

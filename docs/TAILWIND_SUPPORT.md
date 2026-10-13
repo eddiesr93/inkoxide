@@ -83,8 +83,8 @@ that are supported and tested; each example is a unit test.
 | `skew-*`, `skew-x-*`, `skew-y-*`, `transform-[…]`, `transform-none` | `transform` | `skew-x-12` → `{"transform":[{"skew":[12,0]}]}` | Composed in CSS order: translate, rotate, scale, then `transform`. 3D functions (`rotate-x-*`, `perspective-*`) are not supported. |
 | `origin-*` | `transformOrigin` | `origin-center` → `{"transformOrigin":["50%","50%"]}` |  |
 | `z-*`, `-z-*`, `z-auto` | `zIndex` | `z-10` → `{"zIndex":10}` | Paint order among siblings; not on table cells. |
-| `object-contain`, `object-cover`, `object-fill`, `object-none` | image `fit` | `object-contain` → `{"objectFit":"contain"}` | On `Image` only. The `fit` prop wins over it. |
-| `object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]` | image `objectPosition` | `object-left-top` → `{"objectPosition":{"x":"left","y":"top"}}` | On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported. |
+| `object-contain`, `object-cover`, `object-fill`, `object-none` | image `fit` | `object-contain` → `{"objectFit":"contain"}` | On `Image` and `ImageBackground` only. The `fit` prop wins over it. |
+| `object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]` | image `objectPosition` | `object-left-top` → `{"objectPosition":{"x":"left","y":"top"}}` | On `Image` and `ImageBackground` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported. |
 
 ## Border
 
