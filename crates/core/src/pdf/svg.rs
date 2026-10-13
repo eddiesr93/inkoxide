@@ -315,6 +315,89 @@ fn simple_clip(clip: &usvg::ClipPath) -> Option<(tiny_skia_path::Path, usvg::Fil
     Some((path, rule))
 }
 
+/// The first thing in `tree` that [`write_svg`] would draw with
+/// transparency (a transparency group, a soft mask, a constant alpha or a
+/// blend mode), which PDF/A-1 forbids; `None` when it draws none. Follows
+/// the writer: what [`Svg::group`] and the functions it calls draw, with
+/// the same depth limit.
+pub(crate) fn transparency(tree: &usvg::Tree) -> Option<&'static str> {
+    scan_group(tree.root(), 0, false)
+}
+
+/// [`Svg::group`]'s transparency.
+fn scan_group(g: &Group, depth: u32, clip: bool) -> Option<&'static str> {
+    if depth > MAX_DEPTH {
+        return None;
+    }
+    if let Some(cp) = g.clip_path() {
+        if simple_clip(cp).is_none() {
+            if cp.root().children().is_empty() && cp.clip_path().is_none() {
+                return None;
+            }
+            return Some("a clip path other than a single path");
+        }
+    }
+    if !clip {
+        if g.mask().is_some() {
+            return Some("a mask");
+        }
+        if g.opacity().get() < 1.0 {
+            return Some("group opacity");
+        }
+        if g.blend_mode() != usvg::BlendMode::Normal {
+            return Some("a blend mode");
+        }
+        if g.isolate() {
+            return Some("an isolated group");
+        }
+    }
+    g.children().iter().find_map(|n| match n {
+        Node::Group(child) => scan_group(child, depth + 1, clip),
+        Node::Path(_) if clip => None,
+        Node::Path(p) if p.is_visible() => {
+            let fill = p.fill().map(|f| (f.paint(), f.opacity().get()));
+            let stroke = p.stroke().map(|s| (s.paint(), s.opacity().get()));
+            [fill, stroke]
+                .into_iter()
+                .flatten()
+                .find_map(|(paint, opacity)| scan_paint(paint, opacity, depth))
+        }
+        Node::Image(img) if !clip && img.is_visible() => match img.kind() {
+            usvg::ImageKind::JPEG(data)
+            | usvg::ImageKind::PNG(data)
+            | usvg::ImageKind::GIF(data)
+            | usvg::ImageKind::WEBP(data) => crate::images::decode_embedded(data)
+                .ok()
+                .and_then(|d| super::image::transparency(&d)),
+            usvg::ImageKind::SVG(tree) => scan_group(tree.root(), depth + 1, clip),
+        },
+        Node::Path(_) | Node::Image(_) => None,
+        Node::Text(t) => scan_group(t.flattened(), depth + 1, clip),
+    })
+}
+
+/// [`Svg::set_paint`]'s transparency.
+fn scan_paint(paint: &Paint, opacity: f32, depth: u32) -> Option<&'static str> {
+    let stops = match paint {
+        Paint::Color(_) => &[][..],
+        Paint::LinearGradient(l) => l.stops(),
+        Paint::RadialGradient(r) => r.stops(),
+        Paint::Pattern(pt) => {
+            if let Some(what) = scan_group(pt.root(), depth + 1, false) {
+                return Some(what);
+            }
+            &[][..]
+        }
+    };
+    if stops.iter().any(|s| s.opacity().get() < 1.0) {
+        Some("a gradient with stop opacity")
+    } else if opacity < 1.0 {
+        Some("fill or stroke opacity")
+    } else {
+        None
+    }
+}
+
 /// Where a node is drawn: the transform from the current form's space
 /// (`ts`), how deep in groups, and whether as part of a clip path, where
 /// everything is filled opaque black (the content of an alpha soft mask).
@@ -395,6 +478,8 @@ impl Svg<'_> {
         bbox: Rect,
         draw: impl FnOnce(&mut Self, &mut Canvas) -> Res,
     ) -> Result<Ref, InkoxideError> {
+        self.profile
+            .allow_transparency("an SVG mask, clip path, opacity or blend mode")?;
         let mut cv = Canvas::new();
         draw(self, &mut cv)?;
         let id = self.next();
@@ -403,10 +488,16 @@ impl Svg<'_> {
     }
 
     /// Graphics state with constant alphas and a blend mode (shared).
-    fn alpha_gs(&mut self, fill: f32, stroke: f32, blend: usvg::BlendMode) -> Ref {
+    fn alpha_gs(
+        &mut self,
+        fill: f32,
+        stroke: f32,
+        blend: usvg::BlendMode,
+    ) -> Result<Ref, InkoxideError> {
+        self.profile.allow_transparency("SVG opacity")?;
         let key = (alpha_key(fill), alpha_key(stroke), blend as u8);
         if let Some(&r) = self.alphas.get(&key) {
-            return r;
+            return Ok(r);
         }
         let r = self.next();
         let mut gs = self.pdf.ext_graphics(r);
@@ -417,7 +508,7 @@ impl Svg<'_> {
         }
         gs.finish();
         self.alphas.insert(key, r);
-        r
+        Ok(r)
     }
 
     fn soft_mask_gs(&mut self, group: Ref, kind: MaskType) -> Ref {
@@ -520,8 +611,11 @@ impl Svg<'_> {
             }
             (g.opacity().get(), g.blend_mode())
         };
-        let last = (opacity < 1.0 || blend != usvg::BlendMode::Normal)
-            .then(|| self.alpha_gs(opacity, opacity, blend));
+        let last = if opacity < 1.0 || blend != usvg::BlendMode::Normal {
+            Some(self.alpha_gs(opacity, opacity, blend)?)
+        } else {
+            None
+        };
         if masks.is_empty() && last.is_none() && (clip || !g.isolate()) {
             self.children(cv, g, at)?;
         } else {
@@ -777,7 +871,7 @@ impl Svg<'_> {
                 cv.set_gs(r);
             }
             None if opacity < 1.0 => {
-                let r = self.alpha_gs(f, s, usvg::BlendMode::Normal);
+                let r = self.alpha_gs(f, s, usvg::BlendMode::Normal)?;
                 cv.set_gs(r);
             }
             None => {}
@@ -1029,6 +1123,83 @@ mod tests {
             r##"<use href="#i"/>"##.repeat(copies)
         )));
         out.windows(15).filter(|w| w == b"/Subtype /Image").count()
+    }
+
+    #[test]
+    fn the_transparency_scan_agrees_with_the_writer() {
+        let logo = url(
+            "image/png",
+            &crate::test_fixtures::fixture("images/logo.png"),
+        );
+        let photo = url(
+            "image/jpeg",
+            &crate::test_fixtures::fixture("images/photo.jpg"),
+        );
+        let veil = url(
+            "image/svg+xml",
+            svg(r#"<rect width="9" height="9" fill-opacity="0.5"/>"#).as_bytes(),
+        );
+        let cases = [
+            (r#"<rect width="9" height="9" fill="red"/>"#.to_string(), None),
+            (r#"<rect width="9" height="9" opacity="0.5"/>"#.into(), Some("group opacity")),
+            (r#"<rect width="9" height="9" fill-opacity="0.5"/>"#.into(), Some("fill or stroke opacity")),
+            (
+                r#"<rect width="9" height="9" stroke="red" stroke-opacity="0.5"/>"#.into(),
+                Some("fill or stroke opacity"),
+            ),
+            (
+                r#"<rect width="9" height="9" style="mix-blend-mode:multiply"/>"#.into(),
+                Some("a blend mode"),
+            ),
+            (r#"<g style="isolation:isolate"><rect width="9" height="9"/></g>"#.into(), Some("an isolated group")),
+            (
+                r#"<mask id="m"><rect width="5" height="5" fill="white"/></mask><rect width="9" height="9" mask="url(#m)"/>"#.into(),
+                Some("a mask"),
+            ),
+            (
+                r#"<clipPath id="c"><rect width="5" height="5"/></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"#.into(),
+                None,
+            ),
+            (
+                r#"<clipPath id="c"><rect width="5" height="5"/><circle r="3"/></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"#.into(),
+                Some("a clip path other than a single path"),
+            ),
+            (
+                r#"<linearGradient id="g"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient><rect width="9" height="9" fill="url(#g)"/>"#.into(),
+                None,
+            ),
+            (
+                r#"<linearGradient id="g"><stop offset="0" stop-color="red"/><stop offset="1" stop-opacity="0.5"/></linearGradient><rect width="9" height="9" fill="url(#g)"/>"#.into(),
+                Some("a gradient with stop opacity"),
+            ),
+            (
+                r#"<pattern id="p" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" opacity="0.5"/></pattern><rect width="9" height="9" fill="url(#p)"/>"#.into(),
+                Some("group opacity"),
+            ),
+            (format!(r#"<image width="9" height="9" href="{photo}"/>"#), None),
+            (format!(r#"<image width="9" height="9" href="{logo}"/>"#), Some("an alpha channel")),
+            (format!(r#"<image width="9" height="9" href="{veil}"/>"#), Some("fill or stroke opacity")),
+            // Inside a clip path, only the outline counts.
+            (
+                r#"<clipPath id="c"><rect width="5" height="5" fill-opacity="0.5"/></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"#.into(),
+                None,
+            ),
+        ];
+        let one_b = Profile::new(Some(crate::PdfALevel::A1b));
+        for (body, want) in cases {
+            let ImageBody::Svg { tree, .. } = ImageCrateDecoder
+                .decode(svg(&body).as_bytes())
+                .unwrap()
+                .body
+            else {
+                panic!("not an SVG");
+            };
+            assert_eq!(super::transparency(&tree), want, "{body}");
+            // The writer refuses exactly what the scan finds.
+            let refused = super::write_svg(&mut Pdf::new(), &mut RefAlloc(0), &tree, one_b);
+            assert_eq!(refused.is_err(), want.is_some(), "{body}");
+            super::write_svg(&mut Pdf::new(), &mut RefAlloc(0), &tree, Profile::default()).unwrap();
+        }
     }
 
     #[test]

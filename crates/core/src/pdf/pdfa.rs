@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 
 use crate::date::Timestamp;
 use crate::schema::Meta;
-use crate::PdfALevel;
+use crate::{InkoxideError, PdfALevel};
 
 /// What the output's conformance asks of the writer: plain PDF, or
 /// PDF/A. Every part of the writer that differs between them asks this.
@@ -45,6 +45,25 @@ impl Profile {
     /// Font subsets list their CIDs in a `CIDSet` (PDF/A-1).
     pub fn cid_set(self) -> bool {
         self.level == Some(PdfALevel::A1b)
+    }
+
+    /// Whether the output may use transparency: constant alpha, soft
+    /// masks, blend modes and transparency groups. PDF/A-1 forbids it.
+    pub fn transparency(self) -> bool {
+        self.level != Some(PdfALevel::A1b)
+    }
+
+    /// `Ok` where transparency is allowed; otherwise the error for `what`,
+    /// which needs it. Validation rejects such a document first, with
+    /// `PDFA_CONFLICT` and its path; this is the writer's backstop.
+    pub fn allow_transparency(self, what: &str) -> Result<(), InkoxideError> {
+        if self.transparency() {
+            Ok(())
+        } else {
+            Err(InkoxideError::Pdf(format!(
+                "PDF/A-1b does not allow transparency, which {what} needs"
+            )))
+        }
     }
 }
 

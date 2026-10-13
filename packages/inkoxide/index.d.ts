@@ -23,7 +23,8 @@ export type ValidationCode =
   | 'STYLE_NOT_APPLICABLE'
   | 'INVALID_TABLE'
   | 'INVALID_NODE'
-  | 'UNKNOWN_ANCHOR';
+  | 'UNKNOWN_ANCHOR'
+  | 'PDFA_CONFLICT';
 
 /**
  * Every `InkoxideError.code`: a document problem, a resource failure

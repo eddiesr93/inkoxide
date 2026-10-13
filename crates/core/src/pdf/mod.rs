@@ -24,6 +24,7 @@ use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
+pub(crate) use image::transparency as image_transparency;
 pub(crate) use pdfa::Profile;
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
@@ -261,6 +262,10 @@ impl PdfSink for PdfWriterSink {
             for &key in &page.opacities {
                 opacities.entry(key).or_insert(Ref::new(1));
             }
+        }
+        if opacities.keys().any(|&key| key < alpha_key(1.0)) {
+            self.profile
+                .allow_transparency("an opacity or a colour's alpha")?;
         }
         for (key, r) in &mut opacities {
             *r = alloc.next();

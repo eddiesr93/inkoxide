@@ -8,6 +8,17 @@ use pdf_writer::{Filter, Pdf, Ref};
 use super::{Profile, RefAlloc};
 use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 
+/// What in `img` needs transparency, which PDF/A-1 forbids: an alpha
+/// channel (written as a soft mask), or what [`super::svg::transparency`]
+/// finds in an SVG.
+pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
+    match &img.body {
+        ImageBody::Raw { alpha: Some(_), .. } => Some("an alpha channel"),
+        ImageBody::Svg { tree, .. } => super::svg::transparency(tree),
+        ImageBody::Raw { .. } | ImageBody::Jpeg { .. } => None,
+    }
+}
+
 pub(crate) fn write_image(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
@@ -54,6 +65,9 @@ pub(crate) fn write_image(
             samples,
             alpha,
         } => {
+            if alpha.is_some() {
+                profile.allow_transparency("an image with an alpha channel")?;
+            }
             let mask = alpha.as_ref().map(|a| {
                 let m = alloc.next();
                 let mut x = pdf.image_xobject(m, a);

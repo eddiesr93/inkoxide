@@ -5,7 +5,9 @@ use std::sync::LazyLock;
 
 pub mod svg;
 
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions};
+use inkoxide::{
+    FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions, ValidationCode,
+};
 use serde_json::{json, Map, Value};
 
 /// The fixture fonts: id, family, weight and bytes. Generated documents
@@ -188,12 +190,25 @@ fn render_with(
             assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
             assert_finite_numbers(pdf, true);
         }
+        // `validate` does not know the PDF/A level: PDF/A-1b rejects valid
+        // documents that need transparency.
+        Err(InkoxideError::Validation(e))
+            if e.code == ValidationCode::PdfaConflict && errors.is_empty() =>
+        {
+            assert_eq!(pdf_a, Some(PdfALevel::A1b), "PDFA_CONFLICT at {pdf_a:?}");
+        }
         Err(InkoxideError::Validation(e)) => {
             assert!(
                 !errors.is_empty(),
                 "render rejected a valid document: {e:?}"
             );
         }
+        // The writer's backstop: PDF/A-1b validation must have rejected
+        // the document first.
+        Err(InkoxideError::Pdf(m)) => assert!(
+            !m.contains("does not allow transparency"),
+            "validation missed transparency: {m}"
+        ),
         Err(_) => {}
     }
     result

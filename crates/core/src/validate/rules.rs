@@ -79,11 +79,14 @@ impl From<TrackBreadth> for Len {
 }
 
 /// Checks `doc`. Without `images`, image ids are not looked up (inline
-/// `data` is still checked).
+/// `data` is still checked). With `opaque` (rendering PDF/A-1b), a valid
+/// document that needs transparency gets one error: `PDFA_CONFLICT` at
+/// the first thing that does.
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
     images: Option<&ImageStore>,
+    opaque: bool,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
         path: String::with_capacity(128),
@@ -95,9 +98,27 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
+        opaque,
+        conflict: None,
+        image_transparency: HashMap::new(),
     };
     c.document(doc);
+    if c.errors.is_empty() {
+        c.errors.extend(c.conflict);
+    }
     c.errors
+}
+
+/// How the painter uses a colour's alpha.
+#[derive(Clone, Copy, PartialEq)]
+enum Alpha {
+    /// Below 1 it is drawn with transparency.
+    Blended,
+    /// 0 draws nothing (backgrounds); between 0 and 1 it is blended.
+    Fill,
+    /// Not used: page backgrounds and form fields draw in the colour
+    /// alone.
+    Ignored,
 }
 
 struct Checker<'a> {
@@ -113,6 +134,13 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
+    /// Rendering PDF/A-1b: record the first use of transparency.
+    opaque: bool,
+    /// The first use of transparency, under `opaque`.
+    conflict: Option<ValidationError>,
+    /// What needs transparency in each image checked (by content hash),
+    /// under `opaque`: an image used many times is scanned once.
+    image_transparency: HashMap<u64, Option<&'static str>>,
 }
 
 /// Longest link target accepted.
@@ -192,6 +220,30 @@ impl<'a> Checker<'a> {
             path,
             message: message.into(),
         });
+    }
+
+    /// Under `opaque`, records `field` (of the current path) as the first
+    /// use of transparency, unless there is one already. `what` needs it.
+    fn transparent(&mut self, field: Option<&str>, what: &str) {
+        if !self.opaque || self.conflict.is_some() {
+            return;
+        }
+        let mut path = self.path.clone();
+        if let Some(f) = field {
+            push_key(&mut path, f);
+        }
+        self.conflict = Some(ValidationError {
+            code: Code::PdfaConflict,
+            path,
+            message: format!("PDF/A-1b does not allow transparency, which {what} needs"),
+        });
+    }
+
+    /// `debug` draws translucent outlines.
+    fn debug(&mut self, debug: bool) {
+        if debug {
+            self.transparent(Some("debug"), "`debug` (its outlines are translucent)");
+        }
     }
 
     /// Checks an `Id`: 1 to [`MAX_ID`] characters. False when it is not one.
@@ -332,8 +384,9 @@ impl<'a> Checker<'a> {
             );
         }
         if let Some(bg) = &page.background {
-            self.color(Some("background"), bg);
+            self.color_as(Some("background"), bg, Alpha::Ignored);
         }
+        self.debug(page.debug);
         self.in_fixed = true;
         if let Some(h) = &page.header {
             self.at("header", |c| c.node(h, Ctx::Fixed));
@@ -398,6 +451,7 @@ impl<'a> Checker<'a> {
         if let Some(id) = &node.id {
             self.id(Some("id"), id);
         }
+        self.debug(node.debug);
         let is_text = matches!(node.kind, NodeKind::Text { .. });
         self.at("style", |c| c.style(&node.style, is_text, false));
         let is_table = matches!(node.kind, NodeKind::Table(_));
@@ -557,8 +611,21 @@ impl<'a> Checker<'a> {
         };
         if let Err(e) = crate::images::probe(&data.bytes) {
             self.err(probe_code(&e), Some(field), message(&e));
-        } else if let Err(e) = data.decoded(&ImageCrateDecoder) {
-            self.err(Code::InvalidImage, Some(field), message(&e));
+        } else {
+            match data.decoded(&ImageCrateDecoder) {
+                Err(e) => self.err(Code::InvalidImage, Some(field), message(&e)),
+                Ok(img) if self.opaque && self.conflict.is_none() => {
+                    let what = *self
+                        .image_transparency
+                        .entry(data.hash)
+                        .or_insert_with(|| crate::pdf::image_transparency(&img));
+                    if let Some(what) = what {
+                        let image = id.map_or("the image".into(), |id| format!("image `{id}`"));
+                        self.transparent(Some(field), &format!("{image} ({what})"));
+                    }
+                }
+                Ok(_) => {}
+            }
         }
     }
 
@@ -620,7 +687,7 @@ impl<'a> Checker<'a> {
         }
         self.font_size(f.size);
         if let Some(c) = &f.color {
-            self.color(Some("color"), c);
+            self.color_as(Some("color"), c, Alpha::Ignored);
         }
         let only = |c: &mut Self, set: bool, field: &str, kinds: &str| {
             if set {
@@ -859,8 +926,9 @@ impl<'a> Checker<'a> {
                         c.id(Some("id"), id);
                     }
                     c.non_neg("minHeight", row.min_height);
+                    c.debug(row.debug);
                     if let Some(bg) = &row.background_color {
-                        c.color(Some("backgroundColor"), bg);
+                        c.color_as(Some("backgroundColor"), bg, Alpha::Fill);
                     }
                     let mut col = 0usize;
                     for (ci, cell) in row.cells.iter().enumerate() {
@@ -904,6 +972,7 @@ impl<'a> Checker<'a> {
                                     carry[col..col + span].fill(cell.row_span);
                                 }
                                 col += span;
+                                c.debug(cell.debug);
                                 c.at("style", |c| {
                                     c.style(&cell.style, false, true);
                                     c.table_only(&cell.style);
@@ -942,12 +1011,19 @@ impl<'a> Checker<'a> {
     }
 
     fn color(&mut self, field: Option<&str>, c: &Color) {
+        self.color_as(field, c, Alpha::Blended);
+    }
+
+    /// A colour whose alpha the painter uses as `alpha` says.
+    fn color_as(&mut self, field: Option<&str>, c: &Color, alpha: Alpha) {
         if c.iter().any(|v| !(0.0..=1.0).contains(v)) {
             self.err(
                 Code::OutOfRange,
                 field,
                 "colour components must be within [0, 1]",
             );
+        } else if c[3] < 1.0 && (alpha == Alpha::Blended || alpha == Alpha::Fill && c[3] > 0.0) {
+            self.transparent(field, "a colour with alpha below 1");
         }
     }
 
@@ -1156,11 +1232,14 @@ impl<'a> Checker<'a> {
             }
         }
         if let Some(bg) = &s.background_color {
-            self.color(Some("backgroundColor"), bg);
+            self.color_as(Some("backgroundColor"), bg, Alpha::Fill);
         }
         if let Some(o) = s.opacity {
             if !(0.0..=1.0).contains(&o) {
                 self.err(Code::OutOfRange, Some("opacity"), "must be within [0, 1]");
+            } else if o > 0.0 && o < 1.0 {
+                // 0 draws nothing.
+                self.transparent(Some("opacity"), "an `opacity` below 1");
             }
         }
         if let Some(a) = s.aspect_ratio {

@@ -5,7 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use inkoxide::{FontStore, HyphenationStore, ImageStore, InputFormat, PdfALevel, RenderOptions};
+use inkoxide::{
+    FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions,
+    ValidationCode,
+};
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -111,9 +114,36 @@ fn all_fixtures_render() {
     }
 }
 
-/// Every fixture also renders at every PDF/A level, deterministically.
-/// With `VERAPDF` set to a veraPDF command, each output must pass the
-/// profile of its level.
+/// The fixtures PDF/A-1b rejects, because they need transparency, and the
+/// path of the first thing that does.
+const NOT_PDF_A_1B: &[(&str, &str)] = &[
+    (
+        "boxes-nested",
+        "pages[0].children[0].children[0].style.backgroundColor",
+    ),
+    (
+        "header-footer-pagenumbers",
+        "pages[0].children[0].children[0].runs[0].color",
+    ),
+    (
+        "images-gif-webp",
+        "pages[0].children[1].children[0].children[0].src",
+    ),
+    (
+        "images-jpeg-png",
+        "pages[0].children[3].children[1].children[1].src",
+    ),
+    (
+        "paint-transforms",
+        "pages[0].children[1].children[11].children[0].children[0].children[1].style.opacity",
+    ),
+    ("svg", "pages[0].children[1].src"),
+];
+
+/// Every fixture also renders at every PDF/A level, deterministically,
+/// except for those PDF/A-1b rejects ([`NOT_PDF_A_1B`]). With `VERAPDF`
+/// set to a veraPDF command, each output must pass the profile of its
+/// level.
 #[test]
 fn pdf_a_fixtures() {
     let (fonts, images) = stores();
@@ -134,8 +164,19 @@ fn pdf_a_fixtures() {
                 .with_creation_date("2026-10-08T12:30:00+03:00")
                 .with_pdf_a_level(level)
                 .with_hyphenation(hyphenation_for(fixture));
-            let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
-                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            let rendered = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images);
+            let rejected = NOT_PDF_A_1B.iter().find(|(f, _)| *f == fixture);
+            if let (PdfALevel::A1b, Some((_, path))) = (level, rejected) {
+                match rendered {
+                    Err(InkoxideError::Validation(e)) => {
+                        assert_eq!(e.code, ValidationCode::PdfaConflict, "{name}: {e}");
+                        assert_eq!(e.path, *path, "{name}: {e}");
+                    }
+                    other => panic!("{name}: not rejected: {:?}", other.map(|_| ())),
+                }
+                continue;
+            }
+            let a = rendered.unwrap_or_else(|e| panic!("{name}: {e}"));
             let single = opts.clone().with_threads(1);
             let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
             assert!(a == b, "{name}: PDF/A output is not deterministic");

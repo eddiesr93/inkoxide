@@ -310,6 +310,29 @@ describe('renderToBuffer', () => {
     expect(await part('3b')).toBe('3');
     expect(await part('1b')).toBe('1');
   });
+
+  it('names the component PDF/A-1b rejects for its transparency', async () => {
+    function Faded() {
+      return <View style={{ opacity: 0.5, height: 10 }} />;
+    }
+    const doc = (
+      <Document>
+        <Page>
+          <Faded />
+        </Page>
+      </Document>
+    );
+    expect(countPages(await renderToBuffer(doc, { pdfA: '2b' }))).toBe(1);
+    const err = await renderToBuffer(doc, { pdfA: '1b' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect(err).toMatchObject({
+      code: 'ENGINE_REJECTED',
+      engineCode: 'PDFA_CONFLICT',
+      path: 'pages[0].children[0].style.opacity',
+      component: 'View',
+    });
+    expect((err as RenderError).componentStack).toContain('Faded');
+  });
 });
 
 describe('renderToStream', () => {

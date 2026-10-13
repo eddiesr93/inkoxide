@@ -55,6 +55,17 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   assert.match(one, /^%PDF-1\.4/);
   assert.match(one, /<pdfaid:part>1<\/pdfaid:part>/);
   assert.match(one, /\/CIDSet/);
+  // PDF/A-1b has no transparency; validate does not know the level.
+  const veiled = JSON.stringify({
+    version: 1,
+    pages: [{ size: { width: 10, height: 10 }, children: [{ type: 'box', style: { opacity: 0.5 } }] }],
+  });
+  assert.deepStrictEqual(ink.validate(veiled), []);
+  assert.throws(
+    () => ink.renderSync(veiled, { pdfA: '1b' }),
+    (e) => e.code === 'PDFA_CONFLICT' && e.path === 'pages[0].children[0].style.opacity',
+  );
+  assert.ok(ink.renderSync(veiled, { pdfA: '2b' }).length > 0);
   assert.doesNotMatch(render(false), /GTS_PDFA1/);
   assert.throws(
     () => render('2a'),

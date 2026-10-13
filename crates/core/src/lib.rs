@@ -220,9 +220,10 @@ impl RenderOptions {
 /// Validates a document against the schema and the registered resources:
 /// every font must be registered, and every image must exist and decode.
 /// Returns every problem found (capped at 100). Empty means the document
-/// is valid; [`render`] can still fail on the options, on the page limit
-/// or the limit on content repeated on every page, or when a font cannot be
-/// shaped or embedded.
+/// is valid; [`render`] can still fail on the options, on what the PDF/A
+/// level does not allow ([`ValidationCode::PdfaConflict`]), on the page
+/// limit or the limit on content repeated on every page, or when a font
+/// cannot be shaped or embedded.
 #[must_use]
 pub fn validate(
     doc: &[u8],
@@ -252,7 +253,7 @@ fn validate_with(
     images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
-        Ok(d) => validate::check(&d, fonts, images),
+        Ok(d) => validate::check(&d, fonts, images, false),
         Err(e) => vec![e],
     }
 }
@@ -324,8 +325,10 @@ fn render_inner(
     images: &ImageStore,
     parallel: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
+    let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
-    if let Some(first) = validate::check(&document, fonts, Some(images))
+    let opaque = !profile.transparency();
+    if let Some(first) = validate::check(&document, fonts, Some(images), opaque)
         .into_iter()
         .next()
     {
@@ -358,7 +361,7 @@ fn render_inner(
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
-        profile: Profile::new(options.pdf_a.then_some(options.pdf_a_level)),
+        profile,
         parallel,
     };
     let (pages, marks) = pipeline::run(
