@@ -249,3 +249,18 @@ fn deepest_accepted_nesting_renders_on_a_small_stack() {
             .unwrap();
     }
 }
+
+/// Nearly the most SVG text allowed, in one text element, renders in
+/// seconds (about 3 in a debug build): nothing in its layout grows faster
+/// than its length.
+#[test]
+fn the_largest_svg_text_renders_quickly() {
+    let inter = r#"{"id":"Inter-Regular","family":"Inter"}"#;
+    let words = "lorem ipsum dolor sit amet ".repeat(36_000);
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text x="0" y="10">{words}</text></svg>"#
+    );
+    let t = std::time::Instant::now();
+    render_svg(inter, &svg).unwrap();
+    assert!(t.elapsed().as_secs() < 30, "took {:?}", t.elapsed());
+}

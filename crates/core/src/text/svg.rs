@@ -8,6 +8,8 @@
 //! per chunk and baselines from the font's metrics. Positions are in the
 //! text's user space, y down.
 
+use std::collections::HashMap;
+
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::images::svg_text::{Anchor, Baseline, Shift, SvgSpan, SvgText};
@@ -327,6 +329,8 @@ fn grow(ink: &mut Option<[f32; 4]>, points: impl IntoIterator<Item = (f32, f32)>
 /// with anchors, baselines, decorations and the ink box.
 fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
     let mut out = LaidText::default();
+    // Outline boxes by font and glyph: each outline is read once.
+    let mut boxes: HashMap<(FontKey, u16), Option<[f32; 4]>> = HashMap::new();
     let (mut last_x, mut last_y) = (0.0f32, 0.0f32);
     for chunk in chunks {
         if chunk.clusters.is_empty() {
@@ -367,7 +371,10 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                     scale_x: c.scale_x,
                     paint: span.paint,
                 };
-                if let Some([bx0, by0, bx1, by1]) = font.glyph_bbox(id) {
+                let bbox = *boxes
+                    .entry((c.font, id))
+                    .or_insert_with(|| font.glyph_bbox(id));
+                if let Some([bx0, by0, bx1, by1]) = bbox {
                     let corners = [(bx0, by0), (bx1, by0), (bx1, by1), (bx0, by1)];
                     grow(
                         &mut out.ink,
