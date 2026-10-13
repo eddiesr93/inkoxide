@@ -64,10 +64,46 @@ fn tokens(pdf: &[u8], inflate: bool) -> Vec<String> {
     let delimiter = |b: u8| b.is_ascii_whitespace() || b"[]<>()/{}%".contains(&b);
     texts
         .iter()
+        .map(|t| without_hex_strings(t))
+        .collect::<Vec<_>>()
+        .iter()
         .flat_map(|t| t.split(|&b| delimiter(b)))
         .filter(|t| !t.is_empty())
         .map(|t| String::from_utf8_lossy(t).into_owned())
         .collect()
+}
+
+/// `text` without the contents of hex strings (`<0048>`, glyph ids in
+/// text and character maps), which are not numbers; `<<` and `>>` stay.
+fn without_hex_strings(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        let b = text[i];
+        if b == b'<' && text.get(i + 1) == Some(&b'<') {
+            out.extend_from_slice(b"<<");
+            i += 2;
+        } else if b == b'<' {
+            let end = text[i..]
+                .iter()
+                .position(|&c| c == b'>')
+                .map_or(text.len(), |e| i + e);
+            if text[i + 1..end]
+                .iter()
+                .all(|c| c.is_ascii_hexdigit() || c.is_ascii_whitespace())
+            {
+                out.extend_from_slice(b"<>");
+                i = end + 1;
+            } else {
+                out.push(b);
+                i += 1;
+            }
+        } else {
+            out.push(b);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Asserts that no token is a non-finite number, and that there are
@@ -195,6 +231,9 @@ fn svg_numbers_that_overflow_render_finite_numbers() {
         format!("<svg {NS} width='100000' height='100000' viewBox='0 0 1e-5 1e-5'><rect width='1e-6' height='1e-6'/></svg>"),
         format!("<svg {NS} width='100' height='100'><defs><linearGradient id='g' x1='-1e39' x2='1e39' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue' stop-opacity='0.5'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/></svg>"),
         format!("<svg {NS} width='100' height='100'><path d='M0 0 L 50 50' stroke='red' stroke-width='2' stroke-dasharray='1e39 1' stroke-dashoffset='1e39'/></svg>"),
+        // Text whose positions and sizes overflow f32 when laid out.
+        format!("<svg {NS} width='100' height='100'><text x='3e38' dx='3e38' dy='-1e39' font-size='3e38' letter-spacing='1e39' text-decoration='underline'>Hi <tspan font-size='1e39'>there</tspan></text></svg>"),
+        format!("<svg {NS} width='100' height='100'><text x='5' y='50' textLength='3e38' lengthAdjust='spacingAndGlyphs' rotate='1e39 -1e30'>Hi</text></svg>"),
     ];
     let mut images = ImageStore::new();
     let mut children = Vec::new();
@@ -322,6 +361,9 @@ fn huge_svg_numbers_are_written_within_what_readers_parse() {
         svg("<defs><clipPath id='c' transform='scale(1e30)'><rect width='1' height='1'/></clipPath></defs><rect width='100' height='100' clip-path='url(#c)'/>"),
         svg("<defs><mask id='m' x='-1e30' y='-1e30' width='1e30' height='1e30' maskUnits='userSpaceOnUse'><rect width='1e30' height='100' fill='white'/></mask></defs><rect width='100' height='100' mask='url(#m)'/>"),
         svg("<defs><pattern id='p' width='1e30' height='1e30' patternUnits='userSpaceOnUse'><rect width='1e30' height='1'/></pattern></defs><rect width='100' height='100' fill='url(#p)'/>"),
+        svg("<text x='1e30' y='-1e30' font-size='1e30' text-decoration='line-through'>Hi</text>"),
+        svg("<text x='5' y='50' font-size='1e30' letter-spacing='1e30' textLength='1e30' lengthAdjust='spacingAndGlyphs' rotate='1e30 45'>Hi</text>"),
+        svg("<text x='5' y='50' dx='1e30 -1e30' font-size='20' word-spacing='1e30'>Hi there</text>"),
     ];
     let mut images = ImageStore::new();
     let mut children = Vec::new();

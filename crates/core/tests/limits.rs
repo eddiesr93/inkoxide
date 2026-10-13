@@ -1,6 +1,8 @@
 //! Memory and stack guards: hostile sizes fail fast with an error,
 //! the deepest nesting the parser accepts renders on a small stack.
 
+use std::fmt::Write as _;
+
 use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
 
 fn fonts() -> FontStore {
@@ -117,6 +119,75 @@ fn runaway_glyphs_from_shaping_are_an_error() {
         assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
     }
     render(&doc(&doubling(&["A"; 16].join(" "))), Some(1)).unwrap();
+}
+
+fn svg_doc(declared: &str, svg: &str) -> (String, ImageStore) {
+    let mut images = ImageStore::new();
+    images.insert("svg", svg.as_bytes().to_vec());
+    let doc = format!(
+        r#"{{"version":1,"fonts":[{declared}],
+           "pages":[{{"size":{{"width":595,"height":842}},"children":[
+             {{"type":"image","src":"svg","style":{{"width":100,"height":100}}}}]}}]}}"#
+    );
+    (doc, images)
+}
+
+fn render_svg(declared: &str, svg: &str) -> Result<Vec<u8>, InkoxideError> {
+    let (doc, images) = svg_doc(declared, svg);
+    let options = RenderOptions::default().with_threads(1);
+    inkoxide::render(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &options,
+        &fonts(),
+        &images,
+    )
+}
+
+/// SVG text copied by `use` many times over is counted per copy: past a
+/// million characters the SVG fails, before anything is laid out or
+/// drawn.
+#[test]
+fn copies_of_svg_text_are_counted() {
+    let inter = r#"{"id":"Inter-Regular","family":"Inter"}"#;
+    let line = "x".repeat(1000);
+    // `levels` levels of ten copies each: 1000 × 10^levels characters.
+    let svg = |levels: usize| {
+        let mut defs = format!(r#"<text id="l0">{line}</text>"#);
+        for i in 1..=levels {
+            let uses = format!(r##"<use href="#l{}"/>"##, i - 1).repeat(10);
+            let _ = write!(defs, r#"<g id="l{i}">{uses}</g>"#);
+        }
+        format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs>{defs}</defs><use href="#l{levels}"/></svg>"##
+        )
+    };
+    let t = std::time::Instant::now();
+    let err = render_svg(inter, &svg(10)).unwrap_err();
+    assert_eq!(err.code(), "INVALID_IMAGE", "{err}");
+    assert!(err.to_string().contains("characters of text"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    // Two hundred copies render.
+    render_svg(inter, &svg(2)).unwrap();
+}
+
+/// SVG text shapes through the render's shaper, under the same glyph
+/// limit as the document's text.
+#[test]
+fn svg_text_spends_the_glyph_limit() {
+    let doubling = r#"{"id":"Doubling","family":"Doubling"}"#;
+    let line = ["A"; 300].join(" ");
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text font-family="Doubling">{line}</text></svg>"#
+    );
+    let t = std::time::Instant::now();
+    let err = render_svg(doubling, &svg).unwrap_err();
+    assert_eq!(err.code(), "FONT_ERROR", "{err}");
+    assert!(
+        err.to_string().contains("more than 4194304 glyphs"),
+        "{err}"
+    );
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
 }
 
 /// Glyphs count as what is painted on every page too: one `A` shapes to
