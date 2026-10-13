@@ -12,8 +12,7 @@ or should come sooner.
 ## Next: engine features
 
 - **Encryption**: user and owner passwords, and permissions.
-- **Text in `<Svg>`**: `<Text>` and `<Tspan>` inside `<Svg>`, and `<text>` in SVG files; also
-  `<Marker>`.
+- **Text in `<Svg>`**: `<Text>` and `<Tspan>` inside `<Svg>`, and `<text>` in SVG files.
 - **`<Canvas>`**: text, clipping and gradients in the painter.
 - **Inline images** inside `Text`.
 - **Colour emoji**, from an emoji font or from images.

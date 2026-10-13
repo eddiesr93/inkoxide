@@ -42,7 +42,7 @@ a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
-| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
+| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
 
@@ -521,6 +521,27 @@ The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`)
 `<Svg>` is not supported yet. `Canvas` draws in code with a pdfkit-style painter. An SVG file
 can also go straight into `<Image src={svgBytes} />`.
 
+**Markers** draw a shape at the vertices of a `Path`, `Line`, `Polyline` or `Polygon`: define a
+`Marker` in `Defs` and reference it with `markerStart`, `markerMid` or `markerEnd`.
+
+```tsx
+<Svg width={120} height={40}>
+  <Defs>
+    <Marker id="arrow" viewBox="0 0 10 10" refX={10} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse">
+      <Path d="M0 0L10 5L0 10Z" fill="context-stroke" />
+    </Marker>
+  </Defs>
+  <Line x1={10} y1={20} x2={110} y2={20} stroke="#4f46e5" strokeWidth={2} markerStart="url(#arrow)" markerEnd="url(#arrow)" />
+</Svg>
+```
+
+`refX` and `refY` are the point of the marker placed on the vertex, `markerWidth` and
+`markerHeight` its viewport (3 by default), and `orient` turns it with the path (`'auto'`), the
+same but reversed at the start (`'auto-start-reverse'`), or by a number of degrees. A marker is
+scaled by the stroke width unless `markerUnits="userSpaceOnUse"`. `context-stroke` and
+`context-fill` paint it with the shape's stroke or fill. A `RadialGradient` takes `fr`, the
+radius of its focal circle, next to `fx` and `fy`.
+
 In an SVG, whether in `<Svg>` or an image file:
 
 - **Text** (`<text>`) fails the render with `INVALID_IMAGE`, in a nested SVG image too: convert
@@ -635,7 +656,7 @@ app.get('/health', (_req, res) => {
 tree the engine writes, so it is not a general PDF parser.
 
 **Types.** The props of a component are exported as a type named after it (`DocumentProps`,
-`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `CanvasProps` and so on); `PolyProps`
+`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `MarkerProps`, `CanvasProps` and so on); `PolyProps`
 serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresentation` the
 attributes every SVG shape takes. Also exported:
 

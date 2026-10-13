@@ -44,6 +44,8 @@ export {
   type LineProps,
   Link,
   type LinkProps,
+  Marker,
+  type MarkerProps,
   Page,
   PAGE_SIZES,
   PageBreak,

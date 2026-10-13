@@ -23,11 +23,15 @@ import {
   isImagePath,
   LinearGradient,
   Link,
+  Marker,
+  type MarkerProps,
   PAGE_SIZES,
   Page,
   PageBreak,
   PageNumber,
   Path,
+  Polyline,
+  RadialGradient,
   Radio,
   Rect,
   remoteAllowed,
@@ -1021,6 +1025,61 @@ describe('drawings', () => {
       </Svg>,
     );
     expect(decode(first<ImageNode>(r).data)).toContain('<clipPath id="c" clipPathUnits="objectBoundingBox">');
+  });
+
+  it('writes a Marker and the shapes that reference it', () => {
+    const arrow: MarkerProps = {
+      id: 'arrow',
+      viewBox: '0 0 10 10',
+      refX: 10,
+      refY: 5,
+      markerWidth: 6,
+      markerHeight: 6,
+      orient: 'auto-start-reverse',
+      markerUnits: 'strokeWidth',
+    };
+    const r = tree(
+      <Svg width={100} height={40}>
+        <Defs>
+          <Marker {...arrow}>
+            <Path d="M0 0L10 5L0 10Z" fill="context-stroke" />
+          </Marker>
+          <Marker id="dot" markerWidth={4} markerHeight={4} refX={2} refY={2} orient={30}>
+            <Circle cx={2} cy={2} r={2} />
+          </Marker>
+          <RadialGradient id="r" cx={0.5} cy={0.5} r={0.5} fx={0.3} fy={0.3} fr={0.1}>
+            <Stop offset={0} stopColor="white" />
+          </RadialGradient>
+        </Defs>
+        <Polyline
+          points={[10, 30, 50, 10, 90, 30]}
+          fill="none"
+          stroke="black"
+          markerStart="url(#arrow)"
+          markerMid="url(#dot)"
+          markerEnd="url(#arrow)"
+        />
+      </Svg>,
+    );
+    const svg = decode(first<ImageNode>(r).data);
+    expect(svg).toContain(
+      '<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0L10 5L0 10Z" fill="context-stroke"/></marker>',
+    );
+    expect(svg).toContain('<marker id="dot" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="30">');
+    expect(svg).toContain('fx="0.3" fy="0.3" fr="0.1"');
+    expect(svg).toContain('marker-start="url(#arrow)" marker-mid="url(#dot)" marker-end="url(#arrow)"/>');
+    expect(r.validate()).toEqual([]);
+    expect(
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            <Marker id="m">
+              <Stop offset={0} stopColor="red" />
+            </Marker>
+          </Svg>,
+        ),
+      ).message,
+    ).toContain('<Stop>');
   });
 
   it('keeps the layout props of Svg out of the drawing', () => {

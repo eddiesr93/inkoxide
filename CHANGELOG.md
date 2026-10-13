@@ -7,6 +7,14 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- **`<Marker>`** in `<Svg>`: a shape drawn at the start, middle or end vertices of a path, line
+  or poly shape, referenced with the new `markerStart`, `markerMid` and `markerEnd` props. It
+  takes `viewBox`, `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `markerUnits`.
+  `Marker` and `MarkerProps` are exported.
+- `fr`, the radius of the focal circle, on `RadialGradient`.
+
 ## 0.6.5 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that
