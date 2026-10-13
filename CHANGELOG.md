@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- A CFF font with a number in its Top, Font or Private DICT that overflows a 32-bit float (or
+  beyond 10³⁰) is rejected with `FONT_ERROR` when it is registered. Registering it panicked in
+  the font subsetter: a panic in Rust, an `INTERNAL` error in Node. Found by the `register_font`
+  fuzz target.
+
 ## 0.6.2 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.2; the other packages are unchanged. Upgrading: the limit

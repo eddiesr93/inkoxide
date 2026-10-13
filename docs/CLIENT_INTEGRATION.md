@@ -51,8 +51,9 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
   fonts and CFF2 fonts (register static instances instead), font
   collections (`.ttc`; register each font as its own file), fonts with
   neither TrueType nor embeddable CFF outlines, fonts without a
-  Unicode `cmap`, and fonts whose `GSUB` or `GPOS` lookups point to
-  missing or malformed coverage tables.
+  Unicode `cmap`, fonts whose `GSUB` or `GPOS` lookups point to
+  missing or malformed coverage tables, and CFF fonts with a number out
+  of range in a DICT.
 
 ## Images: per render, through `options.images`
 

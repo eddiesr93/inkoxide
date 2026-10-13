@@ -83,6 +83,11 @@ impl FontData {
             ));
         }
         let cff = tables.glyf.is_none();
+        if cff && cff::reals_fit(&bytes) == Some(false) {
+            return Err(err(
+                "the CFF table is malformed (a number in a DICT is out of range)",
+            ));
+        }
         if cff && (tables.cff.is_none() || cff::full_program(&bytes).is_none()) {
             return Err(err(
                 "font has neither TrueType (glyf) nor embeddable CFF outlines",
@@ -542,6 +547,35 @@ mod tests {
         let e = FontStore::new().register("x", ttc).unwrap_err();
         assert_eq!(e.code(), "FONT_ERROR");
         assert!(e.to_string().contains("font collections (.ttc)"), "{e}");
+    }
+
+    /// A fuzz finding, reduced: a CFF font whose Top DICT `FontMatrix`
+    /// holds a real that overflows `f32`. Embedding it panicked subsetter
+    /// 0.2.6, which writes the real back as `inf`.
+    #[test]
+    fn rejects_cff_numbers_out_of_range() {
+        let matrix_real = [0x1e, 0xa0, 0x00, 0x48, 0x82, 0x8f]; // .00048828
+        let font = fixture("InterDisplay-Bold.otf");
+        let at = font
+            .windows(matrix_real.len())
+            .position(|w| w == matrix_real)
+            .unwrap();
+        for (nibbles, ok) in [
+            ([0x1b, 0x99, 0x99, 0x99, 0x9f], false), // 1E9999999: inf
+            ([0x1b, 0x00, 0x00, 0x03, 0x1f], false), // 1E31, above 1E30
+            ([0x1b, 0x00, 0x00, 0x00, 0x3f], true),  // 1E3
+        ] {
+            let mut bad = font.clone();
+            bad[at + 1..at + 6].copy_from_slice(&nibbles);
+            let r = FontStore::new().register("x", bad);
+            if ok {
+                r.unwrap();
+            } else {
+                let e = r.unwrap_err();
+                assert_eq!(e.code(), "FONT_ERROR");
+                assert!(e.to_string().contains("CFF table is malformed"), "{e}");
+            }
+        }
     }
 
     /// A fuzz finding, minimised: Noto Sans Hebrew with the lookahead

@@ -24,9 +24,128 @@ fn cff_table(otf: &[u8]) -> Option<&[u8]> {
     })
 }
 
+/// Largest real DICT operand `subsetter` gets to write back. subsetter
+/// 0.2.6 prints a real with `{}` and panics on anything but digits, `.`
+/// and `-` (`RealNumber::write` in `cff/number.rs`), so an operand that
+/// overflows `f32` (`inf`) panics it; it also scales a Font DICT's
+/// `FontMatrix` by 1000. Real fonts use values far below this. Check
+/// `RealNumber::write` again when upgrading subsetter.
+const MAX_REAL: f32 = 1e30;
+
+/// Whether `subsetter` can write back every real operand of the DICTs
+/// it rewrites: the Top DICT, the Font DICTs and their Private DICTs (see
+/// [`MAX_REAL`]). `None` if they cannot be read.
+pub(super) fn reals_fit(otf: &[u8]) -> Option<bool> {
+    let cff = cff_table(otf)?;
+    let header = usize::from(*cff.get(2)?);
+    let (_, names_end) = index(cff, header)?;
+    let (top, _) = index(cff, names_end)?;
+    let mut dicts = vec![dict(cff, top.first()?.clone())?];
+    // FDArray (12 36): the Font DICTs of a CID-keyed font.
+    if let Some(at) = operand(&dicts[0], 0x0c24, 0) {
+        let (fonts, _) = index(cff, usize::try_from(at as i64).ok()?)?;
+        for font in fonts {
+            dicts.push(dict(cff, font)?);
+        }
+    }
+    let mut privates = Vec::new();
+    for d in &dicts {
+        // Private (18): size and offset.
+        if let (Some(size), Some(at)) = (operand(d, 18, 0), operand(d, 18, 1)) {
+            let at = usize::try_from(at as i64).ok()?;
+            let end = at.checked_add(usize::try_from(size as i64).ok()?)?;
+            privates.push(dict(cff, at..end)?);
+        }
+    }
+    let fits = |d: &Dict| {
+        d.iter()
+            .flat_map(|(_, operands)| operands)
+            .all(|v| v.is_finite() && v.abs() <= MAX_REAL)
+    };
+    Some(dicts.iter().chain(&privates).all(fits))
+}
+
+/// A DICT: its operators (two-byte ones as `12 << 8 | b`), each with its
+/// operands.
+type Dict = Vec<(u16, Vec<f32>)>;
+
+/// Operand `k` of the first `op` entry of `d`.
+fn operand(d: &Dict, op: u16, k: usize) -> Option<f32> {
+    d.iter().find(|(o, _)| *o == op)?.1.get(k).copied()
+}
+
+/// Reads the DICT at `range` of `cff`, reals as `subsetter` reads them.
+fn dict(cff: &[u8], range: std::ops::Range<usize>) -> Option<Dict> {
+    let data = cff.get(range)?;
+    let mut out = Vec::new();
+    let mut operands = Vec::new();
+    let mut p = 0;
+    let byte = |p: usize| data.get(p).copied();
+    while p < data.len() {
+        let b = byte(p)?;
+        let (value, len) = match b {
+            0..=21 => {
+                let (op, len) = if b == 12 {
+                    (0x0c00 | u16::from(byte(p + 1)?), 2)
+                } else {
+                    (u16::from(b), 1)
+                };
+                out.push((op, std::mem::take(&mut operands)));
+                p += len;
+                continue;
+            }
+            28 => (
+                f32::from(i16::from_be_bytes([byte(p + 1)?, byte(p + 2)?])),
+                3,
+            ),
+            29 => {
+                let v = i32::from_be_bytes(data.get(p + 1..p + 5)?.try_into().ok()?);
+                (v as f32, 5)
+            }
+            30 => real(data.get(p + 1..)?).map(|(v, len)| (v, len + 1))?,
+            32..=246 => (f32::from(i16::from(b) - 139), 1),
+            247..=250 => (
+                f32::from((i16::from(b) - 247) * 256 + i16::from(byte(p + 1)?) + 108),
+                2,
+            ),
+            251..=254 => (
+                f32::from(-(i16::from(b) - 251) * 256 - i16::from(byte(p + 1)?) - 108),
+                2,
+            ),
+            _ => return None,
+        };
+        operands.push(value);
+        p += len;
+    }
+    Some(out)
+}
+
+/// A real operand's value and length after its 30 prefix: nibbles to a
+/// string parsed as `f32`, as `subsetter` does.
+fn real(data: &[u8]) -> Option<(f32, usize)> {
+    let mut s = String::new();
+    for (i, &b) in data.iter().enumerate() {
+        for n in [b >> 4, b & 0xf] {
+            match n {
+                0..=9 => s.push(char::from(b'0' + n)),
+                10 => s.push('.'),
+                11 => s.push('E'),
+                12 => s.push_str("E-"),
+                14 => s.push('-'),
+                15 => return Some((s.parse().ok()?, i + 1)),
+                _ => return None,
+            }
+        }
+    }
+    None
+}
+
 /// The whole font as a CID-keyed CFF with CID = glyph id: `subsetter`
 /// keeping every glyph in order. `None` if the font cannot be converted.
 pub(super) fn full_program(otf: &[u8]) -> Option<Vec<u8>> {
+    if reals_fit(otf) != Some(true) {
+        return None;
+    }
     let n = ttf_parser::Face::parse(otf, 0).ok()?.number_of_glyphs();
     let glyphs: Vec<u16> = (0..n).collect();
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&glyphs);
@@ -39,6 +158,9 @@ pub(super) fn full_program(otf: &[u8]) -> Option<Vec<u8>> {
 
 /// A subset of `glyphs` (sorted) whose CIDs are the original glyph ids.
 pub(super) fn subset_program(otf: &[u8], glyphs: &[u16]) -> Option<Vec<u8>> {
+    if reals_fit(otf) != Some(true) {
+        return None;
+    }
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(glyphs);
     let sub = subsetter::subset(otf, 0, &remapper).ok()?;
     let mut cff = cff_table(&sub)?.to_vec();
@@ -165,6 +287,28 @@ mod tests {
         v.extend([0, 1, 1, 1, dict.len() as u8 + 1]);
         v.extend(dict);
         v
+    }
+
+    #[test]
+    fn reads_dict_numbers_as_subsetter_does() {
+        assert_eq!(real(&[0x1f, 0]), Some((1.0, 1)));
+        assert_eq!(real(&[0x0a, 0x5f]), Some((0.5, 2)));
+        assert_eq!(real(&[0xe2, 0xc3, 0xff]), Some((-2e-3, 3)));
+        // 1E999 overflows f32, as in subsetter.
+        assert_eq!(real(&[0x1b, 0x99, 0x9f]), Some((f32::INFINITY, 3)));
+        assert_eq!(real(&[0x1d, 0xff]), None);
+        assert_eq!(real(&[0x11]), None);
+        let c = tiny();
+        let top = dict(&c, 15..c.len()).unwrap();
+        assert_eq!(
+            top,
+            vec![(0x0c1e, vec![1.0]), (15, vec![0.0]), (17, vec![0.0])]
+        );
+        assert_eq!(
+            dict(&[28, 0x80, 0, 250, 0xff, 254, 0xff, 1], 0..8),
+            Some(vec![(1, vec![-32768.0, 1131.0, -1131.0])])
+        );
+        assert_eq!(dict(&[255, 1], 0..2), None);
     }
 
     #[test]
