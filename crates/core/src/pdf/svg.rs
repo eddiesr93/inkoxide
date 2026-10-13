@@ -455,7 +455,7 @@ impl Svg<'_> {
         group: bool,
     ) -> Res {
         let data = super::deflate(
-            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new())),
+            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), self.profile)?,
             flate::LEVEL,
         )?;
         let mut f = self.pdf.form_xobject(id, &data);
@@ -980,7 +980,7 @@ impl Svg<'_> {
         let mut cv = Canvas::new();
         self.group(&mut cv, pt.root(), Scope::form(at.depth + 1, false))?;
         let data = super::deflate(
-            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new())),
+            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), self.profile)?,
             flate::LEVEL,
         )?;
         let id = self.next();

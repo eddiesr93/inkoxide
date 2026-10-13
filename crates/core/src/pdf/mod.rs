@@ -149,15 +149,18 @@ fn round_to(v: f32, per: f32) -> f32 {
 }
 
 /// The bytes of content stream `c`, whose numbers went through
-/// [`number`] (checked in debug builds).
-pub(crate) fn content_bytes(c: Content) -> Vec<u8> {
+/// [`number`] (checked in debug builds), within the limits of `profile`.
+pub(crate) fn content_bytes(c: Content, profile: Profile) -> Result<Vec<u8>, InkoxideError> {
     let buf = c.finish();
     debug_assert!(
         buf.limits().real() <= MAX_NUMBER,
         "a number past MAX_NUMBER: {}",
         buf.limits().real()
     );
-    buf.into_vec()
+    profile.check_limits(buf.limits())?;
+    let data = buf.into_vec();
+    profile.check_nesting(&data)?;
+    Ok(data)
 }
 
 /// Hands out object numbers in order, from 1.
@@ -220,7 +223,7 @@ impl PdfSink for PdfWriterSink {
                 _ => {}
             }
         }
-        let raw = content_stream(page, fonts, self.profile);
+        let raw = content_stream(page, fonts, self.profile)?;
         let stream = match self.compression {
             Some(level) => deflate(&raw, level)?,
             None => raw,
@@ -312,7 +315,7 @@ impl PdfSink for PdfWriterSink {
                 program,
                 glyphs,
                 doc.unicode.fonts.get(key),
-                self.profile.cid_set(),
+                self.profile,
             )?;
             font_refs.insert(*key, r);
         }
@@ -355,7 +358,7 @@ impl PdfSink for PdfWriterSink {
             fonts: doc.fonts,
             profile: self.profile,
         };
-        let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots);
+        let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots)?;
         let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
 
         for (i, ((page, page_ref), content_ref)) in doc
@@ -517,6 +520,7 @@ impl PdfSink for PdfWriterSink {
             "a number past MAX_NUMBER: {}",
             pdf.limits().real()
         );
+        self.profile.check_limits(pdf.limits())?;
         Ok(pdf.finish())
     }
 }
@@ -855,7 +859,11 @@ fn path(c: &mut Content, segs: &[PathSeg]) {
 
 /// Serialises one page's display list. Pure function of the page: safe to
 /// run per page in parallel.
-pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, profile: Profile) -> Vec<u8> {
+pub(crate) fn content_stream(
+    page: &PageContent,
+    fonts: &FontSet<'_>,
+    profile: Profile,
+) -> Result<Vec<u8>, InkoxideError> {
     let mut c = Content::new();
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(page.height)]);
@@ -932,7 +940,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, profile: P
             }
         }
     }
-    content_bytes(c)
+    content_bytes(c, profile)
 }
 
 #[cfg(test)]
@@ -991,7 +999,7 @@ mod tests {
         ] {
             c.move_to(number(v), 0.0);
         }
-        let out = String::from_utf8(content_bytes(c)).unwrap();
+        let out = String::from_utf8(content_bytes(c, Profile::default()).unwrap()).unwrap();
         for token in out.split_ascii_whitespace() {
             if token.parse::<f64>().is_ok() && !token.contains('.') {
                 assert!(token.parse::<i32>().is_ok(), "{token} in {out}");
@@ -1139,7 +1147,8 @@ mod tests {
                 matrix: [inf, nan, 0.0, -inf, 1.0, 2.0],
             },
         ];
-        let out = String::from_utf8(content_stream(&page, &fonts, Profile::default())).unwrap();
+        let out =
+            String::from_utf8(content_stream(&page, &fonts, Profile::default()).unwrap()).unwrap();
         for token in out.split_whitespace() {
             let t = token.trim_start_matches('-');
             assert!(t != "inf" && t != "NaN", "`{token}` in:\n{out}");
@@ -1196,5 +1205,70 @@ mod tests {
             assert!(set.contains(part), "{part}");
         }
         assert!(!set.contains("Inkoxide"));
+    }
+}
+
+#[cfg(test)]
+mod pdf_a_1_tests {
+    use crate::{FontStore, ImageStore, InputFormat, PdfALevel, RenderOptions};
+
+    /// Renders a 300 × 300 pt page holding `children` at `level`.
+    fn render(children: &str, level: PdfALevel) -> Result<Vec<u8>, crate::InkoxideError> {
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+               "pages":[{{"size":{{"width":300,"height":300}},"children":[{children}]}}]}}"#
+        );
+        let fonts: FontStore = crate::test_fixtures::inter();
+        let options = RenderOptions::default().with_pdf_a_level(level);
+        crate::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts,
+            &ImageStore::new(),
+        )
+    }
+
+    #[test]
+    fn pdf_a_1b_fails_past_its_limits() {
+        let nested = |n: usize| {
+            let open = r#"{"type":"box","style":{"overflow":"hidden"},"children":["#.repeat(n);
+            format!("{open}{}", "]}".repeat(n))
+        };
+        let options: Vec<String> = (0..8192).map(|i| format!(r#""{i}""#)).collect();
+        let cases = [
+            (
+                r#"{"type":"box","style":{"width":10,"height":10,"transform":[{"translate":[40000.5,0]}]}}"#.to_string(),
+                "a real number past ±32767",
+            ),
+            (nested(30), "graphics states nested more than 28 deep"),
+            (
+                format!(
+                    r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","value":"{}"}}}}"#,
+                    "a".repeat(70_000)
+                ),
+                "a string longer than 65535 bytes",
+            ),
+            (
+                format!(
+                    r#"{{"type":"field","field":{{"name":"s","kind":"select","font":"Inter-Regular","options":[{}]}}}}"#,
+                    options.join(",")
+                ),
+                "an array of more than 8191 entries",
+            ),
+        ];
+        for (child, what) in cases {
+            let e = render(&child, PdfALevel::A1b).unwrap_err();
+            assert_eq!(e.code(), "PDF_ERROR", "{e}");
+            assert!(e.to_string().contains(what), "{e}");
+            render(&child, PdfALevel::A2b).unwrap();
+        }
+        // Within the limits.
+        render(&nested(20), PdfALevel::A1b).unwrap();
+        render(
+            r#"{"type":"box","style":{"width":10,"height":10,"transform":[{"translate":[32000.5,0]}]}}"#,
+            PdfALevel::A1b,
+        )
+        .unwrap();
     }
 }

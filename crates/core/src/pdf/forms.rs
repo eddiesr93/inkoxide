@@ -13,6 +13,7 @@ use crate::fonts::{FontKey, FontSet};
 use crate::forms::FieldOp;
 use crate::paint::{polygon, PathSeg, KAPPA};
 use crate::schema::{FieldKind, BLACK};
+use crate::InkoxideError;
 
 /// Longest PDF name, in bytes (ISO 32000-1, Annex C; PDF/A-2 holds files
 /// to it).
@@ -31,7 +32,7 @@ pub(super) fn write_fields(
     alloc: &mut RefAlloc,
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
-) -> Option<Form> {
+) -> Result<Option<Form>, InkoxideError> {
     // Widgets grouped by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
     let mut groups: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
@@ -46,7 +47,7 @@ pub(super) fn write_fields(
         }
     }
     if order.is_empty() {
-        return None;
+        return Ok(None);
     }
     let mut form = Form {
         fields: Vec::new(),
@@ -65,7 +66,7 @@ pub(super) fn write_fields(
         form.fields.push(field_ref);
         if widgets.len() == 1 && first.field.kind != FieldKind::Radio {
             // Field and widget merged in one dictionary.
-            let aps = ctx.appearances(pdf, alloc, first, &states.names[0]);
+            let aps = ctx.appearances(pdf, alloc, first, &states.names[0])?;
             let mut f = pdf.form_field(field_ref);
             field_entries(&mut f, name, widgets, &states);
             let mut annot = f.into_annotation();
@@ -76,7 +77,7 @@ pub(super) fn write_fields(
         }
         let mut kids = Vec::with_capacity(widgets.len());
         for (&(page, op), on) in widgets.iter().zip(&states.names) {
-            let aps = ctx.appearances(pdf, alloc, op, on);
+            let aps = ctx.appearances(pdf, alloc, op, on)?;
             let kid = alloc.next();
             let mut f = pdf.form_field(kid);
             f.parent(field_ref);
@@ -91,7 +92,7 @@ pub(super) fn write_fields(
         f.children(kids);
         f.finish();
     }
-    Some(form)
+    Ok(Some(form))
 }
 
 /// The on-state names of a field's widgets, in order.
@@ -241,7 +242,7 @@ impl Ctx<'_, '_, '_> {
         alloc: &mut RefAlloc,
         op: &FieldOp,
         on: &str,
-    ) -> Appearances {
+    ) -> Result<Appearances, InkoxideError> {
         let (w, h) = (op.rect.w, op.rect.h);
         // A transformed widget: its appearance turns and scales with it
         // (widget space is y-up, layout space y-down), and the viewer fits
@@ -283,7 +284,8 @@ impl Ctx<'_, '_, '_> {
                 }
                 c.restore_state();
                 c.end_marked_content();
-                out.push((None, form(pdf, super::content_bytes(c), op.font)));
+                let content = super::content_bytes(c, self.profile)?;
+                out.push((None, form(pdf, content, op.font)));
             }
             FieldKind::Checkbox | FieldKind::Radio => {
                 let mut c = Content::new();
@@ -295,14 +297,12 @@ impl Ctx<'_, '_, '_> {
                 };
                 super::path(&mut c, &segs);
                 c.fill_nonzero();
-                out.push((
-                    Some(on.to_string()),
-                    form(pdf, super::content_bytes(c), None),
-                ));
+                let content = super::content_bytes(c, self.profile)?;
+                out.push((Some(on.to_string()), form(pdf, content, None)));
                 out.push((Some("Off".into()), form(pdf, Vec::new(), None)));
             }
         }
-        out
+        Ok(out)
     }
 
     fn widget(

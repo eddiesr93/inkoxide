@@ -4,8 +4,27 @@
 use std::fmt::Write as _;
 
 use crate::date::Timestamp;
+use pdf_writer::Limits;
+
 use crate::schema::Meta;
 use crate::{InkoxideError, PdfALevel};
+
+/// What a PDF/A-1 file may hold (ISO 19005-1, 6.1.12, table 1), beyond
+/// the integer and page size limits every file here keeps.
+pub(crate) mod limits {
+    /// Largest magnitude of a real number.
+    pub const REAL: f32 = 32_767.0;
+    /// Longest string, in bytes.
+    pub const STRING: usize = 65_535;
+    /// Longest name, in bytes.
+    pub const NAME: usize = 127;
+    /// Most entries in an array.
+    pub const ARRAY: usize = 8_191;
+    /// Most entries in a dictionary.
+    pub const DICT: usize = 4_095;
+    /// Deepest nesting of `q` in a content stream.
+    pub const NESTING: usize = 28;
+}
 
 /// What the output's conformance asks of the writer: plain PDF, or
 /// PDF/A. Every part of the writer that differs between them asks this.
@@ -53,6 +72,70 @@ impl Profile {
         self.level != Some(PdfALevel::A1b)
     }
 
+    /// The most entries an array may have (PDF/A-1), if limited.
+    pub fn max_array(self) -> Option<usize> {
+        (self.level == Some(PdfALevel::A1b)).then_some(limits::ARRAY)
+    }
+
+    /// Checks what was written against the PDF/A-1 [`limits`]: numbers,
+    /// strings, names, arrays and dictionaries. A file past them is not
+    /// PDF/A-1, so the render fails rather than move or cut what it
+    /// draws.
+    pub fn check_limits(self, l: &Limits) -> Result<(), InkoxideError> {
+        if self.level != Some(PdfALevel::A1b) {
+            return Ok(());
+        }
+        let past = |what: String| {
+            Err(InkoxideError::Pdf(format!(
+                "PDF/A-1b does not allow {what}"
+            )))
+        };
+        if l.real() > limits::REAL {
+            return past(format!(
+                "a real number past ±{}, and the document needs {}",
+                limits::REAL,
+                l.real()
+            ));
+        }
+        for (what, value, max) in [
+            ("a string", l.str_len(), limits::STRING),
+            ("a name", l.name_len(), limits::NAME),
+        ] {
+            if value > max {
+                return past(format!(
+                    "{what} longer than {max} bytes, and the document needs {value}"
+                ));
+            }
+        }
+        for (what, value, max) in [
+            ("an array", l.array_len(), limits::ARRAY),
+            ("a dictionary", l.dict_entries(), limits::DICT),
+        ] {
+            if value > max {
+                return past(format!(
+                    "{what} of more than {max} entries, and the document needs {value}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks the `q` nesting of content stream `data` against the PDF/A-1
+    /// limit.
+    pub fn check_nesting(self, data: &[u8]) -> Result<(), InkoxideError> {
+        if self.level != Some(PdfALevel::A1b) {
+            return Ok(());
+        }
+        let depth = q_depth(data);
+        if depth > limits::NESTING {
+            return Err(InkoxideError::Pdf(format!(
+                "PDF/A-1b does not allow graphics states nested more than {} deep, and the document needs {depth}",
+                limits::NESTING
+            )));
+        }
+        Ok(())
+    }
+
     /// `Ok` where transparency is allowed; otherwise the error for `what`,
     /// which needs it. Validation rejects such a document first, with
     /// `PDFA_CONFLICT` and its path; this is the writer's backstop.
@@ -65,6 +148,70 @@ impl Profile {
             )))
         }
     }
+}
+
+/// The deepest nesting of `q` operators in content stream `data`. Strings,
+/// names and comments are skipped: their bytes are not operators.
+fn q_depth(data: &[u8]) -> usize {
+    let delimiter = |b: u8| b.is_ascii_whitespace() || b"()<>[]{}/%".contains(&b);
+    let (mut depth, mut max, mut i) = (0usize, 0usize, 0usize);
+    while i < data.len() {
+        match data[i] {
+            b'(' => {
+                // A literal string: balanced parentheses, `\` escapes.
+                let mut open = 0;
+                while i < data.len() {
+                    match data[i] {
+                        b'\\' => i += 1,
+                        b'(' => open += 1,
+                        b')' => {
+                            open -= 1;
+                            if open == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'<' if data.get(i + 1) != Some(&b'<') => {
+                // A hex string.
+                while i < data.len() && data[i] != b'>' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'%' => {
+                while i < data.len() && data[i] != b'\n' && data[i] != b'\r' {
+                    i += 1;
+                }
+            }
+            b'/' => {
+                i += 1;
+                while i < data.len() && !delimiter(data[i]) {
+                    i += 1;
+                }
+            }
+            b if delimiter(b) => i += 1,
+            _ => {
+                let start = i;
+                while i < data.len() && !delimiter(data[i]) {
+                    i += 1;
+                }
+                match &data[start..i] {
+                    b"q" => {
+                        depth += 1;
+                        max = max.max(depth);
+                    }
+                    b"Q" => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+        }
+    }
+    max
 }
 
 /// An ICC v2 display profile for sRGB (D50-adapted primaries, the sRGB
@@ -266,6 +413,75 @@ fn escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn q_depth_counts_operators_only() {
+        assert_eq!(q_depth(b""), 0);
+        assert_eq!(q_depth(b"q q Q q\nQ Q"), 2);
+        assert_eq!(q_depth(b"q\n1 0 0 1 0 0 cm\nq\nQ\nQ\nq\nQ"), 2);
+        // Strings, names and comments hold no operators.
+        assert_eq!(q_depth(b"q (q q \\) q) Tj /q gs <71> Tj % q q\nQ"), 1);
+        assert_eq!(q_depth(b"q [(a(q)b) 10 (q)] TJ << /q 1 >> BDC Q"), 1);
+        assert_eq!(q_depth(b"Q Q q"), 1);
+    }
+
+    #[test]
+    fn pdf_a_1_limits() {
+        let one_b = Profile::new(Some(PdfALevel::A1b));
+        let two_b = Profile::new(Some(PdfALevel::A2b));
+        let deep = b"q ".repeat(limits::NESTING + 1);
+        assert!(one_b.check_nesting(&deep).is_err());
+        assert!(one_b.check_nesting(&deep[2..]).is_ok());
+        assert!(two_b.check_nesting(&deep).is_ok());
+
+        let written = |f: &dyn Fn(&mut pdf_writer::Pdf)| {
+            let mut pdf = pdf_writer::Pdf::new();
+            f(&mut pdf);
+            pdf.limits().clone()
+        };
+        let r = pdf_writer::Ref::new(1);
+        let real = written(&|p| {
+            p.indirect(r).primitive(32_767.5_f32);
+        });
+        let string = written(&|p| {
+            p.indirect(r)
+                .primitive(pdf_writer::Str(&vec![b'a'; limits::STRING + 1]));
+        });
+        let name = written(&|p| {
+            p.indirect(r)
+                .primitive(pdf_writer::Name(&[b'a'; limits::NAME + 1]));
+        });
+        let array = written(&|p| {
+            p.indirect(r).array().items(0..=limits::ARRAY as i32);
+        });
+        let dict = written(&|p| {
+            let mut d = p.indirect(r).dict();
+            for i in 0..=limits::DICT {
+                d.pair(pdf_writer::Name(format!("K{i}").as_bytes()), 0);
+            }
+        });
+        for (what, l) in [
+            ("real number", real),
+            ("string", string),
+            ("name", name),
+            ("array", array),
+            ("dictionary", dict),
+        ] {
+            let e = one_b.check_limits(&l).unwrap_err().to_string();
+            assert!(
+                e.contains(&format!(
+                    "does not allow a{} {what}",
+                    if what == "array" { "n" } else { "" }
+                )),
+                "{e}"
+            );
+            assert!(two_b.check_limits(&l).is_ok());
+        }
+        let within = written(&|p| {
+            p.indirect(r).array().items([32_767.0_f32, -32_767.0]);
+        });
+        assert!(one_b.check_limits(&within).is_ok());
+    }
 
     #[test]
     fn icc_layout() {

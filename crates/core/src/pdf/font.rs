@@ -18,7 +18,7 @@ use std::sync::Arc;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
 
-use super::{deflate, RefAlloc};
+use super::{deflate, Profile, RefAlloc};
 use crate::flate;
 use crate::fonts::LoadedFont;
 use crate::lru::SharedLru;
@@ -119,7 +119,8 @@ fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
 }
 
 /// Writes all objects of one font; returns the Type0 font reference.
-/// With `cid_set` (PDF/A-1), a subset's descriptor lists its CIDs.
+/// Under PDF/A-1 a subset's descriptor lists its CIDs, and the widths
+/// keep to its array limit.
 pub(crate) fn write_font(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
@@ -127,7 +128,7 @@ pub(crate) fn write_font(
     program: &Program,
     used: &BTreeSet<u16>,
     unicode: Option<&BTreeMap<u16, String>>,
-    cid_set: bool,
+    profile: Profile,
 ) -> Result<Ref, InkoxideError> {
     let type0 = alloc.next();
     let cid = alloc.next();
@@ -137,7 +138,7 @@ pub(crate) fn write_font(
     let map_ref = program.cid_to_gid.as_ref().map(|_| alloc.next());
     // Only a subset needs one (ISO 19005-1, 6.3.5); PDF/A-2 and later
     // need none, and check that one present is complete.
-    let cid_set_ref = (cid_set && !program.tag.is_empty()).then(|| alloc.next());
+    let cid_set_ref = (profile.cid_set() && !program.tag.is_empty()).then(|| alloc.next());
 
     let m = &font.data.metrics;
     let to_1000 = 1000.0 / m.units_per_em;
@@ -172,22 +173,13 @@ pub(crate) fn write_font(
         None => {}
     }
     {
-        // Runs of consecutive glyph ids share one `consecutive` entry.
         let mut w = c.widths();
-        let ids: Vec<u16> = used.iter().copied().collect();
-        let mut i = 0;
-        while i < ids.len() {
-            let start = ids[i];
-            let mut j = i + 1;
-            while j < ids.len() && ids[j] == ids[j - 1] + 1 {
-                j += 1;
-            }
-            let widths: Vec<f32> = ids[i..j]
-                .iter()
-                .map(|&g| (font.advance(g) * to_1000 * 1000.0).round() / 1000.0)
+        for run in width_runs(used, profile.max_array()) {
+            let widths: Vec<f32> = run
+                .clone()
+                .map(|g| (font.advance(g) * to_1000 * 1000.0).round() / 1000.0)
                 .collect();
-            w.consecutive(start, widths);
-            i = j;
+            w.consecutive(*run.start(), widths);
         }
     }
     c.finish();
@@ -259,6 +251,43 @@ pub(crate) fn write_font(
     Ok(type0)
 }
 
+/// The glyph id ranges of a `W` array for the glyphs `used`: each run of
+/// consecutive ids shares one `consecutive` entry. With `max_array`
+/// (PDF/A-1), no array has more entries: a run is split into pieces of at
+/// most that many glyphs, and when the runs would take more entries than
+/// that, the ranges cover every id from the first glyph used to the last
+/// instead, unused ones too.
+fn width_runs(
+    used: &BTreeSet<u16>,
+    max_array: Option<usize>,
+) -> Vec<std::ops::RangeInclusive<u16>> {
+    let mut runs: Vec<std::ops::RangeInclusive<u16>> = Vec::new();
+    for &g in used {
+        match runs.last_mut() {
+            Some(r) if r.end().checked_add(1) == Some(g) => *r = *r.start()..=g,
+            _ => runs.push(g..=g),
+        }
+    }
+    let Some(max) = max_array else {
+        return runs;
+    };
+    // Each `consecutive` entry is two array items: its start and widths.
+    if runs.len() > max / 2 {
+        if let (Some(&first), Some(&last)) = (used.first(), used.last()) {
+            runs = vec![first..=last];
+        }
+    }
+    let piece = u16::try_from(max).unwrap_or(u16::MAX);
+    runs.into_iter()
+        .flat_map(|r| {
+            let (start, end) = (*r.start(), *r.end());
+            (start..=end)
+                .step_by(usize::from(piece))
+                .map(move |s| s..=s.saturating_add(piece - 1).min(end))
+        })
+        .collect()
+}
+
 /// A `CIDSet`: bit `c` (high bit first) is set for each CID `c` the
 /// subset holds. A subset holds the glyphs `used`, under their original
 /// ids, and `.notdef`.
@@ -274,6 +303,29 @@ fn cid_set_bits(used: &BTreeSet<u16>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn width_runs_keep_to_the_array_limit() {
+        let used = BTreeSet::from([1, 2, 3, 7, 9, 10]);
+        assert_eq!(width_runs(&used, None), [1..=3, 7..=7, 9..=10]);
+        assert_eq!(width_runs(&used, Some(8191)), [1..=3, 7..=7, 9..=10]);
+        // Pieces of at most `max` glyphs; past `max / 2` runs, one range
+        // from the first glyph to the last.
+        assert_eq!(width_runs(&used, Some(6)), [1..=3, 7..=7, 9..=10]);
+        assert_eq!(
+            width_runs(&used, Some(2)),
+            [1..=2, 3..=4, 5..=6, 7..=8, 9..=10]
+        );
+        // Every other id: too many runs, so one range covers them all.
+        let sparse: BTreeSet<u16> = (0..20_000).step_by(2).collect();
+        let runs = width_runs(&sparse, Some(8191));
+        assert_eq!(runs, [0..=8190, 8191..=16381, 16382..=19998]);
+        assert_eq!(width_runs(&sparse, None).len(), 10_000);
+        let all: BTreeSet<u16> = (0..=u16::MAX).collect();
+        let runs = width_runs(&all, Some(8191));
+        assert_eq!(runs.len(), 9);
+        assert_eq!(*runs[8].end(), u16::MAX);
+    }
 
     #[test]
     fn cid_sets_hold_the_used_cids_and_notdef() {
