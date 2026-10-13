@@ -3,11 +3,6 @@
 What is planned, in rough order. Plans change: open an issue if something you need is missing
 or should come sooner.
 
-## Now
-
-- **Superscript and subscript** (`verticalAlign: 'super' | 'sub'`) and OpenType feature
-  control (`fontFeatureSettings`).
-
 ## Next: engine features
 
 - **Encryption**: user and owner passwords, and permissions.

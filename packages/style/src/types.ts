@@ -11,6 +11,8 @@ import type {
   TransformOp,
 } from '@inkoxide/schema';
 
+import type { FontFeatures } from './features.ts';
+
 /** RGBA floats in [0, 1], the engine's colour format. */
 export type Color = SchemaColor;
 /** A colour, or CSS `currentColor` (resolved against the inherited text colour by the tree builder). */
@@ -39,6 +41,9 @@ export type DecorationStyle = NonNullable<TextRun['decorationStyle']>;
 export type ObjectFit = NonNullable<ImageNode['fit']>;
 export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const satisfies readonly ObjectFit[];
 export type Direction = NonNullable<Style['direction']>;
+/** Where a run sits on its line: `verticalAlign` on a `Text` (on a `Cell`, it is `top`, `middle` or `bottom`). */
+export type RunAlign = NonNullable<TextRun['verticalAlign']>;
+export const RUN_ALIGNS = ['baseline', 'super', 'sub'] as const satisfies readonly RunAlign[];
 export type { ObjectPosition, TransformOp };
 
 /**
@@ -127,7 +132,8 @@ export interface FlatStyle {
   zIndex?: number;
   borderCollapse?: Style['borderCollapse'];
   borderSpacing?: number;
-  verticalAlign?: Style['verticalAlign'];
+  /** `top`, `middle` or `bottom` on a `Cell`; `baseline`, `super` or `sub` on a `Text` and the runs in it. */
+  verticalAlign?: Style['verticalAlign'] | RunAlign;
   /** How an `Image` fills its box: the image node's `fit`. */
   objectFit?: ObjectFit;
   /** Where a fitted `Image` sits in its box: the image node's `objectPosition`. */
@@ -155,6 +161,10 @@ export interface FlatStyle {
   direction?: Direction;
   orphans?: number;
   widows?: number;
+  /** OpenType features (`font-feature-settings`); they win over `fontVariantNumeric`'s. */
+  fontFeatureSettings?: FontFeatures;
+  /** The features `font-variant-numeric` turns on (`tabular-nums`: `tnum`). */
+  fontVariantNumeric?: FontFeatures;
 
   // Text, not inherited (the Text node that carries the class).
   maxLines?: number;
@@ -192,6 +202,8 @@ export const TEXT_INHERITED = [
   'direction',
   'orphans',
   'widows',
+  'fontFeatureSettings',
+  'fontVariantNumeric',
 ] as const satisfies readonly FlatStyleKey[];
 
 /** Keys that only mean something on a `Text` node. */

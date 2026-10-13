@@ -100,6 +100,7 @@ that are supported and tested; each example is a unit test.
 
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
+| `align-super`, `align-sub`, `align-baseline` | run `verticalAlign` (on `Text`) | `align-super` → `{"verticalAlign":"super"}` | Raises or lowers the baseline by the font's superscript or subscript offset; the size stays: add a smaller `text-*`. |
 | `text-{size}`, `text-[11pt]`, `text-{size}/{leading}` | run `size` (and `lineHeight` when the size utility sets one) | `text-xs` → `{"fontSize":9,"lineHeight":{"mult":1.333333}}` | `text-base` is 12pt. Named sizes also set Tailwind's line height; `leading-*` overrides it. |
 | `font-sans`, `font-serif`, `font-mono`, `font-display`, `font-[…]` | run `font` (through the FontRegistry) | `font-sans` → `{"fontFamily":["Inter","Noto Sans"]}` | The first family of the stack that is registered wins. No serif face is bundled, so the default theme sets `font-serif` to Noto Sans: register a serif and set `--font-serif` in your theme. |
 | `font-thin` … `font-black`, `font-[650]` | run `font` (weight) | `font-light` → `{"fontWeight":300}` | A missing weight falls back to the nearest registered one. |
@@ -108,6 +109,8 @@ that are supported and tested; each example is a unit test.
 | `text-left`, `text-center`, `text-right`, `text-justify`, `text-start`, `text-end` | `textAlign` | `text-left` → `{"textAlign":"left"}` |  |
 | `leading-*` | `lineHeight` | `leading-none` → `{"lineHeight":{"mult":1}}` | Unitless values are multipliers; lengths (`leading-6`) are divided by the text size. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5). |
 | `tracking-*` | run `letterSpacing` | `tracking-wide` → `{"letterSpacing":{"em":0.025}}` |  |
+| `font-features-[…]` | run `fontFeatures` | `font-features-['tnum','ss01']` → `{"fontFeatureSettings":{"tnum":1,"ss01":1}}` | CSS `font-feature-settings`, with `_` for spaces: `font-features-['tnum','ss01']`. |
+| `tabular-nums`, `proportional-nums`, `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions`, `stacked-fractions`, `normal-nums` | run `fontFeatures` | `tabular-nums` → `{"fontVariantNumeric":{"tnum":1}}` | The OpenType features of CSS `font-variant-numeric` (`tnum`, `pnum`, `lnum`, `onum`, `zero`, `ordn`, `frac`, `afrc`): the font must have them. `font-features-[…]` wins over them. |
 | `underline`, `line-through`, `no-underline` | run `decoration` | `underline` → `{"textDecoration":"underline"}` |  |
 | `decoration-{colour}`, `decoration-N`, `decoration-{solid,double,dotted,dashed,wavy}` | run `decorationColor`, `decorationThickness`, `decorationStyle` | `decoration-red-500` → `{"decorationColor":[0.982661,0.171797,0.21307,1]}` | `overline` and `underline-offset-*` are not supported. |
 | `indent-*`, `-indent-*` | `textIndent` | `indent-4` → `{"textIndent":12}` | A negative indent hangs the first line. |

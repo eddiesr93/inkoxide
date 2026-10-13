@@ -9,6 +9,16 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- Superscripts and subscripts: `verticalAlign: 'super'` or `'sub'` on a `Text` (the Tailwind
+  classes `align-super` and `align-sub`) raises or lowers its baseline by the font's own
+  superscript and subscript offsets, and the line grows to fit it. `verticalAlign` stays `top`,
+  `middle` or `bottom` on a `Cell`.
+- OpenType features: `fontFeatureSettings` as a CSS string (`"'tnum' 1, 'liga' off"`), a list
+  of tags or an object of tags to values or switches, and `fontVariantNumeric`
+  (`'tabular-nums slashed-zero'`); in Tailwind, `font-features-[…]`, `tabular-nums`,
+  `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions` and the other numeric
+  classes. Both are inherited. `@inkoxide/style` exports `parseFontFeatureSettings`,
+  `parseFontVariantNumeric` and `RUN_ALIGNS`.
 - `debug` on a `Text` outlines the paragraph line by line: each line box, its baseline, and the
   glyphs of every run on the line, so nested `Text` and `Link` elements show where their words
   landed.

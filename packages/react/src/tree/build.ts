@@ -56,6 +56,7 @@ import {
   hasInherited,
   inherit,
   resolveColor,
+  runAlignOf,
   type TextCtx,
   textNodeStyle,
   styleFontSize,
@@ -121,6 +122,21 @@ function blockOnly(props: Record<string, unknown>, key: (typeof BLOCK_ONLY)[numb
 }
 
 const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
+
+/** A run's OpenType features: `fontVariantNumeric`'s, then `fontFeatureSettings`, which win. */
+function fontFeatures(ctx: TextCtx): Record<string, number> | undefined {
+  const { fontVariantNumeric: numeric, fontFeatureSettings: settings } = ctx;
+  if (!numeric && !settings) return undefined;
+  const out = { ...numeric, ...settings };
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sameFeatures(a: TextRun['fontFeatures'], b: TextRun['fontFeatures']): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
 
 function sameColor(a: Color | undefined, b: Color | undefined): boolean {
   if (a === b) return true;
@@ -709,6 +725,7 @@ class Builder {
     const own = this.styleOf(inst, parent);
     const p = inst.props;
     const ctx = inherit(parent, own, {
+      verticalAlign: runAlignOf(own),
       lang: p.lang as string | undefined,
       hyphenate: p.hyphenate as boolean | undefined,
       hyphenation: p.hyphenationCallback as HyphenationCallback | null | undefined,
@@ -770,7 +787,11 @@ class Builder {
             );
           }
           const own = this.styleOf(n, ctx);
-          const bad = [...boxKeys(own), ...textOnlyKeys(own)];
+          // `verticalAlign` places the run: only a cell's values are box keys.
+          const align = runAlignOf(own);
+          const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter(
+            (k) => k !== 'verticalAlign' || align === undefined,
+          );
           if (bad[0] !== undefined) {
             const { fromClass, init } = this.source(n, own, bad[0]);
             this.fail(
@@ -784,12 +805,14 @@ class Builder {
           const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
           const inner =
             hasInherited(own) ||
+            align !== undefined ||
             href !== undefined ||
             n.props.lang !== undefined ||
             n.props.hyphenate !== undefined ||
             n.props.hyphenationCallback !== undefined
               ? inherit(ctx, own, {
                   link: href,
+                  verticalAlign: align,
                   lang: n.props.lang as string | undefined,
                   hyphenate: n.props.hyphenate as boolean | undefined,
                   hyphenation: n.props.hyphenationCallback as HyphenationCallback | null | undefined,
@@ -824,6 +847,8 @@ class Builder {
     const decoColor = decoration ? ctx.decorationColor : undefined;
     const decoThickness = decoration ? ctx.decorationThickness : undefined;
     const decoStyle = decoration && ctx.decorationStyle !== 'solid' ? ctx.decorationStyle : undefined;
+    const verticalAlign = ctx.verticalAlign === 'baseline' ? undefined : ctx.verticalAlign;
+    const features = fontFeatures(ctx);
     const last = out[out.length - 1];
     if (
       text !== undefined &&
@@ -838,7 +863,9 @@ class Builder {
       last.decorationThickness === decoThickness &&
       last.decorationStyle === decoStyle &&
       last.link === ctx.link &&
-      last.hyphenate === hyphenate
+      last.hyphenate === hyphenate &&
+      last.verticalAlign === verticalAlign &&
+      sameFeatures(last.fontFeatures, features)
     ) {
       last.text += text;
       return;
@@ -852,6 +879,8 @@ class Builder {
     if (decoStyle) run.decorationStyle = decoStyle;
     if (ctx.link !== undefined) run.link = ctx.link;
     if (hyphenate !== undefined) run.hyphenate = hyphenate;
+    if (verticalAlign !== undefined) run.verticalAlign = verticalAlign;
+    if (features !== undefined) run.fontFeatures = features;
     out.push(this.mark(run, owner));
   }
 
@@ -916,6 +945,14 @@ class Builder {
     commonProps(cell, inst);
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
+    if (runAlignOf(own) !== undefined) {
+      const { fromClass, init } = this.source(inst, own, 'verticalAlign');
+      this.fail(
+        inst,
+        `<Cell>: verticalAlign "${own.verticalAlign}" (from ${fromClass ? `className="${init.className}"` : 'its style'}) places text on its line; a Cell takes top, middle or bottom.`,
+        init,
+      );
+    }
     let style: Style | undefined = boxStyle(own, ctx.color, true);
     if (typeof p.verticalAlign === 'string')
       style = { ...style, verticalAlign: p.verticalAlign as Style['verticalAlign'] };

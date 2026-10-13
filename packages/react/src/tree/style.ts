@@ -9,7 +9,11 @@ import {
   parseObjectPosition,
   parseOrigin,
   parseTransform,
+  parseFontFeatureSettings,
+  parseFontVariantNumeric,
   round,
+  RUN_ALIGNS,
+  type RunAlign,
   splitTopLevel,
   TEXT_INHERITED,
   TEXT_ONLY,
@@ -46,6 +50,12 @@ export interface TextCtx extends Omit<{ [K in InheritedKey]?: FlatStyle[K] }, Ro
   hyphenation: HyphenationCallback | undefined;
   /** Link target inherited by runs (nested `Text href`). */
   link: string | undefined;
+  /**
+   * Where runs sit on their line (`verticalAlign` on a `Text`): it is not a `TEXT_INHERITED` key,
+   * since a `Cell`'s `verticalAlign` must not reach its text, but the runs of a nested `Text` take
+   * it from the `Text` around them.
+   */
+  verticalAlign?: RunAlign | undefined;
   /** Resolved font id, cached by the builder (reset when the font properties change). */
   fontId?: string | undefined;
 }
@@ -68,6 +78,7 @@ export interface InheritExtra {
   /** `null` turns off the callback inherited from the document. */
   hyphenation?: HyphenationCallback | null | undefined;
   link?: string | undefined;
+  verticalAlign?: RunAlign | undefined;
   direction?: FlatStyle['direction'];
   orphans?: number | undefined;
   widows?: number | undefined;
@@ -98,6 +109,7 @@ export function inherit(parent: TextCtx, own: FlatStyle, extra?: InheritExtra): 
       if (extra.hyphenation && c.hyphenate === false && ownSwitch === undefined) c.hyphenate = undefined;
     }
     if (extra.link !== undefined) c.link = extra.link;
+    if (extra.verticalAlign !== undefined) c.verticalAlign = extra.verticalAlign;
     if (extra.direction !== undefined) c.direction = extra.direction;
     if (extra.orphans !== undefined) c.orphans = extra.orphans;
     if (extra.widows !== undefined) c.widows = extra.widows;
@@ -114,6 +126,15 @@ export function callbackOf(ctx: TextCtx): HyphenationCallback | undefined {
 export function usesPatterns(ctx: TextCtx): boolean {
   return ctx.hyphenate === true && ctx.hyphenation === undefined;
 }
+
+/** `verticalAlign` when it places a run (`super`, `sub`, `baseline`), not a cell's content. */
+export function runAlignOf(s: FlatStyle): RunAlign | undefined {
+  const v = s.verticalAlign;
+  return (RUN_ALIGNS as readonly string[]).includes(v ?? '') ? (v as RunAlign) : undefined;
+}
+
+/** `verticalAlign`'s values: a cell's, then a run's. */
+const VERTICAL_ALIGNS: readonly string[] = ['top', 'middle', 'bottom', ...RUN_ALIGNS];
 
 /** A colour, with `currentColor` as `current`. */
 export const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
@@ -375,8 +396,9 @@ function computeBox(s: FlatStyle, currentColor: Color, cell: boolean): Style | u
     out.borderSpacing = s.borderSpacing;
     any = true;
   }
-  if (cell && s.verticalAlign !== undefined) {
-    out.verticalAlign = s.verticalAlign;
+  // A run's `verticalAlign` (`super`) is the tree builder's, and an error on a cell.
+  if (cell && s.verticalAlign !== undefined && runAlignOf(s) === undefined) {
+    out.verticalAlign = s.verticalAlign as Style['verticalAlign'];
     any = true;
   }
   return any ? out : undefined;
@@ -618,6 +640,9 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     textOverflow,
     objectFit,
     objectPosition,
+    fontFeatureSettings,
+    fontVariantNumeric,
+    verticalAlign,
     translate,
     transform,
     transformOrigin,
@@ -644,6 +669,18 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   if (textOverflow !== undefined) out.ellipsis ??= overflowEllipsis(textOverflow);
   if (objectFit !== undefined) out.objectFit = new Reader('objectFit').oneOf('objectFit', String(objectFit));
   if (objectPosition !== undefined) out.objectPosition = positionOf(objectPosition, units);
+  if (fontFeatureSettings !== undefined)
+    out.fontFeatureSettings = parseFontFeatureSettings('fontFeatureSettings', fontFeatureSettings);
+  if (fontVariantNumeric !== undefined)
+    out.fontVariantNumeric = parseFontVariantNumeric('fontVariantNumeric', fontVariantNumeric);
+  if (verticalAlign !== undefined) {
+    if (!VERTICAL_ALIGNS.includes(verticalAlign)) {
+      throw new Error(
+        `verticalAlign "${verticalAlign}" is not supported: use 'super', 'sub' or 'baseline' on a Text, and 'top', 'middle' or 'bottom' on a Cell`,
+      );
+    }
+    out.verticalAlign = verticalAlign;
+  }
   if (out.fontSize !== undefined) out.fontSize = lengthOf('points', 'fontSize', out.fontSize, fontUnits);
   for (const [k, kind] of LENGTH_KEYS) if (out[k] !== undefined) out[k] = lengthOf(kind, k, out[k], units);
   if (gap !== undefined) out.rowGap = out.columnGap = lengthOf('lenPercent', 'gap', gap, units);

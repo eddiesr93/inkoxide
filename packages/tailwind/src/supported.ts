@@ -497,6 +497,18 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'align-bottom': { verticalAlign: 'bottom' },
     },
   },
+  {
+    group: 'Text',
+    utilities: '`align-super`, `align-sub`, `align-baseline`',
+    maps: 'run `verticalAlign` (on `Text`)',
+    notes:
+      "Raises or lowers the baseline by the font's superscript or subscript offset; the size stays: add a smaller `text-*`.",
+    examples: {
+      'align-super': { verticalAlign: 'super' },
+      'align-sub': { verticalAlign: 'sub' },
+      'align-baseline': { verticalAlign: 'baseline' },
+    },
+  },
   // Text
   {
     group: 'Text',
@@ -587,6 +599,30 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'tracking-wide': { letterSpacing: { em: 0.025 } },
       'tracking-[0.5pt]': { letterSpacing: { pt: 0.5 } },
       'tracking-normal': { letterSpacing: { em: 0 } },
+    },
+  },
+  {
+    group: 'Text',
+    utilities: '`font-features-[…]`',
+    maps: 'run `fontFeatures`',
+    notes: "CSS `font-feature-settings`, with `_` for spaces: `font-features-['tnum','ss01']`.",
+    examples: {
+      "font-features-['tnum','ss01']": { fontFeatureSettings: { tnum: 1, ss01: 1 } },
+      "font-features-['liga'_0]": { fontFeatureSettings: { liga: 0 } },
+    },
+  },
+  {
+    group: 'Text',
+    utilities:
+      '`tabular-nums`, `proportional-nums`, `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions`, `stacked-fractions`, `normal-nums`',
+    maps: 'run `fontFeatures`',
+    notes:
+      'The OpenType features of CSS `font-variant-numeric` (`tnum`, `pnum`, `lnum`, `onum`, `zero`, `ordn`, `frac`, `afrc`): the font must have them. `font-features-[…]` wins over them.',
+    examples: {
+      'tabular-nums': { fontVariantNumeric: { tnum: 1 } },
+      'oldstyle-nums slashed-zero': { fontVariantNumeric: { onum: 1, zero: 1 } },
+      'diagonal-fractions': { fontVariantNumeric: { frac: 1 } },
+      'normal-nums': { fontVariantNumeric: {} },
     },
   },
   {

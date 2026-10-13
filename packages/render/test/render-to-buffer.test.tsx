@@ -239,6 +239,24 @@ describe('renderToBuffer', () => {
     expect(fonts(debug)).toBe(fonts(plain));
   });
 
+  it('renders superscripts, subscripts and font features', async () => {
+    const doc = (features: boolean) => (
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <Text style={features ? { fontFeatureSettings: ['tnum', 'zero'] } : {}}>
+            x<Text style={{ verticalAlign: 'super', fontSize: 7 }}>2</Text> H
+            <Text style={{ verticalAlign: 'sub', fontSize: 7 }}>2</Text>O 1,110.10
+          </Text>
+        </Page>
+      </Document>
+    );
+    const plain = await renderToBuffer(doc(false));
+    const tnum = await renderToBuffer(doc(true));
+    expect(countPages(plain)).toBe(1);
+    // Other glyphs: tabular digits and a slashed zero.
+    expect(Buffer.compare(tnum, plain)).not.toBe(0);
+  });
+
   it('names the component when the structure is wrong', async () => {
     const Broken = () => (
       <Document>
