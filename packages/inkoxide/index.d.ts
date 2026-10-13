@@ -78,6 +78,43 @@ export interface RenderOptions {
   pdfA?: boolean | PdfALevel;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
+  /**
+   * Encrypt the PDF with AES-256 (PDF 2.0). Not with `pdfA`. Default: not
+   * encrypted. A bad value is `INVALID_ARGUMENT` at its path, without the
+   * password in the message.
+   */
+  encryption?: EncryptionOptions;
+}
+
+/** Mirrors Rust `Encryption`. */
+export interface EncryptionOptions {
+  /**
+   * The password that opens the file. Printable ASCII, at most 127 bytes.
+   * Default: none (anyone opens it).
+   */
+  userPassword?: string;
+  /**
+   * The password that lifts the permissions. Default: the user password,
+   * so whoever opens the file may do anything. At least one of the two is
+   * required.
+   */
+  ownerPassword?: string;
+  /** What a reader without the owner password may do. Needs `ownerPassword`. */
+  permissions?: Permissions;
+}
+
+/**
+ * Mirrors Rust `Permissions`. Every permission is off unless set, except
+ * `contentAccessibility`, which is on. Readers enforce them.
+ */
+export interface Permissions {
+  printing?: 'lowResolution' | 'highResolution';
+  modifying?: boolean;
+  copying?: boolean;
+  annotating?: boolean;
+  fillingForms?: boolean;
+  contentAccessibility?: boolean;
+  documentAssembly?: boolean;
 }
 
 export interface ValidationError {

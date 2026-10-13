@@ -73,6 +73,50 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   );
 });
 
+test('encryption encrypts with passwords and permissions, and never echoes them', async () => {
+  const doc = fixture('docs/invoice.json');
+  const secret = 's3cret-marker';
+  const encryption = {
+    userPassword: secret,
+    ownerPassword: 'owner',
+    permissions: { printing: 'highResolution', copying: true },
+  };
+  const pdf = Buffer.from(ink.renderSync(doc, { encryption })).toString('latin1');
+  assert.match(pdf, /\/Filter \/Standard/);
+  assert.match(pdf, /\/V 5/);
+  assert.match(pdf, /\/R 6/);
+  assert.match(pdf, /\/CFM \/AESV3/);
+  assert.match(pdf, /\/P -1324\b/);
+  assert.match(pdf, /\/Encrypt \d+ 0 R/);
+  assert.ok(!pdf.includes(secret));
+  // Deterministic.
+  assert.strictEqual(Buffer.from(await ink.render(doc, { encryption })).toString('latin1'), pdf);
+  const rejected = (path) => (e) => {
+    assert.ok(e instanceof ink.InkoxideError, `${e}`);
+    assert.strictEqual(e.code, 'INVALID_ARGUMENT');
+    assert.strictEqual(e.path, path);
+    assert.ok(!e.message.includes(secret) && !JSON.stringify(e).includes(secret), e.message);
+    return true;
+  };
+  for (const [options, path] of [
+    [{ encryption: {} }, 'options.encryption'],
+    [{ encryption: { userPassword: `${secret}é` } }, 'options.encryption.userPassword'],
+    [
+      { encryption: { userPassword: secret, ownerPassword: 'x'.repeat(128) } },
+      'options.encryption.ownerPassword',
+    ],
+    [{ encryption: { userPassword: secret, permissions: {} } }, 'options.encryption.permissions'],
+    [
+      { encryption: { userPassword: secret, ownerPassword: 'o', permissions: { printing: 'yes' } } },
+      'options.encryption.permissions.printing',
+    ],
+    [{ encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
+  ]) {
+    assert.throws(() => ink.renderSync(doc, options), rejected(path));
+    await assert.rejects(ink.render(doc, options), rejected(path));
+  }
+});
+
 test('images are passed per render', async () => {
   const pdf = await ink.render(fixture('docs/images-jpeg-png.json'), { images });
   assert.ok(pdf.length > 10000);
