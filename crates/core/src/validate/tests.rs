@@ -983,6 +983,29 @@ fn form_fields() {
     for (node, code, field) in cases {
         assert_eq!(one(&doc(node)), (code, format!("{f}.{field}")), "{node}");
     }
+    // Options and values are bounded.
+    let select = |options: &[String]| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"s","kind":"select","font":"Inter-Regular","options":{}}}}}"#,
+            serde_json::to_string(options).unwrap()
+        ))
+    };
+    assert_eq!(
+        one(&select(&vec!["o".into(); 1001])),
+        (C::InvalidValue, format!("{f}.options"))
+    );
+    assert_eq!(
+        one(&select(&["o".into(), "x".repeat(1001)])),
+        (C::InvalidValue, format!("{f}.options[1]"))
+    );
+    let text = |n: usize| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","value":"{}"}}}}"#,
+            "é".repeat(n)
+        ))
+    };
+    assert_eq!(run(&text(8000)), vec![]);
+    assert_eq!(one(&text(8001)), (C::InvalidValue, format!("{f}.value")));
     let dup = doc(
         r#"{"type":"field","field":{"name":"a","kind":"checkbox"}},{"type":"field","field":{"name":"a","kind":"checkbox"}}"#,
     );

@@ -128,6 +128,13 @@ const MAX_ID: usize = 256;
 pub(crate) const MAX_WEIGHT: u16 = 1000;
 /// Longest form field `name`, in characters.
 pub(crate) const MAX_FIELD_NAME: usize = 128;
+/// Most `options` of a form field.
+pub(crate) const MAX_FIELD_OPTIONS: usize = 1000;
+/// Longest option of a form field, in characters.
+pub(crate) const MAX_FIELD_OPTION: usize = 1000;
+/// Longest form field `value`, in characters (PDF/A-2 holds strings to
+/// 32767 bytes; a character is at most 4 of them in UTF-16).
+pub(crate) const MAX_FIELD_VALUE: usize = 8000;
 /// Largest font size of a text run or a form field, in points.
 pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
 /// Longest bookmark title, in characters.
@@ -662,6 +669,36 @@ impl<'a> Checker<'a> {
             "value",
             "text, select and radio",
         );
+        if f.options.len() > MAX_FIELD_OPTIONS {
+            self.err(
+                Code::InvalidValue,
+                Some("options"),
+                format!("a field has at most {MAX_FIELD_OPTIONS} options"),
+            );
+        }
+        for (i, o) in f.options.iter().enumerate() {
+            if o.chars().count() > MAX_FIELD_OPTION {
+                self.at("options", |c| {
+                    c.at_index(i, |c| {
+                        c.err(
+                            Code::InvalidValue,
+                            None,
+                            format!("an option is at most {MAX_FIELD_OPTION} characters"),
+                        );
+                    });
+                });
+            }
+        }
+        if f.value
+            .as_ref()
+            .is_some_and(|v| v.chars().count() > MAX_FIELD_VALUE)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("value"),
+                format!("a field value is at most {MAX_FIELD_VALUE} characters"),
+            );
+        }
         if f.max_length == Some(0) {
             self.err(Code::OutOfRange, Some("maxLength"), "must be at least 1");
         }

@@ -794,7 +794,7 @@ export interface Field {
   name: string;
   kind: 'text' | 'checkbox' | 'radio' | 'select';
   /**
-   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`).
+   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). At most 8000 characters.
    */
   value?: string;
   /**
@@ -802,9 +802,10 @@ export interface Field {
    */
   checked?: boolean;
   /**
-   * select only: the choices
+   * select only: the choices, at most 1000 of at most 1000 characters each
    *
    * @minItems 1
+   * @maxItems 1000
    */
   options?: [string, ...string[]];
   /**

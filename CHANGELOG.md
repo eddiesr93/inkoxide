@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Security
+
+- Field options and values are limited to 1000 options of at most 1000 characters each, and a
+  `value` of at most 8000 characters. Longer ones are `INVALID_VALUE`.
+
 ## 0.6.5 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that

@@ -7,6 +7,11 @@ version 2.
 
 ## Unreleased
 
+### Changed
+
+- `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
+  at most 8000 characters; longer ones are `INVALID_VALUE`.
+
 ## 2.3.0 - 2026-10-13
 
 Still document schema version 1.

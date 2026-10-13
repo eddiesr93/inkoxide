@@ -1573,7 +1573,8 @@
         },
         "value": {
           "type": "string",
-          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`)."
+          "maxLength": 8000,
+          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). At most 8000 characters."
         },
         "checked": {
           "type": "boolean",
@@ -1583,10 +1584,12 @@
         "options": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 1000
           },
           "minItems": 1,
-          "description": "select only: the choices"
+          "maxItems": 1000,
+          "description": "select only: the choices, at most 1000 of at most 1000 characters each"
         },
         "multiline": {
           "type": "boolean",

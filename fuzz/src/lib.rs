@@ -877,7 +877,16 @@ fn field(s: &mut Src) -> Value {
         json!(format!("f{}", s.below(1000)))
     };
     m.insert("name".into(), name);
-    let options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
+    let mut options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
+    // The limits on options, and just past them.
+    if s.chance(4) {
+        let past = usize::from(s.chaos);
+        if s.chance(128) {
+            options = vec![json!("o"); 1000 + past];
+        } else {
+            options.push(json!("o".repeat(1000 + past)));
+        }
+    }
     if kind == "select" || (s.chaos && s.chance(20)) {
         m.insert("options".into(), Value::Array(options.clone()));
     }
@@ -885,6 +894,7 @@ fn field(s: &mut Src) -> Value {
         let value = match kind {
             "select" if !s.chaos => options[s.below(options.len())].clone(),
             "radio" => json!(s.pick(&["yes", "no", "maybe"])),
+            _ if s.chance(4) => json!("v".repeat(8000 + usize::from(s.chaos))),
             _ => json!(text(s)),
         };
         m.insert("value".into(), value);

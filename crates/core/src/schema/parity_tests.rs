@@ -340,8 +340,8 @@ type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
 fn named_bounds_match_schema() {
     use crate::validate::rules::{
         MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FIELD_NAME,
-        MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT,
-        MAX_WEIGHT,
+        MAX_FIELD_OPTION, MAX_FIELD_OPTIONS, MAX_FIELD_VALUE, MAX_FONT_SIZE, MAX_LETTER_SPACING,
+        MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -363,6 +363,15 @@ fn named_bounds_match_schema() {
         )
     };
     let chars = |n: f64| "x".repeat(n as usize);
+    let select = |options: &[String]| {
+        doc(
+            font,
+            &format!(
+                r#"{{"type":"field","field":{{"name":"n","kind":"select","font":"f","options":{}}}}}"#,
+                serde_json::to_string(options).unwrap()
+            ),
+        )
+    };
     let run = "pages[0].children[0].runs[0]";
     let style = "pages[0].children[0].style";
     // (schema pointer, the engine's bound, the document with a value, the
@@ -391,6 +400,38 @@ fn named_bounds_match_schema() {
             MAX_FIELD_NAME as f64 + 1.0,
             "INVALID_VALUE",
             "pages[0].children[0].field.name".into(),
+        ),
+        (
+            "/$defs/Field/properties/options/maxItems",
+            MAX_FIELD_OPTIONS as f64,
+            Box::new(|n| select(&vec!["o".to_string(); n as usize])),
+            MAX_FIELD_OPTIONS as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.options".into(),
+        ),
+        (
+            "/$defs/Field/properties/options/items/maxLength",
+            MAX_FIELD_OPTION as f64,
+            Box::new(|n| select(&[chars(n)])),
+            MAX_FIELD_OPTION as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.options[0]".into(),
+        ),
+        (
+            "/$defs/Field/properties/value/maxLength",
+            MAX_FIELD_VALUE as f64,
+            Box::new(|n| {
+                doc(
+                    font,
+                    &format!(
+                        r#"{{"type":"field","field":{{"name":"n","kind":"text","font":"f","value":"{}"}}}}"#,
+                        chars(n)
+                    ),
+                )
+            }),
+            MAX_FIELD_VALUE as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.value".into(),
         ),
         (
             "/$defs/TextRun/properties/size/maximum",

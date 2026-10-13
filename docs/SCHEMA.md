@@ -499,9 +499,9 @@ Fields with the same `name` are one field with several widgets (for example a fi
 |---|---|---|---|
 | `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
-| `value` | `string` |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). |
+| `value` | `string` |  | max length 8000; text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). At most 8000 characters. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
-| `options` | array of `string` |  | min items 1; select only: the choices |
+| `options` | array of `string` (each max length 1000) |  | min items 1, max items 1000; select only: the choices, at most 1000 of at most 1000 characters each |
 | `multiline` | `boolean` |  | default `false`; text only |
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
