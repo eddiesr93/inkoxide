@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/render",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "description": "React components to PDF with the native Inkoxide engine: renderToBuffer, renderToFile, Font.register.",

@@ -7,6 +7,12 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.6.1 - 2026-10-13
+
+`inkoxide` and `@inkoxide/render` 0.6.1; the other packages are unchanged. Upgrading: a
+document whose headers, footers and fixed elements would add more than about 256 MB repeated on
+every page now fails with `LAYOUT_ERROR` (see **Security**).
+
 ### Security
 
 - What is painted on every page (headers, footers, overlays, fixed elements and repeated table
