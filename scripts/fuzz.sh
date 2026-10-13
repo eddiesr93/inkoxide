@@ -34,6 +34,10 @@ if [[ ${#targets[@]} -eq 0 ]]; then
   targets=("${all[@]}")
 fi
 limits=(-timeout=10 -rss_limit_mb=2048)
+# The document targets get more time: a document within the engine's
+# limits (100 000 pages, the content repeated on every page) renders in
+# about 2 s, and each input renders twice, under coverage instrumentation.
+documents=(-timeout=30 -report_slow_units=30)
 fuzz=(cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz)
 build=(-O --sanitizer none)
 
@@ -42,10 +46,10 @@ flags() {
   mkdir -p "corpus/$1"
   case $1 in
     render_tree)
-      echo -fork=3 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 -max_len=8192 ;;
+      echo -fork=3 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 -max_len=8192 "${documents[@]}" ;;
     render_json)
       cp ../fixtures/docs/*.json corpus/render_json/
-      echo -dict=render_json.dict ;;
+      echo -dict=render_json.dict "${documents[@]}" ;;
     render_svg)
       cp ../fixtures/images/* corpus/render_svg/
       echo -dict=render_svg.dict ;;
@@ -72,8 +76,9 @@ before=$(find artifacts -type f | wc -l)
 pids=()
 for t in "${targets[@]}"; do
   read -ra args <<<"$(flags "$t")"
-  "${fuzz[@]}" run "${build[@]}" "$t" -- "${args[@]}" -max_total_time="$secs" \
-    "${limits[@]}" >"logs/$t.log" 2>&1 &
+  # A target's own flags come last: libFuzzer takes a flag's last value.
+  "${fuzz[@]}" run "${build[@]}" "$t" -- "${limits[@]}" -max_total_time="$secs" \
+    "${args[@]}" >"logs/$t.log" 2>&1 &
   pids+=($!)
 done
 status=0

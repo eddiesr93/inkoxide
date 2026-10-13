@@ -27,7 +27,7 @@ pub(crate) const MAX_PAGES: u32 = 100_000;
 /// document, estimated before anything is painted: a memory guard like
 /// [`MAX_PAGES`], since a few kilobytes repeated on every page of a long
 /// document would otherwise make gigabytes.
-pub(crate) const MAX_REPEATED: u64 = 256 << 20;
+pub(crate) const MAX_REPEATED: u64 = 64 << 20;
 
 /// Estimated output, in bytes per page, of what a repeated node paints: a
 /// node or a character of text,

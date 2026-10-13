@@ -60,7 +60,7 @@ fn runaway_repeated_content_is_an_error() {
     let t = std::time::Instant::now();
     let err = render(&doc(&format!("{},{tall}", fixed(""))), Some(1)).unwrap_err();
     assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
-    assert!(err.to_string().contains("the limit is 256 MB"), "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
     assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
     // Shown on the first page only, it is painted once.
     let once = doc(&format!("{},{tall}", fixed(r#""pages":"first","#)));

@@ -111,7 +111,10 @@ All share one oracle: no panic; `render` succeeds only when `validate`
 is clean and vice versa for validation errors; the output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
-from MessagePack (`render_json` and `render_tree`).
+from MessagePack (`render_json` and `render_tree`). An input that runs
+longer than 10 seconds is a finding (30 for `render_json` and `render_tree`:
+a document at the engine's limits renders in about 2 seconds, and they
+render it twice).
 
 Findings land in `fuzz/artifacts/`. To inspect one:
 
