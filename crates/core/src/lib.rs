@@ -244,10 +244,17 @@ pub fn render(
 
 /// The error a render returns for a panic with `payload`.
 fn panic_error(payload: &(dyn Any + Send)) -> InkoxideError {
-    if let Some(p) = payload.downcast_ref::<text::ShapingPanic>() {
+    if let Some(f) = payload.downcast_ref::<text::ShapingFailure>() {
+        let what = match f.cause {
+            text::ShapingCause::Panicked => "the shaper panicked".to_string(),
+            text::ShapingCause::TooManyGlyphs => format!(
+                "the text shaped to more than {} glyphs beyond one per byte",
+                text::MAX_EXTRA_GLYPHS
+            ),
+        };
         return InkoxideError::Font(format!(
-            "font `{}`: the shaper panicked; the font's layout tables may be malformed",
-            p.font
+            "font `{}`: {what}; the font's layout tables may be malformed",
+            f.font
         ));
     }
     let message = payload

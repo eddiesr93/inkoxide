@@ -12,7 +12,7 @@ pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
 mod paint;
 mod prepare;
-pub(crate) use prepare::ShapingPanic;
+pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -283,7 +283,8 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
     /// with hypher's built-in patterns, unless given a
     /// [hyphenator](Self::with_hyphenator).
     pub fn new(fonts: &'f FontSet<'a>) -> Result<Self, InkoxideError> {
-        Ok(Self::with_faces(fonts, prepare::Faces::load(fonts)?))
+        let faces = prepare::Faces::load(fonts)?;
+        Ok(Self::with_shapes(fonts, prepare::ShapeCache::new(faces)))
     }
 
     /// This shaper, hyphenating with `hyphenator`.
@@ -294,10 +295,10 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
     /// A shaper with the same settings and shaping faces, and glyph
     /// mappings of its own, for another thread.
     fn worker(&self) -> Self {
-        Self::with_faces(self.fonts, self.shapes.faces().clone()).with_hyphenator(self.hyphenator)
+        Self::with_shapes(self.fonts, self.shapes.sibling()).with_hyphenator(self.hyphenator)
     }
 
-    fn with_faces(fonts: &'f FontSet<'a>, faces: prepare::Faces<'a>) -> Self {
+    fn with_shapes(fonts: &'f FontSet<'a>, shapes: prepare::ShapeCache<'a>) -> Self {
         let mut unicode = UnicodeMap::default();
         // Glyphs the painter adds without shaping: hyphens, ellipses and
         // placeholder digits.
@@ -320,7 +321,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
             fonts,
             unicode,
             hyphenator: &hyphen::HypherHyphenator,
-            shapes: prepare::ShapeCache::new(faces),
+            shapes,
         }
     }
 }
@@ -645,6 +646,12 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         };
         let e = self.entries.get(&node_key(node))?;
         Some(e.paragraph(self.shaper.fonts(), runs, width))
+    }
+
+    /// How many glyphs text node `node` shaped to, once it is shaped.
+    pub fn glyph_count(&self, node: &Node) -> Option<usize> {
+        let e = self.entries.get(&node_key(node))?;
+        Some(e.prepared.glyphs.len())
     }
 
     #[cfg(test)]

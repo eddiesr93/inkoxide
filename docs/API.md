@@ -128,7 +128,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
-| `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font (the message names it) |
+| `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed |

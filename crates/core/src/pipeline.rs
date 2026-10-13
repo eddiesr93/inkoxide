@@ -30,7 +30,7 @@ pub(crate) const MAX_PAGES: u32 = 100_000;
 pub(crate) const MAX_REPEATED: u64 = 64 << 20;
 
 /// Estimated output, in bytes per page, of what a repeated node paints: a
-/// node or a character of text,
+/// node, or a character or glyph of text,
 const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
 /// character),
@@ -239,7 +239,7 @@ pub(crate) fn run<'d, T: Send>(
     // The painter draws each page's digits in placeholders, and headers
     // and footers that show them are laid out per page.
     let total = page_count(&laid)?;
-    repeated_size(&laid)?;
+    repeated_size(&laid, text)?;
     let mut marks = Marks::default();
     let mut first = 0;
     for l in &laid {
@@ -300,23 +300,23 @@ fn page_count(laid: &[Laid<'_>]) -> Result<u32, InkoxideError> {
 
 /// Checks that the content painted on every page stays within
 /// [`MAX_REPEATED`].
-fn repeated_size(laid: &[Laid<'_>]) -> Result<(), InkoxideError> {
+fn repeated_size(laid: &[Laid<'_>], text: &Cache<'_, '_, '_>) -> Result<(), InkoxideError> {
     let mut total: u64 = 0;
     for l in laid {
         let (all, pages) = (l.spec.debug, u64::from(l.placement.pages));
         let bands = l.header.iter().chain(&l.footer);
         let bands = bands.chain(l.overlays.iter().map(|(_, b)| b));
         for b in bands {
-            total = total.saturating_add(repeated(&b.tree, 0, pages, all));
+            total = total.saturating_add(repeated(&b.tree, 0, pages, all, text));
         }
         for &i in &l.placement.fixed {
-            total = total.saturating_add(repeated(&l.flow, i, pages, all));
+            total = total.saturating_add(repeated(&l.flow, i, pages, all, text));
         }
         // Header rows, again on every page after a table's first.
         for (&t, table) in &l.flow.tables {
             let (first, last) = l.placement.page_range[t as usize];
             for r in l.flow.children(t).take(table.header_rows) {
-                let size = repeated(&l.flow, r, u64::from(last - first), all);
+                let size = repeated(&l.flow, r, u64::from(last - first), all, text);
                 total = total.saturating_add(size);
             }
         }
@@ -335,7 +335,7 @@ fn repeated_size(laid: &[Laid<'_>]) -> Result<(), InkoxideError> {
 /// Estimated output, in bytes, of node `i` of `tree` and its descendants
 /// painted on `pages` pages (fewer for nodes shown on some pages only);
 /// `all`: every box has a `debug` outline.
-fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool) -> u64 {
+fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_, '_, '_>) -> u64 {
     let mut total: u64 = 0;
     let mut stack = vec![(i, pages)];
     while let Some((j, pages)) = stack.pop() {
@@ -358,12 +358,18 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool) -> u64 {
             }
             match &n.kind {
                 NodeKind::Text { runs } => {
+                    let mut bytes: u64 = 0;
                     for r in runs {
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
                         let each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
                         size = size.saturating_add(chars * each);
+                        bytes += chars;
                     }
+                    // Glyphs beyond one per byte: a font's layout tables
+                    // can multiply them.
+                    let glyphs = text.glyph_count(n).unwrap_or(0) as u64;
+                    size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
                 }
                 NodeKind::Field(f) => {
                     let options: usize = f.options.iter().map(String::len).sum();

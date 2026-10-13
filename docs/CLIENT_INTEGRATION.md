@@ -150,7 +150,9 @@ try {
   435-page table (see [BENCHMARKS.md](BENCHMARKS.md)). The engine
   refuses documents that would exceed its page limit, or whose
   headers, footers and fixed elements would add more than about 64 MB
-  repeated on every page, with `LAYOUT_ERROR`.
+  repeated on every page, with `LAYOUT_ERROR`. It also refuses, with
+  `FONT_ERROR`, a font whose layout tables shape the text to millions of
+  glyphs more than it has bytes.
 
 ## Determinism
 

@@ -20,7 +20,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
   output must pass veraPDF's `2b` profile.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
-  repeated on every page, deepest accepted nesting on a small stack).
+  repeated on every page, glyphs from shaping, deepest accepted nesting
+  on a small stack).
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
   finite (one `inf` or `NaN` operand makes a page invalid) and one
   readers parse (an integer within 32 bits or a real within ±10¹¹), with
@@ -55,6 +56,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   check that each decodes to the same metrics and outlines as the `.ttf`.
 - `fixtures/fonts/malformed/`: fuzz findings, minimised, that registration
   must reject. Each is a broken copy of a font above, under its licence.
+- `fixtures/fonts/limits/glyph-doubling.ttf`: a font made with fontTools
+  for the shaping limit in `limits.rs`. Its GSUB substitutes `A` with
+  `AA` in 14 lookups, so `A` shapes to 16 384 glyphs.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use unicode_linebreak::{linebreaks, BreakOpportunity};
@@ -214,13 +215,29 @@ struct UnitGlyph {
     cluster: u32,
 }
 
-/// What a panic while shaping unwinds with, in place of its own payload:
-/// the id of the font being shaped. `render` turns it into a font error.
-///
-/// The shaper panics on some malformed fonts. Registration rejects the
-/// ones known (see `fonts/layout.rs`); this names the font for the others.
-pub(crate) struct ShapingPanic {
+/// Most glyphs shaping may add, in one render, beyond one per byte of the
+/// text shaped: a memory guard like `MAX_PAGES`. Text shapes to about one
+/// glyph per byte or fewer (ligatures merge glyphs, and a mark is bytes of
+/// its own); a font whose layout tables multiply glyphs would otherwise
+/// turn a few kilobytes of text into gigabytes. About 100 MB of glyphs.
+pub(crate) const MAX_EXTRA_GLYPHS: u64 = 1 << 22;
+
+/// Why shaping stopped a render, and the id of the font being shaped.
+/// Shaping has no error path (the layout engine measures text through a
+/// callback), so this unwinds out of it, in place of a panic's own
+/// payload; `render` turns it into a font error.
+pub(crate) struct ShapingFailure {
     pub font: String,
+    pub cause: ShapingCause,
+}
+
+pub(crate) enum ShapingCause {
+    /// The shaper panicked, as it does on some malformed fonts.
+    /// Registration rejects the ones known (see `fonts/layout.rs`).
+    Panicked,
+    /// The render's text shaped to more than [`MAX_EXTRA_GLYPHS`] extra
+    /// glyphs.
+    TooManyGlyphs,
 }
 
 /// Font, direction and text of a shaped word.
@@ -252,12 +269,15 @@ impl<'a> Faces<'a> {
     }
 }
 
-/// Per-render shaping cache: shape plans per (font, direction, script) and
+/// Per-thread shaping cache: shape plans per (font, direction, script) and
 /// shaped words per (font, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
 /// reusing results removes most shaping work.
 pub(super) struct ShapeCache<'a> {
     faces: Faces<'a>,
+    /// Glyphs the render's text has shaped to beyond one per byte, shared
+    /// by the caches of its threads: against [`MAX_EXTRA_GLYPHS`].
+    extra: Arc<AtomicU64>,
     plans:
         HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
     /// Keyed by font, direction (`Some(true)`: right to left; `None`:
@@ -269,13 +289,26 @@ impl<'a> ShapeCache<'a> {
     pub fn new(faces: Faces<'a>) -> Self {
         Self {
             faces,
+            extra: Arc::default(),
             plans: HashMap::new(),
             words: HashMap::new(),
         }
     }
 
-    pub fn faces(&self) -> &Faces<'a> {
-        &self.faces
+    /// An empty cache for another thread of the same render: the same
+    /// faces, and the same count of extra glyphs.
+    pub fn sibling(&self) -> Self {
+        Self {
+            extra: self.extra.clone(),
+            ..Self::new(self.faces.clone())
+        }
+    }
+
+    /// Counts `glyphs` shaped from `bytes` of text; false once the render's
+    /// text has shaped to more than [`MAX_EXTRA_GLYPHS`] extra glyphs.
+    fn spend(&self, glyphs: usize, bytes: usize) -> bool {
+        let extra = glyphs.saturating_sub(bytes) as u64;
+        extra == 0 || self.extra.fetch_add(extra, Ordering::Relaxed) + extra <= MAX_EXTRA_GLYPHS
     }
 
     /// Shapes `word` in `font`, recording glyph → text mappings the first
@@ -399,14 +432,20 @@ pub(crate) fn prepare(
         let first = glyphs.len() as u32;
         let dir = levels.is_some().then_some(seg.level % 2 == 1);
         for (off, word) in words(seg_text) {
+            let fail = |cause| {
+                resume_unwind(Box::new(ShapingFailure {
+                    font: fonts.get(seg.font).id.to_string(),
+                    cause,
+                }))
+            };
             let shaped = catch_unwind(AssertUnwindSafe(|| {
                 cache.word(seg.font, word, dir, unicode)
             }))
-            .unwrap_or_else(|_| {
-                resume_unwind(Box::new(ShapingPanic {
-                    font: fonts.get(seg.font).id.to_string(),
-                }))
-            });
+            .unwrap_or_else(|_| fail(ShapingCause::Panicked));
+            // Every occurrence counts: each copies its glyphs.
+            if !cache.spend(shaped.len(), word.len()) {
+                fail(ShapingCause::TooManyGlyphs);
+            }
             for (k, g) in shaped.iter().enumerate() {
                 let c = word[g.cluster as usize..].chars().next().unwrap_or(' ');
                 let mut flags = 0;

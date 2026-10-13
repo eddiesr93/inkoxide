@@ -7,6 +7,14 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Security
+
+- Text is held to a limit on the glyphs shaping makes beyond one per byte of text: about
+  4 million over a render. Over it, the render fails with `FONT_ERROR` naming the font. Text
+  shapes to about one glyph per byte or fewer, but a font whose layout tables substitute one
+  glyph with thousands made a few kilobytes of text take gigabytes of memory. Those glyphs
+  also count toward the limit on what is painted on every page, which counted characters only.
+
 ## 0.6.4 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.4; the other packages are unchanged. Upgrading: a form

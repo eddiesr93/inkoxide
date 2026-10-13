@@ -11,6 +11,13 @@ fn fonts() -> FontStore {
     ))
     .unwrap();
     f.register("Inter-Regular", bytes).unwrap();
+    // Its GSUB substitutes `A` with `AA`, 14 times over: 16 384 glyphs.
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/limits/glyph-doubling.ttf"
+    ))
+    .unwrap();
+    f.register("Doubling", bytes).unwrap();
     f
 }
 
@@ -78,6 +85,54 @@ fn a_field_taller_than_a_page_is_one_widget() {
     let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
     assert_eq!(count(b"/Type /Page\n"), 119);
     assert_eq!(count(b"/Widget"), 1);
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+}
+
+fn doubling(text: &str) -> String {
+    format!(r#"{{"type":"text","runs":[{{"text":"{text}","font":"Doubling","size":10}}]}}"#)
+}
+
+/// Text that shapes to far more glyphs than it has bytes, through a font's
+/// layout tables, stops the render before it takes gigabytes: 400 `A`s
+/// shape to 6.5 million glyphs.
+#[test]
+fn runaway_glyphs_from_shaping_are_an_error() {
+    let doc = |paras: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Doubling","family":"Doubling"}}],
+               "pages":[{{"size":{{"width":595,"height":842}},"children":[{paras}]}}]}}"#
+        )
+    };
+    // Enough paragraphs to be shaped in parallel on 4 threads.
+    let many = doc(&vec![doubling("A A"); 200].join(","));
+    for threads in [Some(1), Some(4)] {
+        let t = std::time::Instant::now();
+        let err = render(&many, threads).unwrap_err();
+        assert_eq!(err.code(), "FONT_ERROR", "{err}");
+        assert!(
+            err.to_string()
+                .contains("font `Doubling`: the text shaped to more than 4194304 glyphs"),
+            "{err}"
+        );
+        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    }
+    render(&doc(&doubling(&["A"; 16].join(" "))), Some(1)).unwrap();
+}
+
+/// Glyphs count as what is painted on every page too: one `A` shapes to
+/// 16 384 glyphs, on each of about 2400 pages.
+#[test]
+fn runaway_glyphs_repeated_on_every_page_are_an_error() {
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let d = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Doubling","family":"Doubling"}}],
+           "pages":[{{"size":{{"width":595,"height":842}},"header":{},"children":[{tall}]}}]}}"#,
+        doubling("A")
+    );
+    let t = std::time::Instant::now();
+    let err = render(&d, Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
     assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
 }
 
