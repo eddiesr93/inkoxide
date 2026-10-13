@@ -1028,7 +1028,16 @@ class Builder {
     if (inst.type === HOST.Canvas) {
       const paint = p.paint as ((painter: Painter, w: number, h: number) => void) | undefined;
       if (typeof paint !== 'function') this.fail(inst, '<Canvas> needs a paint function.', { kind: 'props' });
-      const painter = new Painter();
+      const text = this.svgText(ctx);
+      const painter = new Painter({
+        font: text.font,
+        byId: (id) => {
+          if (!this.opts.fonts.has(id)) return undefined;
+          const d = this.opts.fonts.decl(id);
+          return { family: [d.family], weight: d.weight ?? 400, style: d.style ?? 'normal' };
+        },
+        face: (font) => text.face(font, inst),
+      });
       try {
         paint(painter, w, h);
       } catch (e) {

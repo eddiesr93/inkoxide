@@ -8,6 +8,7 @@ export {
   Canvas,
   type CanvasGradient,
   type CanvasProps,
+  type CanvasTextOptions,
   Cell,
   type CellProps,
   Checkbox,

@@ -19,6 +19,12 @@ All notable changes to the packages in this repository. The format follows
   `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
   takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
   `miterLimit(n)` sets how far mitred joins reach.
+- **Text in the `<Canvas>` painter**: `font(name, size?)` (a registered font id, a family name,
+  or one of pdfkit's standard names such as `Helvetica-Bold`, which picks the canvas's family in
+  that weight and style), `fontSize(n)` (12 by default) and `text(str, x, y, options?)`, which
+  draws one line with the fill colour or gradient, its top at `y` by default. The options are
+  `width` with `align`, `baseline`, `characterSpacing`, `wordSpacing`, `underline`, `strike`,
+  `fill` and `stroke`; `CanvasTextOptions` is exported. A line break in the text is an error.
 - **Text in SVG images**: `<text>`, its `<tspan>`s and `<a>`s are drawn as PDF text with the
   document's fonts, so it can be selected, searched and copied, in SVG files and in SVGs nested
   in them. Each span's font is the declared font that matches its `font-family`, `font-weight`

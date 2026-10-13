@@ -275,6 +275,9 @@ describe('renderToBuffer', () => {
               p.save().roundedRect(0, 0, w, h, 8).clip();
               p.rect(0, 0, w, h).fill(g);
               p.restore().miterLimit(4).lineWidth(3).polygon([10, 50], [60, 10], [110, 50]).stroke(g);
+              p.font('Inter-Bold', 14)
+                .fillColor('white')
+                .text('Canvas', 0, 20, { width: w, align: 'center' });
             }}
           />
         </Page>

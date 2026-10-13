@@ -69,6 +69,7 @@ const MAIN_TYPES = [
   'BreakProp',
   'CanvasGradient',
   'CanvasProps',
+  'CanvasTextOptions',
   'CellProps',
   'CheckboxProps',
   'CircleProps',
