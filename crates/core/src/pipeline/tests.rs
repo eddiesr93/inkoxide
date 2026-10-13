@@ -784,3 +784,41 @@ fn repeated_flow_text_shows_each_page_s_numbers() {
         assert_eq!(numbers, &[(k + 1).to_string(), total.clone()]);
     }
 }
+
+#[test]
+fn superscripts_and_subscripts_are_painted_off_the_baseline() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+              {{"type":"text","runs":[
+                {{"text":"x","font":"Inter-Regular","size":10}},
+                {{"text":"2","font":"Inter-Regular","size":6,"verticalAlign":"super","decoration":"underline"}},
+                {{"text":"y","font":"Inter-Regular","size":10}},
+                {{"text":"3","font":"Inter-Regular","size":6,"verticalAlign":"sub"}}]}}]}}]}}"#
+    );
+    let pages = render_with(&store(), &json, |pages, _, _| pages);
+    let ys: Vec<f32> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Text(t) => Some(t.y),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ys.len(), 4, "{ys:?}");
+    // Inter's OS/2 offsets for a size of 1229 units: 717 up, 154 down.
+    let (up, down) = (6.0 * 717.0 / 1229.0, 6.0 * 154.0 / 1229.0);
+    assert_eq!(ys[0], ys[2]);
+    assert!((ys[0] - ys[1] - up).abs() < 1e-3, "{ys:?}");
+    assert!((ys[3] - ys[0] - down).abs() < 1e-3, "{ys:?}");
+    // The superscript's underline is drawn under its own baseline.
+    let underline = pages[0]
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            Op::FillRect { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .unwrap();
+    assert!(underline.y > ys[1] && underline.y < ys[0], "{underline:?}");
+}

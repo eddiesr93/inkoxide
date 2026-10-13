@@ -351,6 +351,8 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  |  |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
+| `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. |
+| `fontFeatures` | `object` |  | OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features. |
 
 ### ColumnSpec
 

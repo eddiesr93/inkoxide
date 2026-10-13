@@ -861,6 +861,57 @@ fn run(s: &mut Src) -> Value {
     if s.chance(10) {
         m.insert("hyphenate".into(), json!(s.chance(50)));
     }
+    if s.chance(25) {
+        let which = s.below(3);
+        if which != 1 {
+            let align = if s.chaos && s.chance(4) {
+                s.pick(&["middle", "top", ""])
+            } else {
+                s.pick(&["baseline", "super", "sub"])
+            };
+            m.insert("verticalAlign".into(), json!(align));
+        }
+        if which != 0 {
+            m.insert("fontFeatures".into(), font_features(s));
+        }
+    }
+    Value::Object(m)
+}
+
+/// OpenType features: tags the fixture fonts have or not, values on and
+/// off, alternates and the bounds; with chaos, now and then one past them.
+fn font_features(s: &mut Src) -> Value {
+    const TAGS: &[&str] = &[
+        "tnum", "pnum", "onum", "lnum", "zero", "frac", "sups", "subs", "smcp", "c2sc", "case",
+        "liga", "dlig", "calt", "kern", "salt", "ss01", "cv05", "aalt", "rlig", "abcd",
+    ];
+    let mut m = Map::new();
+    let broken = s.chaos && s.chance(4);
+    if broken && s.chance(25) {
+        // One feature too many.
+        for k in 0..33 {
+            m.insert(format!("x{k:03}"), json!(1));
+        }
+        return Value::Object(m);
+    }
+    for _ in 0..s.below(5) {
+        let value = match s.below(8) {
+            0 => json!(0),
+            1 => json!(65535),
+            2 => json!(s.below(4)),
+            _ => json!(1),
+        };
+        m.insert(s.pick(TAGS).to_string(), value);
+    }
+    if broken {
+        let (tag, value) = match s.below(4) {
+            0 => ("tnu", json!(1)),
+            1 => ("t\u{e9}m", json!(1)),
+            2 => ("tnum", json!(65536)),
+            _ => ("tnum", json!(-1)),
+        };
+        m.insert(tag.into(), value);
+    }
     Value::Object(m)
 }
 
@@ -1269,11 +1320,21 @@ mod tests {
             r#""decorationColor":"#,
             r#""decorationThickness":"#,
             r#""whiteSpace":"pre-wrap""#,
+            r#""verticalAlign":"super""#,
+            r#""fontFeatures":{""#,
         ];
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
         let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
-        for i in 0..1000 {
+        // A thousand documents, and up to three thousand more until every
+        // feature shows in a valid one: each property the generator learns
+        // draws from the same bytes, and moves the others.
+        let mut generated = 0;
+        for i in 0..4000 {
+            if i >= 1000 && seen.iter().all(|s| *s) {
+                break;
+            }
+            generated += 1;
             let data: Vec<u8> = (0..64 << (i % 5))
                 .map(|_| {
                     // xorshift64
@@ -1299,6 +1360,9 @@ mod tests {
             .filter(|(_, seen)| !**seen)
             .collect();
         assert!(missing.is_empty(), "no valid document has {missing:?}");
-        assert!(valid >= 100, "{valid} of 1000 documents are valid");
+        assert!(
+            valid * 10 >= generated,
+            "{valid} of {generated} documents are valid"
+        );
     }
 }

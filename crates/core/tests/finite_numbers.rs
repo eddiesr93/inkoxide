@@ -149,6 +149,9 @@ fn every_property_at_its_bounds_renders_finite_numbers() {
         // Text at its own bounds.
         text(r#""textIndent":-10000,"lineHeight":100"#, r#","letterSpacing":1000"#),
         text(r#""textIndent":10000"#, r#","letterSpacing":-1000,"decoration":"underline""#),
+        text("", r#","size":1000,"verticalAlign":"super","fontFeatures":{"salt":65535}"#)
+            .replace(r#""size":12,"#, ""),
+        text(r#""lineHeight":100"#, r#","verticalAlign":"sub","decoration":"underline""#),
         // Images placed at the objectPosition bounds.
         r#"{"type":"image","src":"photo","fit":"none","objectPosition":{"x":"10000%","y":-14400},"style":{"width":"10000%","height":40}}"#.into(),
         r#"{"type":"image","src":"chart","fit":"cover","objectPosition":{"x":14400,"y":"-10000%"},"style":{"transform":[{"scale":[1000000,1000000]}],"height":40}}"#.into(),

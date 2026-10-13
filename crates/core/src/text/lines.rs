@@ -1,6 +1,6 @@
 //! Line breaking (greedy, first fit) and line metrics.
 
-use super::{BreakKind, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS};
+use super::{baseline_shift, BreakKind, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS};
 
 /// Shown at the end of a truncated line; three dots in fonts without it.
 pub(super) const ELLIPSIS: char = '\u{2026}';
@@ -251,8 +251,8 @@ fn apply_ellipsis(line: &mut Line, para: &Para<'_>, max_width: f32, prefix: &[f3
     });
 }
 
-/// Line box height and baseline from the fonts and sizes on the line
-/// (CSS inline formatting with half-leading).
+/// Line box height and baseline from the fonts, sizes and baseline shifts
+/// on the line (CSS inline formatting with half-leading).
 fn metrics(line: &mut Line, para: &Para<'_>) {
     let Para {
         prepared: p,
@@ -275,8 +275,10 @@ fn metrics(line: &mut Line, para: &Para<'_>) {
             let gap = m.line_gap * scale / 2.0;
             (asc + gap, desc + gap)
         };
-        above = above.max(a);
-        below = below.max(b);
+        // A raised run reaches higher, a lowered one lower.
+        let shift = baseline_shift(run, fonts);
+        above = above.max(a + shift);
+        below = below.max(b - shift);
     };
     let s = line.start as usize;
     let e = (line.end as usize).max(s);

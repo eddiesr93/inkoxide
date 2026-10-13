@@ -10,9 +10,9 @@ use crate::error::{ValidationCode as Code, ValidationError};
 use crate::images::ImageCrateDecoder;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
-    ColumnWidth, Document, Field, FieldKind, GridTrack, ImageSource, Length, LengthPercent, Node,
-    NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount, Style, Table, TextRun,
-    TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
+    ColumnWidth, Document, Field, FieldKind, FontFeature, GridTrack, ImageSource, Length,
+    LengthPercent, Node, NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount,
+    Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -95,6 +95,7 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
+        feature_sets: HashSet::new(),
     };
     c.document(doc);
     c.errors
@@ -113,6 +114,8 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
+    /// The different `fontFeatures` of runs seen so far, sorted by tag.
+    feature_sets: HashSet<Vec<FontFeature>>,
 }
 
 /// Longest link target accepted.
@@ -144,6 +147,14 @@ pub(crate) const MAX_LINE_HEIGHT: f32 = 100.0;
 pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
 /// Largest `orphans` and `widows`.
 pub(crate) const MAX_ORPHANS: u32 = 100;
+/// Most `fontFeatures` of a run.
+pub(crate) const MAX_FONT_FEATURES: usize = 32;
+/// Largest value of a font feature.
+pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
+
+/// Most different sets of `fontFeatures` in a document: each is shaped
+/// with plans and words of its own.
+pub(crate) const MAX_FEATURE_SETS: usize = 64;
 
 /// Ids of the nodes that get a destination: the page body (flow and
 /// overlays) that is displayed (not headers or footers, not under
@@ -816,6 +827,69 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+        if let Some(features) = &r.font_features {
+            self.font_features(features);
+        }
+    }
+
+    fn font_features(&mut self, features: &[FontFeature]) {
+        let field = Some("fontFeatures");
+        if features.len() > MAX_FONT_FEATURES {
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!("a run takes at most {MAX_FONT_FEATURES} font features"),
+            );
+            return;
+        }
+        let mut sorted = features.to_vec();
+        sorted.sort_by(|a, b| a.tag.cmp(&b.tag));
+        for (i, f) in sorted.iter().enumerate() {
+            if !(f.tag.len() == 4 && f.tag.bytes().all(|b| (b' '..=b'~').contains(&b))) {
+                self.err(
+                    Code::InvalidValue,
+                    field,
+                    format!(
+                        "{:?} is not a feature tag: four printable ASCII characters, such as \"tnum\"",
+                        f.tag
+                    ),
+                );
+                return;
+            }
+            if f.value > MAX_FEATURE_VALUE {
+                self.err(
+                    Code::OutOfRange,
+                    field,
+                    format!(
+                        "the value of {:?} must be within 0..={MAX_FEATURE_VALUE}",
+                        f.tag
+                    ),
+                );
+                return;
+            }
+            if i > 0 && sorted[i - 1].tag == f.tag {
+                self.err(
+                    Code::InvalidValue,
+                    field,
+                    format!("{:?} is set twice", f.tag),
+                );
+                return;
+            }
+        }
+        if sorted.is_empty() || self.feature_sets.contains(&sorted) {
+            return;
+        }
+        if self.feature_sets.len() >= MAX_FEATURE_SETS {
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!(
+                    "a document uses at most {MAX_FEATURE_SETS} different sets of font features"
+                ),
+            );
+            return;
+        }
+        self.feature_sets.insert(sorted);
     }
 
     fn table(&mut self, t: &Table) {

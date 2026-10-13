@@ -7,6 +7,15 @@ version 2.
 
 ## Unreleased
 
+### Added
+
+- `TextRun.verticalAlign`: `baseline` (the default), `super` or `sub`. A superscript's
+  baseline is raised and a subscript's lowered by the offsets the font gives (OS/2), for text
+  of the run's size, and the line grows to fit them. The run keeps its own `size`.
+- `TextRun.fontFeatures`: OpenType features by tag, as CSS `font-feature-settings`
+  (`{"tnum": 1, "liga": 0}`): 0 turns a feature off, 1 on, and a larger value picks an
+  alternate. At most 32 per run, values up to 65535, and 64 different sets in a document.
+
 ### Changed
 
 - `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of

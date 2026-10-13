@@ -2,7 +2,7 @@
 //! justification and page-number placeholders.
 
 use super::prepare::number_glyphs;
-use super::{ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
+use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
 use crate::paint::{
@@ -152,17 +152,19 @@ impl PaintedLine {
     }
 }
 
-/// Height of run `run`'s glyph box above and below its baseline: its
-/// font's ascender and descender at its size.
+/// Height of run `run`'s glyph box above and below the line's baseline:
+/// its font's ascender and descender at its size, around its own
+/// (shifted) baseline.
 fn run_extent(para: &Para<'_>, run: u16) -> (f32, f32) {
     let r = &para.runs[usize::from(run)];
+    let shift = baseline_shift(r, para.fonts);
     let Some(key) = para.fonts.key(&r.font) else {
-        return (r.size, 0.0);
+        return (r.size + shift, -shift);
     };
     let font = para.fonts.get(key);
     let m = &font.data.metrics;
     let scale = font.scale(r.size);
-    (m.ascender * scale, -m.descender * scale)
+    (m.ascender * scale + shift, -m.descender * scale - shift)
 }
 
 /// Paints one line of `para`. `content` is the paragraph's content box on
@@ -312,6 +314,8 @@ fn paint_line(
         }
         let color = run.color.unwrap_or(BLACK);
         let alpha = color[3] * opacity;
+        // The run's own baseline: raised or lowered by `verticalAlign`.
+        let baseline = baseline - baseline_shift(run, fonts);
         let piece_width = piece.width;
         if alpha < 1.0 {
             ops.push(Op::Save);

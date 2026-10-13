@@ -370,3 +370,105 @@ fn tabs_after_page_numbers_keep_their_stop() {
     assert_eq!(filled.text, "7\tx");
     assert!((x_after_tab(&filled) - stand_in).abs() < 1e-3);
 }
+
+/// A text node of `runs`, each `(text, extra run properties)` in Inter at
+/// 10 points.
+fn runs(runs: &[(&str, &str)]) -> String {
+    let runs: Vec<String> = runs
+        .iter()
+        .map(|(t, extra)| format!(r#"{{"text":"{t}","font":"Inter-Regular","size":10{extra}}}"#))
+        .collect();
+    format!(r#"{{"type":"text","runs":[{}]}}"#, runs.join(","))
+}
+
+#[test]
+fn superscripts_and_subscripts_move_the_baseline_and_grow_the_line() {
+    let s = store();
+    let (_, plain) = lines(&doc(&runs(&[("H2O", "")])), &s, f32::INFINITY);
+    let (_, sup) = lines(
+        &doc(&runs(&[("x", ""), ("2", r#","verticalAlign":"super""#)])),
+        &s,
+        f32::INFINITY,
+    );
+    let (_, sub) = lines(
+        &doc(&runs(&[("H", ""), ("2", r#","verticalAlign":"sub""#)])),
+        &s,
+        f32::INFINITY,
+    );
+    let (p, sup, sub) = (&plain.lines[0], &sup.lines[0], &sub.lines[0]);
+    // Inter's OS/2: superscripts 717 up and subscripts 154 down, for a
+    // size of 1229 (units of 2048 per em).
+    let up = 10.0 * 717.0 / 1229.0;
+    let down = 10.0 * 154.0 / 1229.0;
+    assert!((sup.ascent - (p.ascent + up)).abs() < 1e-3, "{sup:?}");
+    assert!((sup.height - (p.height + up)).abs() < 1e-3);
+    assert!((sub.ascent - p.ascent).abs() < 1e-3);
+    assert!((sub.height - (p.height + down)).abs() < 1e-3, "{sub:?}");
+    // `baseline` is the default.
+    let (_, base) = lines(
+        &doc(&runs(&[("H2O", r#","verticalAlign":"baseline""#)])),
+        &s,
+        f32::INFINITY,
+    );
+    assert_eq!(base.lines[0].height, p.height);
+}
+
+#[test]
+fn a_smaller_superscript_stays_within_the_line() {
+    // A superscript at 6 points next to 10-point text: raised by its own
+    // size's offset, it reaches no higher than the larger text.
+    let s = store();
+    let one = r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10},
+        {"text":"2","font":"Inter-Regular","size":6,"verticalAlign":"super"}]}"#;
+    let (_, l) = lines(&doc(one), &s, f32::INFINITY);
+    let (_, p) = lines(&doc(&runs(&[("x", "")])), &s, f32::INFINITY);
+    assert_eq!(l.lines[0].height, p.lines[0].height);
+}
+
+/// The advances of the glyphs a paragraph of `runs` shapes to.
+fn advances(runs_json: &str) -> Vec<f32> {
+    let s = store();
+    let d = doc(runs_json);
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    cache.layout(node, f32::INFINITY);
+    let (p, _) = cache.prepared(node).unwrap();
+    p.glyphs.iter().map(|g| g.advance).collect()
+}
+
+#[test]
+fn font_features_reach_the_shaper() {
+    // Inter's digits are proportional; `tnum` makes them one width.
+    let plain = advances(&runs(&[("1180", "")]));
+    assert!(
+        plain.windows(2).any(|w| (w[0] - w[1]).abs() > 1e-3),
+        "{plain:?}"
+    );
+    let tnum = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1}"#)]));
+    assert!(
+        tnum.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-3),
+        "{tnum:?}"
+    );
+    // Turned off, or in another order, the same set.
+    let off = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":0}"#)]));
+    assert_eq!(off, plain);
+    let ordered = advances(&runs(&[("1180", r#","fontFeatures":{"zero":1,"tnum":1}"#)]));
+    let reordered = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1,"zero":1}"#)]));
+    assert_eq!(ordered, reordered);
+    assert_eq!(ordered, tnum);
+}
+
+#[test]
+fn the_same_word_shapes_apart_with_other_features() {
+    // One paragraph, one word in two runs: the shaped word is cached by
+    // its features too.
+    let both = advances(&runs(&[
+        ("1180 ", ""),
+        ("1180", r#","fontFeatures":{"tnum":1}"#),
+    ]));
+    let plain = advances(&runs(&[("1180", "")]));
+    let tnum = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1}"#)]));
+    assert_eq!(&both[..4], &plain[..]);
+    assert_eq!(&both[5..], &tnum[..]);
+}

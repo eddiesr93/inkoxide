@@ -43,6 +43,28 @@ pub(crate) struct FontMetrics {
     pub strikeout_thickness: f32,
     /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
     pub cff: bool,
+    /// How far a superscript's baseline is raised, and a subscript's
+    /// lowered, as fractions of the superscript's (subscript's) own size:
+    /// the OS/2 offset over the OS/2 size, or [`SUPERSCRIPT_SHIFT`] and
+    /// [`SUBSCRIPT_SHIFT`] where those are missing or out of (0, 1].
+    pub superscript: f32,
+    pub subscript: f32,
+}
+
+/// Baseline shift of a superscript without usable OS/2 metrics, in its
+/// own size.
+pub(crate) const SUPERSCRIPT_SHIFT: f32 = 0.5;
+/// Baseline shift of a subscript without usable OS/2 metrics, in its own
+/// size.
+pub(crate) const SUBSCRIPT_SHIFT: f32 = 0.2;
+
+/// A script's baseline shift in its own size: OS/2's offset over its size,
+/// when that is within (0, 1].
+fn script_shift(m: Option<ttf_parser::ScriptMetrics>, fallback: f32) -> f32 {
+    m.filter(|m| m.y_size > 0)
+        .map(|m| f32::from(m.y_offset) / f32::from(m.y_size))
+        .filter(|r| *r > 0.0 && *r <= 1.0)
+        .unwrap_or(fallback)
 }
 
 /// A registered font face.
@@ -145,6 +167,8 @@ impl FontData {
             strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
             strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
             cff,
+            superscript: script_shift(face.superscript_metrics(), SUPERSCRIPT_SHIFT),
+            subscript: script_shift(face.subscript_metrics(), SUBSCRIPT_SHIFT),
         };
         Ok(Self {
             hash: xxhash_rust::xxh3::xxh3_64(&bytes),

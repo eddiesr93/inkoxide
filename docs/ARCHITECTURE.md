@@ -99,6 +99,12 @@ Prepared + width ─▶ break_lines (greedy, metrics, maxLines/ellipsis) ─▶ 
 LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
 ```
 
+A run's `fontFeatures` go to rustybuzz with its words; shaped words and
+shape plans are cached per feature set too. A run's `verticalAlign` moves
+its baseline (`text::baseline_shift`, from the font's OS/2 superscript and
+subscript metrics): line metrics count the moved glyph boxes, and the
+painter draws the run, its decorations and its `debug` box there.
+
 Two third-party crates stay behind one module each, so replacing them
 touches only that module: ttf-parser (font parsing) is used only in
 `fonts`, which gives the rest of the engine metrics, glyph ids and
