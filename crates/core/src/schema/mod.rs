@@ -356,7 +356,25 @@ pub enum NodeKind {
     Spacer,
     /// An interactive form field (boxed: large and rare).
     Field(Box<Field>),
+    /// A text annotation: an icon that opens a note (boxed: rare).
+    Note(Box<Note>),
 }
+
+/// A text annotation, shown as a sticky-note icon.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Note {
+    pub contents: String,
+    pub author: Option<String>,
+    /// The icon's colour (its alpha is not used); default [`NOTE_YELLOW`].
+    pub color: Option<Color>,
+    /// Shown open when the document opens.
+    #[serde(default)]
+    pub open: bool,
+}
+
+/// The default colour of a note.
+pub const NOTE_YELLOW: Color = [1.0, 0.82, 0.2, 1.0];
 
 /// An `AcroForm` field. Fields sharing a `name` are one field with several
 /// widgets (radio buttons: one per option).

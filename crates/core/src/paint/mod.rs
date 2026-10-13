@@ -122,6 +122,9 @@ pub(crate) enum Op {
     /// annotation with its appearance, transformed like the content
     /// around it).
     Field(Box<crate::forms::FieldOp>),
+    /// A text note (draws nothing here; the writer adds an annotation
+    /// with its icon where the transform in effect puts its corner).
+    Note(Box<crate::notes::NoteOp>),
 }
 
 /// Runs `f`, which draws in a colour of alpha `alpha`, with that alpha

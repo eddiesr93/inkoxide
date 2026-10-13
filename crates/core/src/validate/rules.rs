@@ -11,7 +11,7 @@ use crate::images::ImageCrateDecoder;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldKind, FieldValue, GridTrack, ImageSource, Length,
-    LengthPercent, Node, NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount,
+    LengthPercent, Node, NodeKind, Note, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount,
     Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
@@ -143,6 +143,11 @@ pub(crate) const MAX_FIELD_OPTION: usize = 1000;
 /// Longest form field `value`, in characters (PDF/A-2 holds strings to
 /// 32767 bytes; a character is at most 4 of them in UTF-16).
 pub(crate) const MAX_FIELD_VALUE: usize = 8000;
+/// Longest `contents` of a note, in characters (PDF/A-2 holds strings to
+/// 32767 bytes).
+pub(crate) const MAX_NOTE: usize = 8000;
+/// Longest `author` of a note, in characters.
+pub(crate) const MAX_NOTE_AUTHOR: usize = 256;
 /// Largest font size of a text run or a form field, in points.
 pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
 /// Longest bookmark title, in characters.
@@ -537,6 +542,7 @@ impl<'a> Checker<'a> {
             }
             NodeKind::Spacer => {}
             NodeKind::Field(f) => self.at("field", |c| c.field(f)),
+            NodeKind::Note(n) => self.at("note", |c| c.note(n)),
         }
     }
 
@@ -803,6 +809,29 @@ impl<'a> Checker<'a> {
                 _ => {}
             },
             _ => {}
+        }
+    }
+
+    fn note(&mut self, n: &Note) {
+        if !(1..=MAX_NOTE).contains(&n.contents.chars().count()) {
+            self.err(
+                Code::InvalidValue,
+                Some("contents"),
+                format!("a note's contents are 1 to {MAX_NOTE} characters"),
+            );
+        }
+        if n.author
+            .as_ref()
+            .is_some_and(|a| a.chars().count() > MAX_NOTE_AUTHOR)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("author"),
+                format!("a note's author is at most {MAX_NOTE_AUTHOR} characters"),
+            );
+        }
+        if let Some(c) = &n.color {
+            self.color(Some("color"), c);
         }
     }
 

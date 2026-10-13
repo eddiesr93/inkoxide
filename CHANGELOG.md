@@ -16,6 +16,10 @@ All notable changes to the packages in this repository. The format follows
 - List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
   without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
   array and several options can be selected.
+- Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
+  author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
+  corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
+  and passes PDF/A-2b.
 - `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
   fields inside it, at any depth (`address.street`); sets nest.
 - `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`

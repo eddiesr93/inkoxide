@@ -81,6 +81,8 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
+            // It takes no space.
+            NodeKind::Note(_) => Size::ZERO,
             _ => self.text.measure(node, known, available),
         }
     }
@@ -98,6 +100,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
+            NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),
         }
     }
@@ -376,6 +379,10 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // appearance.
                     let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
                     size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
+                }
+                NodeKind::Note(note) => {
+                    let text = note.contents.len() + note.author.as_ref().map_or(0, String::len);
+                    size = size.saturating_add(BOX_BYTES + text as u64);
                 }
                 _ => {}
             }

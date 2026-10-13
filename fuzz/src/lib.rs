@@ -972,6 +972,37 @@ fn field(s: &mut Src) -> Value {
     Value::Object(m)
 }
 
+/// A text note: contents at their limit and past it, control characters,
+/// an author, a colour, open or not.
+fn note(s: &mut Src) -> Value {
+    let mut m = Map::new();
+    let contents = match s.below(8) {
+        0 => json!("n".repeat(8000 + usize::from(s.chaos))),
+        1 if s.chaos => json!(""),
+        2 => json!("line\nbreak\t(paren\\) \u{0} \u{1f} \u{feff}"),
+        _ => json!(format!("N{}", text(s))),
+    };
+    m.insert("contents".into(), contents);
+    if s.chance(100) {
+        let author = if s.chance(20) {
+            "a".repeat(256 + usize::from(s.chaos))
+        } else {
+            text(s)
+        };
+        m.insert("author".into(), json!(author));
+    }
+    if s.chance(100) {
+        m.insert("color".into(), color(s));
+    }
+    if s.chance(80) {
+        m.insert("open".into(), json!(s.chance(128)));
+    }
+    if s.chaos && s.chance(20) {
+        m.insert("icon".into(), json!("Key"));
+    }
+    Value::Object(m)
+}
+
 /// Pages that show a node: a keyword, or page numbers counted from either
 /// end.
 fn page_filter(s: &mut Src) -> Value {
@@ -1076,12 +1107,13 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             "image",
             "table",
             "field",
+            "note",
             "pageBreak",
             "spacer",
         ])
     } else {
         s.pick(&[
-            "box", "box", "text", "text", "image", "table", "field", "spacer",
+            "box", "box", "text", "text", "image", "table", "field", "note", "spacer",
         ])
     };
     let mut m = Map::new();
@@ -1095,8 +1127,8 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(50) {
         m.insert("break".into(), brk(s));
     }
-    // Fields take no link or bookmark.
-    let linkable = !matches!(kind, "pageBreak" | "field") || s.chaos;
+    // Fields and notes take no link or bookmark.
+    let linkable = !matches!(kind, "pageBreak" | "field" | "note") || s.chaos;
     if linkable && s.chance(20) {
         m.insert("link".into(), link(s));
     }
@@ -1148,6 +1180,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         }
         "field" => {
             m.insert("field".into(), field(s));
+        }
+        "note" => {
+            m.insert("note".into(), note(s));
         }
         "image" => {
             if s.chaos && s.chance(30) {
@@ -1304,6 +1339,8 @@ mod tests {
     fn document_covers_the_schema() {
         let features = [
             r#""type":"field""#,
+            r#""type":"note""#,
+            r#""open":true"#,
             r#""kind":"select""#,
             r#""kind":"list""#,
             r#""multiSelect":true"#,
@@ -1326,7 +1363,7 @@ mod tests {
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
         let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
-        for i in 0..1000 {
+        for i in 0..1500 {
             let data: Vec<u8> = (0..64 << (i % 5))
                 .map(|_| {
                     // xorshift64
@@ -1351,7 +1388,10 @@ mod tests {
             .zip(&seen)
             .filter(|(_, seen)| !**seen)
             .collect();
-        assert!(missing.is_empty(), "no valid document has {missing:?}");
-        assert!(valid >= 100, "{valid} of 1000 documents are valid");
+        assert!(
+            missing.is_empty(),
+            "no valid document has {missing:?} ({valid} valid)"
+        );
+        assert!(valid >= 100, "{valid} of 1500 documents are valid");
     }
 }

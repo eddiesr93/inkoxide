@@ -383,7 +383,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` | yes |  |
+| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` \| `"note"` | yes |  |
 
 ### BoxNode
 
@@ -511,6 +511,29 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
+
+### NoteNode
+
+A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"note"` | yes |  |
+| `id` | [`Id`](#id) |  |  |
+| `style` | [`Style`](#style) |  |  |
+| `break` | [`Break`](#break) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
+| `note` | [`Note`](#note) | yes |  |
+
+### Note
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `contents` | `string` | yes | min length 1, max length 8000; The text of the note. |
+| `author` | `string` |  | max length 256; Who wrote it; viewers show it as the note's title. |
+| `color` | [`Color`](#color) |  | The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1]. |
+| `open` | `boolean` |  | default `false`; Whether viewers show the text when the document opens. |
 
 ### TrackBreadth
 

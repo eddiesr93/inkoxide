@@ -1130,6 +1130,52 @@ fn form_fields() {
 }
 
 #[test]
+fn notes() {
+    let ok = doc(r#"{"type":"note","note":{"contents":"x"}},
+           {"type":"note","id":"n","style":{"position":"absolute"},"pages":"first","debug":true,
+            "note":{"contents":"y","author":"Ana","color":[0,0.5,1,1],"open":true}},
+           {"type":"table","columns":[{"width":"auto"}],"headerRows":0,"rows":[
+              {"cells":[{"children":[{"type":"note","note":{"contents":"z"}}]}]}]}"#);
+    assert_eq!(run(&ok), vec![]);
+    let n = "pages[0].children[0]";
+    for (node, code, path) in [
+        (
+            r#"{"type":"note","note":{"contents":""}}"#,
+            C::InvalidValue,
+            "note.contents",
+        ),
+        (
+            r#"{"type":"note","note":{"contents":"x","color":[2,0,0,1]}}"#,
+            C::OutOfRange,
+            "note.color",
+        ),
+        (
+            r#"{"type":"note","note":{}}"#,
+            C::MissingField,
+            "note.contents",
+        ),
+        (r#"{"type":"note"}"#, C::MissingField, ""),
+        (
+            r#"{"type":"note","link":"https://x.ro","note":{"contents":"x"}}"#,
+            C::UnknownField,
+            "link",
+        ),
+        (
+            r#"{"type":"note","note":{"contents":"x","icon":"Key"}}"#,
+            C::UnknownField,
+            "note.icon",
+        ),
+    ] {
+        let want = if path.is_empty() {
+            n.to_string()
+        } else {
+            format!("{n}.{path}")
+        };
+        assert_eq!(one(&doc(node)), (code, want), "{node}");
+    }
+}
+
+#[test]
 fn decoration_thickness_and_colour_are_checked() {
     let (code, path) = one(&doc(
         r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10,"decorationThickness":0}]}"#,

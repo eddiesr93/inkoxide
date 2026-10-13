@@ -18,6 +18,11 @@ version 2.
   selected; `value` is then an array of options, each at most once (at most 1000). An array
   `value` on any other field is `INVALID_VALUE`.
 
+- A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
+  `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
+  at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
+  `bookmark`, and no space in the layout.
+
 ### Changed
 
 - `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`

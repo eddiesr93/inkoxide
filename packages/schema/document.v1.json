@@ -1178,7 +1178,8 @@
             "table",
             "pageBreak",
             "spacer",
-            "field"
+            "field",
+            "note"
           ]
         }
       },
@@ -1206,6 +1207,9 @@
         },
         {
           "$ref": "#/$defs/FieldNode"
+        },
+        {
+          "$ref": "#/$defs/NoteNode"
         }
       ]
     },
@@ -1648,6 +1652,67 @@
         "color": {
           "$ref": "#/$defs/Color",
           "description": "text and mark colour; default black"
+        }
+      }
+    },
+    "NoteNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "note"
+      ],
+      "description": "A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.",
+      "properties": {
+        "type": {
+          "const": "note"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug"
+        },
+        "note": {
+          "$ref": "#/$defs/Note"
+        }
+      }
+    },
+    "Note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contents"
+      ],
+      "properties": {
+        "contents": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000,
+          "description": "The text of the note."
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Who wrote it; viewers show it as the note's title."
+        },
+        "color": {
+          "$ref": "#/$defs/Color",
+          "description": "The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1]."
+        },
+        "open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether viewers show the text when the document opens."
         }
       }
     },

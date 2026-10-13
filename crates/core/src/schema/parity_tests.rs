@@ -144,6 +144,11 @@ fn structs_match_schema() {
         Some("Field"),
         &node(r#"{"type":"field","field":{@"name":"n","kind":"text"}}"#),
     );
+    check(
+        &s,
+        Some("Note"),
+        &node(r#"{"type":"note","note":{@"contents":"n"}}"#),
+    );
 
     // Node: the union of all node-type properties.
     let mut want = BTreeSet::new();
@@ -155,6 +160,7 @@ fn structs_match_schema() {
         "PageBreakNode",
         "SpacerNode",
         "FieldNode",
+        "NoteNode",
     ] {
         want.extend(schema_props(&s, Some(d)));
     }
@@ -341,7 +347,7 @@ fn named_bounds_match_schema() {
     use crate::validate::rules::{
         MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FIELD_NAME,
         MAX_FIELD_OPTION, MAX_FIELD_OPTIONS, MAX_FIELD_VALUE, MAX_FONT_SIZE, MAX_LETTER_SPACING,
-        MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
+        MAX_LINE_HEIGHT, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -456,6 +462,35 @@ fn named_bounds_match_schema() {
             MAX_FIELD_OPTIONS as f64 + 1.0,
             "INVALID_VALUE",
             "pages[0].children[0].field.value".into(),
+        ),
+        (
+            "/$defs/Note/properties/contents/maxLength",
+            MAX_NOTE as f64,
+            Box::new(|n| {
+                doc(
+                    "",
+                    &format!(r#"{{"type":"note","note":{{"contents":"{}"}}}}"#, chars(n)),
+                )
+            }),
+            MAX_NOTE as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].note.contents".into(),
+        ),
+        (
+            "/$defs/Note/properties/author/maxLength",
+            MAX_NOTE_AUTHOR as f64,
+            Box::new(|n| {
+                doc(
+                    "",
+                    &format!(
+                        r#"{{"type":"note","note":{{"contents":"c","author":"{}"}}}}"#,
+                        chars(n)
+                    ),
+                )
+            }),
+            MAX_NOTE_AUTHOR as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].note.author".into(),
         ),
         (
             "/$defs/TextRun/properties/size/maximum",

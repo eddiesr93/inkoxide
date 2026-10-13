@@ -3,6 +3,7 @@
 mod font;
 mod forms;
 mod image;
+mod notes;
 mod pdfa;
 mod svg;
 
@@ -49,6 +50,8 @@ pub(crate) struct EncodedPage {
     pub links: Vec<(Rect, Box<str>)>,
     /// Form field widgets.
     pub fields: Vec<crate::forms::FieldOp>,
+    /// Text notes, at the corner the transform in effect puts them.
+    pub notes: Vec<crate::notes::NoteOp>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -178,6 +181,7 @@ impl PdfSink for PdfWriterSink {
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
         let mut fields = Vec::new();
+        let mut notes = Vec::new();
         // Links and widgets are areas on the page: they cover where the
         // transform in effect puts them.
         let mut ctm: Option<[f32; 6]> = None;
@@ -214,6 +218,18 @@ impl PdfSink for PdfWriterSink {
                     f.ctm = ctm;
                     fields.push(f);
                 }
+                // An icon stays upright and the same size: only its corner
+                // moves.
+                Op::Note(n) => {
+                    let mut n = (**n).clone();
+                    if let Some(m) = ctm {
+                        (n.x, n.y) = (
+                            m[0] * n.x + m[2] * n.y + m[4],
+                            m[1] * n.x + m[3] * n.y + m[5],
+                        );
+                    }
+                    notes.push(n);
+                }
                 _ => {}
             }
         }
@@ -232,6 +248,7 @@ impl PdfSink for PdfWriterSink {
             images,
             links,
             fields,
+            notes,
         })
     }
 
@@ -337,6 +354,7 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
+        notes::write_notes(&mut pdf, &mut alloc, doc.pages, &page_refs, &mut annots);
         let fields = forms::Ctx {
             pages: doc.pages,
             page_refs: &page_refs,
@@ -908,7 +926,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) => {}
+            Op::Link { .. } | Op::Field(_) | Op::Note(_) => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }

@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, FieldValue, ImageFit, ImageSource, InlineImage, Node, NodeKind, ObjectPosition,
+    Field, FieldValue, ImageFit, ImageSource, InlineImage, Node, NodeKind, Note, ObjectPosition,
     OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun, TransformOp,
 };
 
@@ -576,6 +576,7 @@ pub(super) enum NodeType {
     PageBreak,
     Spacer,
     Field,
+    Note,
 }
 
 /// Properties that most node types take.
@@ -583,7 +584,7 @@ const COMMON: &[&str] = &["style", "break", "link", "bookmark", "pages", "debug"
 
 impl NodeType {
     #[cfg(test)]
-    pub(super) const ALL: [Self; 7] = [
+    pub(super) const ALL: [Self; 8] = [
         Self::Box,
         Self::Text,
         Self::Image,
@@ -591,6 +592,7 @@ impl NodeType {
         Self::PageBreak,
         Self::Spacer,
         Self::Field,
+        Self::Note,
     ];
 
     /// The `type` value.
@@ -603,6 +605,7 @@ impl NodeType {
             Self::PageBreak => "pageBreak",
             Self::Spacer => "spacer",
             Self::Field => "field",
+            Self::Note => "note",
         }
     }
 
@@ -616,6 +619,7 @@ impl NodeType {
             Self::PageBreak => (&[], &[]),
             Self::Spacer => (COMMON, &[]),
             Self::Field => (&["style", "break", "pages", "debug"], &["field"]),
+            Self::Note => (&["style", "break", "pages", "debug"], &["note"]),
         };
         common.iter().chain(own).copied()
     }
@@ -648,6 +652,7 @@ pub struct RawNode {
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
     field: Option<Box<Field>>,
+    note: Option<Box<Note>>,
 }
 
 /// Drops the spare capacity serde leaves when growing a `Vec` of unknown
@@ -689,6 +694,7 @@ impl TryFrom<RawNode> for Node {
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
             ("field", r.field.is_some()),
+            ("note", r.note.is_some()),
         ];
         if let Some((field, _)) = present
             .iter()
@@ -733,6 +739,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::PageBreak => NodeKind::PageBreak,
             NodeType::Spacer => NodeKind::Spacer,
             NodeType::Field => NodeKind::Field(r.field.ok_or_else(|| missing("field"))?),
+            NodeType::Note => NodeKind::Note(r.note.ok_or_else(|| missing("note"))?),
         };
         Ok(Node {
             id: r.id,

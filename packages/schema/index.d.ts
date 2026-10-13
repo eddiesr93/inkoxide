@@ -35,7 +35,7 @@ export type Debug = boolean;
  * via the `definition` "Node".
  */
 export type Node =
-  BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode;
+  BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode | NoteNode;
 /**
  * Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto". A percentage height needs a containing block with a definite height, as in CSS: a child of the page takes it of the page content height; in a header or footer, or in a box whose height is not set, it is `auto`.
  *
@@ -841,6 +841,43 @@ export interface Field {
    * text and mark colour; default black
    */
   color?: Color;
+}
+/**
+ * A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "NoteNode".
+ */
+export interface NoteNode {
+  type: 'note';
+  id?: Id;
+  style?: Style;
+  break?: Break;
+  pages?: PageFilter;
+  debug?: Debug;
+  note: Note;
+}
+/**
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Note".
+ */
+export interface Note {
+  /**
+   * The text of the note.
+   */
+  contents: string;
+  /**
+   * Who wrote it; viewers show it as the note's title.
+   */
+  author?: string;
+  /**
+   * The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1].
+   */
+  color?: Color;
+  /**
+   * Whether viewers show the text when the document opens.
+   */
+  open?: boolean;
 }
 
 /** The document `version` this schema describes. */
