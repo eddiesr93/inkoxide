@@ -77,7 +77,10 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             if ctx.window.is_some_and(|w| w.hides(top, line.height)) {
                 continue;
             }
-            let content = Rect::new(cx + ctx.dx, top - line.top + ctx.dy, cw, ch);
+            // The line's box: the content box, or beside a float, the part
+            // of it the line was broken in.
+            let (bx, bw) = layout.boxes.get(li).copied().unwrap_or((0.0, cw));
+            let content = Rect::new(cx + ctx.dx + bx, top - line.top + ctx.dy, bw, ch);
             let painted = paint_line(line, &para, content, self.numbers, ctx.opacity, ops);
             if let Some(lines) = outline.as_deref_mut() {
                 lines.push(painted.outline(line, &para));

@@ -244,11 +244,11 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
     }
 
     // As wide as the numbers written out, and wrapped like them.
-    let one_line = lines::break_lines(&paragraph(&filled), f32::INFINITY);
+    let one_line = lines::break_lines(&paragraph(&filled), &LineBoxes::plain(f32::INFINITY));
     let written = lines(&doc(&para("Page 7 of 1234", "")), &s, 500.0).1;
     assert!((one_line.width - written.width).abs() < 0.01);
     let narrow = lines(&doc(&para("Page 7 of", "")), &s, 500.0).1.width + 1.0;
-    let wrapped = lines::break_lines(&paragraph(&filled), narrow);
+    let wrapped = lines::break_lines(&paragraph(&filled), &LineBoxes::plain(narrow));
     assert_eq!(line_texts(&filled, &wrapped), ["Page 7 of", "1234"]);
 }
 
@@ -471,4 +471,87 @@ fn the_same_word_shapes_apart_with_other_features() {
     let tnum = advances(&runs(&[("1180", r#","fontFeatures":{"tnum":1}"#)]));
     assert_eq!(&both[..4], &plain[..]);
     assert_eq!(&both[5..], &tnum[..]);
+}
+
+/// Lays out the document's first node in `boxes`; returns line texts and
+/// the layout.
+fn lines_in(d: &Document, store: &FontStore, boxes: &LineBoxes) -> (Vec<String>, LineLayout) {
+    let fonts = FontSet::load(d, store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let layout = (*cache.layout_in(node, boxes).unwrap()).clone();
+    let (p, _) = cache.prepared(node).unwrap();
+    (line_texts(p, &layout), layout)
+}
+
+fn banded(width: f32, bands: &[(f32, f32, f32, f32)]) -> LineBoxes {
+    LineBoxes {
+        width,
+        bands: bands
+            .iter()
+            .map(|&(top, bottom, left, right)| crate::layout::float::Band {
+                top,
+                bottom,
+                left,
+                right,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn lines_beside_a_band_are_narrower_and_the_rest_full_width() {
+    let s = store();
+    let d = doc(&para(&format!("{LOREM} {LOREM}"), ""));
+    let boxes = banded(200.0, &[(0.0, 30.0, 80.0, 0.0)]);
+    let (texts, l) = lines_in(&d, &s, &boxes);
+    let (plain, _) = lines(&d, &s, 200.0);
+    assert_eq!(texts.join(" "), plain.join(" "));
+    assert_eq!(l.boxes.len(), l.lines.len());
+    let mut narrow = 0;
+    for (line, &(left, avail)) in l.lines.iter().zip(&l.boxes) {
+        assert!(line.width <= avail + 1e-3, "{line:?} in {avail}");
+        if line.top < 30.0 {
+            assert_eq!((left, avail), (80.0, 120.0));
+            narrow += 1;
+        } else {
+            assert_eq!((left, avail), (0.0, 200.0));
+        }
+    }
+    assert!(narrow >= 2 && texts.len() > plain.len(), "{texts:?}");
+    // Without bands, the layout keeps no boxes.
+    assert!(lines(&d, &s, 200.0).1.boxes.is_empty());
+}
+
+#[test]
+fn a_line_that_does_not_fit_beside_a_band_moves_below_it() {
+    let s = store();
+    let d = doc(&para("Unbreakable words", ""));
+    // Only 10 points free over the first 25: no word fits there.
+    let boxes = banded(200.0, &[(0.0, 25.0, 0.0, 190.0)]);
+    let (texts, l) = lines_in(&d, &s, &boxes);
+    assert_eq!(texts, ["Unbreakable words"]);
+    assert_eq!(l.lines[0].top, 25.0);
+    assert_eq!(l.boxes[0], (0.0, 200.0));
+    assert!((l.height - (25.0 + l.lines[0].height)).abs() < 1e-4);
+    // A band that ends leaves room to every later line; with no band below,
+    // a word too wide for the line breaks anyway.
+    let (texts, _) = lines_in(&d, &s, &banded(30.0, &[(0.0, 5.0, 0.0, 20.0)]));
+    assert!(texts.len() > 2, "{texts:?}");
+}
+
+#[test]
+fn indent_and_ellipsis_use_the_line_box() {
+    let s = store();
+    let d = doc(&para(
+        LOREM,
+        r#""textIndent":20,"maxLines":1,"ellipsis":true"#,
+    ));
+    let boxes = banded(200.0, &[(0.0, 100.0, 50.0, 30.0)]);
+    let (texts, l) = lines_in(&d, &s, &boxes);
+    assert_eq!(texts.len(), 1);
+    assert!(texts[0].ends_with('…'), "{texts:?}");
+    let line = &l.lines[0];
+    assert!(line.width + line.indent <= 120.0 + 1e-3, "{line:?}");
+    assert_eq!(l.boxes[0], (50.0, 120.0));
 }
