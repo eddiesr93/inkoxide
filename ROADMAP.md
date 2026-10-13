@@ -17,7 +17,6 @@ or should come sooner.
 - **`<Canvas>`**: text, clipping and gradients in the painter.
 - **Inline images** inside `Text`.
 - **Colour emoji**, from an emoji font or from images.
-- **Background images** (`<ImageBackground>`).
 - **Forms**: list boxes, field groups and number or date formats.
 - **Text annotations** (`<Note>`).
 - **Floats**: elements floated left or right, with text wrapping around them.

@@ -32,6 +32,8 @@ export {
   type HeaderProps,
   type HyphenationCallback,
   Image,
+  ImageBackground,
+  type ImageBackgroundProps,
   type ImageProps,
   type ImageRequest,
   type ImageSrc,
