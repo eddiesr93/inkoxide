@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 
 use pdf_writer::types::{AnnotationFlags, FieldFlags, FieldType};
 use pdf_writer::writers::Field as FieldWriter;
-use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
+use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
-use super::{font_name, q, set_fill, show_text, EncodedPage, Profile, RefAlloc};
+use super::{font_name, q, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::FieldOp;
 use crate::paint::{polygon, PathSeg, KAPPA};
@@ -30,6 +30,7 @@ pub(super) struct Form {
 pub(super) fn write_fields(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
 ) -> Result<Option<Form>, InkoxideError> {
@@ -66,9 +67,10 @@ pub(super) fn write_fields(
         form.fields.push(field_ref);
         if widgets.len() == 1 && first.field.kind != FieldKind::Radio {
             // Field and widget merged in one dictionary.
-            let aps = ctx.appearances(pdf, alloc, first, &states.names[0])?;
+            let aps = ctx.appearances(pdf, alloc, out, first, &states.names[0])?;
+            let strings = FieldStrings::new(out, name, widgets, &states);
             let mut f = pdf.form_field(field_ref);
-            field_entries(&mut f, name, widgets, &states);
+            field_entries(&mut f, widgets, &states, &strings);
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps);
             annot.finish();
@@ -77,7 +79,7 @@ pub(super) fn write_fields(
         }
         let mut kids = Vec::with_capacity(widgets.len());
         for (&(page, op), on) in widgets.iter().zip(&states.names) {
-            let aps = ctx.appearances(pdf, alloc, op, on)?;
+            let aps = ctx.appearances(pdf, alloc, out, op, on)?;
             let kid = alloc.next();
             let mut f = pdf.form_field(kid);
             f.parent(field_ref);
@@ -87,8 +89,9 @@ pub(super) fn write_fields(
             annots[page].push(kid);
             kids.push(kid);
         }
+        let strings = FieldStrings::new(out, name, widgets, &states);
         let mut f = pdf.form_field(field_ref);
-        field_entries(&mut f, name, widgets, &states);
+        field_entries(&mut f, widgets, &states, &strings);
         f.children(kids);
         f.finish();
     }
@@ -129,16 +132,66 @@ fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
     }
 }
 
+/// The strings of a field's dictionary, as `out` writes them.
+struct FieldStrings {
+    name: Vec<u8>,
+    /// A text field's value (not a password's), a select's value.
+    value: Option<Vec<u8>>,
+    /// A select's options, or the values of radio buttons named by their
+    /// positions.
+    options: Vec<Vec<u8>>,
+    /// `/DA` of a text or select field.
+    appearance: Option<Vec<u8>>,
+}
+
+impl FieldStrings {
+    /// The strings [`field_entries`] writes, in the order it writes them.
+    fn new(out: &mut Out, name: &str, widgets: &[(usize, &FieldOp)], states: &OnStates) -> Self {
+        let op = widgets[0].1;
+        let spec = &op.field;
+        let name = out.text(name);
+        let (value, options) = match spec.kind {
+            FieldKind::Text => (
+                spec.value
+                    .as_deref()
+                    .filter(|_| !spec.password)
+                    .map(|v| out.text(v)),
+                Vec::new(),
+            ),
+            FieldKind::Select => {
+                let options = spec.options.iter().map(|o| out.text(o)).collect();
+                (spec.value.as_deref().map(|v| out.text(v)), options)
+            }
+            FieldKind::Radio if states.positions => (
+                None,
+                widgets
+                    .iter()
+                    .map(|(_, w)| out.text(w.field.value.as_deref().unwrap_or("")))
+                    .collect(),
+            ),
+            FieldKind::Radio | FieldKind::Checkbox => (None, Vec::new()),
+        };
+        let appearance = matches!(spec.kind, FieldKind::Text | FieldKind::Select)
+            .then(|| out.bytes(default_appearance(op).as_bytes()));
+        Self {
+            name,
+            value,
+            options,
+            appearance,
+        }
+    }
+}
+
 /// The field-level entries: type, name, flags, value, default appearance.
 fn field_entries(
     f: &mut FieldWriter<'_>,
-    name: &str,
     widgets: &[(usize, &FieldOp)],
     states: &OnStates,
+    strings: &FieldStrings,
 ) {
     let op = widgets[0].1;
     let spec = &op.field;
-    f.partial_name(TextStr(name));
+    f.pair(Name(b"T"), Str(&strings.name));
     let mut flags = FieldFlags::empty();
     if spec.read_only {
         flags |= FieldFlags::READ_ONLY;
@@ -158,18 +211,20 @@ fn field_entries(
             if let Some(max) = spec.max_length {
                 f.text_max_len(i32::try_from(max).unwrap_or(i32::MAX));
             }
-            if let Some(v) = &spec.value {
-                if !spec.password {
-                    f.text_value(TextStr(v));
-                }
+            if let Some(v) = &strings.value {
+                f.pair(Name(b"V"), Str(v));
             }
         }
         FieldKind::Select => {
             f.field_type(FieldType::Choice);
             flags |= FieldFlags::COMBO;
-            f.choice_options()
-                .options(spec.options.iter().map(|o| TextStr(o)));
-            f.choice_value(spec.value.as_deref().map(TextStr));
+            f.insert(Name(b"Opt"))
+                .array()
+                .items(strings.options.iter().map(|o| Str(o)));
+            match &strings.value {
+                Some(v) => f.pair(Name(b"V"), Str(v)),
+                None => f.pair(Name(b"V"), pdf_writer::Null),
+            };
         }
         FieldKind::Checkbox => {
             f.field_type(FieldType::Button);
@@ -189,19 +244,17 @@ fn field_entries(
                 .map_or("Off", |(_, s)| s.as_str());
             f.radio_value(Name(on.as_bytes()));
             if states.positions {
-                f.button_options(
-                    widgets
-                        .iter()
-                        .map(|(_, w)| TextStr(w.field.value.as_deref().unwrap_or(""))),
-                );
+                f.insert(Name(b"Opt"))
+                    .array()
+                    .items(strings.options.iter().map(|o| Str(o)));
             }
         }
     }
     if !flags.is_empty() {
         f.field_flags(flags);
     }
-    if matches!(spec.kind, FieldKind::Text | FieldKind::Select) {
-        f.vartext_default_appearance(Str(default_appearance(op).as_bytes()));
+    if let Some(da) = &strings.appearance {
+        f.pair(Name(b"DA"), Str(da));
     }
 }
 
@@ -240,6 +293,7 @@ impl Ctx<'_, '_, '_> {
         &self,
         pdf: &mut Pdf,
         alloc: &mut RefAlloc,
+        out: &mut Out,
         op: &FieldOp,
         on: &str,
     ) -> Result<Appearances, InkoxideError> {
@@ -251,22 +305,22 @@ impl Ctx<'_, '_, '_> {
             .ctm
             .map(|[a, b, c, d, ..]| [a, -b, -c, d, 0.0, 0.0].map(q))
             .filter(|m| *m != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
-        let mut out = Vec::new();
+        let mut aps = Vec::new();
         let mut form = |pdf: &mut Pdf, content: Vec<u8>, font: Option<FontKey>| -> Ref {
             let r = alloc.next();
-            let mut x = pdf.form_xobject(r, &content);
-            x.bbox(PdfRect::new(0.0, 0.0, q(w), q(h)));
-            if let Some(m) = matrix {
-                x.matrix(m);
-            }
-            if let Some(key) = font {
-                if let Some(&fr) = self.font_refs.get(&key) {
-                    x.resources()
-                        .fonts()
-                        .pair(Name(font_name(key).as_bytes()), fr);
+            out.form_xobject(pdf, r, &content, |x| {
+                x.bbox(PdfRect::new(0.0, 0.0, q(w), q(h)));
+                if let Some(m) = matrix {
+                    x.matrix(m);
                 }
-            }
-            x.finish();
+                if let Some(key) = font {
+                    if let Some(&fr) = self.font_refs.get(&key) {
+                        x.resources()
+                            .fonts()
+                            .pair(Name(font_name(key).as_bytes()), fr);
+                    }
+                }
+            });
             r
         };
         match op.field.kind {
@@ -285,7 +339,7 @@ impl Ctx<'_, '_, '_> {
                 c.restore_state();
                 c.end_marked_content();
                 let content = super::content_bytes(c, self.profile)?;
-                out.push((None, form(pdf, content, op.font)));
+                aps.push((None, form(pdf, content, op.font)));
             }
             FieldKind::Checkbox | FieldKind::Radio => {
                 let mut c = Content::new();
@@ -298,11 +352,11 @@ impl Ctx<'_, '_, '_> {
                 super::path(&mut c, &segs);
                 c.fill_nonzero();
                 let content = super::content_bytes(c, self.profile)?;
-                out.push((Some(on.to_string()), form(pdf, content, None)));
-                out.push((Some("Off".into()), form(pdf, Vec::new(), None)));
+                aps.push((Some(on.to_string()), form(pdf, content, None)));
+                aps.push((Some("Off".into()), form(pdf, Vec::new(), None)));
             }
         }
-        Ok(out)
+        Ok(aps)
     }
 
     fn widget(

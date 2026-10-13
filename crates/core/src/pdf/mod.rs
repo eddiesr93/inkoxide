@@ -3,16 +3,17 @@
 mod font;
 mod forms;
 mod image;
+mod out;
 mod pdfa;
 mod svg;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use pdf_writer::types::{
-    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageLayout,
-    PageMode, TextRenderingMode,
+    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, PageLayout, PageMode,
+    TextRenderingMode,
 };
-use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 use rayon::prelude::*;
 
 use crate::date::Timestamp;
@@ -25,6 +26,7 @@ use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
 pub(crate) use image::transparency as image_transparency;
+use out::Out;
 pub(crate) use pdfa::Profile;
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
@@ -250,6 +252,7 @@ impl PdfSink for PdfWriterSink {
             pdf.set_version(major, minor);
         }
         let mut alloc = RefAlloc(0);
+        let mut out = Out::plain();
         let catalog = alloc.next();
         let info = alloc.next();
 
@@ -311,15 +314,13 @@ impl PdfSink for PdfWriterSink {
         };
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
         for ((key, glyphs), program) in used.iter().zip(&programs) {
-            let r = font::write_font(
-                &mut pdf,
-                &mut alloc,
-                doc.fonts.get(*key),
+            let embedded = font::Embedded {
+                font: doc.fonts.get(*key),
                 program,
-                glyphs,
-                doc.unicode.fonts.get(key),
-                self.profile,
-            )?;
+                used: glyphs,
+                unicode: doc.unicode.fonts.get(key),
+            };
+            let r = font::write_font(&mut pdf, &mut alloc, &mut out, &embedded, self.profile)?;
             font_refs.insert(*key, r);
         }
 
@@ -331,7 +332,13 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in &mut image_refs {
-            *r = image::write_image(&mut pdf, &mut alloc, doc.images.get(*key), self.profile)?;
+            *r = image::write_image(
+                &mut pdf,
+                &mut alloc,
+                &mut out,
+                doc.images.get(*key),
+                self.profile,
+            )?;
         }
 
         // Link annotations, numbered in page order.
@@ -342,11 +349,11 @@ impl PdfSink for PdfWriterSink {
                 let r = alloc.next();
                 if write_link(
                     &mut pdf,
+                    &mut out,
                     r,
                     page.height,
                     link,
-                    doc.marks,
-                    &page_refs,
+                    (doc.marks, &page_refs),
                     self.profile,
                 ) {
                     refs.push(r);
@@ -361,8 +368,14 @@ impl PdfSink for PdfWriterSink {
             fonts: doc.fonts,
             profile: self.profile,
         };
-        let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots)?;
-        let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
+        let form = forms::write_fields(&mut pdf, &mut alloc, &mut out, &fields, &mut annots)?;
+        let outline = write_outline(
+            &mut pdf,
+            &mut alloc,
+            &mut out,
+            &doc.marks.outline,
+            &page_refs,
+        );
 
         for (i, ((page, page_ref), content_ref)) in doc
             .pages
@@ -401,12 +414,14 @@ impl PdfSink for PdfWriterSink {
             }
             p.finish();
 
-            let mut stream = pdf.stream(*content_ref, &page.stream);
-            if page.compressed {
-                stream.filter(Filter::FlateDecode);
-            }
+            out.stream(&mut pdf, *content_ref, &page.stream, |stream| {
+                if page.compressed {
+                    stream.filter(Filter::FlateDecode);
+                }
+            });
         }
 
+        let lang = doc.meta.lang.as_deref().map(|l| out.text(l));
         let mut cat = pdf.catalog(catalog);
         cat.pages(tree_root.root);
         if let Some(form) = &form {
@@ -446,8 +461,8 @@ impl PdfSink for PdfWriterSink {
                 schema::PageLayout::TwoPageRight => PageLayout::TwoPageRight,
             });
         }
-        if let Some(lang) = &doc.meta.lang {
-            cat.lang(TextStr(lang));
+        if let Some(lang) = &lang {
+            cat.pair(Name(b"Lang"), Str(lang));
         }
         let producer = doc
             .meta
@@ -458,21 +473,27 @@ impl PdfSink for PdfWriterSink {
             let metadata = alloc.next();
             let profile = alloc.next();
             cat.metadata(metadata);
-            cat.output_intents()
+            let (condition, info) = (out.text("sRGB"), out.text("sRGB IEC61966-2.1"));
+            // `output_intents()`, with strings from `out`.
+            cat.insert(Name(b"OutputIntents"))
+                .array()
                 .push()
-                .subtype(OutputIntentSubtype::PDFA)
-                .output_condition_identifier(TextStr("sRGB"))
-                .info(TextStr("sRGB IEC61966-2.1"))
-                .dest_output_profile(profile);
+                .dict()
+                .pair(Name(b"Type"), Name(b"OutputIntent"))
+                .pair(Name(b"S"), Name(b"GTS_PDFA1"))
+                .pair(Name(b"OutputConditionIdentifier"), Str(&condition))
+                .pair(Name(b"Info"), Str(&info))
+                .pair(Name(b"DestOutputProfile"), profile);
             cat.finish();
             // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
             let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, self.profile);
-            pdf.metadata(metadata, &xmp);
+            out.metadata(&mut pdf, metadata, &xmp, |_| {});
             let icc = deflate(&pdfa::srgb_icc(), 9)?;
-            pdf.icc_profile(profile, &icc)
-                .n(3)
-                .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
-                .filter(Filter::FlateDecode);
+            out.icc_profile(&mut pdf, profile, &icc, |p| {
+                p.n(3)
+                    .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+                    .filter(Filter::FlateDecode);
+            });
             // Deterministic: a hash of everything that makes the document.
             let mut h = xxhash_rust::xxh3::Xxh3::new();
             for page in doc.pages {
@@ -493,26 +514,26 @@ impl PdfSink for PdfWriterSink {
                 v.to_string()
             }
         };
-        let mut inf = pdf.document_info(info);
         let m = doc.meta;
-        if let Some(v) = &m.title {
-            inf.title(TextStr(&text(v)));
+        let mut entries: Vec<(&[u8], Vec<u8>)> = Vec::new();
+        for (key, value) in [
+            (&b"Title"[..], &m.title),
+            (b"Author", &m.author),
+            (b"Subject", &m.subject),
+            (b"Keywords", &m.keywords),
+            (b"Creator", &m.creator),
+        ] {
+            if let Some(v) = value {
+                entries.push((key, out.text(&text(v))));
+            }
         }
-        if let Some(v) = &m.author {
-            inf.author(TextStr(&text(v)));
-        }
-        if let Some(v) = &m.subject {
-            inf.subject(TextStr(&text(v)));
-        }
-        if let Some(v) = &m.keywords {
-            inf.keywords(TextStr(&text(v)));
-        }
-        if let Some(v) = &m.creator {
-            inf.creator(TextStr(&text(v)));
-        }
-        inf.producer(TextStr(&text(producer)));
+        entries.push((b"Producer", out.text(&text(producer))));
         if let Some(t) = doc.creation_date {
-            inf.pair(Name(b"CreationDate"), Str(pdf_date(t).as_bytes()));
+            entries.push((b"CreationDate", out.bytes(pdf_date(t).as_bytes())));
+        }
+        let mut inf = pdf.document_info(info);
+        for (key, value) in &entries {
+            inf.pair(Name(key), Str(value));
         }
         inf.finish();
 
@@ -544,11 +565,11 @@ fn bounds(m: [f32; 6], rect: Rect) -> Rect {
 /// when an anchor has no destination.
 fn write_link(
     pdf: &mut Pdf,
+    out: &mut Out,
     r: Ref,
     page_h: f32,
     (rect, target): &(Rect, Box<str>),
-    marks: &Marks<'_>,
-    pages: &[Ref],
+    (marks, pages): (&Marks<'_>, &[Ref]),
     profile: Profile,
 ) -> bool {
     let dest = match target.strip_prefix('#') {
@@ -558,6 +579,7 @@ fn write_link(
         },
         None => None,
     };
+    let uri = dest.is_none().then(|| out.bytes(&uri_bytes(target)));
     let mut a = pdf.annotation(r);
     a.subtype(AnnotationType::Link)
         .rect(annot_rect(*rect, page_h))
@@ -574,7 +596,7 @@ fn write_link(
         None => {
             action
                 .action_type(ActionType::Uri)
-                .uri(Str(uri_bytes(target).as_slice()));
+                .uri(Str(uri.as_deref().unwrap_or_default()));
         }
     }
     true
@@ -610,6 +632,7 @@ fn uri_bytes(uri: &str) -> Vec<u8> {
 fn write_outline(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     entries: &[crate::pipeline::OutlineEntry<'_>],
     page_refs: &[Ref],
 ) -> Option<Ref> {
@@ -652,9 +675,10 @@ fn write_outline(
         }
     }
     for (i, e) in entries.iter().enumerate() {
+        let title = out.text(e.title);
         let mut item = pdf.outline_item(refs[i]);
-        item.title(TextStr(e.title))
-            .parent(parent[i].map_or(root, |p| refs[p]));
+        item.pair(Name(b"Title"), Str(&title));
+        item.parent(parent[i].map_or(root, |p| refs[p]));
         if let Some(p) = prev[i] {
             item.prev(refs[p]);
         }
@@ -944,7 +968,7 @@ pub(crate) fn content_stream(
             Op::Span { actual_text } => {
                 c.begin_marked_content_with_properties(Name(b"Span"))
                     .properties()
-                    .actual_text(TextStr(actual_text));
+                    .pair(Name(b"ActualText"), Str(&out::text_bytes(actual_text)));
             }
             Op::EndSpan => {
                 c.end_marked_content();

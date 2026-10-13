@@ -5,7 +5,7 @@
 
 use pdf_writer::{Filter, Pdf, Ref};
 
-use super::{Profile, RefAlloc};
+use super::{Out, Profile, RefAlloc};
 use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 
 /// What in `img` needs transparency, which PDF/A-1 forbids: an alpha
@@ -22,11 +22,12 @@ pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
 pub(crate) fn write_image(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     img: &DecodedImage,
     profile: Profile,
 ) -> Result<Ref, crate::InkoxideError> {
     if let ImageBody::Svg { tree, .. } = &img.body {
-        return super::svg::write_svg(pdf, alloc, tree, profile);
+        return super::svg::write_svg(pdf, alloc, out, tree, profile);
     }
     let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);
@@ -36,13 +37,13 @@ pub(crate) fn write_image(
             ..
         } if profile.is_pdf_a() => {
             let samples = super::deflate(&img.cmyk_to_rgb()?, crate::flate::LEVEL)?;
-            let mut x = pdf.image_xobject(id, &samples);
-            x.width(w).height(h).bits_per_component(8);
-            x.filter(Filter::FlateDecode);
-            x.color_space().device_rgb();
+            out.image_xobject(pdf, id, &samples, |x| {
+                x.width(w).height(h).bits_per_component(8);
+                x.filter(Filter::FlateDecode);
+                x.color_space().device_rgb();
+            });
         }
-        ImageBody::Jpeg { bytes, color } => {
-            let mut x = pdf.image_xobject(id, bytes);
+        ImageBody::Jpeg { bytes, color } => out.image_xobject(pdf, id, bytes, |x| {
             x.width(w).height(h).bits_per_component(8);
             x.filter(Filter::DctDecode);
             match color {
@@ -59,7 +60,7 @@ pub(crate) fn write_image(
                     }
                 }
             }
-        }
+        }),
         ImageBody::Raw {
             color,
             samples,
@@ -70,22 +71,24 @@ pub(crate) fn write_image(
             }
             let mask = alpha.as_ref().map(|a| {
                 let m = alloc.next();
-                let mut x = pdf.image_xobject(m, a);
-                x.width(w).height(h).bits_per_component(8);
-                x.filter(Filter::FlateDecode);
-                x.color_space().device_gray();
+                out.image_xobject(pdf, m, a, |x| {
+                    x.width(w).height(h).bits_per_component(8);
+                    x.filter(Filter::FlateDecode);
+                    x.color_space().device_gray();
+                });
                 m
             });
-            let mut x = pdf.image_xobject(id, samples);
-            x.width(w).height(h).bits_per_component(8);
-            x.filter(Filter::FlateDecode);
-            match color {
-                RawColor::Gray => x.color_space().device_gray(),
-                RawColor::Rgb => x.color_space().device_rgb(),
-            }
-            if let Some(m) = mask {
-                x.s_mask(m);
-            }
+            out.image_xobject(pdf, id, samples, |x| {
+                x.width(w).height(h).bits_per_component(8);
+                x.filter(Filter::FlateDecode);
+                match color {
+                    RawColor::Gray => x.color_space().device_gray(),
+                    RawColor::Rgb => x.color_space().device_rgb(),
+                }
+                if let Some(m) = mask {
+                    x.s_mask(m);
+                }
+            });
         }
         ImageBody::Svg { .. } => unreachable!("handled above"),
     }

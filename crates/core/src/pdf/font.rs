@@ -18,17 +18,37 @@ use std::sync::Arc;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
 
-use super::{deflate, Profile, RefAlloc};
+use super::{deflate, Out, Profile, RefAlloc};
 use crate::flate;
 use crate::fonts::LoadedFont;
 use crate::lru::SharedLru;
 use crate::InkoxideError;
 
+/// The character collection of every font here (`Adobe-Identity-0`),
+/// inside the `CMap` stream.
 const IDENTITY: SystemInfo<'static> = SystemInfo {
     registry: Str(b"Adobe"),
     ordering: Str(b"Identity"),
     supplement: 0,
 };
+
+/// [`IDENTITY`]'s registry and ordering strings, as `out` writes them in a
+/// dictionary.
+fn identity(out: &mut Out) -> [Vec<u8>; 2] {
+    [
+        out.bytes(IDENTITY.registry.0),
+        out.bytes(IDENTITY.ordering.0),
+    ]
+}
+
+/// Writes a `CIDSystemInfo` dictionary of [`identity`]'s strings into `obj`,
+/// as pdf-writer's `system_info` does.
+fn system_info(obj: pdf_writer::Obj<'_>, [registry, ordering]: &[Vec<u8>; 2]) {
+    obj.dict()
+        .pair(Name(b"Registry"), Str(registry))
+        .pair(Name(b"Ordering"), Str(ordering))
+        .pair(Name(b"Supplement"), IDENTITY.supplement);
+}
 
 /// The embedded font program of one font in one document.
 #[derive(Clone)]
@@ -118,18 +138,32 @@ fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
     tag
 }
 
+/// One font as a document embeds it.
+pub(crate) struct Embedded<'f, 'a> {
+    pub font: &'f LoadedFont<'a>,
+    pub program: &'f Program,
+    /// The glyphs the document uses.
+    pub used: &'f BTreeSet<u16>,
+    /// The text of each glyph, for `ToUnicode`.
+    pub unicode: Option<&'f BTreeMap<u16, String>>,
+}
+
 /// Writes all objects of one font; returns the Type0 font reference.
 /// Under PDF/A-1 a subset's descriptor lists its CIDs, and the widths
 /// keep to its array limit.
 pub(crate) fn write_font(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
-    font: &LoadedFont<'_>,
-    program: &Program,
-    used: &BTreeSet<u16>,
-    unicode: Option<&BTreeMap<u16, String>>,
+    out: &mut Out,
+    embedded: &Embedded<'_, '_>,
     profile: Profile,
 ) -> Result<Ref, InkoxideError> {
+    let Embedded {
+        font,
+        program,
+        used,
+        unicode,
+    } = *embedded;
     let type0 = alloc.next();
     let cid = alloc.next();
     let descriptor = alloc.next();
@@ -158,10 +192,9 @@ pub(crate) fn write_font(
     } else {
         CidFontType::Type2
     })
-    .base_font(Name(name))
-    .system_info(IDENTITY)
-    .font_descriptor(descriptor)
-    .default_width(0.0);
+    .base_font(Name(name));
+    system_info(c.insert(Name(b"CIDSystemInfo")), &identity(out));
+    c.font_descriptor(descriptor).default_width(0.0);
     match map_ref {
         Some(r) => {
             c.pair(Name(b"CIDToGIDMap"), r);
@@ -220,20 +253,24 @@ pub(crate) fn write_font(
     }
     d.finish();
 
-    let mut stream = pdf.stream(file, &program.data);
-    stream.filter(Filter::FlateDecode);
-    if cff {
-        stream.pair(Name(b"Subtype"), Name(b"CIDFontType0C"));
-    } else {
-        stream.pair(Name(b"Length1"), program.length as i32);
-    }
-    stream.finish();
+    out.stream(pdf, file, &program.data, |stream| {
+        stream.filter(Filter::FlateDecode);
+        if cff {
+            stream.pair(Name(b"Subtype"), Name(b"CIDFontType0C"));
+        } else {
+            stream.pair(Name(b"Length1"), program.length as i32);
+        }
+    });
     if let (Some(r), Some(map)) = (map_ref, &program.cid_to_gid) {
-        pdf.stream(r, map).filter(Filter::FlateDecode);
+        out.stream(pdf, r, map, |s| {
+            s.filter(Filter::FlateDecode);
+        });
     }
     if let Some(r) = cid_set_ref {
         let set = deflate(&cid_set_bits(used), flate::LEVEL)?;
-        pdf.stream(r, &set).filter(Filter::FlateDecode);
+        out.stream(pdf, r, &set, |s| {
+            s.filter(Filter::FlateDecode);
+        });
     }
 
     let mut cmap = UnicodeCmap::new(Name(b"Custom"), IDENTITY);
@@ -244,9 +281,11 @@ pub(crate) fn write_font(
             }
         }
     }
-    pdf.cmap(cmap_ref, &cmap.finish())
-        .name(Name(b"Custom"))
-        .system_info(IDENTITY);
+    let info = identity(out);
+    out.cmap(pdf, cmap_ref, &cmap.finish(), |c| {
+        c.name(Name(b"Custom"));
+        system_info(c.insert(Name(b"CIDSystemInfo")), &info);
+    });
 
     Ok(type0)
 }

@@ -29,7 +29,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{alpha_key, key_alpha, number, Profile, RefAlloc};
+use super::{alpha_key, key_alpha, number, Out, Profile, RefAlloc};
 use crate::images::ContentKey;
 use crate::{flate, InkoxideError};
 
@@ -47,6 +47,7 @@ const MAX_PERIODS: f32 = 1000.0;
 pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     tree: &usvg::Tree,
     profile: Profile,
 ) -> Result<Ref, InkoxideError> {
@@ -55,6 +56,7 @@ pub(crate) fn write_svg(
     let mut s = Svg {
         pdf,
         alloc,
+        out,
         alphas: HashMap::new(),
         images: HashMap::new(),
         segments: 0,
@@ -429,6 +431,7 @@ impl Scope {
 struct Svg<'a> {
     pdf: &'a mut Pdf,
     alloc: &'a mut RefAlloc,
+    out: &'a mut Out,
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
     /// Embedded raster images by content: the image `XObject`, `None` if
@@ -458,16 +461,17 @@ impl Svg<'_> {
             &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), self.profile)?,
             flate::LEVEL,
         )?;
-        let mut f = self.pdf.form_xobject(id, &data);
-        f.filter(Filter::FlateDecode);
-        f.bbox(bounded(bbox));
-        if let Some(m) = m {
-            f.matrix(m.map(number));
-        }
-        if group {
-            f.group().transparency().color_space().device_rgb();
-        }
-        cv.write_resources(f.resources());
+        self.out.form_xobject(self.pdf, id, &data, |f| {
+            f.filter(Filter::FlateDecode);
+            f.bbox(bounded(bbox));
+            if let Some(m) = m {
+                f.matrix(m.map(number));
+            }
+            if group {
+                f.group().transparency().color_space().device_rgb();
+            }
+            cv.write_resources(f.resources());
+        });
         Ok(())
     }
 
@@ -984,17 +988,18 @@ impl Svg<'_> {
             flate::LEVEL,
         )?;
         let id = self.next();
-        let mut t = self.pdf.tiling_pattern(id, &data);
-        t.filter(Filter::FlateDecode);
-        t.tiling_type(TilingType::ConstantSpacing)
-            .paint_type(PaintType::Colored)
-            .bbox(bounded(Rect::new(0.0, 0.0, r.width(), r.height())))
-            .x_step(number(r.width()))
-            .y_step(number(r.height()))
-            .matrix(matrix(
-                at.ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
-            ));
-        cv.write_resources(t.resources());
+        self.out.tiling_pattern(self.pdf, id, &data, |t| {
+            t.filter(Filter::FlateDecode);
+            t.tiling_type(TilingType::ConstantSpacing)
+                .paint_type(PaintType::Colored)
+                .bbox(bounded(Rect::new(0.0, 0.0, r.width(), r.height())))
+                .x_step(number(r.width()))
+                .y_step(number(r.height()))
+                .matrix(matrix(
+                    at.ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
+                ));
+            cv.write_resources(t.resources());
+        });
         Ok(id)
     }
 
@@ -1008,6 +1013,7 @@ impl Svg<'_> {
             Ok(decoded) => Some(super::image::write_image(
                 self.pdf,
                 self.alloc,
+                self.out,
                 &decoded,
                 self.profile,
             )?),
@@ -1064,7 +1070,7 @@ mod tests {
 
     use pdf_writer::Pdf;
 
-    use super::{Profile, RefAlloc};
+    use super::{Out, Profile, RefAlloc};
     use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
 
     /// The PDF objects written for `svg`.
@@ -1074,7 +1080,14 @@ mod tests {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();
-        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, Profile::default()).unwrap();
+        super::write_svg(
+            &mut pdf,
+            &mut RefAlloc(0),
+            &mut Out::plain(),
+            &tree,
+            Profile::default(),
+        )
+        .unwrap();
         pdf.finish()
     }
 
@@ -1196,9 +1209,22 @@ mod tests {
             };
             assert_eq!(super::transparency(&tree), want, "{body}");
             // The writer refuses exactly what the scan finds.
-            let refused = super::write_svg(&mut Pdf::new(), &mut RefAlloc(0), &tree, one_b);
+            let refused = super::write_svg(
+                &mut Pdf::new(),
+                &mut RefAlloc(0),
+                &mut Out::plain(),
+                &tree,
+                one_b,
+            );
             assert_eq!(refused.is_err(), want.is_some(), "{body}");
-            super::write_svg(&mut Pdf::new(), &mut RefAlloc(0), &tree, Profile::default()).unwrap();
+            super::write_svg(
+                &mut Pdf::new(),
+                &mut RefAlloc(0),
+                &mut Out::plain(),
+                &tree,
+                Profile::default(),
+            )
+            .unwrap();
         }
     }
 
