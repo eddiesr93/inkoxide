@@ -7,6 +7,11 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.6.2 - 2026-10-13
+
+`inkoxide` and `@inkoxide/render` 0.6.2; the other packages are unchanged. Upgrading: the limit
+on what is painted on every page is lower (see **Changed**).
+
 ### Changed
 
 - The limit on what is painted on every page is about 64 MB instead of 256 MB: a document just
