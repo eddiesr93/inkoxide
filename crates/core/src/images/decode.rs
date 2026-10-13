@@ -37,6 +37,12 @@ pub(crate) enum ImageBody {
     Svg {
         tree: Arc<usvg::Tree>,
         view_box: Option<super::svg::ViewBox>,
+        /// Its text, when it or a nested SVG has text: `tree` leaves it
+        /// out, and each render converts the SVG again with its fonts.
+        text: Option<Arc<super::svg::TextSource>>,
+        /// In a render's own copy: the text laid out with its fonts, and
+        /// the probes `tree` draws it at.
+        probed: Option<Arc<super::svg::ProbedText>>,
     },
 }
 
@@ -63,6 +69,11 @@ impl DecodedImage {
         } else {
             (self.width as f32, self.height as f32)
         }
+    }
+
+    /// An SVG with text (its own or a nested SVG's).
+    pub fn has_text(&self) -> bool {
+        matches!(&self.body, ImageBody::Svg { text: Some(_), .. })
     }
 
     /// The 8-bit RGB samples of a CMYK JPEG, for output that cannot hold
@@ -97,7 +108,7 @@ pub(crate) struct ImageCrateDecoder;
 impl ImageDecoder for ImageCrateDecoder {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String> {
         if super::svg::is_svg(bytes) {
-            let (tree, view_box) = super::svg::parse(bytes)?;
+            let (tree, view_box, text) = super::svg::parse_text(bytes)?;
             let s = tree.size();
             return Ok(DecodedImage {
                 width: s.width().ceil() as u32,
@@ -106,6 +117,8 @@ impl ImageDecoder for ImageCrateDecoder {
                 body: ImageBody::Svg {
                     tree: Arc::new(tree),
                     view_box,
+                    text: text.map(Arc::new),
+                    probed: None,
                 },
             });
         }

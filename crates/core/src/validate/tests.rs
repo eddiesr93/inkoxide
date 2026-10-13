@@ -446,7 +446,23 @@ fn rejects_corrupt_and_unknown_images() {
             ("INVALID_IMAGE", "pages[0].children[3].data"),
         ]
     );
-    assert!(e[3].message.contains("<text>"), "{}", e[3].message);
+    // SVG text needs a font to be drawn with.
+    assert!(
+        e[3].message.contains("declares no fonts"),
+        "{}",
+        e[3].message
+    );
+    let with_font = doc.replace(
+        r#""fonts":[]"#,
+        r#""fonts":[{"id":"Inter-Regular","family":"Inter"}]"#,
+    );
+    let e = validate(
+        with_font.as_bytes(),
+        InputFormat::Json,
+        &crate::test_fixtures::inter(),
+        &ImageStore::new(),
+    );
+    assert_eq!(e.len(), 3, "{e:?}");
 }
 
 #[test]

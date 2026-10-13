@@ -8,14 +8,17 @@ use pdf_writer::{Filter, Pdf, Ref};
 use super::RefAlloc;
 use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 
+/// Writes `img`; `fonts` draw the text of a render's copy of an SVG.
 pub(crate) fn write_image(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     img: &DecodedImage,
     pdf_a: bool,
+    fonts: Option<super::svg::TextFonts<'_, '_>>,
 ) -> Result<Ref, crate::InkoxideError> {
-    if let ImageBody::Svg { tree, .. } = &img.body {
-        return super::svg::write_svg(pdf, alloc, tree, pdf_a);
+    if let ImageBody::Svg { tree, probed, .. } = &img.body {
+        let text = probed.as_deref().zip(fonts);
+        return super::svg::write_svg(pdf, alloc, tree, pdf_a, text);
     }
     let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);

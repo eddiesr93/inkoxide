@@ -8,9 +8,6 @@
 //! per chunk and baselines from the font's metrics. Positions are in the
 //! text's user space, y down.
 
-// Called by the SVG conversion in the commit that follows.
-#![allow(dead_code)]
-
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::images::svg_text::{Anchor, Baseline, Shift, SvgSpan, SvgText};

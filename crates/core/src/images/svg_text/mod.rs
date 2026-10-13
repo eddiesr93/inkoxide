@@ -12,9 +12,6 @@
 //! Only `simplecss` and `svgtypes` read CSS and values here, the same
 //! versions `usvg` uses, so selectors and values behave as they do there.
 
-// Laid out and drawn by the commits that follow.
-#![allow(dead_code)]
-
 mod extract;
 mod rewrite;
 #[cfg(test)]
@@ -22,7 +19,7 @@ mod survival;
 
 use std::ops::Range;
 
-pub(crate) use extract::{escape, extract, TextError};
+pub(crate) use extract::{escape, extract, TextError, DEFAULT_FONT_SIZE};
 pub(crate) use rewrite::{rewrite, Probes};
 
 /// The text elements of one SVG document.

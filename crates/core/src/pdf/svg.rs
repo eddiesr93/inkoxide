@@ -13,24 +13,32 @@
 //!   per distinct image however many copies draw it; nested SVGs are drawn
 //!   inline.
 //! - Filters are not supported: filtered elements are drawn without them.
+//! - Text: a render's copy of an SVG with text has a "probe" path where
+//!   each text is (`images/svg_text`). A probe draws its text, laid out
+//!   with the render's fonts, as PDF text with the probe's paint: fill and
+//!   stroke in its paint order, underlines and overlines under the glyphs
+//!   and line-throughs over them.
 //!
 //! Patterns and shadings are positioned relative to the form they are used
 //! in, so the transform from the current form's space is tracked (`ts`)
 //! and reset for every new form.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use pdf_writer::types::{
     BlendMode, ColorSpaceOperand, FunctionShadingType, LineCapStyle, LineJoinStyle, MaskType,
-    PaintType, TilingType,
+    PaintType, TextRenderingMode, TilingType,
 };
-use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
 use super::{alpha_key, key_alpha, number, RefAlloc};
+use crate::fonts::{FontKey, FontSet};
+use crate::images::svg::ProbedText;
 use crate::images::ContentKey;
+use crate::text::LaidText;
 use crate::{flate, InkoxideError};
 
 /// Most path segments one SVG may emit, copies included.
@@ -42,13 +50,23 @@ const MAX_DEPTH: u32 = 256;
 /// pads. Each is an entry in a stitching function.
 const MAX_PERIODS: f32 = 1000.0;
 
+/// The render's fonts and the font objects written for them, for SVG
+/// text.
+#[derive(Clone, Copy)]
+pub(crate) struct TextFonts<'a, 'f> {
+    pub fonts: &'a FontSet<'f>,
+    pub refs: &'a BTreeMap<FontKey, Ref>,
+}
+
 /// Writes `tree` as a Form `XObject` mapping the SVG viewport onto the unit
-/// square (y up), like an image `XObject`.
+/// square (y up), like an image `XObject`. `text` draws the text of a
+/// render's copy of an SVG at its probes.
 pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     tree: &usvg::Tree,
     pdf_a: bool,
+    text: Option<(&ProbedText, TextFonts<'_, '_>)>,
 ) -> Result<Ref, InkoxideError> {
     let size = tree.size();
     let (w, h) = (size.width(), size.height());
@@ -59,6 +77,7 @@ pub(crate) fn write_svg(
         images: HashMap::new(),
         segments: 0,
         pdf_a,
+        text,
     };
     let mut cv = Canvas::new();
     s.group(&mut cv, tree.root(), Scope::form(0, false))?;
@@ -81,14 +100,16 @@ enum ResKind {
     XObject,
     Pattern,
     Shading,
+    Font,
 }
 
 impl ResKind {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 5] = [
         Self::GraphicsState,
         Self::XObject,
         Self::Pattern,
         Self::Shading,
+        Self::Font,
     ];
 
     /// The resource names of this kind are the prefix and a number.
@@ -98,6 +119,7 @@ impl ResKind {
             Self::XObject => "X",
             Self::Pattern => "P",
             Self::Shading => "S",
+            Self::Font => "F",
         }
     }
 
@@ -108,6 +130,7 @@ impl ResKind {
             Self::XObject => res.x_objects(),
             Self::Pattern => res.patterns(),
             Self::Shading => res.shadings(),
+            Self::Font => res.fonts(),
         }
     }
 }
@@ -117,7 +140,7 @@ struct Canvas {
     c: Content,
     /// Resources by kind (see [`ResKind::ALL`]); a resource's position is
     /// the number in its name.
-    res: [Vec<Ref>; 4],
+    res: [Vec<Ref>; 5],
 }
 
 impl Canvas {
@@ -296,9 +319,12 @@ fn blend_mode(m: usvg::BlendMode) -> BlendMode {
     }
 }
 
-/// A clip path that is exactly one filled path: its outline in the clip's
-/// parent space and its rule.
-fn simple_clip(clip: &usvg::ClipPath) -> Option<(tiny_skia_path::Path, usvg::FillRule)> {
+/// A clip path that is exactly one filled path, not a text's probe: its
+/// outline in the clip's parent space and its rule.
+fn simple_clip(
+    clip: &usvg::ClipPath,
+    is_probe: impl Fn(&usvg::Path) -> bool,
+) -> Option<(tiny_skia_path::Path, usvg::FillRule)> {
     let root = clip.root();
     if clip.clip_path().is_some() || root.clip_path().is_some() || root.mask().is_some() {
         return None;
@@ -306,6 +332,9 @@ fn simple_clip(clip: &usvg::ClipPath) -> Option<(tiny_skia_path::Path, usvg::Fil
     let [Node::Path(p)] = root.children() else {
         return None;
     };
+    if is_probe(p) {
+        return None;
+    }
     let rule = p.fill()?.rule();
     if !p.is_visible() {
         return None;
@@ -352,11 +381,19 @@ struct Svg<'a> {
     /// it did not decode.
     images: HashMap<ContentKey<Arc<Vec<u8>>>, Option<Ref>>,
     segments: usize,
-    /// Passed on to embedded raster images.
+    /// Passed on to embedded raster images; leaves `.notdef` out of text.
     pdf_a: bool,
+    /// The text at the probes, and the fonts to draw it with.
+    text: Option<(&'a ProbedText, TextFonts<'a, 'a>)>,
 }
 
 type Res = Result<(), InkoxideError>;
+
+fn too_complex() -> InkoxideError {
+    InkoxideError::Image(format!(
+        "SVG is too complex: more than {MAX_SEGMENTS} path segments and glyphs"
+    ))
+}
 
 impl Svg<'_> {
     fn next(&mut self) -> Ref {
@@ -433,9 +470,7 @@ impl Svg<'_> {
     fn emit_path(&mut self, c: &mut Content, path: &tiny_skia_path::Path) -> Res {
         self.segments += path.len();
         if self.segments > MAX_SEGMENTS {
-            return Err(InkoxideError::Image(format!(
-                "SVG is too complex: more than {MAX_SEGMENTS} path segments"
-            )));
+            return Err(too_complex());
         }
         // Shapes that are not path data (`rect`, `line`, `image`) take any
         // number, and a simple clip path is written transformed.
@@ -495,7 +530,7 @@ impl Svg<'_> {
         // Soft masks, outermost first.
         let mut masks: Vec<Ref> = Vec::new();
         if let Some(cp) = g.clip_path() {
-            match simple_clip(cp) {
+            match simple_clip(cp, |p| self.probe(p).is_some()) {
                 Some((path, rule)) => {
                     self.emit_path(&mut cv.c, &path)?;
                     match rule {
@@ -624,6 +659,7 @@ impl Svg<'_> {
         for n in g.children() {
             match n {
                 Node::Group(child) => self.group(cv, child, at.deeper())?,
+                Node::Path(p) if self.probe(p).is_some() => self.text(cv, p, at)?,
                 Node::Path(p) if at.clip => {
                     if let (true, Some(fill)) = (p.is_visible(), p.fill()) {
                         self.emit_path(&mut cv.c, p.data())?;
@@ -663,22 +699,7 @@ impl Svg<'_> {
         let stroke = |s: &mut Self, cv: &mut Canvas| -> Res {
             let Some(st) = p.stroke() else { return Ok(()) };
             cv.c.save_state();
-            s.set_paint(cv, st.paint(), st.opacity().get(), true, bbox, at)?;
-            cv.c.set_line_width(number(st.width().get()));
-            cv.c.set_line_cap(match st.linecap() {
-                usvg::LineCap::Butt => LineCapStyle::ButtCap,
-                usvg::LineCap::Round => LineCapStyle::RoundCap,
-                usvg::LineCap::Square => LineCapStyle::ProjectingSquareCap,
-            });
-            cv.c.set_line_join(match st.linejoin() {
-                usvg::LineJoin::Miter | usvg::LineJoin::MiterClip => LineJoinStyle::MiterJoin,
-                usvg::LineJoin::Round => LineJoinStyle::RoundJoin,
-                usvg::LineJoin::Bevel => LineJoinStyle::BevelJoin,
-            });
-            cv.c.set_miter_limit(number(st.miterlimit().get()));
-            if let Some(d) = st.dasharray() {
-                cv.c.set_dash_pattern(d.iter().map(|&v| number(v)), number(st.dashoffset()));
-            }
+            s.set_stroke(cv, st, bbox, at)?;
             s.emit_path(&mut cv.c, p.data())?;
             cv.c.stroke();
             cv.c.restore_state();
@@ -694,6 +715,249 @@ impl Svg<'_> {
                 fill(self, cv)
             }
         }
+    }
+
+    /// Sets the stroke paint and the line style of `st`.
+    fn set_stroke(&mut self, cv: &mut Canvas, st: &usvg::Stroke, bbox: Rect, at: Scope) -> Res {
+        self.set_paint(cv, st.paint(), st.opacity().get(), true, bbox, at)?;
+        cv.c.set_line_width(number(st.width().get()));
+        cv.c.set_line_cap(match st.linecap() {
+            usvg::LineCap::Butt => LineCapStyle::ButtCap,
+            usvg::LineCap::Round => LineCapStyle::RoundCap,
+            usvg::LineCap::Square => LineCapStyle::ProjectingSquareCap,
+        });
+        cv.c.set_line_join(match st.linejoin() {
+            usvg::LineJoin::Miter | usvg::LineJoin::MiterClip => LineJoinStyle::MiterJoin,
+            usvg::LineJoin::Round => LineJoinStyle::RoundJoin,
+            usvg::LineJoin::Bevel => LineJoinStyle::BevelJoin,
+        });
+        cv.c.set_miter_limit(number(st.miterlimit().get()));
+        if let Some(d) = st.dasharray() {
+            cv.c.set_dash_pattern(d.iter().map(|&v| number(v)), number(st.dashoffset()));
+        }
+        Ok(())
+    }
+
+    /// The text and paint style a probe stands for: a path of exactly the
+    /// four sides of a rectangle whose corners the probes list.
+    fn probe(&self, p: &usvg::Path) -> Option<(usize, u32)> {
+        let (probed, _) = self.text?;
+        let mut segs = p.data().segments();
+        let (
+            Some(PathSegment::MoveTo(a)),
+            Some(PathSegment::LineTo(b)),
+            Some(PathSegment::LineTo(c)),
+            Some(PathSegment::LineTo(d)),
+            Some(PathSegment::Close),
+            None,
+        ) = (
+            segs.next(),
+            segs.next(),
+            segs.next(),
+            segs.next(),
+            segs.next(),
+            segs.next(),
+        )
+        else {
+            return None;
+        };
+        if (b.x, b.y, d.x, d.y) != (c.x, a.y, a.x, c.y) {
+            return None;
+        }
+        let &(text, paint) = probed.probes.get(&[a.x, a.y, c.x, c.y].map(f32::to_bits))?;
+        Some((text as usize, paint))
+    }
+
+    /// Draws the text a probe stands for with the probe's paint. In a clip
+    /// path the glyphs are filled, as shapes are there.
+    fn text(&mut self, cv: &mut Canvas, p: &usvg::Path, at: Scope) -> Res {
+        let (Some((text, paint)), Some((probed, fonts))) = (self.probe(p), self.text) else {
+            return Ok(());
+        };
+        if !p.is_visible() {
+            return Ok(());
+        }
+        let laid = &probed.texts[text];
+        if at.clip {
+            if p.fill().is_some() {
+                self.draw_text(cv, laid, paint, fonts, false)?;
+            }
+            return Ok(());
+        }
+        let area = p.stroke_bounding_box();
+        let bbox = Rect::new(area.left(), area.top(), area.right(), area.bottom());
+        let fill = |s: &mut Self, cv: &mut Canvas| -> Res {
+            let Some(f) = p.fill() else { return Ok(()) };
+            cv.c.save_state();
+            s.set_paint(cv, f.paint(), f.opacity().get(), false, bbox, at)?;
+            s.draw_text(cv, laid, paint, fonts, false)?;
+            cv.c.restore_state();
+            Ok(())
+        };
+        let stroke = |s: &mut Self, cv: &mut Canvas| -> Res {
+            let Some(st) = p.stroke() else { return Ok(()) };
+            cv.c.save_state();
+            s.set_stroke(cv, st, bbox, at)?;
+            s.draw_text(cv, laid, paint, fonts, true)?;
+            cv.c.restore_state();
+            Ok(())
+        };
+        match p.paint_order() {
+            usvg::PaintOrder::FillAndStroke => {
+                fill(self, cv)?;
+                stroke(self, cv)
+            }
+            usvg::PaintOrder::StrokeAndFill => {
+                stroke(self, cv)?;
+                fill(self, cv)
+            }
+        }
+    }
+
+    /// The glyphs and decorations of `laid` in paint style `paint`, filled
+    /// or stroked with the paint set: underlines and overlines first, then
+    /// the glyphs, then line-throughs.
+    fn draw_text(
+        &mut self,
+        cv: &mut Canvas,
+        laid: &LaidText,
+        paint: u32,
+        fonts: TextFonts<'_, '_>,
+        stroke: bool,
+    ) -> Res {
+        self.decorations(cv, laid, paint, false, stroke)?;
+        self.glyphs(cv, laid, paint, fonts, stroke)?;
+        self.decorations(cv, laid, paint, true, stroke)
+    }
+
+    fn decorations(
+        &mut self,
+        cv: &mut Canvas,
+        laid: &LaidText,
+        paint: u32,
+        over: bool,
+        stroke: bool,
+    ) -> Res {
+        let mut any = false;
+        for d in laid
+            .decorations
+            .iter()
+            .filter(|d| d.paint == paint && d.over == over)
+        {
+            self.segments += 5;
+            if self.segments > MAX_SEGMENTS {
+                return Err(too_complex());
+            }
+            let [a, b, c, e] = d.quad.map(|p| p.map(number));
+            cv.c.move_to(a[0], a[1]);
+            cv.c.line_to(b[0], b[1]);
+            cv.c.line_to(c[0], c[1]);
+            cv.c.line_to(e[0], e[1]);
+            cv.c.close_path();
+            any = true;
+        }
+        if any {
+            if stroke {
+                cv.c.stroke();
+            } else {
+                cv.c.fill_nonzero();
+            }
+        }
+        Ok(())
+    }
+
+    /// The glyphs of `laid` in paint style `paint`: glyphs on one
+    /// baseline with the same font and size share a `TJ`, with
+    /// adjustments where their positions differ from the font's advances
+    /// (as `show_text` writes page text); a turned glyph has its own.
+    fn glyphs(
+        &mut self,
+        cv: &mut Canvas,
+        laid: &LaidText,
+        paint: u32,
+        fonts: TextFonts<'_, '_>,
+        stroke: bool,
+    ) -> Res {
+        let glyphs: Vec<_> = laid
+            .glyphs
+            .iter()
+            .filter(|g| g.paint == paint && !(self.pdf_a && g.id == 0))
+            .filter(|g| fonts.refs.contains_key(&g.font))
+            .collect();
+        if glyphs.is_empty() {
+            return Ok(());
+        }
+        self.segments += glyphs.len();
+        if self.segments > MAX_SEGMENTS {
+            return Err(too_complex());
+        }
+        cv.c.begin_text();
+        if stroke {
+            cv.c.set_text_rendering_mode(TextRenderingMode::Stroke);
+        }
+        let mut font = None;
+        let mut i = 0;
+        while i < glyphs.len() {
+            let g0 = glyphs[i];
+            if font != Some(g0.font) {
+                let name = cv.name(ResKind::Font, fonts.refs[&g0.font]);
+                cv.c.set_font(Name(name.as_bytes()), 1.0);
+                font = Some(g0.font);
+            }
+            let (sin, cos) = if g0.rotate == 0.0 {
+                (0.0, 1.0)
+            } else {
+                g0.rotate.to_radians().sin_cos()
+            };
+            let (size, k) = (g0.size, g0.scale_x);
+            // Text space is y up; SVG user space is y down.
+            cv.c.set_text_matrix(
+                [
+                    cos * size * k,
+                    sin * size * k,
+                    sin * size,
+                    -cos * size,
+                    g0.x,
+                    g0.y,
+                ]
+                .map(number),
+            );
+            let loaded = fonts.fonts.get(g0.font);
+            let em = size * k;
+            let mut shown = cv.c.show_positioned();
+            let mut items = shown.items();
+            let mut buf: Vec<u8> = Vec::new();
+            let mut pen = g0.x;
+            let start = i;
+            while i < glyphs.len() {
+                let g = glyphs[i];
+                let same = g.font == g0.font
+                    && g.size == size
+                    && g.scale_x == k
+                    && g.y == g0.y
+                    && g.rotate == 0.0
+                    && g0.rotate == 0.0;
+                if i > start && !same {
+                    break;
+                }
+                let delta = g.x - pen;
+                if delta.abs() > super::KERN_EPS && em != 0.0 {
+                    if !buf.is_empty() {
+                        items.show(Str(&buf));
+                        buf.clear();
+                    }
+                    items.adjust(number(-delta * 1000.0 / em));
+                }
+                buf.extend_from_slice(&g.id.to_be_bytes());
+                pen = g.x + loaded.advance(g.id) * loaded.scale(em);
+                i += 1;
+            }
+            if !buf.is_empty() {
+                items.show(Str(&buf));
+            }
+        }
+        cv.c.end_text();
+        Ok(())
     }
 
     /// Sets the fill or stroke paint and its opacity. `bbox` bounds what
@@ -912,7 +1176,7 @@ impl Svg<'_> {
         }
         let r = match crate::images::decode_embedded(data) {
             Ok(decoded) => Some(super::image::write_image(
-                self.pdf, self.alloc, &decoded, self.pdf_a,
+                self.pdf, self.alloc, &decoded, self.pdf_a, None,
             )?),
             Err(_) => None,
         };
@@ -977,25 +1241,33 @@ mod tests {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();
-        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, false).unwrap();
+        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, false, None).unwrap();
         pdf.finish()
     }
 
     /// The objects written for `svg` as text, its streams inflated.
     fn written_text(svg: &str) -> String {
-        let out = written(svg);
+        inflated(&written(svg))
+    }
+
+    /// `out` as text, its streams inflated.
+    fn inflated(out: &[u8]) -> String {
         let mut text = String::new();
-        let mut rest = &out[..];
+        let mut rest = out;
         while let Some(i) = rest.windows(7).position(|w| w == b"stream\n") {
             text.push_str(&String::from_utf8_lossy(&rest[..i]));
             let body = &rest[i + 7..];
             let end = body.windows(9).position(|w| w == b"endstream").unwrap();
             let mut data = Vec::new();
-            std::io::Read::read_to_end(
+            // Streams written uncompressed are kept as they are.
+            if std::io::Read::read_to_end(
                 &mut flate2::read::ZlibDecoder::new(&body[..end]),
                 &mut data,
             )
-            .unwrap();
+            .is_err()
+            {
+                data = body[..end].to_vec();
+            }
             text.push_str(&String::from_utf8_lossy(&data));
             rest = &body[end + b"endstream".len()..];
         }
@@ -1026,6 +1298,102 @@ mod tests {
             r##"<use href="#i"/>"##.repeat(copies)
         )));
         out.windows(15).filter(|w| w == b"/Subtype /Image").count()
+    }
+
+    /// A document showing `svg` (with Inter Regular and Bold declared,
+    /// and a line of text in Regular), rendered and inflated.
+    fn rendered(svg: &str, pdf_a: bool) -> String {
+        let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},
+              {"id":"Inter-Bold","family":"Inter","weight":700}],
+            "pages":[{"size":{"width":200,"height":200},"children":[
+              {"type":"text","runs":[{"text":"Page","font":"Inter-Regular","size":10}]},
+              {"type":"image","src":"svg"}]}]}"#;
+        let fonts = crate::test_fixtures::fonts(&["Inter-Regular", "Inter-Bold"]);
+        let mut images = crate::ImageStore::new();
+        images.insert("svg", svg.as_bytes().to_vec());
+        let opts = crate::RenderOptions::default()
+            .with_compress(false)
+            .with_pdf_a(pdf_a);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &opts,
+            &fonts,
+            &images,
+        )
+        .unwrap();
+        inflated(&pdf)
+    }
+
+    #[test]
+    fn draws_text_as_pdf_text_with_its_fonts() {
+        let out = rendered(
+            &svg(r#"<text x="5" y="20" font-size="10" font-weight="bold" fill="red">Hi</text>"#),
+            false,
+        );
+        // One run in a text object, with the probe's fill.
+        assert!(out.contains("1 0 0 rg"), "{out}");
+        assert!(out.contains("BT\n/F0 1 Tf\n10 0 0 -10 5 20 Tm\n["), "{out}");
+        assert!(out.contains("] TJ\nET"), "{out}");
+        assert!(out.contains("/Font <<\n      /F0"), "{out}");
+        // Inter Bold, used only in the SVG, is embedded, with its glyphs
+        // mapped to text.
+        assert_eq!(out.matches("/FontFile2").count(), 2, "{out}");
+        assert_eq!(out.matches("/ToUnicode").count(), 2, "{out}");
+        assert!(out.contains("<0048>") && out.contains("<0069>"), "{out}");
+        // The probe itself draws nothing.
+        assert!(!out.contains(" re\nf"), "{out}");
+    }
+
+    #[test]
+    fn strokes_and_paints_text_with_gradients() {
+        let out = rendered(
+            &svg(
+                r##"<linearGradient id="g"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient>
+                   <text x="5" y="20" fill="url(#g)" stroke="#00ff00" stroke-width="0.5" paint-order="stroke">Hi</text>"##,
+            ),
+            false,
+        );
+        let stroke = out.find("1 Tr").expect("no stroked text");
+        let pattern = out.find("/Pattern cs").expect("no gradient fill");
+        // `paint-order: stroke` strokes first.
+        assert!(stroke < pattern, "{out}");
+        assert!(out.contains("0 1 0 RG"), "{out}");
+    }
+
+    #[test]
+    fn fills_text_in_clip_paths_and_draws_decorations() {
+        let out = rendered(
+            &svg(
+                r#"<clipPath id="c"><text x="5" y="40" font-size="30">Hi</text></clipPath>
+                   <rect width="100" height="50" fill="blue" clip-path="url(#c)"/>
+                   <text x="5" y="20" text-decoration="underline line-through">ab</text>"#,
+            ),
+            false,
+        );
+        // The clip path is a soft mask that fills the text.
+        assert!(out.contains("/SMask"), "{out}");
+        assert!(out.contains("0 g\n"), "{out}");
+        assert_eq!(out.matches("] TJ").count(), 3, "{out}");
+        // Underline right before the glyphs, line-through right after.
+        let tm = out.find("16 0 0 -16 5 20 Tm").unwrap();
+        let before = &out[..tm];
+        assert!(before.ends_with("h\nf\nBT\n/F0 1 Tf\n"), "{before}");
+        let after = &out[tm..];
+        let et = after.find("ET\n").unwrap();
+        assert!(
+            after[et..].starts_with("ET\n") && after[et + 3..].contains("h\nf\n"),
+            "{after}"
+        );
+    }
+
+    #[test]
+    fn leaves_notdef_out_of_pdf_a() {
+        // Inter has no glyph for Thai.
+        let svg = svg("<text x='5' y='20'>\u{0E01}</text>");
+        assert!(rendered(&svg, false).contains("] TJ"));
+        let a = rendered(&svg, true);
+        assert_eq!(a.matches("] TJ").count(), 1, "only the page's text: {a}");
     }
 
     #[test]

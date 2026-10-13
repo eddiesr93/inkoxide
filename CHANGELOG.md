@@ -19,12 +19,25 @@ All notable changes to the packages in this repository. The format follows
   `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
   takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
   `miterLimit(n)` sets how far mitred joins reach.
+- **Text in SVG images**: `<text>`, its `<tspan>`s and `<a>`s are drawn as PDF text with the
+  document's fonts, so it can be selected, searched and copied, in SVG files and in SVGs nested
+  in them. Each span's font is the declared font that matches its `font-family`, `font-weight`
+  and `font-style` (as CSS matches them), with the document's fallback fonts for characters it
+  lacks. Positions (`x`, `y`, `dx`, `dy`, `rotate`), `text-anchor`, `dominant-baseline`,
+  `alignment-baseline`, `baseline-shift`, `letter-spacing`, `word-spacing`, `text-decoration`,
+  `textLength`, `lengthAdjust`, `xml:space`, style sheets, and fills and strokes with gradients
+  and patterns work, also in clip paths, masks, patterns, markers and `use` copies. Text on a
+  path and vertical text fail with `INVALID_IMAGE`, as all SVG text did. An SVG with text in a
+  document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG may hold up
+  to 1,000,000 characters of text, counting every copy.
 
 ### Changed
 
 - Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
   pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
   mitred instead of bevelled. `miterLimit(4)` gives the old joins.
+- In SVG images, `em` and `ex` lengths and `font-size` keywords are relative to a font size of
+  16 where nothing sets one, as in browsers; it was 12.
 - Font family names match ignoring ASCII case, as in CSS: `fontFamily: 'inter'` picks Inter
   instead of falling back with a warning. `Font.register` refuses a family that differs from
   a registered or bundled one only in case, for the same weight and style.

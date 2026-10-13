@@ -335,19 +335,16 @@ impl ViewBox {
     }
 }
 
-/// Parses an SVG document into a `usvg` tree, with its root `viewBox`.
+/// Parses an SVG document into a `usvg` tree without its text, with its
+/// root `viewBox`.
 pub(crate) fn parse(bytes: &[u8]) -> Result<(usvg::Tree, Option<ViewBox>), String> {
-    let (tree, view_box, text) = parse_text(bytes)?;
-    if text.is_some() {
-        return Err("SVG <text> is not supported; convert the text to outlines (paths)".into());
-    }
+    let (tree, view_box, _) = parse_text(bytes)?;
     Ok((tree, view_box))
 }
 
 /// Parses an SVG document into a `usvg` tree, with its root `viewBox` and
 /// what converting its text needs, when it has text: the tree leaves the
 /// text out.
-#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
 pub(crate) fn parse_text(bytes: &[u8]) -> Result<Parsed, String> {
     let meter = Meter::default();
     let at = Nesting {
@@ -367,7 +364,6 @@ pub(crate) fn parse_text(bytes: &[u8]) -> Result<Parsed, String> {
 /// its bytes and text elements, and the same for its nested SVG images
 /// with text. An SVG without text of its own has this for its nested ones.
 #[derive(Debug)]
-#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
 pub(crate) struct TextSource {
     pub bytes: Arc<Vec<u8>>,
     pub texts: Vec<SvgText>,
@@ -378,7 +374,6 @@ pub(crate) struct TextSource {
 /// out, in the order of [`TextSource`] (its own texts, then its nested
 /// SVGs' in turn), and the probe that stands for each text and paint.
 #[derive(Debug, Default)]
-#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
 pub(crate) struct ProbedText {
     pub texts: Vec<LaidText>,
     pub probes: Probes,
@@ -390,7 +385,6 @@ type Rewrites = HashMap<ContentKey<Arc<Vec<u8>>>, Arc<Vec<u8>>>;
 /// Converts the SVG of `source` with each text laid out by `lay_out` and
 /// replaced with its placeholder (`svg_text/rewrite.rs`), with the same
 /// checks as [`parse`].
-#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
 pub(crate) fn parse_with_text(
     source: &TextSource,
     lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
@@ -414,7 +408,6 @@ pub(crate) fn parse_with_text(
 
 /// `source`'s SVG with its texts replaced, its nested ones rewritten into
 /// `rewrites`.
-#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
 fn rewrite_all(
     source: &TextSource,
     lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
@@ -532,6 +525,8 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
             resolve_data: Box::new(move |mime, data, _| resolve_data(mime, data, inner)),
             resolve_string: Box::new(|_, _| None),
         },
+        // As text is laid out (`svg_text`), for `em` lengths.
+        font_size: super::svg_text::DEFAULT_FONT_SIZE,
         ..usvg::Options::default()
     };
     let tree = usvg::Tree::from_xmltree(&doc, &options)
@@ -1476,17 +1471,22 @@ mod tests {
     }
 
     #[test]
-    fn rejects_text_and_garbage() {
-        let e = parse(svg("<text x='1' y='5'>Hi</text>").as_bytes()).unwrap_err();
-        assert!(e.contains("<text>"), "{e}");
-        // Empty text elements are harmless.
-        parse(svg("<text x='1' y='5'> </text>").as_bytes()).unwrap();
+    fn reads_text_and_rejects_garbage() {
+        // The tree leaves text out; it comes with what drawing it needs.
+        let (_, _, text) = parse_text(svg("<text x='1' y='5'>Hi</text>").as_bytes()).unwrap();
+        assert_eq!(text.unwrap().texts.len(), 1);
+        // Empty text elements are no text.
+        let (_, _, text) = parse_text(svg("<text x='1' y='5'> </text>").as_bytes()).unwrap();
+        assert!(text.is_none());
         assert!(parse(b"<svg").is_err());
         assert!(parse(b"<html/>").is_err());
         assert!(parse(&[0xFF, 0xFE, 0x3C]).is_err());
-        // Nested, text fails the SVG too, rather than leaving the image out.
-        let e = rejected(&image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0));
-        assert!(e.contains("<text>"), "{e}");
+        // Text in a nested SVG comes with the outer one.
+        let outer = image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0);
+        let (_, _, text) = parse_text(outer.as_bytes()).unwrap();
+        let text = text.unwrap();
+        assert!(text.texts.is_empty());
+        assert_eq!(text.nested[0].texts.len(), 1);
         // Text on a path and vertical text say so.
         let e = rejected(&svg(
             "<path id='p' d='M0 0H9'/><text><textPath href='#p'>Hi</textPath></text>",
@@ -1505,8 +1505,7 @@ mod tests {
                 r##"<use href="#t"/>"##.repeat(n)
             ))
         };
-        // Under the limit, the text is still refused for now.
-        assert!(rejected(&copies(90)).contains("<text>"));
+        parse(copies(90).as_bytes()).unwrap();
         let e = rejected(&copies(110));
         assert!(e.contains("characters of text"), "{e}");
     }

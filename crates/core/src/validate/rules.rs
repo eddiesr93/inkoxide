@@ -557,8 +557,20 @@ impl<'a> Checker<'a> {
         };
         if let Err(e) = crate::images::probe(&data.bytes) {
             self.err(probe_code(&e), Some(field), message(&e));
-        } else if let Err(e) = data.decoded(&ImageCrateDecoder) {
-            self.err(Code::InvalidImage, Some(field), message(&e));
+        } else {
+            match data.decoded(&ImageCrateDecoder) {
+                Err(e) => self.err(Code::InvalidImage, Some(field), message(&e)),
+                // Text is laid out with the document's fonts.
+                Ok(img) if self.doc.fonts.is_empty() && img.has_text() => self.err(
+                    Code::InvalidImage,
+                    Some(field),
+                    message(
+                        &"the SVG has text, and the document declares no fonts to draw it with; \
+                          declare one in `fonts`",
+                    ),
+                ),
+                Ok(_) => {}
+            }
         }
     }
 
