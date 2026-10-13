@@ -13,6 +13,8 @@ All notable changes to the packages in this repository. The format follows
   field names. `address.street` and `address.city` are the fields `street` and `city` of the
   group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
   show and export by their full names.
+- `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
+  fields inside it, at any depth (`address.street`); sets nest.
 
 ### Security
 

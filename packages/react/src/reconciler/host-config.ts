@@ -47,6 +47,7 @@ const FLOW = new Set<string>([
   HOST.PageBreak,
   HOST.Spacer,
   HOST.Field,
+  HOST.FieldSet,
   HOST.Svg,
   HOST.Canvas,
 ]);
@@ -93,6 +94,7 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
     case HOST.Footer:
     case HOST.View:
     case HOST.Link:
+    case HOST.FieldSet:
     case HOST.Cell:
       return FLOW.has(child);
     case HOST.Svg:
@@ -113,6 +115,7 @@ const TEXT_PARENTS = new Set<string>([
   HOST.Text,
   HOST.View,
   HOST.Link,
+  HOST.FieldSet,
   HOST.Cell,
   HOST.Header,
   HOST.Footer,

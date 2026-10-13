@@ -23,6 +23,8 @@ export {
   type EllipseProps,
   Field,
   type FieldProps,
+  FieldSet,
+  type FieldSetProps,
   Footer,
   type FooterProps,
   type FontWeightName,

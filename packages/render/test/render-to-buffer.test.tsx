@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   countPages,
   Document,
+  FieldSet,
   Footer,
   Link,
   Page,
@@ -22,6 +23,7 @@ import {
   renderToStream,
   StyleSheet,
   Text,
+  TextField,
   TotalPages,
   View,
 } from '../src/index.ts';
@@ -132,6 +134,28 @@ describe('renderToBuffer', () => {
     const bytes = Buffer.from(pdf).toString('latin1');
     expect(bytes.match(/\/Subtype ?\/Link/g)).toHaveLength(2);
     expect(bytes).toContain('https://example.com/inline');
+  });
+
+  it('writes the fields of a FieldSet as a field tree', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <FieldSet name="address">
+            <TextField name="street" />
+            <TextField name="city" />
+          </FieldSet>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes).toContain('/T (address)');
+    expect(bytes).toContain('/T (street)');
+    expect(bytes).toContain('/T (city)');
+    // Both fields have the group as their parent.
+    const group = bytes.split('endobj').find((o) => o.includes('/T (address)')) ?? '';
+    const ref = /(\d+) 0 obj/.exec(group)?.[1];
+    expect(bytes.split(`/Parent ${ref} 0 R`)).toHaveLength(3);
+    expect(bytes).not.toContain('address.street');
   });
 
   it('repeats a fixed element with its link on every page, and its bookmark once', async () => {

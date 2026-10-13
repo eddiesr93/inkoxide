@@ -14,6 +14,7 @@ import {
   type DefsProps,
   Document,
   Field,
+  FieldSet,
   Footer,
   G,
   Header,
@@ -969,6 +970,39 @@ describe('form fields', () => {
     expect(s?.field).toMatchObject({ kind: 'select', options: ['Ohio', 'Iowa'], required: true });
     expect(m?.field).toMatchObject({ multiline: true, readOnly: true });
     expect(r.validate()).toEqual([]);
+  });
+
+  it('puts the names of field sets in front of the names of their fields', () => {
+    const r = tree(
+      <FieldSet name="applicant" className="p-2" id="who">
+        <TextField name="name" />
+        <View>
+          <FieldSet name="address">
+            <TextField name="street" />
+            <Radio name="kind" value="home" />
+          </FieldSet>
+        </View>
+        <Checkbox name="consent" />
+      </FieldSet>,
+    );
+    const set = first<BoxNode>(r);
+    expect(set).toMatchObject({ type: 'box', id: 'who', style: { padding: { top: 6 } } });
+    const names: string[] = [];
+    const walk = (n: { type: string; field?: { name: string }; children?: unknown[] }) => {
+      if (n.field) names.push(n.field.name);
+      for (const c of (n.children ?? []) as (typeof n)[]) walk(c);
+    };
+    walk(set as never);
+    expect(names).toEqual([
+      'applicant.name',
+      'applicant.address.street',
+      'applicant.address.kind',
+      'applicant.consent',
+    ]);
+    expect(r.validate()).toEqual([]);
+    // Fields outside it keep their name.
+    expect(first<FieldNode>(tree(<TextField name="plain" />)).field.name).toBe('plain');
+    expect(thrown(() => tree(<FieldSet name="">x</FieldSet>)).message).toContain('<FieldSet> needs a name');
   });
 });
 

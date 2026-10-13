@@ -45,6 +45,7 @@ a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
+| `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link` and
 other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
@@ -550,6 +551,22 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 `maxLength` and `password`; size, border, background and text style come from the classes.
 `Field` is any of the four, picked by its `kind` (`"text"`, `"checkbox"`, `"radio"`,
 `"select"`), for forms built from data: `<Field kind={q.kind} name={q.name} … />`.
+
+A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
+the name of every field inside it, at any depth. Viewers show and export the fields by those
+full names, and sets nest:
+
+```tsx
+<FieldSet name="billing" className="gap-2">
+  <TextField name="street" />                 {/* billing.street */}
+  <FieldSet name="contact">
+    <TextField name="email" />                {/* billing.contact.email */}
+  </FieldSet>
+</FieldSet>
+```
+
+A dot in a field's own `name` does the same (`name="billing.street"`). A name is either a field
+or a group: `billing` cannot also be a field when `billing.street` is one.
 
 ## Debugging layout
 

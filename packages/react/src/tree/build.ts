@@ -180,6 +180,8 @@ class Builder {
   private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
+  /** The names of the `<FieldSet>`s being built, each followed by `.`: `address.`. */
+  private fieldPrefix = '';
   /** The style of each element's `className`, to tell which keys came from it. */
   private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
@@ -642,6 +644,8 @@ class Builder {
       case HOST.View:
       case HOST.Link:
         return this.box(inst, ctx);
+      case HOST.FieldSet:
+        return this.fieldSet(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
       case HOST.Field:
@@ -689,8 +693,9 @@ class Builder {
     const node: SchemaNode = { type: 'box' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    if (inst.type === HOST.View || inst.type === HOST.Link) this.flowProps(node, inst);
-    else {
+    if (inst.type === HOST.View || inst.type === HOST.Link || inst.type === HOST.FieldSet) {
+      this.flowProps(node, inst);
+    } else {
       // <Header> and <Footer>.
       if (isFixed(inst)) {
         const name = HOST_NAME[inst.type];
@@ -955,7 +960,7 @@ class Builder {
     if (typeof p.name !== 'string' || p.name === '') {
       this.fail(inst, '<Field> needs a name.', { kind: 'props' });
     }
-    const field: FieldNode['field'] = { name: p.name, kind: p.kind };
+    const field: FieldNode['field'] = { name: this.fieldPrefix + p.name, kind: p.kind };
     switch (p.kind) {
       case 'text':
         if (p.value !== undefined) field.value = p.value;
@@ -993,6 +998,21 @@ class Builder {
     if (style) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
+  private fieldSet(inst: Instance, ctx: TextCtx): SchemaNode {
+    const name = inst.props.name;
+    if (typeof name !== 'string' || name === '') {
+      this.fail(inst, '<FieldSet> needs a name: the group its fields are in.', { kind: 'props' });
+    }
+    const outer = this.fieldPrefix;
+    this.fieldPrefix = `${outer}${name}.`;
+    try {
+      return this.box(inst, ctx);
+    } finally {
+      this.fieldPrefix = outer;
+    }
   }
 
   /** `<Svg>` and `<Canvas>`: an SVG image of the drawing, sized by `width` and `height`. */

@@ -23,6 +23,7 @@ export const HOST = {
   PageBreak: 'ink-page-break',
   Spacer: 'ink-spacer',
   Field: 'ink-field',
+  FieldSet: 'ink-field-set',
   Canvas: 'ink-canvas',
   Svg: 'ink-svg',
   G: 'ink-svg-g',
@@ -508,7 +509,10 @@ export interface PageBreakProps {
 }
 
 interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
-  /** Field name, unique in the document (radio buttons of one group share it). No `.`. */
+  /**
+   * Field name, unique in the document (radio buttons of one group share it). A `<FieldSet>`
+   * puts its name in front; dots make groups the same way (`address.street`).
+   */
   name: string;
   readOnly?: boolean;
   required?: boolean;
@@ -535,6 +539,11 @@ export interface RadioProps extends FieldCommon {
 export interface SelectProps extends FieldCommon {
   options: string[];
   value?: string;
+}
+
+export interface FieldSetProps extends Flow {
+  /** The group's name, put in front of the name of every field inside it: `address.street`. */
+  name: string;
 }
 
 /** Any field; `kind` picks the type. The font, size and colour come from the text utilities. */
@@ -684,6 +693,12 @@ export const PageBreak = host<PageBreakProps>(HOST.PageBreak);
 export const Spacer = host<SpacerProps>(HOST.Spacer);
 /** An interactive form field (AcroForm). */
 export const Field = host<FieldProps>(HOST.Field);
+/**
+ * A group of form fields: a `View` whose `name` goes in front of the name of every field inside
+ * it, at any depth (`<FieldSet name="address"><TextField name="street" /></FieldSet>` is the
+ * field `address.street`). Sets nest: `a.b.c`.
+ */
+export const FieldSet = host<FieldSetProps>(HOST.FieldSet);
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
 export const Svg = host<SvgProps>(HOST.Svg);
 export const G = host<SvgPresentation>(HOST.G);
