@@ -25,6 +25,7 @@ use usvg::roxmltree::{self, Document, Node, NodeId};
 use super::probe::{sniff, ImageFormat};
 use super::svg_text::{Probes, SvgText};
 use super::ContentKey;
+use crate::lru::SharedLru;
 use crate::paint::Rect;
 use crate::text::LaidText;
 
@@ -382,16 +383,38 @@ pub(crate) struct ProbedText {
 /// Rewritten nested SVGs, by their original bytes.
 type Rewrites = HashMap<ContentKey<Arc<Vec<u8>>>, Arc<Vec<u8>>>;
 
+/// Bytes of rewritten SVG kept with their trees across renders: renders
+/// whose fonts lay the text out the same way reuse the conversion.
+const TEXT_TREES_BUDGET: usize = 32 << 20;
+
+/// Trees converted with text, by every rewritten source they come from.
+static TEXT_TREES: SharedLru<ContentKey<Arc<[u8]>>, Arc<usvg::Tree>> =
+    SharedLru::new(TEXT_TREES_BUDGET);
+
 /// Converts the SVG of `source` with each text laid out by `lay_out` and
 /// replaced with its placeholder (`svg_text/rewrite.rs`), with the same
-/// checks as [`parse`].
+/// checks as [`parse`]. A conversion of the same rewritten sources is
+/// reused, from this render or another.
 pub(crate) fn parse_with_text(
     source: &TextSource,
     lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
-) -> Result<(usvg::Tree, ProbedText), String> {
+) -> Result<(Arc<usvg::Tree>, ProbedText), String> {
     let mut probed = ProbedText::default();
     let mut rewrites = Rewrites::new();
-    let top = rewrite_all(source, lay_out, &mut probed, &mut rewrites);
+    let mut order = Vec::new();
+    let top = rewrite_all(source, lay_out, &mut probed, &mut rewrites, &mut order);
+    // The key: the rewritten SVG, then each rewritten nested SVG after a
+    // byte UTF-8 never has.
+    let mut key = top.clone().into_bytes();
+    for nested in &order {
+        key.push(0xFF);
+        key.extend_from_slice(nested);
+    }
+    let size = key.len();
+    let key = ContentKey::new(Arc::<[u8]>::from(key));
+    if let Some(tree) = TEXT_TREES.get(&key) {
+        return Ok((tree, probed));
+    }
     let meter = Meter::default();
     let at = Nesting {
         meter: &meter,
@@ -403,7 +426,11 @@ pub(crate) fn parse_with_text(
     if let Some(e) = meter.error.get() {
         return Err(e.clone());
     }
-    Ok((parsed?.0, probed))
+    let tree = Arc::new(parsed?.0);
+    // A tree is several times larger than its source.
+    let size = size.saturating_mul(9);
+    TEXT_TREES.insert(key, tree.clone(), size);
+    Ok((tree, probed))
 }
 
 /// `source`'s SVG with its texts replaced, its nested ones rewritten into
@@ -413,6 +440,7 @@ fn rewrite_all(
     lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
     probed: &mut ProbedText,
     rewrites: &mut Rewrites,
+    order: &mut Vec<Arc<Vec<u8>>>,
 ) -> String {
     let text = std::str::from_utf8(&source.bytes).unwrap_or_default();
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
@@ -421,11 +449,9 @@ fn rewrite_all(
     let out = super::svg_text::rewrite(text, &source.texts, &laid, first, &mut probed.probes);
     probed.texts.extend(laid);
     for nested in &source.nested {
-        let r = rewrite_all(nested, lay_out, probed, rewrites);
-        rewrites.insert(
-            ContentKey::new(nested.bytes.clone()),
-            Arc::new(r.into_bytes()),
-        );
+        let r = Arc::new(rewrite_all(nested, lay_out, probed, rewrites, order).into_bytes());
+        order.push(r.clone());
+        rewrites.insert(ContentKey::new(nested.bytes.clone()), r);
     }
     out
 }

@@ -239,6 +239,22 @@ fn nested_svgs_have_their_own_probes() {
 }
 
 #[test]
+fn reuses_a_conversion_of_the_same_layout() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>reused</text></svg>"#;
+    let source = parse_text(svg.as_bytes()).unwrap().2.unwrap();
+    let (a, _) = parse_with_text(&source, &mut stub).unwrap();
+    let (b, _) = parse_with_text(&source, &mut stub).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&a, &b));
+    // Another layout is another conversion.
+    let (c, _) = parse_with_text(&source, &mut |t| LaidText {
+        ink: Some([0.0, 0.0, 1.0, 1.0]),
+        ..stub(t)
+    })
+    .unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&a, &c));
+}
+
+#[test]
 fn texts_with_the_same_box_get_their_own_probes() {
     assert_eq!(
         probes_of(r#"<text fill="red">a</text><text fill="blue">a</text>"#),

@@ -280,7 +280,7 @@ impl ImageSet {
                 height: s.height().ceil() as u32,
                 orientation: 1,
                 body: ImageBody::Svg {
-                    tree: Arc::new(tree),
+                    tree,
                     view_box: *view_box,
                     text: None,
                     probed: Some(Arc::new(probed)),
