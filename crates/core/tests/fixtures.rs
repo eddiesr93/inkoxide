@@ -117,7 +117,11 @@ fn all_fixtures_render() {
 #[test]
 fn pdf_a_fixtures() {
     let (fonts, images) = stores();
-    for (level, part) in [(PdfALevel::A2b, 2), (PdfALevel::A3b, 3)] {
+    for (level, part, version) in [
+        (PdfALevel::A1b, 1, "1.4"),
+        (PdfALevel::A2b, 2, "1.7"),
+        (PdfALevel::A3b, 3, "1.7"),
+    ] {
         let name = level.as_str();
         let out_dir = root().join(format!("target/fixtures-pdfa-{name}"));
         fs::create_dir_all(&out_dir).unwrap();
@@ -137,9 +141,10 @@ fn pdf_a_fixtures() {
             assert!(a == b, "{name}: PDF/A output is not deterministic");
             let has = |needle: &[u8]| a.windows(needle.len()).any(|w| w == needle);
             let part = format!("<pdfaid:part>{part}</pdfaid:part>");
+            let header = format!("%PDF-{version}");
+            assert!(a.starts_with(header.as_bytes()), "{name}: not {header}");
             for needle in [
-                &b"%PDF-1.7"[..],
-                b"/GTS_PDFA1",
+                &b"/GTS_PDFA1"[..],
                 part.as_bytes(),
                 b"<xmp:CreateDate>2026-10-08T12:30:00+03:00</xmp:CreateDate>",
                 b"/ID [",
@@ -151,6 +156,15 @@ fn pdf_a_fixtures() {
                 );
             }
             assert!(!has(b"/DeviceCMYK"), "{name}: DeviceCMYK in PDF/A output");
+            // PDF/A-1 font subsets list their CIDs; the others need none.
+            let subset = a
+                .windows(18)
+                .any(|w| w.starts_with(b"/FontName /") && w[17] == b'+');
+            assert_eq!(
+                has(b"/CIDSet"),
+                subset && level == PdfALevel::A1b,
+                "{name}: CIDSet"
+            );
             let out = out_dir.join(format!("{fixture}.pdf"));
             fs::write(&out, &a).unwrap();
             outputs.push(out);

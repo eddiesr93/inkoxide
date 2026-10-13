@@ -42,7 +42,7 @@ export type ErrorCode =
   | 'INTERNAL';
 
 /** A PDF/A part and conformance level (mirrors Rust `PdfALevel`). */
-export type PdfALevel = '2b' | '3b';
+export type PdfALevel = '1b' | '2b' | '3b';
 
 /** Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. */
 export interface RenderOptions {
@@ -70,8 +70,9 @@ export interface RenderOptions {
   /**
    * Write PDF/A (archival): XMP metadata, an sRGB output intent and a
    * file identifier. CMYK JPEGs are converted to RGB. `true` writes
-   * PDF/A-2b; `'3b'` writes PDF/A-3b, which may carry embedded files.
-   * Another string is `INVALID_ARGUMENT`. Default `false`.
+   * PDF/A-2b; `'3b'` writes PDF/A-3b, which may carry embedded files;
+   * `'1b'` writes PDF/A-1b. Another string is `INVALID_ARGUMENT`.
+   * Default `false`.
    */
   pdfA?: boolean | PdfALevel;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */

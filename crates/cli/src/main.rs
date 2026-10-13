@@ -21,7 +21,7 @@ use inkoxide::{
 /// `--pdf-a=LEVEL`.
 fn pdf_a_level(s: &str) -> Result<PdfALevel, String> {
     PdfALevel::from_name(s)
-        .ok_or_else(|| format!("unsupported PDF/A level `{s}` (expected 2b or 3b)"))
+        .ok_or_else(|| format!("unsupported PDF/A level `{s}` (expected 1b, 2b or 3b)"))
 }
 
 #[derive(Parser)]
@@ -88,7 +88,7 @@ enum Cmd {
         /// RFC 3339 creation date to embed.
         #[arg(long)]
         creation_date: Option<String>,
-        /// Write PDF/A at LEVEL: 2b (the default) or 3b.
+        /// Write PDF/A at LEVEL: 1b, 2b (the default) or 3b.
         #[arg(long, value_name = "LEVEL", num_args = 0..=1, default_missing_value = "2b", value_parser = pdf_a_level)]
         pdf_a: Option<PdfALevel>,
         /// Also rasterise every page to PNG with `pdftoppm` (if installed).
@@ -414,6 +414,7 @@ mod tests {
         };
         assert_eq!(level(&[]), Ok(None));
         assert_eq!(level(&["--pdf-a"]), Ok(Some(PdfALevel::A2b)));
+        assert_eq!(level(&["--pdf-a=1b"]), Ok(Some(PdfALevel::A1b)));
         assert_eq!(level(&["--pdf-a=3b"]), Ok(Some(PdfALevel::A3b)));
         // A bare flag before the document does not take it as its level.
         assert_eq!(

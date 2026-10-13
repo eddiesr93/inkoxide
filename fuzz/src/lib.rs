@@ -79,7 +79,7 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 ///
 /// On a finding.
 pub fn check(doc: &[u8]) {
-    // Half the inputs also go through the PDF/A writer.
+    // Most inputs also go through the PDF/A writer.
     let pdf_a = pdf_a_level(doc.len());
     let json = render(doc, InputFormat::Json, pdf_a);
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(doc) else {
@@ -145,11 +145,12 @@ pub fn check_font(bytes: &[u8]) -> usize {
     registered
 }
 
-/// The PDF/A level an input of `len` bytes is rendered at: none for
-/// half of them, each level for the rest.
+/// The PDF/A level an input of `len` bytes is rendered at: none, or one
+/// of the three, a quarter of the inputs each.
 fn pdf_a_level(len: usize) -> Option<PdfALevel> {
     match len % 4 {
-        1 => Some(PdfALevel::A2b),
+        1 => Some(PdfALevel::A1b),
+        2 => Some(PdfALevel::A2b),
         3 => Some(PdfALevel::A3b),
         _ => None,
     }

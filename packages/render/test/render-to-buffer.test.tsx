@@ -308,6 +308,7 @@ describe('renderToBuffer', () => {
     expect(await part(true)).toBe('2');
     expect(await part('2b')).toBe('2');
     expect(await part('3b')).toBe('3');
+    expect(await part('1b')).toBe('1');
   });
 });
 

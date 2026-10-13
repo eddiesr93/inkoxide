@@ -239,6 +239,9 @@ impl PdfSink for PdfWriterSink {
 
     fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {
         let mut pdf = Pdf::new();
+        if let Some((major, minor)) = self.profile.version() {
+            pdf.set_version(major, minor);
+        }
         let mut alloc = RefAlloc(0);
         let catalog = alloc.next();
         let info = alloc.next();
@@ -304,7 +307,8 @@ impl PdfSink for PdfWriterSink {
                 program,
                 glyphs,
                 doc.unicode.fonts.get(key),
-            );
+                self.profile.cid_set(),
+            )?;
             font_refs.insert(*key, r);
         }
 

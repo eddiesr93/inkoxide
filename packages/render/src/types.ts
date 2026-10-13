@@ -17,9 +17,10 @@ export interface RenderOpts {
   subsetFonts?: boolean;
   /**
    * Write PDF/A, for archiving (default false): `true` or `'2b'` writes PDF/A-2b, `'3b'`
-   * PDF/A-3b. Another value fails the render with `ENGINE_REJECTED` at `options.pdfA`.
+   * PDF/A-3b and `'1b'` PDF/A-1b. Another value fails the render with `ENGINE_REJECTED` at
+   * `options.pdfA`.
    */
-  pdfA?: boolean | '2b' | '3b';
+  pdfA?: boolean | '1b' | '2b' | '3b';
   /**
    * Extra image bytes by id, for `<Image src="id">`. An id wins over a file path or URL with the
    * same text.

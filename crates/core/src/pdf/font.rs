@@ -9,7 +9,8 @@
 //! the glyph set is known: a TrueType subset gets a `CIDToGIDMap` stream
 //! that maps them to the renumbered glyphs, and a CFF subset's charset maps
 //! them. Without subsetting, or when the subsetter rejects a font, the
-//! whole font is embedded, with CID = glyph id.
+//! whole font is embedded, with CID = glyph id. Under PDF/A-1 a subset's
+//! descriptor also lists its CIDs in a `CIDSet` stream.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -118,6 +119,7 @@ fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
 }
 
 /// Writes all objects of one font; returns the Type0 font reference.
+/// With `cid_set` (PDF/A-1), a subset's descriptor lists its CIDs.
 pub(crate) fn write_font(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
@@ -125,13 +127,17 @@ pub(crate) fn write_font(
     program: &Program,
     used: &BTreeSet<u16>,
     unicode: Option<&BTreeMap<u16, String>>,
-) -> Ref {
+    cid_set: bool,
+) -> Result<Ref, InkoxideError> {
     let type0 = alloc.next();
     let cid = alloc.next();
     let descriptor = alloc.next();
     let file = alloc.next();
     let cmap_ref = alloc.next();
     let map_ref = program.cid_to_gid.as_ref().map(|_| alloc.next());
+    // Only a subset needs one (ISO 19005-1, 6.3.5); PDF/A-2 and later
+    // need none, and check that one present is complete.
+    let cid_set_ref = (cid_set && !program.tag.is_empty()).then(|| alloc.next());
 
     let m = &font.data.metrics;
     let to_1000 = 1000.0 / m.units_per_em;
@@ -217,6 +223,9 @@ pub(crate) fn write_font(
     } else {
         d.font_file2(file);
     }
+    if let Some(r) = cid_set_ref {
+        d.cid_set(r);
+    }
     d.finish();
 
     let mut stream = pdf.stream(file, &program.data);
@@ -229,6 +238,10 @@ pub(crate) fn write_font(
     stream.finish();
     if let (Some(r), Some(map)) = (map_ref, &program.cid_to_gid) {
         pdf.stream(r, map).filter(Filter::FlateDecode);
+    }
+    if let Some(r) = cid_set_ref {
+        let set = deflate(&cid_set_bits(used), flate::LEVEL)?;
+        pdf.stream(r, &set).filter(Filter::FlateDecode);
     }
 
     let mut cmap = UnicodeCmap::new(Name(b"Custom"), IDENTITY);
@@ -243,5 +256,33 @@ pub(crate) fn write_font(
         .name(Name(b"Custom"))
         .system_info(IDENTITY);
 
-    type0
+    Ok(type0)
+}
+
+/// A `CIDSet`: bit `c` (high bit first) is set for each CID `c` the
+/// subset holds. A subset holds the glyphs `used`, under their original
+/// ids, and `.notdef`.
+fn cid_set_bits(used: &BTreeSet<u16>) -> Vec<u8> {
+    let last = used.last().copied().unwrap_or(0);
+    let mut bits = vec![0u8; usize::from(last) / 8 + 1];
+    for c in used.iter().copied().chain([0]) {
+        bits[usize::from(c) / 8] |= 0x80 >> (c % 8);
+    }
+    bits
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cid_sets_hold_the_used_cids_and_notdef() {
+        assert_eq!(cid_set_bits(&BTreeSet::new()), [0x80]);
+        assert_eq!(cid_set_bits(&BTreeSet::from([1, 7])), [0xC1]);
+        assert_eq!(
+            cid_set_bits(&BTreeSet::from([3, 8, 17])),
+            [0x90, 0x80, 0x40]
+        );
+        assert_eq!(cid_set_bits(&BTreeSet::from([u16::MAX])).len(), 8192);
+    }
 }

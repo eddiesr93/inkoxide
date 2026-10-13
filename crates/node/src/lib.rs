@@ -122,7 +122,9 @@ fn pdf_a_level(name: &str) -> Result<PdfALevel> {
     PdfALevel::from_name(name).ok_or_else(|| {
         invalid_arg(
             "options.pdfA",
-            &format!("unsupported PDF/A level `{name}` (expected true, false, \"2b\" or \"3b\")"),
+            &format!(
+                "unsupported PDF/A level `{name}` (expected true, false, \"1b\", \"2b\" or \"3b\")"
+            ),
         )
     })
 }
@@ -144,8 +146,8 @@ pub struct RenderOptions {
     pub threads: Option<f64>,
     /// Embed only the glyphs used (default `true`).
     pub subset_fonts: Option<bool>,
-    /// Write PDF/A (default `false`): `true` or a level, `"2b"` or `"3b"`;
-    /// `true` is `"2b"`.
+    /// Write PDF/A (default `false`): `true` or a level, `"1b"`, `"2b"` or
+    /// `"3b"`; `true` is `"2b"`.
     pub pdf_a: Option<Either<bool, String>>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,

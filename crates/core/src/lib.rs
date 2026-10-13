@@ -64,6 +64,9 @@ pub enum InputFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum PdfALevel {
+    /// PDF/A-1b (ISO 19005-1), based on PDF 1.4: the strictest level,
+    /// for archives that ask for it.
+    A1b,
     /// PDF/A-2b (ISO 19005-2), based on PDF 1.7.
     #[default]
     A2b,
@@ -74,10 +77,11 @@ pub enum PdfALevel {
 
 impl PdfALevel {
     /// The level's short name, as the Node binding and the CLI take it:
-    /// `"2b"`, `"3b"`.
+    /// `"1b"`, `"2b"`, `"3b"`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::A1b => "1b",
             Self::A2b => "2b",
             Self::A3b => "3b",
         }
@@ -86,7 +90,9 @@ impl PdfALevel {
     /// The level named `s` ([`as_str`](Self::as_str)).
     #[must_use]
     pub fn from_name(s: &str) -> Option<Self> {
-        [Self::A2b, Self::A3b].into_iter().find(|l| l.as_str() == s)
+        [Self::A1b, Self::A2b, Self::A3b]
+            .into_iter()
+            .find(|l| l.as_str() == s)
     }
 }
 

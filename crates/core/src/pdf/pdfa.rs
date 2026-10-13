@@ -30,9 +30,21 @@ impl Profile {
     pub fn part(self) -> u8 {
         match self.level {
             None => 0,
+            Some(PdfALevel::A1b) => 1,
             Some(PdfALevel::A2b) => 2,
             Some(PdfALevel::A3b) => 3,
         }
+    }
+
+    /// The PDF version in the header, when not pdf-writer's 1.7: PDF/A-1
+    /// is based on PDF 1.4.
+    pub fn version(self) -> Option<(u8, u8)> {
+        (self.level == Some(PdfALevel::A1b)).then_some((1, 4))
+    }
+
+    /// Font subsets list their CIDs in a `CIDSet` (PDF/A-1).
+    pub fn cid_set(self) -> bool {
+        self.level == Some(PdfALevel::A1b)
     }
 }
 

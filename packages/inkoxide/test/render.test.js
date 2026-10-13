@@ -51,6 +51,10 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   assert.match(pdf, /\/S \/GTS_PDFA1/);
   assert.strictEqual(render('2b'), pdf);
   assert.match(render('3b'), /<pdfaid:part>3<\/pdfaid:part>/);
+  const one = render('1b');
+  assert.match(one, /^%PDF-1\.4/);
+  assert.match(one, /<pdfaid:part>1<\/pdfaid:part>/);
+  assert.match(one, /\/CIDSet/);
   assert.doesNotMatch(render(false), /GTS_PDFA1/);
   assert.throws(
     () => render('2a'),
