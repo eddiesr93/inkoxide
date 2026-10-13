@@ -8,6 +8,7 @@ import type {
   FieldNode,
   ImageNode,
   Meta,
+  NoteNode,
   PageFilter,
   PageSpec,
   Node as SchemaNode,
@@ -646,6 +647,8 @@ class Builder {
         return this.box(inst, ctx);
       case HOST.FieldSet:
         return this.fieldSet(inst, ctx);
+      case HOST.Note:
+        return this.note(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
       case HOST.Field:
@@ -1006,6 +1009,26 @@ class Builder {
     const node: FieldNode = { type: 'field', field };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
+    this.flowProps(node, inst);
+    return this.mark(node, inst);
+  }
+
+  /** A `<Note>`: its text children are its contents, and its background colour its colour. */
+  private note(inst: Instance, ctx: TextCtx): NoteNode {
+    const own = this.styleOf(inst, ctx);
+    this.noTextOnly(inst, own);
+    const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
+    if (contents === '') {
+      this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });
+    }
+    const p = inst.props;
+    const note: NoteNode['note'] = { contents };
+    if (typeof p.author === 'string') note.author = p.author;
+    if (p.open) note.open = true;
+    const node: NoteNode = { type: 'note', note };
+    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
+    if (backgroundColor) note.color = backgroundColor;
+    if (Object.keys(style).length > 0) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }

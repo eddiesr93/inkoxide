@@ -48,6 +48,7 @@ const FLOW = new Set<string>([
   HOST.Spacer,
   HOST.Field,
   HOST.FieldSet,
+  HOST.Note,
   HOST.Svg,
   HOST.Canvas,
 ]);
@@ -116,6 +117,7 @@ const TEXT_PARENTS = new Set<string>([
   HOST.View,
   HOST.Link,
   HOST.FieldSet,
+  HOST.Note,
   HOST.Cell,
   HOST.Header,
   HOST.Footer,
@@ -147,6 +149,9 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
     );
   }
   if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
+  if (parent === HOST.Note) {
+    return new TemplateError(`A <Note> contains only text: ${name(child)} cannot be inside it.`);
+  }
   if (parent === HOST.Text) {
     return new TemplateError(
       `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <PageNumber> and <TotalPages>.`,

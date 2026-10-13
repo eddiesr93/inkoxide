@@ -13,6 +13,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [Text: hyphenation and direction](#text-hyphenation-and-direction)
 - [Drawing: SVG and Canvas](#drawing-svg-and-canvas)
 - [Forms](#forms)
+- [Notes](#notes)
 - [Debugging layout](#debugging-layout)
 - [API](#api)
 - [Errors](#errors)
@@ -46,6 +47,7 @@ a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
 | `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
+| `Note` | A text note: an icon that opens its text in the viewer. |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link` and
 other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
@@ -574,6 +576,22 @@ full names, and sets nest:
 
 A dot in a field's own `name` does the same (`name="billing.street"`). A name is either a field
 or a group: `billing` cannot also be a field when `billing.street` is one.
+
+## Notes
+
+```tsx
+<Note author="Ana">Check the totals against the ledger.</Note>
+<Note className="absolute right-0 top-0 bg-blue-500" open>Draft: not for circulation.</Note>
+```
+
+A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
+its children (strings and numbers only). `author` is shown as its title, `open` shows the text
+when the document opens, and its `backgroundColor` (or a `bg-*` class) is its colour, yellow by
+default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
+its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
+insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
+`fixed` element it is on every page. The icon is drawn into the PDF, so it prints and looks the
+same in every viewer, and the output stays PDF/A-2b. A note cannot go inside a `Text` yet.
 
 ## Debugging layout
 

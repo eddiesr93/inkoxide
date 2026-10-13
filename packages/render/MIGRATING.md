@@ -24,6 +24,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>`, `<Tspan>` or `<Marker>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms and opacity; it has no `text`, `font`, `fontSize`, `clip`, `linearGradient`, `radialGradient` or `miterLimit`, and calling one throws |
 | `<TextInput>`, `<Checkbox>`, `<Select select={[…]}>`, `<List select={[…]}>` | The same; `TextField` is another name for `TextInput`, and `options` for `select`. See [Forms](GUIDE.md#forms) | Works, with `multiSelect` on a `List`; the size, border, background and text style come from style props or classes |
 | `<FieldSet name="address">` | The same | Works as is, for every kind of field, and sets inside sets nest: `a.b.c` |
+| `<Note>` | The same, see [Notes](GUIDE.md#notes) | Works with text children, `backgroundColor` for the colour, and `author` and `open`. It cannot go inside a `<Text>` yet |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
 **Not available:**
@@ -38,7 +39,6 @@ over by changing the import. This page lists what has another name, and what is 
   - Knuth–Plass line breaking: lines break first-fit, so a paragraph can wrap differently.
 - **Layout:** `float`, `clear` and `shapeOutside`; `<ImageBackground>`.
 - **Forms:** `format` on a text field.
-- **Annotations:** `<Note>`.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document

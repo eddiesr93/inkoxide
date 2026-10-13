@@ -48,6 +48,8 @@ export {
   type LinkProps,
   List,
   type ListProps,
+  Note,
+  type NoteProps,
   Page,
   PAGE_SIZES,
   PageBreak,

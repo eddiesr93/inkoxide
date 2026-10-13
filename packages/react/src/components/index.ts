@@ -24,6 +24,7 @@ export const HOST = {
   Spacer: 'ink-spacer',
   Field: 'ink-field',
   FieldSet: 'ink-field-set',
+  Note: 'ink-note',
   Canvas: 'ink-canvas',
   Svg: 'ink-svg',
   G: 'ink-svg-g',
@@ -561,6 +562,15 @@ export type ListProps = FieldCommon &
       }
   );
 
+export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
+  /** Who wrote the note; viewers show it as its title. */
+  author?: string;
+  /** Shows the note's text when the document opens. */
+  open?: boolean;
+  /** The note's text: strings and numbers only. */
+  children?: ReactNode;
+}
+
 export interface FieldSetProps extends Flow {
   /** The group's name, put in front of the name of every field inside it: `address.street`. */
   name: string;
@@ -720,6 +730,12 @@ export const Field = host<FieldProps>(HOST.Field);
  * field `address.street`). Sets nest: `a.b.c`.
  */
 export const FieldSet = host<FieldSetProps>(HOST.FieldSet);
+/**
+ * A text note: a sticky-note icon that viewers open to show its text (the children, which are
+ * strings). It takes no space; the icon sits at the top-left corner of its box. Its colour is its
+ * `backgroundColor` (default yellow).
+ */
+export const Note = host<NoteProps>(HOST.Note);
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
 export const Svg = host<SvgProps>(HOST.Svg);
 export const G = host<SvgPresentation>(HOST.G);

@@ -25,6 +25,8 @@ All notable changes to the packages in this repository. The format follows
 - `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
   takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
   `TextInput` is another name for `TextField`.
+- `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
+  its `backgroundColor` as its colour.
 
 ### Security
 

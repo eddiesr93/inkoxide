@@ -1,4 +1,4 @@
-import type { BoxNode, FieldNode, ImageNode, TableNode, TextNode } from '@inkoxide/schema';
+import type { BoxNode, FieldNode, ImageNode, NoteNode, TableNode, TextNode } from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ import {
   LinearGradient,
   Link,
   List,
+  Note,
   PAGE_SIZES,
   Page,
   PageBreak,
@@ -1035,6 +1036,60 @@ describe('form fields', () => {
     // Fields outside it keep their name.
     expect(first<FieldNode>(tree(<TextField name="plain" />)).field.name).toBe('plain');
     expect(thrown(() => tree(<FieldSet name="">x</FieldSet>)).message).toContain('<FieldSet> needs a name');
+  });
+});
+
+describe('notes', () => {
+  it('builds a note from its text, with its background colour as its colour', () => {
+    const r = tree(
+      <View>
+        <Note author="Ana" open className="absolute top-2 bg-blue-500">
+          Check the totals ({3} rows).
+        </Note>
+        <Note style={{ backgroundColor: '#ff0000', marginTop: 4 }}>Plain</Note>
+        <Note>Yellow</Note>
+      </View>,
+    );
+    const [a, b, c] = (first<BoxNode>(r).children ?? []) as NoteNode[];
+    expect(a?.note).toMatchObject({ contents: 'Check the totals (3 rows).', author: 'Ana', open: true });
+    expect(a?.note.color).toHaveLength(4);
+    expect(a?.style).toEqual({ position: 'absolute', inset: { top: 6 } });
+    expect(b).toEqual({
+      type: 'note',
+      note: { contents: 'Plain', color: [1, 0, 0, 1] },
+      style: { margin: { top: 4 } },
+    });
+    expect(c).toEqual({ type: 'note', note: { contents: 'Yellow' } });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('contains only text, and is a block, not a run', () => {
+    expect(
+      thrown(() =>
+        tree(
+          <Note>
+            <Text>x</Text>
+          </Note>,
+        ),
+      ).message,
+    ).toContain('A <Note> contains only text');
+    expect(thrown(() => tree(<Note />)).message).toContain('<Note> needs text');
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            a <Note>b</Note>
+          </Text>,
+        ),
+      ).message,
+    ).toContain('cannot be inside <Text>');
+    // Fixed on every page, like a watermark.
+    const fixed = tree(
+      <Note fixed className="absolute right-0 top-0">
+        On every page
+      </Note>,
+    );
+    expect(first<NoteNode>(fixed)).toMatchObject({ type: 'note', break: { fixed: true } });
   });
 });
 

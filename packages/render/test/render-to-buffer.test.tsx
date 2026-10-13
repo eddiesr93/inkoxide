@@ -14,6 +14,7 @@ import {
   Footer,
   Link,
   List,
+  Note,
   Page,
   PageBreak,
   PageNumber,
@@ -174,6 +175,23 @@ describe('renderToBuffer', () => {
     const err = await renderToBuffer(list(['Sun'])).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RenderError);
     expect((err as RenderError).message).toContain('is not one of `options`');
+  });
+
+  it('writes a note as a text annotation with its icon', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Note author="Ana" style={{ backgroundColor: '#3b82f6' }}>
+            Check the totals
+          </Note>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes).toMatch(/\/Subtype ?\/Text/);
+    expect(bytes).toContain('/Contents (Check the totals)');
+    expect(bytes).toContain('/T (Ana)');
+    expect(bytes).toMatch(/\/AP ?<</);
   });
 
   it('repeats a fixed element with its link on every page, and its bookmark once', async () => {
