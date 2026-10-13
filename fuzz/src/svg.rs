@@ -625,7 +625,10 @@ mod tests {
             rendered += usize::from(crate::check_image(&doc).is_ok());
         }
         assert!(texts >= 30, "{texts} of 300 SVGs have text");
-        assert!(rendered >= 10, "{rendered} of {texts} SVGs with text render");
+        assert!(
+            rendered >= 10,
+            "{rendered} of {texts} SVGs with text render"
+        );
     }
 
     #[test]
