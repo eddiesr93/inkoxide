@@ -95,6 +95,7 @@ export {
   Text,
   TextField,
   type TextFieldProps,
+  type TextFormat,
   TextInput,
   type TextProps,
   TotalPages,

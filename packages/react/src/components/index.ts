@@ -538,6 +538,36 @@ export interface TextFieldProps extends FieldCommon {
   /** The value is neither shown nor stored. */
   password?: boolean;
   maxLength?: number;
+  /** How the value shows and is typed: a number, a date, a phone number… */
+  format?: TextFormat;
+}
+
+/**
+ * The format of a single-line `TextField`. `value` must fit it: a number or percent as digits
+ * (`'-1234.5'`, `'0.125'` for 12.50 %), a date as `'2026-10-14'` (a time may follow,
+ * `T18:30`), a time as `'18:30'`, and a zip code, phone or social security number as its digits.
+ * The keys in the second group of each pair are their other names.
+ */
+export interface TextFormat {
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'phone' | 'ssn';
+  /** Number and percent: digits after the decimal separator; default 2. */
+  decimals?: number;
+  nDec?: number;
+  /** Number and percent: the separators, by example; default `'1,234.56'`. */
+  separators?: '1,234.56' | '1234.56' | '1.234,56' | '1234,56';
+  /** `true` is `'1,234.56'`, `false` `'1234.56'`. */
+  sepComma?: boolean;
+  /** Number: how negative numbers show; default `'minus'`. */
+  negative?: 'minus' | 'red' | 'parens' | 'parensRed';
+  negStyle?: 'MinusBlack' | 'Red' | 'ParensBlack' | 'ParensRed';
+  /** Number: a currency symbol, as it shows (`'$'`, `' €'`). */
+  currency?: string;
+  /** Number: the currency goes before the number; default `true`. */
+  currencyBefore?: boolean;
+  currencyPrepend?: boolean;
+  /** Date and time: how the value shows, as `'dd/mm/yyyy'` or `'HH:MM'`. */
+  pattern?: string;
+  param?: string;
 }
 
 export interface CheckboxProps extends FieldCommon {

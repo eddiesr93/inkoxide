@@ -643,6 +643,32 @@ full names, and sets nest:
 A dot in a field's own `name` does the same (`name="billing.street"`). A name is either a field
 or a group: `billing` cannot also be a field when `billing.street` is one.
 
+A single-line `TextField` takes a `format`, which it shows its value in and which viewers apply
+as the user types:
+
+```tsx
+<TextField name="fee" value="1250" format={{ type: 'number', currency: '$' }} />          {/* $1,250.00 */}
+<TextField name="rate" value="0.125" format={{ type: 'percent', decimals: 1 }} />         {/* 12.5% */}
+<TextField name="start" value="2026-10-14" format={{ type: 'date', pattern: 'd mmm yyyy' }} /> {/* 14 Oct 2026 */}
+<TextField name="phone" value="5551234567" format={{ type: 'phone' }} />                   {/* (555) 123-4567 */}
+```
+
+| `type` | `value` | Options |
+|---|---|---|
+| `number` | digits, as `'-1234.5'` | `decimals` (default 2, rounded half away from zero), `separators` (`'1,234.56'`, `'1234.56'`, `'1.234,56'`, `'1234,56'`), `negative` (`'minus'`, `'red'`, `'parens'`, `'parensRed'`), `currency` and `currencyBefore` (default `true`) |
+| `percent` | a fraction, as `'0.125'` | `decimals`, `separators` |
+| `date` | `'2026-10-14'`, with an optional time (`T18:30`) | `pattern` (required) |
+| `time` | `'18:30'` or `'18:30:05'`, or a date with a time | `pattern` (required) |
+| `zip`, `zipPlus4`, `phone`, `ssn` | 5, 9, 10 or 9 digits | none |
+
+A `pattern` uses `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`, `mmm` (Oct), `mmmm`
+(October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t`
+(a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English. The keys `nDec`,
+`sepComma`, `negStyle`, `currencyPrepend` and `param` are other names for `decimals`,
+`separators`, `negative`, `currencyBefore` and `pattern`. Viewers apply the format with the
+standard form scripts, which some (Preview) do not run; a PDF/A document leaves the scripts out
+and keeps the formatted text.
+
 ## Notes
 
 ```tsx
@@ -748,7 +774,8 @@ serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresenta
 attributes every SVG shape takes. Also exported:
 
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
-  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
+  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`, and
+  `TextFormat`, the `format` of a `TextField`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
   gradients;

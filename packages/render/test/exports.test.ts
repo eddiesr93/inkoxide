@@ -132,6 +132,7 @@ const MAIN_TYPES = [
   'SvgProps',
   'TableProps',
   'TextFieldProps',
+  'TextFormat',
   'TextProps',
   'ViewProps',
 ];

@@ -1081,6 +1081,69 @@ describe('form fields', () => {
     expect(several.message).toContain('need multiSelect');
   });
 
+  it('takes a format with its readable keys or their other names', () => {
+    const r = tree(
+      <View>
+        <TextField
+          name="fee"
+          value="-1234.5"
+          format={{
+            type: 'number',
+            decimals: 0,
+            separators: '1.234,56',
+            negative: 'parensRed',
+            currency: ' €',
+            currencyBefore: false,
+          }}
+        />
+        <TextInput
+          name="fee2"
+          format={{
+            type: 'number',
+            nDec: 1,
+            sepComma: false,
+            negStyle: 'ParensBlack',
+            currency: '$',
+            currencyPrepend: true,
+          }}
+        />
+        <TextInput name="day" value="2026-10-14" format={{ type: 'date', param: 'dd/mm/yyyy' }} />
+        <TextField name="zip" format={{ type: 'zip' }} />
+      </View>,
+    );
+    const [fee, fee2, day, zip] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(fee?.field.format).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1.234,56',
+      negative: 'parensRed',
+      currency: ' €',
+      currencyBefore: false,
+    });
+    expect(fee2?.field.format).toEqual({
+      type: 'number',
+      decimals: 1,
+      separators: '1234.56',
+      negative: 'parens',
+      currency: '$',
+      currencyBefore: true,
+    });
+    expect(day?.field).toMatchObject({
+      value: '2026-10-14',
+      format: { type: 'date', pattern: 'dd/mm/yyyy' },
+    });
+    expect(zip?.field.format).toEqual({ type: 'zip' });
+    expect(r.validate()).toEqual([]);
+    // The readable key wins.
+    const both = tree(
+      <TextField name="a" format={{ type: 'number', sepComma: true, separators: '1234,56' }} />,
+    );
+    expect(first<FieldNode>(both).field.format).toEqual({ type: 'number', separators: '1234,56' });
+    expect(
+      thrown(() => tree(<TextField name="a" format={'number' as unknown as { type: 'number' }} />)).message,
+    ).toContain('<TextField format> is an object');
+  });
+
   it('puts the names of field sets in front of the names of their fields', () => {
     const r = tree(
       <FieldSet name="applicant" className="p-2" id="who">

@@ -16,7 +16,6 @@ or should come sooner.
 - **`<Canvas>`**: text in the painter (`text`, `font` and `fontSize`).
 - **Inline images** inside `Text`.
 - **Colour emoji**, from an emoji font or from images.
-- **Forms**: number and date formats on text fields (`format`).
 - **Floats**: elements floated left or right, with text wrapping around them.
 - **More PDF/A levels**: PDF/A-1b and PDF/A-3b.
 - **Line breaking**: optimal (Knuth–Plass style) paragraphs as an option next to first-fit.

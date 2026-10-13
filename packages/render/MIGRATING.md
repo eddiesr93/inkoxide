@@ -24,6 +24,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `<ImageBackground src style>` | The same, with `fit` (or `objectFit`) and `objectPosition` placing the image; see [Images](GUIDE.md#images) | Works. The image fills the padding box, inside the borders, not the content box, and is clipped to it with `borderRadius`. `source`, `imageStyle` and `srcSet` throw: pass `src`, and place the image with `fit` and `objectPosition` |
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
 | `<TextInput>`, `<Checkbox>`, `<Select select={[…]}>`, `<List select={[…]}>` | The same; `TextField` is another name for `TextInput`, and `options` for `select`. See [Forms](GUIDE.md#forms) | Works, with `multiSelect` on a `List`; the size, border, background and text style come from style props or classes |
+| `format={{ type, param, nDec, sepComma, negStyle, currency, currencyPrepend }}` on `<TextInput>` | The same, or the readable keys `pattern`, `decimals`, `separators`, `negative` and `currencyBefore`; see [Forms](GUIDE.md#forms) | Works for every `type`. `value` is the raw value (`'1250'`, `'2026-10-14'`), which the field shows formatted. A PDF/A document leaves the formatting scripts out |
 | `<FieldSet name="address">` | The same | Works as is, for every kind of field, and sets inside sets nest: `a.b.c` |
 | `<Note>` | The same, see [Notes](GUIDE.md#notes) | Works with text children, `backgroundColor` for the colour, and `author` and `open`. It cannot go inside a `<Text>` yet |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
@@ -39,7 +40,6 @@ over by changing the import. This page lists what has another name, and what is 
   - `Font.registerEmojiSource`: there are no colour emoji yet.
   - Knuth–Plass line breaking: lines break first-fit, so a paragraph can wrap differently.
 - **Layout:** `float`, `clear` and `shapeOutside`.
-- **Forms:** `format` on a text field.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document

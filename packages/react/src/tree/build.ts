@@ -6,6 +6,7 @@ import type {
   Color,
   ColumnSpec,
   Document,
+  FieldFormat,
   FieldNode,
   ImageNode,
   Meta,
@@ -36,6 +37,7 @@ import {
   type PageSize,
   type RenderProp,
   type Style as StyleInput,
+  type TextFormat,
 } from '../components/index.ts';
 import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
@@ -998,6 +1000,7 @@ class Builder {
         if (p.multiline) field.multiline = true;
         if (p.password) field.password = true;
         if (p.maxLength !== undefined) field.maxLength = p.maxLength;
+        if (p.format !== undefined) field.format = this.textFormat(inst, p.format);
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
@@ -1059,6 +1062,29 @@ class Builder {
     if (Object.keys(style).length > 0) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  /** A `TextField`'s format, from its readable keys or their other names. */
+  private textFormat(inst: Instance, f: TextFormat): FieldFormat {
+    if (typeof f !== 'object' || f === null || Array.isArray(f)) {
+      this.fail(inst, "<TextField format> is an object, as format={{ type: 'number', decimals: 2 }}.", {
+        kind: 'props',
+      });
+    }
+    const out: FieldFormat = { type: f.type };
+    const decimals = f.decimals ?? f.nDec;
+    if (decimals !== undefined) out.decimals = decimals;
+    const separators =
+      f.separators ?? (f.sepComma === undefined ? undefined : f.sepComma ? '1,234.56' : '1234.56');
+    if (separators !== undefined) out.separators = separators;
+    const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
+    if (negative !== undefined) out.negative = negative;
+    if (f.currency !== undefined) out.currency = f.currency;
+    const before = f.currencyBefore ?? f.currencyPrepend;
+    if (before !== undefined) out.currencyBefore = before;
+    const pattern = f.pattern ?? f.param;
+    if (pattern !== undefined) out.pattern = pattern;
+    return out;
   }
 
   /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
@@ -1136,6 +1162,14 @@ class Builder {
     return this.mark(stackVariants(all), inst);
   }
 }
+
+/** The negative styles by their other names (`negStyle`). */
+const NEGATIVE: Record<string, FieldFormat['negative']> = {
+  MinusBlack: 'minus',
+  Red: 'red',
+  ParensBlack: 'parens',
+  ParensRed: 'parensRed',
+};
 
 /** Builds the schema document from rendered host instances. */
 export function buildTree(container: Container, opts: BuildOptions): BuildResult {

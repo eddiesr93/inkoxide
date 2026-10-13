@@ -183,6 +183,22 @@ describe('renderToBuffer', () => {
     expect((err as RenderError).message).toContain('is not one of `options`');
   });
 
+  it('writes a formatted text field with its scripts, and leaves them out in PDF/A', async () => {
+    const doc = (
+      <Document>
+        <Page>
+          <TextField name="fee" value="1250" format={{ type: 'number', currency: '$' }} />
+        </Page>
+      </Document>
+    );
+    const bytes = Buffer.from(await renderToBuffer(doc)).toString('latin1');
+    expect(bytes).toContain('/V (1250)');
+    expect(bytes).toContain('AFNumber_Format(2, 0, 0, 0, "$", true);');
+    const pdfA = Buffer.from(await renderToBuffer(doc, { pdfA: true })).toString('latin1');
+    expect(pdfA).toContain('/V (1250)');
+    expect(pdfA).not.toContain('AFNumber_Format');
+  });
+
   it('writes a note as a text annotation with its icon', async () => {
     const pdf = await renderToBuffer(
       <Document>
