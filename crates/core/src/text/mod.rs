@@ -22,6 +22,9 @@ use std::sync::Arc;
 use rayon::prelude::*;
 
 pub(crate) use paint::{PageNumbers, TextPainter};
+pub(crate) use svg::LaidText;
+#[cfg(test)]
+pub(crate) use svg::SvgGlyph;
 
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::{width_key, AvailableSpace, LeafMeasure, Size};
@@ -625,7 +628,10 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
     }
 
     /// The shaper, for text laid out outside paragraphs (SVG text).
-    #[cfg_attr(not(test), expect(dead_code, reason = "used by the SVG conversion next"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used by the SVG conversion next")
+    )]
     pub fn shaper(&mut self) -> &mut S {
         &mut self.shaper
     }

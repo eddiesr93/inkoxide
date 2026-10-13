@@ -16,10 +16,14 @@
 #![allow(dead_code)]
 
 mod extract;
+mod rewrite;
+#[cfg(test)]
+mod survival;
 
 use std::ops::Range;
 
-pub(crate) use extract::{extract, TextError};
+pub(crate) use extract::{escape, extract, TextError};
+pub(crate) use rewrite::{rewrite, Probes};
 
 /// The text elements of one SVG document.
 #[derive(Debug, Default)]

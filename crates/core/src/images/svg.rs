@@ -23,8 +23,10 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use usvg::roxmltree::{self, Document, Node, NodeId};
 
 use super::probe::{sniff, ImageFormat};
+use super::svg_text::{Probes, SvgText};
 use super::ContentKey;
 use crate::paint::Rect;
+use crate::text::LaidText;
 
 /// Most elements the converted tree may contain, counting every copy made
 /// by `use`, markers and `url(#…)` references, nested SVG images included.
@@ -335,17 +337,104 @@ impl ViewBox {
 
 /// Parses an SVG document into a `usvg` tree, with its root `viewBox`.
 pub(crate) fn parse(bytes: &[u8]) -> Result<(usvg::Tree, Option<ViewBox>), String> {
+    let (tree, view_box, text) = parse_text(bytes)?;
+    if text.is_some() {
+        return Err("SVG <text> is not supported; convert the text to outlines (paths)".into());
+    }
+    Ok((tree, view_box))
+}
+
+/// Parses an SVG document into a `usvg` tree, with its root `viewBox` and
+/// what converting its text needs, when it has text: the tree leaves the
+/// text out.
+#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
+pub(crate) fn parse_text(bytes: &[u8]) -> Result<Parsed, String> {
     let meter = Meter::default();
     let at = Nesting {
         meter: &meter,
         level: 0,
         depth: 0,
+        rewrites: None,
     };
-    let tree = parse_nested(bytes, at).map_err(Reject::message);
+    let parsed = parse_nested(bytes, at).map_err(Reject::message);
     match meter.error.get() {
         Some(e) => Err(e.clone()),
-        None => tree,
+        None => parsed,
     }
+}
+
+/// What converting an SVG with text again needs, with a render's fonts:
+/// its bytes and text elements, and the same for its nested SVG images
+/// with text. An SVG without text of its own has this for its nested ones.
+#[derive(Debug)]
+#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
+pub(crate) struct TextSource {
+    pub bytes: Arc<Vec<u8>>,
+    pub texts: Vec<SvgText>,
+    pub nested: Vec<TextSource>,
+}
+
+/// The text of an SVG converted with a render's fonts: each text laid
+/// out, in the order of [`TextSource`] (its own texts, then its nested
+/// SVGs' in turn), and the probe that stands for each text and paint.
+#[derive(Debug, Default)]
+#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
+pub(crate) struct ProbedText {
+    pub texts: Vec<LaidText>,
+    pub probes: Probes,
+}
+
+/// Rewritten nested SVGs, by their original bytes.
+type Rewrites = HashMap<ContentKey<Arc<Vec<u8>>>, Arc<Vec<u8>>>;
+
+/// Converts the SVG of `source` with each text laid out by `lay_out` and
+/// replaced with its placeholder (`svg_text/rewrite.rs`), with the same
+/// checks as [`parse`].
+#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
+pub(crate) fn parse_with_text(
+    source: &TextSource,
+    lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
+) -> Result<(usvg::Tree, ProbedText), String> {
+    let mut probed = ProbedText::default();
+    let mut rewrites = Rewrites::new();
+    let top = rewrite_all(source, lay_out, &mut probed, &mut rewrites);
+    let meter = Meter::default();
+    let at = Nesting {
+        meter: &meter,
+        level: 0,
+        depth: 0,
+        rewrites: Some(&rewrites),
+    };
+    let parsed = parse_nested(top.as_bytes(), at).map_err(Reject::message);
+    if let Some(e) = meter.error.get() {
+        return Err(e.clone());
+    }
+    Ok((parsed?.0, probed))
+}
+
+/// `source`'s SVG with its texts replaced, its nested ones rewritten into
+/// `rewrites`.
+#[cfg_attr(not(test), allow(dead_code))] // Drawn by the commit that follows.
+fn rewrite_all(
+    source: &TextSource,
+    lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
+    probed: &mut ProbedText,
+    rewrites: &mut Rewrites,
+) -> String {
+    let text = std::str::from_utf8(&source.bytes).unwrap_or_default();
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let laid: Vec<LaidText> = source.texts.iter().map(&mut *lay_out).collect();
+    let first = probed.texts.len() as u32;
+    let out = super::svg_text::rewrite(text, &source.texts, &laid, first, &mut probed.probes);
+    probed.texts.extend(laid);
+    for nested in &source.nested {
+        let r = rewrite_all(nested, lay_out, probed, rewrites);
+        rewrites.insert(
+            ContentKey::new(nested.bytes.clone()),
+            Arc::new(r.into_bytes()),
+        );
+    }
+    out
 }
 
 /// Where an SVG sits inside the outermost one.
@@ -356,6 +445,8 @@ struct Nesting<'m> {
     level: usize,
     /// Element depth of its root.
     depth: usize,
+    /// Nested SVGs to convert in place of others: their text replaced.
+    rewrites: Option<&'m Rewrites>,
 }
 
 fn parse_xml(bytes: &[u8]) -> Result<Document<'_>, Reject> {
@@ -420,7 +511,11 @@ fn check_entities(text: &str) -> Result<(), Reject> {
     Ok(())
 }
 
-fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<ViewBox>), Reject> {
+/// A parsed SVG: its tree, its root `viewBox`, and what converting its
+/// text needs, when it or a nested SVG has text.
+pub(crate) type Parsed = (usvg::Tree, Option<ViewBox>, Option<TextSource>);
+
+fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
     let doc = parse_xml(bytes)?;
     let checked = check(&doc, at.level, at.depth)?;
     at.meter.charge(checked.own, 0)?;
@@ -429,6 +524,7 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<Vie
         meter: at.meter,
         level: at.level + 1,
         depth: checked.images + 1,
+        rewrites: at.rewrites,
     };
     let options = usvg::Options {
         resources_dir: None,
@@ -463,7 +559,12 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<(usvg::Tree, Option<Vie
             )));
         }
     }
-    Ok((tree, view_box))
+    let text = (!checked.texts.is_empty() || !checked.nested.is_empty()).then(|| TextSource {
+        bytes: Arc::new(bytes.to_vec()),
+        texts: checked.texts,
+        nested: checked.nested,
+    });
+    Ok((tree, view_box, text))
 }
 
 /// What a decoded `data:` URL holds, as the resolver reads it.
@@ -521,6 +622,11 @@ fn resolve(
             if at.level > MAX_NESTING {
                 return Err(too_deep());
             }
+            let data = at
+                .rewrites
+                .and_then(|r| r.get(&ContentKey::new(data.clone())))
+                .cloned()
+                .unwrap_or(data);
             Some(usvg::ImageKind::SVG(parse_nested(&data, at)?.0))
         }
         None => None,
@@ -554,6 +660,10 @@ struct Checked {
     own: usize,
     /// Depth of the deepest image with a `data:` URL.
     images: usize,
+    /// Its text elements.
+    texts: Vec<SvgText>,
+    /// Its nested SVG images with text, once each.
+    nested: Vec<TextSource>,
 }
 
 /// Elements by `id`, in document order. `use` takes the first element with
@@ -561,9 +671,9 @@ struct Checked {
 /// follow all of them for those, which counts at least as much.
 type Ids<'d> = HashMap<&'d str, Vec<NodeId>>;
 
-/// Rejects input `usvg` would expand beyond the limits, and text, which
-/// needs fonts this conversion does not have. `level` and `depth` place
-/// the document inside the outermost SVG.
+/// Rejects input `usvg` would expand beyond the limits, and reads the
+/// text, which this conversion cannot lay out (it has no fonts). `level`
+/// and `depth` place the document inside the outermost SVG.
 fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reject> {
     let root = doc.root_element();
     if root.tag_name().name() != "svg" {
@@ -629,6 +739,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         own: 0,
         images: 0,
         nested: HashMap::new(),
+        nested_text: Vec::new(),
         painted: HashSet::new(),
         active: Vec::new(),
     };
@@ -642,24 +753,25 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         shared: false,
     };
     walk.visit(root, &mut Vec::new(), at)?;
+    let mut texts = Vec::new();
     if text_found {
         // Reading the text matches its elements against the sheets once
         // more.
-        let (_, work) = super::svg_text::extract(doc).map_err(|e| match e {
+        let (read, work) = super::svg_text::extract(doc).map_err(|e| match e {
             super::svg_text::TextError::Unsupported(m) => Reject::Unsupported(m),
         })?;
         walk.cost.add(Cost {
             rule_matches: work.matched.saturating_mul(rule_matches),
             ..Cost::default()
         })?;
-        return Err(Reject::Unsupported(
-            "SVG <text> is not supported; convert the text to outlines (paths)".into(),
-        ));
+        texts = read.texts;
     }
     Ok(Checked {
         cost: walk.cost,
         own: walk.own,
         images: walk.images,
+        texts,
+        nested: walk.nested_text,
     })
 }
 
@@ -719,26 +831,39 @@ fn check_href_loops(infos: &HashMap<NodeId, Info<'_>>, ids: &Ids<'_>) -> Result<
     Ok(())
 }
 
-/// The cost of the SVG image in `url`, nothing for anything else.
-fn nested_cost(url: &str, level: usize, depth: usize) -> Result<Cost, Reject> {
+/// The cost of the SVG image in `url`, nothing for anything else, and
+/// what converting its text needs when it has text.
+fn nested_cost(
+    url: &str,
+    level: usize,
+    depth: usize,
+) -> Result<(Cost, Option<TextSource>), Reject> {
     let Ok(url) = data_url::DataUrl::process(url) else {
-        return Ok(Cost::default());
+        return Ok((Cost::default(), None));
     };
     let Ok((data, _)) = url.decode_to_vec() else {
-        return Ok(Cost::default());
+        return Ok((Cost::default(), None));
     };
     let mime = url.mime_type();
     let mime = format!("{}/{}", mime.type_, mime.subtype);
     if embedded(&mime, &data) != Some(ImageFormat::Svg) {
-        return Ok(Cost::default());
+        return Ok((Cost::default(), None));
     }
     if level > MAX_NESTING {
         return Err(too_deep());
     }
     match parse_xml(&data).and_then(|doc| check(&doc, level, depth)) {
-        Ok(checked) => Ok(checked.cost),
+        Ok(checked) => {
+            let text =
+                (!checked.texts.is_empty() || !checked.nested.is_empty()).then(|| TextSource {
+                    bytes: Arc::new(data),
+                    texts: checked.texts,
+                    nested: checked.nested,
+                });
+            Ok((checked.cost, text))
+        }
         // Left out by the resolver too.
-        Err(Reject::Invalid(_)) => Ok(Cost::default()),
+        Err(Reject::Invalid(_)) => Ok((Cost::default(), None)),
         Err(e) => Err(e),
     }
 }
@@ -1114,6 +1239,8 @@ struct Walk<'d, 'i, 'w> {
     images: usize,
     /// Cost of the nested SVG in each image element.
     nested: HashMap<NodeId, Cost>,
+    /// The nested SVG images with text, once each.
+    nested_text: Vec<TextSource>,
     /// Paint servers drawn so far: `usvg` converts each once, and copies
     /// share its images and path data.
     painted: HashSet<NodeId>,
@@ -1282,7 +1409,12 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         if let Some(&cost) = self.nested.get(&id) {
             return Ok(cost);
         }
-        let cost = nested_cost(url, self.level + 1, depth + 1)?;
+        let (cost, text) = nested_cost(url, self.level + 1, depth + 1)?;
+        if let Some(text) = text {
+            if !self.nested_text.iter().any(|t| t.bytes == text.bytes) {
+                self.nested_text.push(text);
+            }
+        }
         self.nested.insert(id, cost);
         Ok(cost)
     }
