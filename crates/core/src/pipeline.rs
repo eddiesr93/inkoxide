@@ -365,7 +365,10 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool) -> u64 {
                         size = size.saturating_add(chars * each);
                     }
                 }
-                NodeKind::Field(_) => size += BOX_BYTES,
+                NodeKind::Field(f) => {
+                    let options: usize = f.options.iter().map(String::len).sum();
+                    size = size.saturating_add(BOX_BYTES + options as u64 * ITEM_BYTES);
+                }
                 _ => {}
             }
         }

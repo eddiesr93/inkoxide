@@ -30,7 +30,8 @@
 //!   part before it moves whole.
 //! - Atomic nodes (images, spacers, form fields, empty boxes, and
 //!   positioned, rotated, transformed or fixed nodes) move whole; taller
-//!   than a page, they are sliced (with a warning).
+//!   than a page, they are sliced (with a warning). A form field's widget
+//!   is on the page it starts on only.
 //! - Column boxes split between children; text splits between lines.
 //! - Tables split between row groups (rows tied by row spans). A group
 //!   that does not fit moves to the next page, below room kept for the
@@ -156,13 +157,20 @@ pub(crate) struct PageWindow {
     pub bottom: f32,
 }
 
+/// Overlap (points) too thin to count as being on a page.
+const HAIR: f32 = 0.01;
+
 impl PageWindow {
     /// Whether content from paged `top`, `height` high, misses the page:
     /// it starts below it or ends above it, give or take a hair.
     pub fn hides(self, top: f32, height: f32) -> bool {
-        /// Overlap (points) too thin to count as being on the page.
-        const HAIR: f32 = 0.01;
         top >= self.bottom - HAIR || top + height <= self.top + HAIR
+    }
+
+    /// Whether content from paged `top` starts on the page: of the pages
+    /// something taller than a page is sliced across, the one it starts on.
+    pub fn starts(self, top: f32) -> bool {
+        top >= self.top - HAIR && top < self.bottom - HAIR
     }
 
     /// The part of `top..bottom` (page coordinates) shown on the page, for

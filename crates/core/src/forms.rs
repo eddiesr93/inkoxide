@@ -1,7 +1,7 @@
 //! Interactive form fields (`AcroForm`): intrinsic size and the
 //! widget ops painting hands to the PDF writer.
 
-use crate::fonts::{FontKey, FontSet};
+use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::layout::{AvailableSpace, Geometry, Size};
 use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};
 use crate::schema::{Field, FieldKind, BLACK};
@@ -40,9 +40,11 @@ pub(crate) struct FieldOp {
     /// The initial value as glyph runs, in widget coordinates (top-left
     /// origin).
     pub text: Vec<TextOp>,
-    /// Glyphs embedded for editing (see `EDIT_RANGES`), and a select's
-    /// options.
-    pub edit_glyphs: Vec<u16>,
+    /// Whether its font embeds the glyphs for editing (see
+    /// [`edit_glyphs`]): the document's writer adds them once per font.
+    pub editable: bool,
+    /// The glyphs of a select's options.
+    pub option_glyphs: Vec<u16>,
     /// The transform in effect where the widget is painted (`None`:
     /// identity); the PDF writer sets it.
     pub ctm: Option<[f32; 6]>,
@@ -85,13 +87,16 @@ pub(crate) fn paint(
         h: ch,
     } = geo.content_box();
     let top = cy + ctx.shift;
-    if ctx.window.is_some_and(|w| w.hides(top, ch)) {
+    // Taller than a page, a field is sliced across pages; one widget, on
+    // the page it starts on, is the field.
+    if ctx.window.is_some_and(|w| !w.starts(top)) {
         return;
     }
     let rect = Rect::new(cx + ctx.dx, top + ctx.dy, cw.max(0.0), ch.max(0.0));
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
     let mut text = Vec::new();
-    let mut edit_glyphs = Vec::new();
+    let mut option_glyphs = Vec::new();
+    let editable = matches!(f.kind, FieldKind::Text | FieldKind::Select) && !f.read_only;
     if let Some(key) = font {
         let lf = fonts.get(key);
         let m = &lf.data.metrics;
@@ -136,13 +141,10 @@ pub(crate) fn paint(
                 });
             }
         }
-        if matches!(f.kind, FieldKind::Text | FieldKind::Select) && !f.read_only {
-            for &(a, b) in EDIT_RANGES {
-                edit_glyphs.extend((a..=b).filter_map(|c| lf.glyph(c)));
-            }
+        if editable {
             // A choice shows any option, whatever its script.
             for o in &f.options {
-                edit_glyphs.extend(o.chars().filter_map(|c| lf.glyph(c)));
+                option_glyphs.extend(o.chars().filter_map(|c| lf.glyph(c)));
             }
         }
     }
@@ -151,9 +153,19 @@ pub(crate) fn paint(
         field: f.clone(),
         font,
         text,
-        edit_glyphs,
+        editable: editable && font.is_some(),
+        option_glyphs,
         ctm: None,
     })));
+}
+
+/// The glyphs of `font` for the characters of `EDIT_RANGES`, embedded for
+/// the editable text and select fields set in it.
+pub(crate) fn edit_glyphs<'f>(font: &'f LoadedFont<'_>) -> impl Iterator<Item = u16> + 'f {
+    EDIT_RANGES
+        .iter()
+        .flat_map(|&(a, b)| a..=b)
+        .filter_map(|c| font.glyph(c))
 }
 
 #[cfg(test)]
@@ -192,7 +204,12 @@ mod tests {
             panic!("no field op");
         };
         let glyphs = chars.chars().map(|c| fonts.get(0).glyph(c).unwrap());
-        (*op, glyphs.collect())
+        let mut op = *op;
+        // What the writer embeds for it.
+        if op.editable {
+            op.option_glyphs.extend(edit_glyphs(fonts.get(0)));
+        }
+        (op, glyphs.collect())
     }
 
     #[test]
@@ -202,21 +219,21 @@ mod tests {
             "Qké€Ω",
         );
         for g in wanted {
-            assert!(select.edit_glyphs.contains(&g), "{g}");
+            assert!(select.option_glyphs.contains(&g), "{g}");
         }
         let (text, _) = painted(
             r#"{"name":"t","kind":"text","font":"Inter-Regular","value":"A"}"#,
             "",
         );
         assert!(text
-            .edit_glyphs
+            .option_glyphs
             .iter()
-            .all(|g| select.edit_glyphs.contains(g)));
+            .all(|g| select.option_glyphs.contains(g)));
         // A read-only choice cannot change.
         let (fixed, _) = painted(
             r#"{"name":"plan","kind":"select","font":"Inter-Regular","options":["Starter","Quokka"],"value":"Starter","readOnly":true}"#,
             "",
         );
-        assert!(fixed.edit_glyphs.is_empty());
+        assert!(fixed.option_glyphs.is_empty() && !fixed.editable);
     }
 }

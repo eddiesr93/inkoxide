@@ -208,7 +208,7 @@ impl PdfSink for PdfWriterSink {
                         for t in &f.text {
                             used.extend(t.glyphs.iter().map(|g| g.id));
                         }
-                        used.extend(&f.edit_glyphs);
+                        used.extend(&f.option_glyphs);
                     }
                     let mut f = (**f).clone();
                     f.ctm = ctm;
@@ -266,10 +266,23 @@ impl PdfSink for PdfWriterSink {
         // Fonts: embed each font that is actually painted, with the glyphs
         // used across the whole document.
         let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
+        let mut editable = BTreeSet::new();
         for page in doc.pages {
             for (key, glyphs) in &page.glyphs {
                 used.entry(*key).or_default().extend(glyphs);
             }
+            editable.extend(
+                page.fields
+                    .iter()
+                    .filter(|f| f.editable)
+                    .filter_map(|f| f.font),
+            );
+        }
+        for key in editable {
+            let font = doc.fonts.get(key);
+            used.entry(key)
+                .or_default()
+                .extend(crate::forms::edit_glyphs(font));
         }
         // Subsetting and compression are independent per font.
         let program = |(key, glyphs): (&FontKey, &BTreeSet<u16>)| {

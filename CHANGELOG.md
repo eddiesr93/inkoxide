@@ -7,6 +7,14 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- A form field taller than a page is one widget, on the page it starts on: it was a widget on
+  every page it was sliced across, each embedding the field's editing glyphs again, so a single
+  field could make tens of thousands of widgets and take seconds to render. The glyphs for
+  editing a text or select field are now added once per font. Found by the `render_tree` fuzz
+  target.
+
 ## 0.6.3 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.3; the other packages are unchanged. Upgrading: CFF fonts

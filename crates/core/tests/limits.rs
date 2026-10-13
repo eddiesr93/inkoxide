@@ -67,6 +67,20 @@ fn runaway_repeated_content_is_an_error() {
     render(&once, Some(1)).unwrap();
 }
 
+/// A form field taller than a page is sliced across pages like any atomic
+/// node, but it is one widget, on the page it starts on: not one per page.
+#[test]
+fn a_field_taller_than_a_page_is_one_widget() {
+    let field = r#"{"type":"field","style":{"width":10,"aspectRatio":0.0001},
+        "field":{"name":"f","kind":"select","font":"Inter-Regular","options":["a","b"]}}"#;
+    let t = std::time::Instant::now();
+    let pdf = render(&doc(field), Some(1)).unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert_eq!(count(b"/Type /Page\n"), 119);
+    assert_eq!(count(b"/Widget"), 1);
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+}
+
 /// The parser's recursion limit bounds node depth; everything below it
 /// (layout, pagination, paint) must fit a 2 MiB stack at that depth.
 #[test]
