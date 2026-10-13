@@ -293,7 +293,7 @@ fn extra_piece(e: &ExtraGlyph) -> Piece {
 
 /// UAX #9 rule L2: from the highest level down to the lowest odd one,
 /// reverses every maximal run of items at that level or higher.
-fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
+pub(super) fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
     let Some(max) = items.iter().map(&level).max() else {
         return;
     };

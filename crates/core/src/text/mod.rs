@@ -12,6 +12,7 @@ pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
 mod paint;
 mod prepare;
+mod svg;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
 use std::collections::{BTreeMap, HashMap};
@@ -621,6 +622,12 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             .entry(node_key(node))
             .or_insert_with(|| Entry::shape(shaper, node, runs, lang));
         (entry, self.shaper.fonts())
+    }
+
+    /// The shaper, for text laid out outside paragraphs (SVG text).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used by the SVG conversion next"))]
+    pub fn shaper(&mut self) -> &mut S {
+        &mut self.shaper
     }
 
     pub fn layout(&mut self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {

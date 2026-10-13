@@ -14,7 +14,7 @@ mod cache;
 mod decode;
 mod probe;
 mod svg;
-mod svg_text;
+pub(crate) mod svg_text;
 
 #[cfg(test)]
 mod tests;
