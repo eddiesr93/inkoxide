@@ -7,6 +7,12 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- `debug` on a `Text` outlines the paragraph line by line: each line box, its baseline, and the
+  glyphs of every run on the line, so nested `Text` and `Link` elements show where their words
+  landed.
+
 ## 0.6.5 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that

@@ -5,7 +5,6 @@ or should come sooner.
 
 ## Now
 
-- **Text outlines in `debug`**: outline inline runs inside a `Text`, line by line.
 - **Superscript and subscript** (`verticalAlign: 'super' | 'sub'`) and OpenType feature
   control (`fontFeatureSettings`).
 

@@ -10,7 +10,7 @@ mod shapes;
 
 pub(crate) use boxes::{content_radii, mul, paint_flow, ContentCtx, ContentPainter, FlowPart};
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
-pub(crate) use debug::{DebugBoxes, Labels as DebugLabels};
+pub(crate) use debug::{DebugBoxes, DebugLine, Labels as DebugLabels};
 pub(crate) use shapes::{is_square, polygon, rounded_rect, KAPPA};
 
 use crate::schema::{Color, Edges};

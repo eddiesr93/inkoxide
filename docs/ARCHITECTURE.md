@@ -127,8 +127,9 @@ document order. `FlowPart` tells
 the box painter which part of a flow to paint; leaf painters get a
 `ContentCtx` with the node's shift, per-line shifts and the page window.
 Elements with `debug` have their boxes recorded as they are painted
-(`paint/debug.rs`); the outlines are drawn last, over everything, the
-flow's clipped to its content band.
+(`paint/debug.rs`), a paragraph's with the lines and runs the text painter
+placed (`ContentPainter::paint_outlined`); the outlines are drawn last,
+over everything, the flow's clipped to its content band.
 
 Page-number placeholders are laid out as `999` until the page count is
 known. Then flow text that shows them gets the numbers of the page its

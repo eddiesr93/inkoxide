@@ -7,6 +7,11 @@ version 2.
 
 ## Unreleased
 
+### Changed
+
+- `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of
+  each run on the line.
+
 ## 2.3.0 - 2026-10-13
 
 Still document schema version 1.

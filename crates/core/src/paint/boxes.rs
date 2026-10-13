@@ -1,7 +1,7 @@
 //! Box painting: background, borders, clipping, opacity, rotation, then
 //! content and children, in document order.
 
-use super::debug::{DebugBox, DebugBoxes};
+use super::debug::{DebugBox, DebugBoxes, DebugLine};
 use super::shapes::{
     corner_radii, inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII,
 };
@@ -38,6 +38,20 @@ pub(crate) struct ContentCtx<'p> {
 /// Paints leaf content (text, images, tables) inside a node's content box.
 pub(crate) trait ContentPainter {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>);
+
+    /// [`paint`](Self::paint) for a node with a `debug` outline, recording
+    /// the lines of a paragraph, and the runs on them, in `lines`.
+    fn paint_outlined(
+        &mut self,
+        node: &Node,
+        geo: &Geometry,
+        ctx: &ContentCtx<'_>,
+        ops: &mut Vec<Op>,
+        lines: &mut Vec<DebugLine>,
+    ) {
+        let _ = lines;
+        self.paint(node, geo, ctx, ops);
+    }
 
     /// The physical page number and the page count of the page painted:
     /// placeholders show them, and nodes shown on some pages only are
@@ -224,7 +238,9 @@ impl BoxPainter<'_, '_, '_, '_> {
         let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
         let transform = s.transform.as_deref().filter(|t| !t.is_empty());
         let own = (transform.is_some() || rotate.is_some()).then(|| box_transform(s, x, y, w, h));
-        if node.debug || self.debug.all {
+        // Its outline, which its content adds lines to.
+        let outlined = (node.debug || self.debug.all).then_some(self.debug.boxes.len());
+        if outlined.is_some() {
             self.outline(&g, shift, extra, window, own);
         }
         if let Some(target) = &node.link {
@@ -299,7 +315,12 @@ impl BoxPainter<'_, '_, '_, '_> {
             window,
             opacity: self.opacity,
         };
-        self.content.paint(node, &g, &ctx, self.ops);
+        match outlined.and_then(|k| self.debug.boxes.get_mut(k)) {
+            Some(b) => self
+                .content
+                .paint_outlined(node, &g, &ctx, self.ops, &mut b.lines),
+            None => self.content.paint(node, &g, &ctx, self.ops),
+        }
         let tree = self.tree;
         if has_z(tree, i) {
             for c in paint_order(tree, i) {
@@ -348,6 +369,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 None => (y, bottom),
             },
             ctm,
+            lines: Vec::new(),
         });
     }
 

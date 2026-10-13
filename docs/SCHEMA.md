@@ -103,7 +103,7 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 
 ### Debug
 
-A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
+A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. On a text node it also outlines each line: its line box (dashed), its baseline, and the glyphs of each run on it, from the run font's ascender to its descender. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
 
 Type: `boolean` (default `false`)
 

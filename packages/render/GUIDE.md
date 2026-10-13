@@ -566,9 +566,12 @@ outline, and the element's width and height in points as a small label. It works
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
 
-It outlines elements with a box of their own. A `Text` or `Link` inside a `Text` is a run of that
-paragraph's lines, not a box, so `debug` on it draws nothing: put it on the outer `Text`, which
-outlines the whole paragraph.
+On a `Text`, it also outlines the paragraph line by line: each line box as a dashed outline, its
+baseline, and the glyphs of each run on the line, from the font's ascender to its descender,
+filled in purple and teal by turns. A run that wraps has a box on each line it reaches, so a
+`Text` or `Link` inside a `Text` shows where its words landed. Those inner elements are runs of
+the paragraph's lines, not boxes, so `debug` on one of them draws nothing: put it on the outer
+`Text`.
 
 The outlines are drawn last, on top of the content, and the labels are drawn with lines, so
 text selection, search, links, bookmarks and form fields are unchanged. It changes the output,
