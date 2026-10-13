@@ -7,6 +7,12 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+## 0.6.5 - 2026-10-13
+
+`inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that
+shapes to millions of glyphs more than it has bytes now fails with `FONT_ERROR` (see
+**Security**).
+
 ### Security
 
 - Text is held to a limit on the glyphs shaping makes beyond one per byte of text: about
