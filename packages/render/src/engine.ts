@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fonts } from '@inkoxide/react';
+import { fonts, type OutputOptions } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 import { SCHEMA_VERSION } from '@inkoxide/schema';
 import * as ink from 'inkoxide';
@@ -152,18 +152,23 @@ export function toRenderError(e: unknown): RenderError {
   return new RenderError('INTERNAL', e instanceof Error ? e.message : String(e), { cause: e });
 }
 
-/** Renders a document tree to PDF bytes on the libuv pool. */
+/**
+ * Renders a document tree to PDF bytes on the libuv pool. `output` holds the render options its
+ * `<Document>` set (`conformance`); `opts` wins over them.
+ */
 export async function renderPdf(
   doc: Document,
   opts: RenderOpts,
   images: Record<string, Uint8Array>,
+  output: OutputOptions = {},
 ): Promise<Uint8Array> {
   const options: ink.RenderOptions = { images };
   if (opts.creationDate !== undefined) options.creationDate = opts.creationDate;
   if (opts.threads !== undefined) options.threads = opts.threads;
   if (opts.compress !== undefined) options.compress = opts.compress;
   if (opts.subsetFonts !== undefined) options.subsetFonts = opts.subsetFonts;
-  if (opts.pdfA !== undefined) options.pdfA = opts.pdfA;
+  const pdfA = opts.pdfA ?? output.pdfA;
+  if (pdfA !== undefined) options.pdfA = pdfA;
   try {
     return await ink.render(JSON.stringify(doc), options);
   } catch (e) {

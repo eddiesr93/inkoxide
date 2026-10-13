@@ -79,8 +79,22 @@ export interface BuildOptions {
   images: ImageTableOptions;
 }
 
+/**
+ * Render options a `<Document>` sets that are not part of the document tree, for the caller to
+ * pass to the engine.
+ */
+export interface OutputOptions {
+  /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
+  pdfA?: PdfALevel;
+}
+
+/** A PDF/A part and conformance level the engine writes. */
+export type PdfALevel = '1b' | '2b' | '3b';
+
 export interface BuildResult {
   document: Document;
+  /** Render options the `<Document>` sets (`conformance`); not part of `document`. */
+  output: OutputOptions;
   /** Image bytes referenced by generated `src` ids; pass them as the render option `images`. */
   images: Record<string, Uint8Array>;
   /** Font ids used, in registration order. */
@@ -314,6 +328,9 @@ class Builder {
     );
   }
 
+  /** What the `<Document>` sets besides the tree; filled by `build`. */
+  readonly output: OutputOptions = {};
+
   build(container: Container): Document {
     const [root, ...extra] = container.children.filter((c) => !(c.kind === 'text' && c.text.trim() === ''));
     if (!isEl(root, HOST.Document) || extra.length > 0) {
@@ -334,6 +351,7 @@ class Builder {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
+    if (p.conformance !== undefined) this.output.pdfA = this.conformance(root, p.conformance);
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
@@ -366,6 +384,23 @@ class Builder {
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
+  }
+
+  /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
+  private conformance(root: Instance, value: unknown): PdfALevel {
+    const m = typeof value === 'string' ? /^PDF\/A-([123])([abu]?)$/.exec(value) : null;
+    if (m && (m[2] === '' || m[2] === 'b')) return `${m[1]}b` as PdfALevel;
+    const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
+    if (m) {
+      this.fail(
+        root,
+        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${m[1]}b'.`,
+      );
+    }
+    this.fail(
+      root,
+      `<Document conformance=${shown}> is not a PDF/A level: use 'PDF/A-1b', 'PDF/A-2b' or 'PDF/A-3b' (or 'PDF/A-1', 'PDF/A-2', 'PDF/A-3').`,
+    );
   }
 
   fontIds(): string[] {
@@ -1062,6 +1097,7 @@ export function buildTree(container: Container, opts: BuildOptions): BuildResult
   const document = b.build(container);
   return {
     document,
+    output: b.output,
     images: b.imageTable.images,
     fonts: b.fontIds(),
     warnings: b.warnings,

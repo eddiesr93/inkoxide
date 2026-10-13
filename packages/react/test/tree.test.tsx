@@ -569,6 +569,37 @@ describe('pages, images and structure', () => {
     });
   });
 
+  it('moves conformance out of the document, into the output options', () => {
+    const output = (conformance?: unknown) =>
+      renderTemplate(
+        <Document title="A" conformance={conformance as 'PDF/A-2b'}>
+          <Page />
+        </Document>,
+        { fonts },
+      );
+    expect(output().output).toEqual({});
+    for (const [conformance, pdfA] of [
+      ['PDF/A-1', '1b'],
+      ['PDF/A-1b', '1b'],
+      ['PDF/A-2', '2b'],
+      ['PDF/A-2b', '2b'],
+      ['PDF/A-3', '3b'],
+      ['PDF/A-3b', '3b'],
+    ]) {
+      const r = output(conformance);
+      expect(r.output).toEqual({ pdfA });
+      expect(r.document.meta).toEqual({ title: 'A' });
+      // Rebuilds for the page count keep it.
+      expect(r.rebuild(2).output).toEqual({ pdfA });
+    }
+    for (const level of ['PDF/A-2a', 'PDF/A-3u', 'PDF/A-1a']) {
+      expect(() => output(level)).toThrow(/the a and u levels need tagged PDF.*use 'PDF\/A-\db'/);
+    }
+    for (const bad of ['PDF/A-4', 'pdf/a-2b', 'PDF/UA-1', '2b', true]) {
+      expect(() => output(bad)).toThrow(/is not a PDF\/A level: use 'PDF\/A-1b', 'PDF\/A-2b' or 'PDF\/A-3b'/);
+    }
+  });
+
   it('maps page size presets, margins, background, header and footer', () => {
     const r = renderTemplate(
       <Document>

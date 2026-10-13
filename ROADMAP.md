@@ -21,7 +21,6 @@ or should come sooner.
 - **Forms**: list boxes, field groups and number or date formats.
 - **Text annotations** (`<Note>`).
 - **Floats**: elements floated left or right, with text wrapping around them.
-- **More PDF/A levels**: PDF/A-1b and PDF/A-3b.
 - **Line breaking**: optimal (Knuth–Plass style) paragraphs as an option next to first-fit.
 
 ## Later

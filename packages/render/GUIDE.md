@@ -429,8 +429,7 @@ component: inside a `Text` it is a linked run, elsewhere a box like a `View`. A 
 style it is given and adds no colour or underline of its own. `href="#id"` jumps to the element
 with that `id`.
 
-Bookmarks become the PDF outline in the viewer's sidebar. With `{ pdfA: true }`, the output is
-PDF/A-2b, for archiving.
+Bookmarks become the PDF outline in the viewer's sidebar.
 
 `Document` writes `title`, `author`, `subject`, `keywords`, `creator` (the application that
 made the file) and `producer` (the software that wrote the PDF, by default `Inkoxide <version>`)
@@ -462,6 +461,31 @@ Font.register({ family: 'Noto Sans Arabic', src: './fonts/NotoSansArabic-Regular
 ```
 
 An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fallback off.
+
+### PDF/A
+
+`conformance` makes the file PDF/A, for archiving, and so does the `pdfA` render option, which
+wins over it:
+
+```tsx
+<Document title="Invoice 2026-0815" conformance="PDF/A-2b">…</Document>
+```
+
+| `conformance` | `pdfA` | Writes |
+|---|---|---|
+| `'PDF/A-2b'` or `'PDF/A-2'` | `true` or `'2b'` | PDF/A-2b |
+| `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, which may also carry embedded files |
+| `'PDF/A-1b'` or `'PDF/A-1'` | `'1b'` | PDF/A-1b, the oldest level, for archives that require it |
+
+PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
+`PDFA_CONFLICT`) and the component at fault for a colour with alpha below 1 (a transparent
+background is fine: it draws nothing), an `opacity` between 0 and 1, an image with an alpha
+channel such as most PNG logos, an SVG drawn with opacity, a mask or a blend mode, or `debug`.
+PDF/A-2b and 3b allow all of these. The a and u levels (`'PDF/A-2a'`, `'PDF/A-3u'`) need tagged
+PDF, which is not supported yet: they fail with `TEMPLATE_ERROR`.
+
+`conformance` is not part of the document tree: to render a stored `result.document` again at
+the same level, pass `pdfA` to `renderDocument`.
 
 ## Text: hyphenation and direction
 
@@ -594,7 +618,7 @@ All three take the same options:
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
 | `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
-| `pdfA` | `false` | Write PDF/A-2b, for archiving |
+| `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'` or `'1b'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
 | `creationDate` | none | RFC 3339 timestamp written to the PDF. Without it, the same input gives byte-identical output. |

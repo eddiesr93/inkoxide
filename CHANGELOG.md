@@ -7,6 +7,21 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
+  Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
+  `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and
+  `<Document conformance>` (`'PDF/A-1b'`, `'PDF/A-2b'`, `'PDF/A-3b'`, or the part alone), which
+  the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
+  `TEMPLATE_ERROR`.
+- PDF/A-1b has no transparency: a render at 1b fails with the new code `PDFA_CONFLICT` at the
+  path of the first colour with alpha below 1, `opacity` between 0 and 1, `debug`, image with an
+  alpha channel, or SVG drawn with opacity, a mask or a blend mode (`ENGINE_REJECTED` with the
+  component in `@inkoxide/render`). `validate` does not know the level and does not report it.
+  A PDF/A-1b file also keeps within the limits of PDF/A-1 (numbers, strings, arrays,
+  dictionaries, graphics state nesting) or fails with `PDF_ERROR`.
+
 ## 0.6.5 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that

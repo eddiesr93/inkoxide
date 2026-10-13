@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   countPages,
   Document,
+  type DocumentProps,
   Footer,
   Link,
   Page,
@@ -309,6 +310,25 @@ describe('renderToBuffer', () => {
     expect(await part('2b')).toBe('2');
     expect(await part('3b')).toBe('3');
     expect(await part('1b')).toBe('1');
+  });
+
+  it('writes the PDF/A level of <Document conformance>, unless the pdfA option says otherwise', async () => {
+    const part = async (conformance: DocumentProps['conformance'], opts: RenderToBufferOptions = {}) => {
+      const doc = (
+        <Document conformance={conformance}>
+          <Page>
+            <Text>Archived</Text>
+          </Page>
+        </Document>
+      );
+      const pdf = Buffer.from(await renderToBuffer(doc, opts)).toString('latin1');
+      return /<pdfaid:part>(\d)<\/pdfaid:part>/.exec(pdf)?.[1];
+    };
+    expect(await part('PDF/A-1b')).toBe('1');
+    expect(await part('PDF/A-3')).toBe('3');
+    expect(await part('PDF/A-1b', { pdfA: '2b' })).toBe('2');
+    expect(await part('PDF/A-1b', { pdfA: false })).toBeUndefined();
+    expect(await part(undefined, { pdfA: true })).toBe('2');
   });
 
   it('names the component PDF/A-1b rejects for its transparency', async () => {

@@ -44,8 +44,8 @@ millisecond; a 98-page report with 40 tables in about 130 ms.
   footers, page numbers, keep-together blocks and page breaks.
 - **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks and
   fillable form fields.
-- **Output.** Font subsetting (TrueType and CFF), PDF/A-2b, parallel rendering across pages,
-  and byte-identical output for identical input.
+- **Output.** Font subsetting (TrueType and CFF), PDF/A-1b, 2b and 3b, parallel rendering
+  across pages, and byte-identical output for identical input.
 - **Validation.** Every document is checked against a JSON Schema, with the path of each error.
   In React, errors carry the component stack.
 

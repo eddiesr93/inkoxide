@@ -297,6 +297,9 @@ interface Flow extends Common {
   bookmark?: BookmarkProp;
 }
 
+/** A PDF/A part and conformance level; a bare part (`'PDF/A-2'`) is level b. */
+export type Conformance = 'PDF/A-1' | 'PDF/A-1b' | 'PDF/A-2' | 'PDF/A-2b' | 'PDF/A-3' | 'PDF/A-3b';
+
 export interface DocumentProps {
   title?: string;
   author?: string;
@@ -323,6 +326,13 @@ export interface DocumentProps {
   fallbackFonts?: string[];
   /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */
   debug?: boolean;
+  /**
+   * Write PDF/A, for archiving: `'PDF/A-2b'` (or `'PDF/A-2'`), `'PDF/A-3b'` or `'PDF/A-1b'`.
+   * PDF/A-1b has no transparency: a render fails with `PDFA_CONFLICT` at the first colour with
+   * alpha, `opacity`, image with an alpha channel or `debug` outline. The render option `pdfA`
+   * wins over this prop. Default: plain PDF.
+   */
+  conformance?: Conformance;
   children?: ReactNode;
 }
 

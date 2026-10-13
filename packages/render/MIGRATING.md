@@ -27,7 +27,7 @@ over by changing the import. This page lists what has another name, and what is 
 **Not available:**
 - **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.
 - **Other output forms:** `pdf().toBuffer()`. Use `renderToBuffer`.
-- **Document options:** `ownerPassword`, `userPassword` and `permissions` (encryption); `conformance` other than PDF/A-2b (use the `pdfA` render option for 2b); `pdfVersion`; `onRender`.
+- **Document options:** `ownerPassword`, `userPassword` and `permissions` (encryption); `conformance` at the a and u levels (`PDF/A-2a`, `PDF/A-3u`, …), which need tagged PDF; `conformance` takes `PDF/A-1b`, `PDF/A-2b` and `PDF/A-3b`; `pdfVersion`; `onRender`.
 - **Text:**
   - `verticalAlign: 'super'` and `'sub'` (`verticalAlign` is for table cells here).
   - `fontFeatureSettings`.

@@ -64,7 +64,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
-| PDF | `pdf` | Pages and content streams (encoded in parallel), links, outline, forms, PDF/A-2b |
+| PDF | `pdf` | Pages and content streams (encoded in parallel), links, outline, forms, PDF/A-1b, 2b and 3b |
 | Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects |
 
 ## Public API (core)
@@ -77,9 +77,9 @@ pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &
 ```
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
-`InputFormat`, `FontStore`, `ImageStore`, `HyphenationStore`, `InkoxideError`,
-`ValidationError`, `ValidationCode`) and the constants `ENGINE_VERSION` and
-`SCHEMA_VERSION`. Every module is private, so nothing else is reachable from
+`PdfALevel`, `InputFormat`, `FontStore`, `ImageStore`, `HyphenationStore`,
+`InkoxideError`, `ValidationError`, `ValidationCode`) and the constants
+`ENGINE_VERSION` and `SCHEMA_VERSION`. Every module is private, so nothing else is reachable from
 outside the crate.
 
 ## Layout data model

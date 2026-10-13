@@ -38,7 +38,8 @@ string, which is read as UTF-8 JSON.
 | `creation_date` / `with_creation_date` | `creationDate` | none | RFC 3339 timestamp; overrides `meta.creationDate`. With neither, no date is written. Another string fails the render: `INVALID_VALUE` at `options.creationDate` in Rust, `INVALID_ARGUMENT` in Node |
 | `threads` / `with_threads` | `threads` | all cores | Worker threads for this render. `1` runs it on the calling thread (in Node, its libuv thread) with no parallelism inside, so concurrent renders do not wait for each other; a larger number uses a pool of that size, shared by renders that ask for the same number and kept for the life of the process. A pool has at most 256 threads. Rust: `0` is `1`, and a number above 256 uses the 256-thread pool; Node: an integer from 1 to 256, other values are `INVALID_ARGUMENT` |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
-| `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A-2b |
+| `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A, at `pdf_a_level` (Node: `true` is PDF/A-2b) |
+| `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '3b'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b or 3b (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
@@ -63,6 +64,37 @@ import { registerFont, render } from 'inkoxide';
 
 registerFont('Inter-Regular', readFileSync('Inter-Regular.ttf'));
 const pdf = await render(JSON.stringify(doc), { threads: 1, creationDate: '2026-01-01T00:00:00Z' });
+```
+
+## PDF/A
+
+With `pdfA` (Rust: `pdf_a`), the file is PDF/A, for archiving: XMP
+metadata that mirrors the document information, an sRGB output intent and
+a file identifier. CMYK JPEGs are converted to RGB, and `.notdef` glyphs
+are left out. Every level is "b": the pages look the same in every reader.
+
+| Level | Node | Rust | Notes |
+|---|---|---|---|
+| PDF/A-2b | `true` or `'2b'` | `PdfALevel::A2b` (default) | Based on PDF 1.7 |
+| PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b that may carry embedded files |
+| PDF/A-1b | `'1b'` | `PdfALevel::A1b` | Based on PDF 1.4, for archives that require it. Font subsets list their glyphs (`CIDSet`) |
+
+PDF/A-1b has no transparency. A render at 1b fails with `PDFA_CONFLICT`
+at the path of the first thing that needs it: a colour with alpha below 1
+(a `backgroundColor` of alpha 0 draws nothing and is accepted), an
+`opacity` between 0 and 1, `debug`, an image with an alpha channel, or an
+SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip
+path other than one path. `validate` does not know the level, so it does
+not report these. A PDF/A-1b file also keeps within the limits of
+PDF/A-1: real numbers within ±32767, strings of at most 65535 bytes,
+arrays of at most 8191 entries, dictionaries of at most 4095, and
+graphics states nested at most 28 deep. A document that would pass one
+fails with `PDF_ERROR`.
+
+The a and u levels need tagged PDF, which Inkoxide does not write yet.
+
+```sh
+inkoxide render doc.json --fonts fonts/ --pdf-a=1b
 ```
 
 ## Hyphenation patterns
@@ -128,10 +160,11 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
+| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: transparency under PDF/A-1b. The path names the first such use. Only `render` reports it: `validate` does not know the level |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit or the limit on content repeated on every page was exceeded |
-| `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed |
+| `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed, or a PDF/A-1b file would pass one of the limits of PDF/A-1 |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
 | `INVALID_ARGUMENT` | n/a (types are checked at compile time) | Node only | A JS argument has the wrong type or is out of range |
