@@ -23,10 +23,15 @@ esac
 python3 scripts/gen-schema-doc.py >/dev/null
 python3 scripts/gen-fuzz-dict.py >/dev/null
 python3 scripts/fixtures/report_realistic.py >/dev/null
+python3 scripts/fixtures/emoji_fonts.py >/dev/null
 generated=(
   docs/SCHEMA.md
   fuzz/render_json.dict
   fixtures/docs/report-100p-realistic.json
+  fixtures/fonts/EmojiTest-COLR.ttf
+  fixtures/fonts/EmojiTest-CBDT.ttf
+  fixtures/fonts/EmojiTest-sbix.ttf
+  fixtures/fonts/limits/colr-fanout.ttf
 )
 
 if [[ $python_only == 0 ]]; then

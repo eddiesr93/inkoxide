@@ -616,7 +616,16 @@ impl<'a> Checker<'a> {
         }
         let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);
         match (&f.font, text_like) {
-            (Some(font), _) => self.font_ref(Some("font"), font),
+            (Some(font), _) => {
+                self.font_ref(Some("font"), font);
+                if self.fonts.get(font).is_some_and(|d| d.metrics.color_only) {
+                    self.err(
+                        Code::InvalidValue,
+                        Some("font"),
+                        format!("font `{font}` has colour bitmaps and no outlines; a form field needs a font with outlines"),
+                    );
+                }
+            }
             (None, true) => self.err(
                 Code::MissingField,
                 Some("font"),

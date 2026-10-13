@@ -370,3 +370,101 @@ fn tabs_after_page_numbers_keep_their_stop() {
     assert_eq!(filled.text, "7\tx");
     assert!((x_after_tab(&filled) - stand_in).abs() < 1e-3);
 }
+
+/// The segments of `text` in Inter, with `fallbacks`: each as its text
+/// and font id, and the glyphs of each, from fonts of `fixtures/fonts`.
+fn segments(text: &str, fallbacks: &[&str]) -> Vec<(String, String, usize)> {
+    let mut store = crate::test_fixtures::fonts(&["Inter-Regular", "NotoSans-Regular"]);
+    for id in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        store
+            .register(
+                id,
+                crate::test_fixtures::fixture(&format!("fonts/{id}.ttf")),
+            )
+            .unwrap();
+    }
+    let fallbacks = fallbacks
+        .iter()
+        .map(|f| format!("\"{f}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"NotoSans-Regular","family":"Noto Sans"}},
+            {{"id":"EmojiTest-COLR","family":"Emoji"}},{{"id":"EmojiTest-CBDT","family":"Emoji Bitmap"}}],
+            "fallbackFonts":[{fallbacks}],
+            "pages":[{{"size":{{"width":600,"height":800}},"children":[
+            {{"type":"text","runs":[{{"text":"{text}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    cache.layout(node, 600.0);
+    let (p, _) = cache.prepared(node).unwrap();
+    p.segments
+        .iter()
+        .map(|s| {
+            (
+                p.text[s.text.start as usize..s.text.end as usize].to_string(),
+                fonts.get(s.font).id.to_string(),
+                (s.glyphs.end - s.glyphs.start) as usize,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn an_emoji_sequence_stays_in_one_font_and_forms_its_ligature() {
+    // Inter has none of them: each sequence goes whole to the colour font,
+    // whose ligatures make one glyph of it (spaces stay with it).
+    let segs = segments(
+        "a \u{1F469}\u{200D}\u{1F4BB} \u{1F1EB}\u{1F1F7} 1\u{FE0F}\u{20E3} \u{1F44D}\u{1F3FD} b",
+        &["NotoSans-Regular", "EmojiTest-COLR"],
+    );
+    let emoji: Vec<_> = segs
+        .iter()
+        .filter(|s| s.1 == "EmojiTest-COLR")
+        .map(|s| (s.0.trim_end(), s.2))
+        .collect();
+    assert_eq!(
+        emoji,
+        [(
+            "\u{1F469}\u{200D}\u{1F4BB} \u{1F1EB}\u{1F1F7} 1\u{FE0F}\u{20E3} \u{1F44D}\u{1F3FD}",
+            8
+        )],
+        "{segs:?}"
+    );
+    assert_eq!(segs[0].1, "Inter-Regular");
+    assert_eq!(segs.last().unwrap().1, "Inter-Regular");
+}
+
+#[test]
+fn emoji_presentation_prefers_a_colour_fallback() {
+    // `1` with a keycap: Inter has the digit, but the sequence is an
+    // emoji, and the colour fallback has it too.
+    let segs = segments("1\u{FE0F}\u{20E3}", &["NotoSans-Regular", "EmojiTest-COLR"]);
+    assert_eq!(
+        segs,
+        [("1\u{FE0F}\u{20E3}".into(), "EmojiTest-COLR".into(), 1)]
+    );
+    // A plain digit stays in the run's font.
+    let segs = segments("1", &["EmojiTest-COLR"]);
+    assert_eq!(segs[0].1, "Inter-Regular");
+    // The first colour fallback with the base wins over earlier others.
+    let segs = segments("\u{1F600}", &["EmojiTest-COLR", "EmojiTest-CBDT"]);
+    assert_eq!(segs[0].1, "EmojiTest-COLR");
+    let segs = segments("\u{1F600}", &["EmojiTest-CBDT", "EmojiTest-COLR"]);
+    assert_eq!(segs[0].1, "EmojiTest-CBDT");
+    // Inter has a heart: as text, the run's font draws it; as an emoji,
+    // the colour fallback.
+    let fallbacks = ["NotoSans-Regular", "EmojiTest-COLR"];
+    assert_eq!(
+        segments("\u{2764}\u{FE0E}", &fallbacks)[0].1,
+        "Inter-Regular"
+    );
+    assert_eq!(segments("\u{2764}", &fallbacks)[0].1, "Inter-Regular");
+    assert_eq!(
+        segments("\u{2764}\u{FE0F}", &fallbacks)[0].1,
+        "EmojiTest-COLR"
+    );
+}

@@ -1309,3 +1309,26 @@ fn background_images_are_checked_like_images() {
         );
     }
 }
+
+#[test]
+fn form_fields_need_a_font_with_outlines() {
+    let mut fonts = fonts();
+    fonts
+        .register("Emoji", fixture("fonts/EmojiTest-CBDT.ttf"))
+        .unwrap();
+    let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"Emoji","family":"Emoji"}],
+        "pages":[{"size":{"width":100,"height":100},"children":[
+          {"type":"text","runs":[{"text":"😀","font":"Emoji","size":10}]},
+          {"type":"field","field":{"name":"a","kind":"text","font":"Emoji"}}]}]}"#;
+    let errs = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &fonts,
+        &ImageStore::new(),
+    );
+    let found: Vec<_> = errs.iter().map(|e| (e.code, e.path.as_str())).collect();
+    assert_eq!(
+        found,
+        [(C::InvalidValue, "pages[0].children[1].field.font")]
+    );
+}

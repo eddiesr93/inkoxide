@@ -6,6 +6,7 @@
 //! it, only `prepare.rs` uses rustybuzz; it builds its shaping faces from
 //! the font bytes, and takes glyph lookups and advances from `fonts`.
 
+mod emoji;
 mod hyphen;
 pub use hyphen::HyphenationStore;
 pub(crate) use hyphen::ResolvedHyphenator;

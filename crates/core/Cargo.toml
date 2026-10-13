@@ -22,6 +22,7 @@ rustybuzz.workspace = true
 ttf-parser.workspace = true
 unicode-linebreak.workspace = true
 unicode-bidi.workspace = true
+unicode-properties.workspace = true
 hypher.workspace = true
 flate2.workspace = true
 image.workspace = true

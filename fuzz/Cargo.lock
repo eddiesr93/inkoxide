@@ -274,6 +274,7 @@ dependencies = [
  "ttf-parser",
  "unicode-bidi",
  "unicode-linebreak",
+ "unicode-properties",
  "usvg",
  "wuff",
  "xxhash-rust",

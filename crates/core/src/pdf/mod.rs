@@ -187,6 +187,9 @@ impl PdfSink for PdfWriterSink {
                 Op::Save => saved.push(ctm),
                 Op::Restore => ctm = saved.pop().flatten(),
                 Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| crate::paint::mul(c, *m))),
+                // A font without outlines is never embedded (see
+                // `content_stream`).
+                Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
                 Op::Text(t) => {
                     glyphs
                         .entry(t.font)
@@ -915,6 +918,8 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
+            // Its colour glyphs are images; the others have no ink.
+            Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
             Op::Text(t) => show_text(&mut c, t, fonts, pdf_a),
             Op::Image { key, matrix } => {
                 c.save_state();

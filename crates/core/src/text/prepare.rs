@@ -152,6 +152,8 @@ fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> Stri
 
 /// Chooses a font for every character: the run's font if it has the glyph,
 /// else the first fallback that has it, else the run's font (`.notdef`).
+/// An emoji sequence takes one font for all its characters
+/// ([`super::emoji::font`]).
 fn itemize(
     text: &str,
     run_ranges: &[(usize, usize)],
@@ -167,8 +169,17 @@ fn itemize(
         };
         let mut current: Option<(FontKey, usize)> = None;
         let mut level = 0u8;
+        let mut sequences = super::emoji::sequences(&text[start..end])
+            .into_iter()
+            .peekable();
+        // The end and font of the emoji sequence being itemised.
+        let mut sequence: Option<(usize, FontKey)> = None;
         for (off, c) in text[start..end].char_indices() {
             let i = start + off;
+            sequence = sequence.filter(|&(e, _)| i < e);
+            if let Some(q) = sequences.next_if(|q| q.range.start == off) {
+                sequence = Some((start + q.range.end, super::emoji::font(&q, primary, fonts)));
+            }
             let neutral = c.is_whitespace() || c == SHY || c.is_control() || is_mark(c);
             let lvl = level_at(i);
             if let Some((f, s)) = current {
@@ -179,6 +190,7 @@ fn itemize(
             }
             level = lvl;
             let font = match current {
+                _ if sequence.is_some() => sequence.map_or(primary, |(_, f)| f),
                 Some((f, _)) if neutral => f,
                 _ if fonts.get(primary).glyph(c).is_some() || neutral => primary,
                 _ => fonts

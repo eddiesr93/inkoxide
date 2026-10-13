@@ -62,6 +62,14 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `fixtures/fonts/limits/glyph-doubling.ttf`: a font made with fontTools
   for the shaping limit in `limits.rs`. Its GSUB substitutes `A` with
   `AA` in 14 lookups, so `A` shapes to 16 384 glyphs.
+- `fixtures/fonts/EmojiTest-COLR.ttf`, `EmojiTest-CBDT.ttf` and
+  `EmojiTest-sbix.ttf`: small colour emoji fonts written from scratch by
+  `scripts/fixtures/emoji_fonts.py` (outlines with `COLR` v0 and v1
+  glyphs, and PNG bitmaps without outlines), with ligatures for a ZWJ
+  sequence, a flag, a keycap and a skin tone. The script also writes
+  `fixtures/fonts/limits/colr-fanout.ttf`, a `COLR` glyph whose layers
+  paint the next level 255 times, eight levels deep, for the colour glyph
+  work budget in `limits.rs`.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
@@ -71,8 +79,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   examples and benchmark invoices, each run through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
-  `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict` and the report
-  fixture) and fails when one is stale; `ci.yml` and `scripts/ci.sh` run it.
+  `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the report
+  fixture and the emoji test fonts) and fails when one is stale; `ci.yml` and `scripts/ci.sh` run it.
   With `--python-only` it checks only the files python3 writes, which is
   what `scripts/ci.sh` does where pnpm is not installed.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).

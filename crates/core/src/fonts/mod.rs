@@ -58,6 +58,12 @@ pub(crate) struct FontMetrics {
     pub superscript_size: f32,
     /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
     pub cff: bool,
+    /// Colour glyphs the engine draws: `COLR` layers or PNG bitmaps
+    /// (`CBDT` or `sbix`). See `color.rs`.
+    pub color: bool,
+    /// Colour glyphs and no outlines: the font is never embedded, and its
+    /// glyphs without colour are not drawn.
+    pub color_only: bool,
 }
 
 /// A registered font face.
@@ -97,7 +103,11 @@ impl FontData {
                 "variable fonts are not supported; register a static instance",
             ));
         }
-        let cff = tables.glyf.is_none();
+        // Parsed only with their companion tables (`CBLC`, `CPAL`).
+        let bitmaps = tables.cbdt.is_some() || tables.sbix.is_some();
+        let color = bitmaps || tables.colr.is_some();
+        let color_only = tables.glyf.is_none() && tables.cff.is_none() && bitmaps;
+        let cff = tables.glyf.is_none() && !color_only;
         if cff && cff::reals_fit(&bytes) == Some(false) {
             return Err(err(
                 "the CFF table is malformed (a number in a DICT is out of range)",
@@ -105,7 +115,8 @@ impl FontData {
         }
         if cff && (tables.cff.is_none() || cff::full_program(&bytes).is_none()) {
             return Err(err(
-                "font has neither TrueType (glyf) nor embeddable CFF outlines",
+                "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
+                 bitmaps (CBDT or sbix)",
             ));
         }
         if tables
@@ -185,6 +196,8 @@ impl FontData {
             superscript_offset,
             superscript_size,
             cff,
+            color,
+            color_only,
         };
         Ok(Self {
             hash: xxhash_rust::xxh3::xxh3_64(&bytes),
@@ -291,7 +304,9 @@ impl FontStore {
     /// - font collections (`.ttc`): register each font on its own;
     /// - variable fonts (and CFF2 outlines): register a static instance;
     /// - fonts with neither TrueType (`glyf`) nor CFF outlines that can be
-    ///   embedded;
+    ///   embedded, nor colour bitmaps (`CBDT` or `sbix`): a font with
+    ///   colour bitmaps and no outlines is accepted, never embedded, and
+    ///   draws only its colour glyphs;
     /// - fonts without a Unicode `cmap` (text is mapped to glyphs through
     ///   it);
     /// - fonts whose `GSUB` or `GPOS` lookups point to coverage tables
@@ -546,6 +561,24 @@ mod tests {
         assert_eq!(bold.metrics.weight, 700);
         let program = bold.compressed_program(|p| Ok(p.to_vec())).unwrap();
         assert!(!program.is_empty());
+    }
+
+    #[test]
+    fn registers_colour_fonts_with_and_without_outlines() {
+        let mut s = FontStore::new();
+        for (id, file, color_only) in [
+            ("colr", "EmojiTest-COLR.ttf", false),
+            ("cbdt", "EmojiTest-CBDT.ttf", true),
+            ("sbix", "EmojiTest-sbix.ttf", true),
+        ] {
+            s.register(id, fixture(file)).unwrap();
+            let m = &s.get(id).unwrap().metrics;
+            assert!(m.color, "{id}");
+            assert_eq!(m.color_only, color_only, "{id}");
+            assert!(!m.cff, "{id}");
+        }
+        s.register("inter", fixture("Inter-Regular.ttf")).unwrap();
+        assert!(!s.get("inter").unwrap().metrics.color);
     }
 
     /// Drawing commands with their coordinates.
