@@ -92,16 +92,12 @@ pub enum FontStyle {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct FontDecl {
     pub id: String,
-    /// Descriptive only (checked to be non-empty); the engine selects fonts
-    /// by `id`.
+    /// Text runs name fonts by `id`; the family, weight and style are what
+    /// `FontSet::select` matches (checked to be non-empty).
     pub family: String,
     #[serde(default = "default_weight", deserialize_with = "de::int")]
     pub weight: u16,
     #[serde(default)]
-    #[expect(
-        dead_code,
-        reason = "descriptive only; the engine selects fonts by `id`"
-    )]
     pub style: FontStyle,
 }
 
