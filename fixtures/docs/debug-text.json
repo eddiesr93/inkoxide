@@ -1,0 +1,190 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Text outlines in debug",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "Inter-Italic",
+   "family": "Inter",
+   "style": "italic"
+  },
+  {
+   "id": "NotoSansHebrew-Regular",
+   "family": "Noto Sans Hebrew"
+  }
+ ],
+ "fallbackFonts": [
+  "NotoSansHebrew-Regular"
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 595
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "debug": false,
+     "runs": [
+      {
+       "text": "Text outlines",
+       "font": "Inter-Bold",
+       "size": 20
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "debug": false,
+     "runs": [
+      {
+       "text": "A paragraph with debug outlines each line box (dashed), its baseline, and every run on the line.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 14
+      }
+     }
+    },
+    {
+     "type": "text",
+     "debug": true,
+     "runs": [
+      {
+       "text": "Mixed sizes: ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "text": "large ",
+       "font": "Inter-Regular",
+       "size": 18
+      },
+      {
+       "text": "bold ",
+       "font": "Inter-Bold",
+       "size": 11
+      },
+      {
+       "text": "italic, ",
+       "font": "Inter-Italic",
+       "size": 11
+      },
+      {
+       "text": "a link",
+       "font": "Inter-Regular",
+       "size": 11,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "link": "https://example.com",
+       "decoration": "underline"
+      },
+      {
+       "text": " and small words that wrap across several lines of the paragraph.",
+       "font": "Inter-Regular",
+       "size": 8
+      }
+     ],
+     "style": {
+      "lineHeight": 1.4,
+      "margin": {
+       "bottom": 14
+      }
+     }
+    },
+    {
+     "type": "text",
+     "debug": true,
+     "runs": [
+      {
+       "text": "Justified text spreads its spaces, and the outlines follow the painted glyphs: ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "text": "every run keeps its own box on each line it reaches, even when it wraps.",
+       "font": "Inter-Bold",
+       "size": 11
+      }
+     ],
+     "style": {
+      "textAlign": "justify",
+      "margin": {
+       "bottom": 14
+      }
+     }
+    },
+    {
+     "type": "text",
+     "debug": true,
+     "runs": [
+      {
+       "text": "Centred, with a first-line indent and a Hebrew word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "text": "שלום",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "text": " in a fallback font.",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ],
+     "style": {
+      "textAlign": "center",
+      "textIndent": 20,
+      "padding": {
+       "top": 4,
+       "right": 6,
+       "bottom": 4,
+       "left": 6
+      },
+      "margin": {
+       "bottom": 14
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

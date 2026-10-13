@@ -11,6 +11,16 @@ Still document schema version 1.
 
 ### Added
 
+- `Style.textWrap` on text nodes: `wrap` (the default, first fit, as before) or `pretty`, which
+  sets each stretch between forced breaks as a whole (Knuth and Plass's total fit) and lets the
+  spaces of justified lines shrink by up to a third. Bounded per paragraph (20 000 break
+  opportunities, 512 open breakpoints, 2 097 152 lines tried), past which it breaks first fit.
+- `TextRun.verticalAlign`: `baseline` (the default), `super` or `sub`. A superscript's
+  baseline is raised and a subscript's lowered by the offsets the font gives (OS/2), for text
+  of the run's size, and the line grows to fit them. The run keeps its own `size`.
+- `TextRun.fontFeatures`: OpenType features by tag, as CSS `font-feature-settings`
+  (`{"tnum": 1, "liga": 0}`): 0 turns a feature off, 1 on, and a larger value picks an
+  alternate. At most 32 per run, values up to 65535, and 64 different sets in a document.
 - `BoxNode.backgroundImage` (`$defs/BackgroundImage`): an image painted into the box's padding
   box, over its `backgroundColor` and under its borders and children, clipped to the padding box
   rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
@@ -38,6 +48,11 @@ Still document schema version 1.
 
 - `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
   at most 8000 characters; longer ones are `INVALID_VALUE`.
+
+### Changed
+
+- `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of
+  each run on the line.
 
 ## 2.3.0 - 2026-10-13
 

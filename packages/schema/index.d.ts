@@ -24,7 +24,7 @@ export type NonNegative = number;
  */
 export type Color = [number, number, number, number];
 /**
- * A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
+ * A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. On a text node it also outlines each line: its line box (dashed), its baseline, and the glyphs of each run on it, from the run font's ascender to its descender. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Debug".
@@ -498,6 +498,10 @@ export interface Style {
    */
   whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
   /**
+   * text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` is reserved.
+   */
+  textWrap?: 'wrap' | 'pretty';
+  /**
    * text nodes only; indent of the first line in points (negative: hanging indent)
    */
   textIndent?: number;
@@ -683,6 +687,16 @@ export interface TextRun {
    * Overrides the text node's `hyphenate` for this run's words, in the node's language.
    */
   hyphenate?: boolean;
+  /**
+   * Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs.
+   */
+  verticalAlign?: 'baseline' | 'super' | 'sub';
+  /**
+   * OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features.
+   */
+  fontFeatures?: {
+    [k: string]: number | undefined;
+  };
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

@@ -10,7 +10,9 @@ use crate::layout::{
     AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Part, Size, TaffyLayout, Tree,
 };
 use crate::paginate::{paginate, Placement};
-use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
+use crate::paint::{
+    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent, Rect,
+};
 use crate::schema::{
     Display, Document, Node, NodeKind, PageFilter, PagePattern, PageSpec, Position,
 };
@@ -35,8 +37,11 @@ const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
 /// character),
 const LINK_BYTES: u64 = 256;
-/// and a `debug` outline, a form field widget or a background image.
+/// a `debug` outline, a form field widget or a background image,
 const BOX_BYTES: u64 = 768;
+/// and a shape of a paragraph's `debug` outline: a line box, a baseline or
+/// a run's box on a line.
+const LINE_SHAPE_BYTES: u64 = 64;
 /// Estimated output of the scripts of a field format, in bytes.
 const SCRIPT_BYTES: u64 = 512;
 
@@ -104,6 +109,20 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),
+        }
+    }
+
+    fn paint_outlined(
+        &mut self,
+        node: &Node,
+        geo: &Geometry,
+        ctx: &ContentCtx<'_>,
+        ops: &mut Vec<Op>,
+        lines: &mut Vec<DebugLine>,
+    ) {
+        match node.kind {
+            NodeKind::Text { .. } => self.text.paint_outlined(node, geo, ctx, ops, lines),
+            _ => self.paint(node, geo, ctx, ops),
         }
     }
 
@@ -391,6 +410,17 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // can multiply them.
                     let glyphs = text.glyph_count(n).unwrap_or(0) as u64;
                     size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
+                    if debug {
+                        // A box and a baseline per line, and a box per
+                        // stretch of a run on a line: at most one per
+                        // segment, plus one per line where a segment wraps
+                        // or a hyphen shows.
+                        let width = ln.geo.content_box().w;
+                        if let Some((l, p, _)) = text.paragraph(n, width) {
+                            let shapes = 4 * l.lines.len() + p.segments.len();
+                            size = size.saturating_add(shapes as u64 * LINE_SHAPE_BYTES);
+                        }
+                    }
                 }
                 NodeKind::Field(f) => {
                     // Its options and values, in the field and in its

@@ -11,6 +11,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [Tables](#tables)
 - [Links, bookmarks and metadata](#links-bookmarks-and-metadata)
 - [Text: hyphenation and direction](#text-hyphenation-and-direction)
+- [Text: superscripts and font features](#text-superscripts-and-font-features)
 - [Drawing: SVG and Canvas](#drawing-svg-and-canvas)
 - [Forms](#forms)
 - [Notes](#notes)
@@ -28,8 +29,8 @@ Components take `className`, `style` and `id`, and those with a box also take `d
 `Page` and `Canvas` have no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
 take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
 `transform`, `id`) instead of `className` and `style`; and a `Text` or `Link` inside a `Text`,
-a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
-`hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
+a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
+`href`, `lang`, `hyphenate` and `hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
 
 | Component | What it is |
 |---|---|
@@ -521,8 +522,44 @@ An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fall
 - **Right-to-left text** uses `dir="rtl"` on a `Text`. Register a font that covers the script
   first (for example Noto Sans Arabic or Noto Sans Hebrew with `Font.register`): the bundled
   fonts cover Latin, Greek and Cyrillic.
+- **Even lines.** `textWrap: 'pretty'` (the class `text-pretty`) breaks a paragraph's lines
+  over the whole paragraph instead of filling each in turn, as TeX does: lines come out more
+  even, with fewer hyphens, and the spaces of justified lines may also shrink by up to a third.
+  It is inherited, so `<Page style={{ textWrap: 'pretty' }}>` sets it for a page. `'wrap'` is
+  the default and fills lines in turn; `'balance'` is not supported yet. Text with
+  `whitespace-nowrap` or `whitespace-pre`, and very long paragraphs past the limits in the
+  [schema](../../docs/SCHEMA.md), break first fit.
 - **Orphans and widows:** `orphans={2}` and `widows={2}` keep at least two lines of a paragraph
   together at the foot and the head of a page.
+
+## Text: superscripts and font features
+
+```tsx
+<Text>
+  E = mc<Text style={{ verticalAlign: 'super', fontSize: 7 }}>2</Text>, H
+  <Text className="align-sub text-[7pt]">2</Text>O
+</Text>
+<Text style={{ fontFeatureSettings: "'tnum' 1, 'ss01'" }}>1,111.10</Text>
+<Text className="tabular-nums slashed-zero">10,000</Text>
+```
+
+- **Superscripts and subscripts.** `verticalAlign: 'super'` or `'sub'` on a `Text` (the classes
+  `align-super` and `align-sub`) raises or lowers its baseline by the offsets the font gives for
+  superscripts and subscripts, for text of its size; `'baseline'` puts it back. The size stays
+  the one you set: give the superscript a smaller `fontSize`. The line grows to fit it, as in
+  CSS. A `Text` inside a superscript stays on its baseline. On a `Cell`, `verticalAlign` places
+  the content (`top`, `middle`, `bottom`), and `super` or `sub` there is an error.
+- **OpenType features.** `fontFeatureSettings` takes a CSS string
+  (`"'tnum' 1, 'liga' off"`), a list of tags to turn on (`['tnum', 'smcp']`), or an object of
+  tags to values or switches (`{ tnum: 1, liga: false, salt: 2 }`): 1 turns a feature on, 0
+  off, and a larger number picks an alternate. `fontVariantNumeric` (`'tabular-nums'`,
+  `'oldstyle-nums slashed-zero'`, …) and its Tailwind classes turn on the matching features,
+  and `fontFeatureSettings` (or `font-features-[…]`) wins over them. Both are inherited like the
+  other text properties; a `Text` that sets its own `fontFeatureSettings` replaces the inherited
+  one. A feature does something only when the font has it: Inter has `tnum`, `zero`, `ss01` to
+  `ss08`, `frac`, `case` and more, but no small capitals; Noto Sans has `smcp`. A run takes at
+  most 32 features, and a document at most 64 different sets of them.
+- `PageNumber` and `TotalPages` draw their digits without the features.
 
 ## Drawing: SVG and Canvas
 
@@ -700,9 +737,12 @@ outline, and the element's width and height in points as a small label. It works
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
 
-It outlines elements with a box of their own. A `Text` or `Link` inside a `Text` is a run of that
-paragraph's lines, not a box, so `debug` on it draws nothing: put it on the outer `Text`, which
-outlines the whole paragraph.
+On a `Text`, it also outlines the paragraph line by line: each line box as a dashed outline, its
+baseline, and the glyphs of each run on the line, from the font's ascender to its descender,
+filled in purple and teal by turns. A run that wraps has a box on each line it reaches, so a
+`Text` or `Link` inside a `Text` shows where its words landed. Those inner elements are runs of
+the paragraph's lines, not boxes, so `debug` on one of them draws nothing: put it on the outer
+`Text`.
 
 The outlines are drawn last, on top of the content, and the labels are drawn with lines, so
 text selection, search, links, bookmarks and form fields are unchanged. It changes the output,

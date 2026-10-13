@@ -20,7 +20,10 @@ over by changing the import. This page lists what has another name, and what is 
 | `<Link src="…">` | The same, or `href` on `Text` or `View`; `href="#id"` jumps to an element's `id` | Works as is; adds no colour or underline |
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Works with `@inkoxide/tailwind` installed: `npm install @inkoxide/tailwind` |
-| `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points |
+| `verticalAlign: 'super'` or `'sub'` on a `Text` | The same, see [superscripts](GUIDE.md#text-superscripts-and-font-features) | Works. The baseline moves by the font's own superscript and subscript offsets, so a superscript can sit a little higher or lower; the size stays the `fontSize` you give |
+| Paragraphs broken over their whole length (Knuth–Plass) | `textWrap: 'pretty'` (`text-pretty`), on a `Text`, or a `Page` for all its text | Opt in: lines break first fit by default, so a paragraph can wrap differently until you set it |
+| `fontFeatureSettings: ['tnum']` or `{ tnum: 1, liga: false }` | The same, or a CSS string (`"'tnum' 1"`); `fontVariantNumeric` and Tailwind's `tabular-nums` too | Works as is |
+| `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points, and the lines and runs of a `Text` |
 | `<ImageBackground src style>` | The same, with `fit` (or `objectFit`) and `objectPosition` placing the image; see [Images](GUIDE.md#images) | Works. The image fills the padding box, inside the borders, not the content box, and is clipped to it with `borderRadius`. `source`, `imageStyle` and `srcSet` throw: pass `src`, and place the image with `fit` and `objectPosition` |
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
 | `<TextInput>`, `<Checkbox>`, `<Select select={[…]}>`, `<List select={[…]}>` | The same; `TextField` is another name for `TextInput`, and `options` for `select`. See [Forms](GUIDE.md#forms) | Works, with `multiSelect` on a `List`; the size, border, background and text style come from style props or classes |
@@ -34,11 +37,9 @@ over by changing the import. This page lists what has another name, and what is 
 - **Other output forms:** `pdf().toBuffer()`. Use `renderToBuffer`.
 - **Document options:** `ownerPassword`, `userPassword` and `permissions` (encryption); `conformance` other than PDF/A-2b (use the `pdfA` render option for 2b); `pdfVersion`; `onRender`.
 - **Text:**
-  - `verticalAlign: 'super'` and `'sub'` (`verticalAlign` is for table cells here).
-  - `fontFeatureSettings`.
   - `Image` inside `Text`.
   - `Font.registerEmojiSource`: there are no colour emoji yet.
-  - Knuth–Plass line breaking: lines break first-fit, so a paragraph can wrap differently.
+  - `hyphenationPenalty` on `Text`.
 - **Layout:** `float`, `clear` and `shapeOutside`.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 

@@ -359,6 +359,41 @@ describe('renderToBuffer', () => {
     expect(Buffer.from(pdf).toString('latin1')).toMatch(/\/ShadingType ?2/);
   });
 
+  it('renders superscripts, subscripts and font features', async () => {
+    const doc = (features: boolean) => (
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <Text style={features ? { fontFeatureSettings: ['tnum', 'zero'] } : {}}>
+            x<Text style={{ verticalAlign: 'super', fontSize: 7 }}>2</Text> H
+            <Text style={{ verticalAlign: 'sub', fontSize: 7 }}>2</Text>O 1,110.10
+          </Text>
+        </Page>
+      </Document>
+    );
+    const plain = await renderToBuffer(doc(false));
+    const tnum = await renderToBuffer(doc(true));
+    expect(countPages(plain)).toBe(1);
+    // Other glyphs: tabular digits and a slashed zero.
+    expect(Buffer.compare(tnum, plain)).not.toBe(0);
+  });
+
+  it('breaks the lines of a page with textWrap pretty over each paragraph', async () => {
+    const words =
+      'In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself was astonished.';
+    const doc = (wrap: 'wrap' | 'pretty') => (
+      <Document>
+        <Page style={{ padding: 40, textWrap: wrap }}>
+          <View style={{ width: 150 }}>
+            <Text>{words}</Text>
+          </View>
+        </Page>
+      </Document>
+    );
+    const wrap = await renderToBuffer(doc('wrap'));
+    const pretty = await renderToBuffer(doc('pretty'));
+    expect(Buffer.compare(pretty, wrap)).not.toBe(0);
+  });
+
   it('names the component when the structure is wrong', async () => {
     const Broken = () => (
       <Document>

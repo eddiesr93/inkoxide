@@ -1,5 +1,5 @@
 import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { FlatStyle } from '@inkoxide/style';
+import type { FlatStyle, FontFeatureSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 /**
@@ -117,6 +117,9 @@ export interface StyleProp extends Omit<
   | 'transform'
   | 'transformOrigin'
   | 'objectPosition'
+  | 'fontFeatureSettings'
+  | 'fontVariantNumeric'
+  | 'textWrap'
 > {
   fontFamily?: string | string[];
   /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
@@ -202,6 +205,19 @@ export interface StyleProp extends Omit<
   textDecorationThickness?: Length;
   /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
   textOverflow?: 'ellipsis' | 'clip';
+  /**
+   * OpenType features: a CSS string (`"'tnum' 1, 'smcp'"`), a list of tags to turn on
+   * (`['tnum', 'smcp']`) or tags with a value (`{ tnum: 1, liga: false }`). Inherited, and a
+   * `Text` that sets its own replaces them.
+   */
+  fontFeatureSettings?: FontFeatureSettings;
+  /** CSS `font-variant-numeric` (`'tabular-nums slashed-zero'`): turns on the features it names. */
+  fontVariantNumeric?: string;
+  /**
+   * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
+   * breaks over the whole paragraph for even lines. Inherited. `'balance'` is not supported yet.
+   */
+  textWrap?: FlatStyle['textWrap'] | 'balance';
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;
