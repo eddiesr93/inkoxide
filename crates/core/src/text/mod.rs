@@ -9,6 +9,7 @@
 mod color;
 mod emoji;
 mod hyphen;
+mod objects;
 pub use hyphen::HyphenationStore;
 pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
@@ -24,6 +25,7 @@ use std::sync::Arc;
 use rayon::prelude::*;
 
 pub(crate) use color::ColorGlyphs;
+pub(crate) use objects::{run_key, InlineObjects, Source as ObjectSource};
 pub(crate) use paint::{PageNumbers, TextPainter};
 
 use crate::fonts::{FontKey, FontSet};
@@ -36,6 +38,8 @@ use crate::InkoxideError;
 const GLYPH_SPACE: u8 = 1;
 const GLYPH_INVISIBLE: u8 = 2;
 const GLYPH_TAB: u8 = 4;
+/// An inline object (an image): the one glyph of its segment.
+const GLYPH_OBJECT: u8 = 8;
 
 /// Tolerance for float noise when comparing widths.
 const WIDTH_EPS: f32 = 1e-3;
@@ -68,6 +72,11 @@ impl Glyph {
     pub fn is_tab(&self) -> bool {
         self.flags & GLYPH_TAB != 0
     }
+
+    /// An inline object's place in the line: no glyph, its advance.
+    pub fn is_object(&self) -> bool {
+        self.flags & GLYPH_OBJECT != 0
+    }
 }
 
 /// A stretch of text in one run and one font.
@@ -79,6 +88,9 @@ pub(crate) struct Segment {
     pub level: u8,
     pub text: Range<u32>,
     pub glyphs: Range<u32>,
+    /// An inline object: its index in [`Prepared::objects`]. Its one
+    /// glyph is the object's place; `font` is the run's (the strut).
+    pub object: Option<u32>,
 }
 
 impl Segment {
@@ -89,6 +101,7 @@ impl Segment {
             level,
             text: text.start as u32..text.end as u32,
             glyphs: 0..0,
+            object: None,
         }
     }
 }
@@ -126,6 +139,8 @@ pub(crate) struct Prepared {
     /// [`prepare::PLACEHOLDER_TEXT`], or the numbers of the page flow text
     /// lands on); the painter draws the page's own numbers in their place.
     pub placeholders: bool,
+    /// The inline objects segments refer to.
+    pub objects: Vec<objects::InlineObject>,
 }
 
 impl Prepared {
@@ -256,9 +271,10 @@ pub(crate) fn baseline_shift(run: &TextRun, fonts: &FontSet<'_>) -> f32 {
     };
     let m = &fonts.get(key).data.metrics;
     match run.vertical_align.unwrap_or_default() {
-        RunAlign::Baseline => 0.0,
         RunAlign::Super => m.superscript_shift() * run.size,
         RunAlign::Sub => -m.subscript_shift() * run.size,
+        // The others place image runs (`objects.rs`).
+        _ => 0.0,
     }
 }
 
@@ -303,6 +319,7 @@ pub(crate) struct RustybuzzShaper<'f, 'a> {
     unicode: UnicodeMap,
     hyphenator: &'f dyn hyphen::Hyphenator,
     shapes: prepare::ShapeCache<'a>,
+    objects: Arc<InlineObjects>,
 }
 
 impl<'f, 'a> RustybuzzShaper<'f, 'a> {
@@ -320,10 +337,17 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
         Self { hyphenator, ..self }
     }
 
+    /// This shaper, placing the images of `objects` in lines.
+    pub fn with_objects(self, objects: Arc<InlineObjects>) -> Self {
+        Self { objects, ..self }
+    }
+
     /// A shaper with the same settings and shaping faces, and glyph
     /// mappings of its own, for another thread.
     fn worker(&self) -> Self {
-        Self::with_shapes(self.fonts, self.shapes.sibling()).with_hyphenator(self.hyphenator)
+        Self::with_shapes(self.fonts, self.shapes.sibling())
+            .with_hyphenator(self.hyphenator)
+            .with_objects(self.objects.clone())
     }
 
     fn with_shapes(fonts: &'f FontSet<'a>, shapes: prepare::ShapeCache<'a>) -> Self {
@@ -350,6 +374,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
             unicode,
             hyphenator: &hyphen::HypherHyphenator,
             shapes,
+            objects: Arc::default(),
         }
     }
 }
@@ -367,6 +392,7 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
             lang,
             hyphenator: self.hyphenator,
             runs,
+            objects: &self.objects,
         };
         prepare::prepare(&opts, self.fonts, &mut self.shapes, &mut self.unicode)
     }
@@ -724,15 +750,15 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         out
     }
 
-    /// How many glyphs of colour fonts text node `node` shaped to, once
-    /// it is shaped: each may be drawn as an image.
-    pub fn color_glyph_count(&self, node: &Node) -> usize {
+    /// How many glyphs text node `node` draws as images, once it is
+    /// shaped (at most): its inline objects and its glyphs of colour fonts.
+    pub fn image_glyph_count(&self, node: &Node) -> usize {
         let fonts = self.shaper.fonts();
         self.entries.get(&node_key(node)).map_or(0, |e| {
             let p = &e.prepared;
             p.segments
                 .iter()
-                .filter(|s| fonts.get(s.font).data.metrics.color)
+                .filter(|s| s.object.is_some() || fonts.get(s.font).data.metrics.color)
                 .map(|s| (s.glyphs.end - s.glyphs.start) as usize)
                 .sum()
         })

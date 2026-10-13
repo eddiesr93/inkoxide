@@ -157,6 +157,9 @@ fn every_property_at_its_bounds_renders_finite_numbers() {
         r#"{"type":"image","src":"chart","fit":"cover","objectPosition":{"x":14400,"y":"-10000%"},"style":{"transform":[{"scale":[1000000,1000000]}],"height":40}}"#.into(),
         r#"{"type":"box","backgroundImage":{"src":"photo","fit":"none","objectPosition":{"x":"-10000%","y":14400}},"style":{"width":"10000%","height":40,"borderRadius":1000000,"borderWidth":{"top":1000000}}}"#.into(),
         r#"{"type":"box","backgroundImage":{"src":"chart","objectPosition":{"x":-14400,"y":"10000%"}},"style":{"height":40,"padding":{"left":1000000}}}"#.into(),
+        // Images in lines at their bounds.
+        text(r#""lineHeight":100"#, r#"},{"font":"Inter-Regular","size":1000,"image":{"src":"photo","width":14400,"height":0.01,"fit":"cover","objectPosition":{"x":"10000%"}},"verticalAlign":-14400"#),
+        text("", r#"},{"font":"Inter-Regular","size":0.01,"image":{"src":"chart","height":14400},"verticalAlign":"bottom""#),
         // Form fields and tables.
         r#"{"type":"field","style":{"width":"10000%","height":20,"transform":[{"translate":[-1000000,0]}]},"field":{"name":"t","kind":"text","font":"Inter-Regular","value":"x"}}"#.into(),
         r#"{"type":"field","style":{"width":1000000,"height":20},"field":{"name":"c","kind":"checkbox","checked":true}}"#.into(),

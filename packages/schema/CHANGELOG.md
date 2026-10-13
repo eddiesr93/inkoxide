@@ -26,6 +26,15 @@ Still document schema version 1.
   rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
   (default `fill`) and `objectPosition`, with the same bounds as on an `image` node. Optional;
   documents without it render as before.
+- `TextRun.image` (`$defs/InlineImage`): an image in the line in place of the run's text, a run
+  having exactly one of `text`, `placeholder` and `image`. It takes `src` or `data`, `width` and
+  `height` in (0, 14400] points (one from the other by the image's aspect ratio, and 1em high,
+  the run's `size`, with neither), `fit`, `objectPosition`, and `alt` (at most 1024 characters),
+  the text copying and searching give for it. The run's `font` and `size` are the line's strut.
+  It breaks lines like one character.
+- `TextRun.verticalAlign` places an image run with `middle`, `textTop`, `textBottom`, `top`,
+  `bottom`, or a number: points its bottom sits above the baseline (within ±14400). On a text
+  run they are `INVALID_VALUE`.
 
 ### Changed
 

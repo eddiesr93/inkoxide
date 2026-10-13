@@ -1000,7 +1000,7 @@
       "properties": {
         "text": {
           "type": "string",
-          "description": "Required unless `placeholder` is set; forbidden when it is."
+          "description": "Required unless `placeholder` or `image` is set; forbidden when one is."
         },
         "font": {
           "$ref": "#/$defs/Id"
@@ -1060,13 +1060,27 @@
           "description": "Overrides the text node's `hyphenate` for this run's words, in the node's language."
         },
         "verticalAlign": {
-          "enum": [
-            "baseline",
-            "super",
-            "sub"
+          "oneOf": [
+            {
+              "enum": [
+                "baseline",
+                "super",
+                "sub",
+                "middle",
+                "textTop",
+                "textBottom",
+                "top",
+                "bottom"
+              ]
+            },
+            {
+              "type": "number",
+              "minimum": -14400,
+              "maximum": 14400
+            }
           ],
           "default": "baseline",
-          "description": "Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs."
+          "description": "Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below)."
         },
         "fontFeatures": {
           "type": "object",
@@ -1080,6 +1094,9 @@
             "maximum": 65535
           },
           "description": "OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{\"tnum\": 1, \"liga\": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features."
+        },
+        "image": {
+          "$ref": "#/$defs/InlineImage"
         }
       },
       "oneOf": [
@@ -1088,8 +1105,17 @@
             "text"
           ],
           "not": {
-            "required": [
-              "placeholder"
+            "anyOf": [
+              {
+                "required": [
+                  "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "image"
+                ]
+              }
             ]
           }
         },
@@ -1098,8 +1124,102 @@
             "placeholder"
           ],
           "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "text"
+                ]
+              },
+              {
+                "required": [
+                  "image"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "image"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "text"
+                ]
+              },
+              {
+                "required": [
+                  "placeholder"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "InlineImage": {
+      "description": "An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "src": {
+          "$ref": "#/$defs/Id",
+          "description": "Key into the render option `images`."
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted."
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 14400
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 14400
+        },
+        "fit": {
+          "enum": [
+            "fill",
+            "contain",
+            "cover",
+            "none"
+          ],
+          "default": "fill"
+        },
+        "objectPosition": {
+          "$ref": "#/$defs/ObjectPosition",
+          "description": "Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred."
+        },
+        "alt": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "Alternative text: what copying, searching and screen readers get for the image."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "src"
+          ],
+          "not": {
             "required": [
-              "text"
+              "data"
+            ]
+          }
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "not": {
+            "required": [
+              "src"
             ]
           }
         }

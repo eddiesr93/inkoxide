@@ -894,15 +894,47 @@ fn run(s: &mut Src) -> Value {
     if s.chance(10) {
         m.insert("hyphenate".into(), json!(s.chance(50)));
     }
+    let image = s.chance(20);
+    if image {
+        // An image in the line, in place of the text.
+        m.remove("text");
+        m.remove("placeholder");
+        if s.chaos && s.chance(20) {
+            m.insert("text".into(), json!("x"));
+        }
+        let mut im = Map::new();
+        image_props(s, &mut im);
+        for side in ["width", "height"] {
+            if s.chance(90) {
+                let v = match s.below(6) {
+                    0 => json!(14_400),
+                    1 => json!(0.01),
+                    2 if s.chaos => json!(s.pick(&[0.0, -1.0, 14_400.5])),
+                    _ => json!(1 + s.below(60)),
+                };
+                im.insert(side.into(), v);
+            }
+        }
+        if s.chance(60) {
+            im.insert("alt".into(), json!(text(s)));
+        }
+        m.insert("image".into(), Value::Object(im));
+    }
     if s.chance(25) {
         let which = s.below(3);
         if which != 1 {
-            let align = if s.chaos && s.chance(4) {
-                s.pick(&["middle", "top", ""])
+            let align = if image && s.chance(160) {
+                match s.below(8) {
+                    0 => json!(-14_400),
+                    1 => json!(num(s)),
+                    _ => json!(s.pick(&["middle", "textTop", "textBottom", "top", "bottom"])),
+                }
+            } else if s.chaos && s.chance(4) {
+                json!(s.pick(&["middle", "top", ""]))
             } else {
-                s.pick(&["baseline", "super", "sub"])
+                json!(s.pick(&["baseline", "super", "sub"]))
             };
-            m.insert("verticalAlign".into(), json!(align));
+            m.insert("verticalAlign".into(), align);
         }
         if which != 0 {
             m.insert("fontFeatures".into(), font_features(s));
@@ -1383,6 +1415,7 @@ mod tests {
             r#""textWrap":"pretty""#,
             r#""backgroundImage":{"#,
             r#""fallbackFonts":["EmojiTest-CBDT""#,
+            r#""image":{"src":"#,
             "👩\u{200D}💻",
         ];
         let mut seen = vec![false; features.len()];

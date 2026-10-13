@@ -1457,3 +1457,79 @@ fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
         )
     );
 }
+
+#[test]
+fn image_runs_are_checked() {
+    let with_run = |r: &str| {
+        doc(&format!(
+            r#"{{"type":"text","runs":[{{"font":"Inter-Regular","size":10{r}}}]}}"#
+        ))
+    };
+    let p = "pages[0].children[0].runs[0]";
+    for ok in [
+        r#","image":{"src":"logo"}"#,
+        r#","image":{"src":"logo","width":14400,"height":0.5,"fit":"cover","alt":"A logo"}"#,
+        r#","image":{"src":"logo"},"verticalAlign":"middle""#,
+        r#","image":{"src":"logo"},"verticalAlign":-14400"#,
+        r#","image":{"src":"logo"},"verticalAlign":"super""#,
+        r#","text":"x","verticalAlign":"sub""#,
+    ] {
+        assert_eq!(run(&with_run(ok)), vec![], "{ok}");
+    }
+    let alt = "x".repeat(1025);
+    for (bad, code, path) in [
+        (
+            r#","text":"x","image":{"src":"logo"}"#.to_string(),
+            C::InvalidValue,
+            format!("{p}.image"),
+        ),
+        (
+            r#","image":{}"#.into(),
+            C::MissingField,
+            format!("{p}.image"),
+        ),
+        (
+            r#","image":{"src":"nope"}"#.into(),
+            C::UnknownImage,
+            format!("{p}.image.src"),
+        ),
+        (
+            r#","image":{"src":"logo","width":0}"#.into(),
+            C::OutOfRange,
+            format!("{p}.image.width"),
+        ),
+        (
+            r#","image":{"src":"logo","height":14401}"#.into(),
+            C::OutOfRange,
+            format!("{p}.image.height"),
+        ),
+        (
+            format!(r#","image":{{"src":"logo","alt":"{alt}"}}"#),
+            C::InvalidValue,
+            format!("{p}.image.alt"),
+        ),
+        (
+            r#","image":{"src":"logo","objectPosition":{"x":20000}}"#.into(),
+            C::OutOfRange,
+            format!("{p}.image.objectPosition.x"),
+        ),
+        (
+            r#","text":"x","verticalAlign":"middle""#.into(),
+            C::InvalidValue,
+            format!("{p}.verticalAlign"),
+        ),
+        (
+            r#","image":{"src":"logo"},"verticalAlign":14401"#.into(),
+            C::OutOfRange,
+            format!("{p}.verticalAlign"),
+        ),
+        (
+            r#","image":{"src":"logo"},"verticalAlign":"center""#.into(),
+            C::InvalidValue,
+            format!("{p}.verticalAlign"),
+        ),
+    ] {
+        let (c, got) = one(&with_run(&bad));
+        assert_eq!((c, got.as_str()), (code, path.as_str()), "{bad}");
+    }
+}

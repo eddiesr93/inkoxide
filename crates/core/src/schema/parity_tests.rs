@@ -146,6 +146,11 @@ fn structs_match_schema() {
     );
     check(
         &s,
+        Some("InlineImage"),
+        &node(r#"{"type":"text","runs":[{"font":"f","size":1,"image":{@"src":"i"}}]}"#),
+    );
+    check(
+        &s,
         Some("Field"),
         &node(r#"{"type":"field","field":{@"name":"n","kind":"text"}}"#),
     );
@@ -344,9 +349,9 @@ type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
 #[allow(clippy::cast_precision_loss)]
 fn named_bounds_match_schema() {
     use crate::validate::rules::{
-        MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FEATURE_VALUE,
-        MAX_FIELD_NAME, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT,
-        MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
+        MAX_ALT, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS,
+        MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING,
+        MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -532,6 +537,23 @@ fn named_bounds_match_schema() {
             format!("{style}.widows"),
         ),
     ];
+    let mut cases = cases;
+    cases.push((
+        "/$defs/InlineImage/properties/alt/maxLength",
+        MAX_ALT as f64,
+        Box::new(move |n| {
+            doc(
+                font,
+                &format!(
+                    r#"{{"type":"text","runs":[{{"font":"f","size":9,"image":{{"src":"f","alt":"{}"}}}}]}}"#,
+                    chars(n)
+                ),
+            )
+        }),
+        MAX_ALT as f64 + 1.0,
+        "INVALID_VALUE",
+        format!("{run}.image.alt"),
+    ));
     for (pointer, bound, make, past, code, path) in cases {
         let stated = s
             .pointer(pointer)

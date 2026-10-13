@@ -866,3 +866,147 @@ fn justified_pretty_lines_may_shrink_their_spaces_by_a_third() {
     }
     assert!(shrunk > 0);
 }
+
+/// Lays out a text node of `runs` (JSON) with `style` at `width`, with
+/// image `logo` (160 × 160 px, 120 pt) for its image runs: the line texts
+/// (an object as `#`), the layout and the objects.
+fn objects_layout(
+    runs: &str,
+    style: &str,
+    width: f32,
+) -> (Vec<String>, LineLayout, Vec<objects::InlineObject>) {
+    let d = doc(&format!(
+        r#"{{"type":"text","style":{{{style}}},"runs":[{runs}]}}"#
+    ));
+    let s = store();
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut images = crate::ImageStore::new();
+    images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+    let set = crate::images::ImageSet::load(&d.pages, &images, &crate::images::ImageCrateDecoder)
+        .unwrap();
+    let shaper = RustybuzzShaper::new(&fonts)
+        .unwrap()
+        .with_objects(Arc::new(set.inline_objects()));
+    let mut cache = TextCache::new(shaper, None);
+    let node = &d.pages[0].children[0];
+    let layout = (*cache.layout(node, width).unwrap()).clone();
+    let (p, _) = cache.prepared(node).unwrap();
+    let texts = line_texts(p, &layout)
+        .into_iter()
+        .map(|t| t.replace('\u{FFFC}', "#"))
+        .collect();
+    (texts, layout, p.objects.clone())
+}
+
+fn image_run(extra: &str) -> String {
+    format!(r#"{{"font":"Inter-Regular","size":10,"image":{{"src":"logo"{extra}}}}}"#)
+}
+
+fn text_run(text: &str) -> String {
+    format!(r#"{{"text":"{text}","font":"Inter-Regular","size":10}}"#)
+}
+
+#[test]
+fn an_inline_image_is_one_cluster_lines_break_around() {
+    let runs = [text_run("aaa"), image_run(""), text_run("bbb ccc")].join(",");
+    let (one, l, objects) = objects_layout(&runs, "", 600.0);
+    assert_eq!(one, ["aaa#bbb ccc"]);
+    // 1em high by default, square like the logo.
+    assert_eq!(objects.len(), 1);
+    assert_eq!((objects[0].width, objects[0].height), (10.0, 10.0));
+    let wide = l.lines[0].width;
+    // Breaks are allowed on both sides of an object (UAX #14 class CB).
+    let (lines, _, _) = objects_layout(&runs, "", wide - 1.0);
+    assert_eq!(lines, ["aaa#bbb", "ccc"]);
+    let (lines, _, _) = objects_layout(&runs, "", 20.0);
+    assert_eq!(lines, ["aaa", "#", "bbb", "ccc"]);
+    // `nowrap` keeps them on one line.
+    let (lines, _, _) = objects_layout(&runs, r#""whiteSpace":"nowrap""#, 20.0);
+    assert_eq!(lines, ["aaa#bbb ccc"]);
+    // An ellipsis can follow an object.
+    let style = r#""maxLines":1,"ellipsis":true"#;
+    let (lines, l, _) = objects_layout(&runs, style, 32.0);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(l.lines[0].ellipsis.is_some());
+    assert!(l.lines[0].width <= 32.0 + 1e-3);
+}
+
+#[test]
+fn inline_images_take_the_size_asked_and_grow_their_line() {
+    let line = |extra: &str, align: &str| {
+        let runs = [
+            text_run("x"),
+            image_run(extra).replace("}}", &format!("}}{align}}}")),
+        ]
+        .join(",");
+        let (_, l, objects) = objects_layout(&runs, r#""lineHeight":1"#, 600.0);
+        let o = &objects[0];
+        (l.lines[0].ascent, l.lines[0].height, o.width, o.height)
+    };
+    // Text alone: 10 pt high, its baseline 10 · ascender / (asc + desc)
+    // from the top, with `lineHeight: 1`.
+    let (text_ascent, text_height, ..) = line(r#","height":1"#, "");
+    assert!((text_height - 10.0).abs() < 1e-3);
+    let descent = text_height - text_ascent;
+    // On the baseline: 30 pt above it.
+    let (a, h, w, ih) = line(r#","height":30"#, "");
+    assert_eq!((w, ih), (30.0, 30.0));
+    assert!(
+        (a - 30.0).abs() < 1e-3 && (h - (30.0 + descent)).abs() < 1e-3,
+        "{a} {h}"
+    );
+    // A width alone keeps the ratio.
+    assert_eq!(line(r#","width":8"#, "").2, 8.0);
+    // Points: the bottom 5 pt below the baseline.
+    let (a, h, ..) = line(r#","height":30"#, r#","verticalAlign":-5"#);
+    assert!(
+        (a - 25.0).abs() < 1e-3 && (h - 25.0 - descent.max(5.0)).abs() < 1e-3,
+        "{a} {h}"
+    );
+    // Top and bottom: as tall as the image, whatever the text.
+    for align in ["top", "bottom"] {
+        let (_, h, ..) = line(r#","height":30"#, &format!(r#","verticalAlign":"{align}""#));
+        assert!((h - 30.0).abs() < 1e-3, "{align}: {h}");
+    }
+    // Middle: centred half an x-height above the baseline.
+    let (a, ..) = line(r#","height":30"#, r#","verticalAlign":"middle""#);
+    assert!(a > 15.0 && a < 20.0, "{a}");
+    // Text top: the image's top at Inter's ascender (0.96875 em), above the
+    // text's half-leading.
+    let (a, ..) = line(r#","height":30"#, r#","verticalAlign":"textTop""#);
+    assert!(
+        (a - 9.6875).abs() < 1e-3 && a > text_ascent,
+        "{a} {text_ascent}"
+    );
+}
+
+#[test]
+fn placeholders_keep_the_objects() {
+    let runs = [
+        image_run(""),
+        r#"{"placeholder":"pageNumber","font":"Inter-Regular","size":10}"#.to_string(),
+    ]
+    .join(",");
+    let d = doc(&format!(r#"{{"type":"text","runs":[{runs}]}}"#));
+    let s = store();
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut images = crate::ImageStore::new();
+    images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+    let set = crate::images::ImageSet::load(&d.pages, &images, &crate::images::ImageCrateDecoder)
+        .unwrap();
+    let shaper = RustybuzzShaper::new(&fonts)
+        .unwrap()
+        .with_objects(Arc::new(set.inline_objects()));
+    let mut cache = TextCache::new(shaper, None);
+    let node = &d.pages[0].children[0];
+    cache.layout(node, 600.0);
+    let numbers = PageNumbers {
+        current: 12345,
+        total: 99999,
+    };
+    assert!(cache.set_numbers(node, numbers));
+    let (p, _) = cache.prepared(node).unwrap();
+    assert_eq!(p.objects.len(), 1);
+    assert!(p.glyphs[0].is_object());
+    assert_eq!(p.segments[0].object, Some(0));
+}

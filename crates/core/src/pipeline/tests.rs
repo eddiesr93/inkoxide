@@ -788,12 +788,15 @@ fn repeated_flow_text_shows_each_page_s_numbers() {
 /// The ops of each page of a document whose store holds image `logo`.
 fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
-    let store = FontStore::new();
+    let store = store();
     let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageStore::new();
     images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
     let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+    let shaper = RustybuzzShaper::new(&fonts)
+        .unwrap()
+        .with_objects(std::sync::Arc::new(images.inline_objects()));
+    let mut text = TextCache::new(shaper, None);
     let (pages, _) = run(&doc, &fonts, &mut text, &mut images, false, Ok).unwrap();
     pages.into_iter().map(|p| p.ops).collect()
 }
@@ -1032,4 +1035,50 @@ fn justified_pretty_lines_are_painted_within_their_box() {
         }
     }
     assert_ne!(painted_lines(&json("wrap")), painted_lines(&json("pretty")));
+}
+
+#[test]
+fn inline_images_are_painted_in_their_line_with_their_alternative_text() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","style":{{"lineHeight":1}},"runs":[
+              {{"text":"ab","font":"Inter-Regular","size":10}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","height":16,"alt":"Logo"}}}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","width":4}},"verticalAlign":"top"}}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    let ops = &pages[0];
+    let spans: Vec<&str> = ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Span { actual_text } => Some(&**actual_text),
+            _ => None,
+        })
+        .collect();
+    // Only the image with alternative text has a span.
+    assert_eq!(spans, ["Logo"]);
+    let images: Vec<[f32; 6]> = ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Image { matrix, .. } => Some(*matrix),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 2);
+    // [w 0 0 -h x y+h]: 16 pt square on the baseline (16 pt down, as it
+    // is the tallest), then a 4 pt square at the top of the line.
+    let (first, second) = (images[0], images[1]);
+    assert!(close(first[0], 16.0) && close(-first[3], 16.0), "{first:?}");
+    assert!(close(first[5] + first[3], 0.0), "{first:?}");
+    assert!(
+        close(second[0], 4.0) && close(second[5] + second[3], 0.0),
+        "{second:?}"
+    );
+    // The second follows the first.
+    assert!(close(second[4], first[4] + 16.0), "{first:?} {second:?}");
+    // The letters are text.
+    assert!(ops
+        .iter()
+        .any(|op| matches!(op, Op::Text(t) if t.glyphs.len() == 2)));
 }

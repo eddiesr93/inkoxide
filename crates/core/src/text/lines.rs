@@ -438,8 +438,26 @@ fn metrics(line: &mut Line, para: &Para<'_>) {
         fonts,
     } = *para;
     let (mut above, mut below) = (0.0f32, 0.0f32);
+    // Heights of the objects aligned to the line's top or bottom, which
+    // depend on the rest of the line.
+    let mut ends: Vec<(f32, bool)> = Vec::new();
     let mut add = |seg: &super::Segment| {
         let run = &runs[seg.run as usize];
+        if let Some(o) = seg.object {
+            // An image reaches where its alignment puts it; the run's font
+            // still makes the strut, below.
+            let object = &p.objects[o as usize];
+            match object.extent(run, fonts) {
+                Some((a, b)) => {
+                    above = above.max(a);
+                    below = below.max(b);
+                }
+                None => ends.push((
+                    object.height,
+                    run.vertical_align == Some(crate::schema::RunAlign::Top),
+                )),
+            }
+        }
         let font = fonts.get(seg.font);
         let m = &font.data.metrics;
         let scale = font.scale(run.size);
@@ -479,6 +497,17 @@ fn metrics(line: &mut Line, para: &Para<'_>) {
         // line starts in, else the first one.
         if let Some(seg) = p.segment_of(s).or(p.segments.first()) {
             add(seg);
+        }
+    }
+    // An object at the line's top reaches down from it, one at the bottom
+    // up from it; either may make the line taller.
+    for (h, top) in ends {
+        if above + below < h {
+            if top {
+                below = h - above;
+            } else {
+                above = h - below;
+            }
         }
     }
     line.ascent = above;

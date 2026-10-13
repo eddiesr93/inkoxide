@@ -494,12 +494,30 @@ pub struct TextRun {
     /// OpenType features to turn on or off, in the order written.
     #[serde(default, deserialize_with = "de::font_features")]
     pub font_features: Option<Box<[FontFeature]>>,
+    /// An image in the line, in place of text (boxed: rare).
+    pub image: Option<Box<RunImage>>,
+}
+
+/// A run's `image`: drawn in the line like a glyph, `width` × `height`
+/// points (one of them, or both, from the image's aspect ratio and the
+/// run's size).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "de::RawRunImage")]
+pub struct RunImage {
+    pub source: ImageSource,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub fit: ImageFit,
+    pub object_position: ObjectPosition,
+    /// What text extraction gets for the image.
+    pub alt: Option<String>,
 }
 
 /// Where a run sits on its line (CSS `vertical-align` on an inline box):
-/// its baseline on the line's, or moved up or down.
+/// its baseline on the line's, or moved up or down. The values after
+/// `Sub` place images (validation keeps them to image runs).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(try_from = "de::RawRunAlign")]
 pub enum RunAlign {
     #[default]
     Baseline,
@@ -507,6 +525,18 @@ pub enum RunAlign {
     Super,
     /// Lowered by the font's subscript offset.
     Sub,
+    /// The middle at the baseline plus half the font's x-height.
+    Middle,
+    /// The top at the font's ascender.
+    TextTop,
+    /// The bottom at the font's descender.
+    TextBottom,
+    /// The top at the line's top.
+    Top,
+    /// The bottom at the line's bottom.
+    Bottom,
+    /// The bottom this many points above the baseline (negative: below).
+    Points(f32),
 }
 
 /// An OpenType feature setting (CSS `font-feature-settings`): 0 turns the

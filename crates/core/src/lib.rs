@@ -38,6 +38,7 @@ pub use text::HyphenationStore;
 
 use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::Arc;
 
 use fonts::FontSet;
 use pdf::{DocumentOut, PdfSink, PdfWriterSink};
@@ -301,10 +302,12 @@ fn render_inner(
     let hyphenator = text::ResolvedHyphenator {
         store: &options.hyphenation,
     };
-    let shaper = RustybuzzShaper::new(&font_set)?.with_hyphenator(&hyphenator);
-    let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
     let mut image_set =
         images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
+    let shaper = RustybuzzShaper::new(&font_set)?
+        .with_hyphenator(&hyphenator)
+        .with_objects(Arc::new(image_set.inline_objects()));
+    let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,

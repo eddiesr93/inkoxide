@@ -12,7 +12,8 @@ use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldKind, FontFeature, GridTrack, ImageSource, Length,
     LengthPercent, Node, NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount,
-    Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
+    RunAlign, RunImage, Style, Table, TextRun, TrackBreadth, TrackSize, TransformOp,
+    SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -137,6 +138,8 @@ pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
 pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 /// Deepest bookmark `level`.
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
+/// Longest alternative text of an inline image, in characters.
+pub(crate) const MAX_ALT: usize = 1024;
 /// Thickest `decorationThickness`, in points.
 pub(crate) const MAX_DECORATION_THICKNESS: f32 = 100.0;
 /// Largest `letterSpacing` either way, in points.
@@ -799,22 +802,71 @@ impl<'a> Checker<'a> {
         });
     }
 
+    /// A run's `image`: its source and placement, as an image node's, a
+    /// size within a page edge, and bounded alternative text.
+    fn run_image(&mut self, image: &RunImage) {
+        self.object_position(&image.object_position);
+        self.image_source(&image.source);
+        for (field, v) in [("width", image.width), ("height", image.height)] {
+            if v.is_some_and(|v| !(v > 0.0 && v <= MAX_PAGE_EDGE)) {
+                self.err(
+                    Code::OutOfRange,
+                    Some(field),
+                    format!("must be within (0, {MAX_PAGE_EDGE}] points"),
+                );
+            }
+        }
+        if image
+            .alt
+            .as_ref()
+            .is_some_and(|a| a.chars().count() > MAX_ALT)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("alt"),
+                format!("alternative text is at most {MAX_ALT} characters"),
+            );
+        }
+    }
+
     fn run(&mut self, r: &TextRun) {
         if let Some(link) = &r.link {
             self.link(link);
         }
-        match (&r.text, &r.placeholder) {
-            (Some(_), Some(_)) => self.err(
+        match (&r.text, &r.placeholder, &r.image) {
+            (Some(_), Some(_), _) => self.err(
                 Code::InvalidValue,
                 Some("placeholder"),
                 "a run takes either `text` or `placeholder`, not both",
             ),
-            (None, None) => self.err(
+            (Some(_), None, Some(_)) | (None, Some(_), Some(_)) => self.err(
+                Code::InvalidValue,
+                Some("image"),
+                "a run takes one of `text`, `placeholder` and `image`",
+            ),
+            (None, None, None) => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder`)",
+                "a run requires `text` (or a `placeholder` or an `image`)",
             ),
             _ => {}
+        }
+        if let Some(image) = &r.image {
+            self.at("image", |c| c.run_image(image));
+        }
+        match r.vertical_align {
+            Some(RunAlign::Points(v)) if !(v.abs() <= MAX_PAGE_EDGE) => self.err(
+                Code::OutOfRange,
+                Some("verticalAlign"),
+                format!("points must be within [-{MAX_PAGE_EDGE}, {MAX_PAGE_EDGE}]"),
+            ),
+            Some(RunAlign::Baseline | RunAlign::Super | RunAlign::Sub) | None => {}
+            Some(_) if r.image.is_none() => self.err(
+                Code::InvalidValue,
+                Some("verticalAlign"),
+                "only `baseline`, `super` and `sub` apply to text; the other values place an image run",
+            ),
+            Some(_) => {}
         }
         self.font_ref(Some("font"), &r.font);
         self.font_size(r.size);

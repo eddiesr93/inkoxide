@@ -113,6 +113,13 @@ its baseline (`text::baseline_shift`, from the font's OS/2 superscript and
 subscript metrics): line metrics count the moved glyph boxes, and the
 painter draws the run, its decorations and its `debug` box there.
 
+An image run is an inline object (`text/objects.rs`): one glyph-like
+cluster in a segment of its own (U+FFFC in the text, so UAX #14 breaks
+around it), as wide as the image, so line breaking, `textWrap: pretty` and
+ellipses need no special case. Line metrics add its extent where its
+`verticalAlign` puts it (`top` and `bottom` after the rest of the line),
+and the painter draws its image there, in a span with its `alt`.
+
 Itemisation picks a font per character, except in emoji sequences
 (`text/emoji.rs`, UTS #51: flags, keycaps, skin tones, tag and ZWJ
 sequences), which take one font each so the font's ligature can form; a

@@ -14,7 +14,7 @@ use unicode_linebreak::{linebreaks, BreakOpportunity};
 use super::hyphen::Hyphenator;
 use super::{
     BreakKind, BreakPoint, Glyph, PageNumbers, Para, Prepared, Segment, GLYPH_INVISIBLE,
-    GLYPH_SPACE, GLYPH_TAB,
+    GLYPH_OBJECT, GLYPH_SPACE, GLYPH_TAB,
 };
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::schema::{Direction, FontFeature, TextRun, WhiteSpace};
@@ -30,6 +30,9 @@ pub(crate) const SHY: char = '\u{00AD}';
 /// (fixed, or in a table's header rows) keeps this width.
 pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 
+/// The text of an image run: U+FFFC OBJECT REPLACEMENT CHARACTER.
+const OBJECT_TEXT: &str = "\u{FFFC}";
+
 pub(crate) struct ParagraphOptions<'a> {
     pub white_space: WhiteSpace,
     pub direction: Direction,
@@ -39,6 +42,8 @@ pub(crate) struct ParagraphOptions<'a> {
     pub lang: Option<&'a str>,
     pub hyphenator: &'a dyn Hyphenator,
     pub runs: &'a [TextRun],
+    /// The images of image runs.
+    pub objects: &'a super::InlineObjects,
 }
 
 /// Combining marks stay in the font of their base character.
@@ -68,9 +73,12 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     let mut last_was_space = true;
     for run in opts.runs {
         let start = text.len();
-        let src: &str = match run.placeholder {
-            Some(_) => PLACEHOLDER_TEXT,
-            None => run.text.as_deref().unwrap_or(""),
+        let src: &str = match (run.placeholder, &run.image) {
+            (Some(_), _) => PLACEHOLDER_TEXT,
+            // An image is one object character: it breaks lines like one
+            // (UAX #14 class CB) and is neutral in bidi.
+            (None, Some(_)) => OBJECT_TEXT,
+            (None, None) => run.text.as_deref().unwrap_or(""),
         };
         match opts.white_space {
             WhiteSpace::Pre | WhiteSpace::PreWrap => {
@@ -106,6 +114,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
             if run.hyphenate.unwrap_or(opts.hyphenate)
                 && !matches!(opts.white_space, WhiteSpace::Pre | WhiteSpace::NoWrap)
                 && run.placeholder.is_none()
+                && run.image.is_none()
             {
                 let hyphenated = insert_soft_hyphens(&text[start..], opts.hyphenator, lang);
                 text.truncate(start);
@@ -154,19 +163,29 @@ fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> Stri
 /// else the first fallback that has it, else the run's font (`.notdef`).
 /// An emoji sequence takes one font for all its characters
 /// ([`super::emoji::font`]).
+/// An image run is a segment of its own, with its object.
 fn itemize(
     text: &str,
     run_ranges: &[(usize, usize)],
     runs: &[TextRun],
     fonts: &FontSet<'_>,
     levels: Option<&[u8]>,
-) -> Vec<Segment> {
+    objects: &super::InlineObjects,
+) -> (Vec<Segment>, Vec<super::objects::InlineObject>) {
     let level_at = |i: usize| levels.map_or(0, |l| l[i]);
     let mut segs: Vec<Segment> = Vec::new();
+    let mut objs = Vec::new();
     for (ri, (&(start, end), run)) in run_ranges.iter().zip(runs).enumerate() {
         let Some(primary) = fonts.key(&run.font) else {
             continue;
         };
+        if let Some(object) = objects.of_run(run).filter(|_| start < end) {
+            let mut seg = Segment::new(ri, primary, level_at(start), start..end);
+            seg.object = Some(objs.len() as u32);
+            objs.push(object);
+            segs.push(seg);
+            continue;
+        }
         let mut current: Option<(FontKey, usize)> = None;
         let mut level = 0u8;
         let mut sequences = super::emoji::sequences(&text[start..end])
@@ -213,7 +232,7 @@ fn itemize(
             segs.push(Segment::new(ri, f, level, s..end));
         }
     }
-    segs
+    (segs, objs)
 }
 
 /// A shaped glyph in font units, relative to its word.
@@ -481,11 +500,32 @@ pub(crate) fn prepare(
     let bidi = levels
         .as_ref()
         .is_some_and(|l| l.iter().any(|v| v % 2 == 1));
-    let mut segments = itemize(&text, &run_ranges, opts.runs, fonts, levels.as_deref());
+    let (mut segments, objects) = itemize(
+        &text,
+        &run_ranges,
+        opts.runs,
+        fonts,
+        levels.as_deref(),
+        opts.objects,
+    );
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(text.len());
 
     let sets: Vec<FeatureSet> = opts.runs.iter().map(|r| cache.feature_set(r)).collect();
     for seg in &mut segments {
+        if let Some(o) = seg.object {
+            // One glyph-like cluster, as wide as the image.
+            let first = glyphs.len() as u32;
+            glyphs.push(Glyph {
+                id: 0,
+                advance: objects[o as usize].width,
+                x_offset: 0.0,
+                y_offset: 0.0,
+                cluster: seg.text.start,
+                flags: GLYPH_OBJECT,
+            });
+            seg.glyphs = first..first + 1;
+            continue;
+        }
         let run = &opts.runs[seg.run as usize];
         let set = sets[seg.run as usize];
         let scale = fonts.get(seg.font).scale(run.size);
@@ -579,6 +619,7 @@ pub(crate) fn prepare(
         rtl,
         bidi,
         placeholders: opts.runs.iter().any(|r| r.placeholder.is_some()),
+        objects,
     }
 }
 
@@ -763,6 +804,7 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
         rtl: p.rtl,
         bidi: p.bidi,
         placeholders: false,
+        objects: p.objects.clone(),
     }
 }
 
@@ -802,6 +844,7 @@ mod tests {
 
     fn run(text: &str) -> TextRun {
         TextRun {
+            image: None,
             text: Some(text.into()),
             font: "f".into(),
             size: 10.0,
@@ -826,6 +869,7 @@ mod tests {
             hyphenate: false,
             lang: None,
             hyphenator: &NoHyphenation,
+            objects: &super::super::InlineObjects::default(),
             runs,
         })
         .0
@@ -842,6 +886,7 @@ mod tests {
             hyphenate: false,
             lang: None,
             hyphenator: &NoHyphenation,
+            objects: &super::super::InlineObjects::default(),
             runs: &[run("a "), run(" b")],
         });
         assert_eq!(text, "a b");
@@ -916,6 +961,7 @@ mod tests {
                 hyphenate,
                 lang: Some("en"),
                 hyphenator: &HypherHyphenator,
+                objects: &super::super::InlineObjects::default(),
                 runs,
             })
             .0

@@ -45,7 +45,6 @@ pub(crate) struct FontMetrics {
     pub strikeout_position: f32,
     pub strikeout_thickness: f32,
     /// Height of lowercase letters (OS/2 `sxHeight`, else the top of `x`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub x_height: f32,
     /// How far subscripts sit below the baseline (OS/2 `ySubscriptYOffset`).
     pub subscript_offset: f32,

@@ -37,7 +37,8 @@ pub(crate) const MAX_REPEATED: u64 = 64 << 20;
 /// node, or a character or glyph of text,
 const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
-/// character) or a colour glyph (an image in a span),
+/// character) or an image in text (an inline image or a colour glyph, in
+/// a span),
 const LINK_BYTES: u64 = 256;
 /// a `debug` outline, a form field widget or a background image,
 const BOX_BYTES: u64 = 768;
@@ -422,7 +423,7 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // can multiply them.
                     let glyphs = text.glyph_count(n).unwrap_or(0) as u64;
                     size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
-                    let colored = text.color_glyph_count(n) as u64;
+                    let colored = text.image_glyph_count(n) as u64;
                     size = size.saturating_add(colored * LINK_BYTES);
                     if debug {
                         // A box and a baseline per line, and a box per
@@ -676,6 +677,7 @@ fn paint_page(
             cache: text,
             page: None,
             fonts,
+            images,
             numbers,
         },
         images,

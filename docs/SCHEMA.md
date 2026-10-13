@@ -340,7 +340,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `text` | `string` |  | Required unless `placeholder` is set; forbidden when it is. |
+| `text` | `string` |  | Required unless `placeholder` or `image` is set; forbidden when one is. |
 | `font` | [`Id`](#id) | yes |  |
 | `size` | `number` | yes | > 0, ≤ 1000 |
 | `color` | [`Color`](#color) |  |  |
@@ -352,8 +352,23 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  |  |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
-| `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. |
+| `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |
 | `fontFeatures` | `object` |  | OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features. |
+| `image` | [`InlineImage`](#inlineimage) |  |  |
+
+### InlineImage
+
+An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `src` | [`Id`](#id) |  | Key into the render option `images`. |
+| `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
+| `width` | `number` |  | > 0, ≤ 14400 |
+| `height` | `number` |  | > 0, ≤ 14400 |
+| `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
+| `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
+| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. |
 
 ### ColumnSpec
 

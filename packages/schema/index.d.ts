@@ -661,7 +661,7 @@ export interface TextNode {
  */
 export interface TextRun {
   /**
-   * Required unless `placeholder` is set; forbidden when it is.
+   * Required unless `placeholder` or `image` is set; forbidden when one is.
    */
   text?: string;
   font: Id;
@@ -688,15 +688,45 @@ export interface TextRun {
    */
   hyphenate?: boolean;
   /**
-   * Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs.
+   * Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below).
    */
-  verticalAlign?: 'baseline' | 'super' | 'sub';
+  verticalAlign?:
+    | ('baseline' | 'super' | 'sub' | 'middle' | 'textTop' | 'textBottom' | 'top' | 'bottom')
+    | number;
   /**
    * OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features.
    */
   fontFeatures?: {
     [k: string]: number | undefined;
   };
+  image?: InlineImage;
+}
+/**
+ * An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "InlineImage".
+ */
+export interface InlineImage {
+  /**
+   * Key into the render option `images`.
+   */
+  src?: Id;
+  /**
+   * Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted.
+   */
+  data?: string;
+  width?: number;
+  height?: number;
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
+   */
+  objectPosition?: ObjectPosition;
+  /**
+   * Alternative text: what copying, searching and screen readers get for the image.
+   */
+  alt?: string;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

@@ -51,6 +51,10 @@ All notable changes to the packages in this repository. The format follows
   colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
   field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
   render, draws without colour.
+- Inline images: `image` on a document's text run puts an image in the line, as wide and high as
+  asked (1em high by default, keeping its aspect ratio), placed by the run's `verticalAlign`
+  (`baseline`, `middle`, `textTop`, `textBottom`, `top`, `bottom`, `super`, `sub` or points),
+  with `alt` as the text it copies as. Lines break around it like around a character.
 
 ### Changed
 

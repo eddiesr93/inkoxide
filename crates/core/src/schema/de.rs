@@ -12,8 +12,8 @@ use serde::Deserialize;
 use super::{
     BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
     ColumnWidth, Corners, Field, FontFeature, ImageFit, ImageSource, InlineImage, Node, NodeKind,
-    ObjectPosition, OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun,
-    TransformOp,
+    ObjectPosition, OptEdges, PageFilter, PagePattern, RunAlign, RunImage, Style, Table, TableRow,
+    TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -783,6 +783,69 @@ impl TryFrom<RawBackgroundImage> for BackgroundImage {
             source: image_source(r.src, r.data, "`backgroundImage`")?,
             fit: r.fit.unwrap_or_default(),
             object_position: r.object_position.unwrap_or_default(),
+        })
+    }
+}
+
+/// A [`RunImage`] as written: `src` or `data`, checked on conversion.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RawRunImage {
+    src: Option<String>,
+    data: Option<String>,
+    width: Option<f32>,
+    height: Option<f32>,
+    fit: Option<ImageFit>,
+    object_position: Option<ObjectPosition>,
+    alt: Option<String>,
+}
+
+impl TryFrom<RawRunImage> for RunImage {
+    type Error = String;
+
+    fn try_from(r: RawRunImage) -> Result<Self, String> {
+        Ok(Self {
+            source: image_source(r.src, r.data, "a run's `image`")?,
+            width: r.width,
+            height: r.height,
+            fit: r.fit.unwrap_or_default(),
+            object_position: r.object_position.unwrap_or_default(),
+            alt: r.alt,
+        })
+    }
+}
+
+/// A run's `verticalAlign` as written: a keyword or a number.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum RawRunAlign {
+    Num(f64),
+    Str(String),
+}
+
+impl TryFrom<RawRunAlign> for RunAlign {
+    type Error = String;
+
+    fn try_from(raw: RawRunAlign) -> Result<Self, String> {
+        Ok(match raw {
+            // Bounded by validation.
+            RawRunAlign::Num(v) => RunAlign::Points(v as f32),
+            RawRunAlign::Str(s) => match s.as_str() {
+                "baseline" => RunAlign::Baseline,
+                "super" => RunAlign::Super,
+                "sub" => RunAlign::Sub,
+                "middle" => RunAlign::Middle,
+                "textTop" => RunAlign::TextTop,
+                "textBottom" => RunAlign::TextBottom,
+                "top" => RunAlign::Top,
+                "bottom" => RunAlign::Bottom,
+                _ => {
+                    return Err(format!(
+                        "[INVALID_VALUE] `verticalAlign` must be baseline, super, sub, middle, \
+                         textTop, textBottom, top, bottom or a number, found \"{s}\""
+                    ))
+                }
+            },
         })
     }
 }

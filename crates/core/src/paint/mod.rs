@@ -149,7 +149,8 @@ pub(crate) struct InvisibleGlyph {
 
 impl InvisibleGlyph {
     /// The space of `font` at `size`, `width` wide on the baseline at
-    /// (`x`, `y`); `None` when the font has no space with an advance.
+    /// (`x`, `y`); `None` when the font has no space with an advance, or
+    /// no outlines (it is never embedded).
     pub fn space(
         fonts: &crate::fonts::FontSet<'_>,
         font: crate::fonts::FontKey,
@@ -158,6 +159,9 @@ impl InvisibleGlyph {
         width: f32,
     ) -> Option<Self> {
         let f = fonts.get(font);
+        if f.data.metrics.color_only {
+            return None;
+        }
         let glyph = f.glyph(' ').filter(|&g| g != 0 && f.advance(g) > 0.0)?;
         Some(Self {
             font,

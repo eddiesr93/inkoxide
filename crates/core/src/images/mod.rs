@@ -195,6 +195,8 @@ pub(crate) struct ImageSet {
     by_node: HashMap<usize, ImageKey>,
     /// Box address → its background image.
     by_background: HashMap<usize, ImageKey>,
+    /// Image run address → its image.
+    by_run: HashMap<usize, ImageKey>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -221,6 +223,7 @@ impl ImageSet {
         };
         let mut found: Vec<(usize, Arc<ImageData>)> = Vec::new();
         let mut backgrounds: Vec<(usize, Arc<ImageData>)> = Vec::new();
+        let mut runs: Vec<(usize, Arc<ImageData>)> = Vec::new();
         let mut stack: Vec<&Node> = Vec::new();
         for p in pages {
             stack.extend(p.children.iter());
@@ -233,6 +236,13 @@ impl ImageSet {
             }
             match &n.kind {
                 NodeKind::Image { source, .. } => found.push((node_key(n), source_data(source)?)),
+                NodeKind::Text { runs: text } => {
+                    for r in text {
+                        if let Some(image) = &r.image {
+                            runs.push((crate::text::run_key(r), source_data(&image.source)?));
+                        }
+                    }
+                }
                 _ => stack.extend(n.children()),
             }
         }
@@ -240,7 +250,7 @@ impl ImageSet {
         // Dedupe by content hash; keys follow first appearance in hash
         // order so numbering is deterministic.
         let mut unique: BTreeMap<u64, Arc<ImageData>> = BTreeMap::new();
-        for (_, d) in found.iter().chain(&backgrounds) {
+        for (_, d) in found.iter().chain(&backgrounds).chain(&runs) {
             unique.entry(d.hash).or_insert_with(|| d.clone());
         }
         let mut key_of: HashMap<u64, ImageKey> = HashMap::new();
@@ -262,7 +272,18 @@ impl ImageSet {
             images,
             by_node: keys(found),
             by_background: keys(backgrounds),
+            by_run: keys(runs),
         })
+    }
+
+    /// The images of the document's image runs, for the shaper.
+    pub fn inline_objects(&self) -> crate::text::InlineObjects {
+        let source = |&key: &ImageKey| crate::text::ObjectSource {
+            key,
+            intrinsic: self.intrinsic_of(key),
+        };
+        let runs = self.by_run.iter().map(|(&r, k)| (r, source(k))).collect();
+        crate::text::InlineObjects::new(runs)
     }
 
     /// Adds an image the engine draws of its own accord (a colour
