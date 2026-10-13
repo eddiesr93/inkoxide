@@ -1,5 +1,6 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
+pub(crate) mod crypt;
 mod font;
 mod forms;
 mod image;
@@ -84,6 +85,8 @@ pub(crate) struct PdfWriterSink {
     pub subset_fonts: bool,
     /// Plain PDF or PDF/A.
     pub profile: Profile,
+    /// Encrypt the file with these passwords and permissions.
+    pub encryption: Option<crypt::Params>,
     /// Prepare font programs on the current rayon pool; otherwise on the
     /// calling thread.
     pub parallel: bool,
@@ -252,7 +255,14 @@ impl PdfSink for PdfWriterSink {
             pdf.set_version(major, minor);
         }
         let mut alloc = RefAlloc(0);
-        let mut out = Out::plain();
+        let (mut out, encrypt) = match &self.encryption {
+            Some(params) => {
+                let d = crypt::digest(doc.pages.iter().map(|p| p.stream.as_slice()), doc.meta);
+                let (crypt, dict) = crypt::Crypt::new(params, &d);
+                (Out::encrypted(crypt), Some(dict))
+            }
+            None => (Out::plain(), None),
+        };
         let catalog = alloc.next();
         let info = alloc.next();
 
@@ -464,6 +474,16 @@ impl PdfSink for PdfWriterSink {
         if let Some(lang) = &lang {
             cat.pair(Name(b"Lang"), Str(lang));
         }
+        if encrypt.is_some() {
+            // Revision 6 of the security handler is extension level 8 of
+            // PDF 1.7.
+            cat.insert(Name(b"Extensions"))
+                .dict()
+                .insert(Name(b"ADBE"))
+                .dict()
+                .pair(Name(b"BaseVersion"), Name(b"1.7"))
+                .pair(Name(b"ExtensionLevel"), 8);
+        }
         let producer = doc
             .meta
             .producer
@@ -545,7 +565,15 @@ impl PdfSink for PdfWriterSink {
             pdf.limits().real()
         );
         self.profile.check_limits(pdf.limits())?;
-        Ok(pdf.finish())
+        let Some(dict) = encrypt else {
+            return Ok(pdf.finish());
+        };
+        // Last, so every other object keeps its number.
+        let r = alloc.next();
+        dict.write(&mut pdf, r);
+        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
+        crypt::splice_encrypt(pdf.finish(), r)
+            .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
     }
 }
 
@@ -1343,6 +1371,7 @@ mod tests {
             compression: None,
             subset_fonts: true,
             profile: Profile::default(),
+            encryption: None,
             parallel: false,
         };
         let pages = [sink.encode_page(&page, &fonts).unwrap()];
@@ -1389,6 +1418,7 @@ mod tests {
             compression: None,
             subset_fonts: true,
             profile: Profile::default(),
+            encryption: None,
             parallel: false,
         };
         let encoded = sink.encode_page(&page, &fonts).unwrap();

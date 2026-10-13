@@ -12,6 +12,7 @@
 #![warn(missing_docs)]
 
 mod date;
+mod encryption;
 mod error;
 mod flate;
 mod fonts;
@@ -30,6 +31,7 @@ mod test_fixtures;
 mod text;
 mod validate;
 
+pub use encryption::{Encryption, Permissions, Printing};
 pub use error::{InkoxideError, ValidationCode, ValidationError};
 pub use fonts::FontStore;
 pub use images::ImageStore;
@@ -140,6 +142,9 @@ pub struct RenderOptions {
     /// Hyphenation patterns registered at runtime; they win over the
     /// built-in ones for their language. Default: none.
     pub hyphenation: HyphenationStore,
+    /// Encrypt the PDF with passwords and permissions (default `None`).
+    /// Not with [`pdf_a`](Self::pdf_a), which forbids encryption.
+    pub encryption: Option<Encryption>,
 }
 
 impl Default for RenderOptions {
@@ -153,6 +158,7 @@ impl Default for RenderOptions {
             pdf_a: false,
             pdf_a_level: PdfALevel::default(),
             hyphenation: HyphenationStore::new(),
+            encryption: None,
         }
     }
 }
@@ -213,6 +219,13 @@ impl RenderOptions {
     #[must_use]
     pub fn with_hyphenation(mut self, store: HyphenationStore) -> Self {
         self.hyphenation = store;
+        self
+    }
+
+    /// Sets [`encryption`](Self::encryption).
+    #[must_use]
+    pub fn with_encryption(mut self, encryption: Encryption) -> Self {
+        self.encryption = Some(encryption);
         self
     }
 }
@@ -351,6 +364,18 @@ fn render_inner(
             .and_then(date::parse_rfc3339),
     };
 
+    let encryption = match &options.encryption {
+        None => None,
+        Some(_) if options.pdf_a => {
+            return Err(InkoxideError::Validation(ValidationError {
+                code: ValidationCode::InvalidValue,
+                path: "options.encryption".into(),
+                message: "PDF/A does not allow encryption".into(),
+            }));
+        }
+        Some(e) => Some(e.params()?),
+    };
+
     let font_set = FontSet::load(&document, fonts)?;
     let hyphenator = text::ResolvedHyphenator {
         store: &options.hyphenation,
@@ -362,6 +387,7 @@ fn render_inner(
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
         profile,
+        encryption,
         parallel,
     };
     let (pages, marks) = pipeline::run(

@@ -15,6 +15,8 @@ use std::borrow::Cow;
 use pdf_writer::writers::{Cmap, FormXObject, IccProfile, ImageXObject, Metadata, TilingPattern};
 use pdf_writer::{Chunk, Ref, Stream};
 
+use super::crypt::Crypt;
+
 /// The bytes of text string `s` as `TextStr` writes them: printable ASCII
 /// as it is, anything else as a byte order mark and UTF-16BE. Inside a
 /// content stream, where nothing is encrypted string by string, write
@@ -31,12 +33,19 @@ pub(crate) fn text_bytes(s: &str) -> Vec<u8> {
 
 /// Strings and streams on their way into the file, encrypted when the
 /// file is.
-pub(crate) struct Out {}
+pub(crate) struct Out {
+    crypt: Option<Crypt>,
+}
 
 impl Out {
     /// Writes strings and streams as they are.
     pub fn plain() -> Self {
-        Self {}
+        Self { crypt: None }
+    }
+
+    /// Encrypts every string and stream with `crypt`.
+    pub fn encrypted(crypt: Crypt) -> Self {
+        Self { crypt: Some(crypt) }
     }
 
     /// A text string, to write as a `Str`: see [`text_bytes`].
@@ -45,15 +54,19 @@ impl Out {
     }
 
     /// A byte string, to write as a `Str`.
-    #[expect(clippy::unused_self, reason = "encryption uses it next")]
     pub fn bytes(&mut self, b: &[u8]) -> Vec<u8> {
-        b.to_vec()
+        match &mut self.crypt {
+            Some(c) => c.string(b),
+            None => b.to_vec(),
+        }
     }
 
     /// The data of stream object `r`.
-    #[expect(clippy::unused_self, reason = "encryption uses it next")]
-    fn data<'d>(&mut self, _r: Ref, data: &'d [u8]) -> Cow<'d, [u8]> {
-        Cow::Borrowed(data)
+    fn data<'d>(&self, r: Ref, data: &'d [u8]) -> Cow<'d, [u8]> {
+        match &self.crypt {
+            Some(c) => Cow::Owned(c.stream(r, data)),
+            None => Cow::Borrowed(data),
+        }
     }
 
     /// Writes stream `r` holding `data`; `f` fills in its dictionary.
