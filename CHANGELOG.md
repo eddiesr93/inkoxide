@@ -9,6 +9,16 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- Encryption: user and owner passwords and permissions (printing at low or high resolution,
+  modifying, copying, annotating, filling forms, content accessibility, document assembly),
+  with AES-256 (PDF 2.0, revision 6). `RenderOptions::encryption` with `Encryption`,
+  `Permissions` and `Printing` in Rust, `encryption: { userPassword, ownerPassword,
+  permissions }` in the Node binding and in `@inkoxide/render`, and `<Document userPassword
+  ownerPassword permissions>`, which the option replaces. Passwords are printable ASCII up to
+  127 bytes, never part of the document tree, and never shown in errors or `Debug` output.
+  Output stays deterministic: the keys are derived from the document and the passwords.
+  Encryption with PDF/A is `INVALID_VALUE` at `options.encryption`.
+
 - PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
   Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
   `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and

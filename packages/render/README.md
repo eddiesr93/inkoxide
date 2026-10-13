@@ -43,7 +43,8 @@ A one-page invoice renders in about a millisecond, a 43-page report in about 33 
   footers, page numbers, keep-together blocks and page breaks.
 - **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks and
   fillable form fields.
-- **Output.** Subset fonts, PDF/A (1b, 2b and 3b) and byte-identical output for identical input.
+- **Output.** Subset fonts, PDF/A (1b, 2b and 3b), encryption with passwords and permissions,
+  and byte-identical output for identical input.
 - **Diagnostics.** A component in the wrong place, an unknown class or an unknown style key
   fails with the component stack that produced it.
 

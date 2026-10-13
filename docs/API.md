@@ -41,6 +41,7 @@ string, which is read as UTF-8 JSON.
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A, at `pdf_a_level` (Node: `true` is PDF/A-2b) |
 | `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '3b'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b or 3b (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
+| `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
 
@@ -97,6 +98,46 @@ The a and u levels need tagged PDF, which Inkoxide does not write yet.
 inkoxide render doc.json --fonts fonts/ --pdf-a=1b
 ```
 
+## Encryption
+
+With `encryption`, the file is encrypted with AES-256 (PDF 2.0, revision
+6 of the standard security handler; Acrobat X, pdf.js, PDFium, Preview,
+Poppler and qpdf open it). The user password opens the file; the owner
+password lifts the permissions.
+
+| Rust (`Encryption`, `Permissions`) | Node | Default |
+|---|---|---|
+| `user_password` | `userPassword` | none: anyone opens the file |
+| `owner_password` | `ownerPassword` | the user password |
+| `permissions.printing: Option<Printing>` | `permissions.printing: 'lowResolution' \| 'highResolution'` | not allowed |
+| `permissions.modifying`, `copying`, `annotating`, `filling_forms`, `document_assembly` | `modifying`, `copying`, `annotating`, `fillingForms`, `documentAssembly` | `false` |
+| `permissions.content_accessibility` | `contentAccessibility` | `true` |
+
+- At least one password is needed. Passwords are printable ASCII, at most
+  127 bytes.
+- `permissions` need an owner password: without one, the user password is
+  also the owner password and lifts them. Readers, not the file, enforce
+  the permissions.
+- With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` (PDF/A
+  forbids it).
+- A bad value is `INVALID_VALUE` at its path (`options.encryption.userPassword`,
+  …) in Rust and `INVALID_ARGUMENT` in Node. No error and no `Debug` output
+  shows a password: Rust's `Encryption` prints them as `<redacted>`.
+- Every string and stream is encrypted. The object structure is not: page
+  count, page sizes, font names and widths, link rectangles and the other
+  dictionary entries stay readable.
+
+```rust
+use inkoxide::{Encryption, Permissions, Printing, RenderOptions};
+
+let options = RenderOptions::default().with_encryption(
+    Encryption::new()
+        .with_user_password("open")
+        .with_owner_password("owner")
+        .with_permissions(Permissions::new().with_printing(Printing::HighResolution)),
+);
+```
+
 ## Hyphenation patterns
 
 A text node with `hyphenate: true` is hyphenated in its `lang` (or
@@ -149,6 +190,12 @@ the options. They
 do not depend on the thread count or on JSON versus MessagePack input.
 Without any creation date, no date is written, so output is still
 deterministic.
+
+Encrypted output is deterministic too: the keys, salts and IVs that
+revision 6 makes random are derived from the document and the passwords,
+so identical input gives identical bytes, and two different documents
+never share a key. The derivation is not the standard's random one and
+has not had a cryptography review yet.
 
 ## Errors
 

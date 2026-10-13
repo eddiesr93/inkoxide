@@ -503,6 +503,45 @@ PDF, which is not supported yet: they fail with `TEMPLATE_ERROR`.
 `conformance` is not part of the document tree: to render a stored `result.document` again at
 the same level, pass `pdfA` to `renderDocument`.
 
+### Passwords and permissions
+
+`userPassword` encrypts the PDF (AES-256, which Acrobat X and later, pdf.js, Chrome and Preview
+open): the file opens only with that password. `ownerPassword` lifts `permissions`, what a
+reader without it may do:
+
+```tsx
+<Document
+  userPassword="open-sesame"
+  ownerPassword={process.env.PDF_OWNER_PASSWORD}
+  permissions={{ printing: 'highResolution', copying: false }}
+>
+  …
+</Document>
+```
+
+| Permission | Default | Allows |
+|---|---|---|
+| `printing` | not allowed | `'lowResolution'` or `'highResolution'` printing |
+| `modifying` | `false` | changes other than annotations and form fields |
+| `copying` | `false` | copying text and images |
+| `annotating` | `false` | adding annotations and filling in fields |
+| `fillingForms` | `false` | filling in fields |
+| `contentAccessibility` | `true` | extracting text for screen readers |
+| `documentAssembly` | `false` | inserting, rotating and deleting pages |
+
+- Passwords are printable ASCII, at most 127 bytes. With only `ownerPassword`, anyone opens the
+  file and the permissions apply; with only `userPassword`, it is also the owner password, so
+  `permissions` need `ownerPassword`.
+- The `encryption` render option (`{ userPassword, ownerPassword, permissions }`) replaces the
+  three props as a whole, for passwords that come from the request rather than the template.
+- Encryption and PDF/A do not go together: PDF/A forbids encryption.
+- A bad value fails with `ENGINE_REJECTED` at its path (`options.encryption.userPassword`, …).
+  No error shows a password, and the passwords are not part of `result.document` or of the
+  tree's JSON.
+- Readers enforce the permissions; the file cannot. Encryption hides the text and images, not
+  the page count or sizes.
+- The same document and passwords give the same bytes, as unencrypted output does.
+
 ## Text: hyphenation and direction
 
 ```tsx
@@ -685,6 +724,7 @@ All three take the same options:
 | `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'` or `'1b'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
+| `encryption` | none | `{ userPassword, ownerPassword, permissions }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
 | `creationDate` | none | RFC 3339 timestamp written to the PDF. Without it, the same input gives byte-identical output. |
@@ -730,7 +770,8 @@ serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresenta
 attributes every SVG shape takes. Also exported:
 
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
-  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
+  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
+  `Permissions` (of `<Document permissions>`);
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
   gradients;

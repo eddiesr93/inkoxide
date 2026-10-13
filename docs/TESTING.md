@@ -23,6 +23,14 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   bookmarks and images. With `VERAPDF` pointing at a veraPDF command
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
   output must pass veraPDF's profile for its level.
+- `crates/core/tests/encryption.rs`: every fixture, encrypted, renders
+  deterministically and, with `qpdf` installed, passes `qpdf --check`
+  with either password; `qpdf --json` of it, decrypted, equals that of
+  the unencrypted render object for object, minus the `Encrypt`
+  dictionary, so a string or stream left unencrypted fails it. Also the
+  permission flags qpdf reports, wrong passwords, a file with an owner
+  password only, canary strings that must not appear in plain text, and
+  errors that name the option but never the password.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, deepest accepted nesting
   on a small stack).
@@ -127,7 +135,10 @@ missed it (for SVG, that its scan disagrees with the writer); the
 output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
-from MessagePack (`render_json` and `render_tree`). An input that runs
+from MessagePack (`render_json` and `render_tree`), and a document
+rendered as plain PDF also renders encrypted exactly when it renders
+plain, without its title in plain text (only the encrypted file's
+object syntax is scanned for numbers). An input that runs
 longer than 10 seconds is a finding (30 for `render_json` and `render_tree`:
 a document at the engine's limits renders in about 2 seconds, and they
 render it twice).

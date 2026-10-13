@@ -11,7 +11,6 @@ or should come sooner.
 
 ## Next: engine features
 
-- **Encryption**: user and owner passwords, and permissions.
 - **Text in `<Svg>`**: `<Text>` and `<Tspan>` inside `<Svg>`, and `<text>` in SVG files.
 - **`<Canvas>`**: text in the painter (`text`, `font` and `fontSize`).
 - **Inline images** inside `Text`.
