@@ -1,6 +1,7 @@
 //! Text nodes → `Op::Text` (plus decorations), with alignment,
 //! justification and page-number placeholders.
 
+use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
 use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
@@ -9,7 +10,7 @@ use crate::paint::{
     ContentCtx, ContentPainter, Dash, DebugLine, Op, Path, PathSeg, Rect, TextGlyph, TextOp,
 };
 use crate::schema::{
-    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, BLACK,
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextWrap, BLACK,
 };
 
 /// Page numbers substituted for placeholders on the page being painted.
@@ -212,7 +213,19 @@ fn paint_line(
     let spaces = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
     let justify_extra =
         if align == TextAlign::Justify && !line.forced && spaces > 0 && line.ellipsis.is_none() {
-            ((cw - line.width) / spaces as f32).max(0.0)
+            // `pretty` lines may be set a little too wide, for their spaces
+            // to shrink by up to a third.
+            let least = if style.text_wrap == TextWrap::Pretty {
+                let space: f32 = p.glyphs[s..e]
+                    .iter()
+                    .filter(|g| g.is_space())
+                    .map(|g| g.advance)
+                    .sum();
+                -space * SHRINK / spaces as f32
+            } else {
+                0.0
+            };
+            ((cw - line.width) / spaces as f32).max(least)
         } else {
             0.0
         };

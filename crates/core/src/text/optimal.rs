@@ -35,6 +35,9 @@ const FINAL_HYPHEN: f64 = 5_000.0;
 const ADJACENT_FITNESS: f64 = 10_000.0;
 /// Stretch of a line of ragged text, in ems of the paragraph's largest run.
 const RAGGED_STRETCH: f32 = 2.0;
+/// How much the spaces of a justified line may shrink, at most: a third
+/// of their width (the painter allows as much).
+pub(super) const SHRINK: f32 = 1.0 / 3.0;
 
 /// Lines a paragraph may still try (see [`MAX_EVALUATIONS`]). Counted per
 /// paragraph, not per render: paragraphs are broken in parallel, and the
@@ -287,7 +290,17 @@ impl Chunk {
                 f64::INFINITY
             };
         }
-        let _ = forced;
-        f64::NEG_INFINITY
+        // A justified line may also shrink its spaces, but the last line of
+        // a chunk is not justified.
+        let shrink = if self.justify && !forced {
+            spaces * SHRINK
+        } else {
+            0.0
+        };
+        if shrink > 0.0 {
+            slack / f64::from(shrink)
+        } else {
+            f64::NEG_INFINITY
+        }
     }
 }

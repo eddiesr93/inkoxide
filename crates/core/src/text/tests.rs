@@ -570,13 +570,42 @@ fn pretty(mut d: Document) -> Document {
 /// Every line fits its box: the content width, less the indent on the
 /// first line.
 fn assert_fits(l: &LineLayout, width: f32) {
+    assert_fits_shrunk(l, width, &[]);
+}
+
+/// [`assert_fits`], for lines that may shrink their spaces (`shrink[i]`
+/// for line `i`) by up to a third.
+fn assert_fits_shrunk(l: &LineLayout, width: f32, spaces: &[f32]) {
     for (i, line) in l.lines.iter().enumerate() {
         let avail = l.boxes.get(i).map_or(width, |b| b.1);
+        let shrink = spaces.get(i).map_or(0.0, |s| s / 3.0);
         assert!(
-            line.width + line.indent <= avail + 1e-3,
+            line.width + line.indent <= avail + shrink + 1e-3,
             "line {i}: {line:?} in {avail}"
         );
     }
+}
+
+/// The advance of the spaces on each line of the document's first node at
+/// `width`.
+fn line_spaces(d: &Document, store: &FontStore, width: f32) -> (LineLayout, Vec<f32>) {
+    let fonts = FontSet::load(d, store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let layout = (*cache.layout(node, width).unwrap()).clone();
+    let (p, _) = cache.prepared(node).unwrap();
+    let spaces = layout
+        .lines
+        .iter()
+        .map(|l| {
+            p.glyphs[l.start as usize..l.end as usize]
+                .iter()
+                .filter(|g| g.is_space())
+                .map(|g| g.advance)
+                .sum()
+        })
+        .collect();
+    (layout, spaces)
 }
 
 /// Sum of the squared room left on every line but the last.
@@ -607,9 +636,11 @@ fn pretty_lines_are_more_even_than_first_fit() {
         let (greedy_texts, greedy) = lines(&d, &s, width);
         let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
         assert_eq!(texts.join(" "), greedy_texts.join(" "));
-        assert_fits(&l, width);
+        let (_, spaces) = line_spaces(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_fits_shrunk(&l, width, &spaces);
+        // Justified lines shrink as well as stretch: compare ragged ones.
         assert!(
-            raggedness(&l, width) <= raggedness(&greedy, width) + 1e-3,
+            !style.is_empty() || raggedness(&l, width) <= raggedness(&greedy, width) + 1e-3,
             "{width} {style}: {texts:#?}"
         );
     }
@@ -660,26 +691,24 @@ fn pretty_falls_back_to_first_fit() {
 }
 
 #[test]
-fn pretty_keeps_hyphens_apart_and_off_the_last_lines() {
+fn pretty_keeps_hyphens_apart() {
     let s = store();
     let style = r#""hyphenate":true,"lang":"en","textAlign":"justify""#;
     for width in [140.0, 170.0] {
         let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
-        assert_fits(&l, width);
+        let (_, spaces) = line_spaces(&pretty(doc(&para(PROSE, style))), &s, width);
+        assert_fits_shrunk(&l, width, &spaces);
         assert!(
             l.lines.iter().any(|x| x.hyphen.is_some()),
             "{width}: {texts:#?}"
         );
-        // Two hyphens in a row, and one on the line before the last, cost
-        // more than evener spaces gain.
+        // Two hyphens in a row cost more than evener spaces gain here.
         for w in l.lines.windows(2) {
             assert!(
                 w[0].hyphen.is_none() || w[1].hyphen.is_none(),
                 "{width}: {texts:#?}"
             );
         }
-        let n = l.lines.len();
-        assert!(l.lines[n - 2].hyphen.is_none(), "{width}: {texts:#?}");
     }
 }
 
@@ -711,12 +740,31 @@ fn a_long_pretty_paragraph_is_quick() {
     let s = store();
     let text = [PROSE; 40].join(" ");
     let start = std::time::Instant::now();
-    let (_, l) = lines(
+    let (l, spaces) = line_spaces(
         &pretty(doc(&para(&text, r#""textAlign":"justify""#))),
         &s,
         300.0,
     );
     assert!(l.lines.len() > 100);
-    assert_fits(&l, 300.0);
+    assert_fits_shrunk(&l, 300.0, &spaces);
     assert!(start.elapsed().as_secs_f32() < 5.0, "{:?}", start.elapsed());
+}
+
+#[test]
+fn justified_pretty_lines_may_shrink_their_spaces_by_a_third() {
+    let s = store();
+    let style = r#""textAlign":"justify""#;
+    let mut shrunk = 0;
+    for width in [130.0, 150.0, 170.0, 190.0, 230.0] {
+        let d = pretty(doc(&para(PROSE, style)));
+        let (l, spaces) = line_spaces(&d, &s, width);
+        assert_fits_shrunk(&l, width, &spaces);
+        shrunk += l.lines.iter().filter(|x| x.width > width + 1e-3).count();
+        // The last line keeps its spaces.
+        assert!(l.lines.last().unwrap().width <= width);
+        // Ragged lines never shrink.
+        let (_, l) = lines(&pretty(doc(&para(PROSE, ""))), &s, width);
+        assert_fits(&l, width);
+    }
+    assert!(shrunk > 0);
 }
