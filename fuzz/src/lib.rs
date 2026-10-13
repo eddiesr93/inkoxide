@@ -1346,6 +1346,8 @@ mod tests {
     /// that validate.
     #[test]
     fn document_covers_the_schema() {
+        const FEW: usize = 1000;
+        const MOST: usize = 20_000;
         let features = [
             r#""type":"field""#,
             r#""type":"note""#,
@@ -1376,8 +1378,6 @@ mod tests {
         // Documents until every feature has shown up in a valid one, and at
         // least `FEW`; at most `MOST`, so a feature the generator no longer
         // reaches fails the test instead of hanging it.
-        const FEW: usize = 1000;
-        const MOST: usize = 20_000;
         let mut tried = 0;
         while tried < MOST && (tried < FEW || seen.contains(&false)) {
             let data: Vec<u8> = (0..64 << (tried % 5))
