@@ -6,7 +6,8 @@ use std::sync::LazyLock;
 pub mod svg;
 
 use inkoxide::{
-    FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions, ValidationCode,
+    Encryption, FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, Permissions,
+    RenderOptions, ValidationCode,
 };
 use serde_json::{json, Map, Value};
 
@@ -84,7 +85,12 @@ pub fn check(doc: &[u8]) {
     // Most inputs also go through the PDF/A writer.
     let pdf_a = pdf_a_level(doc.len());
     let json = render(doc, InputFormat::Json, pdf_a);
-    let Ok(value) = serde_json::from_slice::<serde_json::Value>(doc) else {
+    let value = serde_json::from_slice::<serde_json::Value>(doc).ok();
+    // The plain renders are also rendered encrypted.
+    if pdf_a.is_none() {
+        check_encrypted(doc, &json, value.as_ref());
+    }
+    let Some(value) = value else {
         return;
     };
     let Ok(packed) = rmp_serde::to_vec(&value) else {
@@ -97,6 +103,53 @@ pub fn check(doc: &[u8]) {
         match &msgpack {
             Ok(b) => assert!(a == b, "MessagePack output differs from JSON"),
             Err(e) => panic!("MessagePack rejected a document JSON renders: {e}"),
+        }
+    }
+}
+
+/// Renders `doc` encrypted: it must render exactly when `plain`, its
+/// unencrypted render, did, fail with the same code otherwise, and keep
+/// the title out of plain sight.
+fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Option<&Value>) {
+    let options = RenderOptions::default()
+        .with_compress(false)
+        .with_threads(1)
+        .with_encryption(
+            Encryption::new()
+                .with_user_password("fuzz user")
+                .with_owner_password("fuzz owner")
+                .with_permissions(Permissions::new().with_copying(true)),
+        );
+    let encrypted = inkoxide::render(doc, InputFormat::Json, &options, &FONTS, &IMAGES);
+    let (plain, encrypted) = match (plain, &encrypted) {
+        (Ok(p), Ok(e)) => (p, e),
+        (Err(a), Err(b)) => {
+            assert_eq!(a.code(), b.code(), "encrypted: {b}; plain: {a}");
+            return;
+        }
+        (p, e) => panic!(
+            "plain {:?}, encrypted {:?}",
+            p.as_ref().map(|_| ()),
+            e.as_ref().map(|_| ())
+        ),
+    };
+    assert!(encrypted.starts_with(b"%PDF-") && encrypted.trim_ascii_end().ends_with(b"%%EOF"));
+    // Encrypted streams are binary: only the object syntax is scanned.
+    assert_finite_objects(encrypted);
+    // A title the plain file shows as a literal string is encrypted.
+    let title = value
+        .and_then(|v| v.pointer("/meta/title"))
+        .and_then(Value::as_str)
+        .filter(|t| {
+            t.len() >= 4
+                && t.bytes()
+                    .all(|b| b.is_ascii_graphic() && !b"()\\".contains(&b))
+        });
+    if let Some(t) = title {
+        let literal = format!("({t})");
+        let has = |pdf: &[u8]| pdf.windows(literal.len()).any(|w| w == literal.as_bytes());
+        if has(plain) {
+            assert!(!has(encrypted), "the title {literal} is in plain text");
         }
     }
 }
@@ -227,6 +280,18 @@ fn delimiter(b: u8) -> bool {
 /// XMP metadata are skipped, and so are strings and names, which hold
 /// document text (`(inf)`, `/NaN`) rather than numbers.
 fn assert_finite_numbers(data: &[u8], objects: bool) {
+    scan_numbers(data, objects, true);
+}
+
+/// [`assert_finite_numbers`] over the object syntax of `pdf` only, not
+/// its streams.
+fn assert_finite_objects(pdf: &[u8]) {
+    scan_numbers(pdf, true, false);
+}
+
+/// The scan of [`assert_finite_numbers`]; streams are followed only with
+/// `streams`.
+fn scan_numbers(data: &[u8], objects: bool, streams: bool) {
     let mut i = 0;
     // Since the last `obj`: the `/Length` and whether the stream is
     // compressed or metadata.
@@ -292,8 +357,8 @@ fn assert_finite_numbers(data: &[u8], objects: bool) {
                 } else if token == b"stream" {
                     let body = i + if data[i..].starts_with(b"\r\n") { 2 } else { 1 };
                     let end = length.map_or(data.len(), |n: usize| (body + n).min(data.len()));
-                    if !skip {
-                        assert_finite_numbers(&data[body.min(end)..end], false);
+                    if streams && !skip {
+                        scan_numbers(&data[body.min(end)..end], false, true);
                     }
                     i = end;
                 }
@@ -1280,6 +1345,21 @@ pub fn document(data: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encrypted_renders_follow_plain_ones() {
+        let valid = br#"{"version":1,"meta":{"title":"Canary-Title"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+            "pages":[{"size":{"width":100,"height":100},"children":[{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9}]}]}]}"#;
+        let invalid = br#"{"version":1,"pages":[{"size":{"width":-1,"height":100}}]}"#;
+        for doc in [&valid[..], &invalid[..], b"not json"] {
+            let plain = render(doc, InputFormat::Json, None);
+            let value = serde_json::from_slice::<Value>(doc).ok();
+            check_encrypted(doc, &plain, value.as_ref());
+        }
+        // The plain render shows the title, so the check above looked for it.
+        let plain = render(valid, InputFormat::Json, None).unwrap();
+        assert!(plain.windows(14).any(|w| w == b"(Canary-Title)"));
+    }
 
     #[test]
     fn check_image_says_why_it_did_not_render() {
