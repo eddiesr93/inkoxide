@@ -451,7 +451,7 @@ impl PdfSink for PdfWriterSink {
                 .dest_output_profile(profile);
             cat.finish();
             // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date);
+            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, self.profile);
             pdf.metadata(metadata, &xmp);
             let icc = deflate(&pdfa::srgb_icc(), 9)?;
             pdf.icc_profile(profile, &icc)

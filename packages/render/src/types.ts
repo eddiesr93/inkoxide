@@ -15,8 +15,11 @@ export interface RenderOpts {
   compress?: boolean;
   /** Embed only the glyphs used (default true). */
   subsetFonts?: boolean;
-  /** Write PDF/A-2b (default false). */
-  pdfA?: boolean;
+  /**
+   * Write PDF/A, for archiving (default false): `true` or `'2b'` writes PDF/A-2b, `'3b'`
+   * PDF/A-3b. Another value fails the render with `ENGINE_REJECTED` at `options.pdfA`.
+   */
+  pdfA?: boolean | '2b' | '3b';
   /**
    * Extra image bytes by id, for `<Image src="id">`. An id wins over a file path or URL with the
    * same text.

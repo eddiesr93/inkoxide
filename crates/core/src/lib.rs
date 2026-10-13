@@ -58,6 +58,38 @@ pub enum InputFormat {
     MessagePack,
 }
 
+/// The PDF/A part and conformance level [`RenderOptions::pdf_a`] writes.
+/// Every level is "b" (basic): the pages look the same in every reader,
+/// with no structure tree for accessibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum PdfALevel {
+    /// PDF/A-2b (ISO 19005-2), based on PDF 1.7.
+    #[default]
+    A2b,
+    /// PDF/A-3b (ISO 19005-3): PDF/A-2b that may also carry embedded
+    /// files of any kind.
+    A3b,
+}
+
+impl PdfALevel {
+    /// The level's short name, as the Node binding and the CLI take it:
+    /// `"2b"`, `"3b"`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::A2b => "2b",
+            Self::A3b => "3b",
+        }
+    }
+
+    /// The level named `s` ([`as_str`](Self::as_str)).
+    #[must_use]
+    pub fn from_name(s: &str) -> Option<Self> {
+        [Self::A2b, Self::A3b].into_iter().find(|l| l.as_str() == s)
+    }
+}
+
 /// Output settings for [`render`]; the document describes content only.
 ///
 /// Fields are public to read and assign; the type is `#[non_exhaustive]`, so
@@ -92,10 +124,13 @@ pub struct RenderOptions {
     /// Embed only the glyphs a document uses (default `true`). Off embeds
     /// whole font programs, for debugging.
     pub subset_fonts: bool,
-    /// Write PDF/A-2b (default `false`): XMP metadata, an sRGB output
-    /// intent and a file identifier; CMYK JPEGs are converted to RGB and
-    /// `.notdef` glyphs are left out.
+    /// Write PDF/A (default `false`), at [`pdf_a_level`](Self::pdf_a_level):
+    /// XMP metadata, an sRGB output intent and a file identifier; CMYK
+    /// JPEGs are converted to RGB and `.notdef` glyphs are left out.
     pub pdf_a: bool,
+    /// The PDF/A level written when [`pdf_a`](Self::pdf_a) is set (default
+    /// [`PdfALevel::A2b`]).
+    pub pdf_a_level: PdfALevel,
     /// Hyphenation patterns registered at runtime; they win over the
     /// built-in ones for their language. Default: none.
     pub hyphenation: HyphenationStore,
@@ -110,6 +145,7 @@ impl Default for RenderOptions {
             threads: None,
             subset_fonts: true,
             pdf_a: false,
+            pdf_a_level: PdfALevel::default(),
             hyphenation: HyphenationStore::new(),
         }
     }
@@ -155,6 +191,15 @@ impl RenderOptions {
     #[must_use]
     pub fn with_pdf_a(mut self, pdf_a: bool) -> Self {
         self.pdf_a = pdf_a;
+        self
+    }
+
+    /// Writes PDF/A at `level`: sets [`pdf_a_level`](Self::pdf_a_level)
+    /// and [`pdf_a`](Self::pdf_a).
+    #[must_use]
+    pub fn with_pdf_a_level(mut self, level: PdfALevel) -> Self {
+        self.pdf_a = true;
+        self.pdf_a_level = level;
         self
     }
 
@@ -307,7 +352,7 @@ fn render_inner(
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
-        profile: Profile::new(options.pdf_a),
+        profile: Profile::new(options.pdf_a.then_some(options.pdf_a_level)),
         parallel,
     };
     let (pages, marks) = pipeline::run(

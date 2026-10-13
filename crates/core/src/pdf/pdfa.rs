@@ -1,28 +1,38 @@
-//! PDF/A-2b support: an sRGB output intent, XMP metadata that
-//! mirrors the document information dictionary, and a file identifier.
+//! PDF/A support: an sRGB output intent, XMP metadata that mirrors the
+//! document information dictionary, and a file identifier.
 
 use std::fmt::Write as _;
 
 use crate::date::Timestamp;
 use crate::schema::Meta;
+use crate::PdfALevel;
 
 /// What the output's conformance asks of the writer: plain PDF, or
 /// PDF/A. Every part of the writer that differs between them asks this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Profile {
-    pdf_a: bool,
+    level: Option<PdfALevel>,
 }
 
 impl Profile {
-    /// PDF/A-2b when `pdf_a` is set, otherwise plain PDF.
-    pub fn new(pdf_a: bool) -> Self {
-        Self { pdf_a }
+    /// PDF/A at `level`; `None` is plain PDF.
+    pub fn new(level: Option<PdfALevel>) -> Self {
+        Self { level }
     }
 
     /// Writing PDF/A: XMP metadata, an output intent, a file identifier,
     /// annotations that print, no `.notdef` glyphs, no CMYK.
     pub fn is_pdf_a(self) -> bool {
-        self.pdf_a
+        self.level.is_some()
+    }
+
+    /// The ISO 19005 part (`pdfaid:part`); 0 for plain PDF.
+    pub fn part(self) -> u8 {
+        match self.level {
+            None => 0,
+            Some(PdfALevel::A2b) => 2,
+            Some(PdfALevel::A3b) => 3,
+        }
     }
 }
 
@@ -116,12 +126,17 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
 
 /// The XMP packet for the catalog `/Metadata` stream. Every entry mirrors
 /// the information dictionary, as PDF/A requires.
-pub(crate) fn xmp(meta: &Meta, producer: &str, created: Option<Timestamp>) -> Vec<u8> {
+pub(crate) fn xmp(
+    meta: &Meta,
+    producer: &str,
+    created: Option<Timestamp>,
+    profile: Profile,
+) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
         let _ = writeln!(d, "<{name}>{}</{name}>", escape(value));
     };
-    prop("pdfaid:part", "2");
+    prop("pdfaid:part", &profile.part().to_string());
     prop("pdfaid:conformance", "B");
     prop("dc:format", "application/pdf");
     prop("pdf:Producer", producer);
@@ -255,7 +270,8 @@ mod tests {
             second: 7,
             offset_minutes: -150,
         };
-        let x = String::from_utf8(xmp(&meta, "P", Some(t))).unwrap();
+        let profile = Profile::new(Some(PdfALevel::A2b));
+        let x = String::from_utf8(xmp(&meta, "P", Some(t), profile)).unwrap();
         assert!(x.contains(">A &amp; &lt;B&gt;</rdf:li>"), "{x}");
         assert!(x.contains("<xmp:CreateDate>2026-03-04T05:06:07-02:30</xmp:CreateDate>"));
         assert_eq!(

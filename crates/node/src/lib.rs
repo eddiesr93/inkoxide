@@ -19,7 +19,7 @@ use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{LazyLock, RwLock};
 
-use inkoxide::{FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat};
+use inkoxide::{FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel};
 use napi::bindgen_prelude::{AsyncTask, Buffer, Either, Uint8Array};
 use napi::{Env, Error, Result, Task};
 use napi_derive::napi;
@@ -118,6 +118,15 @@ fn input_format(format: Option<&str>) -> Result<InputFormat> {
     }
 }
 
+fn pdf_a_level(name: &str) -> Result<PdfALevel> {
+    PdfALevel::from_name(name).ok_or_else(|| {
+        invalid_arg(
+            "options.pdfA",
+            &format!("unsupported PDF/A level `{name}` (expected true, false, \"2b\" or \"3b\")"),
+        )
+    })
+}
+
 #[napi(object)]
 pub struct RenderOptions {
     /// `"json"` (default) or `"msgpack"`.
@@ -135,8 +144,9 @@ pub struct RenderOptions {
     pub threads: Option<f64>,
     /// Embed only the glyphs used (default `true`).
     pub subset_fonts: Option<bool>,
-    /// Write PDF/A-2b (default `false`).
-    pub pdf_a: Option<bool>,
+    /// Write PDF/A (default `false`): `true` or a level, `"2b"` or `"3b"`;
+    /// `true` is `"2b"`.
+    pub pdf_a: Option<Either<bool, String>>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,
 }
@@ -188,8 +198,10 @@ impl RenderJob {
             if let Some(s) = o.subset_fonts {
                 core.subset_fonts = s;
             }
-            if let Some(a) = o.pdf_a {
-                core.pdf_a = a;
+            match o.pdf_a {
+                None => {}
+                Some(Either::A(a)) => core.pdf_a = a,
+                Some(Either::B(level)) => core = core.with_pdf_a_level(pdf_a_level(&level)?),
             }
             if let Some(map) = o.images {
                 for (id, bytes) in map {

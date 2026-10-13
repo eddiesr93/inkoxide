@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 pub mod svg;
 
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
+use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions};
 use serde_json::{json, Map, Value};
 
 /// The fixture fonts: id, family, weight and bytes. Generated documents
@@ -80,7 +80,7 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 /// On a finding.
 pub fn check(doc: &[u8]) {
     // Half the inputs also go through the PDF/A writer.
-    let pdf_a = doc.len() % 2 == 1;
+    let pdf_a = pdf_a_level(doc.len());
     let json = render(doc, InputFormat::Json, pdf_a);
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(doc) else {
         return;
@@ -116,7 +116,7 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
         InputFormat::Json,
         &FONTS,
         &images,
-        bytes.len() % 2 == 1,
+        pdf_a_level(bytes.len()),
     )
     .map(|_| ())
 }
@@ -139,13 +139,27 @@ pub fn check_font(bytes: &[u8]) -> usize {
         let mut fonts = FontStore::new();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
-            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, false);
+            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, None);
         }
     }
     registered
 }
 
-fn render(doc: &[u8], format: InputFormat, pdf_a: bool) -> Result<Vec<u8>, InkoxideError> {
+/// The PDF/A level an input of `len` bytes is rendered at: none for
+/// half of them, each level for the rest.
+fn pdf_a_level(len: usize) -> Option<PdfALevel> {
+    match len % 4 {
+        1 => Some(PdfALevel::A2b),
+        3 => Some(PdfALevel::A3b),
+        _ => None,
+    }
+}
+
+fn render(
+    doc: &[u8],
+    format: InputFormat,
+    pdf_a: Option<PdfALevel>,
+) -> Result<Vec<u8>, InkoxideError> {
     render_with(doc, format, &FONTS, &IMAGES, pdf_a)
 }
 
@@ -154,13 +168,15 @@ fn render_with(
     format: InputFormat,
     fonts: &FontStore,
     images: &ImageStore,
-    pdf_a: bool,
+    pdf_a: Option<PdfALevel>,
 ) -> Result<Vec<u8>, InkoxideError> {
     let errors = inkoxide::validate(doc, format, fonts, images);
-    let options = RenderOptions::default()
+    let mut options = RenderOptions::default()
         .with_compress(false)
-        .with_threads(1)
-        .with_pdf_a(pdf_a);
+        .with_threads(1);
+    if let Some(level) = pdf_a {
+        options = options.with_pdf_a_level(level);
+    }
     let result = inkoxide::render(doc, format, &options, fonts, images);
     match &result {
         Ok(pdf) => {

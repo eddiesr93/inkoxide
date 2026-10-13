@@ -41,6 +41,9 @@ export type ErrorCode =
   | 'INVALID_ARGUMENT'
   | 'INTERNAL';
 
+/** A PDF/A part and conformance level (mirrors Rust `PdfALevel`). */
+export type PdfALevel = '2b' | '3b';
+
 /** Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. */
 export interface RenderOptions {
   /** Input encoding of `doc`. Default `"json"`. */
@@ -65,10 +68,12 @@ export interface RenderOptions {
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
   subsetFonts?: boolean;
   /**
-   * Write PDF/A-2b (archival): XMP metadata, an sRGB output intent and a
-   * file identifier. CMYK JPEGs are converted to RGB. Default `false`.
+   * Write PDF/A (archival): XMP metadata, an sRGB output intent and a
+   * file identifier. CMYK JPEGs are converted to RGB. `true` writes
+   * PDF/A-2b; `'3b'` writes PDF/A-3b, which may carry embedded files.
+   * Another string is `INVALID_ARGUMENT`. Default `false`.
    */
-  pdfA?: boolean;
+  pdfA?: boolean | PdfALevel;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
 }

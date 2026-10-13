@@ -281,6 +281,7 @@ describe('renderToBuffer', () => {
       [{ threads: 0 }, 'options.threads'],
       [{ threads: 1000 }, 'options.threads'],
       [{ threads: 1.5 }, 'options.threads'],
+      [{ pdfA: '2a' as '2b' }, 'options.pdfA'],
     ];
     for (const [opts, path] of cases) {
       const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, opts).catch((e: unknown) => e);
@@ -294,6 +295,19 @@ describe('renderToBuffer', () => {
       expect((err as RenderError).message).toContain(`(at ${path})`);
     }
     expect(countPages(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { threads: 256 }))).toBe(1);
+  });
+
+  it('writes the PDF/A level asked for', async () => {
+    const part = async (pdfA: RenderToBufferOptions['pdfA']) => {
+      const pdf = Buffer.from(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { pdfA })).toString(
+        'latin1',
+      );
+      return /<pdfaid:part>(\d)<\/pdfaid:part>/.exec(pdf)?.[1];
+    };
+    expect(await part(undefined)).toBeUndefined();
+    expect(await part(true)).toBe('2');
+    expect(await part('2b')).toBe('2');
+    expect(await part('3b')).toBe('3');
   });
 });
 
