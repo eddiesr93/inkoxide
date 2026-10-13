@@ -25,9 +25,19 @@ All notable changes to the packages in this repository. The format follows
   it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
   background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
   `objectPosition` and the `object-*` classes place it as on an `Image`.
+- Colour emoji from fonts. Glyphs in a font's `COLR` table (versions 0 and 1) and PNG bitmaps in
+  `CBDT` or `sbix` are drawn in colour, as images that copy and search as their text
+  (`ActualText`). Register an emoji font, such as Noto Color Emoji, and list it in
+  `fallbackFonts`: an emoji goes to the first colour fallback font that has it. A font with
+  colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
+  field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
+  render, draws without colour.
 
 ### Changed
 
+- Emoji sequences (flags, keycaps, skin tones, tag sequences and ZWJ sequences such as `👩‍💻`) stay
+  in one font, so the font's ligature forms: their selectors, joiners and modifiers could go to
+  another font than their base, which drew them as separate glyphs.
 - Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
   pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
   mitred instead of bevelled. `miterLimit(4)` gives the old joins.

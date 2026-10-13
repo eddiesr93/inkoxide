@@ -97,7 +97,20 @@ margin offset.
 runs ─▶ prepare (whitespace, soft hyphens, font per char, rustybuzz) ─▶ Prepared   (cached per node)
 Prepared + width ─▶ break_lines (greedy, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per width)
 LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
+Op::Text in a colour font ─▶ ColorGlyphs ─▶ Op::Span + Op::Image + Op::InvisibleText
 ```
+
+Itemisation picks a font per character, except in emoji sequences
+(`text/emoji.rs`, UTS #51: flags, keycaps, skin tones, tag and ZWJ
+sequences), which take one font each so the font's ligature can form; a
+sequence with emoji presentation tries the colour fallback fonts first.
+After shaping, the glyphs text uses from colour fonts become images once
+per render (`text/color.rs`): `fonts/color.rs` writes `COLR` v0 and v1
+glyphs as SVG, under a work budget, and takes PNG bitmaps from `CBDT` and
+`sbix`; they decode through `images` like document images. The painter
+then replaces each colour glyph with its image, in a `/Span` whose
+`/ActualText` is the glyph's text, with an invisible space for text
+extraction. A font with colour bitmaps and no outlines is never embedded.
 
 Two third-party crates stay behind one module each, so replacing them
 touches only that module: ttf-parser (font parsing) is used only in
@@ -112,7 +125,8 @@ through `flate.rs`.
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
 for min-content / max-content / definite widths and gets the paragraph's
 size. Glyph → Unicode mappings are collected while shaping and become the
-ToUnicode CMaps, so text is selectable and searchable.
+ToUnicode CMaps, so text is selectable and searchable; colour glyphs carry
+theirs as `ActualText`.
 
 ## Pagination and paint
 

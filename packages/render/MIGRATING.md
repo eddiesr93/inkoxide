@@ -33,7 +33,8 @@ over by changing the import. This page lists what has another name, and what is 
   - `verticalAlign: 'super'` and `'sub'` (`verticalAlign` is for table cells here).
   - `fontFeatureSettings`.
   - `Image` inside `Text`.
-  - `Font.registerEmojiSource`: there are no colour emoji yet.
+  - `Font.registerEmojiSource`: emoji from images. Register a colour emoji font instead and list it
+    in `fallbackFonts` (see [Fonts](GUIDE.md#fonts)).
   - Knuth–Plass line breaking: lines break first-fit, so a paragraph can wrap differently.
 - **Layout:** `float`, `clear` and `shapeOutside`.
 - **Forms:** `<List>`, `<FieldSet>`, and `format` on a text field.

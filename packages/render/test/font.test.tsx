@@ -136,6 +136,24 @@ describe('Font.register', () => {
     }
   });
 
+  it('registers a colour emoji font without outlines, and falls back to it for emoji', async () => {
+    Font.register({ family: 'Emoji Test', src: file('EmojiTest-CBDT.ttf') });
+    const pdf = await renderToBuffer(
+      <Document fallbackFonts={['NotoSans-Regular', 'Emoji-Test-400']}>
+        <Page>
+          <Text>Thumbs up 👍 and a flag 🇫🇷</Text>
+        </Page>
+      </Document>,
+      { compress: false },
+    );
+    const text = Buffer.from(pdf).toString('latin1');
+    // Each emoji is an image (and its alpha mask), in a span with its text;
+    // the font is not embedded.
+    expect(text.match(/\/Subtype \/Image/g)).toHaveLength(4);
+    expect(text.match(/\/ActualText/g)).toHaveLength(2);
+    expect(text).not.toContain('EmojiTestCBDT');
+  });
+
   it('fails the render with the family and source when a font cannot be loaded, once', async () => {
     Font.register({ family: 'Missing', src: '/nowhere/Missing.ttf' });
     const err = await renderToBuffer(<Doc family="Brand" />).catch((e) => e);

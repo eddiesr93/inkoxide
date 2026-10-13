@@ -54,6 +54,13 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
   Unicode `cmap`, fonts whose `GSUB` or `GPOS` lookups point to
   missing or malformed coverage tables, and CFF fonts with a number out
   of range in a DICT.
+- **Colour fonts.** Glyphs in `COLR` (versions 0 and 1) and PNG bitmaps
+  in `CBDT` or `sbix` are drawn in colour, as images that copy as their
+  text. A font with colour bitmaps and no outlines (Noto Color Emoji's
+  CBDT build) registers as a colour-only font: it is never embedded, its
+  glyphs without colour are not drawn, and a form field cannot use it.
+  List an emoji font in the document's `fallbackFonts`: emoji go to the
+  first colour fallback that has them. `SVG` glyph tables are not read.
 
 ## Images: per render, through `options.images`
 

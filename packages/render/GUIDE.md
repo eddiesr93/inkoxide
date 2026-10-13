@@ -158,6 +158,26 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   yourself and register them.
 - **Weights.** Weights are numbers (1–1000, as in CSS) or names (`'light'`, `'medium'`,
   `'bold'`). Missing weights and styles fall back to the nearest one, as in CSS.
+- **Colour emoji.** Register a colour emoji font, such as Noto Color Emoji, and list it in
+  [`fallbackFonts`](#links-bookmarks-and-metadata):
+
+  ```tsx
+  Font.register({ family: 'Noto Color Emoji', src: './fonts/Noto-COLRv1.ttf' });
+
+  <Document fallbackFonts={['NotoSans-Regular', 'Noto-Color-Emoji-400']}>…</Document>
+  ```
+
+  An emoji (`😀`, `❤️`, a flag, a keycap, a skin tone, a sequence such as `👩‍💻`) goes to the first
+  colour font in `fallbackFonts` that has it, then to the run's font, then to the other
+  fallbacks. Followed by U+FE0E (text presentation), or as a character that is text by default
+  (`❤`, `©`), it is text like any other. Colour glyphs come from the font's `COLR` table
+  (versions 0 and 1) or its PNG bitmaps (`CBDT`, as in Noto Color Emoji's bitmap build, or
+  `sbix`); a font with bitmaps and no outlines works too, but cannot be a form field's font. They
+  are drawn as images that copy and search as their text. Gradients that sweep around a point
+  draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
+  or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
+  colour glyphs past the first 4096 of a render. Fonts with only `SVG` glyphs are not drawn in
+  colour.
 - **Faces.** A face is a family, a weight and a style. Registering one again from the same
   source (the same path, URL or bytes) does nothing, and from another source throws. A face the
   bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
@@ -904,8 +924,9 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
-- **Drawing.** Colour emoji and text inside `<Svg>` are not supported yet. SVG filters are not
-  applied, and an SVG only shows images embedded as `data:` URLs (see
+- **Drawing.** Text inside `<Svg>` is not supported yet. Colour emoji need a colour emoji font
+  ([Fonts](#fonts)); emoji from images (`Font.registerEmojiSource`) are not supported yet. SVG
+  filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, an absolutely positioned,
   rotated or transformed element, table rows tied by a `rowSpan`) is cut at the page edge when
