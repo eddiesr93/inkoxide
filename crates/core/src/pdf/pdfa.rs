@@ -6,6 +6,26 @@ use std::fmt::Write as _;
 use crate::date::Timestamp;
 use crate::schema::Meta;
 
+/// What the output's conformance asks of the writer: plain PDF, or
+/// PDF/A. Every part of the writer that differs between them asks this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Profile {
+    pdf_a: bool,
+}
+
+impl Profile {
+    /// PDF/A-2b when `pdf_a` is set, otherwise plain PDF.
+    pub fn new(pdf_a: bool) -> Self {
+        Self { pdf_a }
+    }
+
+    /// Writing PDF/A: XMP metadata, an output intent, a file identifier,
+    /// annotations that print, no `.notdef` glyphs, no CMYK.
+    pub fn is_pdf_a(self) -> bool {
+        self.pdf_a
+    }
+}
+
 /// An ICC v2 display profile for sRGB (D50-adapted primaries, the sRGB
 /// tone curve sampled at 1024 points). Built here rather than shipped as a
 /// binary so its contents are plain to review.

@@ -8,7 +8,7 @@ use pdf_writer::types::{AnnotationFlags, FieldFlags, FieldType};
 use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
 
-use super::{font_name, q, set_fill, show_text, EncodedPage, RefAlloc};
+use super::{font_name, q, set_fill, show_text, EncodedPage, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::FieldOp;
 use crate::paint::{polygon, PathSeg, KAPPA};
@@ -223,9 +223,9 @@ pub(super) struct Ctx<'r, 'f, 'a> {
     pub page_refs: &'r [Ref],
     pub font_refs: &'r BTreeMap<FontKey, Ref>,
     pub fonts: &'f FontSet<'a>,
-    /// Writing PDF/A: leave `.notdef` glyphs out of appearance streams, as
-    /// page content does.
-    pub pdf_a: bool,
+    /// Under PDF/A, `.notdef` glyphs are left out of appearance streams,
+    /// as page content does.
+    pub profile: Profile,
 }
 
 /// Appearance streams of one widget: `(state, stream)`; the state is
@@ -279,7 +279,7 @@ impl Ctx<'_, '_, '_> {
                 // Widget space is y-up; the text ops are top-left based.
                 c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(h)]);
                 for t in &op.text {
-                    show_text(&mut c, t, self.fonts, self.pdf_a);
+                    show_text(&mut c, t, self.fonts, self.profile.is_pdf_a());
                 }
                 c.restore_state();
                 c.end_marked_content();

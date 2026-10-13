@@ -29,7 +29,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{alpha_key, key_alpha, number, RefAlloc};
+use super::{alpha_key, key_alpha, number, Profile, RefAlloc};
 use crate::images::ContentKey;
 use crate::{flate, InkoxideError};
 
@@ -48,7 +48,7 @@ pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     tree: &usvg::Tree,
-    pdf_a: bool,
+    profile: Profile,
 ) -> Result<Ref, InkoxideError> {
     let size = tree.size();
     let (w, h) = (size.width(), size.height());
@@ -58,7 +58,7 @@ pub(crate) fn write_svg(
         alphas: HashMap::new(),
         images: HashMap::new(),
         segments: 0,
-        pdf_a,
+        profile,
     };
     let mut cv = Canvas::new();
     s.group(&mut cv, tree.root(), Scope::form(0, false))?;
@@ -353,7 +353,7 @@ struct Svg<'a> {
     images: HashMap<ContentKey<Arc<Vec<u8>>>, Option<Ref>>,
     segments: usize,
     /// Passed on to embedded raster images.
-    pdf_a: bool,
+    profile: Profile,
 }
 
 type Res = Result<(), InkoxideError>;
@@ -912,7 +912,10 @@ impl Svg<'_> {
         }
         let r = match crate::images::decode_embedded(data) {
             Ok(decoded) => Some(super::image::write_image(
-                self.pdf, self.alloc, &decoded, self.pdf_a,
+                self.pdf,
+                self.alloc,
+                &decoded,
+                self.profile,
             )?),
             Err(_) => None,
         };
@@ -967,7 +970,7 @@ mod tests {
 
     use pdf_writer::Pdf;
 
-    use super::RefAlloc;
+    use super::{Profile, RefAlloc};
     use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
 
     /// The PDF objects written for `svg`.
@@ -977,7 +980,7 @@ mod tests {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();
-        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, false).unwrap();
+        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, Profile::default()).unwrap();
         pdf.finish()
     }
 

@@ -24,6 +24,8 @@ use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
+pub(crate) use pdfa::Profile;
+
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 const PAGE_TREE_FANOUT: usize = 50;
 
@@ -77,8 +79,8 @@ pub(crate) struct PdfWriterSink {
     pub compression: Option<u32>,
     /// Embed only the glyphs used.
     pub subset_fonts: bool,
-    /// Write PDF/A-2b.
-    pub pdf_a: bool,
+    /// Plain PDF or PDF/A.
+    pub profile: Profile,
     /// Prepare font programs on the current rayon pool; otherwise on the
     /// calling thread.
     pub parallel: bool,
@@ -217,7 +219,7 @@ impl PdfSink for PdfWriterSink {
                 _ => {}
             }
         }
-        let raw = content_stream(page, fonts, self.pdf_a);
+        let raw = content_stream(page, fonts, self.profile);
         let stream = match self.compression {
             Some(level) => deflate(&raw, level)?,
             None => raw,
@@ -314,7 +316,7 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in &mut image_refs {
-            *r = image::write_image(&mut pdf, &mut alloc, doc.images.get(*key), self.pdf_a)?;
+            *r = image::write_image(&mut pdf, &mut alloc, doc.images.get(*key), self.profile)?;
         }
 
         // Link annotations, numbered in page order.
@@ -330,7 +332,7 @@ impl PdfSink for PdfWriterSink {
                     link,
                     doc.marks,
                     &page_refs,
-                    self.pdf_a,
+                    self.profile,
                 ) {
                     refs.push(r);
                 }
@@ -342,7 +344,7 @@ impl PdfSink for PdfWriterSink {
             page_refs: &page_refs,
             font_refs: &font_refs,
             fonts: doc.fonts,
-            pdf_a: self.pdf_a,
+            profile: self.profile,
         };
         let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots);
         let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
@@ -437,7 +439,7 @@ impl PdfSink for PdfWriterSink {
             .producer
             .as_deref()
             .unwrap_or(concat!("Inkoxide ", env!("CARGO_PKG_VERSION")));
-        if self.pdf_a {
+        if self.profile.is_pdf_a() {
             let metadata = alloc.next();
             let profile = alloc.next();
             cat.metadata(metadata);
@@ -470,7 +472,7 @@ impl PdfSink for PdfWriterSink {
 
         // PDF/A: the same cleaned values as the XMP packet.
         let text = |v: &str| {
-            if self.pdf_a {
+            if self.profile.is_pdf_a() {
                 pdfa::clean(v)
             } else {
                 v.to_string()
@@ -531,7 +533,7 @@ fn write_link(
     (rect, target): &(Rect, Box<str>),
     marks: &Marks<'_>,
     pages: &[Ref],
-    pdf_a: bool,
+    profile: Profile,
 ) -> bool {
     let dest = match target.strip_prefix('#') {
         Some(id) => match marks.anchors.get(id) {
@@ -544,7 +546,7 @@ fn write_link(
     a.subtype(AnnotationType::Link)
         .rect(annot_rect(*rect, page_h))
         .border(0.0, 0.0, 0.0, None);
-    if pdf_a {
+    if profile.is_pdf_a() {
         a.flags(AnnotationFlags::PRINT);
     }
     let mut action = a.action();
@@ -844,7 +846,7 @@ fn path(c: &mut Content, segs: &[PathSeg]) {
 
 /// Serialises one page's display list. Pure function of the page: safe to
 /// run per page in parallel.
-pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: bool) -> Vec<u8> {
+pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, profile: Profile) -> Vec<u8> {
     let mut c = Content::new();
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(page.height)]);
@@ -912,7 +914,7 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            Op::Text(t) => show_text(&mut c, t, fonts, pdf_a),
+            Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
             Op::Image { key, matrix } => {
                 c.save_state();
                 c.transform(matrix.map(q));
@@ -1128,7 +1130,7 @@ mod tests {
                 matrix: [inf, nan, 0.0, -inf, 1.0, 2.0],
             },
         ];
-        let out = String::from_utf8(content_stream(&page, &fonts, false)).unwrap();
+        let out = String::from_utf8(content_stream(&page, &fonts, Profile::default())).unwrap();
         for token in out.split_whitespace() {
             let t = token.trim_start_matches('-');
             assert!(t != "inf" && t != "NaN", "`{token}` in:\n{out}");

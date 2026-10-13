@@ -40,7 +40,7 @@ use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use fonts::FontSet;
-use pdf::{DocumentOut, PdfSink, PdfWriterSink};
+use pdf::{DocumentOut, PdfSink, PdfWriterSink, Profile};
 use text::{RustybuzzShaper, TextCache, UnicodeMap};
 
 /// Engine version (the crate version).
@@ -307,7 +307,7 @@ fn render_inner(
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
-        pdf_a: options.pdf_a,
+        profile: Profile::new(options.pdf_a),
         parallel,
     };
     let (pages, marks) = pipeline::run(
