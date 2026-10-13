@@ -373,7 +373,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Visual',
     utilities: '`object-contain`, `object-cover`, `object-fill`, `object-none`',
     maps: 'image `fit`',
-    notes: 'On `Image` only. The `fit` prop wins over it.',
+    notes: 'On `Image` and `ImageBackground` only. The `fit` prop wins over it.',
     examples: {
       'object-contain': { objectFit: 'contain' },
       'object-cover': { objectFit: 'cover' },
@@ -387,7 +387,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       '`object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]`',
     maps: 'image `objectPosition`',
     notes:
-      'On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported.',
+      'On `Image` and `ImageBackground` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported.',
     examples: {
       'object-left-top': { objectPosition: { x: 'left', y: 'top' } },
       'object-left': { objectPosition: { x: 'left', y: 'center' } },

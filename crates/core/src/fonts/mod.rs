@@ -18,7 +18,7 @@ mod woff;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-use crate::schema::Document;
+use crate::schema::{Document, FontDecl, FontStyle};
 use crate::InkoxideError;
 
 /// Metrics read once at registration, in font units unless noted.
@@ -41,30 +41,51 @@ pub(crate) struct FontMetrics {
     pub underline_thickness: f32,
     pub strikeout_position: f32,
     pub strikeout_thickness: f32,
+    /// Height of lowercase letters (OS/2 `sxHeight`, else the top of `x`).
+    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
+    pub x_height: f32,
+    /// How far subscripts sit below the baseline (OS/2 `ySubscriptYOffset`).
+    pub subscript_offset: f32,
+    /// Em size of subscripts (OS/2 `ySubscriptYSize`).
+    pub subscript_size: f32,
+    /// How far superscripts sit above the baseline (OS/2 `ySuperscriptYOffset`).
+    pub superscript_offset: f32,
+    /// Em size of superscripts (OS/2 `ySuperscriptYSize`).
+    pub superscript_size: f32,
     /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
     pub cff: bool,
-    /// How far a superscript's baseline is raised, and a subscript's
-    /// lowered, as fractions of the superscript's (subscript's) own size:
-    /// the OS/2 offset over the OS/2 size, or [`SUPERSCRIPT_SHIFT`] and
-    /// [`SUBSCRIPT_SHIFT`] where those are missing or out of (0, 1].
-    pub superscript: f32,
-    pub subscript: f32,
 }
 
-/// Baseline shift of a superscript without usable OS/2 metrics, in its
-/// own size.
-pub(crate) const SUPERSCRIPT_SHIFT: f32 = 0.5;
-/// Baseline shift of a subscript without usable OS/2 metrics, in its own
-/// size.
-pub(crate) const SUBSCRIPT_SHIFT: f32 = 0.2;
+/// Defaults of the script metrics, in ems, for fonts without them: close
+/// to what browsers use.
+const SUBSCRIPT_OFFSET: f32 = 0.2;
+const SUPERSCRIPT_OFFSET: f32 = 0.34;
+const SCRIPT_SIZE: f32 = 0.65;
 
-/// A script's baseline shift in its own size: OS/2's offset over its size,
-/// when that is within (0, 1].
-fn script_shift(m: Option<ttf_parser::ScriptMetrics>, fallback: f32) -> f32 {
-    m.filter(|m| m.y_size > 0)
-        .map(|m| f32::from(m.y_offset) / f32::from(m.y_size))
+impl FontMetrics {
+    /// How far a superscript's baseline is raised, as a fraction of the
+    /// superscript's own size: the OS/2 offset over the OS/2 size.
+    pub fn superscript_shift(&self) -> f32 {
+        script_shift(
+            self.superscript_offset,
+            self.superscript_size,
+            SUPERSCRIPT_OFFSET,
+        )
+    }
+
+    /// How far a subscript's baseline is lowered, as a fraction of the
+    /// subscript's own size.
+    pub fn subscript_shift(&self) -> f32 {
+        script_shift(self.subscript_offset, self.subscript_size, SUBSCRIPT_OFFSET)
+    }
+}
+
+/// `offset` over `size`, or the defaults' ratio where that is out of
+/// (0, 1] (a malformed or unusual OS/2 table).
+fn script_shift(offset: f32, size: f32, default_offset: f32) -> f32 {
+    Some(offset / size)
         .filter(|r| *r > 0.0 && *r <= 1.0)
-        .unwrap_or(fallback)
+        .unwrap_or(default_offset / SCRIPT_SIZE)
 }
 
 /// A registered font face.
@@ -139,6 +160,27 @@ impl FontData {
             .unwrap_or_else(|| id.to_string());
         let underline = face.underline_metrics();
         let strikeout = face.strikeout_metrics();
+        let x_height = face
+            .x_height()
+            .filter(|&h| h > 0)
+            .map(f32::from)
+            .or_else(|| {
+                let x = face.glyph_index('x')?;
+                face.glyph_bounding_box(x).map(|b| f32::from(b.y_max))
+            })
+            .filter(|&h| h > 0.0)
+            .unwrap_or(upem * 0.5);
+        // Fonts without an OS/2 table, or with sizes of 0, get values close
+        // to what browsers use.
+        let script = |m: Option<ttf_parser::ScriptMetrics>, offset: f32| {
+            m.filter(|m| m.y_size > 0)
+                .map_or((upem * offset, upem * SCRIPT_SIZE), |m| {
+                    (f32::from(m.y_offset), f32::from(m.y_size))
+                })
+        };
+        let (subscript_offset, subscript_size) = script(face.subscript_metrics(), SUBSCRIPT_OFFSET);
+        let (superscript_offset, superscript_size) =
+            script(face.superscript_metrics(), SUPERSCRIPT_OFFSET);
         let metrics = FontMetrics {
             units_per_em: upem,
             ascender,
@@ -166,9 +208,12 @@ impl FontData {
             underline_thickness: underline.map_or(upem * 0.05, |m| f32::from(m.thickness)),
             strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
             strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
+            x_height,
+            subscript_offset,
+            subscript_size,
+            superscript_offset,
+            superscript_size,
             cff,
-            superscript: script_shift(face.superscript_metrics(), SUPERSCRIPT_SHIFT),
-            subscript: script_shift(face.subscript_metrics(), SUBSCRIPT_SHIFT),
         };
         Ok(Self {
             hash: xxhash_rust::xxh3::xxh3_64(&bytes),
@@ -349,6 +394,89 @@ impl LoadedFont<'_> {
                 .unwrap_or(0),
         )
     }
+
+    /// The box of glyph `gid`'s outline, `[x_min, y_min, x_max, y_max]` in
+    /// font units with y up; `None` for a glyph with no outline (a space).
+    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text ink boxes, next"))]
+    pub fn glyph_bbox(&self, gid: u16) -> Option<[f32; 4]> {
+        let b = self.face.glyph_bounding_box(ttf_parser::GlyphId(gid))?;
+        Some([
+            f32::from(b.x_min),
+            f32::from(b.y_min),
+            f32::from(b.x_max),
+            f32::from(b.y_max),
+        ])
+    }
+}
+
+/// The face [`FontSet::select`] picked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
+pub(crate) struct FontMatch {
+    pub key: FontKey,
+    /// The family, style and weight are the ones asked for; otherwise one of
+    /// them fell back.
+    pub exact: bool,
+}
+
+/// CSS font matching (CSS Fonts 4 §5.2) over `faces`, the family, weight
+/// and style of each face in order: the first family of `families` that
+/// has a face (else the first face's family), then the faces of `style`
+/// (else every face of the family), then the nearest weight. Families
+/// match by exact name. The same algorithm as `FontRegistry` in
+/// `@inkoxide/react`; `fixtures/fonts/matching.json` holds the cases both
+/// are tested with. Returns the index of the face, and whether it is exact.
+#[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
+fn match_face(
+    faces: &[(&str, u16, FontStyle)],
+    families: &[&str],
+    weight: u16,
+    style: FontStyle,
+) -> Option<(usize, bool)> {
+    let first = faces.first()?;
+    let (family, family_exact) = families
+        .iter()
+        .position(|f| faces.iter().any(|x| x.0 == *f))
+        .map_or((first.0, false), |i| (families[i], i == 0));
+    let in_family = || (0..faces.len()).filter(|&i| faces[i].0 == family);
+    let same_style: Vec<usize> = in_family().filter(|&i| faces[i].2 == style).collect();
+    let style_exact = !same_style.is_empty();
+    let pool = if style_exact {
+        same_style
+    } else {
+        in_family().collect()
+    };
+    let face = nearest_weight(&pool, |i| faces[i].1, weight)?;
+    let exact = family_exact && style_exact && faces[face].1 == weight;
+    Some((face, exact))
+}
+
+/// CSS Fonts 4 §5.2 weight matching: the face of `pool` with weight `w`,
+/// else, nearest first, for 400 to 500 the heavier ones up to 500, then the
+/// lighter ones, then the heavier ones; below 400 the lighter, then the
+/// heavier; above 500 the heavier, then the lighter. Of equal weights, the
+/// first in `pool` wins when exact or heavier, and the last when lighter,
+/// as in `FontRegistry`.
+#[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
+fn nearest_weight(pool: &[usize], weight_of: impl Fn(usize) -> u16, w: u16) -> Option<usize> {
+    if let Some(&exact) = pool.iter().find(|&&i| weight_of(i) == w) {
+        return Some(exact);
+    }
+    let mut asc = pool.to_vec();
+    asc.sort_by_key(|&i| weight_of(i));
+    let mut above = asc.iter().copied().filter(|&i| weight_of(i) > w);
+    let mut below = asc.iter().copied().rev().filter(|&i| weight_of(i) < w);
+    if (400..=500).contains(&w) {
+        let up_to_500 = asc
+            .iter()
+            .copied()
+            .find(|&i| weight_of(i) > w && weight_of(i) <= 500);
+        up_to_500.or_else(|| below.next()).or_else(|| above.next())
+    } else if w < 400 {
+        below.next().or_else(|| above.next())
+    } else {
+        above.next().or_else(|| below.next())
+    }
 }
 
 /// The fonts of one document, parsed once per render.
@@ -356,6 +484,9 @@ pub(crate) struct FontSet<'a> {
     pub fonts: Vec<LoadedFont<'a>>,
     by_id: BTreeMap<&'a str, FontKey>,
     pub fallbacks: Vec<FontKey>,
+    /// The declarations, by key: family, weight and style for `select`.
+    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
+    decls: &'a [FontDecl],
 }
 
 impl<'a> FontSet<'a> {
@@ -385,11 +516,29 @@ impl<'a> FontSet<'a> {
             fonts,
             by_id,
             fallbacks,
+            decls: &doc.fonts,
         })
     }
 
     pub fn key(&self, id: &str) -> Option<FontKey> {
         self.by_id.get(id).copied()
+    }
+
+    /// The declared font CSS matching picks for `families` (in order of
+    /// preference), `weight` and `style`, by the family, weight and style
+    /// the document declares for each font; `None` when it declares none.
+    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
+    pub fn select(&self, families: &[&str], weight: u16, style: FontStyle) -> Option<FontMatch> {
+        let faces: Vec<_> = self
+            .decls
+            .iter()
+            .map(|d| (d.family.as_str(), d.weight, d.style))
+            .collect();
+        let (i, exact) = match_face(&faces, families, weight, style)?;
+        Some(FontMatch {
+            key: FontKey::try_from(i).ok()?,
+            exact,
+        })
     }
 
     pub fn get(&self, key: FontKey) -> &LoadedFont<'a> {
@@ -692,6 +841,155 @@ mod tests {
             assert!(
                 e.to_string().contains("font `bad`: the shaper panicked"),
                 "{e}"
+            );
+        }
+    }
+
+    /// `fixtures/fonts/matching.json`, the cases `FontRegistry` in
+    /// `@inkoxide/react` is tested with too.
+    #[test]
+    fn selects_fonts_like_the_react_registry() {
+        let table: serde_json::Value = serde_json::from_slice(&fixture("matching.json")).unwrap();
+        let inter = fixture("Inter-Regular.ttf");
+        let mut store = FontStore::new();
+        for faces in table["faces"].as_object().unwrap().values() {
+            for face in faces.as_array().unwrap() {
+                store
+                    .register(face["id"].as_str().unwrap(), inter.clone())
+                    .unwrap();
+            }
+        }
+        let cases = table["cases"].as_array().unwrap();
+        assert!(cases.len() > 20);
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let faces = &table["faces"][case["faces"].as_str().unwrap()];
+            let json = format!(
+                r#"{{"version":1,"fonts":{faces},"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+            );
+            let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+            let set = FontSet::load(&doc, &store).unwrap();
+            let families: Vec<&str> = case["families"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|f| f.as_str().unwrap())
+                .collect();
+            let style = match case["style"].as_str().unwrap() {
+                "italic" => FontStyle::Italic,
+                _ => FontStyle::Normal,
+            };
+            let weight = u16::try_from(case["weight"].as_u64().unwrap()).unwrap();
+            let m = set.select(&families, weight, style).unwrap();
+            assert_eq!(set.get(m.key).id, case["id"].as_str().unwrap(), "{name}");
+            assert_eq!(m.exact, case["exact"].as_bool().unwrap(), "{name}");
+        }
+
+        let doc = crate::validate::parse(
+            br#"{"version":1,"pages":[{"size":{"width":10,"height":10}}]}"#,
+            crate::InputFormat::Json,
+        )
+        .unwrap();
+        let none = FontSet::load(&doc, &store).unwrap();
+        assert_eq!(none.select(&["Inter"], 400, FontStyle::Normal), None);
+    }
+
+    #[test]
+    fn reads_x_height_and_script_metrics() {
+        let mut s = FontStore::new();
+        s.register("Inter", fixture("Inter-Regular.ttf")).unwrap();
+        s.register("Bold", fixture("InterDisplay-Bold.otf"))
+            .unwrap();
+        s.register("Mono", fixture("RobotoMono-Regular.ttf"))
+            .unwrap();
+        for id in ["Inter", "Bold", "Mono"] {
+            let m = &s.get(id).unwrap().metrics;
+            let em = m.units_per_em;
+            assert!((0.4..0.6).contains(&(m.x_height / em)), "{id} {m:?}");
+            assert!(m.x_height < m.cap_height, "{id}");
+            for size in [m.subscript_size, m.superscript_size] {
+                assert!((0.4..0.9).contains(&(size / em)), "{id} {m:?}");
+            }
+            assert!(
+                (0.0..0.5).contains(&(m.subscript_offset / em)),
+                "{id} {m:?}"
+            );
+            assert!(
+                (0.2..0.6).contains(&(m.superscript_offset / em)),
+                "{id} {m:?}"
+            );
+        }
+        // Inter's OS/2 table.
+        let inter = &s.get("Inter").unwrap().metrics;
+        assert_eq!(
+            [
+                inter.x_height,
+                inter.subscript_offset,
+                inter.subscript_size,
+                inter.superscript_offset,
+                inter.superscript_size,
+            ],
+            INTER_OS2
+        );
+    }
+
+    /// Inter Regular's `sxHeight`, `ySubscriptYOffset`, `ySubscriptYSize`,
+    /// `ySuperscriptYOffset` and `ySuperscriptYSize`.
+    const INTER_OS2: [f32; 5] = [1118.0, 154.0, 1229.0, 717.0, 1229.0];
+
+    #[test]
+    fn falls_back_without_an_os2_table() {
+        let mut font = fixture("Inter-Regular.ttf");
+        let tables = usize::from(u16::from_be_bytes([font[4], font[5]]));
+        let at = (0..tables)
+            .map(|i| 12 + 16 * i)
+            .find(|&at| &font[at..at + 4] == b"OS/2")
+            .unwrap();
+        font[at..at + 4].copy_from_slice(b"OS/x");
+        let mut s = FontStore::new();
+        s.register("x", font).unwrap();
+        let m = &s.get("x").unwrap().metrics;
+        // The top of `x`, which Inter's sxHeight also gives.
+        assert_eq!(m.x_height, INTER_OS2[0]);
+        assert_eq!(
+            [
+                m.subscript_offset,
+                m.subscript_size,
+                m.superscript_offset,
+                m.superscript_size
+            ],
+            [2048.0 * 0.2, 2048.0 * 0.65, 2048.0 * 0.34, 2048.0 * 0.65]
+        );
+    }
+
+    #[test]
+    fn measures_glyph_boxes() {
+        let mut s = FontStore::new();
+        s.register("Inter", fixture("Inter-Regular.ttf")).unwrap();
+        s.register("Bold", fixture("InterDisplay-Bold.otf"))
+            .unwrap();
+        let doc = crate::validate::parse(
+            br#"{"version":1,"fonts":[{"id":"Inter","family":"Inter"},{"id":"Bold","family":"Inter Display","weight":700}],
+                "pages":[{"size":{"width":10,"height":10}}]}"#,
+            crate::InputFormat::Json,
+        )
+        .unwrap();
+        let set = FontSet::load(&doc, &s).unwrap();
+        for font in &set.fonts {
+            let x = font.glyph('x').unwrap();
+            let [x0, y0, x1, y1] = font.glyph_bbox(x).unwrap();
+            assert!(x0 < x1 && y0 <= 0.0 && y0 > -10.0, "{}", font.id);
+            assert!(
+                (y1 - font.data.metrics.x_height).abs() < 0.02 * font.data.metrics.units_per_em
+            );
+            assert!(x1 <= font.advance(x) + 1.0, "{}", font.id);
+            // A descender reaches below the baseline.
+            assert!(font.glyph_bbox(font.glyph('p').unwrap()).unwrap()[1] < -100.0);
+            assert_eq!(
+                font.glyph_bbox(font.glyph(' ').unwrap()),
+                None,
+                "{}",
+                font.id
             );
         }
     }

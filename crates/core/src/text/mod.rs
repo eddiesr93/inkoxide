@@ -22,7 +22,7 @@ use rayon::prelude::*;
 
 pub(crate) use paint::{PageNumbers, TextPainter};
 
-use crate::fonts::{FontKey, FontSet, SUBSCRIPT_SHIFT, SUPERSCRIPT_SHIFT};
+use crate::fonts::{FontKey, FontSet};
 use crate::layout::{width_key, AvailableSpace, LeafMeasure, Size};
 use crate::schema::{Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, WhiteSpace};
 use crate::InkoxideError;
@@ -238,11 +238,15 @@ pub(crate) struct Para<'p> {
 /// below): its `verticalAlign`, by its font's superscript or subscript
 /// offset for text of its size.
 pub(crate) fn baseline_shift(run: &TextRun, fonts: &FontSet<'_>) -> f32 {
-    let metrics = || fonts.key(&run.font).map(|k| &fonts.get(k).data.metrics);
+    // Validation checks that the run's font is declared.
+    let Some(key) = fonts.key(&run.font) else {
+        return 0.0;
+    };
+    let m = &fonts.get(key).data.metrics;
     match run.vertical_align.unwrap_or_default() {
         RunAlign::Baseline => 0.0,
-        RunAlign::Super => metrics().map_or(SUPERSCRIPT_SHIFT, |m| m.superscript) * run.size,
-        RunAlign::Sub => -metrics().map_or(SUBSCRIPT_SHIFT, |m| m.subscript) * run.size,
+        RunAlign::Super => m.superscript_shift() * run.size,
+        RunAlign::Sub => -m.subscript_shift() * run.size,
     }
 }
 

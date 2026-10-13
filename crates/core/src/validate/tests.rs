@@ -1248,6 +1248,68 @@ fn out_of_range_messages_state_the_range() {
     );
 }
 
+#[test]
+fn background_images_are_checked_like_images() {
+    let bg = |b: &str| doc(&format!(r#"{{"type":"box","backgroundImage":{b}}}"#));
+    // A 4 × 4 SVG.
+    let data = "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0JyBoZWlnaHQ9JzQnPjxyZWN0IHdpZHRoPSc0JyBoZWlnaHQ9JzQnIGZpbGw9J3JlZCcvPjwvc3ZnPg==";
+    for ok in [
+        r#"{"src":"logo"}"#.to_string(),
+        r#"{"src":"logo","fit":"cover","objectPosition":{"x":"left","y":"25%"}}"#.to_string(),
+        format!(r#"{{"data":"{data}","fit":"contain"}}"#),
+    ] {
+        assert_eq!(run(&bg(&ok)), vec![], "{ok}");
+    }
+    let p = "pages[0].children[0].backgroundImage";
+    for (bad, code, path) in [
+        (r#"{"src":"nope"}"#, C::UnknownImage, format!("{p}.src")),
+        (r#"{"data":"%%%"}"#, C::InvalidImage, format!("{p}.data")),
+        (r#"{"data":"AAAA"}"#, C::InvalidImage, format!("{p}.data")),
+        (
+            r#"{"src":"logo","data":"AAAA"}"#,
+            C::InvalidValue,
+            format!("{p}.data"),
+        ),
+        (r"{}", C::MissingField, p.to_string()),
+        (
+            r#"{"src":"logo","fit":"tile"}"#,
+            C::InvalidValue,
+            format!("{p}.fit"),
+        ),
+        (
+            r#"{"src":"logo","repeat":true}"#,
+            C::UnknownField,
+            format!("{p}.repeat"),
+        ),
+        (
+            r#"{"src":"logo","objectPosition":{"x":20000}}"#,
+            C::OutOfRange,
+            format!("{p}.objectPosition.x"),
+        ),
+        (
+            r#"{"src":"logo","objectPosition":{"y":"-10001%"}}"#,
+            C::OutOfRange,
+            format!("{p}.objectPosition.y"),
+        ),
+    ] {
+        let (c, got) = one(&bg(bad));
+        assert_eq!((c, got.as_str()), (code, path.as_str()), "{bad}");
+    }
+    // Boxes only.
+    for node in [
+        r#"{"type":"text","runs":[],"backgroundImage":{"src":"logo"}}"#,
+        r#"{"type":"image","src":"logo","backgroundImage":{"src":"logo"}}"#,
+        r#"{"type":"spacer","backgroundImage":{"src":"logo"}}"#,
+    ] {
+        let (c, got) = one(&doc(node));
+        assert_eq!(
+            (c, got.as_str()),
+            (C::UnknownField, "pages[0].children[0].backgroundImage"),
+            "{node}"
+        );
+    }
+}
+
 /// A text node whose one run has the extra properties `extra`.
 fn text_run(extra: &str) -> String {
     doc(&format!(

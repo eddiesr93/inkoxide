@@ -7,6 +7,8 @@ version 2.
 
 ## Unreleased
 
+Still document schema version 1.
+
 ### Added
 
 - `TextRun.verticalAlign`: `baseline` (the default), `super` or `sub`. A superscript's
@@ -15,6 +17,11 @@ version 2.
 - `TextRun.fontFeatures`: OpenType features by tag, as CSS `font-feature-settings`
   (`{"tnum": 1, "liga": 0}`): 0 turns a feature off, 1 on, and a larger value picks an
   alternate. At most 32 per run, values up to 65535, and 64 different sets in a document.
+- `BoxNode.backgroundImage` (`$defs/BackgroundImage`): an image painted into the box's padding
+  box, over its `backgroundColor` and under its borders and children, clipped to the padding box
+  rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
+  (default `fill`) and `objectPosition`, with the same bounds as on an `image` node. Optional;
+  documents without it render as before.
 
 ### Changed
 

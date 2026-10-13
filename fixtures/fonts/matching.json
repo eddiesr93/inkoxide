@@ -1,0 +1,381 @@
+{
+ "description": "CSS font matching cases, shared by FontSet::select (crates/core/src/fonts/mod.rs) and FontRegistry.resolve (packages/react/test/font-matching.test.ts). A face without weight is 400, without style normal.",
+ "faces": {
+  "inter": [
+   {
+    "id": "Inter-Regular",
+    "family": "Inter"
+   },
+   {
+    "id": "Inter-Bold",
+    "family": "Inter",
+    "weight": 700
+   },
+   {
+    "id": "Inter-Italic",
+    "family": "Inter",
+    "style": "italic"
+   },
+   {
+    "id": "Mono",
+    "family": "Roboto Mono"
+   }
+  ],
+  "weights": [
+   {
+    "id": "W300",
+    "family": "F",
+    "weight": 300
+   },
+   {
+    "id": "W500",
+    "family": "F",
+    "weight": 500
+   },
+   {
+    "id": "W700",
+    "family": "F",
+    "weight": 700
+   }
+  ],
+  "sparse": [
+   {
+    "id": "W200",
+    "family": "F",
+    "weight": 200
+   },
+   {
+    "id": "W600",
+    "family": "F",
+    "weight": 600
+   },
+   {
+    "id": "W800",
+    "family": "F",
+    "weight": 800
+   }
+  ],
+  "twins": [
+   {
+    "id": "A300",
+    "family": "F",
+    "weight": 300
+   },
+   {
+    "id": "B300",
+    "family": "F",
+    "weight": 300
+   },
+   {
+    "id": "A600",
+    "family": "F",
+    "weight": 600
+   },
+   {
+    "id": "B600",
+    "family": "F",
+    "weight": 600
+   },
+   {
+    "id": "A450",
+    "family": "F",
+    "weight": 450
+   },
+   {
+    "id": "B450",
+    "family": "F",
+    "weight": 450
+   }
+  ],
+  "heavy": [
+   {
+    "id": "W600",
+    "family": "F",
+    "weight": 600
+   },
+   {
+    "id": "W800",
+    "family": "F",
+    "weight": 800
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "exact family, weight and style",
+   "faces": "inter",
+   "families": [
+    "Inter"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Inter-Regular",
+   "exact": true
+  },
+  {
+   "name": "exact bold",
+   "faces": "inter",
+   "families": [
+    "Inter"
+   ],
+   "weight": 700,
+   "style": "normal",
+   "id": "Inter-Bold",
+   "exact": true
+  },
+  {
+   "name": "exact italic",
+   "faces": "inter",
+   "families": [
+    "Inter"
+   ],
+   "weight": 400,
+   "style": "italic",
+   "id": "Inter-Italic",
+   "exact": true
+  },
+  {
+   "name": "the first family of the stack that has a face",
+   "faces": "inter",
+   "families": [
+    "Missing",
+    "Roboto Mono",
+    "Inter"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Mono",
+   "exact": false
+  },
+  {
+   "name": "the first family of the stack, exact",
+   "faces": "inter",
+   "families": [
+    "Roboto Mono",
+    "Inter"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Mono",
+   "exact": true
+  },
+  {
+   "name": "no family of the stack: the first face's family",
+   "faces": "inter",
+   "families": [
+    "Missing"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Inter-Regular",
+   "exact": false
+  },
+  {
+   "name": "no family asked for",
+   "faces": "inter",
+   "families": [],
+   "weight": 700,
+   "style": "normal",
+   "id": "Inter-Bold",
+   "exact": false
+  },
+  {
+   "name": "families match by exact name",
+   "faces": "inter",
+   "families": [
+    "inter"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Inter-Regular",
+   "exact": false
+  },
+  {
+   "name": "a missing style falls back to the family's other faces",
+   "faces": "inter",
+   "families": [
+    "Roboto Mono"
+   ],
+   "weight": 400,
+   "style": "italic",
+   "id": "Mono",
+   "exact": false
+  },
+  {
+   "name": "the style before the weight",
+   "faces": "inter",
+   "families": [
+    "Inter"
+   ],
+   "weight": 700,
+   "style": "italic",
+   "id": "Inter-Italic",
+   "exact": false
+  },
+  {
+   "name": "400: heavier up to 500 first",
+   "faces": "weights",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "W500",
+   "exact": false
+  },
+  {
+   "name": "450: heavier up to 500 first",
+   "faces": "weights",
+   "families": [
+    "F"
+   ],
+   "weight": 450,
+   "style": "normal",
+   "id": "W500",
+   "exact": false
+  },
+  {
+   "name": "500: then lighter",
+   "faces": "sparse",
+   "families": [
+    "F"
+   ],
+   "weight": 500,
+   "style": "normal",
+   "id": "W200",
+   "exact": false
+  },
+  {
+   "name": "400: then heavier above 500",
+   "faces": "heavy",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "W600",
+   "exact": false
+  },
+  {
+   "name": "400: then lighter, before heavier above 500",
+   "faces": "sparse",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "W200",
+   "exact": false
+  },
+  {
+   "name": "below 400: lighter first",
+   "faces": "weights",
+   "families": [
+    "F"
+   ],
+   "weight": 350,
+   "style": "normal",
+   "id": "W300",
+   "exact": false
+  },
+  {
+   "name": "below 400: then heavier",
+   "faces": "sparse",
+   "families": [
+    "F"
+   ],
+   "weight": 100,
+   "style": "normal",
+   "id": "W200",
+   "exact": false
+  },
+  {
+   "name": "above 500: heavier first",
+   "faces": "weights",
+   "families": [
+    "F"
+   ],
+   "weight": 600,
+   "style": "normal",
+   "id": "W700",
+   "exact": false
+  },
+  {
+   "name": "above 500: then lighter",
+   "faces": "weights",
+   "families": [
+    "F"
+   ],
+   "weight": 900,
+   "style": "normal",
+   "id": "W700",
+   "exact": false
+  },
+  {
+   "name": "above 500: heavier, the nearest",
+   "faces": "sparse",
+   "families": [
+    "F"
+   ],
+   "weight": 700,
+   "style": "normal",
+   "id": "W800",
+   "exact": false
+  },
+  {
+   "name": "an exact weight: the first of equal faces",
+   "faces": "twins",
+   "families": [
+    "F"
+   ],
+   "weight": 300,
+   "style": "normal",
+   "id": "A300",
+   "exact": true
+  },
+  {
+   "name": "heavier: the first of equal faces",
+   "faces": "twins",
+   "families": [
+    "F"
+   ],
+   "weight": 550,
+   "style": "normal",
+   "id": "A600",
+   "exact": false
+  },
+  {
+   "name": "lighter: the last of equal faces",
+   "faces": "twins",
+   "families": [
+    "F"
+   ],
+   "weight": 350,
+   "style": "normal",
+   "id": "B300",
+   "exact": false
+  },
+  {
+   "name": "400 to 500, heavier up to 500: the first of equal faces",
+   "faces": "twins",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "A450",
+   "exact": false
+  },
+  {
+   "name": "400 to 500, then lighter: the last of equal faces",
+   "faces": "twins",
+   "families": [
+    "F"
+   ],
+   "weight": 500,
+   "style": "normal",
+   "id": "B450",
+   "exact": false
+  }
+ ]
+}

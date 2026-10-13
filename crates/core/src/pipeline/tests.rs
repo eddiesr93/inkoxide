@@ -785,6 +785,95 @@ fn repeated_flow_text_shows_each_page_s_numbers() {
     }
 }
 
+/// The ops of each page of a document whose store holds image `logo`.
+fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let store = FontStore::new();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut images = ImageStore::new();
+    images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+    let images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+    let (pages, _) = run(&doc, &fonts, &mut text, &images, false, Ok).unwrap();
+    pages.into_iter().map(|p| p.ops).collect()
+}
+
+#[test]
+fn a_background_image_fills_the_padding_box_under_the_borders() {
+    // 150 pt high on 100 pt pages: split over two.
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"height":150,"padding":{{"top":5,"left":5}},
+              "backgroundColor":[0,1,0,1],"borderWidth":{{"top":2,"right":2,"bottom":2,"left":2}},
+              "borderColor":{{"top":[0,0,1,1],"right":[0,0,1,1],"bottom":[0,0,1,1],"left":[0,0,1,1]}},
+              "borderRadius":10}},
+             "backgroundImage":{{"src":"logo","fit":"cover"}},
+             "children":[{{"type":"box","style":{{"height":10,"backgroundColor":[1,0,0,1]}}}}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    assert_eq!(pages.len(), 2);
+    for (k, ops) in pages.iter().enumerate() {
+        // Background colour, then the image clipped to the rounded padding
+        // box, then the border ring, then the child.
+        let fill = |c: [f32; 4]| {
+            ops.iter()
+                .position(|op| matches!(op, Op::FillPath { color, .. } if *color == c))
+                .unwrap_or(usize::MAX)
+        };
+        let image = ops
+            .iter()
+            .position(|op| matches!(op, Op::Image { .. }))
+            .expect("an image op");
+        assert!(fill([0.0, 1.0, 0.0, 1.0]) < image, "page {k}: {ops:#?}");
+        assert!(image < fill([0.0, 0.0, 1.0, 1.0]), "page {k}");
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, Op::Image { .. }))
+                .count(),
+            1
+        );
+        let Op::ClipPath { path, .. } = &ops[image - 1] else {
+            panic!("page {k}: no clip before the image: {:#?}", ops[image - 1]);
+        };
+        assert!(matches!(ops[image - 2], Op::Save) && matches!(ops[image + 1], Op::Restore));
+        // The padding box: inside the 2 pt border, the whole box shifted up
+        // by a page on the second.
+        let top = 2.0 - k as f32 * H;
+        let ys = path.segs.iter().filter_map(|s| match *s {
+            paint::PathSeg::MoveTo(_, y) | paint::PathSeg::LineTo(_, y) => Some(y),
+            _ => None,
+        });
+        let (y0, y1) = ys.fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), y| {
+            (a.min(y), b.max(y))
+        });
+        assert!(
+            close(y0, top) && close(y1, top + 146.0),
+            "page {k}: {y0} {y1}"
+        );
+        assert!(path
+            .segs
+            .iter()
+            .any(|s| matches!(s, paint::PathSeg::CubicTo(..))));
+        // The child, on the first page only, over the image.
+        let child = fill([1.0, 0.0, 0.0, 1.0]);
+        if k == 0 {
+            assert!(image < child && child < usize::MAX);
+        } else {
+            assert_eq!(child, usize::MAX);
+        }
+    }
+}
+
+#[test]
+fn a_box_without_a_background_image_paints_no_image() {
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"height":50,"backgroundColor":[0,1,0,1]}}}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    assert!(!pages[0].iter().any(|op| matches!(op, Op::Image { .. })));
+}
+
 #[test]
 fn superscripts_and_subscripts_are_painted_off_the_baseline() {
     let json = format!(

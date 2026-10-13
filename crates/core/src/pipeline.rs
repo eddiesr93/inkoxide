@@ -37,7 +37,7 @@ const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
 /// character),
 const LINK_BYTES: u64 = 256;
-/// a `debug` outline or a form field widget,
+/// a `debug` outline, a form field widget or a background image,
 const BOX_BYTES: u64 = 768;
 /// and a shape of a paragraph's `debug` outline: a line box, a baseline or
 /// a run's box on a line.
@@ -118,6 +118,19 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         match node.kind {
             NodeKind::Text { .. } => self.text.paint_outlined(node, geo, ctx, ops, lines),
             _ => self.paint(node, geo, ctx, ops),
+        }
+    }
+
+    fn background(
+        &mut self,
+        node: &Node,
+        padding_box: Rect,
+        radii: &paint::Radii,
+        ops: &mut Vec<Op>,
+    ) {
+        if let (Some(bg), Some(key)) = (&node.background_image, self.images.background_key(node)) {
+            self.images
+                .paint_in(key, padding_box, bg.fit, bg.object_position, radii, ops);
         }
     }
 
@@ -374,6 +387,9 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
             }
             if n.link.is_some() {
                 size += LINK_BYTES;
+            }
+            if n.background_image.is_some() {
+                size += BOX_BYTES;
             }
             match &n.kind {
                 NodeKind::Text { runs } => {

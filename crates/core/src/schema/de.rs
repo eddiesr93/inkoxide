@@ -10,9 +10,10 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::Deserialize;
 
 use super::{
-    Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, FontFeature, ImageFit, ImageSource, InlineImage, Node, NodeKind, ObjectPosition,
-    OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun, TransformOp,
+    BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
+    ColumnWidth, Corners, Field, FontFeature, ImageFit, ImageSource, InlineImage, Node, NodeKind,
+    ObjectPosition, OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun,
+    TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -615,7 +616,7 @@ impl NodeType {
     /// The properties a node of this type takes, besides `type` and `id`.
     pub(super) fn fields(self) -> impl Iterator<Item = &'static str> {
         let (common, own): (&[&str], &[&str]) = match self {
-            Self::Box => (COMMON, &["children"]),
+            Self::Box => (COMMON, &["children", "backgroundImage"]),
             Self::Text => (COMMON, &["runs"]),
             Self::Image => (COMMON, &["src", "data", "fit", "objectPosition"]),
             Self::Table => (COMMON, &["columns", "headerRows", "rows"]),
@@ -654,6 +655,7 @@ pub struct RawNode {
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
     field: Option<Box<Field>>,
+    background_image: Option<Box<BackgroundImage>>,
 }
 
 /// Drops the spare capacity serde leaves when growing a `Vec` of unknown
@@ -695,6 +697,7 @@ impl TryFrom<RawNode> for Node {
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
             ("field", r.field.is_some()),
+            ("backgroundImage", r.background_image.is_some()),
         ];
         if let Some((field, _)) = present
             .iter()
@@ -715,16 +718,7 @@ impl TryFrom<RawNode> for Node {
                 runs: shrink(r.runs.ok_or_else(|| missing("runs"))?),
             },
             NodeType::Image => {
-                let source = match (r.src, r.data) {
-                    (Some(s), None) => ImageSource::Ref(s),
-                    (None, Some(d)) => ImageSource::Inline(InlineImage::new(d)),
-                    (Some(_), Some(_)) => {
-                        return Err("[INVALID_VALUE@data] an `image` node takes either `src` or `data`, not both".into())
-                    }
-                    (None, None) => {
-                        return Err("[MISSING_FIELD] `image` node requires `src` or `data`".into())
-                    }
-                };
+                let source = image_source(r.src, r.data, "an `image` node")?;
                 NodeKind::Image {
                     source,
                     fit: r.fit.unwrap_or_default(),
@@ -748,7 +742,47 @@ impl TryFrom<RawNode> for Node {
             bookmark: r.bookmark,
             pages: r.pages,
             debug: r.debug.unwrap_or(false),
+            background_image: r.background_image,
             kind,
+        })
+    }
+}
+
+/// The source of an image from its `src` and `data`, exactly one of which
+/// `what` (for the message) must set.
+fn image_source(
+    src: Option<String>,
+    data: Option<String>,
+    what: &str,
+) -> Result<ImageSource, String> {
+    match (src, data) {
+        (Some(s), None) => Ok(ImageSource::Ref(s)),
+        (None, Some(d)) => Ok(ImageSource::Inline(InlineImage::new(d))),
+        (Some(_), Some(_)) => Err(format!(
+            "[INVALID_VALUE@data] {what} takes either `src` or `data`, not both"
+        )),
+        (None, None) => Err(format!("[MISSING_FIELD] {what} requires `src` or `data`")),
+    }
+}
+
+/// A [`BackgroundImage`] as written: `src` or `data`, checked on conversion.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RawBackgroundImage {
+    src: Option<String>,
+    data: Option<String>,
+    fit: Option<ImageFit>,
+    object_position: Option<ObjectPosition>,
+}
+
+impl TryFrom<RawBackgroundImage> for BackgroundImage {
+    type Error = String;
+
+    fn try_from(r: RawBackgroundImage) -> Result<Self, String> {
+        Ok(Self {
+            source: image_source(r.src, r.data, "`backgroundImage`")?,
+            fit: r.fit.unwrap_or_default(),
+            object_position: r.object_position.unwrap_or_default(),
         })
     }
 }

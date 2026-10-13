@@ -39,11 +39,12 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
 | `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`; `objectPosition` in its style places the fitted image. |
+| `ImageBackground` | A `View` with an image behind its children: `src` and `fit` as on `Image` ([Images](#images)). |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
-| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
+| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
 
@@ -80,9 +81,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
   `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
   `decorationStyle` and `decorationThickness`. `textOverflow: 'ellipsis'` is `ellipsis: true`
-  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set.
-  `objectPosition` on an `Image` places it in its box (see [Images](#images)). Both throw on
-  other elements.
+  (with `maxLines`). `objectFit` on an `Image` or `ImageBackground` is its `fit` prop, which
+  wins when both are set. `objectPosition` on them places the image in its box (see
+  [Images](#images)). Both throw on other elements.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
@@ -196,6 +197,21 @@ const logo = readFileSync('logo.png');
   ```tsx
   <Image src={photo} className="h-40 w-full" fit="cover" style={{ objectPosition: 'center top' }} />
   <Image src={logo} className="h-10 w-32 object-contain object-left" />
+  ```
+
+- **Background images.** `ImageBackground` is a `View` with an image behind its children. It
+  takes the props of a `View` and `src` in any form `Image` takes; `fit`, `objectFit` and
+  `objectPosition` (and the `object-*` classes) place the image as on an `Image`, `fill` by
+  default. The image fills the padding box, inside the borders, as a CSS `background-image`
+  does: it is drawn over the background colour and under the borders and the children, and
+  clipped to the box, rounded by `borderRadius`. A box split across pages is sliced with its
+  image, like its background colour. `source`, `imageStyle` and `srcSet` throw: pass the image
+  as `src`, and place it with `fit` and `objectPosition`.
+
+  ```tsx
+  <ImageBackground src={photo} fit="cover" className="h-48 rounded-xl p-6 object-top">
+    <Text className="text-2xl font-bold text-white">Annual report</Text>
+  </ImageBackground>
   ```
 
 - **Files.** Image files are off by default. Allow the folders they come from with the
@@ -551,6 +567,56 @@ The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`)
 `<Svg>` is not supported yet. `Canvas` draws in code with a pdfkit-style painter. An SVG file
 can also go straight into `<Image src={svgBytes} />`.
 
+**Markers** draw a shape at the vertices of a `Path`, `Line`, `Polyline` or `Polygon`: define a
+`Marker` in `Defs` and reference it with `markerStart`, `markerMid` or `markerEnd`.
+
+```tsx
+<Svg width={120} height={40}>
+  <Defs>
+    <Marker id="arrow" viewBox="0 0 10 10" refX={10} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse">
+      <Path d="M0 0L10 5L0 10Z" fill="context-stroke" />
+    </Marker>
+  </Defs>
+  <Line x1={10} y1={20} x2={110} y2={20} stroke="#4f46e5" strokeWidth={2} markerStart="url(#arrow)" markerEnd="url(#arrow)" />
+</Svg>
+```
+
+`refX` and `refY` are the point of the marker placed on the vertex, `markerWidth` and
+`markerHeight` its viewport (3 by default), and `orient` turns it with the path (`'auto'`), the
+same but reversed at the start (`'auto-start-reverse'`), or by a number of degrees. A marker is
+scaled by the stroke width unless `markerUnits="userSpaceOnUse"`. `context-stroke` and
+`context-fill` paint it with the shape's stroke or fill. A `RadialGradient` takes `fr`, the
+radius of its focal circle, next to `fx` and `fy`.
+
+**The `Canvas` painter** builds a path (`moveTo`, `lineTo`, `bezierCurveTo`,
+`quadraticCurveTo`, `rect`, `roundedRect`, `circle`, `ellipse`, `polygon`, `path`) and paints it
+with `fill`, `stroke` or `fillAndStroke`, in the current state: `fillColor`, `strokeColor`,
+opacities, `lineWidth`, `lineCap`, `lineJoin`, `miterLimit` (10 by default, as in PDF), `dash`,
+and the transforms `translate`, `rotate` and `scale`. `save()` and `restore()` keep and bring
+back the state and the transforms.
+
+```tsx
+<Canvas
+  width={120}
+  height={60}
+  paint={(p, w, h) => {
+    const sky = p.linearGradient(0, 0, 0, h).stop(0, '#4f46e5').stop(1, '#c7d2fe');
+    p.save().roundedRect(0, 0, w, h, 8).clip();
+    p.rect(0, 0, w, h).fill(sky);
+    p.restore().circle(w / 2, h / 2, 12).fill(p.radialGradient(56, 26, 0, 60, 30, 12).stop(0, 'white').stop(1, '#f59e0b'));
+  }}
+/>
+```
+
+- **`clip(rule?)`** clips what is painted after it to the current path, until `restore()`;
+  `'evenodd'` picks the even-odd rule. Clips nest.
+- **`linearGradient(x1, y1, x2, y2)`** and **`radialGradient(x1, y1, r1, x2, y2, r2)`** (from
+  the first circle to the second) return a `CanvasGradient`; `stop(offset, color, opacity?)`
+  adds its colours. Pass it to `fill`, `stroke`, `fillAndStroke`, `fillColor` or `strokeColor`
+  in place of a colour. Its coordinates are in the user space where it paints, transforms
+  included, as in pdfkit.
+- `Canvas` has no text yet.
+
 In an SVG, whether in `<Svg>` or an image file:
 
 - **Text** (`<text>`) fails the render with `INVALID_IMAGE`, in a nested SVG image too: convert
@@ -592,7 +658,7 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 `debug` draws an element's boxes over the page, like the box model in browser developer tools:
 the margin in orange, the border in yellow, the padding in green, the content box as a blue
 outline, and the element's width and height in points as a small label. It works on `View`,
-`Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
+`ImageBackground`, `Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
 
@@ -668,14 +734,15 @@ app.get('/health', (_req, res) => {
 tree the engine writes, so it is not a general PDF parser.
 
 **Types.** The props of a component are exported as a type named after it (`DocumentProps`,
-`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `CanvasProps` and so on); `PolyProps`
+`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `MarkerProps`, `CanvasProps` and so on); `PolyProps`
 serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresentation` the
 attributes every SVG shape takes. Also exported:
 
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
-  `ImageRequest`, and `Painter`, the painter a `Canvas` draws with;
+  `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
+  gradients;
 - options and results: `RenderToBufferOptions`, `LocalImageOptions`, `RemoteImageOptions`,
   `FontRegistration`, `FontSource`, `FontSrc`, `FontWeight`, `HyphenationCallback`,
   `EngineStatus`, `EngineVersion`, `RenderErrorCode` and `DataIssue`.
