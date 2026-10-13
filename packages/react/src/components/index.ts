@@ -36,6 +36,7 @@ export const HOST = {
   Defs: 'ink-svg-defs',
   ClipPath: 'ink-svg-clip-path',
   Marker: 'ink-svg-marker',
+  Tspan: 'ink-svg-tspan',
   LinearGradient: 'ink-svg-linear-gradient',
   RadialGradient: 'ink-svg-radial-gradient',
   Stop: 'ink-svg-stop',
@@ -569,8 +570,57 @@ export interface SvgPresentation {
   markerMid?: string;
   /** A `<Marker>` drawn at the last vertex: `url(#id)`. */
   markerEnd?: string;
+  visibility?: 'visible' | 'hidden' | 'collapse';
+  /** Text inside: the font, as in CSS. A family list (`"Inter, sans-serif"`) is a stack. */
+  fontFamily?: string;
+  fontSize?: number | string;
+  fontWeight?: number | FontWeightName;
+  fontStyle?: 'normal' | 'italic';
+  /** Text inside: where its position is on the text (`start`, `middle`, `end`). */
+  textAnchor?: 'start' | 'middle' | 'end';
+  /** Text inside: which line of the text sits at its `y`. */
+  dominantBaseline?:
+    | 'auto'
+    | 'alphabetic'
+    | 'middle'
+    | 'central'
+    | 'hanging'
+    | 'mathematical'
+    | 'ideographic'
+    | 'text-before-edge'
+    | 'text-after-edge';
   id?: string;
   children?: ReactNode;
+}
+
+/** Numbers for each character in turn: a number, a list, or SVG list syntax. */
+type SvgNumberList = number | string | readonly number[];
+
+/** A `Text` inside an `<Svg>`: SVG text, positioned in the drawing's coordinates. */
+export interface SvgTextProps extends SvgPresentation {
+  /** Where the text starts (with `textAnchor`); a list positions each character. */
+  x?: SvgNumberList;
+  y?: SvgNumberList;
+  /** Shifts from where each character would be. */
+  dx?: SvgNumberList;
+  dy?: SvgNumberList;
+  /** Degrees each character is turned; the last value repeats. */
+  rotate?: SvgNumberList;
+  letterSpacing?: number | string;
+  wordSpacing?: number | string;
+  /** `underline`, `overline`, `line-through`, or several. */
+  textDecoration?: string;
+  /** The width to fit the text to, by its spacing or (`lengthAdjust`) its glyphs too. */
+  textLength?: number | string;
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs';
+  direction?: 'ltr' | 'rtl';
+}
+
+/** A span of SVG text: a `Tspan` inside a `Text` in an `<Svg>`. */
+export interface TspanProps extends SvgTextProps {
+  /** Raises (positive, `super`) or lowers (`sub`) the span from the baseline. */
+  baselineShift?: number | string;
+  alignmentBaseline?: SvgPresentation['dominantBaseline'];
 }
 
 export interface SvgProps extends SvgPresentation {
@@ -689,7 +739,8 @@ export const Page = host<PageProps>(HOST.Page);
 export const Header = host<HeaderProps>(HOST.Header);
 export const Footer = host<FooterProps>(HOST.Footer);
 export const View = host<ViewProps>(HOST.View);
-export const Text = host<TextProps>(HOST.Text);
+/** A paragraph, or a run inside one; inside an `<Svg>`, SVG text (`SvgTextProps`). */
+export const Text = host<TextProps | SvgTextProps>(HOST.Text);
 /**
  * A link to `href` (`https://…`, `mailto:…` or `#id`; `src` is the same). Inside a `Text` it is
  * an inline run; elsewhere a box, like a `View` with `href`. It adds no colour or underline.
@@ -729,6 +780,8 @@ export const ClipPath = host<ClipPathProps>(HOST.ClipPath);
  * `markerStart`, `markerMid` or `markerEnd`. Defined once, in `Defs`.
  */
 export const Marker = host<MarkerProps>(HOST.Marker);
+/** A span of SVG text, inside a `Text` in an `<Svg>`: its own position, font or paint. */
+export const Tspan = host<TspanProps>(HOST.Tspan);
 export const LinearGradient = host<GradientProps>(HOST.LinearGradient);
 export const RadialGradient = host<GradientProps>(HOST.RadialGradient);
 export const Stop = host<StopProps>(HOST.Stop);

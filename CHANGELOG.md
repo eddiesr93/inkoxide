@@ -30,6 +30,15 @@ All notable changes to the packages in this repository. The format follows
   path and vertical text fail with `INVALID_IMAGE`, as all SVG text did. An SVG with text in a
   document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG may hold up
   to 1,000,000 characters of text, counting every copy.
+- **`<Text>` and `<Tspan>` in `<Svg>`**: a `Text` inside an `<Svg>` (or its `G`, `Defs`,
+  `ClipPath` or `Marker`) is SVG text, with `x`, `y`, `dx`, `dy`, `rotate`, `textAnchor`,
+  `dominantBaseline`, `letterSpacing`, `wordSpacing`, `textDecoration`, `textLength`,
+  `lengthAdjust` and the SVG paint props; a `Tspan` inside it is a span, which also takes
+  `baselineShift`. Its font comes from `fontFamily`, `fontWeight` and `fontStyle` on it or
+  around it, and from the text style around the drawing, matched against the registered fonts
+  like other text, and declared in the document. `Tspan`, `SvgTextProps` and `TspanProps` are
+  exported; `SvgPresentation` gains the font props, `textAnchor`, `dominantBaseline` and
+  `visibility`.
 
 ### Changed
 

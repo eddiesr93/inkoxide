@@ -48,6 +48,8 @@ import {
   Text,
   TextField,
   TotalPages,
+  Tspan,
+  type TspanProps,
   usePage,
   View,
 } from '../src/index.ts';
@@ -1009,7 +1011,7 @@ describe('drawings', () => {
           </Svg>,
         ),
       ).message,
-    ).toContain('Text inside <Svg>');
+    ).toContain('Text inside <Svg> goes in a <Text>');
     expect(thrown(() => tree(<Rect width={1} height={1} />)).message).toContain('goes inside <Svg>');
   });
 
@@ -1082,6 +1084,79 @@ describe('drawings', () => {
         ),
       ).message,
     ).toContain('<Stop>');
+  });
+
+  it('writes Text and Tspan in an Svg as SVG text, with registered faces', () => {
+    const span: TspanProps = { dx: 2, baselineShift: 'super', fontSize: 8, fill: 'red' };
+    const r = tree(
+      <View className="font-[Noto_Sans] text-[11pt]">
+        <Svg width={100} height={40}>
+          <G fontFamily="Missing, Inter">
+            <Text x={[10, 20]} y={30} textAnchor="middle" textLength={50} lengthAdjust="spacingAndGlyphs">
+              a &lt; b {'&'} <Tspan {...span}>2</Tspan>
+              <Tspan fontWeight="bold" fontStyle="italic">
+                c
+              </Tspan>
+            </Text>
+          </G>
+          <Text x={5} y={10}>
+            noto
+          </Text>
+        </Svg>
+      </View>,
+    );
+    const img = first<BoxNode>(r).children?.[0] as ImageNode;
+    const svg = decode(img.data);
+    // The size around the drawing is its text's default.
+    expect(svg).toContain('viewBox="0 0 100 40" font-size="11">');
+    expect(svg).toContain(
+      `<text x="10 20" y="30" text-anchor="middle" textLength="50" lengthAdjust="spacingAndGlyphs" font-family="'Inter'" font-weight="400">a &lt; b &amp; <tspan dx="2" baseline-shift="super" font-size="8" fill="red" font-family="'Inter'" font-weight="400">2</tspan>`,
+    );
+    // Inter has no bold italic: the italic face, the closest it has.
+    expect(svg).toContain(`<tspan font-family="'Inter'" font-weight="400" font-style="italic">c</tspan>`);
+    expect(svg).toContain(`<text x="5" y="10" font-family="'Noto Sans'" font-weight="400">noto</text>`);
+    // Their fonts are declared.
+    expect((r.document.fonts ?? []).map((f) => f.id)).toEqual(
+      expect.arrayContaining(['Inter-Regular', 'Inter-Italic', 'NotoSans-Regular']),
+    );
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('allows only strings and Tspan in SVG text, and Tspan only there', () => {
+    const svg = (children: ReactNode) =>
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            {children}
+          </Svg>,
+        ),
+      ).message;
+    expect(
+      svg(
+        <Text>
+          <Rect width={1} height={1} />
+        </Text>,
+      ),
+    ).toContain('cannot be inside SVG text');
+    expect(
+      svg(
+        <Text>
+          <Text>a</Text>
+        </Text>,
+      ),
+    ).toContain('cannot be inside SVG text');
+    expect(svg(<Tspan>a</Tspan>)).toContain('<Tspan> goes inside a <Text> in an <Svg>');
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <Tspan>a</Tspan>
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<Tspan> goes inside a <Text> in an <Svg>');
+    expect(svg(<Text style={{ color: 'red' }}>a</Text>)).toContain('style applies to <Text> outside <Svg>');
+    expect(svg(<Text fontWeight={'heavyish' as never}>a</Text>)).toContain('fontWeight "heavyish"');
   });
 
   it('keeps the layout props of Svg out of the drawing', () => {

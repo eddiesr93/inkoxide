@@ -64,7 +64,7 @@ import {
   usesPatterns,
   withStyleProp,
 } from './style.ts';
-import { svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
+import { type SvgTextFonts, svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
 import { Hyphenator, transformText } from './text.ts';
 import { type FlowKey, stackVariants } from './variants.ts';
 
@@ -995,6 +995,23 @@ class Builder {
     return this.mark(node, inst);
   }
 
+  /**
+   * What the text of a drawing in `ctx` needs: the text style around it, and the registered face
+   * for a font, which the document then declares.
+   */
+  private svgText(ctx: TextCtx): SvgTextFonts {
+    return {
+      font: { family: ctx.fontFamily, weight: ctx.fontWeight, style: ctx.fontStyle },
+      size: ctx.fontSize,
+      face: (font, inst) => {
+        const own = { ...ctx, fontFamily: font.family, fontWeight: font.weight, fontStyle: font.style };
+        const decl = this.opts.fonts.decl(this.font({ ...own, fontId: undefined }, inst));
+        return { family: [decl.family], weight: decl.weight ?? 400, style: decl.style ?? 'normal' };
+      },
+      fail: (inst, message) => this.fail(inst, message, { kind: 'props' }),
+    };
+  }
+
   /** `<Svg>` and `<Canvas>`: an SVG image of the drawing, sized by `width` and `height`. */
   private drawing(inst: Instance, ctx: TextCtx): ImageNode {
     const own = this.styleOf(inst, ctx);
@@ -1019,7 +1036,7 @@ class Builder {
       }
       markup = svgDocument(w, h, painter.toSvgBody());
     } else {
-      markup = svgMarkup(inst, w, h);
+      markup = svgMarkup(inst, w, h, this.svgText(ctx));
     }
     const node: ImageNode = { type: 'image', data: svgDataUrl(markup) };
     const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };

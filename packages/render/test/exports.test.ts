@@ -51,6 +51,7 @@ const MAIN_VALUES = [
   'Text',
   'TextField',
   'TotalPages',
+  'Tspan',
   'View',
   'countPages',
   'engineStatus',
@@ -121,9 +122,11 @@ const MAIN_TYPES = [
   'StyleProp',
   'SvgPresentation',
   'SvgProps',
+  'SvgTextProps',
   'TableProps',
   'TextFieldProps',
   'TextProps',
+  'TspanProps',
   'ViewProps',
 ];
 

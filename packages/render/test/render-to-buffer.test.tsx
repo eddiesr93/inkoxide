@@ -28,6 +28,7 @@ import {
   StyleSheet,
   Svg,
   Text,
+  Tspan,
   TotalPages,
   View,
 } from '../src/index.ts';
@@ -281,6 +282,30 @@ describe('renderToBuffer', () => {
     );
     expect(countPages(pdf)).toBe(1);
     expect(Buffer.from(pdf).toString('latin1')).toMatch(/\/ShadingType ?2/);
+  });
+
+  it('draws SVG text as PDF text with the faces it uses', async () => {
+    const doc = (text: boolean) => (
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <Text>Page text</Text>
+          <Svg width={120} height={40}>
+            {text && (
+              <Text x={60} y={25} textAnchor="middle" fontWeight="bold" fill="#4f46e5">
+                Chart <Tspan fill="#c0392b">title</Tspan>
+              </Text>
+            )}
+          </Svg>
+        </Page>
+      </Document>
+    );
+    const fonts = (pdf: Uint8Array) =>
+      Buffer.from(pdf)
+        .toString('latin1')
+        .match(/\/FontFile2/g)?.length;
+    // Inter Bold, used only in the drawing, is embedded too.
+    expect(fonts(await renderToBuffer(doc(true)))).toBe(2);
+    expect(fonts(await renderToBuffer(doc(false)))).toBe(1);
   });
 
   it('names the component when the structure is wrong', async () => {
