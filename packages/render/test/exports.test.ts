@@ -66,6 +66,7 @@ const MAIN_TYPES = [
   'AbsoluteLength',
   'BookmarkProp',
   'BreakProp',
+  'CanvasGradient',
   'CanvasProps',
   'CellProps',
   'CheckboxProps',

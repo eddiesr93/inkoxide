@@ -542,6 +542,35 @@ scaled by the stroke width unless `markerUnits="userSpaceOnUse"`. `context-strok
 `context-fill` paint it with the shape's stroke or fill. A `RadialGradient` takes `fr`, the
 radius of its focal circle, next to `fx` and `fy`.
 
+**The `Canvas` painter** builds a path (`moveTo`, `lineTo`, `bezierCurveTo`,
+`quadraticCurveTo`, `rect`, `roundedRect`, `circle`, `ellipse`, `polygon`, `path`) and paints it
+with `fill`, `stroke` or `fillAndStroke`, in the current state: `fillColor`, `strokeColor`,
+opacities, `lineWidth`, `lineCap`, `lineJoin`, `miterLimit` (10 by default, as in PDF), `dash`,
+and the transforms `translate`, `rotate` and `scale`. `save()` and `restore()` keep and bring
+back the state and the transforms.
+
+```tsx
+<Canvas
+  width={120}
+  height={60}
+  paint={(p, w, h) => {
+    const sky = p.linearGradient(0, 0, 0, h).stop(0, '#4f46e5').stop(1, '#c7d2fe');
+    p.save().roundedRect(0, 0, w, h, 8).clip();
+    p.rect(0, 0, w, h).fill(sky);
+    p.restore().circle(w / 2, h / 2, 12).fill(p.radialGradient(56, 26, 0, 60, 30, 12).stop(0, 'white').stop(1, '#f59e0b'));
+  }}
+/>
+```
+
+- **`clip(rule?)`** clips what is painted after it to the current path, until `restore()`;
+  `'evenodd'` picks the even-odd rule. Clips nest.
+- **`linearGradient(x1, y1, x2, y2)`** and **`radialGradient(x1, y1, r1, x2, y2, r2)`** (from
+  the first circle to the second) return a `CanvasGradient`; `stop(offset, color, opacity?)`
+  adds its colours. Pass it to `fill`, `stroke`, `fillAndStroke`, `fillColor` or `strokeColor`
+  in place of a colour. Its coordinates are in the user space where it paints, transforms
+  included, as in pdfkit.
+- `Canvas` has no text yet.
+
 In an SVG, whether in `<Svg>` or an image file:
 
 - **Text** (`<text>`) fails the render with `INVALID_IMAGE`, in a nested SVG image too: convert
@@ -663,7 +692,8 @@ attributes every SVG shape takes. Also exported:
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
-  `ImageRequest`, and `Painter`, the painter a `Canvas` draws with;
+  `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
+  gradients;
 - options and results: `RenderToBufferOptions`, `LocalImageOptions`, `RemoteImageOptions`,
   `FontRegistration`, `FontSource`, `FontSrc`, `FontWeight`, `HyphenationCallback`,
   `EngineStatus`, `EngineVersion`, `RenderErrorCode` and `DataIssue`.

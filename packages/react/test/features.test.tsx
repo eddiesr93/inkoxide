@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   Canvas,
+  type CanvasGradient,
   Cell,
   Checkbox,
   Circle,
@@ -29,6 +30,7 @@ import {
   Page,
   PageBreak,
   PageNumber,
+  type Painter,
   Path,
   Polyline,
   RadialGradient,
@@ -1130,8 +1132,79 @@ describe('drawings', () => {
       '<g transform="translate(40 20)"><path d="M-10 0A10 10 0 1 0 10 0A10 10 0 1 0 -10 0Z" fill="#c00"/></g>',
     );
     expect(svg).toContain(
-      '<path d="M0 0L80 40" fill="none" stroke="blue" stroke-width="2" stroke-dasharray="3 3"/>',
+      '<path d="M0 0L80 40" fill="none" stroke="blue" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="3 3"/>',
     );
+  });
+
+  const paint = (fn: (p: Painter) => void): string =>
+    decode(first<ImageNode>(tree(<Canvas width={100} height={100} paint={fn} />)).data);
+
+  it('sets the miter limit of mitred strokes, 10 by default', () => {
+    const svg = paint((p) => {
+      p.rect(0, 0, 10, 10).stroke();
+      p.miterLimit(2.5).rect(0, 0, 10, 10).stroke();
+      p.lineJoin('round').rect(0, 0, 10, 10).stroke();
+      p.rect(0, 0, 10, 10).fill();
+    });
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-miterlimit="10"/>');
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-miterlimit="2.5"/>');
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-linejoin="round"/>');
+    expect(svg).toContain('<path d="M0 0h10v10h-10Z" fill="black"/>');
+  });
+
+  it('clips to the current path until restore, nested clips included', () => {
+    const svg = paint((p) => {
+      p.save().circle(50, 50, 40).clip();
+      p.save().rect(0, 0, 50, 100).clip('evenodd');
+      p.rect(0, 0, 100, 100).fill('red');
+      p.restore();
+      p.rect(0, 0, 100, 100).fill('blue');
+      p.restore().rect(0, 0, 10, 10).fill('green');
+      // A clip outside save() lasts to the end of the drawing.
+      p.clip();
+    });
+    expect(svg).toContain(
+      '<clipPath id="ink-c1"><path d="M10 50A40 40 0 1 0 90 50A40 40 0 1 0 10 50Z"/></clipPath><g clip-path="url(#ink-c1)">' +
+        '<clipPath id="ink-c2"><path d="M0 0h50v100h-50Z" clip-rule="evenodd"/></clipPath><g clip-path="url(#ink-c2)">' +
+        '<path d="M0 0h100v100h-100Z" fill="red"/></g>' +
+        '<path d="M0 0h100v100h-100Z" fill="blue"/></g>' +
+        '<path d="M0 0h10v10h-10Z" fill="green"/>' +
+        '<clipPath id="ink-c3"></clipPath><g clip-path="url(#ink-c3)"></g></svg>',
+    );
+  });
+
+  it('paints with linear and radial gradients, written once each', () => {
+    let shared: CanvasGradient | undefined;
+    const svg = paint((p) => {
+      const g = p.linearGradient(0, 0, 100, 0).stop(0, 'white').stop(1, '#1e4a99', 0.5);
+      shared = g;
+      p.rect(0, 0, 50, 50).fill(g);
+      p.translate(50, 0).fillColor(g).rect(0, 0, 50, 50).fill();
+      const r = p.radialGradient(30, 30, 5, 50, 50, 40).stop(0, 'red').stop(1, '<"&>');
+      p.lineWidth(4).circle(50, 50, 20).fillAndStroke(r, g);
+      // A stop added after the gradient was used makes a new one.
+      g.stop(0.5, 'red');
+      p.strokeColor(g).moveTo(0, 0).lineTo(10, 10).stroke();
+    });
+    expect(shared).toBeDefined();
+    expect(svg).toContain(
+      '<defs><linearGradient id="ink-g1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="0">' +
+        '<stop offset="0" stop-color="white"/><stop offset="1" stop-color="#1e4a99" stop-opacity="0.5"/></linearGradient></defs>' +
+        '<path d="M0 0h50v50h-50Z" fill="url(#ink-g1)"/>' +
+        '<g transform="translate(50 0)"><path d="M0 0h50v50h-50Z" fill="url(#ink-g1)"/>',
+    );
+    expect(svg).toContain(
+      '<defs><radialGradient id="ink-g2" gradientUnits="userSpaceOnUse" fx="30" fy="30" fr="5" cx="50" cy="50" r="40">' +
+        '<stop offset="0" stop-color="red"/><stop offset="1" stop-color="&lt;&quot;&amp;&gt;"/></radialGradient></defs>',
+    );
+    expect(svg).toContain('fill="url(#ink-g2)" stroke="url(#ink-g1)" stroke-width="4"');
+    expect(svg).toContain(
+      '<stop offset="0.5" stop-color="red"/></linearGradient></defs><path d="M0 0L10 10" fill="none" stroke="url(#ink-g3)"',
+    );
+    expect(svg.match(/<linearGradient /g)).toHaveLength(2);
+    expect(
+      thrown(() => paint((p) => p.rect(0, 0, 1, 1).fill([1, 0, 0] as unknown as string))).message,
+    ).toContain('A paint is a colour string, or a gradient');
   });
 });
 

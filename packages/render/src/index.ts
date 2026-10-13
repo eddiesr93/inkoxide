@@ -6,6 +6,7 @@ export {
   type BookmarkProp,
   type BreakProp,
   Canvas,
+  type CanvasGradient,
   type CanvasProps,
   Cell,
   type CellProps,

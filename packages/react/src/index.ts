@@ -11,7 +11,7 @@ import { ImageIds, type ImageTableOptions, type RemoteImagePolicy } from './tree
 import { locate } from './tree/locate.ts';
 import { type SchemaProblem, validateTree } from './tree/validate.ts';
 
-export type { Painter } from './canvas.ts';
+export type { CanvasGradient, Painter } from './canvas.ts';
 export * from './components/index.ts';
 export { TemplateError, type TemplateErrorKind } from './errors.ts';
 export * from './fonts/index.ts';

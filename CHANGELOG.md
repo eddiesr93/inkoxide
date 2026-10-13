@@ -14,6 +14,17 @@ All notable changes to the packages in this repository. The format follows
   takes `viewBox`, `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `markerUnits`.
   `Marker` and `MarkerProps` are exported.
 - `fr`, the radius of the focal circle, on `RadialGradient`.
+- The `<Canvas>` painter clips and paints gradients: `clip(rule?)` clips what follows to the
+  current path until `restore()`, and `linearGradient(x1, y1, x2, y2)` and
+  `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
+  takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
+  `miterLimit(n)` sets how far mitred joins reach.
+
+### Changed
+
+- Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
+  pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
+  mitred instead of bevelled. `miterLimit(4)` gives the old joins.
 
 ## 0.6.5 - 2026-10-13
 
