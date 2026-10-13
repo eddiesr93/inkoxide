@@ -43,6 +43,7 @@ const FLOW = new Set<string>([
   HOST.Text,
   HOST.Link,
   HOST.Image,
+  HOST.ImageBackground,
   HOST.Table,
   HOST.PageBreak,
   HOST.Spacer,
@@ -95,6 +96,7 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
     case HOST.Header:
     case HOST.Footer:
     case HOST.View:
+    case HOST.ImageBackground:
     case HOST.Link:
     case HOST.Cell:
       return FLOW.has(child);
@@ -116,6 +118,7 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
 const TEXT_PARENTS = new Set<string>([
   HOST.Text,
   HOST.View,
+  HOST.ImageBackground,
   HOST.Link,
   HOST.Cell,
   HOST.Header,

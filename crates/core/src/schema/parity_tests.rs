@@ -141,6 +141,11 @@ fn structs_match_schema() {
     );
     check(
         &s,
+        Some("BackgroundImage"),
+        &node(r#"{"type":"box","backgroundImage":{@"src":"i"}}"#),
+    );
+    check(
+        &s,
         Some("Field"),
         &node(r#"{"type":"field","field":{@"name":"n","kind":"text"}}"#),
     );

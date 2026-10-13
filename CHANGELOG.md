@@ -19,6 +19,12 @@ All notable changes to the packages in this repository. The format follows
   `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
   takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
   `miterLimit(n)` sets how far mitred joins reach.
+- Background images: `<ImageBackground src fit>`, a `View` with an image behind its children,
+  and `backgroundImage` on a box node of the document (`src` or `data`, `fit`, `objectPosition`).
+  The image fills the padding box, over the background colour and under the borders, clipped to
+  it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
+  background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
+  `objectPosition` and the `object-*` classes place it as on an `Image`.
 
 ### Changed
 

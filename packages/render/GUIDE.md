@@ -38,6 +38,7 @@ a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
 | `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`; `objectPosition` in its style places the fitted image. |
+| `ImageBackground` | A `View` with an image behind its children: `src` and `fit` as on `Image` ([Images](#images)). |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
@@ -79,9 +80,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
   `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
   `decorationStyle` and `decorationThickness`. `textOverflow: 'ellipsis'` is `ellipsis: true`
-  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set.
-  `objectPosition` on an `Image` places it in its box (see [Images](#images)). Both throw on
-  other elements.
+  (with `maxLines`). `objectFit` on an `Image` or `ImageBackground` is its `fit` prop, which
+  wins when both are set. `objectPosition` on them places the image in its box (see
+  [Images](#images)). Both throw on other elements.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
@@ -195,6 +196,21 @@ const logo = readFileSync('logo.png');
   ```tsx
   <Image src={photo} className="h-40 w-full" fit="cover" style={{ objectPosition: 'center top' }} />
   <Image src={logo} className="h-10 w-32 object-contain object-left" />
+  ```
+
+- **Background images.** `ImageBackground` is a `View` with an image behind its children. It
+  takes the props of a `View` and `src` in any form `Image` takes; `fit`, `objectFit` and
+  `objectPosition` (and the `object-*` classes) place the image as on an `Image`, `fill` by
+  default. The image fills the padding box, inside the borders, as a CSS `background-image`
+  does: it is drawn over the background colour and under the borders and the children, and
+  clipped to the box, rounded by `borderRadius`. A box split across pages is sliced with its
+  image, like its background colour. `source`, `imageStyle` and `srcSet` throw: pass the image
+  as `src`, and place it with `fit` and `objectPosition`.
+
+  ```tsx
+  <ImageBackground src={photo} fit="cover" className="h-48 rounded-xl p-6 object-top">
+    <Text className="text-2xl font-bold text-white">Annual report</Text>
+  </ImageBackground>
   ```
 
 - **Files.** Image files are off by default. Allow the folders they come from with the
@@ -612,7 +628,7 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 `debug` draws an element's boxes over the page, like the box model in browser developer tools:
 the margin in orange, the border in yellow, the padding in green, the content box as a blue
 outline, and the element's width and height in points as a small label. It works on `View`,
-`Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
+`ImageBackground`, `Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
 

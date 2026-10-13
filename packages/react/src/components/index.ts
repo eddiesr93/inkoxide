@@ -15,6 +15,7 @@ export const HOST = {
   Text: 'ink-text',
   Link: 'ink-link',
   Image: 'ink-image',
+  ImageBackground: 'ink-image-background',
   Table: 'ink-table',
   Row: 'ink-row',
   Cell: 'ink-cell',
@@ -205,8 +206,9 @@ export interface StyleProp extends Omit<
   /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
   transformOrigin?: [LengthPercent, LengthPercent] | string;
   /**
-   * `Image` only: where a `contain`, `cover` or `none` image sits in its box, as CSS
-   * `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default centred.
+   * `Image` and `ImageBackground` only: where a `contain`, `cover` or `none` image sits in its
+   * box, as CSS `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default
+   * centred.
    */
   objectPosition?: string;
 }
@@ -468,6 +470,16 @@ export interface ImageProps extends Omit<Flow, 'children'> {
   fit?: 'fill' | 'contain' | 'cover' | 'none';
 }
 
+export interface ImageBackgroundProps extends Flow {
+  /** The image, in any form `<Image src>` takes. */
+  src: ImageSrc;
+  /**
+   * How the image fills the padding box: `fill` (default) stretches it, `contain` and `cover`
+   * keep its aspect ratio, `none` keeps its size. Wins over `objectFit`.
+   */
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+}
+
 export interface TableProps extends Flow {
   /** Column widths: points, `'1fr'`-style fractions, or `'auto'`. */
   columns: Array<number | string>;
@@ -696,6 +708,12 @@ export const Text = host<TextProps>(HOST.Text);
  */
 export const Link = host<LinkProps>(HOST.Link);
 export const Image = host<ImageProps>(HOST.Image);
+/**
+ * A `View` with an image behind its children: the image fills the padding box (inside the
+ * borders), placed by `fit` and `objectPosition`, over the background colour and under the
+ * borders, clipped to the box and its `borderRadius`.
+ */
+export const ImageBackground = host<ImageBackgroundProps>(HOST.ImageBackground);
 export const Table = host<TableProps>(HOST.Table);
 export const Row = host<RowProps>(HOST.Row);
 export const Cell = host<CellProps>(HOST.Cell);

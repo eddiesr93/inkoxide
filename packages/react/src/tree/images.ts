@@ -167,9 +167,14 @@ export class ImageTable {
 
   /**
    * The image node's `src` (an image id) or `data` for `src`. `fail` reports a `src` that is
-   * missing, a request without a uri, or a URL the remote image policy does not allow.
+   * missing, a request without a uri, or a URL the remote image policy does not allow; messages
+   * name the element as `component`.
    */
-  resolve(src: unknown, fail: (message: string) => never): { src: string } | { data: string } {
+  resolve(
+    src: unknown,
+    fail: (message: string) => never,
+    component = 'Image',
+  ): { src: string } | { data: string } {
     const s = imageSource(src, (id) => this.opts.registered.has(id));
     switch (s.kind) {
       case 'bytes': {
@@ -210,7 +215,7 @@ export class ImageTable {
       case 'request': {
         const { request } = s;
         if (typeof request.uri !== 'string' || request.uri === '') {
-          fail('<Image src={{ uri }}>: a request needs a uri.');
+          fail(`<${component} src={{ uri }}>: a request needs a uri.`);
         }
         if (!remoteAllowed(request.uri, this.opts.remoteImages)) {
           fail(remoteRefused(`src={{ uri: "${request.uri}" }}`, this.opts.remoteElsewhere));
@@ -225,7 +230,7 @@ export class ImageTable {
       }
     }
     return fail(
-      '<Image> needs a src: bytes, a data: URL, an image id, a file path, a URL, a request, or a function or promise.',
+      `<${component}> needs a src: bytes, a data: URL, an image id, a file path, a URL, a request, or a function or promise.`,
     );
   }
 

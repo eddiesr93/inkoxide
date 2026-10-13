@@ -128,9 +128,9 @@ export interface FlatStyle {
   borderCollapse?: Style['borderCollapse'];
   borderSpacing?: number;
   verticalAlign?: Style['verticalAlign'];
-  /** How an `Image` fills its box: the image node's `fit`. */
+  /** How an `Image` or `ImageBackground` fills its box: the image's `fit`. */
   objectFit?: ObjectFit;
-  /** Where a fitted `Image` sits in its box: the image node's `objectPosition`. */
+  /** Where a fitted `Image` or `ImageBackground` image sits in its box: the image's `objectPosition`. */
   objectPosition?: ObjectPosition;
 
   // Text, inherited.

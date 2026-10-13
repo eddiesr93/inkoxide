@@ -152,6 +152,8 @@ fn every_property_at_its_bounds_renders_finite_numbers() {
         // Images placed at the objectPosition bounds.
         r#"{"type":"image","src":"photo","fit":"none","objectPosition":{"x":"10000%","y":-14400},"style":{"width":"10000%","height":40}}"#.into(),
         r#"{"type":"image","src":"chart","fit":"cover","objectPosition":{"x":14400,"y":"-10000%"},"style":{"transform":[{"scale":[1000000,1000000]}],"height":40}}"#.into(),
+        r#"{"type":"box","backgroundImage":{"src":"photo","fit":"none","objectPosition":{"x":"-10000%","y":14400}},"style":{"width":"10000%","height":40,"borderRadius":1000000,"borderWidth":{"top":1000000}}}"#.into(),
+        r#"{"type":"box","backgroundImage":{"src":"chart","objectPosition":{"x":-14400,"y":"10000%"}},"style":{"height":40,"padding":{"left":1000000}}}"#.into(),
         // Form fields and tables.
         r#"{"type":"field","style":{"width":"10000%","height":20,"transform":[{"translate":[-1000000,0]}]},"field":{"name":"t","kind":"text","font":"Inter-Regular","value":"x"}}"#.into(),
         r#"{"type":"field","style":{"width":1000000,"height":20},"field":{"name":"c","kind":"checkbox","checked":true}}"#.into(),

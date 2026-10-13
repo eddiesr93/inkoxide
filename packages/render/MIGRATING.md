@@ -21,6 +21,7 @@ over by changing the import. This page lists what has another name, and what is 
 | Tables built from rows of `View`s | `<Table columns={['1fr', 60, 80]} headerRows={1}>` | Optional: `View` rows still work |
 | `style={tw('p-4')}` with `react-pdf-tailwind` | `className="p-4"` | Works with `@inkoxide/tailwind` installed: `npm install @inkoxide/tailwind` |
 | `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points |
+| `<ImageBackground src style>` | The same, with `fit` (or `objectFit`) and `objectPosition` placing the image; see [Images](GUIDE.md#images) | Works. The image fills the padding box, inside the borders, not the content box, and is clipped to it with `borderRadius`. `source`, `imageStyle` and `srcSet` throw: pass `src`, and place the image with `fit` and `objectPosition` |
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
@@ -34,7 +35,7 @@ over by changing the import. This page lists what has another name, and what is 
   - `Image` inside `Text`.
   - `Font.registerEmojiSource`: there are no colour emoji yet.
   - Knuth–Plass line breaking: lines break first-fit, so a paragraph can wrap differently.
-- **Layout:** `float`, `clear` and `shapeOutside`; `<ImageBackground>`.
+- **Layout:** `float`, `clear` and `shapeOutside`.
 - **Forms:** `<List>`, `<FieldSet>`, and `format` on a text field.
 - **Annotations:** `<Note>`.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.

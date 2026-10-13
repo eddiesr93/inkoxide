@@ -481,6 +481,12 @@ impl<'a> Checker<'a> {
         if let Some(b) = &node.bookmark {
             self.bookmark(b);
         }
+        if let Some(bg) = &node.background_image {
+            self.at("backgroundImage", |c| {
+                c.object_position(&bg.object_position);
+                c.image_source(&bg.source);
+            });
+        }
 
         match &node.kind {
             NodeKind::Box { children } => self.children(Some(&node.style), children, inner),

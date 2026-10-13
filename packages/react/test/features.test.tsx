@@ -19,6 +19,7 @@ import {
   G,
   Header,
   Image,
+  ImageBackground,
   type ImageSrc,
   imageSource,
   isImagePath,
@@ -499,7 +500,7 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(a?.fit).toBe('cover');
     expect(b?.fit).toBe('contain');
     expect(thrown(() => tree(<View style={{ objectFit: 'cover' }} />)).message).toContain(
-      'objectFit applies to <Image>, not <View>',
+      'objectFit applies to <Image> and <ImageBackground>, not <View>',
     );
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectFit: 'scale-down' as never }} />)).message,
@@ -541,10 +542,10 @@ describe('CSS names and shorthands in the style prop', () => {
 
   it('throws on objectPosition off an Image or in a form the engine cannot place', () => {
     expect(thrown(() => tree(<View style={{ objectPosition: 'left' }} />)).message).toContain(
-      'objectPosition applies to <Image>, not <View>',
+      'objectPosition applies to <Image> and <ImageBackground>, not <View>',
     );
     expect(thrown(() => tree(<Text className="object-top">x</Text>)).message).toContain(
-      'objectPosition applies to <Image>, not <Text>',
+      'objectPosition applies to <Image> and <ImageBackground>, not <Text>',
     );
     for (const bad of ['top 25%', '25% left', 'left right', 'right 10px top', 'middle', '10', 'auto', '']) {
       expect(thrown(() => tree(<Image src="logo" style={{ objectPosition: bad }} />)).message, bad).toContain(
@@ -554,6 +555,75 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectPosition: ['left', 'top'] as never }} />)).message,
     ).toContain('objectPosition must be a CSS string');
+  });
+});
+
+describe('ImageBackground', () => {
+  it('is a box with a background image, placed by fit, objectFit and objectPosition', () => {
+    const r = tree(
+      <>
+        <ImageBackground src="logo" className="rounded-lg border p-4" style={{ height: 80 }} href="#x">
+          over the image
+        </ImageBackground>
+        <ImageBackground src="logo" fit="contain" className="object-cover object-left-top" />
+        <ImageBackground src="logo" style={{ objectFit: 'none', objectPosition: '25% 75%' }}>
+          <View />
+        </ImageBackground>
+        <ImageBackground src="data:image/png;base64,AAAA" />
+        <ImageBackground src={new Uint8Array([1, 2, 3])} />
+      </>,
+    );
+    const [a, b, c, d, e] = body(r) as BoxNode[];
+    expect(a).toMatchObject({ type: 'box', backgroundImage: { src: 'logo' }, link: '#x' });
+    expect(a?.style).toMatchObject({ height: 80, borderRadius: 6 });
+    expect((a?.children?.[0] as TextNode | undefined)?.runs[0]?.text).toBe('over the image');
+    // The fit prop wins over objectFit; both stay off the box style.
+    expect(b?.backgroundImage).toEqual({
+      src: 'logo',
+      fit: 'contain',
+      objectPosition: { x: 'left', y: 'top' },
+    });
+    expect(c?.backgroundImage).toEqual({ src: 'logo', fit: 'none', objectPosition: { x: '25%', y: '75%' } });
+    expect(c?.children).toHaveLength(1);
+    for (const n of [a, b, c]) expect(n?.style ?? {}).not.toHaveProperty('objectFit');
+    expect(d?.backgroundImage).toEqual({ data: 'data:image/png;base64,AAAA' });
+    expect(e?.backgroundImage?.src).toBeTypeOf('string');
+    expect(r.images[e?.backgroundImage?.src as string]).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('needs a src, and points the props of other libraries to src and style', () => {
+    expect(thrown(() => tree(<ImageBackground {...({} as { src: string })} />)).message).toContain(
+      '<ImageBackground> needs a src',
+    );
+    for (const key of ['source', 'imageStyle', 'srcSet']) {
+      const props = { src: 'logo', [key]: key === 'imageStyle' ? { opacity: 0.5 } : 'logo' };
+      expect(thrown(() => tree(<ImageBackground {...props} />)).message, key).toContain(
+        `<ImageBackground> does not take ${key}: pass the image as src`,
+      );
+    }
+  });
+
+  it('goes where a View goes and takes what a View takes', () => {
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <ImageBackground src="logo" />
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<ImageBackground> cannot be inside <Text>');
+    const r = tree(
+      <Table columns={[100]}>
+        <Row>
+          <Cell>
+            <ImageBackground src="logo" className="h-10" />
+          </Cell>
+        </Row>
+      </Table>,
+    );
+    const cell = (first<TableNode>(r).rows[0]?.cells[0]?.children ?? [])[0] as BoxNode;
+    expect(cell.backgroundImage).toEqual({ src: 'logo' });
   });
 });
 
