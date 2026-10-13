@@ -479,7 +479,7 @@ Starts a new page when in-flow content follows it: at the end of the flow it add
 
 ### FieldNode
 
-An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text: 150 pt wide, one line, or three when multiline; checkbox and radio: `size` + 2 pt square).
+An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text and select: 150 pt wide, one line, or three when multiline; list: 150 pt wide, one row per option up to four; checkbox and radio: `size` + 2 pt square).
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
