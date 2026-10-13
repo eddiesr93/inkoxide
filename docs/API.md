@@ -109,6 +109,19 @@ patterns.register("en-US", &std::fs::read("hyph-en-us.tex")?)?;
 let options = RenderOptions::default().with_hyphenation(patterns);
 ```
 
+## Line breaking
+
+A text node breaks its lines first fit by default (`textWrap: "wrap"`).
+With `textWrap: "pretty"`, each stretch of a paragraph between forced
+breaks is set as a whole (Knuth and Plass's total fit), for even lines.
+It is bounded per paragraph, so its cost and its output do not depend on
+the rest of the document or on threads; past a bound, the stretch is set
+first fit:
+
+- at most 20 000 break opportunities in a stretch;
+- at most 512 open breakpoints at a time;
+- at most 2 097 152 lines tried in a paragraph.
+
 ## Determinism
 
 For a fixed `creationDate` (or `meta.creationDate`), output bytes depend

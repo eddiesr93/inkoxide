@@ -519,6 +519,7 @@ const TEXT_ONLY: &[&str] = &[
     "hyphenate",
     "lang",
     "whiteSpace",
+    "textWrap",
     "textIndent",
     "orphans",
     "widows",
@@ -661,6 +662,8 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "ellipsis" | "hyphenate" => json!(s.chance(128)),
         "lang" => e(s, &["fr", "en", "en-US", "de", "xx", ""]),
         "whiteSpace" => e(s, &["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),
+        "textWrap" if s.chaos && s.chance(10) => json!("balance"),
+        "textWrap" => e(s, &["wrap", "pretty", "pretty"]),
         "orphans" | "widows" => match s.below(8) {
             0 => json!(100),
             1 if s.chaos => json!(s.pick(&[0, 101, -1])),
@@ -1331,6 +1334,7 @@ mod tests {
             r#""whiteSpace":"pre-wrap""#,
             r#""verticalAlign":"super""#,
             r#""fontFeatures":{""#,
+            r#""textWrap":"pretty""#,
             r#""backgroundImage":{"#,
         ];
         let mut seen = vec![false; features.len()];

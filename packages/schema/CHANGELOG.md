@@ -11,6 +11,10 @@ Still document schema version 1.
 
 ### Added
 
+- `Style.textWrap` on text nodes: `wrap` (the default, first fit, as before) or `pretty`, which
+  sets each stretch between forced breaks as a whole (Knuth and Plass's total fit) and lets the
+  spaces of justified lines shrink by up to a third. Bounded per paragraph (20 000 break
+  opportunities, 512 open breakpoints, 2 097 152 lines tried), past which it breaks first fit.
 - `TextRun.verticalAlign`: `baseline` (the default), `super` or `sub`. A superscript's
   baseline is raised and a subscript's lowered by the offsets the font gives (OS/2), for text
   of the run's size, and the line grows to fit them. The run keeps its own `size`.

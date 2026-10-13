@@ -893,7 +893,6 @@ pub struct Style {
     pub white_space: Option<WhiteSpace>,
     /// How lines break: first fit (`wrap`), or over the whole paragraph
     /// (`pretty`).
-    #[serde(skip)]
     pub text_wrap: Option<TextWrap>,
     /// Indent of the first line, points (negative: hanging).
     pub text_indent: Option<f32>,
@@ -924,6 +923,7 @@ impl Style {
             ("hyphenate", self.hyphenate.is_some()),
             ("lang", self.lang.is_some()),
             ("whiteSpace", self.white_space.is_some()),
+            ("textWrap", self.text_wrap.is_some()),
             ("textIndent", self.text_indent.is_some()),
             ("direction", self.direction.is_some()),
             ("orphans", self.orphans.is_some()),

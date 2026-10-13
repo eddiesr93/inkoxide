@@ -1408,3 +1408,29 @@ fn a_document_uses_a_bounded_number_of_feature_sets() {
         )
     );
 }
+
+#[test]
+fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
+    let text = |v: &str| {
+        doc(&format!(
+            r#"{{"type":"text","style":{{"textWrap":{v}}},"runs":[{{"text":"x","font":"Inter-Regular","size":10}}]}}"#
+        ))
+    };
+    assert_eq!(run(&text(r#""wrap""#)), vec![]);
+    assert_eq!(run(&text(r#""pretty""#)), vec![]);
+    // `balance` is reserved.
+    assert_eq!(
+        one(&text(r#""balance""#)),
+        (
+            C::InvalidValue,
+            "pages[0].children[0].style.textWrap".into()
+        )
+    );
+    assert_eq!(
+        one(&doc(r#"{"type":"box","style":{"textWrap":"pretty"}}"#)),
+        (
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.textWrap".into()
+        )
+    );
+}

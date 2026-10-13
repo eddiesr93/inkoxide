@@ -498,6 +498,10 @@ export interface Style {
    */
   whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
   /**
+   * text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` is reserved.
+   */
+  textWrap?: 'wrap' | 'pretty';
+  /**
    * text nodes only; indent of the first line in points (negative: hanging indent)
    */
   textIndent?: number;

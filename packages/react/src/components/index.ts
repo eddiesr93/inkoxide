@@ -117,6 +117,7 @@ export interface StyleProp extends Omit<
   | 'objectPosition'
   | 'fontFeatureSettings'
   | 'fontVariantNumeric'
+  | 'textWrap'
 > {
   fontFamily?: string | string[];
   /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
@@ -210,6 +211,11 @@ export interface StyleProp extends Omit<
   fontFeatureSettings?: FontFeatureSettings;
   /** CSS `font-variant-numeric` (`'tabular-nums slashed-zero'`): turns on the features it names. */
   fontVariantNumeric?: string;
+  /**
+   * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
+   * breaks over the whole paragraph for even lines. Inherited. `'balance'` is not supported yet.
+   */
+  textWrap?: FlatStyle['textWrap'] | 'balance';
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;

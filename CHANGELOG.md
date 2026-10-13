@@ -9,6 +9,12 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- `textWrap: 'pretty'` (Tailwind `text-pretty`) breaks a paragraph's lines over the whole
+  paragraph for even lines (Knuth and Plass's total fit), with fewer hyphens; justified
+  `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the
+  default, keeps first fit and the same output; `'balance'` is reserved. `text-wrap` maps to
+  `wrap` and `text-nowrap` to `whiteSpace: 'nowrap'`.
+
 - Superscripts and subscripts: `verticalAlign: 'super'` or `'sub'` on a `Text` (the Tailwind
   classes `align-super` and `align-sub`) raises or lowers its baseline by the font's own
   superscript and subscript offsets, and the line grows to fit it. `verticalAlign` stays `top`,

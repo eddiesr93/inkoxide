@@ -432,6 +432,7 @@ export function textNodeStyle(
   if (own.maxLines !== undefined) set('maxLines', own.maxLines);
   if (own.ellipsis) set('ellipsis', true);
   if (ctx.whiteSpace !== undefined && ctx.whiteSpace !== 'normal') set('whiteSpace', ctx.whiteSpace);
+  if (ctx.textWrap === 'pretty') set('textWrap', 'pretty');
   // A hyphenation callback replaces the patterns: the engine would break the words it keeps whole.
   if (usesPatterns(ctx)) set('hyphenate', true);
   if (ctx.lang !== undefined && ctx.lang !== docLang) set('lang', ctx.lang);
@@ -643,6 +644,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     fontFeatureSettings,
     fontVariantNumeric,
     verticalAlign,
+    textWrap,
     translate,
     transform,
     transformOrigin,
@@ -673,6 +675,12 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     out.fontFeatureSettings = parseFontFeatureSettings('fontFeatureSettings', fontFeatureSettings);
   if (fontVariantNumeric !== undefined)
     out.fontVariantNumeric = parseFontVariantNumeric('fontVariantNumeric', fontVariantNumeric);
+  if (textWrap !== undefined) {
+    if (textWrap === 'balance') {
+      throw new Error(`textWrap "balance" is not supported yet: use 'pretty' for even lines, or 'wrap'`);
+    }
+    out.textWrap = new Reader('textWrap').oneOf('textWrap', String(textWrap));
+  }
   if (verticalAlign !== undefined) {
     if (!VERTICAL_ALIGNS.includes(verticalAlign)) {
       throw new Error(

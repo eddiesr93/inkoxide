@@ -35,6 +35,7 @@ export type TextDecoration = NonNullable<TextRun['decoration']>;
 /** Not in the schema: the tree builder transforms the text itself. */
 export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export type WhiteSpace = NonNullable<Style['whiteSpace']>;
+export type TextWrap = NonNullable<Style['textWrap']>;
 export type BorderStyle = Extract<BorderStyles, string>;
 export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const satisfies readonly BorderStyle[];
 export type DecorationStyle = NonNullable<TextRun['decorationStyle']>;
@@ -155,6 +156,8 @@ export interface FlatStyle {
   decorationStyle?: DecorationStyle;
   textTransform?: TextTransform;
   whiteSpace?: WhiteSpace;
+  /** How lines break: first fit (`wrap`), or even lines over the paragraph (`pretty`). */
+  textWrap?: TextWrap;
   hyphenate?: boolean;
   /** Points; negative for a hanging indent. */
   textIndent?: number;
@@ -197,6 +200,7 @@ export const TEXT_INHERITED = [
   'decorationStyle',
   'textTransform',
   'whiteSpace',
+  'textWrap',
   'hyphenate',
   'textIndent',
   'direction',

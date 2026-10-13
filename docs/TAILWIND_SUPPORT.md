@@ -118,6 +118,7 @@ that are supported and tested; each example is a unit test.
 | `uppercase`, `lowercase`, `capitalize`, `normal-case` | run `text` (transformed by the tree builder with the document `lang`) | `uppercase` → `{"textTransform":"uppercase"}` |  |
 | `truncate`, `line-clamp-N`, `line-clamp-none` | `maxLines` + `ellipsis` | `truncate` → `{"maxLines":1,"ellipsis":true}` |  |
 | `whitespace-normal`, `whitespace-nowrap`, `whitespace-pre`, `whitespace-pre-wrap`, `whitespace-pre-line` | `whiteSpace` | `whitespace-normal` → `{"whiteSpace":"normal"}` |  |
+| `text-wrap`, `text-pretty`, `text-nowrap` | `textWrap`, `whiteSpace` | `text-wrap` → `{"textWrap":"wrap"}` | `text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`. |
 | `hyphens-auto`, `hyphens-manual`, `hyphens-none` | `hyphenate` | `hyphens-auto` → `{"hyphenate":true}` | The `hyphenate` prop on `Text` does the same. Soft hyphens (U+00AD) always work. |
 
 ## Not supported
@@ -139,6 +140,7 @@ that are supported and tested; each example is a unit test.
 | `overline` | `overline` and `underline-offset-*`. |
 | `whitespace-break-spaces` | `break-spaces`. |
 | `text-ellipsis` | `text-overflow` alone; use `truncate` or `line-clamp-N`. |
+| `text-balance` | `text-wrap: balance`; `text-pretty` evens lines. |
 | `object-scale-down` | `object-fit: scale-down`. |
 | `object-[right_1rem_top]` | `object-position` with edge offsets. |
 | `not-a-class` | Classes Tailwind does not know. |

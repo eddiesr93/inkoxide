@@ -350,6 +350,30 @@ describe('superscript, subscript and font features', () => {
   });
 });
 
+describe('textWrap', () => {
+  it('cascades from the page to its paragraphs, and a Text sets its own', () => {
+    const r = render(
+      <View>
+        <Text>a</Text>
+        <Text style={{ textWrap: 'wrap' }}>b</Text>
+        <Text className="text-wrap">c</Text>
+      </View>,
+      'text-[10pt] text-pretty',
+    );
+    const texts = (first<BoxNode>(r).children ?? []) as TextNode[];
+    expect(texts.map((t) => t.style?.textWrap)).toEqual(['pretty', undefined, undefined]);
+    const plain = render(<Text>a</Text>);
+    expect(first<TextNode>(plain).style?.textWrap).toBeUndefined();
+  });
+
+  it('rejects balance, which is reserved', () => {
+    expect(() => render(<Text style={{ textWrap: 'balance' }}>a</Text>)).toThrow(
+      /textWrap "balance" is not supported/,
+    );
+    expect(() => render(<Text className="text-balance">a</Text>)).toThrow(/text-balance/);
+  });
+});
+
 describe('placeholders', () => {
   it('emits pageNumber and totalPages runs inside Text', () => {
     const r = render(

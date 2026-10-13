@@ -519,6 +519,13 @@ An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fall
 - **Right-to-left text** uses `dir="rtl"` on a `Text`. Register a font that covers the script
   first (for example Noto Sans Arabic or Noto Sans Hebrew with `Font.register`): the bundled
   fonts cover Latin, Greek and Cyrillic.
+- **Even lines.** `textWrap: 'pretty'` (the class `text-pretty`) breaks a paragraph's lines
+  over the whole paragraph instead of filling each in turn, as TeX does: lines come out more
+  even, with fewer hyphens, and the spaces of justified lines may also shrink by up to a third.
+  It is inherited, so `<Page style={{ textWrap: 'pretty' }}>` sets it for a page. `'wrap'` is
+  the default and fills lines in turn; `'balance'` is not supported yet. Text with
+  `whitespace-nowrap` or `whitespace-pre`, and very long paragraphs past the limits in the
+  [schema](../../docs/SCHEMA.md), break first fit.
 - **Orphans and widows:** `orphans={2}` and `widows={2}` keep at least two lines of a paragraph
   together at the foot and the head of a page.
 

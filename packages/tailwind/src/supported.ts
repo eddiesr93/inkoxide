@@ -704,6 +704,18 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Text',
+    utilities: '`text-wrap`, `text-pretty`, `text-nowrap`',
+    maps: '`textWrap`, `whiteSpace`',
+    notes:
+      '`text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`.',
+    examples: {
+      'text-wrap': { textWrap: 'wrap' },
+      'text-pretty': { textWrap: 'pretty' },
+      'text-nowrap': { whiteSpace: 'nowrap' },
+    },
+  },
+  {
+    group: 'Text',
     utilities: '`hyphens-auto`, `hyphens-manual`, `hyphens-none`',
     maps: '`hyphenate`',
     notes: 'The `hyphenate` prop on `Text` does the same. Soft hyphens (U+00AD) always work.',
@@ -738,6 +750,7 @@ export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
   { example: 'overline', why: '`overline` and `underline-offset-*`.' },
   { example: 'whitespace-break-spaces', why: '`break-spaces`.' },
   { example: 'text-ellipsis', why: '`text-overflow` alone; use `truncate` or `line-clamp-N`.' },
+  { example: 'text-balance', why: '`text-wrap: balance`; `text-pretty` evens lines.' },
   { example: 'object-scale-down', why: '`object-fit: scale-down`.' },
   { example: 'object-[right_1rem_top]', why: '`object-position` with edge offsets.' },
   { example: 'not-a-class', why: 'Classes Tailwind does not know.' },

@@ -301,6 +301,23 @@ describe('renderToBuffer', () => {
     expect(Buffer.compare(tnum, plain)).not.toBe(0);
   });
 
+  it('breaks the lines of a page with textWrap pretty over each paragraph', async () => {
+    const words =
+      'In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself was astonished.';
+    const doc = (wrap: 'wrap' | 'pretty') => (
+      <Document>
+        <Page style={{ padding: 40, textWrap: wrap }}>
+          <View style={{ width: 150 }}>
+            <Text>{words}</Text>
+          </View>
+        </Page>
+      </Document>
+    );
+    const wrap = await renderToBuffer(doc('wrap'));
+    const pretty = await renderToBuffer(doc('pretty'));
+    expect(Buffer.compare(pretty, wrap)).not.toBe(0);
+  });
+
   it('names the component when the structure is wrong', async () => {
     const Broken = () => (
       <Document>

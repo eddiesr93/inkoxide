@@ -911,3 +911,34 @@ fn superscripts_and_subscripts_are_painted_off_the_baseline() {
         .unwrap();
     assert!(underline.y > ys[1] && underline.y < ys[0], "{underline:?}");
 }
+
+#[test]
+fn justified_pretty_lines_are_painted_within_their_box() {
+    let prose = "In olden times when wishing still helped one, there lived a king whose \
+        daughters were all beautiful, but the youngest was so beautiful that the sun itself, \
+        which has seen so much, was astonished whenever it shone in her face.";
+    let json = |wrap: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"margin":{{"left":20,"right":20}},"children":[
+              {{"type":"text","style":{{"textAlign":"justify","textWrap":"{wrap}"}},
+                "runs":[{{"text":"{prose}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        )
+    };
+    for wrap in ["wrap", "pretty"] {
+        let lines = painted_lines(&json(wrap));
+        assert!(lines[0].len() > 4, "{wrap}");
+        let n = lines[0].len();
+        for (k, &(_, x0, x1)) in lines[0].iter().enumerate() {
+            assert!(x0 >= 20.0 - 1e-3, "{wrap} {k}: {x0}");
+            // Justified lines but the last end at the right edge, the
+            // spaces of some shrunk to get there.
+            if k + 1 < n {
+                assert!((x1 - (W - 20.0)).abs() < 0.5, "{wrap} {k}: {x1}");
+            } else {
+                assert!(x1 <= W - 20.0, "{wrap} {k}: {x1}");
+            }
+        }
+    }
+    assert_ne!(painted_lines(&json("wrap")), painted_lines(&json("pretty")));
+}
