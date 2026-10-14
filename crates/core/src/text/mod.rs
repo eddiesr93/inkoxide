@@ -13,6 +13,7 @@ mod lines;
 mod optimal;
 mod paint;
 mod prepare;
+mod svg;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
 use std::collections::{BTreeMap, HashMap};
@@ -22,6 +23,8 @@ use std::sync::Arc;
 use rayon::prelude::*;
 
 pub(crate) use paint::{PageNumbers, TextPainter};
+pub(crate) use svg::SvgGlyph;
+pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};
 
 use crate::fonts::{FontKey, FontSet};
 use crate::layout::{AvailableSpace, LeafMeasure, LineBoxes, Size, Wrapped};
@@ -668,6 +671,11 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             .entry(node_key(node))
             .or_insert_with(|| Entry::shape(shaper, node, runs, lang));
         (entry, self.shaper.fonts())
+    }
+
+    /// The shaper, for text laid out outside paragraphs (SVG text).
+    pub fn shaper(&mut self) -> &mut S {
+        &mut self.shaper
     }
 
     /// The lines of text node `node` at `width`, cached.

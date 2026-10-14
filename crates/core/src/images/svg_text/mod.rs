@@ -1,0 +1,138 @@
+//! Text in SVG images, before fonts: what each `<text>` element says, read
+//! once per SVG and cached with it.
+//!
+//! `usvg` is built without its text support, so it converts nothing of a
+//! `<text>`. This module reads text elements from the XML instead: the
+//! cascade of the text properties (fonts, spacing, anchors, baselines,
+//! decorations), the characters after `xml:space` processing, their
+//! positions, and the paint declared on each span. Laying the characters
+//! out needs the render's fonts (`text/svg.rs`); the result replaces each
+//! element with a placeholder path `usvg` converts like any other.
+//!
+//! Only `simplecss` and `svgtypes` read CSS and values here, the same
+//! versions `usvg` uses, so selectors and values behave as they do there.
+
+mod extract;
+mod rewrite;
+#[cfg(test)]
+mod survival;
+
+use std::ops::Range;
+
+pub(crate) use extract::{escape, extract, TextError, DEFAULT_FONT_SIZE};
+pub(crate) use rewrite::{rewrite, Probes};
+
+/// The text elements of one SVG document.
+#[derive(Debug, Default)]
+pub(crate) struct SvgTextDoc {
+    pub texts: Vec<SvgText>,
+}
+
+/// One `<text>` element, ready to lay out.
+#[derive(Debug, Clone)]
+pub(crate) struct SvgText {
+    /// The element's bytes in the source.
+    pub range: Range<usize>,
+    /// Attributes the placeholder keeps (`id`, and those a `switch`
+    /// tests), XML-escaped, each with a leading space.
+    pub attrs: String,
+    /// Declarations of the element's own effects for the placeholder's
+    /// `style` (`transform`, `opacity`, `clip-path`, `mask`, `filter`,
+    /// `display`, …), with their initial values where it declares none,
+    /// each followed by `;`.
+    pub effects: String,
+    /// Inside a `clipPath`, where the placeholder holds paths only.
+    pub in_clip: bool,
+    /// The characters after white space processing, in logical order.
+    pub chars: Vec<SvgChar>,
+    /// The elements that hold characters directly.
+    pub spans: Vec<SvgSpan>,
+    /// The paint declarations of each distinct span style (see
+    /// [`SvgSpan::paint`]), each followed by `;`.
+    pub paints: Vec<String>,
+    /// `textLength` on the text and its spans, innermost first.
+    pub adjust: Vec<LengthAdjust>,
+    /// `direction: rtl` on the text element.
+    pub rtl: bool,
+}
+
+/// A character and where it goes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SvgChar {
+    pub c: char,
+    /// Index in [`SvgText::spans`].
+    pub span: u32,
+    /// Absolute positions; either one starts a new chunk.
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    /// Shifts relative to where the character would be.
+    pub dx: f32,
+    pub dy: f32,
+    /// Degrees, clockwise.
+    pub rotate: f32,
+    /// In a span that is not displayed (`display: none`): it takes a
+    /// position from the lists but is not drawn.
+    pub hidden: bool,
+}
+
+/// The resolved text properties of an element that holds characters.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SvgSpan {
+    /// `font-family`, in order of preference.
+    pub families: Vec<String>,
+    pub weight: u16,
+    pub italic: bool,
+    /// Font size in user units; a span whose size is not finite and
+    /// positive is not drawn.
+    pub size: f32,
+    pub letter_spacing: f32,
+    pub word_spacing: f32,
+    pub anchor: Anchor,
+    /// `alignment-baseline` when set, `dominant-baseline` otherwise.
+    pub baseline: Baseline,
+    /// `baseline-shift` of the span and the spans around it inside the
+    /// text, innermost first.
+    pub shift: Vec<Shift>,
+    pub underline: bool,
+    pub overline: bool,
+    pub line_through: bool,
+    /// Index in [`SvgText::paints`].
+    pub paint: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Anchor {
+    Start,
+    Middle,
+    End,
+}
+
+/// A baseline the text's position is on, as `usvg` synthesises it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Baseline {
+    Alphabetic,
+    Middle,
+    Central,
+    Hanging,
+    Mathematical,
+    TextBeforeEdge,
+    TextAfterEdge,
+    Ideographic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Shift {
+    Sub,
+    Super,
+    /// User units, up.
+    Length(f32),
+}
+
+/// `textLength` over a range of characters.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LengthAdjust {
+    pub chars: Range<usize>,
+    pub length: f32,
+    /// `lengthAdjust="spacingAndGlyphs"`: glyphs are stretched too.
+    pub glyphs: bool,
+}

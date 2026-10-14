@@ -446,7 +446,23 @@ fn rejects_corrupt_and_unknown_images() {
             ("INVALID_IMAGE", "pages[0].children[3].data"),
         ]
     );
-    assert!(e[3].message.contains("<text>"), "{}", e[3].message);
+    // SVG text needs a font to be drawn with.
+    assert!(
+        e[3].message.contains("declares no fonts"),
+        "{}",
+        e[3].message
+    );
+    let with_font = doc.replace(
+        r#""fonts":[]"#,
+        r#""fonts":[{"id":"Inter-Regular","family":"Inter"}]"#,
+    );
+    let e = validate(
+        with_font.as_bytes(),
+        InputFormat::Json,
+        &crate::test_fixtures::inter(),
+        &ImageStore::new(),
+    );
+    assert_eq!(e.len(), 3, "{e:?}");
 }
 
 #[test]
@@ -1557,6 +1573,15 @@ fn images_1b() -> ImageStore {
         "veil",
         &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" opacity="0.5"/></svg>"#[..],
     );
+    // Text is painted like a shape: its fill opacity is transparency.
+    images.insert(
+        "faint",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text y="8">a<tspan fill-opacity="0.5">b</tspan></text></svg>"#[..],
+    );
+    images.insert(
+        "opaque-text",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text y="8" fill="red">ab</text></svg>"#[..],
+    );
     images
 }
 
@@ -1625,6 +1650,11 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
             "image `veil` (group opacity)",
         ),
         (
+            r#"{"type":"image","src":"faint"}"#.into(),
+            "children[0].src",
+            "image `faint` (fill or stroke opacity)",
+        ),
+        (
             r#"{"type":"box","backgroundImage":{"src":"logo"},"style":{"width":10,"height":10}}"#
                 .into(),
             "children[0].backgroundImage.src",
@@ -1668,6 +1698,7 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
         r#"{"type":"box","style":{"backgroundColor":[0,0,0,0]}}"#,
         r#"{"type":"box","style":{"opacity":0},"children":[{"type":"image","src":"photo"}]}"#,
         r#"{"type":"image","src":"photo"}"#,
+        r#"{"type":"image","src":"opaque-text"}"#,
         r#"{"type":"box","backgroundImage":{"src":"photo"},"style":{"width":10,"height":10}}"#,
         r#"{"type":"field","field":{"name":"a","kind":"checkbox","color":[0,0,0,0.5]}}"#,
     ] {

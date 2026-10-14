@@ -5,8 +5,6 @@ or should come sooner.
 
 ## Next: engine features
 
-- **Text in `<Svg>`**: `<Text>` and `<Tspan>` inside `<Svg>`, and `<text>` in SVG files.
-- **`<Canvas>`**: text in the painter (`text`, `font` and `fontSize`).
 - **Inline images** inside `Text`.
 - **Colour emoji**, from an emoji font or from images.
 
@@ -17,3 +15,4 @@ or should come sooner.
 - **File attachments**.
 - **Layout**: `@media` styles for the page size.
 - **Variable fonts**, through a static instance chosen per weight.
+- **SVG text**: text on a path (`<textPath>`) and vertical text.

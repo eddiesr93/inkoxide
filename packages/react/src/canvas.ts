@@ -56,6 +56,68 @@ function gradientMarkup(g: CanvasGradient, id: string): string {
 
 type Paint = string | CanvasGradient;
 
+/** A font as the painter asks for it: a family stack, a weight and a style. */
+export interface PainterFont {
+  family: readonly string[];
+  weight: number;
+  style: 'normal' | 'italic';
+}
+
+/** What the painter's text needs from the tree builder. */
+export interface PainterFonts {
+  /** The text style around the canvas: the font until `font()` sets one. */
+  font: PainterFont;
+  /** The face of registered font id `id`, if it is one. */
+  byId(id: string): PainterFont | undefined;
+  /** The registered face a font resolves to, which the document then declares. */
+  face(font: PainterFont): PainterFont;
+}
+
+/** Options of `painter.text`. */
+export interface CanvasTextOptions {
+  /** With `align`, the width the line is aligned in, from `x`. */
+  width?: number;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  /** Which line of the text is at `y`: `top` (default), `middle`, `bottom`, `alphabetic`, `hanging`. */
+  baseline?: 'top' | 'middle' | 'bottom' | 'alphabetic' | 'hanging';
+  /** Extra space after each character, in points. */
+  characterSpacing?: number;
+  /** Extra space after each space, in points. */
+  wordSpacing?: number;
+  underline?: boolean;
+  strike?: boolean;
+  /** Fill the text with the fill colour (default true). */
+  fill?: boolean;
+  /** Stroke the text with the stroke colour and line style (default false). */
+  stroke?: boolean;
+}
+
+/** pdfkit's standard font names: the canvas's family, with their weight and style. */
+const STANDARD_FONTS: Readonly<Record<string, [number, 'normal' | 'italic']>> = {
+  Helvetica: [400, 'normal'],
+  'Helvetica-Bold': [700, 'normal'],
+  'Helvetica-Oblique': [400, 'italic'],
+  'Helvetica-BoldOblique': [700, 'italic'],
+  'Times-Roman': [400, 'normal'],
+  'Times-Bold': [700, 'normal'],
+  'Times-Italic': [400, 'italic'],
+  'Times-BoldItalic': [700, 'italic'],
+  Courier: [400, 'normal'],
+  'Courier-Bold': [700, 'normal'],
+  'Courier-Oblique': [400, 'italic'],
+  'Courier-BoldOblique': [700, 'italic'],
+  Symbol: [400, 'normal'],
+  ZapfDingbats: [400, 'normal'],
+};
+
+const BASELINES: Readonly<Record<NonNullable<CanvasTextOptions['baseline']>, string>> = {
+  top: 'text-before-edge',
+  middle: 'middle',
+  bottom: 'text-after-edge',
+  alphabetic: 'alphabetic',
+  hanging: 'hanging',
+};
+
 interface State {
   fill: Paint;
   stroke: Paint;
@@ -67,6 +129,9 @@ interface State {
   lineJoin: 'miter' | 'round' | 'bevel';
   miterLimit: number;
   dash: number[] | undefined;
+  /** Set by `font()`; the canvas's text style until then. */
+  font: PainterFont | undefined;
+  fontSize: number;
 }
 
 const INITIAL: State = {
@@ -81,9 +146,15 @@ const INITIAL: State = {
   // PDF's default, as in pdfkit; SVG's is 4.
   miterLimit: 10,
   dash: undefined,
+  font: undefined,
+  // pdfkit's default.
+  fontSize: 12,
 };
 
 export class Painter {
+  /** @internal The tree builder makes the painter. */
+  constructor(private readonly fonts?: PainterFonts) {}
+
   private d = '';
   private state: State = { ...INITIAL };
   private readonly stack: Array<{ state: State; groups: number }> = [];
@@ -326,11 +397,19 @@ export class Painter {
 
   private emit(fill: boolean, stroke: boolean, rule: 'nonzero' | 'evenodd'): this {
     if (this.d === '') return this;
+    const a = `<path d="${escapeXml(this.d)}"${this.paintAttrs(fill, stroke, rule)}`;
+    this.out += `${a}/>`;
+    this.d = '';
+    return this;
+  }
+
+  /** The fill, stroke and opacity attributes of what is painted next, in the current state. */
+  private paintAttrs(fill: boolean, stroke: boolean, rule: 'nonzero' | 'evenodd'): string {
     const s = this.state;
-    // Gradients are written before the path that uses them.
+    // Gradients are written before the shape that uses them.
     const fillPaint = fill ? this.paint(s.fill) : 'none';
     const strokePaint = stroke ? this.paint(s.stroke) : '';
-    let a = `<path d="${escapeXml(this.d)}" fill="${fillPaint}"`;
+    let a = ` fill="${fillPaint}"`;
     if (fill && s.fillOpacity !== 1) a += ` fill-opacity="${fmt(s.fillOpacity)}"`;
     if (fill && rule === 'evenodd') a += ' fill-rule="evenodd"';
     if (stroke) {
@@ -342,8 +421,65 @@ export class Painter {
       if (s.dash) a += ` stroke-dasharray="${s.dash.map(fmt).join(' ')}"`;
     }
     if (s.opacity !== 1) a += ` opacity="${fmt(s.opacity)}"`;
-    this.out += `${a}/>`;
-    this.d = '';
+    return a;
+  }
+
+  // Text ----------------------------------------------------------------------------------------
+
+  /**
+   * The font of the text after it: a registered font id (`Inter-Bold`), a family name, or one of
+   * pdfkit's standard names (`Helvetica-Bold`), which pick the canvas's family in their weight
+   * and style. Optionally the size too.
+   */
+  font(name: string, size?: number): this {
+    const standard = STANDARD_FONTS[name];
+    const around = this.fonts?.font.family ?? [];
+    this.state.font =
+      this.fonts?.byId(name) ??
+      (standard
+        ? { family: [name.split('-')[0] ?? name, ...around], weight: standard[0], style: standard[1] }
+        : { family: [name], weight: 400, style: 'normal' });
+    if (size !== undefined) this.state.fontSize = size;
+    return this;
+  }
+
+  fontSize(size: number): this {
+    this.state.fontSize = size;
+    return this;
+  }
+
+  /**
+   * Draws one line of text at (`x`, `y`), its top there by default (`baseline`), with the fill
+   * colour (or gradient) and, with `stroke`, the stroke. There is no wrapping: a line break is an
+   * error.
+   */
+  text(text: string, x: number, y: number, opts: CanvasTextOptions = {}): this {
+    if (/[\r\n]/.test(text)) {
+      throw new Error('painter.text draws one line; call it once per line.');
+    }
+    if (!this.fonts) throw new Error('painter.text needs the fonts of a <Canvas>.');
+    const s = this.state;
+    const face = this.fonts.face(s.font ?? this.fonts.font);
+    const width = opts.width ?? 0;
+    const [at, anchor] =
+      opts.align === 'center'
+        ? [x + width / 2, 'middle']
+        : opts.align === 'right'
+          ? [x + width, 'end']
+          : [x, 'start'];
+    const family = `'${(face.family[0] ?? '').replace(/['\\]/g, (c) => `\\${c}`)}'`;
+    let a = `<text x="${fmt(at)}" y="${fmt(y)}" xml:space="preserve" font-family="${escapeXml(family)}"`;
+    a += ` font-weight="${face.weight}"`;
+    if (face.style === 'italic') a += ' font-style="italic"';
+    a += ` font-size="${fmt(s.fontSize)}"`;
+    if (anchor !== 'start') a += ` text-anchor="${anchor}"`;
+    a += ` dominant-baseline="${BASELINES[opts.baseline ?? 'top']}"`;
+    if (opts.characterSpacing) a += ` letter-spacing="${fmt(opts.characterSpacing)}"`;
+    if (opts.wordSpacing) a += ` word-spacing="${fmt(opts.wordSpacing)}"`;
+    const lines = [opts.underline && 'underline', opts.strike && 'line-through'].filter(Boolean);
+    if (lines.length > 0) a += ` text-decoration="${lines.join(' ')}"`;
+    a += this.paintAttrs(opts.fill !== false, opts.stroke === true, 'nonzero');
+    this.out += `${a}>${escapeXml(text)}</text>`;
     return this;
   }
 

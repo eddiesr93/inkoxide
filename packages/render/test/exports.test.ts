@@ -56,6 +56,7 @@ const MAIN_VALUES = [
   'TextField',
   'TextInput',
   'TotalPages',
+  'Tspan',
   'View',
   'countPages',
   'engineStatus',
@@ -73,6 +74,7 @@ const MAIN_TYPES = [
   'BreakProp',
   'CanvasGradient',
   'CanvasProps',
+  'CanvasTextOptions',
   'CellProps',
   'CheckboxProps',
   'CircleProps',
@@ -131,10 +133,12 @@ const MAIN_TYPES = [
   'StyleProp',
   'SvgPresentation',
   'SvgProps',
+  'SvgTextProps',
   'TableProps',
   'TextFieldProps',
   'TextFormat',
   'TextProps',
+  'TspanProps',
   'ViewProps',
 ];
 

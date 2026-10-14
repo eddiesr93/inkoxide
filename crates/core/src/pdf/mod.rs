@@ -330,6 +330,21 @@ impl PdfSink for PdfWriterSink {
                 .or_default()
                 .extend(crate::forms::edit_glyphs(font));
         }
+        // The glyphs of SVG text laid out for the images painted: every
+        // text, drawn or not, so a superset of what the forms show.
+        let painted: BTreeSet<ImageKey> =
+            doc.pages.iter().flat_map(|p| &p.images).copied().collect();
+        for &key in &painted {
+            if let crate::images::ImageBody::Svg {
+                probed: Some(probed),
+                ..
+            } = &doc.images.get(key).body
+            {
+                for g in probed.texts.iter().flat_map(|t| &t.glyphs) {
+                    used.entry(g.font).or_default().insert(g.id);
+                }
+            }
+        }
         // Subsetting and compression are independent per font.
         let program = |(key, glyphs): (&FontKey, &BTreeSet<u16>)| {
             font::program(doc.fonts.get(*key), glyphs, self.subset_fonts)
@@ -359,12 +374,17 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in &mut image_refs {
+            let fonts = svg::TextFonts {
+                fonts: doc.fonts,
+                refs: &font_refs,
+            };
             *r = image::write_image(
                 &mut pdf,
                 &mut alloc,
                 &mut out,
                 doc.images.get(*key),
                 self.profile,
+                Some(fonts),
             )?;
         }
 

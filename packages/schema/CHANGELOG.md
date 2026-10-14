@@ -48,6 +48,11 @@ Still document schema version 1.
   `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
   at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
   `bookmark`, and no space in the layout.
+- SVG images may contain text (`<text>`, `<tspan>`). It is laid out with the document's fonts:
+  `FontDecl.family`, `weight` and `style`, which were descriptive until now, are what its
+  `font-family`, `font-weight` and `font-style` select a declared font by. A document whose SVG
+  images have text must declare a font; one that declares none fails with `INVALID_IMAGE`.
+  Documents with SVG images without text render as before.
 
 ### Changed
 

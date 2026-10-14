@@ -66,10 +66,15 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
         "chart",
         include_bytes!("../../fixtures/images/chart.svg").to_vec(),
     );
+    s.insert(
+        "svgtext",
+        include_bytes!("../../fixtures/images/text.svg").to_vec(),
+    );
     s.insert("bad", b"\x89PNG\r\n\x1a\nnot really".to_vec());
     s.insert(
         "badsvg",
-        b"<svg xmlns='http://www.w3.org/2000/svg'><text>hi</text></svg>".to_vec(),
+        b"<svg xmlns='http://www.w3.org/2000/svg'><text><textPath>hi</textPath></text></svg>"
+            .to_vec(),
     );
     s
 });
@@ -105,6 +110,14 @@ pub fn check(doc: &[u8]) {
             Err(e) => panic!("MessagePack rejected a document JSON renders: {e}"),
         }
     }
+}
+
+/// The `fonts` of a document that declares every fixture font.
+fn fixture_fonts() -> Vec<Value> {
+    FIXTURE_FONTS
+        .iter()
+        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
+        .collect()
 }
 
 /// Renders `doc` encrypted: it must render exactly when `plain`, its
@@ -155,7 +168,8 @@ fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Op
 }
 
 /// Renders arbitrary bytes registered as an image (SVG or raster), drawn
-/// twice at different sizes; same oracle as [`check`].
+/// twice at different sizes, in a document that declares the fixture
+/// fonts (SVG text is laid out with them); same oracle as [`check`].
 ///
 /// # Errors
 ///
@@ -163,11 +177,17 @@ fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Op
 pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
     let mut images = ImageStore::new();
     images.insert("fz", bytes.to_vec());
-    let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
-        {"type":"image","src":"fz"},
-        {"type":"image","src":"fz","fit":"cover","style":{"width":40,"height":90}}]}]}"#;
+    let doc = json!({
+        "version": 1,
+        "fonts": fixture_fonts(),
+        "pages": [{"size": {"width": 300, "height": 400}, "children": [
+            {"type": "image", "src": "fz"},
+            {"type": "image", "src": "fz", "fit": "cover", "style": {"width": 40, "height": 90}}
+        ]}]
+    })
+    .to_string();
     render_with(
-        doc,
+        doc.as_bytes(),
         InputFormat::Json,
         &FONTS,
         &images,
@@ -1716,7 +1736,7 @@ fn image_props(s: &mut Src, m: &mut Map<String, Value>) {
             json!(if s.chaos {
                 s.pick(&["bad", "badsvg", "missing"])
             } else {
-                s.pick(&["logo", "palette", "photo", "chart"])
+                s.pick(&["logo", "palette", "photo", "chart", "svgtext"])
             }),
         );
     }
@@ -1803,10 +1823,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             json!(s.pick(&["2026-01-01T00:00:00Z", "2026-13-40T99:00:00Z", "bad"])),
         );
     }
-    let fonts: Vec<Value> = FIXTURE_FONTS
-        .iter()
-        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
-        .collect();
+    let fonts = fixture_fonts();
     let doc = json!({
         "version": 1,
         "meta": meta,
@@ -1871,6 +1888,8 @@ mod tests {
         };
         assert!(e.message.contains("unsupported image format"), "{e}");
         assert!(check_image(include_bytes!("../../fixtures/images/logo.png")).is_ok());
+        // SVG text is laid out with the fixture fonts.
+        assert!(check_image(include_bytes!("../../fixtures/images/text.svg")).is_ok());
     }
 
     /// The generator reaches the newer parts of the schema with documents
@@ -1911,6 +1930,7 @@ mod tests {
             r#""float":"left""#,
             r#""clear":""#,
             r#""backgroundImage":{"#,
+            r#""src":"svgtext""#,
         ];
         let mut seen = vec![false; features.len()];
         let mut valid = 0;

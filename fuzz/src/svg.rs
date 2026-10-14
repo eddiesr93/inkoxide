@@ -1,10 +1,12 @@
 //! Structure-aware SVG generator for `render_svg_tree`: the bytes pick
 //! elements, attributes and references from what `usvg` expands (`use`,
 //! markers, patterns, gradients, clip paths, masks, filters, style sheets,
-//! entities and nested SVG images), so most inputs exercise the complexity
-//! limits instead of failing to parse.
+//! entities and nested SVG images), and text with what Inkoxide lays out
+//! (position lists, fonts, anchors, baselines, `textLength`), so most
+//! inputs exercise the complexity limits instead of failing to parse.
 
 use std::fmt::Write as _;
+use std::sync::LazyLock;
 
 use super::Src;
 
@@ -78,6 +80,10 @@ fn element(s: &mut Src, g: &mut Gen, depth: usize) {
         4 => "linearGradient",
         5 => "radialGradient",
         6 => "filter",
+        7 if s.chance(128) => {
+            text(s, g);
+            return;
+        }
         _ => s.pick(CONTAINERS),
     };
     let _ = write!(g.out, "<{tag}");
@@ -115,6 +121,141 @@ fn element(s: &mut Src, g: &mut Gen, depth: usize) {
         }
     }
     let _ = write!(g.out, "</{tag}>");
+}
+
+/// A `<text>` with strings, spans and links, and the properties text
+/// layout reads.
+fn text(s: &mut Src, g: &mut Gen) {
+    g.out.push_str("<text");
+    attributes(s, g, "text");
+    text_attributes(s, &mut g.out);
+    g.out.push('>');
+    for _ in 0..=s.below(4) {
+        match s.below(5) {
+            0 | 1 => g.out.push_str(words(s)),
+            2 | 3 => {
+                let tag = s.pick(&["tspan", "tspan", "a"]);
+                let _ = write!(g.out, "<{tag}");
+                attributes(s, g, tag);
+                text_attributes(s, &mut g.out);
+                let _ = write!(g.out, ">{}</{tag}>", words(s));
+            }
+            _ if s.chaos => g.out.push_str(s.pick(&[
+                "<textPath href=\"#a\">on a path</textPath>",
+                "<tspan writing-mode=\"tb\">down</tspan>",
+                "<tref href=\"#a\"/>",
+            ])),
+            _ => g.out.push_str("&#x5D0;&#x627; 12"),
+        }
+    }
+    g.out.push_str("</text>");
+}
+
+/// 500 words.
+static LONG: LazyLock<String> = LazyLock::new(|| "word ".repeat(500));
+
+fn words(s: &mut Src) -> &'static str {
+    s.pick(&[
+        "Hello",
+        " spaced  out ",
+        "ffi fl",
+        "שלום",
+        "مرحبا",
+        "1.25",
+        "\u{E000}x",
+        LONG.as_str(),
+    ])
+}
+
+/// Text attributes, each at most once.
+fn text_attributes(s: &mut Src, out: &mut String) {
+    let mut seen: Vec<&str> = Vec::new();
+    for _ in 0..s.below(6) {
+        let (name, value) = match s.below(14) {
+            0 => ("x", lengths(s)),
+            1 => ("y", lengths(s)),
+            2 => ("dx", lengths(s)),
+            3 => ("dy", lengths(s)),
+            4 => ("rotate", lengths(s)),
+            5 => (
+                "font-family",
+                s.pick(&[
+                    "Inter",
+                    "'Noto Sans', serif",
+                    "roboto mono",
+                    "Missing",
+                    "monospace",
+                ])
+                .into(),
+            ),
+            6 => (
+                "font-size",
+                s.pick(&["12", "0", "-3", "200%", "2em", "1e30", "x-large", "inherit"])
+                    .into(),
+            ),
+            7 => (
+                "font-weight",
+                s.pick(&["bold", "300", "bolder", "1000"]).into(),
+            ),
+            8 => ("text-anchor", s.pick(&["start", "middle", "end"]).into()),
+            9 => (
+                "dominant-baseline",
+                s.pick(&[
+                    "middle",
+                    "central",
+                    "hanging",
+                    "text-before-edge",
+                    "no-change",
+                ])
+                .into(),
+            ),
+            10 => (
+                "baseline-shift",
+                s.pick(&["super", "sub", "30%", "-4"]).into(),
+            ),
+            11 => (
+                "textLength",
+                s.pick(&["100", "0", "1e7", "-5", "50%"]).into(),
+            ),
+            12 => (
+                "style",
+                s.pick(&[
+                    "letter-spacing:3px;word-spacing:1em",
+                    "font:italic bold 20px Inter",
+                    "text-decoration:underline line-through overline",
+                    "direction:rtl",
+                    "paint-order:stroke;stroke:red",
+                ])
+                .into(),
+            ),
+            _ => (
+                "lengthAdjust",
+                s.pick(&["spacing", "spacingAndGlyphs"]).into(),
+            ),
+        };
+        if !seen.contains(&name) {
+            seen.push(name);
+            let _ = write!(out, r#" {name}="{value}""#);
+        }
+    }
+    if s.chance(30) {
+        out.push_str(r#" xml:space="preserve""#);
+    }
+}
+
+/// A list of lengths, sometimes long or huge.
+fn lengths(s: &mut Src) -> String {
+    let n = 1 + s.below(6) * if s.chance(20) { 500 } else { 1 };
+    (0..n)
+        .map(|_| {
+            if s.chance(20) {
+                "50%".into()
+            } else {
+                number(s)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn leaf(s: &mut Src, g: &mut Gen, tag: &str) {
@@ -285,7 +426,15 @@ fn paint(s: &mut Src) -> String {
 }
 
 fn color(s: &mut Src) -> &'static str {
-    s.pick(&["red", "#00f", "none", "currentColor", "rgba(0,0,0,0.5)"])
+    s.pick(&[
+        "red",
+        "#00f",
+        "none",
+        "currentColor",
+        "rgba(0,0,0,0.5)",
+        "context-fill",
+        "context-stroke",
+    ])
 }
 
 fn number(s: &mut Src) -> String {
@@ -385,7 +534,11 @@ fn style_sheet(s: &mut Src, out: &mut String) {
         let mut selectors = Vec::new();
         for _ in 0..=s.below(3) {
             let parts: Vec<&str> = (0..=(s.below(4) * if s.chance(20) { 8 } else { 1 }))
-                .map(|_| s.pick(&["*", "g", "path", ".c", "#a", "rect", "svg"]))
+                .map(|_| {
+                    s.pick(&[
+                        "*", "g", "path", ".c", "#a", "rect", "svg", "text", "tspan", "a",
+                    ])
+                })
                 .collect();
             let joiner = s.pick(&[" ", " > ", " ~ ", " + "]);
             selectors.push(parts.join(joiner));

@@ -1,0 +1,69 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "SVG text",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "Inter-Italic",
+   "family": "Inter",
+   "style": "italic"
+  },
+  {
+   "id": "NotoSansHebrew-Regular",
+   "family": "Noto Sans Hebrew"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "SVG text: anchors, baselines, spans, decorations, spacing, textLength, gradients, rotation, use, clipping and right to left",
+       "font": "Inter-Regular",
+       "size": 13,
+       "color": [
+        0,
+        0,
+        0,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "src": "text",
+     "style": {
+      "width": 480,
+      "margin": {
+       "top": 12
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

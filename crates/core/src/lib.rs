@@ -383,7 +383,10 @@ fn render_inner(
     };
     let shaper = RustybuzzShaper::new(&font_set)?.with_hyphenator(&hyphenator);
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
-    let image_set = images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
+    let mut image_set =
+        images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
+    // SVG text is shaped with the document's text, before layout.
+    image_set.lay_out_text(text.shaper())?;
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,

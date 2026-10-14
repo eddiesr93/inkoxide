@@ -50,7 +50,10 @@ subsetting on):
 Times vary by about ±10% between runs on a shared machine.
 
 **Micro-benchmarks.** `cargo bench -p inkoxide --bench render` runs the criterion
-benchmarks in `crates/core/benches/render.rs`.
+benchmarks in `crates/core/benches/render.rs`, one per fixture. `render/svg-text` renders an
+SVG with 15 texts: each render lays the text out with its fonts, and reuses the SVG converted
+with that layout from an earlier render. On an Apple M4 Pro it takes about 0.8 ms, against
+0.6 ms for `render/svg`, a page of SVG images without text.
 
 ## Where the time goes
 

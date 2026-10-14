@@ -144,6 +144,8 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
         "pages[0].children[1].children[11].children[0].children[0].children[1].style.opacity",
     ),
     ("svg", "pages[0].children[1].src"),
+    // Text in a clip path is a soft mask.
+    ("svg-text", "pages[0].children[1].src"),
     (
         "text-super-sub-features",
         "pages[0].children[6].children[1].debug",

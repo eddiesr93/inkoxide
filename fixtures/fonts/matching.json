@@ -98,6 +98,16 @@
     "family": "F",
     "weight": 800
    }
+  ],
+  "accents": [
+   {
+    "id": "Other",
+    "family": "Other"
+   },
+   {
+    "id": "Ecole",
+    "family": "école"
+   }
   ]
  },
  "cases": [
@@ -180,7 +190,7 @@
    "exact": false
   },
   {
-   "name": "families match by exact name",
+   "name": "families match ignoring ASCII case",
    "faces": "inter",
    "families": [
     "inter"
@@ -188,6 +198,40 @@
    "weight": 400,
    "style": "normal",
    "id": "Inter-Regular",
+   "exact": true
+  },
+  {
+   "name": "a family in another case, bold",
+   "faces": "inter",
+   "families": [
+    "INTER"
+   ],
+   "weight": 700,
+   "style": "normal",
+   "id": "Inter-Bold",
+   "exact": true
+  },
+  {
+   "name": "a family stack in another case",
+   "faces": "inter",
+   "families": [
+    "Missing",
+    "roboto MONO"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Mono",
+   "exact": false
+  },
+  {
+   "name": "only ASCII letters fold",
+   "faces": "accents",
+   "families": [
+    "École"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "id": "Other",
    "exact": false
   },
   {

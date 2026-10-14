@@ -42,7 +42,6 @@ pub(crate) struct FontMetrics {
     pub strikeout_position: f32,
     pub strikeout_thickness: f32,
     /// Height of lowercase letters (OS/2 `sxHeight`, else the top of `x`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text baselines, next"))]
     pub x_height: f32,
     /// How far subscripts sit below the baseline (OS/2 `ySubscriptYOffset`).
     pub subscript_offset: f32,
@@ -397,7 +396,6 @@ impl LoadedFont<'_> {
 
     /// The box of glyph `gid`'s outline, `[x_min, y_min, x_max, y_max]` in
     /// font units with y up; `None` for a glyph with no outline (a space).
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text ink boxes, next"))]
     pub fn glyph_bbox(&self, gid: u16) -> Option<[f32; 4]> {
         let b = self.face.glyph_bounding_box(ttf_parser::GlyphId(gid))?;
         Some([
@@ -411,7 +409,6 @@ impl LoadedFont<'_> {
 
 /// The face [`FontSet::select`] picked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
 pub(crate) struct FontMatch {
     pub key: FontKey,
     /// The family, style and weight are the ones asked for; otherwise one of
@@ -422,11 +419,10 @@ pub(crate) struct FontMatch {
 /// CSS font matching (CSS Fonts 4 §5.2) over `faces`, the family, weight
 /// and style of each face in order: the first family of `families` that
 /// has a face (else the first face's family), then the faces of `style`
-/// (else every face of the family), then the nearest weight. Families
-/// match by exact name. The same algorithm as `FontRegistry` in
+/// (else every face of the family), then the nearest weight. Family names
+/// match ignoring ASCII case, as in CSS. The same algorithm as `FontRegistry` in
 /// `@inkoxide/react`; `fixtures/fonts/matching.json` holds the cases both
 /// are tested with. Returns the index of the face, and whether it is exact.
-#[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
 fn match_face(
     faces: &[(&str, u16, FontStyle)],
     families: &[&str],
@@ -436,9 +432,9 @@ fn match_face(
     let first = faces.first()?;
     let (family, family_exact) = families
         .iter()
-        .position(|f| faces.iter().any(|x| x.0 == *f))
+        .position(|f| faces.iter().any(|x| x.0.eq_ignore_ascii_case(f)))
         .map_or((first.0, false), |i| (families[i], i == 0));
-    let in_family = || (0..faces.len()).filter(|&i| faces[i].0 == family);
+    let in_family = || (0..faces.len()).filter(|&i| faces[i].0.eq_ignore_ascii_case(family));
     let same_style: Vec<usize> = in_family().filter(|&i| faces[i].2 == style).collect();
     let style_exact = !same_style.is_empty();
     let pool = if style_exact {
@@ -457,7 +453,6 @@ fn match_face(
 /// heavier; above 500 the heavier, then the lighter. Of equal weights, the
 /// first in `pool` wins when exact or heavier, and the last when lighter,
 /// as in `FontRegistry`.
-#[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
 fn nearest_weight(pool: &[usize], weight_of: impl Fn(usize) -> u16, w: u16) -> Option<usize> {
     if let Some(&exact) = pool.iter().find(|&&i| weight_of(i) == w) {
         return Some(exact);
@@ -485,7 +480,6 @@ pub(crate) struct FontSet<'a> {
     by_id: BTreeMap<&'a str, FontKey>,
     pub fallbacks: Vec<FontKey>,
     /// The declarations, by key: family, weight and style for `select`.
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
     decls: &'a [FontDecl],
 }
 
@@ -527,7 +521,6 @@ impl<'a> FontSet<'a> {
     /// The declared font CSS matching picks for `families` (in order of
     /// preference), `weight` and `style`, by the family, weight and style
     /// the document declares for each font; `None` when it declares none.
-    #[cfg_attr(not(test), expect(dead_code, reason = "for SVG text, next"))]
     pub fn select(&self, families: &[&str], weight: u16, style: FontStyle) -> Option<FontMatch> {
         let faces: Vec<_> = self
             .decls
