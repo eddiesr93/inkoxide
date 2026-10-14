@@ -12,7 +12,6 @@ or should come sooner.
 - **Colour emoji**, from an emoji font or from images.
 - **Forms**: list boxes, field groups and number or date formats.
 - **Text annotations** (`<Note>`).
-- **Floats**: elements floated left or right, with text wrapping around them.
 - **More PDF/A levels**: PDF/A-1b and PDF/A-3b.
 
 ## Later

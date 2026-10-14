@@ -84,6 +84,15 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   (with `maxLines`). `objectFit` on an `Image` or `ImageBackground` is its `fit` prop, which
   wins when both are set. `objectPosition` on them places the image in its box (see
   [Images](#images)). Both throw on other elements.
+- **Floats.** `float: 'left'` or `'right'` (`float-left`, `float-right`) on a child of a column
+  `View`, a `Page` or a `Cell` puts it at that side, as narrow as its content unless it has a
+  width, at or below where it comes in the flow. Text after it wraps beside it line by line; a
+  box after it is narrowed to the room beside it, or moves below it when its content does not
+  fit there. `clear: 'left'`, `'right'` or `'both'` moves an element below the floats before
+  it, and a parent is as tall as its floats. A float moves to the next page with the lines
+  beside it. Floats are rectangles (`shapeOutside` is not supported), do not float inside rows
+  or grids, and a box with floats lays its children out top to bottom: `flexGrow`,
+  `flexBasis`, `justifyContent` and `alignContent` are errors there.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.

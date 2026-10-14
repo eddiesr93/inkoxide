@@ -199,6 +199,12 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
 - `gridArea` cannot be combined with `gridRow` or `gridColumn`
   (`INVALID_VALUE`), and `gridTemplateAreas` has at most 10000 cells
   (`OUT_OF_RANGE`).
+- `float` applies to the children of a column box, not with `position:
+  absolute` nor with a forced break (`INVALID_VALUE`), and not to table
+  cells (`STYLE_NOT_APPLICABLE`); a box holds at most 1000 floated
+  children (`OUT_OF_RANGE`). A box with floats takes no `justifyContent`
+  or `alignContent`, and its children no `flexGrow` or `flexBasis`
+  (`STYLE_NOT_APPLICABLE`).
 - `transform`, `transformOrigin` and `zIndex` do not apply to table
   cells (`STYLE_NOT_APPLICABLE`).
 

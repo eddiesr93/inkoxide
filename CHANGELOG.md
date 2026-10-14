@@ -9,6 +9,13 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- Floats: `float: 'left' | 'right'` and `clear: 'left' | 'right' | 'both'` (Tailwind
+  `float-left`, `float-right`, `clear-*`) on the children of a column `View`, a `Page` or a
+  `Cell`. Text after a float wraps beside it, line by line; a box after it is narrowed to the
+  room beside it, or moved below it; the parent grows to hold its floats; and a float moves to
+  the next page with the lines beside it. A float taller than a page is sliced. `debug` on a
+  paragraph beside a float shows its narrower line boxes.
+
 - `textWrap: 'pretty'` (Tailwind `text-pretty`) breaks a paragraph's lines over the whole
   paragraph for even lines (Knuth and Plass's total fit), with fewer hyphens; justified
   `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the

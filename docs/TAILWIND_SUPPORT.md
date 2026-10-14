@@ -23,6 +23,7 @@ that are supported and tested; each example is a unit test.
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
 | `flex`, `grid`, `hidden` | `display` | `flex` → `{"display":"flex"}` | `View` is already `flex` + column. `block`, `inline` and `contents` are not supported. |
+| `float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none` | `float`, `clear` | `float-left` → `{"float":"left"}` | In a column parent (not a row, a grid or a cell): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported. |
 | `overflow-hidden`, `overflow-visible`, `overflow-clip` | `overflow` | `overflow-hidden` → `{"overflow":"hidden"}` |  |
 | `align-top`, `align-middle`, `align-bottom` | `verticalAlign` (on `Cell`) | `align-top` → `{"verticalAlign":"top"}` |  |
 
@@ -140,6 +141,8 @@ that are supported and tested; each example is a unit test.
 | `overline` | `overline` and `underline-offset-*`. |
 | `whitespace-break-spaces` | `break-spaces`. |
 | `text-ellipsis` | `text-overflow` alone; use `truncate` or `line-clamp-N`. |
+| `float-start` | `float-start` and `float-end`: boxes have no direction; use `float-left` or `float-right`. |
+| `clear-end` | `clear-start` and `clear-end`; use `clear-left`, `clear-right` or `clear-both`. |
 | `text-balance` | `text-wrap: balance`; `text-pretty` evens lines. |
 | `object-scale-down` | `object-fit: scale-down`. |
 | `object-[right_1rem_top]` | `object-position` with edge offsets. |

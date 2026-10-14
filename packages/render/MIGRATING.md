@@ -24,6 +24,7 @@ over by changing the import. This page lists what has another name, and what is 
 | Paragraphs broken over their whole length (Knuth–Plass) | `textWrap: 'pretty'` (`text-pretty`), on a `Text`, or a `Page` for all its text | Opt in: lines break first fit by default, so a paragraph can wrap differently until you set it |
 | `fontFeatureSettings: ['tnum']` or `{ tnum: 1, liga: false }` | The same, or a CSS string (`"'tnum' 1"`); `fontVariantNumeric` and Tailwind's `tabular-nums` too | Works as is |
 | `debug` on `Page`, `View`, `Text` or `Image` | The same, on any element with a box, and on `Document` for every page; see [Debugging layout](GUIDE.md#debugging-layout) | Works: draws margin, border, padding and content boxes with the size in points, and the lines and runs of a `Text` |
+| `float: 'left'`, `clear: 'both'` | The same, or `float-left` and `clear-both`, on children of a column `View` (or a `Page` or `Cell`) | Works, as in CSS: text after a float wraps beside it, and a box after it is narrowed to the room beside it, or moves below it when that is too narrow. Boxes and their parent never overlap a float, and the parent grows to hold its floats. A float in a row, or with `position: 'absolute'`, throws; in a box with floats, `flexGrow`, `flexBasis`, `justifyContent` and `alignContent` throw |
 | `<ImageBackground src style>` | The same, with `fit` (or `objectFit`) and `objectPosition` placing the image; see [Images](GUIDE.md#images) | Works. The image fills the padding box, inside the borders, not the content box, and is clipped to it with `borderRadius`. `source`, `imageStyle` and `srcSet` throw: pass `src`, and place the image with `fit` and `objectPosition` |
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
@@ -36,7 +37,7 @@ over by changing the import. This page lists what has another name, and what is 
   - `Image` inside `Text`.
   - `Font.registerEmojiSource`: there are no colour emoji yet.
   - `hyphenationPenalty` on `Text`.
-- **Layout:** `float`, `clear` and `shapeOutside`.
+- **Layout:** `shapeOutside`: floats are rectangles.
 - **Forms:** `<List>`, `<FieldSet>`, and `format` on a text field.
 - **Annotations:** `<Note>`.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.

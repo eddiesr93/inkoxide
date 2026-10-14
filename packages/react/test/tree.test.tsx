@@ -374,6 +374,36 @@ describe('textWrap', () => {
   });
 });
 
+describe('floats', () => {
+  it('passes float and clear to the box, from style and classes', () => {
+    const r = render(
+      <View>
+        <Image src="logo" style={{ float: 'left', width: 40 }} />
+        <View className="float-right w-10" />
+        <Text style={{ clear: 'both' }}>after</Text>
+      </View>,
+    );
+    const kids = (first<BoxNode>(r).children ?? []) as BoxNode[];
+    expect(kids.map((k) => [k.style?.float, k.style?.clear])).toEqual([
+      ['left', undefined],
+      ['right', undefined],
+      [undefined, 'both'],
+    ]);
+  });
+
+  it('rejects other values, and float on a run', () => {
+    expect(() => render(<View style={{ float: 'start' as 'left' }} />)).toThrow(/float: start/);
+    expect(() => render(<View className="float-start" />)).toThrow(/float-start/);
+    expect(() =>
+      render(
+        <Text>
+          a<Text style={{ float: 'left' }}>b</Text>
+        </Text>,
+      ),
+    ).toThrow(/inline run: only text styles apply, not "float"/);
+  });
+});
+
 describe('placeholders', () => {
   it('emits pageNumber and totalPages runs inside Text', () => {
     const r = render(

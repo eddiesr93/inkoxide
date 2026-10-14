@@ -318,6 +318,23 @@ describe('renderToBuffer', () => {
     expect(Buffer.compare(pretty, wrap)).not.toBe(0);
   });
 
+  it('wraps text around a float', async () => {
+    const doc = (float: 'left' | 'none') => (
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <View style={{ float, width: 80, height: 60, backgroundColor: '#ddd' }} />
+          <Text>
+            In olden times when wishing still helped one, there lived a king whose daughters were all
+            beautiful, but the youngest was so beautiful that the sun itself was astonished.
+          </Text>
+        </Page>
+      </Document>
+    );
+    const floated = await renderToBuffer(doc('left'));
+    expect(countPages(floated)).toBe(1);
+    expect(Buffer.compare(floated, await renderToBuffer(doc('none')))).not.toBe(0);
+  });
+
   it('names the component when the structure is wrong', async () => {
     const Broken = () => (
       <Document>

@@ -65,6 +65,8 @@ export const ENUMS = {
   justifySelf: ['auto', 'flex-start', 'flex-end', 'center', 'baseline', 'stretch', 'start', 'end'],
   position: ['relative', 'absolute'],
   overflow: ['visible', 'hidden'],
+  float: ['left', 'right', 'none'],
+  clear: ['left', 'right', 'both', 'none'],
   borderStyle: BORDER_STYLES,
   gridAutoFlow: ['row', 'column', 'row dense', 'column dense'],
   whiteSpace: ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],

@@ -551,6 +551,8 @@ const BOX_PROPS: &[&str] = &[
     "margin",
     "position",
     "inset",
+    "float",
+    "clear",
     "gridTemplateColumns",
     "gridTemplateRows",
     "gridAutoFlow",
@@ -651,6 +653,8 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "gridAutoFlow" => e(s, &["row", "column", "row dense", "column dense"]),
         "gridColumn" | "gridRow" => placement(s),
         "overflow" => e(s, &["visible", "hidden"]),
+        "float" => e(s, &["left", "right", "none"]),
+        "clear" => e(s, &["left", "right", "both", "none"]),
         "backgroundColor" => color(s),
         "opacity" => json!(s.below(5) as f64 / 4.0),
         "borderWidth" => edges(s, nonneg),
@@ -918,6 +922,80 @@ fn font_features(s: &mut Src) -> Value {
     Value::Object(m)
 }
 
+/// Makes box `m` a float container: a column, with floats among its
+/// `kids` and text after them to wrap, and no `flexGrow` or `flexBasis`
+/// on its children (chaos keeps some, and some row parents).
+fn floats(
+    s: &mut Src,
+    m: &mut Map<String, Value>,
+    kids: &mut Vec<Value>,
+    depth: usize,
+    budget: &mut usize,
+) {
+    if !s.chaos {
+        if let Some(Value::Object(st)) = m.get_mut("style") {
+            for k in [
+                "display",
+                "flexDirection",
+                "flexWrap",
+                "justifyContent",
+                "alignContent",
+            ] {
+                st.remove(k);
+            }
+        }
+        for k in kids.iter_mut() {
+            if let Some(Value::Object(st)) = k.get_mut("style") {
+                st.remove("flexGrow");
+                st.remove("flexBasis");
+            }
+        }
+    }
+    let n = if s.chaos && s.chance(4) {
+        40
+    } else {
+        1 + s.below(3)
+    };
+    for _ in 0..n {
+        let mut f = node(s, depth + 1, budget);
+        if let Value::Object(fm) = &mut f {
+            if fm.get("type").and_then(Value::as_str) == Some("pageBreak") {
+                continue;
+            }
+            if !s.chaos {
+                fm.remove("break");
+            }
+            let st = fm
+                .entry("style")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Value::Object(st) = st {
+                if !s.chaos {
+                    st.remove("position");
+                    st.remove("flexGrow");
+                    st.remove("flexBasis");
+                }
+                st.insert("float".into(), json!(s.pick(&["left", "right"])));
+                if s.chance(128) {
+                    st.insert("width".into(), json!(10 + s.below(200)));
+                }
+                if s.chance(128) {
+                    st.insert("height".into(), json!(5 + s.below(150)));
+                }
+            }
+        }
+        let at = s.below(kids.len() + 1);
+        kids.insert(at, f);
+    }
+    let words = (0..=s.below(60))
+        .map(|_| text(s))
+        .collect::<Vec<_>>()
+        .join(" ");
+    kids.push(json!({"type": "text", "runs": [{"text": words, "font": "Inter-Regular", "size": 6 + s.below(14)}]}));
+    if s.chance(64) {
+        kids.push(json!({"type": "box", "style": {"clear": s.pick(&["left", "right", "both"]), "height": 10}}));
+    }
+}
+
 /// A form field: names mostly unique, radio buttons in two groups.
 fn field(s: &mut Src) -> Value {
     let mut m = Map::new();
@@ -1150,6 +1228,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
                     }
                 }
             }
+            if s.chance(40) {
+                floats(s, &mut m, &mut kids, depth, budget);
+            }
             m.insert("children".into(), Value::Array(kids));
         }
         "text" => {
@@ -1335,6 +1416,8 @@ mod tests {
             r#""verticalAlign":"super""#,
             r#""fontFeatures":{""#,
             r#""textWrap":"pretty""#,
+            r#""float":"left""#,
+            r#""clear":""#,
             r#""backgroundImage":{"#,
         ];
         let mut seen = vec![false; features.len()];

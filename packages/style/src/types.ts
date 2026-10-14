@@ -99,6 +99,10 @@ export interface FlatStyle {
   gridColumn?: GridPlacement;
   gridRow?: GridPlacement;
   overflow?: Style['overflow'];
+  /** Floats the element to a side of its column parent; text after it wraps beside it. */
+  float?: Style['float'];
+  /** Moves the element below the floats before it on these sides. */
+  clear?: Style['clear'];
   backgroundColor?: ColorValue;
   opacity?: number;
   borderTopWidth?: number;
