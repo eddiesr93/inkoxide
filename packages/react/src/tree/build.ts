@@ -6,9 +6,11 @@ import type {
   Color,
   ColumnSpec,
   Document,
+  FieldFormat,
   FieldNode,
   ImageNode,
   Meta,
+  NoteNode,
   PageFilter,
   PageSpec,
   Node as SchemaNode,
@@ -36,6 +38,7 @@ import {
   type Permissions,
   type RenderProp,
   type Style as StyleInput,
+  type TextFormat,
 } from '../components/index.ts';
 import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
@@ -58,6 +61,7 @@ import {
   hasInherited,
   inherit,
   resolveColor,
+  runAlignOf,
   type TextCtx,
   textNodeStyle,
   styleFontSize,
@@ -164,6 +168,21 @@ function blockOnly(props: Record<string, unknown>, key: (typeof BLOCK_ONLY)[numb
 
 const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
 
+/** A run's OpenType features: `fontVariantNumeric`'s, then `fontFeatureSettings`, which win. */
+function fontFeatures(ctx: TextCtx): Record<string, number> | undefined {
+  const { fontVariantNumeric: numeric, fontFeatureSettings: settings } = ctx;
+  if (!numeric && !settings) return undefined;
+  const out = { ...numeric, ...settings };
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sameFeatures(a: TextRun['fontFeatures'], b: TextRun['fontFeatures']): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
 function sameColor(a: Color | undefined, b: Color | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -222,6 +241,8 @@ class Builder {
   private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
+  /** The names of the `<FieldSet>`s being built, each followed by `.`: `address.`. */
+  private fieldPrefix = '';
   /** The style of each element's `className`, to tell which keys came from it. */
   private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
@@ -732,6 +753,10 @@ class Builder {
       case HOST.ImageBackground:
       case HOST.Link:
         return this.box(inst, ctx);
+      case HOST.FieldSet:
+        return this.fieldSet(inst, ctx);
+      case HOST.Note:
+        return this.note(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
       case HOST.Field:
@@ -780,7 +805,12 @@ class Builder {
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
     if (inst.type === HOST.ImageBackground) node.backgroundImage = this.backgroundImage(inst, own);
-    if (inst.type === HOST.View || inst.type === HOST.ImageBackground || inst.type === HOST.Link) {
+    if (
+      inst.type === HOST.View ||
+      inst.type === HOST.ImageBackground ||
+      inst.type === HOST.Link ||
+      inst.type === HOST.FieldSet
+    ) {
       this.flowProps(node, inst);
     } else {
       // <Header> and <Footer>.
@@ -801,6 +831,7 @@ class Builder {
     const own = this.styleOf(inst, parent);
     const p = inst.props;
     const ctx = inherit(parent, own, {
+      verticalAlign: runAlignOf(own),
       lang: p.lang as string | undefined,
       hyphenate: p.hyphenate as boolean | undefined,
       hyphenation: p.hyphenationCallback as HyphenationCallback | null | undefined,
@@ -862,7 +893,11 @@ class Builder {
             );
           }
           const own = this.styleOf(n, ctx);
-          const bad = [...boxKeys(own), ...textOnlyKeys(own)];
+          // `verticalAlign` places the run: only a cell's values are box keys.
+          const align = runAlignOf(own);
+          const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter(
+            (k) => k !== 'verticalAlign' || align === undefined,
+          );
           if (bad[0] !== undefined) {
             const { fromClass, init } = this.source(n, own, bad[0]);
             this.fail(
@@ -876,12 +911,14 @@ class Builder {
           const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
           const inner =
             hasInherited(own) ||
+            align !== undefined ||
             href !== undefined ||
             n.props.lang !== undefined ||
             n.props.hyphenate !== undefined ||
             n.props.hyphenationCallback !== undefined
               ? inherit(ctx, own, {
                   link: href,
+                  verticalAlign: align,
                   lang: n.props.lang as string | undefined,
                   hyphenate: n.props.hyphenate as boolean | undefined,
                   hyphenation: n.props.hyphenationCallback as HyphenationCallback | null | undefined,
@@ -916,6 +953,8 @@ class Builder {
     const decoColor = decoration ? ctx.decorationColor : undefined;
     const decoThickness = decoration ? ctx.decorationThickness : undefined;
     const decoStyle = decoration && ctx.decorationStyle !== 'solid' ? ctx.decorationStyle : undefined;
+    const verticalAlign = ctx.verticalAlign === 'baseline' ? undefined : ctx.verticalAlign;
+    const features = fontFeatures(ctx);
     const last = out[out.length - 1];
     if (
       text !== undefined &&
@@ -930,7 +969,9 @@ class Builder {
       last.decorationThickness === decoThickness &&
       last.decorationStyle === decoStyle &&
       last.link === ctx.link &&
-      last.hyphenate === hyphenate
+      last.hyphenate === hyphenate &&
+      last.verticalAlign === verticalAlign &&
+      sameFeatures(last.fontFeatures, features)
     ) {
       last.text += text;
       return;
@@ -944,6 +985,8 @@ class Builder {
     if (decoStyle) run.decorationStyle = decoStyle;
     if (ctx.link !== undefined) run.link = ctx.link;
     if (hyphenate !== undefined) run.hyphenate = hyphenate;
+    if (verticalAlign !== undefined) run.verticalAlign = verticalAlign;
+    if (features !== undefined) run.fontFeatures = features;
     out.push(this.mark(run, owner));
   }
 
@@ -1008,6 +1051,14 @@ class Builder {
     commonProps(cell, inst);
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
+    if (runAlignOf(own) !== undefined) {
+      const { fromClass, init } = this.source(inst, own, 'verticalAlign');
+      this.fail(
+        inst,
+        `<Cell>: verticalAlign "${own.verticalAlign}" (from ${fromClass ? `className="${init.className}"` : 'its style'}) places text on its line; a Cell takes top, middle or bottom.`,
+        init,
+      );
+    }
     let style: Style | undefined = boxStyle(own, ctx.color, true);
     if (typeof p.verticalAlign === 'string')
       style = { ...style, verticalAlign: p.verticalAlign as Style['verticalAlign'] };
@@ -1065,13 +1116,14 @@ class Builder {
     if (typeof p.name !== 'string' || p.name === '') {
       this.fail(inst, '<Field> needs a name.', { kind: 'props' });
     }
-    const field: FieldNode['field'] = { name: p.name, kind: p.kind };
+    const field: FieldNode['field'] = { name: this.fieldPrefix + p.name, kind: p.kind };
     switch (p.kind) {
       case 'text':
         if (p.value !== undefined) field.value = p.value;
         if (p.multiline) field.multiline = true;
         if (p.password) field.password = true;
         if (p.maxLength !== undefined) field.maxLength = p.maxLength;
+        if (p.format !== undefined) field.format = this.textFormat(inst, p.format);
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
@@ -1081,13 +1133,23 @@ class Builder {
         if (p.checked) field.checked = true;
         break;
       case 'select':
-        field.options = p.options as [string, ...string[]];
+        field.options = (p.options ?? p.select) as [string, ...string[]];
+        if (p.value !== undefined) field.value = p.value;
+        break;
+      case 'list':
+        field.options = (p.options ?? p.select) as [string, ...string[]];
+        if (p.multiSelect) field.multiSelect = true;
+        if (Array.isArray(p.value) && !p.multiSelect) {
+          this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
+            kind: 'props',
+          });
+        }
         if (p.value !== undefined) field.value = p.value;
         break;
       default:
         this.fail(
           inst,
-          `<Field kind="${String((p as { kind: unknown }).kind)}">: use text, checkbox, radio or select.`,
+          `<Field kind="${String((p as { kind: unknown }).kind)}">: use text, checkbox, radio, select or list.`,
           {
             kind: 'props',
           },
@@ -1095,7 +1157,7 @@ class Builder {
     }
     if (p.readOnly) field.readOnly = true;
     if (p.required) field.required = true;
-    if (p.kind === 'text' || p.kind === 'select') field.font = this.font(ctx, inst);
+    if (p.kind === 'text' || p.kind === 'select' || p.kind === 'list') field.font = this.font(ctx, inst);
     if (ctx.fontSize !== 10) field.size = ctx.fontSize;
     if (!sameColor(ctx.color, [0, 0, 0, 1])) field.color = ctx.color;
     const node: FieldNode = { type: 'field', field };
@@ -1103,6 +1165,64 @@ class Builder {
     if (style) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  /** A `<Note>`: its text children are its contents, and its background colour its colour. */
+  private note(inst: Instance, ctx: TextCtx): NoteNode {
+    const own = this.styleOf(inst, ctx);
+    this.noTextOnly(inst, own);
+    const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
+    if (contents === '') {
+      this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });
+    }
+    const p = inst.props;
+    const note: NoteNode['note'] = { contents };
+    if (typeof p.author === 'string') note.author = p.author;
+    if (p.open) note.open = true;
+    const node: NoteNode = { type: 'note', note };
+    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
+    if (backgroundColor) note.color = backgroundColor;
+    if (Object.keys(style).length > 0) node.style = style;
+    this.flowProps(node, inst);
+    return this.mark(node, inst);
+  }
+
+  /** A `TextField`'s format, from its readable keys or their other names. */
+  private textFormat(inst: Instance, f: TextFormat): FieldFormat {
+    if (typeof f !== 'object' || f === null || Array.isArray(f)) {
+      this.fail(inst, "<TextField format> is an object, as format={{ type: 'number', decimals: 2 }}.", {
+        kind: 'props',
+      });
+    }
+    const out: FieldFormat = { type: f.type };
+    const decimals = f.decimals ?? f.nDec;
+    if (decimals !== undefined) out.decimals = decimals;
+    const separators =
+      f.separators ?? (f.sepComma === undefined ? undefined : f.sepComma ? '1,234.56' : '1234.56');
+    if (separators !== undefined) out.separators = separators;
+    const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
+    if (negative !== undefined) out.negative = negative;
+    if (f.currency !== undefined) out.currency = f.currency;
+    const before = f.currencyBefore ?? f.currencyPrepend;
+    if (before !== undefined) out.currencyBefore = before;
+    const pattern = f.pattern ?? f.param;
+    if (pattern !== undefined) out.pattern = pattern;
+    return out;
+  }
+
+  /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
+  private fieldSet(inst: Instance, ctx: TextCtx): SchemaNode {
+    const name = inst.props.name;
+    if (typeof name !== 'string' || name === '') {
+      this.fail(inst, '<FieldSet> needs a name: the group its fields are in.', { kind: 'props' });
+    }
+    const outer = this.fieldPrefix;
+    this.fieldPrefix = `${outer}${name}.`;
+    try {
+      return this.box(inst, ctx);
+    } finally {
+      this.fieldPrefix = outer;
+    }
   }
 
   /** `<Svg>` and `<Canvas>`: an SVG image of the drawing, sized by `width` and `height`. */
@@ -1165,6 +1285,14 @@ class Builder {
     return this.mark(stackVariants(all), inst);
   }
 }
+
+/** The negative styles by their other names (`negStyle`). */
+const NEGATIVE: Record<string, FieldFormat['negative']> = {
+  MinusBlack: 'minus',
+  Red: 'red',
+  ParensBlack: 'parens',
+  ParensRed: 'parensRed',
+};
 
 /** Builds the schema document from rendered host instances. */
 export function buildTree(container: Container, opts: BuildOptions): BuildResult {

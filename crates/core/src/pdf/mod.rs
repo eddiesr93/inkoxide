@@ -4,6 +4,7 @@ pub(crate) mod crypt;
 mod font;
 mod forms;
 mod image;
+mod notes;
 mod out;
 mod pdfa;
 mod svg;
@@ -55,6 +56,8 @@ pub(crate) struct EncodedPage {
     pub links: Vec<(Rect, Box<str>)>,
     /// Form field widgets.
     pub fields: Vec<crate::forms::FieldOp>,
+    /// Text notes, at the corner the transform in effect puts them.
+    pub notes: Vec<crate::notes::NoteOp>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -189,6 +192,7 @@ impl PdfSink for PdfWriterSink {
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
         let mut fields = Vec::new();
+        let mut notes = Vec::new();
         // Links and widgets are areas on the page: they cover where the
         // transform in effect puts them.
         let mut ctm: Option<[f32; 6]> = None;
@@ -228,6 +232,18 @@ impl PdfSink for PdfWriterSink {
                     f.ctm = ctm;
                     fields.push(f);
                 }
+                // An icon stays upright and the same size: only its corner
+                // moves.
+                Op::Note(n) => {
+                    let mut n = (**n).clone();
+                    if let Some(m) = ctm {
+                        (n.x, n.y) = (
+                            m[0] * n.x + m[2] * n.y + m[4],
+                            m[1] * n.x + m[3] * n.y + m[5],
+                        );
+                    }
+                    notes.push(n);
+                }
                 _ => {}
             }
         }
@@ -246,6 +262,7 @@ impl PdfSink for PdfWriterSink {
             images,
             links,
             fields,
+            notes,
         })
     }
 
@@ -371,6 +388,14 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
+        notes::write_notes(
+            &mut pdf,
+            &mut alloc,
+            &mut out,
+            (doc.pages, &page_refs),
+            &mut annots,
+            self.profile,
+        )?;
         let fields = forms::Ctx {
             pages: doc.pages,
             page_refs: &page_refs,
@@ -982,7 +1007,7 @@ pub(crate) fn content_stream(
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) => {}
+            Op::Link { .. } | Op::Field(_) | Op::Note(_) => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
@@ -1482,10 +1507,15 @@ mod tests {
 mod pdf_a_1_tests {
     use crate::{FontStore, ImageStore, InputFormat, PdfALevel, RenderOptions};
 
-    /// Renders a 300 × 300 pt page holding `children` at `level`.
-    fn render(children: &str, level: PdfALevel) -> Result<Vec<u8>, crate::InkoxideError> {
+    /// Renders a 300 × 300 pt page holding `children`, with `meta`, at
+    /// `level`.
+    fn render(
+        children: &str,
+        meta: &str,
+        level: PdfALevel,
+    ) -> Result<Vec<u8>, crate::InkoxideError> {
         let doc = format!(
-            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            r#"{{"version":1,"meta":{{{meta}}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
                "pages":[{{"size":{{"width":300,"height":300}},"children":[{children}]}}]}}"#
         );
         let fonts: FontStore = crate::test_fixtures::inter();
@@ -1505,38 +1535,36 @@ mod pdf_a_1_tests {
             let open = r#"{"type":"box","style":{"overflow":"hidden"},"children":["#.repeat(n);
             format!("{open}{}", "]}".repeat(n))
         };
-        let options: Vec<String> = (0..8192).map(|i| format!(r#""{i}""#)).collect();
+        let title = format!(r#""title":"{}""#, "a".repeat(70_000));
+        // A word of 4200 letters, each spaced: a `TJ` array of an entry
+        // per letter and per adjustment.
+        let spaced = format!(
+            r#"{{"type":"text","style":{{"whiteSpace":"nowrap"}},"runs":[{{"text":"{}","font":"Inter-Regular","size":2,"letterSpacing":1}}]}}"#,
+            "x".repeat(4200)
+        );
         let cases = [
             (
                 r#"{"type":"box","style":{"width":10,"height":10,"transform":[{"translate":[40000.5,0]}]}}"#.to_string(),
+                "",
                 "a real number past ±32767",
             ),
-            (nested(30), "graphics states nested more than 28 deep"),
-            (
-                format!(
-                    r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","value":"{}"}}}}"#,
-                    "a".repeat(70_000)
-                ),
-                "a string longer than 65535 bytes",
-            ),
-            (
-                format!(
-                    r#"{{"type":"field","field":{{"name":"s","kind":"select","font":"Inter-Regular","options":[{}]}}}}"#,
-                    options.join(",")
-                ),
-                "an array of more than 8191 entries",
-            ),
+            (nested(30), "", "graphics states nested more than 28 deep"),
+            (String::new(), title.as_str(), "a string longer than 65535 bytes"),
+            (spaced, "", "an array of more than 8191 entries"),
         ];
-        for (child, what) in cases {
-            let e = render(&child, PdfALevel::A1b).unwrap_err();
+        for (child, meta, what) in cases {
+            let Err(e) = render(&child, meta, PdfALevel::A1b) else {
+                panic!("not refused: {what}");
+            };
             assert_eq!(e.code(), "PDF_ERROR", "{e}");
             assert!(e.to_string().contains(what), "{e}");
-            render(&child, PdfALevel::A2b).unwrap();
+            render(&child, meta, PdfALevel::A2b).unwrap();
         }
         // Within the limits.
-        render(&nested(20), PdfALevel::A1b).unwrap();
+        render(&nested(20), "", PdfALevel::A1b).unwrap();
         render(
             r#"{"type":"box","style":{"width":10,"height":10,"transform":[{"translate":[32000.5,0]}]}}"#,
+            "",
             PdfALevel::A1b,
         )
         .unwrap();

@@ -68,6 +68,7 @@ export const ENUMS = {
   borderStyle: BORDER_STYLES,
   gridAutoFlow: ['row', 'column', 'row dense', 'column dense'],
   whiteSpace: ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],
+  textWrap: ['wrap', 'pretty'],
   decorationStyle: ['solid', 'double', 'dotted', 'dashed', 'wavy'],
   direction: ['ltr', 'rtl'],
   textTransform: ['none', 'uppercase', 'lowercase', 'capitalize'],

@@ -10,7 +10,7 @@ mod shapes;
 
 pub(crate) use boxes::{content_radii, mul, paint_flow, ContentCtx, ContentPainter, FlowPart};
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
-pub(crate) use debug::{DebugBoxes, Labels as DebugLabels};
+pub(crate) use debug::{DebugBoxes, DebugLine, Labels as DebugLabels};
 pub(crate) use shapes::{is_square, polygon, rounded_rect, Radii, KAPPA};
 
 use crate::schema::{Color, Edges};
@@ -122,6 +122,9 @@ pub(crate) enum Op {
     /// annotation with its appearance, transformed like the content
     /// around it).
     Field(Box<crate::forms::FieldOp>),
+    /// A text note (draws nothing here; the writer adds an annotation
+    /// with its icon where the transform in effect puts its corner).
+    Note(Box<crate::notes::NoteOp>),
     /// Starts a span whose text, when the page is copied, searched or read
     /// aloud, is `actual_text` instead of what the span draws (`/Span` with
     /// `/ActualText`). Closed by [`Op::EndSpan`]; spans pair up like

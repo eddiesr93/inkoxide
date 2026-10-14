@@ -1,0 +1,876 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Superscript, subscript and font features",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "NotoSans-Regular",
+   "family": "Noto Sans"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 595
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Superscript, subscript and font features",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 4
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Runs with verticalAlign move their baseline by the font's own offsets; fontFeatures turn OpenType features on and off.",
+       "font": "Inter-Regular",
+       "size": 9,
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 14
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "super",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "E = mc",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "super"
+        },
+        {
+         "text": " and x",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "n+1",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "super"
+        },
+        {
+         "text": " + y",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "super"
+        },
+        {
+         "text": ", the 1",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "st",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "super"
+        },
+        {
+         "text": " of May",
+         "font": "Inter-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "sub",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "H",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "sub"
+        },
+        {
+         "text": "O, CO",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "sub"
+        },
+        {
+         "text": " and a",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "i,j",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "sub"
+        },
+        {
+         "text": " in a matrix",
+         "font": "Inter-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "footnote",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "A claim that needs a source.",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "12",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "super",
+         "color": [
+          0.1,
+          0.3,
+          0.8,
+          1
+         ],
+         "link": "#notes"
+        },
+        {
+         "text": " More text follows on the same line and wraps onto the next one.",
+         "font": "Inter-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "same size",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "x",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 11,
+         "verticalAlign": "super"
+        },
+        {
+         "text": " and H",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 11,
+         "verticalAlign": "sub"
+        },
+        {
+         "text": "O at the text's size",
+         "font": "Inter-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "debug",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Line boxes grow: x",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "super"
+        },
+        {
+         "text": " and H",
+         "font": "Inter-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "Inter-Regular",
+         "size": 7,
+         "verticalAlign": "sub"
+        },
+        {
+         "text": "O, outlined.",
+         "font": "Inter-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       },
+       "debug": true
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "height": 6
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "tnum",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "1111.10\n7420.55",
+         "font": "Inter-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "tnum": 1
+         }
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "proportional",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "1111.10\n7420.55",
+         "font": "Inter-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "zero, ss01",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "0 O 1 l: 10:30",
+         "font": "Inter-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "zero": 1,
+          "ss01": 1
+         }
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "frac",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "1/2 3/4 5/8",
+         "font": "Inter-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "frac": 1
+         }
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "smcp (Noto Sans)",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Small Capitals",
+         "font": "NotoSans-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "smcp": 1
+         }
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "sups (Noto Sans)",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "x",
+         "font": "NotoSans-Regular",
+         "size": 11
+        },
+        {
+         "text": "2",
+         "font": "NotoSans-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "sups": 1
+         }
+        },
+        {
+         "text": " from the font",
+         "font": "NotoSans-Regular",
+         "size": 11
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "liga off (Noto Sans)",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "office ",
+         "font": "NotoSans-Regular",
+         "size": 11
+        },
+        {
+         "text": "office",
+         "font": "NotoSans-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "liga": 0
+         }
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "case",
+         "font": "Inter-Regular",
+         "size": 9,
+         "color": [
+          0.4,
+          0.42,
+          0.48,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 120,
+        "flexShrink": 0
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "(HELLO) [WORLD]",
+         "font": "Inter-Regular",
+         "size": 11,
+         "fontFeatures": {
+          "case": 1
+         }
+        }
+       ],
+       "style": {
+        "flexGrow": 1,
+        "flexShrink": 1
+       }
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "id": "notes",
+     "style": {
+      "margin": {
+       "top": 10
+      }
+     },
+     "runs": [
+      {
+       "text": "12",
+       "font": "Inter-Regular",
+       "size": 6,
+       "verticalAlign": "super",
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      },
+      {
+       "text": " The footnote the mark links to.",
+       "font": "Inter-Regular",
+       "size": 8,
+       "color": [
+        0.4,
+        0.42,
+        0.48,
+        1
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

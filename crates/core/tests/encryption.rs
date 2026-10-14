@@ -157,6 +157,46 @@ fn encrypted_fixtures_decrypt_to_the_plain_render() {
     }
 }
 
+/// Form scripts, field groups, list boxes and notes, which the fixtures
+/// do not all have, decrypt to the plain render too.
+#[test]
+fn encrypted_scripts_groups_lists_and_notes_decrypt_to_the_plain_render() {
+    if !qpdf_available() {
+        return;
+    }
+    let (fonts, images) = stores();
+    let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+        "pages":[{"size":{"width":300,"height":300},"children":[
+          {"type":"field","style":{"height":20},"field":{"name":"order.date","kind":"text","font":"Inter-Regular",
+           "value":"2026-10-14","format":{"type":"date","pattern":"dd mmm yyyy"}}},
+          {"type":"field","style":{"height":20},"field":{"name":"order.total","kind":"text","font":"Inter-Regular",
+           "value":"12.5","format":{"type":"number","currency":"€"}}},
+          {"type":"field","style":{"height":60},"field":{"name":"order.items","kind":"list","font":"Inter-Regular",
+           "multiSelect":true,"options":["Café","Tea","Water"],"value":["Café","Water"]}},
+          {"type":"note","note":{"contents":"Check (this) — Ünïcode","author":"Ana"}}]}]}"#
+        .as_bytes();
+    let out_dir = root().join("target/fixtures-encrypted");
+    fs::create_dir_all(&out_dir).unwrap();
+    let write = |name: &str, options: &RenderOptions| {
+        let pdf = inkoxide::render(doc, InputFormat::Json, options, &fonts, &images)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let path = out_dir.join(format!("{name}.pdf"));
+        fs::write(&path, pdf).unwrap();
+        path
+    };
+    let plain = write("forms-notes.plain", &options(None));
+    let encrypted = write("forms-notes", &options(Some(both())));
+    let plain_text = fs::read(&plain).unwrap();
+    for needle in [&b"/JS"[..], b"/Opt", b"/Contents", b"/I ["] {
+        assert!(
+            plain_text.windows(needle.len()).any(|w| w == needle),
+            "{}",
+            String::from_utf8_lossy(needle)
+        );
+    }
+    assert_eq!(objects(&encrypted, Some(USER)), objects(&plain, None));
+}
+
 #[test]
 fn qpdf_reads_revision_6_permissions_and_passwords() {
     if !qpdf_available() {

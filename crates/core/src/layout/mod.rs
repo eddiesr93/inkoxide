@@ -13,6 +13,7 @@
 #![allow(clippy::needless_range_loop)]
 
 mod fast;
+pub(crate) mod float;
 mod style;
 pub(crate) mod table;
 
@@ -23,6 +24,7 @@ use std::sync::Arc;
 use taffy::prelude::{NodeId as TaffyId, Size as TSize, TaffyTree};
 use taffy::{LayoutInput, LayoutOutput};
 
+pub(crate) use float::LineBoxes;
 pub(crate) use table::TableLayout;
 
 use crate::paint::Rect;

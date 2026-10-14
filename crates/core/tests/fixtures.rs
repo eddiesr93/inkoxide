@@ -121,6 +121,7 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
         "background-image",
         "pages[0].children[2].children[0].children[1].backgroundImage.src",
     ),
+    ("debug-text", "pages[0].children[2].debug"),
     (
         "boxes-nested",
         "pages[0].children[0].children[0].style.backgroundColor",
@@ -142,6 +143,10 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
         "pages[0].children[1].children[11].children[0].children[0].children[1].style.opacity",
     ),
     ("svg", "pages[0].children[1].src"),
+    (
+        "text-super-sub-features",
+        "pages[0].children[6].children[1].debug",
+    ),
 ];
 
 /// Every fixture also renders at every PDF/A level, deterministically,

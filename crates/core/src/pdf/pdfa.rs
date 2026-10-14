@@ -61,6 +61,12 @@ impl Profile {
         (self.level == Some(PdfALevel::A1b)).then_some((1, 4))
     }
 
+    /// Whether the file may carry scripts (form field actions): not under
+    /// PDF/A, at any level.
+    pub fn scripts(self) -> bool {
+        self.level.is_none()
+    }
+
     /// Font subsets list their CIDs in a `CIDSet` (PDF/A-1).
     pub fn cid_set(self) -> bool {
         self.level == Some(PdfALevel::A1b)
