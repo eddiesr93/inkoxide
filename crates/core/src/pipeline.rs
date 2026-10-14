@@ -7,7 +7,8 @@ use rayon::prelude::*;
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
 use crate::layout::{
-    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Part, Size, TaffyLayout, Tree,
+    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, LineBoxes, NodeIdx, Part, Size,
+    TaffyLayout, Tree, Wrapped,
 };
 use crate::paginate::{paginate, Placement};
 use crate::paint::{
@@ -95,6 +96,10 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
             NodeKind::Note(_) => Size::ZERO,
             _ => self.text.measure(node, known, available),
         }
+    }
+
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        self.text.measure_lines(node, boxes)
     }
 }
 
@@ -436,8 +441,7 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                         // stretch of a run on a line: at most one per
                         // segment, plus one per line where a segment wraps
                         // or a hyphen shows.
-                        let width = ln.geo.content_box().w;
-                        if let Some((l, p, _)) = text.paragraph(n, width) {
+                        if let Some((l, p, _)) = text.paragraph(n, &tree.line_boxes(j)) {
                             let shapes = 4 * l.lines.len() + p.segments.len();
                             size = size.saturating_add(shapes as u64 * LINE_SHAPE_BYTES);
                         }
@@ -544,7 +548,7 @@ fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Nod
             continue;
         };
         let content = ln.geo.content_box();
-        let Some(lines) = text.layout(node, content.w) else {
+        let Some(lines) = text.layout_in(node, &tree.line_boxes(i as NodeIdx)) else {
             continue;
         };
         let Some(li) = lines

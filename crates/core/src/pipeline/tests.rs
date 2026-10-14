@@ -1082,3 +1082,63 @@ fn inline_images_are_painted_in_their_line_with_their_alternative_text() {
         .iter()
         .any(|op| matches!(op, Op::Text(t) if t.glyphs.len() == 2)));
 }
+
+#[test]
+fn text_beside_a_float_is_painted_beside_it_and_the_float_over_backgrounds() {
+    let words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+        tempor incididunt ut labore et dolore magna aliqua.";
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+              {{"type":"box","style":{{"float":"left","width":60,"height":30,"backgroundColor":[1,0,0,1]}}}},
+              {{"type":"text","style":{{"backgroundColor":[0,0,1,1]}},
+                "runs":[{{"text":"{words}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+    );
+    let lines = painted_lines(&json);
+    assert!(lines[0].len() > 3);
+    for &(y, x0, _) in &lines[0] {
+        if y < 30.0 {
+            assert!(x0 >= 60.0 - 1e-3, "{y}: {x0}");
+        }
+    }
+    assert!(lines[0].iter().any(|&(y, x0, _)| y > 30.0 && x0 < 1.0));
+    // The float is painted after the paragraph's background.
+    let pages = render_with(&store(), &json, |pages, _, _| pages);
+    let fills: Vec<_> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::FillPath { color, .. } | Op::FillRect { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    let red = fills.iter().position(|c| *c == [1.0, 0.0, 0.0, 1.0]);
+    let blue = fills.iter().position(|c| *c == [0.0, 0.0, 1.0, 1.0]);
+    assert!(blue < red, "{fills:?}");
+}
+
+#[test]
+fn inline_images_beside_a_float_sit_in_its_line_boxes() {
+    let image = r#"{"font":"Inter-Regular","size":10,"image":{"src":"logo","height":12}}"#;
+    let runs = [image; 12].join(r#",{"text":" word ","font":"Inter-Regular","size":10},"#);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+              {{"type":"box","style":{{"float":"left","width":60,"height":30,"backgroundColor":[1,0,0,1]}}}},
+              {{"type":"text","runs":[{runs}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    let mut beside = 0;
+    for op in &pages[0] {
+        if let Op::Image { matrix: m, .. } = op {
+            // [w 0 0 -h x y+h]: the image's top is y.
+            let (x, top) = (m[4], m[5] + m[3]);
+            assert!(x + m[0] <= W + 1e-3, "{m:?}");
+            if top < 30.0 {
+                assert!(x >= 60.0 - 1e-3, "{m:?}");
+                beside += 1;
+            }
+        }
+    }
+    assert!(beside > 0);
+}

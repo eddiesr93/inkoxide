@@ -805,6 +805,17 @@ kebab_enum!(GridAutoFlow {
     ColumnDense = "column dense",
 });
 kebab_enum!(Overflow { Visible = "visible", Hidden = "hidden" });
+kebab_enum!(Float {
+    Left = "left",
+    Right = "right",
+    None = "none",
+});
+kebab_enum!(Clear {
+    Left = "left",
+    Right = "right",
+    Both = "both",
+    None = "none",
+});
 kebab_enum!(BorderStyle { Solid = "solid", Dashed = "dashed", Dotted = "dotted" });
 kebab_enum!(TextAlign {
     Left = "left",
@@ -1022,6 +1033,11 @@ pub struct Style {
     pub justify_items: Option<AlignItems>,
     pub justify_self: Option<AlignSelf>,
     pub overflow: Option<Overflow>,
+    /// Floats the box to a side of its column parent: text beside it wraps,
+    /// boxes beside it are narrowed.
+    pub float: Option<Float>,
+    /// Moves the box below the floats before it on these sides.
+    pub clear: Option<Clear>,
 
     // Visual
     pub background_color: Option<Color>,
@@ -1072,6 +1088,11 @@ pub struct Style {
 }
 
 impl Style {
+    /// The side the box floats to, when it floats.
+    pub fn floats(&self) -> Option<Float> {
+        self.float.filter(|f| *f != Float::None)
+    }
+
     /// Names of text-only properties that are set, for applicability checks.
     pub fn text_props_set(&self) -> impl Iterator<Item = &'static str> + '_ {
         [

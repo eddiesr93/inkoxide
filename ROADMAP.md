@@ -16,3 +16,4 @@ or should come sooner.
 - **File attachments**.
 - **Layout**: `@media` styles for the page size.
 - **Variable fonts**, through a static instance chosen per weight.
+- **SVG text**: text on a path (`<textPath>`) and vertical text.

@@ -154,16 +154,19 @@
           "$ref": "#/$defs/Id"
         },
         "family": {
+          "description": "The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts.",
           "type": "string",
           "minLength": 1
         },
         "weight": {
+          "description": "The weight SVG text's `font-weight` is matched against.",
           "type": "integer",
           "minimum": 1,
           "maximum": 1000,
           "default": 400
         },
         "style": {
+          "description": "The style SVG text's `font-style` is matched against.",
           "enum": [
             "normal",
             "italic"
@@ -848,6 +851,25 @@
             "hidden"
           ],
           "default": "visible"
+        },
+        "float": {
+          "enum": [
+            "left",
+            "right",
+            "none"
+          ],
+          "default": "none",
+          "description": "Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page."
+        },
+        "clear": {
+          "enum": [
+            "left",
+            "right",
+            "both",
+            "none"
+          ],
+          "default": "none",
+          "description": "Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides."
         },
         "backgroundColor": {
           "$ref": "#/$defs/Color"

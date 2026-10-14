@@ -9,6 +9,12 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- Floats: `float: 'left' | 'right'` and `clear: 'left' | 'right' | 'both'` (Tailwind
+  `float-left`, `float-right`, `clear-*`) on the children of a column `View`, a `Page` or a
+  `Cell`. Text after a float wraps beside it, line by line; a box after it is narrowed to the
+  room beside it, or moved below it; the parent grows to hold its floats; and a float moves to
+  the next page with the lines beside it. A float taller than a page is sliced. `debug` on a
+  paragraph beside a float shows its narrower line boxes.
 - Encryption: user and owner passwords and permissions (printing at low or high resolution,
   modifying, copying, annotating, filling forms, content accessibility, document assembly),
   with AES-256 (PDF 2.0, revision 6). `RenderOptions::encryption` with `Encryption`,
@@ -35,7 +41,6 @@ All notable changes to the packages in this repository. The format follows
   `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the
   default, keeps first fit and the same output; `'balance'` is reserved. `text-wrap` maps to
   `wrap` and `text-nowrap` to `whiteSpace: 'nowrap'`.
-
 - Superscripts and subscripts: `verticalAlign: 'super'` or `'sub'` on a `Text` (the Tailwind
   classes `align-super` and `align-sub`) raises or lowers its baseline by the font's own
   superscript and subscript offsets, and the line grows to fit it. `verticalAlign` stays `top`,
@@ -59,6 +64,32 @@ All notable changes to the packages in this repository. The format follows
   `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
   takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
   `miterLimit(n)` sets how far mitred joins reach.
+- **Text in the `<Canvas>` painter**: `font(name, size?)` (a registered font id, a family name,
+  or one of pdfkit's standard names such as `Helvetica-Bold`, which picks the canvas's family in
+  that weight and style), `fontSize(n)` (12 by default) and `text(str, x, y, options?)`, which
+  draws one line with the fill colour or gradient, its top at `y` by default. The options are
+  `width` with `align`, `baseline`, `characterSpacing`, `wordSpacing`, `underline`, `strike`,
+  `fill` and `stroke`; `CanvasTextOptions` is exported. A line break in the text is an error.
+- **Text in SVG images**: `<text>`, its `<tspan>`s and `<a>`s are drawn as PDF text with the
+  document's fonts, so it can be selected, searched and copied, in SVG files and in SVGs nested
+  in them. Each span's font is the declared font that matches its `font-family`, `font-weight`
+  and `font-style` (as CSS matches them), with the document's fallback fonts for characters it
+  lacks. Positions (`x`, `y`, `dx`, `dy`, `rotate`), `text-anchor`, `dominant-baseline`,
+  `alignment-baseline`, `baseline-shift`, `letter-spacing`, `word-spacing`, `text-decoration`,
+  `textLength`, `lengthAdjust`, `xml:space`, style sheets, and fills and strokes with gradients
+  and patterns work, also in clip paths, masks, patterns, markers and `use` copies. Text on a
+  path and vertical text fail with `INVALID_IMAGE`, as all SVG text did. An SVG with text in a
+  document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG may hold up
+  to 1,000,000 characters of text, counting every copy.
+- **`<Text>` and `<Tspan>` in `<Svg>`**: a `Text` inside an `<Svg>` (or its `G`, `Defs`,
+  `ClipPath` or `Marker`) is SVG text, with `x`, `y`, `dx`, `dy`, `rotate`, `textAnchor`,
+  `dominantBaseline`, `letterSpacing`, `wordSpacing`, `textDecoration`, `textLength`,
+  `lengthAdjust` and the SVG paint props; a `Tspan` inside it is a span, which also takes
+  `baselineShift`. Its font comes from `fontFamily`, `fontWeight` and `fontStyle` on it or
+  around it, and from the text style around the drawing, matched against the registered fonts
+  like other text, and declared in the document. `Tspan`, `SvgTextProps` and `TspanProps` are
+  exported; `SvgPresentation` gains the font props, `textAnchor`, `dominantBaseline` and
+  `visibility`.
 - Background images: `<ImageBackground src fit>`, a `View` with an image behind its children,
   and `backgroundImage` on a box node of the document (`src` or `data`, `fit`, `objectPosition`).
   The image fills the padding box, over the background colour and under the borders, clipped to
@@ -72,7 +103,8 @@ All notable changes to the packages in this repository. The format follows
   colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
   field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
   render, draws without colour. Under PDF/A-1b, which forbids transparency, a colour glyph that
-  needs it (alpha, an opacity) draws without colour.
+  needs it (alpha, an opacity) draws without colour. In SVG text, colour fonts are drawn in one
+  colour, from their outlines; a font without outlines draws nothing there.
 - Emoji from images: `Font.registerEmojiSource({ url, format, withVariationSelectors })` or
   `{ builder }` draws the emoji of every `Text` from an image set, through the document's new
   `emojiImages` (emoji sequence → image id). The images load like `<Image src>` (URLs allowed by
@@ -119,6 +151,11 @@ All notable changes to the packages in this repository. The format follows
 - Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
   pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
   mitred instead of bevelled. `miterLimit(4)` gives the old joins.
+- In SVG images, `em` and `ex` lengths and `font-size` keywords are relative to a font size of
+  16 where nothing sets one, as in browsers; it was 12.
+- Font family names match ignoring ASCII case, as in CSS: `fontFamily: 'inter'` picks Inter
+  instead of falling back with a warning. `Font.register` refuses a family that differs from
+  a registered or bundled one only in case, for the same weight and style.
 
 ### Security
 

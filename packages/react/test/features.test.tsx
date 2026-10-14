@@ -53,6 +53,8 @@ import {
   TextField,
   TextInput,
   TotalPages,
+  Tspan,
+  type TspanProps,
   usePage,
   View,
 } from '../src/index.ts';
@@ -1263,7 +1265,7 @@ describe('drawings', () => {
           </Svg>,
         ),
       ).message,
-    ).toContain('Text inside <Svg>');
+    ).toContain('Text inside <Svg> goes in a <Text>');
     expect(thrown(() => tree(<Rect width={1} height={1} />)).message).toContain('goes inside <Svg>');
   });
 
@@ -1336,6 +1338,79 @@ describe('drawings', () => {
         ),
       ).message,
     ).toContain('<Stop>');
+  });
+
+  it('writes Text and Tspan in an Svg as SVG text, with registered faces', () => {
+    const span: TspanProps = { dx: 2, baselineShift: 'super', fontSize: 8, fill: 'red' };
+    const r = tree(
+      <View className="font-[Noto_Sans] text-[11pt]">
+        <Svg width={100} height={40}>
+          <G fontFamily="Missing, Inter">
+            <Text x={[10, 20]} y={30} textAnchor="middle" textLength={50} lengthAdjust="spacingAndGlyphs">
+              a &lt; b {'&'} <Tspan {...span}>2</Tspan>
+              <Tspan fontWeight="bold" fontStyle="italic">
+                c
+              </Tspan>
+            </Text>
+          </G>
+          <Text x={5} y={10}>
+            noto
+          </Text>
+        </Svg>
+      </View>,
+    );
+    const img = first<BoxNode>(r).children?.[0] as ImageNode;
+    const svg = decode(img.data);
+    // The size around the drawing is its text's default.
+    expect(svg).toContain('viewBox="0 0 100 40" font-size="11">');
+    expect(svg).toContain(
+      `<text x="10 20" y="30" text-anchor="middle" textLength="50" lengthAdjust="spacingAndGlyphs" font-family="'Inter'" font-weight="400">a &lt; b &amp; <tspan dx="2" baseline-shift="super" font-size="8" fill="red" font-family="'Inter'" font-weight="400">2</tspan>`,
+    );
+    // Inter has no bold italic: the italic face, the closest it has.
+    expect(svg).toContain(`<tspan font-family="'Inter'" font-weight="400" font-style="italic">c</tspan>`);
+    expect(svg).toContain(`<text x="5" y="10" font-family="'Noto Sans'" font-weight="400">noto</text>`);
+    // Their fonts are declared.
+    expect((r.document.fonts ?? []).map((f) => f.id)).toEqual(
+      expect.arrayContaining(['Inter-Regular', 'Inter-Italic', 'NotoSans-Regular']),
+    );
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('allows only strings and Tspan in SVG text, and Tspan only there', () => {
+    const svg = (children: ReactNode) =>
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            {children}
+          </Svg>,
+        ),
+      ).message;
+    expect(
+      svg(
+        <Text>
+          <Rect width={1} height={1} />
+        </Text>,
+      ),
+    ).toContain('cannot be inside SVG text');
+    expect(
+      svg(
+        <Text>
+          <Text>a</Text>
+        </Text>,
+      ),
+    ).toContain('cannot be inside SVG text');
+    expect(svg(<Tspan>a</Tspan>)).toContain('<Tspan> goes inside a <Text> in an <Svg>');
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <Tspan>a</Tspan>
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<Tspan> goes inside a <Text> in an <Svg>');
+    expect(svg(<Text style={{ color: 'red' }}>a</Text>)).toContain('style applies to <Text> outside <Svg>');
+    expect(svg(<Text fontWeight={'heavyish' as never}>a</Text>)).toContain('fontWeight "heavyish"');
   });
 
   it('keeps the layout props of Svg out of the drawing', () => {
@@ -1425,6 +1500,64 @@ describe('drawings', () => {
         '<path d="M0 0h10v10h-10Z" fill="green"/>' +
         '<clipPath id="ink-c3"></clipPath><g clip-path="url(#ink-c3)"></g></svg>',
     );
+  });
+
+  it('writes Canvas text with the canvas font, registered faces and the text options', () => {
+    const r = tree(
+      <View className="font-[Noto_Sans]">
+        <Canvas
+          width={200}
+          height={100}
+          paint={(p) => {
+            p.text('A  & <b>', 10, 20);
+            const g = p.linearGradient(0, 0, 100, 0).stop(0, 'red').stop(1, 'blue');
+            p.font('Inter-Bold', 20).fillColor(g).text('Total', 10, 40, {
+              width: 100,
+              align: 'right',
+              baseline: 'alphabetic',
+              characterSpacing: 2,
+              wordSpacing: 3,
+              underline: true,
+              strike: true,
+            });
+            p.font('Roboto Mono').fontSize(9).strokeColor('#00f').lineWidth(0.5);
+            p.text('mono', 0, 0, {
+              align: 'center',
+              width: 50,
+              baseline: 'middle',
+              fill: false,
+              stroke: true,
+            });
+            p.font('Helvetica-BoldOblique').text('std', 0, 0);
+          }}
+        />
+      </View>,
+    );
+    const img = (first<BoxNode>(r).children ?? [])[0] as ImageNode;
+    const svg = decode(img.data);
+    // The canvas's family, at 12 points, its top at y.
+    expect(svg).toContain(
+      `<text x="10" y="20" xml:space="preserve" font-family="'Noto Sans'" font-weight="400" font-size="12" dominant-baseline="text-before-edge" fill="black">A  &amp; &lt;b&gt;</text>`,
+    );
+    expect(svg).toContain(
+      `<text x="110" y="40" xml:space="preserve" font-family="'Inter'" font-weight="700" font-size="20" text-anchor="end" dominant-baseline="alphabetic" letter-spacing="2" word-spacing="3" text-decoration="underline line-through" fill="url(#ink-g1)">Total</text>`,
+    );
+    expect(svg).toContain(
+      `<text x="25" y="0" xml:space="preserve" font-family="'Roboto Mono'" font-weight="400" font-size="9" text-anchor="middle" dominant-baseline="middle" fill="none" stroke="#00f" stroke-width="0.5" stroke-miterlimit="10">mono</text>`,
+    );
+    // A standard name: the canvas's family in its weight and style (Noto Sans has one face), with
+    // a warning.
+    expect(svg).toContain(`font-family="'Noto Sans'" font-weight="400" font-size="9" dominant-baseline`);
+    expect(r.warnings).toContain(
+      'Font "Helvetica 700 italic" is not registered; using NotoSans-Regular (Canvas in View).',
+    );
+    expect((r.document.fonts ?? []).map((f) => f.id)).toEqual(
+      expect.arrayContaining(['NotoSans-Regular', 'Inter-Bold', 'RobotoMono-Regular']),
+    );
+    expect(r.validate()).toEqual([]);
+    expect(
+      thrown(() => tree(<Canvas width={10} height={10} paint={(p) => p.text('two\nlines', 0, 0)} />)).message,
+    ).toContain('painter.text draws one line');
   });
 
   it('paints with linear and radial gradients, written once each', () => {

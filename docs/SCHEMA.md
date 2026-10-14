@@ -129,9 +129,9 @@ Type: `boolean` (default `false`)
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) | yes |  |
-| `family` | `string` | yes | min length 1 |
-| `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400` |
-| `style` | `"normal"` \| `"italic"` |  | default `"normal"` |
+| `family` | `string` | yes | min length 1; The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts. |
+| `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400`; The weight SVG text's `font-weight` is matched against. |
+| `style` | `"normal"` \| `"italic"` |  | default `"normal"`; The style SVG text's `font-style` is matched against. |
 
 ### NonNegative
 
@@ -312,6 +312,8 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
+| `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
+| `clear` | `"left"` \| `"right"` \| `"both"` \| `"none"` |  | default `"none"`; Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides. |
 | `backgroundColor` | [`Color`](#color) |  |  |
 | `opacity` | `number` |  | ≥ 0, ≤ 1 |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |

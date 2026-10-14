@@ -6,7 +6,7 @@ use super::prepare::number_glyphs;
 use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
-use crate::layout::Geometry;
+use crate::layout::{Geometry, LineBoxes};
 use crate::paint::{
     span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg, Rect,
     TextGlyph, TextOp, NO_RADII,
@@ -62,10 +62,17 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             w: cw,
             h: ch,
         } = geo.content_box();
+        let plain;
+        let boxes = if let Some(b) = ctx.line_boxes {
+            b
+        } else {
+            plain = LineBoxes::plain(cw);
+            &plain
+        };
         let paragraph = self
             .page
-            .and_then(|page| page.paragraph(node, cw))
-            .or_else(|| self.cache.paragraph(node, cw));
+            .and_then(|page| page.paragraph(node, boxes))
+            .or_else(|| self.cache.paragraph(node, boxes));
         let Some((layout, prepared, style)) = paragraph else {
             return;
         };
@@ -460,7 +467,7 @@ fn extra_piece(e: &ExtraGlyph) -> Piece {
 
 /// UAX #9 rule L2: from the highest level down to the lowest odd one,
 /// reverses every maximal run of items at that level or higher.
-fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
+pub(super) fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
     let Some(max) = items.iter().map(&level).max() else {
         return;
     };

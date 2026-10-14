@@ -62,6 +62,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
+| Floats | `layout/flow.rs`, `layout/float.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them, boxes narrowed |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
 | PDF | `pdf` | Pages and content streams (encoded in parallel), links, notes, outline, forms, PDF/A-1b, 2b and 3b, encryption. Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr` and stream writers anywhere else |
@@ -105,8 +106,10 @@ Op::Text in a colour font ─▶ ColorGlyphs ─▶ Op::Span + Op::Image + Op::I
 fit (`lines.rs`) or, for `textWrap: pretty`, with Knuth and Plass's
 total fit (`optimal.rs`), which falls back to first fit past its caps.
 Lines are laid in `LineBoxes` (`layout/float.rs`): the content width,
-and bands where room is taken on a side, where each line finds its box
-at its own top; no paragraph has bands until floats exist.
+and bands where floats take room on a side, where each line finds its
+box at its own top. A float container's layout records the line boxes of
+the text beside its floats (`Tree.wraps`); pagination, page numbers and
+the painter look the lines up in them.
 
 A run's `fontFeatures` go to rustybuzz with its words; shaped words and
 shape plans are cached per feature set too. A run's `verticalAlign` moves
@@ -142,6 +145,18 @@ threads. `pdf` depends on `fonts` and `images`, never the reverse: `fonts`
 subsets font programs and caches the compressed whole program, and the PDF
 writer supplies the compression; the writer and `images` both compress
 through `flate.rs`.
+
+SVG text goes through the same shaper. `images/svg_text` reads each
+`<text>` of an SVG once, when the SVG is decoded: the cascade of its text
+properties (simplecss and svgtypes are used only in its `extract.rs`, at
+the versions usvg uses), white space and character positions. Each render
+lays the text out with its fonts before layout (`text/svg.rs`, one
+`TextShaper::prepare` call per chunk, so fallback fonts, bidi, the glyph
+limit and ToUnicode apply), replaces each `<text>` with a "probe" path
+over its ink, and converts the SVG again (cached by the rewritten source).
+usvg resolves the probes' paint; the PDF writer draws each probe's text in
+its place as PDF text (`pdf/svg.rs`). See
+[ADR 0001](adr/0001-svg-text-probes.md).
 
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
 for min-content / max-content / definite widths and gets the paragraph's

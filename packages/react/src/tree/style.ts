@@ -177,6 +177,8 @@ const SIMPLE_KEYS = [
   'gridColumn',
   'gridRow',
   'overflow',
+  'float',
+  'clear',
   'opacity',
   'transformOrigin',
   'zIndex',
@@ -684,6 +686,9 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     out.fontFeatureSettings = parseFontFeatureSettings('fontFeatureSettings', fontFeatureSettings);
   if (fontVariantNumeric !== undefined)
     out.fontVariantNumeric = parseFontVariantNumeric('fontVariantNumeric', fontVariantNumeric);
+  for (const k of ['float', 'clear'] as const) {
+    if (out[k] !== undefined) out[k] = new Reader(k).oneOf(k, String(out[k]));
+  }
   if (textWrap !== undefined) {
     if (textWrap === 'balance') {
       throw new Error(`textWrap "balance" is not supported yet: use 'pretty' for even lines, or 'wrap'`);

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="320" viewBox="0 0 400 320" font-family="Inter" font-size="14">
+  <style>
+    .title { font: bold 20px Inter; fill: #14287a }
+    .label tspan.v { fill: #c0392b; font-weight: 700 }
+  </style>
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#e0a800"/>
+    </linearGradient>
+    <clipPath id="clip"><text x="20" y="300" font-size="48" font-weight="bold">CLIP</text></clipPath>
+    <text id="badge" x="0" y="0" font-size="11" fill="#ffffff" text-anchor="middle" dominant-baseline="central">used</text>
+  </defs>
+  <rect x="0.5" y="0.5" width="399" height="319" rx="8" fill="#fbfbfd" stroke="#c9ccd6"/>
+  <text x="20" y="34" class="title">SVG text, laid out by Inkoxide</text>
+
+  <g stroke="#d5d8e0">
+    <line x1="200" y1="48" x2="200" y2="116"/>
+    <line x1="20" y1="132" x2="380" y2="132"/>
+  </g>
+  <text x="200" y="64" text-anchor="start">start</text>
+  <text x="200" y="86" text-anchor="middle">middle</text>
+  <text x="200" y="108" text-anchor="end">end</text>
+
+  <text y="132" font-size="12">
+    <tspan x="20">alphabetic</tspan>
+    <tspan x="110" dominant-baseline="middle">middle</tspan>
+    <tspan x="170" dominant-baseline="hanging">hanging</tspan>
+    <tspan x="240" dominant-baseline="text-before-edge">before</tspan>
+    <tspan x="300">H<tspan baseline-shift="super" font-size="8">2</tspan>O x<tspan baseline-shift="sub" font-size="8">i</tspan></tspan>
+  </text>
+
+  <text x="20" y="166" class="label">Total: <tspan class="v">42.00</tspan> <tspan font-style="italic">(incl. tax)</tspan></text>
+  <text x="230" y="166" text-decoration="underline">under<tspan text-decoration="line-through" fill="#c0392b">struck</tspan></text>
+
+  <text x="20" y="196" letter-spacing="4">S P A C E D</text>
+  <text x="230" y="196" textLength="150" lengthAdjust="spacingAndGlyphs">stretched</text>
+
+  <text x="20" y="232" font-size="26" font-weight="bold" fill="url(#g)" stroke="#14287a" stroke-width="0.6">Gradient</text>
+  <text x="180 200 220 240 260 280" y="232" rotate="0 15 30 45 60 75" font-size="18" fill="#1b7a3a">rotate</text>
+
+  <g transform="translate(330 222)">
+    <circle r="16" fill="#2346c8"/>
+    <use href="#badge"/>
+  </g>
+
+  <g clip-path="url(#clip)">
+    <rect x="20" y="250" width="160" height="60" fill="url(#g)"/>
+  </g>
+  <text x="200" y="300" font-size="14" fill="#555555">white  space</text>
+  <text x="380" y="300" font-family="Noto Sans Hebrew" direction="rtl">שלום</text>
+</svg>

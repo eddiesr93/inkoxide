@@ -52,8 +52,11 @@ interface Face {
 
 type FaceName = Pick<Face, 'family' | 'weight' | 'style'>;
 
-/** What tells faces apart: family, weight and style. */
-const faceKey = (f: FaceName): string => JSON.stringify([f.family, f.weight, f.style]);
+/** Family names match ignoring ASCII case, as in CSS and the font registry. */
+const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/** What tells faces apart: family (ignoring ASCII case), weight and style. */
+const faceKey = (f: FaceName): string => JSON.stringify([asciiLower(f.family), f.weight, f.style]);
 
 /** `"Brand" 700 italic`, as messages name a face. */
 const faceLabel = (f: FaceName): string =>
@@ -146,7 +149,10 @@ export const Font = {
       const id = `${family.trim().replace(/\s+/g, '-')}-${weight}${style === 'italic' ? '-italic' : ''}`;
       const f: Face = { family, weight, style, id, src };
       const bundled = DEFAULT_FACES.find(
-        (d) => d.family === family && d.weight === weight && (d.style ?? 'normal') === style,
+        (d) =>
+          asciiLower(d.family) === asciiLower(family) &&
+          d.weight === weight &&
+          (d.style ?? 'normal') === style,
       );
       if (bundled) {
         throw new Error(

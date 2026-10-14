@@ -45,7 +45,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
-| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
+| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop`, `Tspan` | Vector drawing in JSX; a `Text` in an `Svg` is SVG text. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
 | `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
@@ -87,6 +87,15 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   (with `maxLines`). `objectFit` on an `Image` or `ImageBackground` is its `fit` prop, which
   wins when both are set. `objectPosition` on them places the image in its box (see
   [Images](#images)). Both throw on other elements.
+- **Floats.** `float: 'left'` or `'right'` (`float-left`, `float-right`) on a child of a column
+  `View`, a `Page` or a `Cell` puts it at that side, as narrow as its content unless it has a
+  width, at or below where it comes in the flow. Text after it wraps beside it line by line; a
+  box after it is narrowed to the room beside it, or moves below it when its content does not
+  fit there. `clear: 'left'`, `'right'` or `'both'` moves an element below the floats before
+  it, and a parent is as tall as its floats. A float moves to the next page with the lines
+  beside it. Floats are rectangles (`shapeOutside` is not supported), do not float inside rows
+  or grids, and a box with floats lays its children out top to bottom: `flexGrow`,
+  `flexBasis`, `justifyContent` and `alignContent` are errors there.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
@@ -692,9 +701,40 @@ reader without it may do:
 <Canvas width={120} height={60} paint={(p, w, h) => p.moveTo(0, h).lineTo(w, 0).lineWidth(2).stroke('#4f46e5')} />
 ```
 
-The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`); text inside
-`<Svg>` is not supported yet. `Canvas` draws in code with a pdfkit-style painter. An SVG file
-can also go straight into `<Image src={svgBytes} />`.
+The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`). `Canvas`
+draws in code with a pdfkit-style painter. An SVG file can also go straight into
+`<Image src={svgBytes} />`.
+
+**Text in a drawing** is a `Text` inside the `<Svg>` (or a `G`, `Defs`, `ClipPath` or `Marker`
+in it), with `Tspan`s for spans of it. It is real PDF text: it can be selected, searched and
+copied.
+
+```tsx
+<Svg width={160} height={60}>
+  <Rect width={160} height={60} rx={6} fill="#eef2ff" />
+  <Text x={80} y={26} textAnchor="middle" fontWeight="bold" fill="#4f46e5">
+    Revenue <Tspan fill="#16a34a">+12%</Tspan>
+  </Text>
+  <Text x={80} y={46} textAnchor="middle" fontSize={9} letterSpacing={1}>
+    Q3 2026
+  </Text>
+</Svg>
+```
+
+- **Position**: `x` and `y`, with `textAnchor` (`start`, `middle`, `end`) and
+  `dominantBaseline` (`alphabetic`, `middle`, `central`, `hanging`, `text-before-edge`, …).
+  A list (`x={[10, 20, 30]}`) places each character, and `dx`, `dy` and `rotate` shift and
+  turn them. `textLength` fits the text to a width, by its spacing or, with
+  `lengthAdjust="spacingAndGlyphs"`, its glyphs too.
+- **Font**: `fontFamily` (a stack: `"Brand, Inter"`), `fontWeight`, `fontStyle` and
+  `fontSize`, on the text, a `Tspan` or a `G` around it; otherwise the text style around the
+  drawing, as for any `Text`. The font is one registered with `Font.register` (or bundled),
+  matched like other text, so a missing family falls back with a warning.
+- **Style**: `fill` and `stroke` with colours, gradients and patterns, `letterSpacing`,
+  `wordSpacing`, `textDecoration` (`underline`, `overline`, `line-through`) and, on a `Tspan`,
+  `baselineShift` (`super`, `sub` or a length). A `Text` in an `<Svg>` takes these SVG props:
+  `style` and `className` are for text outside drawings.
+- Strings and `Tspan` go in it; anything else is an error.
 
 **Markers** draw a shape at the vertices of a `Path`, `Line`, `Polyline` or `Polygon`: define a
 `Marker` in `Defs` and reference it with `markerStart`, `markerMid` or `markerEnd`.
@@ -744,12 +784,39 @@ back the state and the transforms.
   adds its colours. Pass it to `fill`, `stroke`, `fillAndStroke`, `fillColor` or `strokeColor`
   in place of a colour. Its coordinates are in the user space where it paints, transforms
   included, as in pdfkit.
-- `Canvas` has no text yet.
+- **`text(str, x, y, options?)`** draws one line of text with the fill colour or gradient, its
+  top at `y` (as in pdfkit). **`font(name, size?)`** sets the font: a registered font id
+  (`'Inter-Bold'`), a family name, or a pdfkit standard name (`'Helvetica-Bold'`), which picks
+  the canvas's family in that weight and style; **`fontSize(n)`** sets the size (12 by
+  default). Until `font()` the text is in the font around the canvas. The options
+  (`CanvasTextOptions`) are `width` with `align` (`left`, `center`, `right`), `baseline`
+  (`top`, `middle`, `bottom`, `alphabetic`, `hanging`), `characterSpacing`, `wordSpacing`,
+  `underline`, `strike`, `fill` (default `true`) and `stroke` (with the stroke colour and line
+  style). Text does not wrap: a line break in `str` is an error.
+
+  ```tsx
+  <Canvas width={160} height={40} paint={(p, w) => {
+    p.font('Inter-Bold', 14).fillColor('#4f46e5').text('Total', 0, 4);
+    p.font('Inter').text('$1,280.00', 0, 4, { width: w, align: 'right' });
+  }} />
+  ```
 
 In an SVG, whether in `<Svg>` or an image file:
 
-- **Text** (`<text>`) fails the render with `INVALID_IMAGE`, in a nested SVG image too: convert
-  text to outlines (paths) in your design tool.
+- **Text** (`<text>`, `<tspan>`, `<a>`) is drawn as PDF text with the document's fonts, in
+  nested SVG images too. Each span gets the declared font that matches its `font-family`,
+  `font-weight` and `font-style` as CSS matches them (the first declared font when no family
+  matches), with the fallback fonts for characters it lacks; a font that only an SVG file
+  needs goes in `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)), so that the
+  document declares it. Style sheets, `xml:space`, positions and rotations, anchors, baselines,
+  `baseline-shift`, spacing, `text-decoration` and `textLength` work, also in clip paths, masks,
+  patterns, markers and `use` copies. Text on a path (`<textPath>`) and vertical text (`writing-mode`) fail the
+  render with `INVALID_IMAGE`: convert them to outlines in your design tool. `font-variant`,
+  `font-stretch`, `font-kerning` and `font-feature-settings` are ignored, and font properties
+  set on a `<use>` do not reach the text it copies (its fill and stroke do). An SVG with text in
+  a document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG holds at
+  most 1,000,000 characters of text, counting every copy. Where nothing sets a font size it is
+  16, as in browsers.
 - **Filters** (`filter`: drop shadows, blurs) are not applied: the element is drawn without them.
 - **Images** inside the SVG must be embedded as `data:` URLs (JPEG, PNG, GIF, WebP or SVG).
   Links to files or URLs are left out, and an embedded image over 50 megapixels fails the
@@ -929,16 +996,17 @@ app.get('/health', (_req, res) => {
 tree the engine writes, so it is not a general PDF parser.
 
 **Types.** The props of a component are exported as a type named after it (`DocumentProps`,
-`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `MarkerProps`, `CanvasProps` and so on); `PolyProps`
-serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresentation` the
-attributes every SVG shape takes. Also exported:
+`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `MarkerProps`, `TspanProps`, `CanvasProps` and so on); `PolyProps`
+serves `Polyline` and `Polygon`, `GradientProps` both gradients, `SvgPresentation` the
+attributes every SVG shape takes, and `SvgTextProps` the props of a `Text` in an `Svg`. Also
+exported:
 
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
   `Permissions` (of `<Document permissions>`), and `TextFormat`, the `format` of a `TextField`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
-  `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
-  gradients;
+  `ImageRequest`, `Painter`, the painter a `Canvas` draws with, `CanvasGradient`, its
+  gradients, and `CanvasTextOptions`, the options of its `text`;
 - options and results: `RenderToBufferOptions`, `LocalImageOptions`, `RemoteImageOptions`,
   `FontRegistration`, `FontSource`, `FontSrc`, `EmojiSource`, `FontWeight`, `HyphenationCallback`,
   `EngineStatus`, `EngineVersion`, `RenderErrorCode` and `DataIssue`.
@@ -1133,8 +1201,8 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
-- **Drawing.** Text inside `<Svg>` is not supported yet. Colour emoji need a colour emoji font
-  or an emoji image source ([Fonts](#fonts)). SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
+- **Drawing.** SVG text on a path and vertical SVG text are not supported, and colour emoji in
+  SVG text are drawn in one colour. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, an absolutely positioned,
   rotated or transformed element, table rows tied by a `rowSpan`) is cut at the page edge when

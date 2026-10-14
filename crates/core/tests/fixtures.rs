@@ -128,6 +128,7 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
         "pages[0].children[2].children[0].children[1].backgroundImage.src",
     ),
     ("debug-text", "pages[0].children[2].debug"),
+    ("floats", "pages[0].children[1].children[1].debug"),
     (
         "boxes-nested",
         "pages[0].children[0].children[0].style.backgroundColor",
@@ -149,6 +150,8 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
         "pages[0].children[1].children[11].children[0].children[0].children[1].style.opacity",
     ),
     ("svg", "pages[0].children[1].src"),
+    // Text in a clip path is a soft mask.
+    ("svg-text", "pages[0].children[1].src"),
     (
         "text-super-sub-features",
         "pages[0].children[6].children[1].debug",
@@ -421,5 +424,27 @@ fn colour_emoji_extract_as_text() {
             .unwrap();
         let text = String::from_utf8_lossy(&out.stdout);
         assert!(text.contains(want), "{name}: {text}");
+    }
+}
+
+/// SVG text draws a colour font's glyphs in one colour: from outlines
+/// (`COLR`), and not at all from a font without outlines, which is never
+/// embedded.
+#[test]
+fn svg_text_never_embeds_a_colour_only_font() {
+    let (fonts, images) = stores();
+    for fallback in ["EmojiTest-CBDT", "EmojiTest-COLR"] {
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"{fallback}","family":"E"}}],
+                "fallbackFonts":["{fallback}"],
+                "pages":[{{"size":{{"width":300,"height":100}},"children":[
+                {{"type":"image","data":"PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScyMDAnIGhlaWdodD0nNDAnPjx0ZXh0IHg9JzAnIHk9JzMwJyBmb250LWZhbWlseT0nSW50ZXInIGZvbnQtc2l6ZT0nMjAnPkhpIPCfmIAg8J+Hq/Cfh7c8L3RleHQ+PC9zdmc+"}}]}}]}}"#
+        );
+        let opts = RenderOptions::default().with_compress(false);
+        let pdf = inkoxide::render(doc.as_bytes(), InputFormat::Json, &opts, &fonts, &images)
+            .unwrap_or_else(|e| panic!("{fallback}: {e}"));
+        let has = |needle: &[u8]| pdf.windows(needle.len()).any(|w| w == needle);
+        assert!(!has(b"EmojiTestCBDT"), "{fallback}");
+        assert_eq!(has(b"EmojiTestCOLR"), fallback == "EmojiTest-COLR");
     }
 }

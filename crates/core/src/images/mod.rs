@@ -13,7 +13,8 @@ pub(crate) mod base64;
 mod cache;
 mod decode;
 mod probe;
-mod svg;
+pub(crate) mod svg;
+pub(crate) mod svg_text;
 
 #[cfg(test)]
 mod tests;
@@ -303,6 +304,41 @@ impl ImageSet {
                 k
             };
             self.by_emoji.insert(crate::text::emoji_key(sequence), key);
+        }
+        Ok(())
+    }
+
+    /// Converts the SVGs with text again, each text laid out with this
+    /// render's fonts through `shaper` (in image order, so glyph mappings
+    /// do not depend on threads). Each becomes this render's own copy.
+    pub fn lay_out_text<S: crate::text::TextShaper>(
+        &mut self,
+        shaper: &mut S,
+    ) -> Result<(), InkoxideError> {
+        for image in &mut self.images {
+            let ImageBody::Svg {
+                text: Some(source),
+                view_box,
+                ..
+            } = &image.body
+            else {
+                continue;
+            };
+            let (tree, probed) =
+                svg::parse_with_text(source, &mut |t| crate::text::lay_out_svg_text(t, shaper))
+                    .map_err(InkoxideError::Image)?;
+            let s = tree.size();
+            *image = Arc::new(DecodedImage {
+                width: s.width().ceil() as u32,
+                height: s.height().ceil() as u32,
+                orientation: 1,
+                body: ImageBody::Svg {
+                    tree,
+                    view_box: *view_box,
+                    text: None,
+                    probed: Some(Arc::new(probed)),
+                },
+            });
         }
         Ok(())
     }

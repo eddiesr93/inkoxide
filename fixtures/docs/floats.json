@@ -1,0 +1,445 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Floats",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 595
+   },
+   "margin": {
+    "top": 30,
+    "right": 30,
+    "bottom": 30,
+    "left": 30
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Floats",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 70,
+        "height": 50,
+        "backgroundColor": [
+         0.16,
+         0.38,
+         0.75,
+         1
+        ],
+        "margin": {
+         "right": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "left",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ],
+       "debug": true
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "right",
+        "width": 90,
+        "height": 40,
+        "backgroundColor": [
+         0.1,
+         0.55,
+         0.55,
+         1
+        ],
+        "margin": {
+         "left": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "right",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 50,
+        "height": 30,
+        "backgroundColor": [
+         0.16,
+         0.38,
+         0.75,
+         1
+        ],
+        "margin": {
+         "right": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "left",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Text between a left and a right float takes the room left between them, line by line, and returns to the full width below them.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "height": 14,
+        "backgroundColor": [
+         0.9,
+         0.9,
+         0.92,
+         1
+        ]
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "height": 14,
+        "backgroundColor": [
+         0.8,
+         0.85,
+         0.95,
+         1
+        ],
+        "clear": "both"
+       }
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 60,
+        "height": 36,
+        "backgroundColor": [
+         0.9,
+         0.5,
+         0.15,
+         1
+        ],
+        "margin": {
+         "right": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "left",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.95,
+         1
+        ],
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "A box beside a float is narrowed to the room beside it.",
+           "font": "Inter-Regular",
+           "size": 8
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "width": 320,
+        "height": 16,
+        "backgroundColor": [
+         0.85,
+         0.9,
+         0.85,
+         1
+        ]
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Too wide for that room: below the float.",
+           "font": "Inter-Regular",
+           "size": 8
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "table",
+     "columns": [
+      {
+       "width": "1fr"
+      },
+      {
+       "width": "1fr"
+      }
+     ],
+     "rows": [
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         },
+         "children": [
+          {
+           "type": "box",
+           "style": {
+            "float": "left",
+            "width": 30,
+            "height": 30,
+            "backgroundColor": [
+             0.16,
+             0.38,
+             0.75,
+             1
+            ],
+            "margin": {
+             "right": 8,
+             "bottom": 4
+            },
+            "padding": {
+             "top": 4,
+             "left": 4
+            }
+           }
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whene",
+             "font": "Inter-Regular",
+             "size": 7
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         },
+         "children": [
+          {
+           "type": "box",
+           "style": {
+            "float": "right",
+            "width": 30,
+            "height": 30,
+            "backgroundColor": [
+             0.1,
+             0.55,
+             0.55,
+             1
+            ],
+            "margin": {
+             "left": 8,
+             "bottom": 4
+            },
+            "padding": {
+             "top": 4,
+             "left": 4
+            }
+           }
+          },
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whene",
+             "font": "Inter-Regular",
+             "size": 7
+            }
+           ],
+           "style": {
+            "textAlign": "justify"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

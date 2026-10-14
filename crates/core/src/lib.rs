@@ -389,6 +389,8 @@ fn render_inner(
         .with_hyphenator(&hyphenator)
         .with_objects(Arc::new(image_set.inline_objects()));
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
+    // SVG text is shaped with the document's text, before layout.
+    image_set.lay_out_text(text.shaper())?;
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,

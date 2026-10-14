@@ -33,6 +33,21 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Layout',
+    utilities:
+      '`float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none`',
+    maps: '`float`, `clear`',
+    notes:
+      'In a column parent (not a row, a grid or a cell): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported.',
+    examples: {
+      'float-left': { float: 'left' },
+      'float-right': { float: 'right' },
+      'float-none': { float: 'none' },
+      'clear-both': { clear: 'both' },
+      'clear-left': { clear: 'left' },
+    },
+  },
+  {
+    group: 'Layout',
     utilities: '`overflow-hidden`, `overflow-visible`, `overflow-clip`',
     maps: '`overflow`',
     examples: {
@@ -761,6 +776,14 @@ export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
   { example: 'overline', why: '`overline` and `underline-offset-*`.' },
   { example: 'whitespace-break-spaces', why: '`break-spaces`.' },
   { example: 'text-ellipsis', why: '`text-overflow` alone; use `truncate` or `line-clamp-N`.' },
+  {
+    example: 'float-start',
+    why: '`float-start` and `float-end`: boxes have no direction; use `float-left` or `float-right`.',
+  },
+  {
+    example: 'clear-end',
+    why: '`clear-start` and `clear-end`; use `clear-left`, `clear-right` or `clear-both`.',
+  },
   { example: 'text-balance', why: '`text-wrap: balance`; `text-pretty` evens lines.' },
   { example: 'object-scale-down', why: '`object-fit: scale-down`.' },
   { example: 'object-[right_1rem_top]', why: '`object-position` with edge offsets.' },

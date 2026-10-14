@@ -191,6 +191,11 @@ describe('Font.register', () => {
     expect(() => Font.register({ family: 'Brand', src: file('Inter-Regular.ttf'), fontWeight: 700 })).toThrow(
       'already registered',
     );
+    // Family names match ignoring ASCII case.
+    expect(() => Font.register({ family: 'BRAND', src: file('Inter-Regular.ttf'), fontWeight: 700 })).toThrow(
+      'already registered',
+    );
+    expect(() => Font.register({ family: 'inter', src: file('Inter-Regular.ttf') })).toThrow('is bundled');
     expect(() => Font.register({ family: 'Brand', src, fontWeight: 'heavyish' as never })).toThrow(
       'not 1–1000 or a CSS weight name',
     );

@@ -11,6 +11,11 @@ Still document schema version 1.
 
 ### Added
 
+- `Style.float` (`left`, `right`, `none`) and `Style.clear` (`left`, `right`, `both`,
+  `none`): floats in column boxes, the page and cells, with text wrapping beside them and boxes
+  narrowed beside them. Floats go in column boxes only, not on cells, not absolutely positioned
+  and without forced breaks; at most 1000 per box; a box with floats takes no `justifyContent`
+  or `alignContent`, and its children no `flexGrow` or `flexBasis`.
 - `Style.textWrap` on text nodes: `wrap` (the default, first fit, as before) or `pretty`, which
   sets each stretch between forced breaks as a whole (Knuth and Plass's total fit) and lets the
   spaces of justified lines shrink by up to a third. Bounded per paragraph (20 000 break
@@ -57,6 +62,11 @@ Still document schema version 1.
   `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
   at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
   `bookmark`, and no space in the layout.
+- SVG images may contain text (`<text>`, `<tspan>`). It is laid out with the document's fonts:
+  `FontDecl.family`, `weight` and `style`, which were descriptive until now, are what its
+  `font-family`, `font-weight` and `font-style` select a declared font by. A document whose SVG
+  images have text must declare a font; one that declares none fails with `INVALID_IMAGE`.
+  Documents with SVG images without text render as before.
 
 ### Changed
 

@@ -1,9 +1,11 @@
-//! What text wraps around: the boxes a paragraph's lines are laid in.
+//! Floats, and what text wraps around them.
 //!
-//! A paragraph's lines are as wide as its content box, less, over the
-//! vertical ranges where something sits beside it (a float), the room
-//! that takes on either side. [`LineBoxes`] holds those ranges; without
-//! any, every line is as wide as the content box.
+//! [`FloatContext`] places the floats of one container (CSS 2.2 §9.5.1,
+//! for rectangles) and answers how much room they take beside a range of
+//! heights. A paragraph's lines are as wide as its content box, less, over
+//! the vertical ranges where a float sits beside it, the room that takes
+//! on either side: [`LineBoxes`] holds those ranges; without any, every
+//! line is as wide as the content box.
 
 use std::sync::Arc;
 
@@ -71,9 +73,214 @@ impl LineBoxes {
     }
 }
 
+/// The side a float goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Side {
+    Left,
+    Right,
+}
+
+/// A float placed in its container: its side and its margin box, in the
+/// container's content box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Placed {
+    pub side: Side,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Placed {
+    pub fn bottom(&self) -> f32 {
+        self.y + self.h
+    }
+}
+
+/// Height a zero-height float or box counts as when looking for room, so
+/// that it still meets the floats at its top.
+const HAIR: f32 = 1e-3;
+
+/// The floats of one container, in its content box `width` wide.
+#[derive(Debug, Clone)]
+pub(crate) struct FloatContext {
+    width: f32,
+    floats: Vec<Placed>,
+    /// The top of the last float placed: a later float goes no higher
+    /// (CSS 2.2 §9.5.1, rule 5).
+    last_top: f32,
+}
+
+impl FloatContext {
+    pub fn new(width: f32) -> Self {
+        Self {
+            width,
+            floats: Vec::new(),
+            last_top: f32::NEG_INFINITY,
+        }
+    }
+
+    /// The room the floats take beside `y..y + h`: on the left, up to the
+    /// right edge of the left floats it meets; on the right, from the left
+    /// edge of the right floats.
+    pub fn band(&self, y: f32, h: f32) -> (f32, f32) {
+        let h = h.max(HAIR);
+        let (mut left, mut right) = (0.0f32, 0.0f32);
+        for f in &self.floats {
+            if f.y < y + h && f.bottom() > y {
+                match f.side {
+                    Side::Left => left = left.max(f.x + f.w),
+                    Side::Right => right = right.max(self.width - f.x),
+                }
+            }
+        }
+        (left, right)
+    }
+
+    /// The first float bottom below `y`: where more room may open. `None`
+    /// once no float reaches below `y`.
+    pub fn next_change(&self, y: f32) -> Option<f32> {
+        self.floats
+            .iter()
+            .map(Placed::bottom)
+            .filter(|&b| b > y)
+            .min_by(f32::total_cmp)
+    }
+
+    /// The lowest bottom of the floats on the cleared sides, or `None`.
+    pub fn clear_y(&self, left: bool, right: bool) -> Option<f32> {
+        self.floats
+            .iter()
+            .filter(|f| match f.side {
+                Side::Left => left,
+                Side::Right => right,
+            })
+            .map(Placed::bottom)
+            .max_by(f32::total_cmp)
+    }
+
+    /// Where a top of at least `min_y` finds `w` of room over `h`: moving
+    /// down past float bottoms until it does, or until no float is left.
+    /// Each step goes to a float bottom below the last, so it ends.
+    pub fn fit(&self, w: f32, h: f32, min_y: f32) -> (f32, f32, f32) {
+        let mut y = min_y;
+        loop {
+            let (left, right) = self.band(y, h);
+            if w <= self.width - left - right + 1e-3 || (left == 0.0 && right == 0.0) {
+                return (y, left, right);
+            }
+            match self.next_change(y) {
+                Some(next) => y = next,
+                None => return (y, left, right),
+            }
+        }
+    }
+
+    /// Places a float of margin box `w` × `h` on `side`, its top no higher
+    /// than `min_y` (where it occurs in the flow) nor than earlier floats,
+    /// and returns it.
+    pub fn place(&mut self, side: Side, w: f32, h: f32, min_y: f32) -> Placed {
+        let (y, left, right) = self.fit(w, h, min_y.max(self.last_top));
+        let x = match side {
+            Side::Left => left,
+            Side::Right => self.width - right - w,
+        };
+        let placed = Placed { side, x, y, w, h };
+        self.last_top = y;
+        self.floats.push(placed);
+        placed
+    }
+
+    /// The bands the floats make in a box whose content box starts at
+    /// (`x`, `y`) in the container and is `w` wide, relative to it: only
+    /// the floats reaching below `y`, sorted by top.
+    pub fn bands(&self, x: f32, y: f32, w: f32) -> Vec<Band> {
+        let mut bands: Vec<Band> = self
+            .floats
+            .iter()
+            .filter(|f| f.bottom() > y && f.h > 0.0)
+            .filter_map(|f| {
+                let (left, right) = match f.side {
+                    Side::Left => ((f.x + f.w - x).max(0.0), 0.0),
+                    Side::Right => (0.0, (x + w - f.x).max(0.0)),
+                };
+                (left > 0.0 || right > 0.0).then_some(Band {
+                    top: f.y - y,
+                    bottom: f.bottom() - y,
+                    left,
+                    right,
+                })
+            })
+            .collect();
+        bands.sort_by(|a, b| a.top.total_cmp(&b.top));
+        bands
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn floats_stack_side_by_side_then_wrap_below() {
+        let mut c = FloatContext::new(100.0);
+        let a = c.place(Side::Left, 40.0, 20.0, 0.0);
+        let b = c.place(Side::Left, 40.0, 30.0, 0.0);
+        assert_eq!((a.x, a.y, b.x, b.y), (0.0, 0.0, 40.0, 0.0));
+        // No room for a third beside them: below the shorter one, `b`
+        // still takes the room it needs; below both, it fits.
+        let d = c.place(Side::Left, 40.0, 10.0, 0.0);
+        assert_eq!((d.x, d.y), (0.0, 30.0));
+        // A right float goes no higher than `d`, and takes the room there.
+        let r = c.place(Side::Right, 15.0, 10.0, 0.0);
+        assert_eq!((r.x, r.y), (85.0, 30.0));
+        assert_eq!(c.band(0.0, 5.0), (80.0, 0.0));
+        assert_eq!(c.band(30.0, 1.0), (40.0, 15.0));
+        assert_eq!(c.next_change(0.0), Some(20.0));
+        assert_eq!(c.next_change(40.0), None);
+    }
+
+    #[test]
+    fn a_later_float_goes_no_higher_than_an_earlier_one() {
+        let mut c = FloatContext::new(100.0);
+        c.place(Side::Left, 30.0, 50.0, 10.0);
+        let r = c.place(Side::Right, 30.0, 10.0, 0.0);
+        assert_eq!(r.y, 10.0);
+    }
+
+    #[test]
+    fn clear_goes_below_the_floats_of_its_sides() {
+        let mut c = FloatContext::new(100.0);
+        assert_eq!(c.clear_y(true, true), None);
+        c.place(Side::Left, 30.0, 50.0, 0.0);
+        c.place(Side::Right, 30.0, 20.0, 0.0);
+        assert_eq!(c.clear_y(true, false), Some(50.0));
+        assert_eq!(c.clear_y(false, true), Some(20.0));
+        assert_eq!(c.clear_y(true, true), Some(50.0));
+    }
+
+    #[test]
+    fn zero_size_and_too_wide_floats_are_placed() {
+        let mut c = FloatContext::new(100.0);
+        let z = c.place(Side::Left, 0.0, 0.0, 5.0);
+        assert_eq!((z.x, z.y), (0.0, 5.0));
+        let a = c.place(Side::Left, 60.0, 10.0, 5.0);
+        // Wider than the room beside `a`, and than the container: below
+        // every float, at its side.
+        let w = c.place(Side::Right, 150.0, 10.0, 5.0);
+        assert_eq!((w.x, w.y), (-50.0, a.bottom()));
+        // Bands of a box beside them, relative to its content box.
+        let bands = c.bands(10.0, 5.0, 80.0);
+        assert_eq!(
+            bands[0],
+            Band {
+                top: 0.0,
+                bottom: 10.0,
+                left: 50.0,
+                right: 0.0
+            }
+        );
+    }
 
     fn boxes(bands: &[Band]) -> LineBoxes {
         LineBoxes {

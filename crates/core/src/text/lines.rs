@@ -204,10 +204,18 @@ impl<'a, 'p> Breaker<'a, 'p> {
             ..empty_line(s, ve)
         };
         metrics(&mut line, self.para);
-        self.y += line.height;
         if self.boxes.banded() {
+            // The box, found over the tallest line, holds the line: no band
+            // (no float) reaches into it.
+            let (l, a) = self.boxes.at(self.y, line.height);
+            debug_assert!(
+                left >= l - 1e-3 && left + avail <= l + a + 1e-3,
+                "a line box meets a float: {left}+{avail} at {} in {l}+{a}",
+                self.y
+            );
             self.line_boxes.push((left, avail));
         }
+        self.y += line.height;
         self.lines.push(line);
     }
 

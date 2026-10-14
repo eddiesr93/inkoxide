@@ -1,0 +1,409 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Floats across pages",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 595
+   },
+   "margin": {
+    "top": 30,
+    "right": 30,
+    "bottom": 30,
+    "left": 30
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Floats across pages",
+       "font": "Inter-Bold",
+       "size": 14
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 80,
+        "height": 60,
+        "backgroundColor": [
+         0.16,
+         0.38,
+         0.75,
+         1
+        ],
+        "margin": {
+         "right": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "float 1",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "right",
+        "width": 80,
+        "height": 80,
+        "backgroundColor": [
+         0.1,
+         0.55,
+         0.55,
+         1
+        ],
+        "margin": {
+         "left": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "float 2",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 80,
+        "height": 100,
+        "backgroundColor": [
+         0.16,
+         0.38,
+         0.75,
+         1
+        ],
+        "margin": {
+         "right": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "float 3",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "right",
+        "width": 80,
+        "height": 120,
+        "backgroundColor": [
+         0.1,
+         0.55,
+         0.55,
+         1
+        ],
+        "margin": {
+         "left": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "float 4",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 80,
+        "height": 140,
+        "backgroundColor": [
+         0.16,
+         0.38,
+         0.75,
+         1
+        ],
+        "margin": {
+         "right": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "float 5",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "right",
+        "width": 60,
+        "height": 700,
+        "backgroundColor": [
+         0.9,
+         0.5,
+         0.15,
+         1
+        ],
+        "margin": {
+         "left": 8,
+         "bottom": 4
+        },
+        "padding": {
+         "top": 4,
+         "left": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "taller than a page",
+           "font": "Inter-Regular",
+           "size": 7,
+           "color": [
+            1,
+            1,
+            1,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 9
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

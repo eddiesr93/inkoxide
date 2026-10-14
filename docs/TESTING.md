@@ -32,14 +32,21 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   password only, canary strings that must not appear in plain text, and
   errors that name the option but never the password.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
-  repeated on every page, glyphs from shaping, deepest accepted nesting
-  on a small stack).
+  repeated on every page, glyphs from shaping, in SVG text too, copies
+  of SVG text, deepest accepted nesting on a small stack).
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
   finite (one `inf` or `NaN` operand makes a page invalid) and one
   readers parse (an integer within 32 bits or a real within ±10¹¹), with
   every property at its validation bound, percentages compounding past
-  `f32`, and SVG numbers that overflow or are huge (`scale(1e30)`); the
-  SVG cases also pass `qpdf --check` without warnings.
+  `f32`, and SVG numbers that overflow or are huge (`scale(1e30)`, text
+  at 1e30 or sized 1e30); the SVG cases also pass `qpdf --check` without
+  warnings.
+- `crates/core/src/images/svg_text/survival.rs`: the probe survival
+  suite. SVG text becomes placeholder paths ("probes") that `usvg`
+  converts; these check that a probe comes out with the text's paint in
+  every context `usvg` copies shapes (`use`, `symbol`, markers, patterns,
+  masks, clip paths, `switch`, nested SVGs, groups, author CSS). They
+  depend on `usvg` internals: run them first after a `usvg` upgrade.
 - `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
   the properties the JSON Schema declares, and validation enforces the
   schema's bounds, read from the schema: ids, font families, `pages`,
@@ -127,8 +134,10 @@ the `ci` workflow builds them and runs clippy on them):
   with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
 - `render_svg_tree`: a structure-aware SVG generator that combines what
   `usvg` expands (references, markers, patterns, style sheets, entities,
-  nested SVG images), so a timeout or an out-of-memory shows a way past
-  the complexity limits.
+  nested SVG images) with text (spans, position lists, fonts, anchors,
+  baselines, `textLength`), so a timeout or an out-of-memory shows a way
+  past the complexity limits. Images are drawn in a document that
+  declares the fixture fonts, so SVG text is laid out.
 - `register_font`: raw bytes registered as a font, as they are and with
   the WOFF and WOFF2 signatures over its first bytes, so every input reaches both
   decoders; each font that registers sets a line of text, and is the

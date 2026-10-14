@@ -14,20 +14,35 @@ use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
     match &img.body {
         ImageBody::Raw { alpha: Some(_), .. } => Some("an alpha channel"),
-        ImageBody::Svg { tree, .. } => super::svg::transparency(tree),
+        ImageBody::Svg {
+            probed: Some(probed),
+            tree,
+            ..
+        } => super::svg::transparency(tree, Some(&probed.probes)),
+        // Its text is drawn with the paint of its probes: scan a conversion
+        // with a probe for each text and paint style, whatever the fonts.
+        ImageBody::Svg {
+            text: Some(source), ..
+        } => crate::images::svg::probe_tree(source)
+            .ok()
+            .and_then(|(tree, probed)| super::svg::transparency(&tree, Some(&probed.probes))),
+        ImageBody::Svg { tree, .. } => super::svg::transparency(tree, None),
         ImageBody::Raw { .. } | ImageBody::Jpeg { .. } => None,
     }
 }
 
+/// Writes `img`; `fonts` draw the text of a render's copy of an SVG.
 pub(crate) fn write_image(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     out: &mut Out,
     img: &DecodedImage,
     profile: Profile,
+    fonts: Option<super::svg::TextFonts<'_, '_>>,
 ) -> Result<Ref, crate::InkoxideError> {
-    if let ImageBody::Svg { tree, .. } = &img.body {
-        return super::svg::write_svg(pdf, alloc, out, tree, profile);
+    if let ImageBody::Svg { tree, probed, .. } = &img.body {
+        let text = probed.as_deref().zip(fonts);
+        return super::svg::write_svg(pdf, alloc, out, tree, profile, text);
     }
     let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);

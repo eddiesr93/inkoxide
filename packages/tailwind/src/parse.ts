@@ -440,6 +440,13 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     case 'white-space':
       s.whiteSpace = r.oneOf('whiteSpace', v);
       return;
+    case 'float':
+    case 'clear':
+      // `float-start` and `clear-end`: boxes have no direction here.
+      if (v.startsWith('inline-')) throw r.error(`${prop}: ${v} (use left or right)`);
+      if (prop === 'float') s.float = r.oneOf('float', v);
+      else s.clear = r.oneOf('clear', v);
+      return;
     case 'text-wrap':
       // `text-nowrap` is white space that does not wrap.
       if (v === 'nowrap') s.whiteSpace = 'nowrap';
