@@ -1563,6 +1563,156 @@ fn out_of_range_messages_state_the_range() {
     );
 }
 
+/// The images `logo` (alpha), `photo` (opaque) and `veil` (an SVG drawn
+/// at half opacity).
+fn images_1b() -> ImageStore {
+    let mut images = ImageStore::new();
+    images.insert("logo", fixture("images/logo.png"));
+    images.insert("photo", fixture("images/photo.jpg"));
+    images.insert(
+        "veil",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" opacity="0.5"/></svg>"#[..],
+    );
+    // Text is painted like a shape: its fill opacity is transparency.
+    images.insert(
+        "faint",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text y="8">a<tspan fill-opacity="0.5">b</tspan></text></svg>"#[..],
+    );
+    images.insert(
+        "opaque-text",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text y="8" fill="red">ab</text></svg>"#[..],
+    );
+    images
+}
+
+/// Renders `doc` as PDF/A-1b with [`images_1b`].
+fn render_1b(doc: &str) -> Result<Vec<u8>, crate::InkoxideError> {
+    let images = images_1b();
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    crate::render(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &options,
+        &fonts(),
+        &images,
+    )
+}
+
+#[test]
+fn pdf_a_1b_rejects_transparency_at_its_path() {
+    let text = |run: &str| {
+        format!(
+            r#"{{"type":"text","runs":[{{"text":"x","font":"Inter-Regular","size":10{run}}}]}}"#
+        )
+    };
+    let cases = [
+        (text(r#","color":[0,0,0,0.5]"#), "children[0].runs[0].color", "a colour with alpha"),
+        (text(r#","color":[0,0,0,0]"#), "children[0].runs[0].color", "a colour with alpha"),
+        (
+            text(r#","decoration":"underline","decorationColor":[1,0,0,0.9]"#),
+            "children[0].runs[0].decorationColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"borderWidth":{"top":1},"borderColor":{"top":[0,0,0,0.5]}}}"#.into(),
+            "children[0].style.borderColor.top",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"backgroundColor":[0,0,0,0.5]}}"#.into(),
+            "children[0].style.backgroundColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"backgroundColor":[0,0,0,0.5],"cells":[{}]}]}"#.into(),
+            "children[0].rows[0].backgroundColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"opacity":0.5}}"#.into(),
+            "children[0].style.opacity",
+            "an `opacity`",
+        ),
+        (r#"{"type":"box","debug":true}"#.into(), "children[0].debug", "`debug`"),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"debug":true}]}]}"#.into(),
+            "children[0].rows[0].cells[0].debug",
+            "`debug`",
+        ),
+        (
+            r#"{"type":"image","src":"logo"}"#.into(),
+            "children[0].src",
+            "image `logo` (an alpha channel)",
+        ),
+        (
+            r#"{"type":"image","src":"veil"}"#.into(),
+            "children[0].src",
+            "image `veil` (group opacity)",
+        ),
+        (
+            r#"{"type":"image","src":"faint"}"#.into(),
+            "children[0].src",
+            "image `faint` (fill or stroke opacity)",
+        ),
+        (
+            r#"{"type":"box","backgroundImage":{"src":"logo"},"style":{"width":10,"height":10}}"#
+                .into(),
+            "children[0].backgroundImage.src",
+            "image `logo` (an alpha channel)",
+        ),
+        // The first use is reported.
+        (
+            format!(r#"{{"type":"box","children":[{},{{"type":"box","style":{{"opacity":0.5}}}}]}}"#, text(r#","color":[0,0,0,0.5]"#)),
+            "children[0].children[0].runs[0].color",
+            "a colour with alpha",
+        ),
+    ];
+    for (child, path, what) in cases {
+        // Validation does not know the level.
+        let d = doc(&child);
+        let errors = validate(d.as_bytes(), InputFormat::Json, &fonts(), &images_1b());
+        assert_eq!(errors, [], "{child}");
+        let e = match render_1b(&doc(&child)) {
+            Err(crate::InkoxideError::Validation(e)) => e,
+            other => panic!("{child}: {:?}", other.map(|_| ())),
+        };
+        assert_eq!(e.code, C::PdfaConflict, "{child}");
+        assert_eq!(e.path, format!("pages[0].{path}"), "{child}");
+        assert!(
+            e.message
+                .starts_with("PDF/A-1b does not allow transparency"),
+            "{}",
+            e.message
+        );
+        assert!(e.message.contains(what), "{}", e.message);
+    }
+    let e = render_1b(r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"debug":true}]}"#)
+        .unwrap_err();
+    assert_eq!(
+        (e.code(), e.to_string().contains("pages[0].debug")),
+        ("PDFA_CONFLICT", true)
+    );
+
+    // What draws nothing, or ignores alpha, is opaque.
+    for child in [
+        r#"{"type":"box","style":{"backgroundColor":[0,0,0,0]}}"#,
+        r#"{"type":"box","style":{"opacity":0},"children":[{"type":"image","src":"photo"}]}"#,
+        r#"{"type":"image","src":"photo"}"#,
+        r#"{"type":"image","src":"opaque-text"}"#,
+        r#"{"type":"box","backgroundImage":{"src":"photo"},"style":{"width":10,"height":10}}"#,
+        r#"{"type":"field","field":{"name":"a","kind":"checkbox","color":[0,0,0,0.5]}}"#,
+    ] {
+        render_1b(&doc(child)).unwrap_or_else(|e| panic!("{child}: {e}"));
+    }
+    render_1b(
+        r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"background":[1,0,0,0.5]}]}"#,
+    )
+    .unwrap();
+    // Another problem wins over transparency.
+    let e = render_1b(&doc(r#"{"type":"box","debug":true,"style":{"width":-1}}"#)).unwrap_err();
+    assert_eq!(e.code(), "OUT_OF_RANGE");
+}
+
 #[test]
 fn background_images_are_checked_like_images() {
     let bg = |b: &str| doc(&format!(r#"{{"type":"box","backgroundImage":{b}}}"#));

@@ -34,9 +34,10 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{alpha_key, key_alpha, number, RefAlloc};
+use super::{alpha_key, key_alpha, number, Out, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::images::svg::ProbedText;
+use crate::images::svg_text::Probes;
 use crate::images::ContentKey;
 use crate::text::LaidText;
 use crate::{flate, InkoxideError};
@@ -64,8 +65,9 @@ pub(crate) struct TextFonts<'a, 'f> {
 pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     tree: &usvg::Tree,
-    pdf_a: bool,
+    profile: Profile,
     text: Option<(&ProbedText, TextFonts<'_, '_>)>,
 ) -> Result<Ref, InkoxideError> {
     let size = tree.size();
@@ -73,10 +75,11 @@ pub(crate) fn write_svg(
     let mut s = Svg {
         pdf,
         alloc,
+        out,
         alphas: HashMap::new(),
         images: HashMap::new(),
         segments: 0,
-        pdf_a,
+        profile,
         text,
     };
     let mut cv = Canvas::new();
@@ -344,6 +347,120 @@ fn simple_clip(
     Some((path, rule))
 }
 
+/// The text and paint style a probe in `probes` stands for: a path of
+/// exactly the four sides of a rectangle whose corners they list.
+fn probe_of(p: &usvg::Path, probes: &Probes) -> Option<(usize, u32)> {
+    let mut segs = p.data().segments();
+    let (
+        Some(PathSegment::MoveTo(a)),
+        Some(PathSegment::LineTo(b)),
+        Some(PathSegment::LineTo(c)),
+        Some(PathSegment::LineTo(d)),
+        Some(PathSegment::Close),
+        None,
+    ) = (
+        segs.next(),
+        segs.next(),
+        segs.next(),
+        segs.next(),
+        segs.next(),
+        segs.next(),
+    )
+    else {
+        return None;
+    };
+    if (b.x, b.y, d.x, d.y) != (c.x, a.y, a.x, c.y) {
+        return None;
+    }
+    let &(text, paint) = probes.get(&[a.x, a.y, c.x, c.y].map(f32::to_bits))?;
+    Some((text as usize, paint))
+}
+
+/// The first thing in `tree` that [`write_svg`] would draw with
+/// transparency (a transparency group, a soft mask, a constant alpha or a
+/// blend mode), which PDF/A-1 forbids; `None` when it draws none. Follows
+/// the writer: what [`Svg::group`] and the functions it calls draw, with
+/// the same depth limit. A path in `probes` is text, which is drawn with
+/// its paint like a path, but is not a simple clip.
+pub(crate) fn transparency(tree: &usvg::Tree, probes: Option<&Probes>) -> Option<&'static str> {
+    let empty = Probes::new();
+    scan_group(tree.root(), 0, false, probes.unwrap_or(&empty))
+}
+
+/// [`Svg::group`]'s transparency.
+fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'static str> {
+    if depth > MAX_DEPTH {
+        return None;
+    }
+    if let Some(cp) = g.clip_path() {
+        if simple_clip(cp, |p| probe_of(p, probes).is_some()).is_none() {
+            if cp.root().children().is_empty() && cp.clip_path().is_none() {
+                return None;
+            }
+            return Some("a clip path other than a single path");
+        }
+    }
+    if !clip {
+        if g.mask().is_some() {
+            return Some("a mask");
+        }
+        if g.opacity().get() < 1.0 {
+            return Some("group opacity");
+        }
+        if g.blend_mode() != usvg::BlendMode::Normal {
+            return Some("a blend mode");
+        }
+        if g.isolate() {
+            return Some("an isolated group");
+        }
+    }
+    g.children().iter().find_map(|n| match n {
+        Node::Group(child) => scan_group(child, depth + 1, clip, probes),
+        Node::Path(_) if clip => None,
+        Node::Path(p) if p.is_visible() => {
+            let fill = p.fill().map(|f| (f.paint(), f.opacity().get()));
+            let stroke = p.stroke().map(|s| (s.paint(), s.opacity().get()));
+            [fill, stroke]
+                .into_iter()
+                .flatten()
+                .find_map(|(paint, opacity)| scan_paint(paint, opacity, depth, probes))
+        }
+        Node::Image(img) if !clip && img.is_visible() => match img.kind() {
+            usvg::ImageKind::JPEG(data)
+            | usvg::ImageKind::PNG(data)
+            | usvg::ImageKind::GIF(data)
+            | usvg::ImageKind::WEBP(data) => crate::images::decode_embedded(data)
+                .ok()
+                .and_then(|d| super::image::transparency(&d)),
+            usvg::ImageKind::SVG(tree) => scan_group(tree.root(), depth + 1, clip, probes),
+        },
+        Node::Path(_) | Node::Image(_) => None,
+        Node::Text(t) => scan_group(t.flattened(), depth + 1, clip, probes),
+    })
+}
+
+/// [`Svg::set_paint`]'s transparency.
+fn scan_paint(paint: &Paint, opacity: f32, depth: u32, probes: &Probes) -> Option<&'static str> {
+    let stops = match paint {
+        Paint::Color(_) => &[][..],
+        Paint::LinearGradient(l) => l.stops(),
+        Paint::RadialGradient(r) => r.stops(),
+        Paint::Pattern(pt) => {
+            if let Some(what) = scan_group(pt.root(), depth + 1, false, probes) {
+                return Some(what);
+            }
+            &[][..]
+        }
+    };
+    if stops.iter().any(|s| s.opacity().get() < 1.0) {
+        Some("a gradient with stop opacity")
+    } else if opacity < 1.0 {
+        Some("fill or stroke opacity")
+    } else {
+        None
+    }
+}
+
 /// Where a node is drawn: the transform from the current form's space
 /// (`ts`), how deep in groups, and whether as part of a clip path, where
 /// everything is filled opaque black (the content of an alpha soft mask).
@@ -375,14 +492,16 @@ impl Scope {
 struct Svg<'a> {
     pdf: &'a mut Pdf,
     alloc: &'a mut RefAlloc,
+    out: &'a mut Out,
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
     /// Embedded raster images by content: the image `XObject`, `None` if
     /// it did not decode.
     images: HashMap<ContentKey<Arc<Vec<u8>>>, Option<Ref>>,
     segments: usize,
-    /// Passed on to embedded raster images; leaves `.notdef` out of text.
-    pdf_a: bool,
+    /// Passed on to embedded raster images; under PDF/A, `.notdef` is
+    /// left out of text.
+    profile: Profile,
     /// The text at the probes, and the fonts to draw it with.
     text: Option<(&'a ProbedText, TextFonts<'a, 'a>)>,
 }
@@ -409,19 +528,20 @@ impl Svg<'_> {
         group: bool,
     ) -> Res {
         let data = super::deflate(
-            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new())),
+            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), self.profile)?,
             flate::LEVEL,
         )?;
-        let mut f = self.pdf.form_xobject(id, &data);
-        f.filter(Filter::FlateDecode);
-        f.bbox(bounded(bbox));
-        if let Some(m) = m {
-            f.matrix(m.map(number));
-        }
-        if group {
-            f.group().transparency().color_space().device_rgb();
-        }
-        cv.write_resources(f.resources());
+        self.out.form_xobject(self.pdf, id, &data, |f| {
+            f.filter(Filter::FlateDecode);
+            f.bbox(bounded(bbox));
+            if let Some(m) = m {
+                f.matrix(m.map(number));
+            }
+            if group {
+                f.group().transparency().color_space().device_rgb();
+            }
+            cv.write_resources(f.resources());
+        });
         Ok(())
     }
 
@@ -432,6 +552,8 @@ impl Svg<'_> {
         bbox: Rect,
         draw: impl FnOnce(&mut Self, &mut Canvas) -> Res,
     ) -> Result<Ref, InkoxideError> {
+        self.profile
+            .allow_transparency("an SVG mask, clip path, opacity or blend mode")?;
         let mut cv = Canvas::new();
         draw(self, &mut cv)?;
         let id = self.next();
@@ -440,10 +562,16 @@ impl Svg<'_> {
     }
 
     /// Graphics state with constant alphas and a blend mode (shared).
-    fn alpha_gs(&mut self, fill: f32, stroke: f32, blend: usvg::BlendMode) -> Ref {
+    fn alpha_gs(
+        &mut self,
+        fill: f32,
+        stroke: f32,
+        blend: usvg::BlendMode,
+    ) -> Result<Ref, InkoxideError> {
+        self.profile.allow_transparency("SVG opacity")?;
         let key = (alpha_key(fill), alpha_key(stroke), blend as u8);
         if let Some(&r) = self.alphas.get(&key) {
-            return r;
+            return Ok(r);
         }
         let r = self.next();
         let mut gs = self.pdf.ext_graphics(r);
@@ -454,7 +582,7 @@ impl Svg<'_> {
         }
         gs.finish();
         self.alphas.insert(key, r);
-        r
+        Ok(r)
     }
 
     fn soft_mask_gs(&mut self, group: Ref, kind: MaskType) -> Ref {
@@ -555,8 +683,11 @@ impl Svg<'_> {
             }
             (g.opacity().get(), g.blend_mode())
         };
-        let last = (opacity < 1.0 || blend != usvg::BlendMode::Normal)
-            .then(|| self.alpha_gs(opacity, opacity, blend));
+        let last = if opacity < 1.0 || blend != usvg::BlendMode::Normal {
+            Some(self.alpha_gs(opacity, opacity, blend)?)
+        } else {
+            None
+        };
         if masks.is_empty() && last.is_none() && (clip || !g.isolate()) {
             self.children(cv, g, at)?;
         } else {
@@ -738,34 +869,9 @@ impl Svg<'_> {
         Ok(())
     }
 
-    /// The text and paint style a probe stands for: a path of exactly the
-    /// four sides of a rectangle whose corners the probes list.
+    /// The text and paint style a probe stands for (see [`probe_of`]).
     fn probe(&self, p: &usvg::Path) -> Option<(usize, u32)> {
-        let (probed, _) = self.text?;
-        let mut segs = p.data().segments();
-        let (
-            Some(PathSegment::MoveTo(a)),
-            Some(PathSegment::LineTo(b)),
-            Some(PathSegment::LineTo(c)),
-            Some(PathSegment::LineTo(d)),
-            Some(PathSegment::Close),
-            None,
-        ) = (
-            segs.next(),
-            segs.next(),
-            segs.next(),
-            segs.next(),
-            segs.next(),
-            segs.next(),
-        )
-        else {
-            return None;
-        };
-        if (b.x, b.y, d.x, d.y) != (c.x, a.y, a.x, c.y) {
-            return None;
-        }
-        let &(text, paint) = probed.probes.get(&[a.x, a.y, c.x, c.y].map(f32::to_bits))?;
-        Some((text as usize, paint))
+        probe_of(p, &self.text?.0.probes)
     }
 
     /// Draws the text a probe stands for with the probe's paint. In a clip
@@ -881,7 +987,7 @@ impl Svg<'_> {
         let glyphs: Vec<_> = laid
             .glyphs
             .iter()
-            .filter(|g| g.paint == paint && !(self.pdf_a && g.id == 0))
+            .filter(|g| g.paint == paint && !(self.profile.is_pdf_a() && g.id == 0))
             .filter(|g| fonts.refs.contains_key(&g.font))
             .collect();
         if glyphs.is_empty() {
@@ -1041,7 +1147,7 @@ impl Svg<'_> {
                 cv.set_gs(r);
             }
             None if opacity < 1.0 => {
-                let r = self.alpha_gs(f, s, usvg::BlendMode::Normal);
+                let r = self.alpha_gs(f, s, usvg::BlendMode::Normal)?;
                 cv.set_gs(r);
             }
             None => {}
@@ -1150,21 +1256,22 @@ impl Svg<'_> {
         let mut cv = Canvas::new();
         self.group(&mut cv, pt.root(), Scope::form(at.depth + 1, false))?;
         let data = super::deflate(
-            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new())),
+            &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), self.profile)?,
             flate::LEVEL,
         )?;
         let id = self.next();
-        let mut t = self.pdf.tiling_pattern(id, &data);
-        t.filter(Filter::FlateDecode);
-        t.tiling_type(TilingType::ConstantSpacing)
-            .paint_type(PaintType::Colored)
-            .bbox(bounded(Rect::new(0.0, 0.0, r.width(), r.height())))
-            .x_step(number(r.width()))
-            .y_step(number(r.height()))
-            .matrix(matrix(
-                at.ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
-            ));
-        cv.write_resources(t.resources());
+        self.out.tiling_pattern(self.pdf, id, &data, |t| {
+            t.filter(Filter::FlateDecode);
+            t.tiling_type(TilingType::ConstantSpacing)
+                .paint_type(PaintType::Colored)
+                .bbox(bounded(Rect::new(0.0, 0.0, r.width(), r.height())))
+                .x_step(number(r.width()))
+                .y_step(number(r.height()))
+                .matrix(matrix(
+                    at.ts.pre_concat(pt.transform()).pre_translate(r.x(), r.y()),
+                ));
+            cv.write_resources(t.resources());
+        });
         Ok(id)
     }
 
@@ -1176,7 +1283,12 @@ impl Svg<'_> {
         }
         let r = match crate::images::decode_embedded(data) {
             Ok(decoded) => Some(super::image::write_image(
-                self.pdf, self.alloc, &decoded, self.pdf_a, None,
+                self.pdf,
+                self.alloc,
+                self.out,
+                &decoded,
+                self.profile,
+                None,
             )?),
             Err(_) => None,
         };
@@ -1231,7 +1343,7 @@ mod tests {
 
     use pdf_writer::Pdf;
 
-    use super::RefAlloc;
+    use super::{Out, Profile, RefAlloc};
     use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
 
     /// The PDF objects written for `svg`.
@@ -1241,7 +1353,15 @@ mod tests {
             panic!("not an SVG");
         };
         let mut pdf = Pdf::new();
-        super::write_svg(&mut pdf, &mut RefAlloc(0), &tree, false, None).unwrap();
+        super::write_svg(
+            &mut pdf,
+            &mut RefAlloc(0),
+            &mut Out::plain(),
+            &tree,
+            Profile::default(),
+            None,
+        )
+        .unwrap();
         pdf.finish()
     }
 
@@ -1394,6 +1514,98 @@ mod tests {
         assert!(rendered(&svg, false).contains("] TJ"));
         let a = rendered(&svg, true);
         assert_eq!(a.matches("] TJ").count(), 1, "only the page's text: {a}");
+    }
+
+    #[test]
+    fn the_transparency_scan_agrees_with_the_writer() {
+        let logo = url(
+            "image/png",
+            &crate::test_fixtures::fixture("images/logo.png"),
+        );
+        let photo = url(
+            "image/jpeg",
+            &crate::test_fixtures::fixture("images/photo.jpg"),
+        );
+        let veil = url(
+            "image/svg+xml",
+            svg(r#"<rect width="9" height="9" fill-opacity="0.5"/>"#).as_bytes(),
+        );
+        let cases = [
+            (r#"<rect width="9" height="9" fill="red"/>"#.to_string(), None),
+            (r#"<rect width="9" height="9" opacity="0.5"/>"#.into(), Some("group opacity")),
+            (r#"<rect width="9" height="9" fill-opacity="0.5"/>"#.into(), Some("fill or stroke opacity")),
+            (
+                r#"<rect width="9" height="9" stroke="red" stroke-opacity="0.5"/>"#.into(),
+                Some("fill or stroke opacity"),
+            ),
+            (
+                r#"<rect width="9" height="9" style="mix-blend-mode:multiply"/>"#.into(),
+                Some("a blend mode"),
+            ),
+            (r#"<g style="isolation:isolate"><rect width="9" height="9"/></g>"#.into(), Some("an isolated group")),
+            (
+                r#"<mask id="m"><rect width="5" height="5" fill="white"/></mask><rect width="9" height="9" mask="url(#m)"/>"#.into(),
+                Some("a mask"),
+            ),
+            (
+                r#"<clipPath id="c"><rect width="5" height="5"/></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"#.into(),
+                None,
+            ),
+            (
+                r#"<clipPath id="c"><rect width="5" height="5"/><circle r="3"/></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"#.into(),
+                Some("a clip path other than a single path"),
+            ),
+            (
+                r#"<linearGradient id="g"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient><rect width="9" height="9" fill="url(#g)"/>"#.into(),
+                None,
+            ),
+            (
+                r#"<linearGradient id="g"><stop offset="0" stop-color="red"/><stop offset="1" stop-opacity="0.5"/></linearGradient><rect width="9" height="9" fill="url(#g)"/>"#.into(),
+                Some("a gradient with stop opacity"),
+            ),
+            (
+                r#"<pattern id="p" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" opacity="0.5"/></pattern><rect width="9" height="9" fill="url(#p)"/>"#.into(),
+                Some("group opacity"),
+            ),
+            (format!(r#"<image width="9" height="9" href="{photo}"/>"#), None),
+            (format!(r#"<image width="9" height="9" href="{logo}"/>"#), Some("an alpha channel")),
+            (format!(r#"<image width="9" height="9" href="{veil}"/>"#), Some("fill or stroke opacity")),
+            // Inside a clip path, only the outline counts.
+            (
+                r#"<clipPath id="c"><rect width="5" height="5" fill-opacity="0.5"/></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"#.into(),
+                None,
+            ),
+        ];
+        let one_b = Profile::new(Some(crate::PdfALevel::A1b));
+        for (body, want) in cases {
+            let ImageBody::Svg { tree, .. } = ImageCrateDecoder
+                .decode(svg(&body).as_bytes())
+                .unwrap()
+                .body
+            else {
+                panic!("not an SVG");
+            };
+            assert_eq!(super::transparency(&tree, None), want, "{body}");
+            // The writer refuses exactly what the scan finds.
+            let refused = super::write_svg(
+                &mut Pdf::new(),
+                &mut RefAlloc(0),
+                &mut Out::plain(),
+                &tree,
+                one_b,
+                None,
+            );
+            assert_eq!(refused.is_err(), want.is_some(), "{body}");
+            super::write_svg(
+                &mut Pdf::new(),
+                &mut RefAlloc(0),
+                &mut Out::plain(),
+                &tree,
+                Profile::default(),
+                None,
+            )
+            .unwrap();
+        }
     }
 
     #[test]

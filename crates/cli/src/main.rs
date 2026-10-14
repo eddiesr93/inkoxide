@@ -14,9 +14,15 @@ use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
 use inkoxide::{
-    FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, RenderOptions,
+    FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions,
     ValidationError,
 };
+
+/// `--pdf-a=LEVEL`.
+fn pdf_a_level(s: &str) -> Result<PdfALevel, String> {
+    PdfALevel::from_name(s)
+        .ok_or_else(|| format!("unsupported PDF/A level `{s}` (expected 1b, 2b or 3b)"))
+}
 
 #[derive(Parser)]
 #[command(
@@ -82,9 +88,9 @@ enum Cmd {
         /// RFC 3339 creation date to embed.
         #[arg(long)]
         creation_date: Option<String>,
-        /// Write PDF/A-2b.
-        #[arg(long)]
-        pdf_a: bool,
+        /// Write PDF/A at LEVEL: 1b, 2b (the default) or 3b.
+        #[arg(long, value_name = "LEVEL", num_args = 0..=1, default_missing_value = "2b", value_parser = pdf_a_level)]
+        pdf_a: Option<PdfALevel>,
         /// Also rasterise every page to PNG with `pdftoppm` (if installed).
         #[arg(long)]
         png_dir: Option<PathBuf>,
@@ -248,8 +254,10 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .with_compress(!no_compress)
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
-                .with_pdf_a(pdf_a)
                 .with_hyphenation(load_hyphenation(&out)?);
+            if let Some(level) = pdf_a {
+                opts = opts.with_pdf_a_level(level);
+            }
             opts.creation_date = creation_date;
             let start = Instant::now();
             let pdf =
@@ -392,5 +400,29 @@ mod tests {
         ])
         .is_ok());
         assert!(parse(&["bench", "d.json", "--full-fonts", "--msgpack"]).is_ok());
+    }
+
+    #[test]
+    fn pdf_a_takes_an_optional_level() {
+        let level = |args: &[&str]| {
+            let cli = Cli::try_parse_from(["inkoxide", "render", "d.json"].iter().chain(args))
+                .map_err(|e| e.to_string())?;
+            let Cmd::Render { pdf_a, .. } = cli.command else {
+                unreachable!()
+            };
+            Ok::<_, String>(pdf_a)
+        };
+        assert_eq!(level(&[]), Ok(None));
+        assert_eq!(level(&["--pdf-a"]), Ok(Some(PdfALevel::A2b)));
+        assert_eq!(level(&["--pdf-a=1b"]), Ok(Some(PdfALevel::A1b)));
+        assert_eq!(level(&["--pdf-a=3b"]), Ok(Some(PdfALevel::A3b)));
+        // A bare flag before the document does not take it as its level.
+        assert_eq!(
+            level(&["--pdf-a", "--no-compress"]),
+            Ok(Some(PdfALevel::A2b))
+        );
+        assert!(level(&["--pdf-a=2a"])
+            .unwrap_err()
+            .contains("unsupported PDF/A level"));
     }
 }

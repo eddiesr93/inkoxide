@@ -5,11 +5,9 @@ or should come sooner.
 
 ## Next: engine features
 
-- **Encryption**: user and owner passwords, and permissions.
 - **Inline images** inside `Text`.
 - **Colour emoji**, from an emoji font or from images.
 - **Floats**: elements floated left or right, with text wrapping around them.
-- **More PDF/A levels**: PDF/A-1b and PDF/A-3b.
 
 ## Later
 

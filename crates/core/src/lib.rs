@@ -12,6 +12,7 @@
 #![warn(missing_docs)]
 
 mod date;
+mod encryption;
 mod error;
 mod flate;
 mod fonts;
@@ -31,6 +32,7 @@ mod test_fixtures;
 mod text;
 mod validate;
 
+pub use encryption::{Encryption, Permissions, Printing};
 pub use error::{InkoxideError, ValidationCode, ValidationError};
 pub use fonts::FontStore;
 pub use images::ImageStore;
@@ -41,7 +43,7 @@ use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use fonts::FontSet;
-use pdf::{DocumentOut, PdfSink, PdfWriterSink};
+use pdf::{DocumentOut, PdfSink, PdfWriterSink, Profile};
 use text::{RustybuzzShaper, TextCache, UnicodeMap};
 
 /// Engine version (the crate version).
@@ -57,6 +59,44 @@ pub enum InputFormat {
     /// `MessagePack` with the same structure as the JSON (maps keyed by the
     /// JSON field names).
     MessagePack,
+}
+
+/// The PDF/A part and conformance level [`RenderOptions::pdf_a`] writes.
+/// Every level is "b" (basic): the pages look the same in every reader,
+/// with no structure tree for accessibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum PdfALevel {
+    /// PDF/A-1b (ISO 19005-1), based on PDF 1.4: the strictest level,
+    /// for archives that ask for it.
+    A1b,
+    /// PDF/A-2b (ISO 19005-2), based on PDF 1.7.
+    #[default]
+    A2b,
+    /// PDF/A-3b (ISO 19005-3): PDF/A-2b that may also carry embedded
+    /// files of any kind.
+    A3b,
+}
+
+impl PdfALevel {
+    /// The level's short name, as the Node binding and the CLI take it:
+    /// `"1b"`, `"2b"`, `"3b"`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::A1b => "1b",
+            Self::A2b => "2b",
+            Self::A3b => "3b",
+        }
+    }
+
+    /// The level named `s` ([`as_str`](Self::as_str)).
+    #[must_use]
+    pub fn from_name(s: &str) -> Option<Self> {
+        [Self::A1b, Self::A2b, Self::A3b]
+            .into_iter()
+            .find(|l| l.as_str() == s)
+    }
 }
 
 /// Output settings for [`render`]; the document describes content only.
@@ -93,13 +133,19 @@ pub struct RenderOptions {
     /// Embed only the glyphs a document uses (default `true`). Off embeds
     /// whole font programs, for debugging.
     pub subset_fonts: bool,
-    /// Write PDF/A-2b (default `false`): XMP metadata, an sRGB output
-    /// intent and a file identifier; CMYK JPEGs are converted to RGB and
-    /// `.notdef` glyphs are left out.
+    /// Write PDF/A (default `false`), at [`pdf_a_level`](Self::pdf_a_level):
+    /// XMP metadata, an sRGB output intent and a file identifier; CMYK
+    /// JPEGs are converted to RGB and `.notdef` glyphs are left out.
     pub pdf_a: bool,
+    /// The PDF/A level written when [`pdf_a`](Self::pdf_a) is set (default
+    /// [`PdfALevel::A2b`]).
+    pub pdf_a_level: PdfALevel,
     /// Hyphenation patterns registered at runtime; they win over the
     /// built-in ones for their language. Default: none.
     pub hyphenation: HyphenationStore,
+    /// Encrypt the PDF with passwords and permissions (default `None`).
+    /// Not with [`pdf_a`](Self::pdf_a), which forbids encryption.
+    pub encryption: Option<Encryption>,
 }
 
 impl Default for RenderOptions {
@@ -111,7 +157,9 @@ impl Default for RenderOptions {
             threads: None,
             subset_fonts: true,
             pdf_a: false,
+            pdf_a_level: PdfALevel::default(),
             hyphenation: HyphenationStore::new(),
+            encryption: None,
         }
     }
 }
@@ -159,10 +207,26 @@ impl RenderOptions {
         self
     }
 
+    /// Writes PDF/A at `level`: sets [`pdf_a_level`](Self::pdf_a_level)
+    /// and [`pdf_a`](Self::pdf_a).
+    #[must_use]
+    pub fn with_pdf_a_level(mut self, level: PdfALevel) -> Self {
+        self.pdf_a = true;
+        self.pdf_a_level = level;
+        self
+    }
+
     /// Sets [`hyphenation`](Self::hyphenation).
     #[must_use]
     pub fn with_hyphenation(mut self, store: HyphenationStore) -> Self {
         self.hyphenation = store;
+        self
+    }
+
+    /// Sets [`encryption`](Self::encryption).
+    #[must_use]
+    pub fn with_encryption(mut self, encryption: Encryption) -> Self {
+        self.encryption = Some(encryption);
         self
     }
 }
@@ -170,9 +234,10 @@ impl RenderOptions {
 /// Validates a document against the schema and the registered resources:
 /// every font must be registered, and every image must exist and decode.
 /// Returns every problem found (capped at 100). Empty means the document
-/// is valid; [`render`] can still fail on the options, on the page limit
-/// or the limit on content repeated on every page, or when a font cannot be
-/// shaped or embedded.
+/// is valid; [`render`] can still fail on the options, on what the PDF/A
+/// level does not allow ([`ValidationCode::PdfaConflict`]), on the page
+/// limit or the limit on content repeated on every page, or when a font
+/// cannot be shaped or embedded.
 #[must_use]
 pub fn validate(
     doc: &[u8],
@@ -202,7 +267,7 @@ fn validate_with(
     images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
-        Ok(d) => validate::check(&d, fonts, images),
+        Ok(d) => validate::check(&d, fonts, images, false),
         Err(e) => vec![e],
     }
 }
@@ -274,8 +339,10 @@ fn render_inner(
     images: &ImageStore,
     parallel: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
+    let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
-    if let Some(first) = validate::check(&document, fonts, Some(images))
+    let opaque = !profile.transparency();
+    if let Some(first) = validate::check(&document, fonts, Some(images), opaque)
         .into_iter()
         .next()
     {
@@ -298,6 +365,18 @@ fn render_inner(
             .and_then(date::parse_rfc3339),
     };
 
+    let encryption = match &options.encryption {
+        None => None,
+        Some(_) if options.pdf_a => {
+            return Err(InkoxideError::Validation(ValidationError {
+                code: ValidationCode::InvalidValue,
+                path: "options.encryption".into(),
+                message: "PDF/A does not allow encryption".into(),
+            }));
+        }
+        Some(e) => Some(e.params()?),
+    };
+
     let font_set = FontSet::load(&document, fonts)?;
     let hyphenator = text::ResolvedHyphenator {
         store: &options.hyphenation,
@@ -311,7 +390,8 @@ fn render_inner(
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
-        pdf_a: options.pdf_a,
+        profile,
+        encryption,
         parallel,
     };
     let (pages, marks) = pipeline::run(

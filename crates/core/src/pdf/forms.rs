@@ -6,13 +6,14 @@ use std::collections::BTreeMap;
 
 use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType};
 use pdf_writer::writers::Field as FieldWriter;
-use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
+use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
-use super::{font_name, q, set_fill, show_text, EncodedPage, RefAlloc};
+use super::{font_name, q, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
 use crate::schema::{FieldKind, FieldValue, BLACK};
+use crate::InkoxideError;
 
 /// Longest PDF name, in bytes (ISO 32000-1, Annex C; PDF/A-2 holds files
 /// to it).
@@ -85,9 +86,10 @@ impl<'n> Groups<'n> {
 pub(super) fn write_fields(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
-) -> Option<Form> {
+) -> Result<Option<Form>, InkoxideError> {
     // Widgets grouped by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
     let mut groups: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
@@ -102,7 +104,7 @@ pub(super) fn write_fields(
         }
     }
     if order.is_empty() {
-        return None;
+        return Ok(None);
     }
     let mut form = Form {
         fields: Vec::new(),
@@ -128,12 +130,12 @@ pub(super) fn write_fields(
         }
         if widgets.len() == 1 && first.field.kind != FieldKind::Radio {
             // Field and widget merged in one dictionary.
-            let aps = ctx.appearances(pdf, alloc, first, &states.names[0]);
+            let aps = ctx.appearances(pdf, alloc, out, first, &states.names[0])?;
             let mut f = pdf.form_field(field_ref);
             if let Some(p) = parent {
                 f.parent(p);
             }
-            field_entries(&mut f, name, widgets, &states, ctx.scripts());
+            field_entries(&mut f, out, name, widgets, &states, ctx.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps);
             annot.finish();
@@ -142,7 +144,7 @@ pub(super) fn write_fields(
         }
         let mut kids = Vec::with_capacity(widgets.len());
         for (&(page, op), on) in widgets.iter().zip(&states.names) {
-            let aps = ctx.appearances(pdf, alloc, op, on);
+            let aps = ctx.appearances(pdf, alloc, out, op, on)?;
             let kid = alloc.next();
             let mut f = pdf.form_field(kid);
             f.parent(field_ref);
@@ -156,19 +158,20 @@ pub(super) fn write_fields(
         if let Some(p) = parent {
             f.parent(p);
         }
-        field_entries(&mut f, name, widgets, &states, ctx.scripts());
+        field_entries(&mut f, out, name, widgets, &states, ctx.scripts());
         f.children(kids);
         f.finish();
     }
     for g in &tree.list {
+        let part = out.text(g.part);
         let mut f = pdf.form_field(g.r);
-        f.partial_name(TextStr(g.part));
+        f.pair(Name(b"T"), Str(&part));
         if let Some(p) = g.parent {
             f.parent(p);
         }
         f.children(g.kids.iter().copied());
     }
-    Some(form)
+    Ok(Some(form))
 }
 
 /// The on-state names of a field's widgets, in order.
@@ -206,9 +209,10 @@ fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
 }
 
 /// The field-level entries: type, name, flags, value, default appearance,
-/// and with `scripts` the actions of a format.
+/// and with `scripts` the actions of a format. Strings go through `out`.
 fn field_entries(
     f: &mut FieldWriter<'_>,
+    out: &mut Out,
     name: &str,
     widgets: &[(usize, &FieldOp)],
     states: &OnStates,
@@ -216,7 +220,7 @@ fn field_entries(
 ) {
     let op = widgets[0].1;
     let spec = &op.field;
-    f.partial_name(TextStr(name));
+    f.pair(Name(b"T"), Str(&out.text(name)));
     let mut flags = FieldFlags::empty();
     if spec.read_only {
         flags |= FieldFlags::READ_ONLY;
@@ -238,48 +242,50 @@ fn field_entries(
             }
             if let Some(v) = spec.value_str() {
                 if !spec.password {
-                    match spec
+                    let stored = spec
                         .format
                         .as_deref()
-                        .and_then(|fmt| format::stored(fmt, v))
-                    {
-                        Some(stored) => f.text_value(TextStr(&stored)),
-                        None => f.text_value(TextStr(v)),
-                    };
+                        .and_then(|fmt| format::stored(fmt, v));
+                    f.pair(Name(b"V"), Str(&out.text(stored.as_deref().unwrap_or(v))));
                 }
             }
             if let (Some(fmt), true) = (spec.format.as_deref(), scripts) {
                 // The keystroke and format actions viewers run.
                 let (keystroke, format) = format::scripts(fmt);
+                let (keystroke, format) = (out.text(&keystroke), out.text(&format));
                 let mut aa = f.additional_actions();
                 aa.form_calculate_partial()
                     .action_type(ActionType::JavaScript)
-                    .js_string(TextStr(&keystroke));
+                    .pair(Name(b"JS"), Str(&keystroke));
                 aa.form_format()
                     .action_type(ActionType::JavaScript)
-                    .js_string(TextStr(&format));
+                    .pair(Name(b"JS"), Str(&format));
             }
         }
         FieldKind::Select => {
             f.field_type(FieldType::Choice);
             flags |= FieldFlags::COMBO;
-            f.choice_options()
-                .options(spec.options.iter().map(|o| TextStr(o)));
-            f.choice_value(spec.value_str().map(TextStr));
+            options(f, out, &spec.options);
+            match spec.value_str() {
+                Some(v) => f.pair(Name(b"V"), Str(&out.text(v))),
+                None => f.pair(Name(b"V"), pdf_writer::Null),
+            };
         }
         FieldKind::List => {
             f.field_type(FieldType::Choice);
             if spec.multi_select {
                 flags |= FieldFlags::MULTI_SELECT;
             }
-            f.choice_options()
-                .options(spec.options.iter().map(|o| TextStr(o)));
+            options(f, out, &spec.options);
             match &spec.value {
                 Some(FieldValue::Many(v)) => {
-                    f.choice_values(v.iter().map(|v| TextStr(v)));
+                    let values: Vec<Vec<u8>> = v.iter().map(|v| out.text(v)).collect();
+                    f.insert(Name(b"V"))
+                        .array()
+                        .items(values.iter().map(|v| Str(v)));
                 }
                 Some(FieldValue::One(v)) => {
-                    f.choice_value(Some(TextStr(v)));
+                    f.pair(Name(b"V"), Str(&out.text(v)));
                 }
                 None => {}
             }
@@ -309,11 +315,11 @@ fn field_entries(
                 .map_or("Off", |(_, s)| s.as_str());
             f.radio_value(Name(on.as_bytes()));
             if states.positions {
-                f.button_options(
-                    widgets
-                        .iter()
-                        .map(|(_, w)| TextStr(w.field.value_str().unwrap_or(""))),
-                );
+                let values: Vec<&str> = widgets
+                    .iter()
+                    .map(|(_, w)| w.field.value_str().unwrap_or(""))
+                    .collect();
+                options(f, out, &values);
             }
         }
     }
@@ -321,8 +327,19 @@ fn field_entries(
         f.field_flags(flags);
     }
     if spec.is_text_like() {
-        f.vartext_default_appearance(Str(default_appearance(op).as_bytes()));
+        f.pair(
+            Name(b"DA"),
+            Str(&out.bytes(default_appearance(op).as_bytes())),
+        );
     }
+}
+
+/// `/Opt`: the text of each option, through `out`.
+fn options(f: &mut FieldWriter<'_>, out: &mut Out, options: &[impl AsRef<str>]) {
+    let options: Vec<Vec<u8>> = options.iter().map(|o| out.text(o.as_ref())).collect();
+    f.insert(Name(b"Opt"))
+        .array()
+        .items(options.iter().map(|o| Str(o)));
 }
 
 /// An index into `/Opt` (at most 1000 options).
@@ -349,9 +366,9 @@ pub(super) struct Ctx<'r, 'f, 'a> {
     pub page_refs: &'r [Ref],
     pub font_refs: &'r BTreeMap<FontKey, Ref>,
     pub fonts: &'f FontSet<'a>,
-    /// Writing PDF/A: leave `.notdef` glyphs out of appearance streams, as
-    /// page content does.
-    pub pdf_a: bool,
+    /// Under PDF/A, `.notdef` glyphs are left out of appearance streams,
+    /// as page content does, and fields carry no scripts.
+    pub profile: Profile,
 }
 
 /// Appearance streams of one widget: `(state, stream)`; the state is
@@ -359,11 +376,11 @@ pub(super) struct Ctx<'r, 'f, 'a> {
 type Appearances = Vec<(Option<String>, Ref)>;
 
 impl Ctx<'_, '_, '_> {
-    /// Whether fields may carry scripts: not in PDF/A, which forbids
-    /// JavaScript actions and `/AA` (ISO 19005-2). A
-    /// format keeps its formatted text and value there.
+    /// Whether fields may carry scripts: not in PDF/A, at any level, which
+    /// forbids JavaScript actions and `/AA` (ISO 19005-1, 6.6.1; 19005-2,
+    /// 6.6.1). A format keeps its formatted text and value there.
     fn scripts(&self) -> bool {
-        !self.pdf_a
+        self.profile.scripts()
     }
 
     /// The appearance streams of widget `op`, whose on state is `on`
@@ -372,9 +389,10 @@ impl Ctx<'_, '_, '_> {
         &self,
         pdf: &mut Pdf,
         alloc: &mut RefAlloc,
+        out: &mut Out,
         op: &FieldOp,
         on: &str,
-    ) -> Appearances {
+    ) -> Result<Appearances, InkoxideError> {
         let (w, h) = (op.rect.w, op.rect.h);
         // A transformed widget: its appearance turns and scales with it
         // (widget space is y-up, layout space y-down), and the viewer fits
@@ -383,22 +401,22 @@ impl Ctx<'_, '_, '_> {
             .ctm
             .map(|[a, b, c, d, ..]| [a, -b, -c, d, 0.0, 0.0].map(q))
             .filter(|m| *m != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
-        let mut out = Vec::new();
+        let mut aps = Vec::new();
         let mut form = |pdf: &mut Pdf, content: Vec<u8>, font: Option<FontKey>| -> Ref {
             let r = alloc.next();
-            let mut x = pdf.form_xobject(r, &content);
-            x.bbox(PdfRect::new(0.0, 0.0, q(w), q(h)));
-            if let Some(m) = matrix {
-                x.matrix(m);
-            }
-            if let Some(key) = font {
-                if let Some(&fr) = self.font_refs.get(&key) {
-                    x.resources()
-                        .fonts()
-                        .pair(Name(font_name(key).as_bytes()), fr);
+            out.form_xobject(pdf, r, &content, |x| {
+                x.bbox(PdfRect::new(0.0, 0.0, q(w), q(h)));
+                if let Some(m) = matrix {
+                    x.matrix(m);
                 }
-            }
-            x.finish();
+                if let Some(key) = font {
+                    if let Some(&fr) = self.font_refs.get(&key) {
+                        x.resources()
+                            .fonts()
+                            .pair(Name(font_name(key).as_bytes()), fr);
+                    }
+                }
+            });
             r
         };
         match op.field.kind {
@@ -419,11 +437,12 @@ impl Ctx<'_, '_, '_> {
                     c.fill_nonzero();
                 }
                 for t in &op.text {
-                    show_text(&mut c, t, self.fonts, self.pdf_a);
+                    show_text(&mut c, t, self.fonts, self.profile.is_pdf_a());
                 }
                 c.restore_state();
                 c.end_marked_content();
-                out.push((None, form(pdf, super::content_bytes(c), op.font)));
+                let content = super::content_bytes(c, self.profile)?;
+                aps.push((None, form(pdf, content, op.font)));
             }
             FieldKind::Checkbox | FieldKind::Radio => {
                 let mut c = Content::new();
@@ -435,14 +454,12 @@ impl Ctx<'_, '_, '_> {
                 };
                 super::path(&mut c, &segs);
                 c.fill_nonzero();
-                out.push((
-                    Some(on.to_string()),
-                    form(pdf, super::content_bytes(c), None),
-                ));
-                out.push((Some("Off".into()), form(pdf, Vec::new(), None)));
+                let content = super::content_bytes(c, self.profile)?;
+                aps.push((Some(on.to_string()), form(pdf, content, None)));
+                aps.push((Some("Off".into()), form(pdf, Vec::new(), None)));
             }
         }
-        out
+        Ok(aps)
     }
 
     fn widget(
@@ -709,6 +726,27 @@ mod tests {
             &crate::test_fixtures::inter(),
             true,
         );
+        assert!(pdf.contains("/V (14 Oct 2026)"), "{pdf}");
+        assert!(
+            !pdf.contains("/AA <<") && !pdf.contains("/S /JavaScript"),
+            "{pdf}"
+        );
+        // Nor at PDF/A-1b.
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":200}},"children":[{field}]}}]}}"#
+        );
+        let options = crate::RenderOptions::default()
+            .with_compress(false)
+            .with_pdf_a_level(crate::PdfALevel::A1b);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &options,
+            &crate::test_fixtures::inter(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
         assert!(pdf.contains("/V (14 Oct 2026)"), "{pdf}");
         assert!(
             !pdf.contains("/AA <<") && !pdf.contains("/S /JavaScript"),

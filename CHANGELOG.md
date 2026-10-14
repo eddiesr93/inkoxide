@@ -9,6 +9,27 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- Encryption: user and owner passwords and permissions (printing at low or high resolution,
+  modifying, copying, annotating, filling forms, content accessibility, document assembly),
+  with AES-256 (PDF 2.0, revision 6). `RenderOptions::encryption` with `Encryption`,
+  `Permissions` and `Printing` in Rust, `encryption: { userPassword, ownerPassword,
+  permissions }` in the Node binding and in `@inkoxide/render`, and `<Document userPassword
+  ownerPassword permissions>`, which the option replaces. Passwords are printable ASCII up to
+  127 bytes, never part of the document tree, and never shown in errors or `Debug` output.
+  Output stays deterministic: the keys are derived from the document and the passwords.
+  Encryption with PDF/A is `INVALID_VALUE` at `options.encryption`.
+- PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
+  Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
+  `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and
+  `<Document conformance>` (`'PDF/A-1b'`, `'PDF/A-2b'`, `'PDF/A-3b'`, or the part alone), which
+  the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
+  `TEMPLATE_ERROR`.
+- PDF/A-1b has no transparency: a render at 1b fails with the new code `PDFA_CONFLICT` at the
+  path of the first colour with alpha below 1, `opacity` between 0 and 1, `debug`, image (or
+  background image) with an alpha channel, or SVG drawn with opacity, a mask or a blend mode
+  (`ENGINE_REJECTED` with the component in `@inkoxide/render`). `validate` does not know the
+  level and does not report it. A PDF/A-1b file also keeps within the limits of PDF/A-1
+  (numbers, strings, arrays, dictionaries, graphics state nesting) or fails with `PDF_ERROR`.
 - `textWrap: 'pretty'` (Tailwind `text-pretty`) breaks a paragraph's lines over the whole
   paragraph for even lines (Knuth and Plass's total fit), with fewer hyphens; justified
   `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the

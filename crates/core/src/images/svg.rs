@@ -433,6 +433,28 @@ pub(crate) fn parse_with_text(
     Ok((tree, probed))
 }
 
+/// The SVG of `source` converted with a probe for each text and each of
+/// its paint styles, without fonts: what its text is painted with, for
+/// checks that do not lay it out (PDF/A-1's transparency check).
+pub(crate) fn probe_tree(source: &TextSource) -> Result<(Arc<usvg::Tree>, ProbedText), String> {
+    parse_with_text(source, &mut |text: &SvgText| LaidText {
+        glyphs: (0..text.paints.len() as u32)
+            .map(|paint| crate::text::SvgGlyph {
+                font: 0,
+                id: 0,
+                size: 1.0,
+                x: 0.0,
+                y: 0.0,
+                rotate: 0.0,
+                scale_x: 1.0,
+                paint,
+            })
+            .collect(),
+        decorations: Vec::new(),
+        ink: Some([0.0, 0.0, 1.0, 1.0]),
+    })
+}
+
 /// `source`'s SVG with its texts replaced, its nested ones rewritten into
 /// `rewrites`.
 fn rewrite_all(

@@ -35,6 +35,7 @@ import {
   type HyphenationCallback,
   type Length,
   type PageSize,
+  type Permissions,
   type RenderProp,
   type Style as StyleInput,
   type TextFormat,
@@ -84,8 +85,48 @@ export interface BuildOptions {
   images: ImageTableOptions;
 }
 
+/**
+ * Render options a `<Document>` sets that are not part of the document tree, for the caller to
+ * pass to the engine.
+ */
+export interface OutputOptions {
+  /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
+  pdfA?: PdfALevel;
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
+   * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
+   */
+  encryption?: EncryptionOptions;
+}
+
+/** The encryption render option (the `inkoxide` binding's `EncryptionOptions`). */
+export interface EncryptionOptions {
+  userPassword?: string;
+  ownerPassword?: string;
+  permissions?: Permissions;
+}
+
+const REDACTED = '<redacted>';
+
+/** Output options whose JSON and `util.inspect` view hide the passwords. */
+function outputOptions(): OutputOptions {
+  const redacted = function (this: OutputOptions): object {
+    return this.encryption === undefined ? { ...this } : { ...this, encryption: REDACTED };
+  };
+  const out: OutputOptions = {};
+  for (const key of ['toJSON', Symbol.for('nodejs.util.inspect.custom')]) {
+    Object.defineProperty(out, key, { value: redacted, enumerable: false });
+  }
+  return out;
+}
+
+/** A PDF/A part and conformance level the engine writes. */
+export type PdfALevel = '1b' | '2b' | '3b';
+
 export interface BuildResult {
   document: Document;
+  /** Render options the `<Document>` sets (`conformance`); not part of `document`. */
+  output: OutputOptions;
   /** Image bytes referenced by generated `src` ids; pass them as the render option `images`. */
   images: Record<string, Uint8Array>;
   /** Font ids used, in registration order. */
@@ -338,6 +379,9 @@ class Builder {
     );
   }
 
+  /** What the `<Document>` sets besides the tree; filled by `build`. */
+  readonly output: OutputOptions = outputOptions();
+
   build(container: Container): Document {
     const [root, ...extra] = container.children.filter((c) => !(c.kind === 'text' && c.text.trim() === ''));
     if (!isEl(root, HOST.Document) || extra.length > 0) {
@@ -358,6 +402,9 @@ class Builder {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
+    if (p.conformance !== undefined) this.output.pdfA = this.conformance(root, p.conformance);
+    const encryption = this.encryption(root, p);
+    if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
@@ -390,6 +437,45 @@ class Builder {
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
+  }
+
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`, its types checked;
+   * the engine checks the values. Messages never show a password.
+   */
+  private encryption(root: Instance, p: Record<string, unknown>): EncryptionOptions | undefined {
+    const out: EncryptionOptions = {};
+    for (const key of ['userPassword', 'ownerPassword'] as const) {
+      const v = p[key];
+      if (v === undefined) continue;
+      if (typeof v !== 'string') this.fail(root, `<Document ${key}> must be a string.`);
+      out[key] = v;
+    }
+    if (p.permissions !== undefined) {
+      const perms = p.permissions;
+      if (typeof perms !== 'object' || perms === null || Array.isArray(perms)) {
+        this.fail(root, '<Document permissions> must be an object.');
+      }
+      out.permissions = { ...(perms as Permissions) };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
+  /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
+  private conformance(root: Instance, value: unknown): PdfALevel {
+    const m = typeof value === 'string' ? /^PDF\/A-([123])([abu]?)$/.exec(value) : null;
+    if (m && (m[2] === '' || m[2] === 'b')) return `${m[1]}b` as PdfALevel;
+    const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
+    if (m) {
+      this.fail(
+        root,
+        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${m[1]}b'.`,
+      );
+    }
+    this.fail(
+      root,
+      `<Document conformance=${shown}> is not a PDF/A level: use 'PDF/A-1b', 'PDF/A-2b' or 'PDF/A-3b' (or 'PDF/A-1', 'PDF/A-2', 'PDF/A-3').`,
+    );
   }
 
   fontIds(): string[] {
@@ -1240,6 +1326,7 @@ export function buildTree(container: Container, opts: BuildOptions): BuildResult
   const document = b.build(container);
   return {
     document,
+    output: b.output,
     images: b.imageTable.images,
     fonts: b.fontIds(),
     warnings: b.warnings,

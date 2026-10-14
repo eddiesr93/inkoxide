@@ -23,7 +23,8 @@ export type ValidationCode =
   | 'STYLE_NOT_APPLICABLE'
   | 'INVALID_TABLE'
   | 'INVALID_NODE'
-  | 'UNKNOWN_ANCHOR';
+  | 'UNKNOWN_ANCHOR'
+  | 'PDFA_CONFLICT';
 
 /**
  * Every `InkoxideError.code`: a document problem, a resource failure
@@ -40,6 +41,9 @@ export type ErrorCode =
   | 'HYPHENATION_ERROR'
   | 'INVALID_ARGUMENT'
   | 'INTERNAL';
+
+/** A PDF/A part and conformance level (mirrors Rust `PdfALevel`). */
+export type PdfALevel = '1b' | '2b' | '3b';
 
 /** Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. */
 export interface RenderOptions {
@@ -65,12 +69,52 @@ export interface RenderOptions {
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
   subsetFonts?: boolean;
   /**
-   * Write PDF/A-2b (archival): XMP metadata, an sRGB output intent and a
-   * file identifier. CMYK JPEGs are converted to RGB. Default `false`.
+   * Write PDF/A (archival): XMP metadata, an sRGB output intent and a
+   * file identifier. CMYK JPEGs are converted to RGB. `true` writes
+   * PDF/A-2b; `'3b'` writes PDF/A-3b, which may carry embedded files;
+   * `'1b'` writes PDF/A-1b. Another string is `INVALID_ARGUMENT`.
+   * Default `false`.
    */
-  pdfA?: boolean;
+  pdfA?: boolean | PdfALevel;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
+  /**
+   * Encrypt the PDF with AES-256 (PDF 2.0). Not with `pdfA`. Default: not
+   * encrypted. A bad value is `INVALID_ARGUMENT` at its path, without the
+   * password in the message.
+   */
+  encryption?: EncryptionOptions;
+}
+
+/** Mirrors Rust `Encryption`. */
+export interface EncryptionOptions {
+  /**
+   * The password that opens the file. Printable ASCII, at most 127 bytes.
+   * Default: none (anyone opens it).
+   */
+  userPassword?: string;
+  /**
+   * The password that lifts the permissions. Default: the user password,
+   * so whoever opens the file may do anything. At least one of the two is
+   * required.
+   */
+  ownerPassword?: string;
+  /** What a reader without the owner password may do. Needs `ownerPassword`. */
+  permissions?: Permissions;
+}
+
+/**
+ * Mirrors Rust `Permissions`. Every permission is off unless set, except
+ * `contentAccessibility`, which is on. Readers enforce them.
+ */
+export interface Permissions {
+  printing?: 'lowResolution' | 'highResolution';
+  modifying?: boolean;
+  copying?: boolean;
+  annotating?: boolean;
+  fillingForms?: boolean;
+  contentAccessibility?: boolean;
+  documentAssembly?: boolean;
 }
 
 export interface ValidationError {
