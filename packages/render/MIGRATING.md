@@ -28,17 +28,19 @@ over by changing the import. This page lists what has another name, and what is 
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
 | `Font.registerEmojiSource({ url, format })` | The same, or `{ builder }`; see [Fonts](GUIDE.md#fonts) | Works. The URLs must be allowed by `remoteImages`; an emoji whose image cannot be loaded is drawn by the fonts with a warning. A colour emoji font in `fallbackFonts` works too |
 | `<Image>` inside `<Text>` | The same; see [Images](GUIDE.md#images) | Works. With no size, the image is 1em high and keeps its aspect ratio; give `width` or `height` in points or em, not percentages. `verticalAlign` places it (`middle`, `text-top`, `top`, a number of points…). SVG images work too |
+| `<TextInput>`, `<Checkbox>`, `<Select select={[…]}>`, `<List select={[…]}>` | The same; `TextField` is another name for `TextInput`, and `options` for `select`. See [Forms](GUIDE.md#forms) | Works, with `multiSelect` on a `List`; the size, border, background and text style come from style props or classes |
+| `format={{ type, param, nDec, sepComma, negStyle, currency, currencyPrepend }}` on `<TextInput>` | The same, or the readable keys `pattern`, `decimals`, `separators`, `negative` and `currencyBefore`; see [Forms](GUIDE.md#forms) | Works for every `type`. `value` is the raw value (`'1250'`, `'2026-10-14'`), which the field shows formatted. A PDF/A document leaves the formatting scripts out |
+| `<FieldSet name="address">` | The same | Works as is, for every kind of field, and sets inside sets nest: `a.b.c` |
+| `<Note>` | The same, see [Notes](GUIDE.md#notes) | Works with text children, `backgroundColor` for the colour, and `author` and `open`. It cannot go inside a `<Text>` yet |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
 **Not available:**
 - **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.
 - **Other output forms:** `pdf().toBuffer()`. Use `renderToBuffer`.
-- **Document options:** `ownerPassword`, `userPassword` and `permissions` (encryption); `conformance` other than PDF/A-2b (use the `pdfA` render option for 2b); `pdfVersion`; `onRender`.
+- **Document options:** `conformance` at the a and u levels (`PDF/A-2a`, `PDF/A-3u`, …), which need tagged PDF; `conformance` takes `PDF/A-1b`, `PDF/A-2b` and `PDF/A-3b`; `pdfVersion`; `onRender`.
 - **Text:**
   - `hyphenationPenalty` on `Text`.
 - **Layout:** `float`, `clear` and `shapeOutside`.
-- **Forms:** `<List>`, `<FieldSet>`, and `format` on a text field.
-- **Annotations:** `<Note>`.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document

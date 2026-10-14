@@ -1,18 +1,21 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
+pub(crate) mod crypt;
 mod font;
 mod forms;
 mod image;
+mod notes;
+mod out;
 mod pdfa;
 mod svg;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use pdf_writer::types::{
-    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, OutputIntentSubtype, PageLayout,
-    PageMode, TextRenderingMode,
+    ActionType, AnnotationFlags, AnnotationType, LineCapStyle, PageLayout, PageMode,
+    TextRenderingMode,
 };
-use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str, TextStr};
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 use rayon::prelude::*;
 
 use crate::date::Timestamp;
@@ -23,6 +26,10 @@ use crate::pipeline::{Dest, Marks};
 use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
+
+pub(crate) use image::transparency as image_transparency;
+use out::Out;
+pub(crate) use pdfa::Profile;
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 const PAGE_TREE_FANOUT: usize = 50;
@@ -49,6 +56,8 @@ pub(crate) struct EncodedPage {
     pub links: Vec<(Rect, Box<str>)>,
     /// Form field widgets.
     pub fields: Vec<crate::forms::FieldOp>,
+    /// Text notes, at the corner the transform in effect puts them.
+    pub notes: Vec<crate::notes::NoteOp>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -77,8 +86,10 @@ pub(crate) struct PdfWriterSink {
     pub compression: Option<u32>,
     /// Embed only the glyphs used.
     pub subset_fonts: bool,
-    /// Write PDF/A-2b.
-    pub pdf_a: bool,
+    /// Plain PDF or PDF/A.
+    pub profile: Profile,
+    /// Encrypt the file with these passwords and permissions.
+    pub encryption: Option<crypt::Params>,
     /// Prepare font programs on the current rayon pool; otherwise on the
     /// calling thread.
     pub parallel: bool,
@@ -146,15 +157,18 @@ fn round_to(v: f32, per: f32) -> f32 {
 }
 
 /// The bytes of content stream `c`, whose numbers went through
-/// [`number`] (checked in debug builds).
-pub(crate) fn content_bytes(c: Content) -> Vec<u8> {
+/// [`number`] (checked in debug builds), within the limits of `profile`.
+pub(crate) fn content_bytes(c: Content, profile: Profile) -> Result<Vec<u8>, InkoxideError> {
     let buf = c.finish();
     debug_assert!(
         buf.limits().real() <= MAX_NUMBER,
         "a number past MAX_NUMBER: {}",
         buf.limits().real()
     );
-    buf.into_vec()
+    profile.check_limits(buf.limits())?;
+    let data = buf.into_vec();
+    profile.check_nesting(&data)?;
+    Ok(data)
 }
 
 /// Hands out object numbers in order, from 1.
@@ -178,6 +192,7 @@ impl PdfSink for PdfWriterSink {
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
         let mut fields = Vec::new();
+        let mut notes = Vec::new();
         // Links and widgets are areas on the page: they cover where the
         // transform in effect puts them.
         let mut ctm: Option<[f32; 6]> = None;
@@ -220,10 +235,22 @@ impl PdfSink for PdfWriterSink {
                     f.ctm = ctm;
                     fields.push(f);
                 }
+                // An icon stays upright and the same size: only its corner
+                // moves.
+                Op::Note(n) => {
+                    let mut n = (**n).clone();
+                    if let Some(m) = ctm {
+                        (n.x, n.y) = (
+                            m[0] * n.x + m[2] * n.y + m[4],
+                            m[1] * n.x + m[3] * n.y + m[5],
+                        );
+                    }
+                    notes.push(n);
+                }
                 _ => {}
             }
         }
-        let raw = content_stream(page, fonts, self.pdf_a);
+        let raw = content_stream(page, fonts, self.profile)?;
         let stream = match self.compression {
             Some(level) => deflate(&raw, level)?,
             None => raw,
@@ -238,12 +265,24 @@ impl PdfSink for PdfWriterSink {
             images,
             links,
             fields,
+            notes,
         })
     }
 
     fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {
         let mut pdf = Pdf::new();
+        if let Some((major, minor)) = self.profile.version() {
+            pdf.set_version(major, minor);
+        }
         let mut alloc = RefAlloc(0);
+        let (mut out, encrypt) = match &self.encryption {
+            Some(params) => {
+                let d = crypt::digest(doc.pages.iter().map(|p| p.stream.as_slice()), doc.meta);
+                let (crypt, dict) = crypt::Crypt::new(params, &d);
+                (Out::encrypted(crypt), Some(dict))
+            }
+            None => (Out::plain(), None),
+        };
         let catalog = alloc.next();
         let info = alloc.next();
 
@@ -262,6 +301,10 @@ impl PdfSink for PdfWriterSink {
             for &key in &page.opacities {
                 opacities.entry(key).or_insert(Ref::new(1));
             }
+        }
+        if opacities.keys().any(|&key| key < alpha_key(1.0)) {
+            self.profile
+                .allow_transparency("an opacity or a colour's alpha")?;
         }
         for (key, r) in &mut opacities {
             *r = alloc.next();
@@ -301,14 +344,13 @@ impl PdfSink for PdfWriterSink {
         };
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
         for ((key, glyphs), program) in used.iter().zip(&programs) {
-            let r = font::write_font(
-                &mut pdf,
-                &mut alloc,
-                doc.fonts.get(*key),
+            let embedded = font::Embedded {
+                font: doc.fonts.get(*key),
                 program,
-                glyphs,
-                doc.unicode.fonts.get(key),
-            );
+                used: glyphs,
+                unicode: doc.unicode.fonts.get(key),
+            };
+            let r = font::write_font(&mut pdf, &mut alloc, &mut out, &embedded, self.profile)?;
             font_refs.insert(*key, r);
         }
 
@@ -320,7 +362,13 @@ impl PdfSink for PdfWriterSink {
             }
         }
         for (key, r) in &mut image_refs {
-            *r = image::write_image(&mut pdf, &mut alloc, doc.images.get(*key), self.pdf_a)?;
+            *r = image::write_image(
+                &mut pdf,
+                &mut alloc,
+                &mut out,
+                doc.images.get(*key),
+                self.profile,
+            )?;
         }
 
         // Link annotations, numbered in page order.
@@ -331,27 +379,41 @@ impl PdfSink for PdfWriterSink {
                 let r = alloc.next();
                 if write_link(
                     &mut pdf,
+                    &mut out,
                     r,
                     page.height,
                     link,
-                    doc.marks,
-                    &page_refs,
-                    self.pdf_a,
+                    (doc.marks, &page_refs),
+                    self.profile,
                 ) {
                     refs.push(r);
                 }
             }
             annots.push(refs);
         }
+        notes::write_notes(
+            &mut pdf,
+            &mut alloc,
+            &mut out,
+            (doc.pages, &page_refs),
+            &mut annots,
+            self.profile,
+        )?;
         let fields = forms::Ctx {
             pages: doc.pages,
             page_refs: &page_refs,
             font_refs: &font_refs,
             fonts: doc.fonts,
-            pdf_a: self.pdf_a,
+            profile: self.profile,
         };
-        let form = forms::write_fields(&mut pdf, &mut alloc, &fields, &mut annots);
-        let outline = write_outline(&mut pdf, &mut alloc, &doc.marks.outline, &page_refs);
+        let form = forms::write_fields(&mut pdf, &mut alloc, &mut out, &fields, &mut annots)?;
+        let outline = write_outline(
+            &mut pdf,
+            &mut alloc,
+            &mut out,
+            &doc.marks.outline,
+            &page_refs,
+        );
 
         for (i, ((page, page_ref), content_ref)) in doc
             .pages
@@ -390,12 +452,14 @@ impl PdfSink for PdfWriterSink {
             }
             p.finish();
 
-            let mut stream = pdf.stream(*content_ref, &page.stream);
-            if page.compressed {
-                stream.filter(Filter::FlateDecode);
-            }
+            out.stream(&mut pdf, *content_ref, &page.stream, |stream| {
+                if page.compressed {
+                    stream.filter(Filter::FlateDecode);
+                }
+            });
         }
 
+        let lang = doc.meta.lang.as_deref().map(|l| out.text(l));
         let mut cat = pdf.catalog(catalog);
         cat.pages(tree_root.root);
         if let Some(form) = &form {
@@ -435,33 +499,49 @@ impl PdfSink for PdfWriterSink {
                 schema::PageLayout::TwoPageRight => PageLayout::TwoPageRight,
             });
         }
-        if let Some(lang) = &doc.meta.lang {
-            cat.lang(TextStr(lang));
+        if let Some(lang) = &lang {
+            cat.pair(Name(b"Lang"), Str(lang));
+        }
+        if encrypt.is_some() {
+            // Revision 6 of the security handler is extension level 8 of
+            // PDF 1.7.
+            cat.insert(Name(b"Extensions"))
+                .dict()
+                .insert(Name(b"ADBE"))
+                .dict()
+                .pair(Name(b"BaseVersion"), Name(b"1.7"))
+                .pair(Name(b"ExtensionLevel"), 8);
         }
         let producer = doc
             .meta
             .producer
             .as_deref()
             .unwrap_or(concat!("Inkoxide ", env!("CARGO_PKG_VERSION")));
-        if self.pdf_a {
+        if self.profile.is_pdf_a() {
             let metadata = alloc.next();
             let profile = alloc.next();
             cat.metadata(metadata);
-            cat.output_intents()
+            let (condition, info) = (out.text("sRGB"), out.text("sRGB IEC61966-2.1"));
+            // `output_intents()`, with strings from `out`.
+            cat.insert(Name(b"OutputIntents"))
+                .array()
                 .push()
-                .subtype(OutputIntentSubtype::PDFA)
-                .output_condition_identifier(TextStr("sRGB"))
-                .info(TextStr("sRGB IEC61966-2.1"))
-                .dest_output_profile(profile);
+                .dict()
+                .pair(Name(b"Type"), Name(b"OutputIntent"))
+                .pair(Name(b"S"), Name(b"GTS_PDFA1"))
+                .pair(Name(b"OutputConditionIdentifier"), Str(&condition))
+                .pair(Name(b"Info"), Str(&info))
+                .pair(Name(b"DestOutputProfile"), profile);
             cat.finish();
             // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date);
-            pdf.metadata(metadata, &xmp);
+            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, self.profile);
+            out.metadata(&mut pdf, metadata, &xmp, |_| {});
             let icc = deflate(&pdfa::srgb_icc(), 9)?;
-            pdf.icc_profile(profile, &icc)
-                .n(3)
-                .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
-                .filter(Filter::FlateDecode);
+            out.icc_profile(&mut pdf, profile, &icc, |p| {
+                p.n(3)
+                    .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+                    .filter(Filter::FlateDecode);
+            });
             // Deterministic: a hash of everything that makes the document.
             let mut h = xxhash_rust::xxh3::Xxh3::new();
             for page in doc.pages {
@@ -476,32 +556,32 @@ impl PdfSink for PdfWriterSink {
 
         // PDF/A: the same cleaned values as the XMP packet.
         let text = |v: &str| {
-            if self.pdf_a {
+            if self.profile.is_pdf_a() {
                 pdfa::clean(v)
             } else {
                 v.to_string()
             }
         };
-        let mut inf = pdf.document_info(info);
         let m = doc.meta;
-        if let Some(v) = &m.title {
-            inf.title(TextStr(&text(v)));
+        let mut entries: Vec<(&[u8], Vec<u8>)> = Vec::new();
+        for (key, value) in [
+            (&b"Title"[..], &m.title),
+            (b"Author", &m.author),
+            (b"Subject", &m.subject),
+            (b"Keywords", &m.keywords),
+            (b"Creator", &m.creator),
+        ] {
+            if let Some(v) = value {
+                entries.push((key, out.text(&text(v))));
+            }
         }
-        if let Some(v) = &m.author {
-            inf.author(TextStr(&text(v)));
-        }
-        if let Some(v) = &m.subject {
-            inf.subject(TextStr(&text(v)));
-        }
-        if let Some(v) = &m.keywords {
-            inf.keywords(TextStr(&text(v)));
-        }
-        if let Some(v) = &m.creator {
-            inf.creator(TextStr(&text(v)));
-        }
-        inf.producer(TextStr(&text(producer)));
+        entries.push((b"Producer", out.text(&text(producer))));
         if let Some(t) = doc.creation_date {
-            inf.pair(Name(b"CreationDate"), Str(pdf_date(t).as_bytes()));
+            entries.push((b"CreationDate", out.bytes(pdf_date(t).as_bytes())));
+        }
+        let mut inf = pdf.document_info(info);
+        for (key, value) in &entries {
+            inf.pair(Name(key), Str(value));
         }
         inf.finish();
 
@@ -512,7 +592,16 @@ impl PdfSink for PdfWriterSink {
             "a number past MAX_NUMBER: {}",
             pdf.limits().real()
         );
-        Ok(pdf.finish())
+        self.profile.check_limits(pdf.limits())?;
+        let Some(dict) = encrypt else {
+            return Ok(pdf.finish());
+        };
+        // Last, so every other object keeps its number.
+        let r = alloc.next();
+        dict.write(&mut pdf, r);
+        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
+        crypt::splice_encrypt(pdf.finish(), r)
+            .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
     }
 }
 
@@ -532,12 +621,12 @@ fn bounds(m: [f32; 6], rect: Rect) -> Rect {
 /// when an anchor has no destination.
 fn write_link(
     pdf: &mut Pdf,
+    out: &mut Out,
     r: Ref,
     page_h: f32,
     (rect, target): &(Rect, Box<str>),
-    marks: &Marks<'_>,
-    pages: &[Ref],
-    pdf_a: bool,
+    (marks, pages): (&Marks<'_>, &[Ref]),
+    profile: Profile,
 ) -> bool {
     let dest = match target.strip_prefix('#') {
         Some(id) => match marks.anchors.get(id) {
@@ -546,11 +635,12 @@ fn write_link(
         },
         None => None,
     };
+    let uri = dest.is_none().then(|| out.bytes(&uri_bytes(target)));
     let mut a = pdf.annotation(r);
     a.subtype(AnnotationType::Link)
         .rect(annot_rect(*rect, page_h))
         .border(0.0, 0.0, 0.0, None);
-    if pdf_a {
+    if profile.is_pdf_a() {
         a.flags(AnnotationFlags::PRINT);
     }
     let mut action = a.action();
@@ -562,7 +652,7 @@ fn write_link(
         None => {
             action
                 .action_type(ActionType::Uri)
-                .uri(Str(uri_bytes(target).as_slice()));
+                .uri(Str(uri.as_deref().unwrap_or_default()));
         }
     }
     true
@@ -598,6 +688,7 @@ fn uri_bytes(uri: &str) -> Vec<u8> {
 fn write_outline(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
+    out: &mut Out,
     entries: &[crate::pipeline::OutlineEntry<'_>],
     page_refs: &[Ref],
 ) -> Option<Ref> {
@@ -640,9 +731,10 @@ fn write_outline(
         }
     }
     for (i, e) in entries.iter().enumerate() {
+        let title = out.text(e.title);
         let mut item = pdf.outline_item(refs[i]);
-        item.title(TextStr(e.title))
-            .parent(parent[i].map_or(root, |p| refs[p]));
+        item.pair(Name(b"Title"), Str(&title));
+        item.parent(parent[i].map_or(root, |p| refs[p]));
         if let Some(p) = prev[i] {
             item.prev(refs[p]);
         }
@@ -850,7 +942,11 @@ fn path(c: &mut Content, segs: &[PathSeg]) {
 
 /// Serialises one page's display list. Pure function of the page: safe to
 /// run per page in parallel.
-pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: bool) -> Vec<u8> {
+pub(crate) fn content_stream(
+    page: &PageContent,
+    fonts: &FontSet<'_>,
+    profile: Profile,
+) -> Result<Vec<u8>, InkoxideError> {
     let mut c = Content::new();
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(page.height)]);
@@ -914,13 +1010,13 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) => {}
+            Op::Link { .. } | Op::Field(_) | Op::Note(_) => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
             // Its colour glyphs are images; the others have no ink.
             Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
-            Op::Text(t) => show_text(&mut c, t, fonts, pdf_a),
+            Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
             Op::Image { key, matrix } => {
                 c.save_state();
                 c.transform(matrix.map(q));
@@ -930,29 +1026,37 @@ pub(crate) fn content_stream(page: &PageContent, fonts: &FontSet<'_>, pdf_a: boo
             Op::Span { actual_text } => {
                 c.begin_marked_content_with_properties(Name(b"Span"))
                     .properties()
-                    .actual_text(TextStr(actual_text));
+                    .pair(Name(b"ActualText"), Str(&out::text_bytes(actual_text)));
             }
             Op::EndSpan => {
                 c.end_marked_content();
             }
-            Op::InvisibleText(g) => invisible_glyph(&mut c, g, fonts),
+            Op::InvisibleText(g) => invisible_glyph(&mut c, g, fonts, profile),
         }
     }
-    content_bytes(c)
+    content_bytes(c, profile)
 }
 
 /// An invisible glyph (`3 Tr`), horizontally scaled (`Tz`) to its width,
-/// in its own save level: text state outlives `ET`.
-fn invisible_glyph(c: &mut Content, g: &InvisibleGlyph, fonts: &FontSet<'_>) {
+/// in its own save level: text state outlives `ET`. Where `profile`
+/// bounds real numbers (PDF/A-1), a scaling past the bound is moved into
+/// the font size, which draws the same width.
+fn invisible_glyph(c: &mut Content, g: &InvisibleGlyph, fonts: &FontSet<'_>, profile: Profile) {
     let font = fonts.get(g.font);
     let advance = font.advance(g.glyph) * font.scale(g.size);
-    let scaling = 100.0 * g.width / advance;
+    let mut scaling = 100.0 * g.width / advance;
     if !(scaling.is_finite() && scaling > 0.0) {
         return;
     }
+    let mut size = g.size;
+    let max = profile.max_real();
+    if scaling > max {
+        size *= scaling / max;
+        scaling = max;
+    }
     c.save_state();
     c.begin_text();
-    c.set_font(Name(font_name(g.font).as_bytes()), q(g.size));
+    c.set_font(Name(font_name(g.font).as_bytes()), q(size));
     c.set_text_rendering_mode(TextRenderingMode::Invisible);
     c.set_horizontal_scaling(q(scaling));
     c.set_text_matrix([1.0, 0.0, 0.0, -1.0, q(g.x), q(g.y)]);
@@ -1017,7 +1121,7 @@ mod tests {
         ] {
             c.move_to(number(v), 0.0);
         }
-        let out = String::from_utf8(content_bytes(c)).unwrap();
+        let out = String::from_utf8(content_bytes(c, Profile::default()).unwrap()).unwrap();
         for token in out.split_ascii_whitespace() {
             if token.parse::<f64>().is_ok() && !token.contains('.') {
                 assert!(token.parse::<i32>().is_ok(), "{token} in {out}");
@@ -1165,7 +1269,8 @@ mod tests {
                 matrix: [inf, nan, 0.0, -inf, 1.0, 2.0],
             },
         ];
-        let out = String::from_utf8(content_stream(&page, &fonts, false)).unwrap();
+        let out =
+            String::from_utf8(content_stream(&page, &fonts, Profile::default()).unwrap()).unwrap();
         for token in out.split_whitespace() {
             let t = token.trim_start_matches('-');
             assert!(t != "inf" && t != "NaN", "`{token}` in:\n{out}");
@@ -1263,7 +1368,8 @@ mod tests {
         assert!(matches!(page.ops[1], Op::FillRect { .. }));
         assert!(matches!(page.ops[2], Op::InvisibleText(_)));
         assert!(matches!(page.ops[3], Op::EndSpan));
-        let text = String::from_utf8(content_stream(&page, &fonts, false)).unwrap();
+        let text =
+            String::from_utf8(content_stream(&page, &fonts, Profile::default()).unwrap()).unwrap();
         // Not ASCII: UTF-16BE with a byte order mark, as PDF text strings are.
         let mut hex = String::from("FEFF");
         for u in "a (b) \\ ☃".encode_utf16() {
@@ -1294,7 +1400,8 @@ mod tests {
         let mut sink = PdfWriterSink {
             compression: None,
             subset_fonts: true,
-            pdf_a: false,
+            profile: Profile::default(),
+            encryption: None,
             parallel: false,
         };
         let pages = [sink.encode_page(&page, &fonts).unwrap()];
@@ -1340,7 +1447,8 @@ mod tests {
         let sink = PdfWriterSink {
             compression: None,
             subset_fonts: true,
-            pdf_a: false,
+            profile: Profile::default(),
+            encryption: None,
             parallel: false,
         };
         let encoded = sink.encode_page(&page, &fonts).unwrap();
@@ -1356,6 +1464,36 @@ mod tests {
     }
 
     #[test]
+    fn a_wide_invisible_glyph_keeps_to_the_pdf_a_1_bound() {
+        let (doc, store, mut page) = inter_page();
+        let fonts = FontSet::load(&doc, &store).unwrap();
+        let font = fonts.key("Inter-Regular").unwrap();
+        let g = crate::paint::InvisibleGlyph::space(&fonts, font, 1.0, (0.0, 0.0), 5000.0);
+        page.ops = vec![Op::InvisibleText(g.unwrap())];
+        let operand = |profile: Profile, op: &str| -> f32 {
+            let out = String::from_utf8(content_stream(&page, &fonts, profile).unwrap()).unwrap();
+            let line = out.lines().find(|l| l.ends_with(op)).unwrap();
+            line.split_whitespace()
+                .rev()
+                .nth(1)
+                .unwrap()
+                .parse()
+                .unwrap()
+        };
+        // About 1.8 million percent at 1 pt.
+        assert!(operand(Profile::default(), " Tz") > 1e6);
+        let one_b = Profile::new(Some(crate::PdfALevel::A1b));
+        let (tz, size) = (operand(one_b, " Tz"), operand(one_b, " Tf"));
+        assert_eq!(tz, pdfa::limits::REAL);
+        // The same width: the font size makes up the scaling.
+        let plain = (
+            operand(Profile::default(), " Tz"),
+            operand(Profile::default(), " Tf"),
+        );
+        assert!((tz * size - plain.0 * plain.1).abs() / (plain.0 * plain.1) < 1e-3);
+    }
+
+    #[test]
     fn an_invisible_glyph_without_a_width_draws_nothing() {
         let (doc, store, mut page) = inter_page();
         let fonts = FontSet::load(&doc, &store).unwrap();
@@ -1363,8 +1501,77 @@ mod tests {
         for width in [0.0, -5.0, f32::NAN, f32::INFINITY] {
             let g = crate::paint::InvisibleGlyph::space(&fonts, font, 10.0, (0.0, 0.0), width);
             page.ops = vec![Op::InvisibleText(g.unwrap())];
-            let out = String::from_utf8(content_stream(&page, &fonts, false)).unwrap();
+            let out = String::from_utf8(content_stream(&page, &fonts, Profile::default()).unwrap())
+                .unwrap();
             assert!(!out.contains("Tr"), "{width}: {out}");
         }
+    }
+}
+
+#[cfg(test)]
+mod pdf_a_1_tests {
+    use crate::{FontStore, ImageStore, InputFormat, PdfALevel, RenderOptions};
+
+    /// Renders a 300 × 300 pt page holding `children`, with `meta`, at
+    /// `level`.
+    fn render(
+        children: &str,
+        meta: &str,
+        level: PdfALevel,
+    ) -> Result<Vec<u8>, crate::InkoxideError> {
+        let doc = format!(
+            r#"{{"version":1,"meta":{{{meta}}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+               "pages":[{{"size":{{"width":300,"height":300}},"children":[{children}]}}]}}"#
+        );
+        let fonts: FontStore = crate::test_fixtures::inter();
+        let options = RenderOptions::default().with_pdf_a_level(level);
+        crate::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts,
+            &ImageStore::new(),
+        )
+    }
+
+    #[test]
+    fn pdf_a_1b_fails_past_its_limits() {
+        let nested = |n: usize| {
+            let open = r#"{"type":"box","style":{"overflow":"hidden"},"children":["#.repeat(n);
+            format!("{open}{}", "]}".repeat(n))
+        };
+        let title = format!(r#""title":"{}""#, "a".repeat(70_000));
+        // A word of 4200 letters, each spaced: a `TJ` array of an entry
+        // per letter and per adjustment.
+        let spaced = format!(
+            r#"{{"type":"text","style":{{"whiteSpace":"nowrap"}},"runs":[{{"text":"{}","font":"Inter-Regular","size":2,"letterSpacing":1}}]}}"#,
+            "x".repeat(4200)
+        );
+        let cases = [
+            (
+                r#"{"type":"box","style":{"width":10,"height":10,"transform":[{"translate":[40000.5,0]}]}}"#.to_string(),
+                "",
+                "a real number past ±32767",
+            ),
+            (nested(30), "", "graphics states nested more than 28 deep"),
+            (String::new(), title.as_str(), "a string longer than 65535 bytes"),
+            (spaced, "", "an array of more than 8191 entries"),
+        ];
+        for (child, meta, what) in cases {
+            let Err(e) = render(&child, meta, PdfALevel::A1b) else {
+                panic!("not refused: {what}");
+            };
+            assert_eq!(e.code(), "PDF_ERROR", "{e}");
+            assert!(e.to_string().contains(what), "{e}");
+            render(&child, meta, PdfALevel::A2b).unwrap();
+        }
+        // Within the limits.
+        render(&nested(20), "", PdfALevel::A1b).unwrap();
+        render(
+            r#"{"type":"box","style":{"width":10,"height":10,"transform":[{"translate":[32000.5,0]}]}}"#,
+            "",
+            PdfALevel::A1b,
+        )
+        .unwrap();
     }
 }

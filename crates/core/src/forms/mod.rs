@@ -1,10 +1,12 @@
 //! Interactive form fields (`AcroForm`): intrinsic size and the
 //! widget ops painting hands to the PDF writer.
 
+pub(crate) mod format;
+
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::layout::{AvailableSpace, Geometry, Size};
 use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};
-use crate::schema::{Field, FieldKind, BLACK};
+use crate::schema::{Color, Field, FieldKind, BLACK};
 
 /// Inner padding between the widget edge and its text, points.
 pub(crate) const PAD: f32 = 2.0;
@@ -12,11 +14,17 @@ pub(crate) const PAD: f32 = 2.0;
 const DEFAULT_WIDTH: f32 = 150.0;
 /// Visible lines of a multiline field without a height.
 const MULTILINE_ROWS: f32 = 3.0;
+/// Most options a list box without a height shows.
+const LIST_ROWS: usize = 4;
+/// The colour of a negative number in a red style.
+const RED: Color = [1.0, 0.0, 0.0, 1.0];
+/// Background of the selected options of a list box.
+pub(crate) const HIGHLIGHT: Color = [0.6, 0.75, 0.86, 1.0];
 /// Line height of a field's text, as a multiple of its font size.
 const LINE_HEIGHT: f32 = 1.2;
 
-/// Characters whose glyphs are embedded for every font a text or select
-/// field uses, so a viewer can show edits made in the common Latin range
+/// Characters whose glyphs are embedded for every font a text, select or
+/// list field uses, so a viewer can show edits made in the common Latin range
 /// (including S and T with comma below, U+0218–U+021B) with the subset
 /// font.
 const EDIT_RANGES: &[(char, char)] = &[
@@ -43,8 +51,13 @@ pub(crate) struct FieldOp {
     /// Whether its font embeds the glyphs for editing (see
     /// [`edit_glyphs`]): the document's writer adds them once per font.
     pub editable: bool,
-    /// The glyphs of a select's options.
+    /// The glyphs of a select's or a list's options.
     pub option_glyphs: Vec<u16>,
+    /// A list box: the rows of its selected options in view, in widget
+    /// coordinates (top-left origin), filled behind the text.
+    pub highlights: Vec<Rect>,
+    /// A list box: the index of the first option in view.
+    pub top: usize,
     /// The transform in effect where the widget is painted (`None`:
     /// identity); the PDF writer sets it.
     pub ctm: Option<[f32; 6]>,
@@ -54,6 +67,13 @@ pub(crate) struct FieldOp {
 pub(crate) fn measure(f: &Field, available: Size<AvailableSpace>) -> Size<f32> {
     let line = f.size * LINE_HEIGHT;
     match f.kind {
+        FieldKind::List => Size {
+            width: match available.width {
+                AvailableSpace::Definite(w) => w.min(DEFAULT_WIDTH),
+                _ => DEFAULT_WIDTH,
+            },
+            height: line * f.options.len().clamp(1, LIST_ROWS) as f32 + 2.0 * PAD,
+        },
         FieldKind::Text | FieldKind::Select => Size {
             width: match available.width {
                 AvailableSpace::Definite(w) => w.min(DEFAULT_WIDTH),
@@ -96,25 +116,49 @@ pub(crate) fn paint(
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
     let mut text = Vec::new();
     let mut option_glyphs = Vec::new();
-    let editable = matches!(f.kind, FieldKind::Text | FieldKind::Select) && !f.read_only;
+    let editable = f.is_text_like() && !f.read_only;
+    let line_h = f.size * LINE_HEIGHT;
+    let (top, highlights) = if f.kind == FieldKind::List {
+        list_rows(f, ch, line_h, cw)
+    } else {
+        (0, Vec::new())
+    };
     if let Some(key) = font {
         let lf = fonts.get(key);
         let m = &lf.data.metrics;
         let scale = lf.scale(f.size);
         let (asc, desc) = (m.ascender * scale, -m.descender * scale);
-        let color = f.color.unwrap_or(BLACK);
-        let shown = match (f.kind, f.password) {
-            (FieldKind::Text | FieldKind::Select, false) => f.value.as_deref().unwrap_or(""),
+        // A formatted value shows formatted, in red for a negative number
+        // in a red style.
+        let formatted = f
+            .format
+            .as_deref()
+            .zip(f.value_str())
+            .and_then(|(fmt, v)| format::display(fmt, v));
+        let color = match &formatted {
+            Some(s) if s.red => RED,
+            _ => f.color.unwrap_or(BLACK),
+        };
+        let shown = match (f.kind, f.password, &formatted) {
+            (FieldKind::Text, false, Some(s)) => s.text.as_str(),
+            (FieldKind::Text | FieldKind::Select, false, _) => f.value_str().unwrap_or(""),
             _ => "",
         };
-        let lines: Vec<&str> = if f.multiline {
+        let rows = f.multiline || f.kind == FieldKind::List;
+        let lines: Vec<&str> = if f.kind == FieldKind::List {
+            f.options
+                .iter()
+                .skip(top)
+                .take(in_view(ch, line_h))
+                .map(|o| o.lines().next().unwrap_or(""))
+                .collect()
+        } else if f.multiline {
             shown.split('\n').collect()
         } else {
             vec![shown.lines().next().unwrap_or("")]
         };
-        let line_h = f.size * LINE_HEIGHT;
         for (i, line) in lines.iter().enumerate() {
-            let baseline = if f.multiline {
+            let baseline = if rows {
                 PAD + (line_h - asc - desc) / 2.0 + asc + i as f32 * line_h
             } else {
                 (ch - asc - desc) / 2.0 + asc
@@ -155,8 +199,58 @@ pub(crate) fn paint(
         text,
         editable: editable && font.is_some(),
         option_glyphs,
+        highlights,
+        top,
         ctm: None,
     })));
+}
+
+/// How many rows of a list box `h` high are in view, at least in part
+/// (the appearance clips the last one).
+fn in_view(h: f32, line_h: f32) -> usize {
+    ((h - 2.0 * PAD) / line_h).ceil().max(1.0) as usize
+}
+
+/// The indices of the selected options of a select or list field, in
+/// order (an option listed twice is selected twice).
+pub(crate) fn selected(f: &Field) -> Vec<usize> {
+    let values: std::collections::HashSet<&str> = f.values().iter().map(String::as_str).collect();
+    if values.is_empty() {
+        return Vec::new();
+    }
+    f.options
+        .iter()
+        .enumerate()
+        .filter(|(_, o)| values.contains(o.as_str()))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// The index of the first option a list box `h` high shows, chosen so its
+/// first selected option is in view, and the rows of the selected options
+/// in view (`w` wide).
+fn list_rows(f: &Field, h: f32, line_h: f32, w: f32) -> (usize, Vec<Rect>) {
+    let selected = selected(f);
+    // Rows wholly in view.
+    let fit = (((h - 2.0 * PAD) / line_h).floor().max(1.0) as usize).min(f.options.len());
+    let top = match selected.first() {
+        Some(&first) if first >= fit => first.min(f.options.len() - fit),
+        _ => 0,
+    };
+    let in_view = in_view(h, line_h);
+    let rows = selected
+        .iter()
+        .filter(|&&i| i >= top && i - top < in_view)
+        .map(|&i| {
+            Rect::new(
+                1.0,
+                PAD + (i - top) as f32 * line_h,
+                (w - 2.0).max(0.0),
+                line_h,
+            )
+        })
+        .collect();
+    (top, rows)
 }
 
 /// The glyphs of `font` for the characters of `EDIT_RANGES`, embedded for
@@ -210,6 +304,85 @@ mod tests {
             op.option_glyphs.extend(edit_glyphs(fonts.get(0)));
         }
         (op, glyphs.collect())
+    }
+
+    fn field(json: &str) -> Field {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn list_boxes_show_their_first_selected_option() {
+        let list = |value: &str| {
+            field(&format!(
+                r#"{{"name":"l","kind":"list","multiSelect":true,"options":["a","b","c","d","e"],"value":{value}}}"#
+            ))
+        };
+        // Four rows of 12 pt fit in 52 pt: nothing to scroll for `b`.
+        let (top, rows) = list_rows(&list(r#""b""#), 52.0, 12.0, 100.0);
+        assert_eq!(top, 0);
+        assert_eq!(rows, [Rect::new(1.0, 14.0, 98.0, 12.0)]);
+        // `e` is past them: the list starts as low as it can.
+        let (top, rows) = list_rows(&list(r#"["e"]"#), 52.0, 12.0, 100.0);
+        assert_eq!(top, 1);
+        assert_eq!(rows, [Rect::new(1.0, 38.0, 98.0, 12.0)]);
+        // The first selected option, in the order of the options, decides;
+        // `e` is then out of view.
+        let (top, rows) = list_rows(&list(r#"["e","b"]"#), 52.0, 12.0, 100.0);
+        assert_eq!((top, rows.len()), (0, 1));
+        // One row in view: the first selected one, and the partly visible
+        // one after it is not highlighted.
+        let (top, rows) = list_rows(&list(r#"["c","d"]"#), 20.0, 12.0, 100.0);
+        assert_eq!((top, rows.len()), (2, 2));
+        let (top, rows) = list_rows(&list("[]"), 20.0, 12.0, 100.0);
+        assert_eq!((top, rows.len()), (0, 0));
+        // Without a height, at most four rows.
+        let size = |options: usize| {
+            let o = vec!["o"; options];
+            let f = field(&format!(
+                r#"{{"name":"l","kind":"list","options":{}}}"#,
+                serde_json::to_string(&o).unwrap()
+            ));
+            measure(
+                &f,
+                Size {
+                    width: AvailableSpace::MaxContent,
+                    height: AvailableSpace::MaxContent,
+                },
+            )
+            .height
+        };
+        assert_eq!([size(1), size(4), size(9)], [16.0, 52.0, 52.0]);
+    }
+
+    #[test]
+    fn formatted_values_show_formatted() {
+        let text = |op: &FieldOp| op.text.iter().map(|t| t.glyphs.len()).sum::<usize>();
+        let (op, _) = painted(
+            r#"{"name":"n","kind":"text","font":"Inter-Regular","value":"-1234.5","format":{"type":"number","negative":"parensRed"}}"#,
+            "",
+        );
+        // `(1,234.50)`, in red.
+        assert_eq!(text(&op), 10);
+        assert_eq!(op.text[0].color, RED);
+        let (op, _) = painted(
+            r#"{"name":"n","kind":"text","font":"Inter-Regular","value":"1234.5","format":{"type":"number","negative":"parensRed"}}"#,
+            "",
+        );
+        assert_eq!(text(&op), 8);
+        assert_eq!(op.text[0].color, BLACK);
+    }
+
+    #[test]
+    fn list_boxes_paint_the_options_in_view() {
+        let (op, _) = painted(
+            r#"{"name":"l","kind":"list","font":"Inter-Regular","options":["a","b","c","d"],"value":"c"}"#,
+            "",
+        );
+        // A 20 pt box shows the row of `c` and part of the one after it.
+        assert_eq!(op.top, 2);
+        assert_eq!(op.text.len(), 2);
+        assert_eq!(op.highlights.len(), 1);
+        assert!(op.editable && !op.option_glyphs.is_empty());
     }
 
     #[test]

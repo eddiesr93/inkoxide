@@ -89,9 +89,115 @@ pub(crate) fn parse_rfc3339(s: &str) -> Option<Timestamp> {
     })
 }
 
+/// A date and time without an offset, as a form field value holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct LocalDateTime {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+}
+
+/// Days in `month` of `year` (Gregorian); 0 for no month.
+fn days_in_month(year: u32, month: u32) -> u32 {
+    let leap = (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+/// The digits of `s` as a number, when `s` is exactly `len` ASCII digits.
+fn digits(s: &str, len: usize) -> Option<u32> {
+    (s.len() == len && s.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| s.bytes().fold(0, |a, d| a * 10 + u32::from(d - b'0')))
+}
+
+/// Parses `HH:MM[:SS]` into the time of `t`.
+fn parse_time_into(s: &str, t: &mut LocalDateTime) -> Option<()> {
+    let mut parts = s.split(':');
+    let hour = digits(parts.next()?, 2)?;
+    let minute = digits(parts.next()?, 2)?;
+    let second = match parts.next() {
+        Some(p) => digits(p, 2)?,
+        None => 0,
+    };
+    if parts.next().is_some() || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    (t.hour, t.minute, t.second) = (hour as u8, minute as u8, second as u8);
+    Some(())
+}
+
+/// Parses `YYYY-MM-DD[THH:MM[:SS]]`, a date in years 1 to 9999 and an
+/// optional time.
+pub(crate) fn parse_local(s: &str) -> Option<LocalDateTime> {
+    let (date, time) = match s.split_once('T') {
+        Some((d, t)) => (d, Some(t)),
+        None => (s, None),
+    };
+    let mut parts = date.split('-');
+    let year = digits(parts.next()?, 4)?;
+    let month = digits(parts.next()?, 2)?;
+    let day = digits(parts.next()?, 2)?;
+    if parts.next().is_some() || year == 0 || day == 0 || day > days_in_month(year, month) {
+        return None;
+    }
+    let mut t = LocalDateTime {
+        year: year as u16,
+        month: month as u8,
+        day: day as u8,
+        ..LocalDateTime::default()
+    };
+    if let Some(time) = time {
+        parse_time_into(time, &mut t)?;
+    }
+    Some(t)
+}
+
+/// Parses `HH:MM[:SS]`, a time of day; the date is left at zero.
+pub(crate) fn parse_local_time(s: &str) -> Option<LocalDateTime> {
+    let mut t = LocalDateTime::default();
+    parse_time_into(s, &mut t)?;
+    Some(t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_local_dates_and_times() {
+        let t = parse_local("2024-02-29T13:05").unwrap();
+        assert_eq!(
+            (t.year, t.month, t.day, t.hour, t.minute, t.second),
+            (2024, 2, 29, 13, 5, 0)
+        );
+        assert_eq!(parse_local("2026-10-08").unwrap().hour, 0);
+        assert_eq!(parse_local_time("23:59:59").unwrap().second, 59);
+        for s in [
+            "",
+            "2023-02-29",
+            "0000-01-01",
+            "2026-1-01",
+            "2026-10-08T",
+            "2026-10-08T24:00",
+            "2026-10-08T10:60",
+            "2026-10-08T10:00:00Z",
+            "2026-10-08 10:00",
+            "+2026-10-08",
+        ] {
+            assert!(parse_local(s).is_none(), "{s}");
+        }
+        for s in ["", "1:00", "10:00:00:00", "10-00", "10:0a"] {
+            assert!(parse_local_time(s).is_none(), "{s}");
+        }
+    }
 
     #[test]
     fn parses_valid() {

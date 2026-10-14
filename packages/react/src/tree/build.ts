@@ -6,10 +6,12 @@ import type {
   Color,
   ColumnSpec,
   Document,
+  FieldFormat,
   FieldNode,
   ImageNode,
   InlineImage,
   Meta,
+  NoteNode,
   PageFilter,
   PageSpec,
   Node as SchemaNode,
@@ -34,8 +36,10 @@ import {
   type HyphenationCallback,
   type Length,
   type PageSize,
+  type Permissions,
   type RenderProp,
   type Style as StyleInput,
+  type TextFormat,
 } from '../components/index.ts';
 import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
@@ -82,8 +86,48 @@ export interface BuildOptions {
   images: ImageTableOptions;
 }
 
+/**
+ * Render options a `<Document>` sets that are not part of the document tree, for the caller to
+ * pass to the engine.
+ */
+export interface OutputOptions {
+  /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
+  pdfA?: PdfALevel;
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
+   * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
+   */
+  encryption?: EncryptionOptions;
+}
+
+/** The encryption render option (the `inkoxide` binding's `EncryptionOptions`). */
+export interface EncryptionOptions {
+  userPassword?: string;
+  ownerPassword?: string;
+  permissions?: Permissions;
+}
+
+const REDACTED = '<redacted>';
+
+/** Output options whose JSON and `util.inspect` view hide the passwords. */
+function outputOptions(): OutputOptions {
+  const redacted = function (this: OutputOptions): object {
+    return this.encryption === undefined ? { ...this } : { ...this, encryption: REDACTED };
+  };
+  const out: OutputOptions = {};
+  for (const key of ['toJSON', Symbol.for('nodejs.util.inspect.custom')]) {
+    Object.defineProperty(out, key, { value: redacted, enumerable: false });
+  }
+  return out;
+}
+
+/** A PDF/A part and conformance level the engine writes. */
+export type PdfALevel = '1b' | '2b' | '3b';
+
 export interface BuildResult {
   document: Document;
+  /** Render options the `<Document>` sets (`conformance`); not part of `document`. */
+  output: OutputOptions;
   /** Image bytes referenced by generated `src` ids; pass them as the render option `images`. */
   images: Record<string, Uint8Array>;
   /** Font ids used, in registration order. */
@@ -203,6 +247,8 @@ class Builder {
   private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
+  /** The names of the `<FieldSet>`s being built, each followed by `.`: `address.`. */
+  private fieldPrefix = '';
   /** The style of each element's `className`, to tell which keys came from it. */
   private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
@@ -339,6 +385,9 @@ class Builder {
     );
   }
 
+  /** What the `<Document>` sets besides the tree; filled by `build`. */
+  readonly output: OutputOptions = outputOptions();
+
   build(container: Container): Document {
     const [root, ...extra] = container.children.filter((c) => !(c.kind === 'text' && c.text.trim() === ''));
     if (!isEl(root, HOST.Document) || extra.length > 0) {
@@ -359,6 +408,9 @@ class Builder {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
+    if (p.conformance !== undefined) this.output.pdfA = this.conformance(root, p.conformance);
+    const encryption = this.encryption(root, p);
+    if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
@@ -392,6 +444,45 @@ class Builder {
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
+  }
+
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`, its types checked;
+   * the engine checks the values. Messages never show a password.
+   */
+  private encryption(root: Instance, p: Record<string, unknown>): EncryptionOptions | undefined {
+    const out: EncryptionOptions = {};
+    for (const key of ['userPassword', 'ownerPassword'] as const) {
+      const v = p[key];
+      if (v === undefined) continue;
+      if (typeof v !== 'string') this.fail(root, `<Document ${key}> must be a string.`);
+      out[key] = v;
+    }
+    if (p.permissions !== undefined) {
+      const perms = p.permissions;
+      if (typeof perms !== 'object' || perms === null || Array.isArray(perms)) {
+        this.fail(root, '<Document permissions> must be an object.');
+      }
+      out.permissions = { ...(perms as Permissions) };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
+  /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
+  private conformance(root: Instance, value: unknown): PdfALevel {
+    const m = typeof value === 'string' ? /^PDF\/A-([123])([abu]?)$/.exec(value) : null;
+    if (m && (m[2] === '' || m[2] === 'b')) return `${m[1]}b` as PdfALevel;
+    const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
+    if (m) {
+      this.fail(
+        root,
+        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${m[1]}b'.`,
+      );
+    }
+    this.fail(
+      root,
+      `<Document conformance=${shown}> is not a PDF/A level: use 'PDF/A-1b', 'PDF/A-2b' or 'PDF/A-3b' (or 'PDF/A-1', 'PDF/A-2', 'PDF/A-3').`,
+    );
   }
 
   fontIds(): string[] {
@@ -669,6 +760,10 @@ class Builder {
       case HOST.ImageBackground:
       case HOST.Link:
         return this.box(inst, ctx);
+      case HOST.FieldSet:
+        return this.fieldSet(inst, ctx);
+      case HOST.Note:
+        return this.note(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
       case HOST.Field:
@@ -717,7 +812,12 @@ class Builder {
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
     if (inst.type === HOST.ImageBackground) node.backgroundImage = this.backgroundImage(inst, own);
-    if (inst.type === HOST.View || inst.type === HOST.ImageBackground || inst.type === HOST.Link) {
+    if (
+      inst.type === HOST.View ||
+      inst.type === HOST.ImageBackground ||
+      inst.type === HOST.Link ||
+      inst.type === HOST.FieldSet
+    ) {
       this.flowProps(node, inst);
     } else {
       // <Header> and <Footer>.
@@ -1116,13 +1216,14 @@ class Builder {
     if (typeof p.name !== 'string' || p.name === '') {
       this.fail(inst, '<Field> needs a name.', { kind: 'props' });
     }
-    const field: FieldNode['field'] = { name: p.name, kind: p.kind };
+    const field: FieldNode['field'] = { name: this.fieldPrefix + p.name, kind: p.kind };
     switch (p.kind) {
       case 'text':
         if (p.value !== undefined) field.value = p.value;
         if (p.multiline) field.multiline = true;
         if (p.password) field.password = true;
         if (p.maxLength !== undefined) field.maxLength = p.maxLength;
+        if (p.format !== undefined) field.format = this.textFormat(inst, p.format);
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
@@ -1132,13 +1233,23 @@ class Builder {
         if (p.checked) field.checked = true;
         break;
       case 'select':
-        field.options = p.options as [string, ...string[]];
+        field.options = (p.options ?? p.select) as [string, ...string[]];
+        if (p.value !== undefined) field.value = p.value;
+        break;
+      case 'list':
+        field.options = (p.options ?? p.select) as [string, ...string[]];
+        if (p.multiSelect) field.multiSelect = true;
+        if (Array.isArray(p.value) && !p.multiSelect) {
+          this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
+            kind: 'props',
+          });
+        }
         if (p.value !== undefined) field.value = p.value;
         break;
       default:
         this.fail(
           inst,
-          `<Field kind="${String((p as { kind: unknown }).kind)}">: use text, checkbox, radio or select.`,
+          `<Field kind="${String((p as { kind: unknown }).kind)}">: use text, checkbox, radio, select or list.`,
           {
             kind: 'props',
           },
@@ -1146,7 +1257,7 @@ class Builder {
     }
     if (p.readOnly) field.readOnly = true;
     if (p.required) field.required = true;
-    if (p.kind === 'text' || p.kind === 'select') field.font = this.font(ctx, inst);
+    if (p.kind === 'text' || p.kind === 'select' || p.kind === 'list') field.font = this.font(ctx, inst);
     if (ctx.fontSize !== 10) field.size = ctx.fontSize;
     if (!sameColor(ctx.color, [0, 0, 0, 1])) field.color = ctx.color;
     const node: FieldNode = { type: 'field', field };
@@ -1154,6 +1265,64 @@ class Builder {
     if (style) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  /** A `<Note>`: its text children are its contents, and its background colour its colour. */
+  private note(inst: Instance, ctx: TextCtx): NoteNode {
+    const own = this.styleOf(inst, ctx);
+    this.noTextOnly(inst, own);
+    const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
+    if (contents === '') {
+      this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });
+    }
+    const p = inst.props;
+    const note: NoteNode['note'] = { contents };
+    if (typeof p.author === 'string') note.author = p.author;
+    if (p.open) note.open = true;
+    const node: NoteNode = { type: 'note', note };
+    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
+    if (backgroundColor) note.color = backgroundColor;
+    if (Object.keys(style).length > 0) node.style = style;
+    this.flowProps(node, inst);
+    return this.mark(node, inst);
+  }
+
+  /** A `TextField`'s format, from its readable keys or their other names. */
+  private textFormat(inst: Instance, f: TextFormat): FieldFormat {
+    if (typeof f !== 'object' || f === null || Array.isArray(f)) {
+      this.fail(inst, "<TextField format> is an object, as format={{ type: 'number', decimals: 2 }}.", {
+        kind: 'props',
+      });
+    }
+    const out: FieldFormat = { type: f.type };
+    const decimals = f.decimals ?? f.nDec;
+    if (decimals !== undefined) out.decimals = decimals;
+    const separators =
+      f.separators ?? (f.sepComma === undefined ? undefined : f.sepComma ? '1,234.56' : '1234.56');
+    if (separators !== undefined) out.separators = separators;
+    const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
+    if (negative !== undefined) out.negative = negative;
+    if (f.currency !== undefined) out.currency = f.currency;
+    const before = f.currencyBefore ?? f.currencyPrepend;
+    if (before !== undefined) out.currencyBefore = before;
+    const pattern = f.pattern ?? f.param;
+    if (pattern !== undefined) out.pattern = pattern;
+    return out;
+  }
+
+  /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
+  private fieldSet(inst: Instance, ctx: TextCtx): SchemaNode {
+    const name = inst.props.name;
+    if (typeof name !== 'string' || name === '') {
+      this.fail(inst, '<FieldSet> needs a name: the group its fields are in.', { kind: 'props' });
+    }
+    const outer = this.fieldPrefix;
+    this.fieldPrefix = `${outer}${name}.`;
+    try {
+      return this.box(inst, ctx);
+    } finally {
+      this.fieldPrefix = outer;
+    }
   }
 
   /** `<Svg>` and `<Canvas>`: an SVG image of the drawing, sized by `width` and `height`. */
@@ -1217,12 +1386,21 @@ class Builder {
   }
 }
 
+/** The negative styles by their other names (`negStyle`). */
+const NEGATIVE: Record<string, FieldFormat['negative']> = {
+  MinusBlack: 'minus',
+  Red: 'red',
+  ParensBlack: 'parens',
+  ParensRed: 'parensRed',
+};
+
 /** Builds the schema document from rendered host instances. */
 export function buildTree(container: Container, opts: BuildOptions): BuildResult {
   const b = new Builder(opts);
   const document = b.build(container);
   return {
     document,
+    output: b.output,
     images: b.imageTable.images,
     fonts: b.fontIds(),
     warnings: b.warnings,

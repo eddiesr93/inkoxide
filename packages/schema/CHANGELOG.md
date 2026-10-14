@@ -40,6 +40,28 @@ Still document schema version 1.
 - `TextRun.verticalAlign` places an image run with `middle`, `textTop`, `textBottom`, `top`,
   `bottom`, or a number: points its bottom sits above the baseline (within ±14400). On a text
   run they are `INVALID_VALUE`.
+- `Field.name` may contain dots, which make groups of fields: `address.street` is the field
+  `street` in the group `address`. A name has at most 32 parts of 1 to 128 characters, and at
+  most 512 characters in all (it was one part of at most 128). A name that is both a field and a
+  group (`a` and `a.b`) is `DUPLICATE_ID`. Documents without dots render as before.
+- `Field.kind: "list"`, a list box: `options` (required) and `font` (required) as for `select`,
+  and `value`, the selected option. `Field.multiSelect` (list only) lets several options be
+  selected; `value` is then an array of options, each at most once (at most 1000). An array
+  `value` on any other field is `INVALID_VALUE`.
+- `Field.format` (`$defs/FieldFormat`), on single-line text fields that are not passwords:
+  `type` (`number`, `percent`, `date`, `time`, `zip`, `zipPlus4`, `phone`, `ssn`) with
+  `decimals` (0 to 10), `separators`, `negative`, `currency` (at most 8 characters, no control
+  characters, quotes or backslashes) and `currencyBefore` for numbers, and `pattern` (required,
+  at most 64 characters) for dates and times. `value` must fit the format.
+- A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
+  `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
+  at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
+  `bookmark`, and no space in the layout.
+
+### Changed
+
+- `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
+  at most 8000 characters; longer ones are `INVALID_VALUE`.
 
 ### Changed
 

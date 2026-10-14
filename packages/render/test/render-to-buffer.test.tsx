@@ -12,10 +12,14 @@ import {
   countPages,
   Defs,
   Document,
+  type DocumentProps,
+  FieldSet,
   Footer,
   Line,
   Link,
+  List,
   Marker,
+  Note,
   Page,
   PageBreak,
   PageNumber,
@@ -28,6 +32,7 @@ import {
   StyleSheet,
   Svg,
   Text,
+  TextField,
   TotalPages,
   View,
 } from '../src/index.ts';
@@ -138,6 +143,78 @@ describe('renderToBuffer', () => {
     const bytes = Buffer.from(pdf).toString('latin1');
     expect(bytes.match(/\/Subtype ?\/Link/g)).toHaveLength(2);
     expect(bytes).toContain('https://example.com/inline');
+  });
+
+  it('writes the fields of a FieldSet as a field tree', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <FieldSet name="address">
+            <TextField name="street" />
+            <TextField name="city" />
+          </FieldSet>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes).toContain('/T (address)');
+    expect(bytes).toContain('/T (street)');
+    expect(bytes).toContain('/T (city)');
+    // Both fields have the group as their parent.
+    const group = bytes.split('endobj').find((o) => o.includes('/T (address)')) ?? '';
+    const ref = /(\d+) 0 obj/.exec(group)?.[1];
+    expect(bytes.split(`/Parent ${ref} 0 R`)).toHaveLength(3);
+    expect(bytes).not.toContain('address.street');
+  });
+
+  it('writes a list box, and rejects a value that is not one of its options', async () => {
+    const list = (value: string[]) => (
+      <Document>
+        <Page>
+          <List name="days" options={['Mon', 'Tue', 'Wed']} multiSelect value={value} />
+        </Page>
+      </Document>
+    );
+    const bytes = Buffer.from(await renderToBuffer(list(['Wed', 'Mon']))).toString('latin1');
+    expect(bytes).toContain('/FT /Ch');
+    expect(bytes).toContain('/V [(Wed) (Mon)]');
+    expect(bytes).toContain('/I [0 2]');
+    const err = await renderToBuffer(list(['Sun'])).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect((err as RenderError).message).toContain('is not one of `options`');
+  });
+
+  it('writes a formatted text field with its scripts, and leaves them out in PDF/A', async () => {
+    const doc = (
+      <Document>
+        <Page>
+          <TextField name="fee" value="1250" format={{ type: 'number', currency: '$' }} />
+        </Page>
+      </Document>
+    );
+    const bytes = Buffer.from(await renderToBuffer(doc)).toString('latin1');
+    expect(bytes).toContain('/V (1250)');
+    expect(bytes).toContain('AFNumber_Format(2, 0, 0, 0, "$", true);');
+    const pdfA = Buffer.from(await renderToBuffer(doc, { pdfA: true })).toString('latin1');
+    expect(pdfA).toContain('/V (1250)');
+    expect(pdfA).not.toContain('AFNumber_Format');
+  });
+
+  it('writes a note as a text annotation with its icon', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Note author="Ana" style={{ backgroundColor: '#3b82f6' }}>
+            Check the totals
+          </Note>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes).toMatch(/\/Subtype ?\/Text/);
+    expect(bytes).toContain('/Contents (Check the totals)');
+    expect(bytes).toContain('/T (Ana)');
+    expect(bytes).toMatch(/\/AP ?<</);
   });
 
   it('repeats a fixed element with its link on every page, and its bookmark once', async () => {
@@ -360,6 +437,7 @@ describe('renderToBuffer', () => {
       [{ threads: 0 }, 'options.threads'],
       [{ threads: 1000 }, 'options.threads'],
       [{ threads: 1.5 }, 'options.threads'],
+      [{ pdfA: '2a' as '2b' }, 'options.pdfA'],
     ];
     for (const [opts, path] of cases) {
       const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, opts).catch((e: unknown) => e);
@@ -373,6 +451,102 @@ describe('renderToBuffer', () => {
       expect((err as RenderError).message).toContain(`(at ${path})`);
     }
     expect(countPages(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { threads: 256 }))).toBe(1);
+  });
+
+  it('writes the PDF/A level asked for', async () => {
+    const part = async (pdfA: RenderToBufferOptions['pdfA']) => {
+      const pdf = Buffer.from(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { pdfA })).toString(
+        'latin1',
+      );
+      return /<pdfaid:part>(\d)<\/pdfaid:part>/.exec(pdf)?.[1];
+    };
+    expect(await part(undefined)).toBeUndefined();
+    expect(await part(true)).toBe('2');
+    expect(await part('2b')).toBe('2');
+    expect(await part('3b')).toBe('3');
+    expect(await part('1b')).toBe('1');
+  });
+
+  it('writes the PDF/A level of <Document conformance>, unless the pdfA option says otherwise', async () => {
+    const part = async (conformance: DocumentProps['conformance'], opts: RenderToBufferOptions = {}) => {
+      const doc = (
+        <Document conformance={conformance}>
+          <Page>
+            <Text>Archived</Text>
+          </Page>
+        </Document>
+      );
+      const pdf = Buffer.from(await renderToBuffer(doc, opts)).toString('latin1');
+      return /<pdfaid:part>(\d)<\/pdfaid:part>/.exec(pdf)?.[1];
+    };
+    expect(await part('PDF/A-1b')).toBe('1');
+    expect(await part('PDF/A-3')).toBe('3');
+    expect(await part('PDF/A-1b', { pdfA: '2b' })).toBe('2');
+    expect(await part('PDF/A-1b', { pdfA: false })).toBeUndefined();
+    expect(await part(undefined, { pdfA: true })).toBe('2');
+  });
+
+  it('encrypts with the Document passwords, unless the encryption option replaces them', async () => {
+    const secret = 's3cret-marker';
+    const doc = (props: Partial<DocumentProps>) => (
+      <Document title="Locked" {...props}>
+        <Page>
+          <Text>Private</Text>
+        </Page>
+      </Document>
+    );
+    const text = async (element: ReturnType<typeof doc>, opts: RenderToBufferOptions = {}) =>
+      Buffer.from(await renderToBuffer(element, opts)).toString('latin1');
+    const props = {
+      userPassword: secret,
+      ownerPassword: 'owner',
+      permissions: { printing: 'lowResolution' as const },
+    };
+    const locked = await text(doc(props));
+    expect(locked).toMatch(/\/Encrypt \d+ 0 R/);
+    expect(locked).toMatch(/\/P -3388\b/);
+    expect(locked).not.toContain(secret);
+    expect(locked).not.toContain('Locked');
+    expect(await text(doc(props))).toBe(locked);
+    // The option replaces the props as a whole: no permissions now.
+    const replaced = await text(doc(props), { encryption: { userPassword: 'other' } });
+    expect(replaced).toMatch(/\/P -3392\b/);
+    expect(await text(doc({}))).not.toMatch(/\/Encrypt/);
+    // A bad value names its path and never the password.
+    for (const [p, opts, path] of [
+      [{ userPassword: secret, permissions: {} }, {}, 'options.encryption.permissions'],
+      [{ userPassword: `${secret}é` }, {}, 'options.encryption.userPassword'],
+      [{}, { encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
+    ] as const) {
+      const err = await renderToBuffer(doc(p), opts).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RenderError);
+      expect(err).toMatchObject({ code: 'ENGINE_REJECTED', engineCode: 'INVALID_ARGUMENT', path });
+      expect(JSON.stringify(err)).not.toContain(secret);
+      expect((err as Error).message).not.toContain(secret);
+    }
+  });
+
+  it('names the component PDF/A-1b rejects for its transparency', async () => {
+    function Faded() {
+      return <View style={{ opacity: 0.5, height: 10 }} />;
+    }
+    const doc = (
+      <Document>
+        <Page>
+          <Faded />
+        </Page>
+      </Document>
+    );
+    expect(countPages(await renderToBuffer(doc, { pdfA: '2b' }))).toBe(1);
+    const err = await renderToBuffer(doc, { pdfA: '1b' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect(err).toMatchObject({
+      code: 'ENGINE_REJECTED',
+      engineCode: 'PDFA_CONFLICT',
+      path: 'pages[0].children[0].style.opacity',
+      component: 'View',
+    });
+    expect((err as RenderError).componentStack).toContain('Faded');
   });
 });
 

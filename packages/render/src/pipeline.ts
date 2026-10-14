@@ -310,7 +310,7 @@ export async function renderSettled(
     fetchMs += performance.now() - f0;
     dropEmoji(tr, emojiImages.failed);
     try {
-      return await renderPdf(tr.document, opts, all);
+      return await renderPdf(tr.document, opts, all, tr.output);
     } catch (e) {
       throw locateEngineError(e, tr);
     }

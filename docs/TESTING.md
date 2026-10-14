@@ -16,9 +16,21 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `crates/core/tests/fixtures.rs`: every `fixtures/docs/*.json`
   validates, renders byte-identically twice (and with one thread), renders
   identically from MessagePack, and passes `qpdf --check`. Each also
-  renders as PDF/A-2b; with `VERAPDF` pointing at a veraPDF command
+  renders as PDF/A-1b, 2b and 3b, with the header, XMP part and `CIDSet`s
+  of its level, except the fixtures that need transparency, which PDF/A-1b
+  must reject with `PDFA_CONFLICT` at a given path (`NOT_PDF_A_1B`);
+  `pdfa-1b` is a document 1b accepts, with fonts, forms, links,
+  bookmarks and images. With `VERAPDF` pointing at a veraPDF command
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
-  output must pass veraPDF's `2b` profile.
+  output must pass veraPDF's profile for its level.
+- `crates/core/tests/encryption.rs`: every fixture, encrypted, renders
+  deterministically and, with `qpdf` installed, passes `qpdf --check`
+  with either password; `qpdf --json` of it, decrypted, equals that of
+  the unencrypted render object for object, minus the `Encrypt`
+  dictionary, so a string or stream left unencrypted fails it. Also the
+  permission flags qpdf reports, wrong passwords, a file with an owner
+  password only, canary strings that must not appear in plain text, and
+  errors that name the option but never the password.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, deepest accepted nesting
   on a small stack).
@@ -125,10 +137,18 @@ the `ci` workflow builds them and runs clippy on them):
   `fixtures/fonts`.
 
 All share one oracle: no panic; `render` succeeds only when `validate`
-is clean and vice versa for validation errors; the output is a complete
+is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
+which only a PDF/A-1b render reports (by input length, a quarter of the
+inputs render as plain PDF and a quarter at each PDF/A level); the
+writer never refuses transparency at 1b, which would mean validation
+missed it (for SVG, that its scan disagrees with the writer); the
+output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
-from MessagePack (`render_json` and `render_tree`). An input that runs
+from MessagePack (`render_json` and `render_tree`), and a document
+rendered as plain PDF also renders encrypted exactly when it renders
+plain, without its title in plain text (only the encrypted file's
+object syntax is scanned for numbers). An input that runs
 longer than 10 seconds is a finding (30 for `render_json` and `render_tree`:
 a document at the engine's limits renders in about 2 seconds, and they
 render it twice).

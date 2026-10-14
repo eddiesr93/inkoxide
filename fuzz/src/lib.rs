@@ -5,7 +5,10 @@ use std::sync::LazyLock;
 
 pub mod svg;
 
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
+use inkoxide::{
+    Encryption, FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, Permissions,
+    RenderOptions, ValidationCode,
+};
 use serde_json::{json, Map, Value};
 
 /// The fixture fonts: id, family, weight and bytes. Generated documents
@@ -92,10 +95,15 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 ///
 /// On a finding.
 pub fn check(doc: &[u8]) {
-    // Half the inputs also go through the PDF/A writer.
-    let pdf_a = doc.len() % 2 == 1;
+    // Most inputs also go through the PDF/A writer.
+    let pdf_a = pdf_a_level(doc.len());
     let json = render(doc, InputFormat::Json, pdf_a);
-    let Ok(value) = serde_json::from_slice::<serde_json::Value>(doc) else {
+    let value = serde_json::from_slice::<serde_json::Value>(doc).ok();
+    // The plain renders are also rendered encrypted.
+    if pdf_a.is_none() {
+        check_encrypted(doc, &json, value.as_ref());
+    }
+    let Some(value) = value else {
         return;
     };
     let Ok(packed) = rmp_serde::to_vec(&value) else {
@@ -108,6 +116,53 @@ pub fn check(doc: &[u8]) {
         match &msgpack {
             Ok(b) => assert!(a == b, "MessagePack output differs from JSON"),
             Err(e) => panic!("MessagePack rejected a document JSON renders: {e}"),
+        }
+    }
+}
+
+/// Renders `doc` encrypted: it must render exactly when `plain`, its
+/// unencrypted render, did, fail with the same code otherwise, and keep
+/// the title out of plain sight.
+fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Option<&Value>) {
+    let options = RenderOptions::default()
+        .with_compress(false)
+        .with_threads(1)
+        .with_encryption(
+            Encryption::new()
+                .with_user_password("fuzz user")
+                .with_owner_password("fuzz owner")
+                .with_permissions(Permissions::new().with_copying(true)),
+        );
+    let encrypted = inkoxide::render(doc, InputFormat::Json, &options, &FONTS, &IMAGES);
+    let (plain, encrypted) = match (plain, &encrypted) {
+        (Ok(p), Ok(e)) => (p, e),
+        (Err(a), Err(b)) => {
+            assert_eq!(a.code(), b.code(), "encrypted: {b}; plain: {a}");
+            return;
+        }
+        (p, e) => panic!(
+            "plain {:?}, encrypted {:?}",
+            p.as_ref().map(|_| ()),
+            e.as_ref().map(|_| ())
+        ),
+    };
+    assert!(encrypted.starts_with(b"%PDF-") && encrypted.trim_ascii_end().ends_with(b"%%EOF"));
+    // Encrypted streams are binary: only the object syntax is scanned.
+    assert_finite_objects(encrypted);
+    // A title the plain file shows as a literal string is encrypted.
+    let title = value
+        .and_then(|v| v.pointer("/meta/title"))
+        .and_then(Value::as_str)
+        .filter(|t| {
+            t.len() >= 4
+                && t.bytes()
+                    .all(|b| b.is_ascii_graphic() && !b"()\\".contains(&b))
+        });
+    if let Some(t) = title {
+        let literal = format!("({t})");
+        let has = |pdf: &[u8]| pdf.windows(literal.len()).any(|w| w == literal.as_bytes());
+        if has(plain) {
+            assert!(!has(encrypted), "the title {literal} is in plain text");
         }
     }
 }
@@ -129,7 +184,7 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
         InputFormat::Json,
         &FONTS,
         &images,
-        bytes.len() % 2 == 1,
+        pdf_a_level(bytes.len()),
     )
     .map(|_| ())
 }
@@ -162,13 +217,166 @@ pub fn check_font(bytes: &[u8]) -> usize {
         fonts.register("Inter-Regular", inter.to_vec()).unwrap();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
-            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, false);
+            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, None);
         }
     }
     registered
 }
 
-fn render(doc: &[u8], format: InputFormat, pdf_a: bool) -> Result<Vec<u8>, InkoxideError> {
+/// Every script of `pdf` (uncompressed) is a call of a standard form
+/// function with plain arguments: integers, booleans and string literals
+/// that cannot end early. PDF/A output has no scripts and no `/AA`.
+fn check_scripts(pdf: &[u8], pdf_a: bool) {
+    let text = String::from_utf8_lossy(pdf);
+    if pdf_a {
+        assert!(
+            !text.contains("/AA <<") && !text.contains("/S /JavaScript") && !text.contains("/JS ("),
+            "PDF/A output with a script"
+        );
+    }
+    for part in text.split("/JS (").skip(1) {
+        let script = pdf_literal(part).expect("an unterminated /JS string");
+        assert!(
+            form_call(&script),
+            "a script that is not a form function call: {script:?}"
+        );
+    }
+}
+
+/// The text of the PDF literal string that `s` starts with, after its
+/// opening parenthesis.
+fn pdf_literal(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut depth = 1;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                d @ '0'..='7' => {
+                    // Up to three octal digits; scripts are ASCII.
+                    let mut v = d.to_digit(8)?;
+                    let rest = chars.as_str();
+                    let more = rest.chars().take(2).take_while(|c| c.is_digit(8)).count();
+                    for c in rest.chars().take(more) {
+                        v = v * 8 + c.to_digit(8)?;
+                    }
+                    chars = rest[more..].chars();
+                    out.push(char::from_u32(v)?);
+                }
+                c => out.push(c),
+            },
+            '(' => {
+                depth += 1;
+                out.push(c);
+            }
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(out);
+                }
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    None
+}
+
+/// Whether `script` is one call of a standard form function, ending with
+/// `;`, whose arguments are integers, booleans or string literals.
+fn form_call(script: &str) -> bool {
+    const FUNCTIONS: &[&str] = &[
+        "AFNumber_Keystroke",
+        "AFNumber_Format",
+        "AFPercent_Keystroke",
+        "AFPercent_Format",
+        "AFDate_KeystrokeEx",
+        "AFDate_FormatEx",
+        "AFTime_KeystrokeEx",
+        "AFTime_FormatEx",
+        "AFSpecial_Keystroke",
+        "AFSpecial_Format",
+    ];
+    let Some((name, mut rest)) = script.split_once('(') else {
+        return false;
+    };
+    if !FUNCTIONS.contains(&name) {
+        return false;
+    }
+    loop {
+        let arg_end = if let Some(string) = rest.strip_prefix('"') {
+            // A string literal: printable ASCII, with quotes and
+            // backslashes escaped.
+            let mut chars = string.char_indices();
+            let mut end = None;
+            while let Some((i, c)) = chars.next() {
+                match c {
+                    '"' => {
+                        end = Some(i + 2);
+                        break;
+                    }
+                    '\\' => match chars.next() {
+                        Some((_, '\\' | '"' | '\'')) => {}
+                        Some((_, 'u')) => {
+                            let hex = (0..4)
+                                .filter_map(|_| chars.next())
+                                .filter(|(_, c)| c.is_ascii_hexdigit());
+                            if hex.count() != 4 {
+                                return false;
+                            }
+                        }
+                        _ => return false,
+                    },
+                    '\'' => return false,
+                    ' '..='~' => {}
+                    _ => return false,
+                }
+            }
+            let Some(end) = end else { return false };
+            end
+        } else {
+            let end = rest.find([',', ')']).unwrap_or(rest.len());
+            let arg = &rest[..end];
+            if !(arg == "true"
+                || arg == "false"
+                || (!arg.is_empty() && arg.bytes().all(|b| b.is_ascii_digit())))
+            {
+                return false;
+            }
+            end
+        };
+        rest = &rest[arg_end..];
+        if rest == ");" {
+            return true;
+        }
+        let Some(next) = rest.strip_prefix(", ") else {
+            return false;
+        };
+        rest = next;
+    }
+}
+
+/// The PDF/A level an input of `len` bytes is rendered at: none, or one
+/// of the three, a quarter of the inputs each.
+fn pdf_a_level(len: usize) -> Option<PdfALevel> {
+    match len % 4 {
+        1 => Some(PdfALevel::A1b),
+        2 => Some(PdfALevel::A2b),
+        3 => Some(PdfALevel::A3b),
+        _ => None,
+    }
+}
+
+fn render(
+    doc: &[u8],
+    format: InputFormat,
+    pdf_a: Option<PdfALevel>,
+) -> Result<Vec<u8>, InkoxideError> {
     render_with(doc, format, &FONTS, &IMAGES, pdf_a)
 }
 
@@ -177,13 +385,15 @@ fn render_with(
     format: InputFormat,
     fonts: &FontStore,
     images: &ImageStore,
-    pdf_a: bool,
+    pdf_a: Option<PdfALevel>,
 ) -> Result<Vec<u8>, InkoxideError> {
     let errors = inkoxide::validate(doc, format, fonts, images);
-    let options = RenderOptions::default()
+    let mut options = RenderOptions::default()
         .with_compress(false)
-        .with_threads(1)
-        .with_pdf_a(pdf_a);
+        .with_threads(1);
+    if let Some(level) = pdf_a {
+        options = options.with_pdf_a_level(level);
+    }
     let result = inkoxide::render(doc, format, &options, fonts, images);
     match &result {
         Ok(pdf) => {
@@ -193,6 +403,14 @@ fn render_with(
             );
             assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
             assert_finite_numbers(pdf, true);
+            check_scripts(pdf, pdf_a.is_some());
+        }
+        // `validate` does not know the PDF/A level: PDF/A-1b rejects valid
+        // documents that need transparency.
+        Err(InkoxideError::Validation(e))
+            if e.code == ValidationCode::PdfaConflict && errors.is_empty() =>
+        {
+            assert_eq!(pdf_a, Some(PdfALevel::A1b), "PDFA_CONFLICT at {pdf_a:?}");
         }
         Err(InkoxideError::Validation(e)) => {
             assert!(
@@ -200,6 +418,12 @@ fn render_with(
                 "render rejected a valid document: {e:?}"
             );
         }
+        // The writer's backstop: PDF/A-1b validation must have rejected
+        // the document first.
+        Err(InkoxideError::Pdf(m)) => assert!(
+            !m.contains("does not allow transparency"),
+            "validation missed transparency: {m}"
+        ),
         Err(_) => {}
     }
     result
@@ -218,6 +442,18 @@ fn delimiter(b: u8) -> bool {
 /// XMP metadata are skipped, and so are strings and names, which hold
 /// document text (`(inf)`, `/NaN`) rather than numbers.
 fn assert_finite_numbers(data: &[u8], objects: bool) {
+    scan_numbers(data, objects, true);
+}
+
+/// [`assert_finite_numbers`] over the object syntax of `pdf` only, not
+/// its streams.
+fn assert_finite_objects(pdf: &[u8]) {
+    scan_numbers(pdf, true, false);
+}
+
+/// The scan of [`assert_finite_numbers`]; streams are followed only with
+/// `streams`.
+fn scan_numbers(data: &[u8], objects: bool, streams: bool) {
     let mut i = 0;
     // Since the last `obj`: the `/Length` and whether the stream is
     // compressed or metadata.
@@ -283,8 +519,8 @@ fn assert_finite_numbers(data: &[u8], objects: bool) {
                 } else if token == b"stream" {
                     let body = i + if data[i..].starts_with(b"\r\n") { 2 } else { 1 };
                     let end = length.map_or(data.len(), |n: usize| (body + n).min(data.len()));
-                    if !skip {
-                        assert_finite_numbers(&data[body.min(end)..end], false);
+                    if streams && !skip {
+                        scan_numbers(&data[body.min(end)..end], false, true);
                     }
                     i = end;
                 }
@@ -980,32 +1216,81 @@ fn font_features(s: &mut Src) -> Value {
     Value::Object(m)
 }
 
-/// A form field: names mostly unique, radio buttons in two groups.
+/// A form field: names mostly unique, radio buttons in two groups, some
+/// fields in groups of fields (dotted names).
 fn field(s: &mut Src) -> Value {
     let mut m = Map::new();
-    let kind = s.pick(&["text", "checkbox", "radio", "select"]);
+    let kind = s.pick(&["text", "checkbox", "radio", "select", "list"]);
+    let choice = matches!(kind, "select" | "list");
     m.insert("kind".into(), json!(kind));
+    // A group of fields, nested at most two deep.
+    let set = match s.below(4) {
+        0 => format!("set{}.", s.below(2)),
+        1 => format!("set{}.sub{}.", s.below(2), s.below(2)),
+        _ => String::new(),
+    };
     let name = if s.chaos && s.chance(40) {
-        json!(s.pick(&["", "a.b", "f0", "n".repeat(129).as_str()]))
+        // Malformed names, and a field that is also a group (`a`, `a.b`).
+        json!(s.pick(&[
+            "",
+            "a.b",
+            "a",
+            "a..b",
+            ".a",
+            "a.",
+            "f0",
+            "n".repeat(129).as_str(),
+            vec!["n"; 33].join(".").as_str(),
+        ]))
     } else if kind == "radio" {
-        json!(format!("group{}", s.below(2)))
+        json!(format!("{set}group{}", s.below(2)))
     } else {
-        json!(format!("f{}", s.below(1000)))
+        json!(format!("{set}f{}", s.below(1000)))
     };
     m.insert("name".into(), name);
-    let options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
-    if kind == "select" || (s.chaos && s.chance(20)) {
+    let mut options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
+    // The limits on options, and just past them.
+    if s.chance(4) {
+        let past = usize::from(s.chaos);
+        if s.chance(128) {
+            options = vec![json!("o"); 1000 + past];
+        } else {
+            options.push(json!("o".repeat(1000 + past)));
+        }
+    }
+    if choice || (s.chaos && s.chance(20)) {
         m.insert("options".into(), Value::Array(options.clone()));
+    }
+    let multi = (kind == "list" || s.chaos) && s.chance(100);
+    if multi {
+        m.insert("multiSelect".into(), json!(true));
     }
     if s.chance(150) {
         let value = match kind {
-            "select" if !s.chaos => options[s.below(options.len())].clone(),
+            // Some of the options, each once.
+            "list" if multi && !s.chaos && s.chance(160) => {
+                let mut seen = Vec::new();
+                for o in &options {
+                    if !seen.contains(o) && s.chance(100) {
+                        seen.push(o.clone());
+                    }
+                }
+                Value::Array(seen)
+            }
+            "select" | "list" if !s.chaos => options[s.below(options.len())].clone(),
             "radio" => json!(s.pick(&["yes", "no", "maybe"])),
+            // Values not among the options, twice, or on a field that
+            // takes one value.
+            _ if s.chaos && s.chance(20) => {
+                let v = text(s);
+                json!([v.clone(), v, options[0].clone()])
+            }
+            _ if s.chance(4) => json!("v".repeat(8000 + usize::from(s.chaos))),
             _ => json!(text(s)),
         };
         m.insert("value".into(), value);
     }
-    if matches!(kind, "text" | "select") || s.chance(30) {
+    if matches!(kind, "text" | "select" | "list") || s.chance(30) {
         m.insert("font".into(), font(s));
     }
     for (key, of256) in [
@@ -1035,6 +1320,153 @@ fn field(s: &mut Src) -> Value {
     }
     if s.chance(50) {
         m.insert("color".into(), color(s));
+    }
+    if (kind == "text" || s.chaos) && s.chance(50) {
+        let (format, value) = field_format(s);
+        m.insert("format".into(), format);
+        if !s.chaos {
+            // Formats take a single line, shown, and a value that fits.
+            for key in ["multiline", "password", "maxLength"] {
+                m.remove(key);
+            }
+        }
+        match value {
+            Some(v) => m.insert("value".into(), v),
+            None => m.remove("value"),
+        };
+    }
+    Value::Object(m)
+}
+
+/// A text field format and a value that fits it, or none. In chaos mode,
+/// values that do not fit, and patterns and currencies that would end a
+/// script string or add a call to it.
+fn field_format(s: &mut Src) -> (Value, Option<Value>) {
+    const BREAKOUTS: &[&str] = &[
+        "\");app.alert(1);//",
+        "'",
+        "\\",
+        "\n",
+        "\u{2028}",
+        "dd\"",
+        "</script>",
+        "123456789",
+    ];
+    let mut m = Map::new();
+    let kind = s.pick(&[
+        "number", "percent", "date", "time", "zip", "zipPlus4", "phone", "ssn",
+    ]);
+    m.insert("type".into(), json!(kind));
+    let value = match kind {
+        "number" | "percent" => {
+            if s.chance(128) {
+                let decimals = if s.chaos {
+                    json!(s.pick(&[11, -1, 255]))
+                } else {
+                    json!(s.below(11))
+                };
+                m.insert("decimals".into(), decimals);
+            }
+            if s.chance(100) {
+                let sep = s.pick(&["1,234.56", "1234.56", "1.234,56", "1234,56"]);
+                m.insert("separators".into(), json!(sep));
+            }
+            if kind == "number" || s.chaos {
+                if s.chance(100) {
+                    let neg = s.pick(&["minus", "red", "parens", "parensRed"]);
+                    m.insert("negative".into(), json!(neg));
+                }
+                if s.chance(128) {
+                    let currency = if s.chaos {
+                        s.pick(BREAKOUTS)
+                    } else {
+                        s.pick(&["$", "€ ", " EUR", "CHF", ""])
+                    };
+                    m.insert("currency".into(), json!(currency));
+                }
+                if s.chance(60) {
+                    m.insert("currencyBefore".into(), json!(s.chance(128)));
+                }
+            }
+            let mut values = vec![
+                "0",
+                "-1234.5",
+                "999.995",
+                "0.125",
+                "-0.004",
+                "123456789012345.123456789012345",
+            ];
+            if s.chaos {
+                values.extend(["1e5", "1,000", "", "1234567890123456"]);
+            }
+            json!(s.pick(&values))
+        }
+        "date" | "time" => {
+            let pattern = if s.chaos && s.chance(100) {
+                s.pick(BREAKOUTS)
+            } else if kind == "date" {
+                s.pick(&[
+                    "dd/mm/yyyy",
+                    "d mmm yy",
+                    "dddd, mmmm d, yyyy",
+                    "yyyy-mm-dd HH:MM tt",
+                ])
+            } else {
+                s.pick(&["HH:MM", "h:MM tt", "HH:MM:ss", "h t"])
+            };
+            if !s.chaos || s.chance(200) {
+                m.insert("pattern".into(), json!(pattern));
+            }
+            let values: &[&str] = match (kind, s.chaos) {
+                ("date", false) => &["2026-10-14", "2024-02-29T23:59:59", "0001-01-01"],
+                ("time", false) => &["18:30", "00:00:00", "2026-10-14T07:05"],
+                _ => &["2026-02-30", "24:00", "2026-10-14T10:00Z", ""],
+            };
+            json!(s.pick(values))
+        }
+        _ => {
+            let n = match kind {
+                "zip" => 5,
+                "phone" => 10,
+                _ => 9,
+            };
+            let n = if s.chaos { n + 1 } else { n };
+            json!((0..n)
+                .map(|i| char::from(b'0' + (i % 10) as u8))
+                .collect::<String>())
+        }
+    };
+    let value = s.chance(200).then_some(value);
+    (Value::Object(m), value)
+}
+
+/// A text note: contents at their limit and past it, control characters,
+/// an author, a colour, open or not.
+fn note(s: &mut Src) -> Value {
+    let mut m = Map::new();
+    let contents = match s.below(8) {
+        0 => json!("n".repeat(8000 + usize::from(s.chaos))),
+        1 if s.chaos => json!(""),
+        2 => json!("line\nbreak\t(paren\\) \u{0} \u{1f} \u{feff}"),
+        _ => json!(format!("N{}", text(s))),
+    };
+    m.insert("contents".into(), contents);
+    if s.chance(100) {
+        let author = if s.chance(20) {
+            "a".repeat(256 + usize::from(s.chaos))
+        } else {
+            text(s)
+        };
+        m.insert("author".into(), json!(author));
+    }
+    if s.chance(100) {
+        m.insert("color".into(), color(s));
+    }
+    if s.chance(80) {
+        m.insert("open".into(), json!(s.chance(128)));
+    }
+    if s.chaos && s.chance(20) {
+        m.insert("icon".into(), json!("Key"));
     }
     Value::Object(m)
 }
@@ -1143,12 +1575,13 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             "image",
             "table",
             "field",
+            "note",
             "pageBreak",
             "spacer",
         ])
     } else {
         s.pick(&[
-            "box", "box", "text", "text", "image", "table", "field", "spacer",
+            "box", "box", "text", "text", "image", "table", "field", "note", "spacer",
         ])
     };
     let mut m = Map::new();
@@ -1162,8 +1595,8 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(50) {
         m.insert("break".into(), brk(s));
     }
-    // Fields take no link or bookmark.
-    let linkable = !matches!(kind, "pageBreak" | "field") || s.chaos;
+    // Fields and notes take no link or bookmark.
+    let linkable = !matches!(kind, "pageBreak" | "field" | "note") || s.chaos;
     if linkable && s.chance(20) {
         m.insert("link".into(), link(s));
     }
@@ -1220,6 +1653,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         }
         "field" => {
             m.insert("field".into(), field(s));
+        }
+        "note" => {
+            m.insert("note".into(), note(s));
         }
         "image" => image_props(s, &mut m),
         "table" => {
@@ -1379,6 +1815,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn encrypted_renders_follow_plain_ones() {
+        let valid = br#"{"version":1,"meta":{"title":"Canary-Title"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+            "pages":[{"size":{"width":100,"height":100},"children":[{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9}]}]}]}"#;
+        let invalid = br#"{"version":1,"pages":[{"size":{"width":-1,"height":100}}]}"#;
+        for doc in [&valid[..], &invalid[..], b"not json"] {
+            let plain = render(doc, InputFormat::Json, None);
+            let value = serde_json::from_slice::<Value>(doc).ok();
+            check_encrypted(doc, &plain, value.as_ref());
+        }
+        // The plain render shows the title, so the check above looked for it.
+        let plain = render(valid, InputFormat::Json, None).unwrap();
+        assert!(plain.windows(14).any(|w| w == b"(Canary-Title)"));
+    }
+
+    #[test]
+    fn scripts_are_checked_against_the_form_call_grammar() {
+        for ok in [
+            r#"AFNumber_Format(2, 0, 3, 0, "\u20ac ", true);"#,
+            r#"AFDate_FormatEx("dd/mm/yyyy");"#,
+            r#"AFNumber_Keystroke(0, 1, 0, 0, "\"\'\\", false);"#,
+            "AFSpecial_Format(2);",
+        ] {
+            assert!(form_call(ok), "{ok}");
+        }
+        for bad in [
+            r#"AFDate_FormatEx("dd");app.alert(1);//");"#,
+            r#"AFDate_FormatEx("dd" + x);"#,
+            r"app.alert(1);",
+            r"AFSpecial_Format(2)",
+            r"AFSpecial_Format(x);",
+            r#"AFDate_FormatEx("d'd");"#,
+            r#"AFDate_FormatEx("\x41");"#,
+            "AFDate_FormatEx(\"\u{2028}\");",
+        ] {
+            assert!(!form_call(bad), "{bad}");
+        }
+        assert_eq!(
+            pdf_literal(r"AF\(1\) (a) \134 \101b)rest").as_deref(),
+            Some(r"AF(1) (a) \ Ab")
+        );
+        check_scripts(b"/JS (AFSpecial_Format\\(0\\);)", false);
+    }
+
+    #[test]
     fn check_image_says_why_it_did_not_render() {
         let Err(InkoxideError::Validation(e)) = check_image(b"abc") else {
             panic!("rendered an image that is not one");
@@ -1400,10 +1880,22 @@ mod tests {
     /// that validate.
     #[test]
     fn document_covers_the_schema() {
+        const FEW: usize = 1000;
+        const MOST: usize = 20_000;
         let features = [
             r#""type":"field""#,
+            r#""type":"note""#,
+            r#""open":true"#,
             r#""kind":"select""#,
+            r#""kind":"list""#,
+            r#""multiSelect":true"#,
+            r#""value":["#,
             r#""kind":"radio""#,
+            r#""name":"set0.sub"#,
+            r#""type":"number""#,
+            r#""currency":"#,
+            r#""pattern":"#,
+            r#""type":"zip"#,
             r#""pages":"odd""#,
             r#""pages":[-"#,
             r#""zIndex":"#,
@@ -1423,21 +1915,19 @@ mod tests {
             r#""fallbackFonts":["EmojiTest-CBDT""#,
             r#""image":{"src":"#,
             r#""emojiImages":{"❤"#,
+            r#""😀":"logo""#,
+            r#""verticalAlign":"textTop""#,
             "👩\u{200D}💻",
         ];
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
         let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
-        // Two thousand documents, and up to four thousand more until every
-        // feature shows in a valid one: each property the generator learns
-        // draws from the same bytes, and moves the others.
-        let mut generated = 0;
-        for i in 0..6000 {
-            if i >= 2000 && seen.iter().all(|s| *s) {
-                break;
-            }
-            generated += 1;
-            let data: Vec<u8> = (0..64 << (i % 5))
+        // Documents until every feature has shown up in a valid one, and at
+        // least `FEW`; at most `MOST`, so a feature the generator no longer
+        // reaches fails the test instead of hanging it.
+        let mut tried = 0;
+        while tried < MOST && (tried < FEW || seen.contains(&false)) {
+            let data: Vec<u8> = (0..64 << (tried % 5))
                 .map(|_| {
                     // xorshift64
                     x ^= x << 13;
@@ -1446,6 +1936,7 @@ mod tests {
                     x as u8
                 })
                 .collect();
+            tried += 1;
             let doc = document(&data);
             if !inkoxide::validate(&doc, InputFormat::Json, &FONTS, &IMAGES).is_empty() {
                 continue;
@@ -1461,10 +1952,13 @@ mod tests {
             .zip(&seen)
             .filter(|(_, seen)| !**seen)
             .collect();
-        assert!(missing.is_empty(), "no valid document has {missing:?}");
         assert!(
-            valid * 10 >= generated,
-            "{valid} of {generated} documents are valid"
+            missing.is_empty(),
+            "no valid document of {tried} has {missing:?}"
+        );
+        assert!(
+            valid * 10 >= tried,
+            "{valid} of {tried} documents are valid"
         );
     }
 }

@@ -14,6 +14,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [Text: superscripts and font features](#text-superscripts-and-font-features)
 - [Drawing: SVG and Canvas](#drawing-svg-and-canvas)
 - [Forms](#forms)
+- [Notes](#notes)
 - [Debugging layout](#debugging-layout)
 - [API](#api)
 - [Errors](#errors)
@@ -46,7 +47,9 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop` | Vector drawing in JSX. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
-| `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
+| `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
+| `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
+| `Note` | A text note: an icon that opens its text in the viewer. |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link`,
 `Image` (an image in the line) and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
@@ -178,7 +181,10 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
   colour glyphs past the first 4096 of a render. Fonts with only `SVG` glyphs are not drawn in
-  colour.
+  colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
+  alpha channel, a layer with an opacity) is drawn without colour, as its outline, or not at all
+  in a font without outlines, instead of failing the render. Inline images and emoji images
+  that need it fail the render with `PDFA_CONFLICT`, at their `src` or `emojiImages` key.
 - **Emoji from images.** `Font.registerEmojiSource` draws emoji from an image set instead:
   `{ url, format }` adds each emoji's code points and the format to the URL
   (`https://cdn.example.com/emoji/1f469-200d-1f4bb.png`; `withVariationSelectors: true` keeps
@@ -499,8 +505,7 @@ component: inside a `Text` it is a linked run, elsewhere a box like a `View`. A 
 style it is given and adds no colour or underline of its own. `href="#id"` jumps to the element
 with that `id`.
 
-Bookmarks become the PDF outline in the viewer's sidebar. With `{ pdfA: true }`, the output is
-PDF/A-2b, for archiving.
+Bookmarks become the PDF outline in the viewer's sidebar.
 
 `Document` writes `title`, `author`, `subject`, `keywords`, `creator` (the application that
 made the file) and `producer` (the software that wrote the PDF, by default `Inkoxide <version>`)
@@ -532,6 +537,70 @@ Font.register({ family: 'Noto Sans Arabic', src: './fonts/NotoSansArabic-Regular
 ```
 
 An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fallback off.
+
+### PDF/A
+
+`conformance` makes the file PDF/A, for archiving, and so does the `pdfA` render option, which
+wins over it:
+
+```tsx
+<Document title="Invoice 2026-0815" conformance="PDF/A-2b">…</Document>
+```
+
+| `conformance` | `pdfA` | Writes |
+|---|---|---|
+| `'PDF/A-2b'` or `'PDF/A-2'` | `true` or `'2b'` | PDF/A-2b |
+| `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, which may also carry embedded files |
+| `'PDF/A-1b'` or `'PDF/A-1'` | `'1b'` | PDF/A-1b, the oldest level, for archives that require it |
+
+PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
+`PDFA_CONFLICT`) and the component at fault for a colour with alpha below 1 (a transparent
+background is fine: it draws nothing), an `opacity` between 0 and 1, an image with an alpha
+channel such as most PNG logos, an SVG drawn with opacity, a mask or a blend mode, or `debug`.
+PDF/A-2b and 3b allow all of these. The a and u levels (`'PDF/A-2a'`, `'PDF/A-3u'`) need tagged
+PDF, which is not supported yet: they fail with `TEMPLATE_ERROR`.
+
+`conformance` is not part of the document tree: to render a stored `result.document` again at
+the same level, pass `pdfA` to `renderDocument`.
+
+### Passwords and permissions
+
+`userPassword` encrypts the PDF (AES-256, which Acrobat X and later, pdf.js, Chrome and Preview
+open): the file opens only with that password. `ownerPassword` lifts `permissions`, what a
+reader without it may do:
+
+```tsx
+<Document
+  userPassword="open-sesame"
+  ownerPassword={process.env.PDF_OWNER_PASSWORD}
+  permissions={{ printing: 'highResolution', copying: false }}
+>
+  …
+</Document>
+```
+
+| Permission | Default | Allows |
+|---|---|---|
+| `printing` | not allowed | `'lowResolution'` or `'highResolution'` printing |
+| `modifying` | `false` | changes other than annotations and form fields |
+| `copying` | `false` | copying text and images |
+| `annotating` | `false` | adding annotations and filling in fields |
+| `fillingForms` | `false` | filling in fields |
+| `contentAccessibility` | `true` | extracting text for screen readers |
+| `documentAssembly` | `false` | inserting, rotating and deleting pages |
+
+- Passwords are printable ASCII, at most 127 bytes. With only `ownerPassword`, anyone opens the
+  file and the permissions apply; with only `userPassword`, it is also the owner password, so
+  `permissions` need `ownerPassword`.
+- The `encryption` render option (`{ userPassword, ownerPassword, permissions }`) replaces the
+  three props as a whole, for passwords that come from the request rather than the template.
+- Encryption and PDF/A do not go together: PDF/A forbids encryption.
+- A bad value fails with `ENGINE_REJECTED` at its path (`options.encryption.userPassword`, …).
+  No error shows a password, and the passwords are not part of `result.document` or of the
+  tree's JSON.
+- Readers enforce the permissions; the file cannot. Encryption hides the text and images, not
+  the page count or sizes.
+- The same document and passwords give the same bytes, as unencrypted output does.
 
 ## Text: hyphenation and direction
 
@@ -697,6 +766,7 @@ In an SVG, whether in `<Svg>` or an image file:
 ```tsx
 <TextField name="email" className="h-6 w-full rounded border border-gray-300 px-1" />
 <Select name="plan" options={['Starter', 'Team']} value="Team" className="h-6 w-40 border" />
+<List name="days" options={['Mon', 'Tue', 'Wed']} multiSelect value={['Mon', 'Wed']} className="w-40 border" />
 <Checkbox name="terms" className="h-3.5 w-3.5 border" />
 <Radio name="billing" value="yearly" checked className="h-3.5 w-3.5 rounded-full border" />
 ```
@@ -704,8 +774,72 @@ In an SVG, whether in `<Svg>` or an image file:
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
 must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
 `maxLength` and `password`; size, border, background and text style come from the classes.
-`Field` is any of the four, picked by its `kind` (`"text"`, `"checkbox"`, `"radio"`,
-`"select"`), for forms built from data: `<Field kind={q.kind} name={q.name} … />`.
+`TextInput` is another name for `TextField`.
+
+`Select` is a drop-down list and `List` a list box, which shows several options at once (four
+rows without a height) and starts at the first selected one. Both take their choices as
+`options`, or `select`, and the selected one as `value`; a `List` with `multiSelect` takes an
+array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkbox"`,
+`"radio"`, `"select"`, `"list"`), for forms built from data:
+`<Field kind={q.kind} name={q.name} … />`.
+
+A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
+the name of every field inside it, at any depth. Viewers show and export the fields by those
+full names, and sets nest:
+
+```tsx
+<FieldSet name="billing" className="gap-2">
+  <TextField name="street" />                 {/* billing.street */}
+  <FieldSet name="contact">
+    <TextField name="email" />                {/* billing.contact.email */}
+  </FieldSet>
+</FieldSet>
+```
+
+A dot in a field's own `name` does the same (`name="billing.street"`). A name is either a field
+or a group: `billing` cannot also be a field when `billing.street` is one.
+
+A single-line `TextField` takes a `format`, which it shows its value in and which viewers apply
+as the user types:
+
+```tsx
+<TextField name="fee" value="1250" format={{ type: 'number', currency: '$' }} />          {/* $1,250.00 */}
+<TextField name="rate" value="0.125" format={{ type: 'percent', decimals: 1 }} />         {/* 12.5% */}
+<TextField name="start" value="2026-10-14" format={{ type: 'date', pattern: 'd mmm yyyy' }} /> {/* 14 Oct 2026 */}
+<TextField name="phone" value="5551234567" format={{ type: 'phone' }} />                   {/* (555) 123-4567 */}
+```
+
+| `type` | `value` | Options |
+|---|---|---|
+| `number` | digits, as `'-1234.5'` | `decimals` (default 2, rounded half away from zero), `separators` (`'1,234.56'`, `'1234.56'`, `'1.234,56'`, `'1234,56'`), `negative` (`'minus'`, `'red'`, `'parens'`, `'parensRed'`), `currency` and `currencyBefore` (default `true`) |
+| `percent` | a fraction, as `'0.125'` | `decimals`, `separators` |
+| `date` | `'2026-10-14'`, with an optional time (`T18:30`) | `pattern` (required) |
+| `time` | `'18:30'` or `'18:30:05'`, or a date with a time | `pattern` (required) |
+| `zip`, `zipPlus4`, `phone`, `ssn` | 5, 9, 10 or 9 digits | none |
+
+A `pattern` uses `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`, `mmm` (Oct), `mmmm`
+(October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t`
+(a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English. The keys `nDec`,
+`sepComma`, `negStyle`, `currencyPrepend` and `param` are other names for `decimals`,
+`separators`, `negative`, `currencyBefore` and `pattern`. Viewers apply the format with the
+standard form scripts, which some (Preview) do not run; a PDF/A document leaves the scripts out
+and keeps the formatted text.
+
+## Notes
+
+```tsx
+<Note author="Ana">Check the totals against the ledger.</Note>
+<Note className="absolute right-0 top-0 bg-blue-500" open>Draft: not for circulation.</Note>
+```
+
+A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
+its children (strings and numbers only). `author` is shown as its title, `open` shows the text
+when the document opens, and its `backgroundColor` (or a `bg-*` class) is its colour, yellow by
+default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
+its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
+insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
+`fixed` element it is on every page. The icon is drawn into the PDF, so it prints and looks the
+same in every viewer, and the output stays PDF/A-2b. A note cannot go inside a `Text` yet.
 
 ## Debugging layout
 
@@ -753,7 +887,8 @@ All three take the same options:
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
 | `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
-| `pdfA` | `false` | Write PDF/A-2b, for archiving |
+| `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'` or `'1b'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
+| `encryption` | none | `{ userPassword, ownerPassword, permissions }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
 | `creationDate` | none | RFC 3339 timestamp written to the PDF. Without it, the same input gives byte-identical output. |
@@ -799,7 +934,8 @@ serves `Polyline` and `Polygon`, `GradientProps` both gradients and `SvgPresenta
 attributes every SVG shape takes. Also exported:
 
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
-  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
+  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
+  `Permissions` (of `<Document permissions>`), and `TextFormat`, the `format` of a `TextField`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
   gradients;

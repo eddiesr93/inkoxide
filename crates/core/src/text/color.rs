@@ -42,12 +42,14 @@ pub(crate) struct ColorGlyphs {
 
 impl ColorGlyphs {
     /// Turns the glyphs of colour fonts in `used` into images, added to
-    /// `images`. On the current rayon pool when `parallel`.
+    /// `images`. On the current rayon pool when `parallel`. With `opaque`
+    /// (PDF/A-1b, which forbids transparency), a glyph whose image needs
+    /// transparency (an alpha channel, an opacity) has no colour.
     pub fn load(
         fonts: &FontSet<'_>,
         used: &BTreeMap<FontKey, BTreeSet<u16>>,
         images: &mut ImageSet,
-        parallel: bool,
+        (parallel, opaque): (bool, bool),
     ) -> Self {
         let wanted: Vec<(FontKey, u16)> = used
             .iter()
@@ -70,6 +72,9 @@ impl ColorGlyphs {
             let image = ImageData::new(bytes.into())
                 .decoded(&ImageCrateDecoder)
                 .ok()?;
+            if opaque && crate::pdf::image_transparency(&image).is_some() {
+                return None;
+            }
             Some((image, bbox))
         };
         let decoded: Vec<_> = if parallel {
@@ -198,7 +203,7 @@ mod tests {
             let used = BTreeMap::from([(key, (0..64).collect::<BTreeSet<u16>>())]);
             let mut images =
                 ImageSet::load(&[], &crate::ImageStore::new(), &ImageCrateDecoder).unwrap();
-            let colors = ColorGlyphs::load(&fonts, &used, &mut images, false);
+            let colors = ColorGlyphs::load(&fonts, &used, &mut images, (false, false));
             assert_eq!(colors.glyphs.len(), want, "{}", ids[usize::from(key)]);
             assert_eq!(images.images.len(), want);
             // No font here has outlines and no colour: the spans carry

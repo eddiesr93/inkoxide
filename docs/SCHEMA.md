@@ -60,6 +60,7 @@
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -402,7 +403,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` | yes |  |
+| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` \| `"note"` | yes |  |
 
 ### BoxNode
 
@@ -510,7 +511,7 @@ Starts a new page when in-flow content follows it: at the end of the flow it add
 
 ### FieldNode
 
-An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text: 150 pt wide, one line, or three when multiline; checkbox and radio: `size` + 2 pt square).
+An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text and select: 150 pt wide, one line, or three when multiline; list: 150 pt wide, one row per option up to four; checkbox and radio: `size` + 2 pt square).
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
@@ -528,19 +529,58 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
-| `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
-| `value` | `string` |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). |
+| `name` | `string` matching `^[^.]{1,128}(\.[^.]{1,128}){0,31}$` | yes | min length 1, max length 512; Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`. |
+| `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` \| `"list"` | yes | `select` is a drop-down list, `list` a list box that shows several options at once |
+| `value` | `string` (max length 8000) or array of `string` (each max length 1000) (max items 1000) |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
-| `options` | array of `string` |  | min items 1; select only: the choices |
+| `options` | array of `string` (each max length 1000) |  | min items 1, max items 1000; select and list only (required there): the choices, at most 1000 of at most 1000 characters each |
+| `multiSelect` | `boolean` |  | default `false`; list only: several options can be selected at once |
 | `multiline` | `boolean` |  | default `false`; text only |
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
-| `font` | [`Id`](#id) |  | text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
+| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
+| `format` | [`FieldFormat`](#fieldformat) |  |  |
+
+### FieldFormat
+
+Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"number"` \| `"percent"` \| `"date"` \| `"time"` \| `"zip"` \| `"zipPlus4"` \| `"phone"` \| `"ssn"` | yes |  |
+| `decimals` | `integer` |  | ≥ 0, ≤ 10; number and percent: digits after the decimal separator, rounded half away from zero; default 2 |
+| `separators` | `"1,234.56"` \| `"1234.56"` \| `"1.234,56"` \| `"1234,56"` |  | number and percent: the thousands and decimal separators, by example; default `1,234.56` |
+| `negative` | `"minus"` \| `"red"` \| `"parens"` \| `"parensRed"` |  | number: how a negative number shows: `-1.00`, `1.00` in red, `(1.00)` or `(1.00)` in red; default `minus` |
+| `currency` | `string` matching `^[^\u0000-\u001f\u007f-\u009f"'\\\u2028\u2029]*$` |  | max length 8; number: a currency symbol, shown as it is (add a space to separate it); no control characters, quotes or backslashes |
+| `currencyBefore` | `boolean` |  | default `true`; number: the currency goes before the number |
+| `pattern` | `string` |  | min length 1, max length 64; date and time (required there): how the value shows, with `d`, `dd`, `ddd` (Mon), `dddd` (Monday), `m`, `mm`, `mmm` (Jan), `mmmm` (January), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; a time shows only `H`, `h`, `M`, `s` and `t`. Names are English. |
+
+### NoteNode
+
+A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"note"` | yes |  |
+| `id` | [`Id`](#id) |  |  |
+| `style` | [`Style`](#style) |  |  |
+| `break` | [`Break`](#break) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
+| `note` | [`Note`](#note) | yes |  |
+
+### Note
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `contents` | `string` | yes | min length 1, max length 8000; The text of the note. |
+| `author` | `string` |  | max length 256; Who wrote it; viewers show it as the note's title. |
+| `color` | [`Color`](#color) |  | The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1]. |
+| `open` | `boolean` |  | default `false`; Whether viewers show the text when the document opens. |
 
 ### TrackBreadth
 

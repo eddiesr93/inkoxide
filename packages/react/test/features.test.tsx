@@ -1,4 +1,4 @@
-import type { BoxNode, FieldNode, ImageNode, TableNode, TextNode } from '@inkoxide/schema';
+import type { BoxNode, FieldNode, ImageNode, NoteNode, TableNode, TextNode } from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +15,7 @@ import {
   type DefsProps,
   Document,
   Field,
+  FieldSet,
   Footer,
   G,
   Header,
@@ -25,8 +26,10 @@ import {
   isImagePath,
   LinearGradient,
   Link,
+  List,
   Marker,
   type MarkerProps,
+  Note,
   PAGE_SIZES,
   Page,
   PageBreak,
@@ -48,6 +51,7 @@ import {
   Table,
   Text,
   TextField,
+  TextInput,
   TotalPages,
   usePage,
   View,
@@ -1045,6 +1049,186 @@ describe('form fields', () => {
     expect(s?.field).toMatchObject({ kind: 'select', options: ['Ohio', 'Iowa'], required: true });
     expect(m?.field).toMatchObject({ multiline: true, readOnly: true });
     expect(r.validate()).toEqual([]);
+  });
+
+  it('builds list boxes, and takes select for options and TextInput for TextField', () => {
+    const r = tree(
+      <View>
+        <List name="days" options={['Mon', 'Tue', 'Wed']} value="Tue" />
+        <List name="tags" select={['a', 'b', 'c']} multiSelect value={['c', 'a']} className="h-20" />
+        <Select name="plan" select={['Starter', 'Team']} value="Team" />
+        <TextInput name="email" value="a@b.c" />
+        <Field kind="list" name="any" options={['x']} />
+      </View>,
+    );
+    const [days, tags, plan, email, any] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(days?.field).toEqual({
+      name: 'days',
+      kind: 'list',
+      options: ['Mon', 'Tue', 'Wed'],
+      value: 'Tue',
+      font: 'Inter-Regular',
+    });
+    expect(tags?.field).toMatchObject({ options: ['a', 'b', 'c'], multiSelect: true, value: ['c', 'a'] });
+    expect(tags?.style).toEqual({ height: 60 });
+    expect(plan?.field).toMatchObject({ kind: 'select', options: ['Starter', 'Team'], value: 'Team' });
+    expect(email?.field).toMatchObject({ kind: 'text', value: 'a@b.c' });
+    expect(any?.field).toMatchObject({ kind: 'list', options: ['x'] });
+    expect(r.validate()).toEqual([]);
+    const several = thrown(() =>
+      tree(<List name="x" options={['a', 'b']} value={['a', 'b'] as unknown as string} />),
+    );
+    expect(several.message).toContain('need multiSelect');
+  });
+
+  it('takes a format with its readable keys or their other names', () => {
+    const r = tree(
+      <View>
+        <TextField
+          name="fee"
+          value="-1234.5"
+          format={{
+            type: 'number',
+            decimals: 0,
+            separators: '1.234,56',
+            negative: 'parensRed',
+            currency: ' €',
+            currencyBefore: false,
+          }}
+        />
+        <TextInput
+          name="fee2"
+          format={{
+            type: 'number',
+            nDec: 1,
+            sepComma: false,
+            negStyle: 'ParensBlack',
+            currency: '$',
+            currencyPrepend: true,
+          }}
+        />
+        <TextInput name="day" value="2026-10-14" format={{ type: 'date', param: 'dd/mm/yyyy' }} />
+        <TextField name="zip" format={{ type: 'zip' }} />
+      </View>,
+    );
+    const [fee, fee2, day, zip] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(fee?.field.format).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1.234,56',
+      negative: 'parensRed',
+      currency: ' €',
+      currencyBefore: false,
+    });
+    expect(fee2?.field.format).toEqual({
+      type: 'number',
+      decimals: 1,
+      separators: '1234.56',
+      negative: 'parens',
+      currency: '$',
+      currencyBefore: true,
+    });
+    expect(day?.field).toMatchObject({
+      value: '2026-10-14',
+      format: { type: 'date', pattern: 'dd/mm/yyyy' },
+    });
+    expect(zip?.field.format).toEqual({ type: 'zip' });
+    expect(r.validate()).toEqual([]);
+    // The readable key wins.
+    const both = tree(
+      <TextField name="a" format={{ type: 'number', sepComma: true, separators: '1234,56' }} />,
+    );
+    expect(first<FieldNode>(both).field.format).toEqual({ type: 'number', separators: '1234,56' });
+    expect(
+      thrown(() => tree(<TextField name="a" format={'number' as unknown as { type: 'number' }} />)).message,
+    ).toContain('<TextField format> is an object');
+  });
+
+  it('puts the names of field sets in front of the names of their fields', () => {
+    const r = tree(
+      <FieldSet name="applicant" className="p-2" id="who">
+        <TextField name="name" />
+        <View>
+          <FieldSet name="address">
+            <TextField name="street" />
+            <Radio name="kind" value="home" />
+          </FieldSet>
+        </View>
+        <Checkbox name="consent" />
+      </FieldSet>,
+    );
+    const set = first<BoxNode>(r);
+    expect(set).toMatchObject({ type: 'box', id: 'who', style: { padding: { top: 6 } } });
+    const names: string[] = [];
+    const walk = (n: { type: string; field?: { name: string }; children?: unknown[] }) => {
+      if (n.field) names.push(n.field.name);
+      for (const c of (n.children ?? []) as (typeof n)[]) walk(c);
+    };
+    walk(set as never);
+    expect(names).toEqual([
+      'applicant.name',
+      'applicant.address.street',
+      'applicant.address.kind',
+      'applicant.consent',
+    ]);
+    expect(r.validate()).toEqual([]);
+    // Fields outside it keep their name.
+    expect(first<FieldNode>(tree(<TextField name="plain" />)).field.name).toBe('plain');
+    expect(thrown(() => tree(<FieldSet name="">x</FieldSet>)).message).toContain('<FieldSet> needs a name');
+  });
+});
+
+describe('notes', () => {
+  it('builds a note from its text, with its background colour as its colour', () => {
+    const r = tree(
+      <View>
+        <Note author="Ana" open className="absolute top-2 bg-blue-500">
+          Check the totals ({3} rows).
+        </Note>
+        <Note style={{ backgroundColor: '#ff0000', marginTop: 4 }}>Plain</Note>
+        <Note>Yellow</Note>
+      </View>,
+    );
+    const [a, b, c] = (first<BoxNode>(r).children ?? []) as NoteNode[];
+    expect(a?.note).toMatchObject({ contents: 'Check the totals (3 rows).', author: 'Ana', open: true });
+    expect(a?.note.color).toHaveLength(4);
+    expect(a?.style).toEqual({ position: 'absolute', inset: { top: 6 } });
+    expect(b).toEqual({
+      type: 'note',
+      note: { contents: 'Plain', color: [1, 0, 0, 1] },
+      style: { margin: { top: 4 } },
+    });
+    expect(c).toEqual({ type: 'note', note: { contents: 'Yellow' } });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('contains only text, and is a block, not a run', () => {
+    expect(
+      thrown(() =>
+        tree(
+          <Note>
+            <Text>x</Text>
+          </Note>,
+        ),
+      ).message,
+    ).toContain('A <Note> contains only text');
+    expect(thrown(() => tree(<Note />)).message).toContain('<Note> needs text');
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            a <Note>b</Note>
+          </Text>,
+        ),
+      ).message,
+    ).toContain('cannot be inside <Text>');
+    // Fixed on every page, like a watermark.
+    const fixed = tree(
+      <Note fixed className="absolute right-0 top-0">
+        On every page
+      </Note>,
+    );
+    expect(first<NoteNode>(fixed)).toMatchObject({ type: 'note', break: { fixed: true } });
   });
 });
 

@@ -45,6 +45,8 @@ const BOX_BYTES: u64 = 768;
 /// and a shape of a paragraph's `debug` outline: a line box, a baseline or
 /// a run's box on a line.
 const LINE_SHAPE_BYTES: u64 = 64;
+/// Estimated output of the scripts of a field format, in bytes.
+const SCRIPT_BYTES: u64 = 512;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -89,6 +91,8 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
+            // It takes no space.
+            NodeKind::Note(_) => Size::ZERO,
             _ => self.text.measure(node, known, available),
         }
     }
@@ -109,6 +113,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
+            NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => {
                 let from = ops.len();
                 self.text.paint(node, geo, ctx, ops);
@@ -223,13 +228,14 @@ fn layout_fixed<'a>(
 /// Lays out and paginates every page template, then paints the pages,
 /// handing each to `encode` as soon as it is painted. With `parallel`,
 /// shaping and painting run on the current rayon pool; without it, on the
-/// calling thread alone.
+/// calling thread alone. With `opaque` (PDF/A-1b), colour glyphs whose
+/// images need transparency are drawn without colour.
 pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
     images: &mut ImageSet,
-    parallel: bool,
+    (parallel, opaque): (bool, bool),
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
 ) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
@@ -247,7 +253,7 @@ pub(crate) fn run<'d, T: Send>(
         fonts,
         &text.glyphs_of(|k| fonts.get(k).data.metrics.color),
         images,
-        parallel,
+        (parallel, opaque),
     );
     let images: &ImageSet = images;
 
@@ -438,8 +444,18 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     }
                 }
                 NodeKind::Field(f) => {
-                    let options: usize = f.options.iter().map(String::len).sum();
-                    size = size.saturating_add(BOX_BYTES + options as u64 * ITEM_BYTES);
+                    // Its options and values, in the field and in its
+                    // appearance.
+                    let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
+                    size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
+                    if f.format.is_some() {
+                        // Its two scripts.
+                        size = size.saturating_add(SCRIPT_BYTES);
+                    }
+                }
+                NodeKind::Note(note) => {
+                    let text = note.contents.len() + note.author.as_ref().map_or(0, String::len);
+                    size = size.saturating_add(BOX_BYTES + text as u64);
                 }
                 _ => {}
             }
