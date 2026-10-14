@@ -1533,3 +1533,34 @@ fn image_runs_are_checked() {
         assert_eq!((c, got.as_str()), (code, path.as_str()), "{bad}");
     }
 }
+
+#[test]
+fn emoji_images_are_checked() {
+    let with = |map: &str| {
+        format!(
+            r#"{{"version":1,"emojiImages":{{{map}}},"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    for ok in [
+        r#""😀":"logo""#,
+        r#""👍🏽":"logo","🇫🇷":"logo","1️⃣":"logo""#,
+        "\"👩\u{200D}💻\":\"logo\",\"❤\u{FE0F}\":\"logo\"",
+    ] {
+        assert_eq!(run(&with(ok)), vec![], "{ok}");
+    }
+    for (bad, code, path) in [
+        (r#""a":"logo""#, C::InvalidValue, "emojiImages.a"),
+        (r#""😀😀":"logo""#, C::InvalidValue, "emojiImages.😀😀"),
+        (r#""😀 ":"logo""#, C::InvalidValue, "emojiImages.😀 "),
+        (r#""😀":"nope""#, C::UnknownImage, "emojiImages.😀"),
+    ] {
+        let (c, got) = one(&with(bad));
+        assert_eq!((c, got.as_str()), (code, path), "{bad}");
+    }
+    // At most 4096, reported once.
+    let many: Vec<String> = (0..4097).map(|i| format!(r#""k{i}":"logo""#)).collect();
+    assert_eq!(
+        one(&with(&many.join(","))),
+        (C::OutOfRange, "emojiImages".into())
+    );
+}

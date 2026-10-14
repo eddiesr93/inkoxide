@@ -318,6 +318,7 @@ fn colour_emoji_extract_as_text() {
             "emoji-cbdt",
             "smile 😀 heart ❤\u{FE0F} thumbs 👍 flag 🇫🇷 end",
         ),
+        ("emoji-images", "smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"),
     ] {
         let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
         let pdf = inkoxide::render(

@@ -666,3 +666,18 @@ fn integer_bounds_match_schema() {
         );
     }
 }
+
+/// The bounds of `emojiImages` are the schema's.
+#[test]
+fn emoji_image_bounds_match_schema() {
+    use crate::validate::rules::{MAX_EMOJI_IMAGES, MAX_EMOJI_SEQUENCE};
+    let s = schema();
+    assert_eq!(
+        bound(&s, "/properties/emojiImages/maxProperties"),
+        MAX_EMOJI_IMAGES as i64
+    );
+    assert_eq!(
+        bound(&s, "/properties/emojiImages/propertyNames/maxLength"),
+        MAX_EMOJI_SEQUENCE as i64
+    );
+}

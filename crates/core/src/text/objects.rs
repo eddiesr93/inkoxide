@@ -3,20 +3,32 @@
 //! so line breaking, `textWrap: pretty`, line boxes and ellipses treat it
 //! as any glyph; line metrics and the painter look up the object.
 //!
-//! An object is an image run (`TextRun::image`). Its size is the run's
-//! `width` and `height`, one of them from the image's aspect ratio when
-//! only the other is set, and 1em high (the run's `size`) when neither is.
+//! An object is an image run (`TextRun::image`), or an emoji sequence the
+//! document's `emojiImages` draws as an image. An image run's size is the
+//! run's `width` and `height`, one of them from the image's aspect ratio
+//! when only the other is set, and 1em high (the run's `size`) when
+//! neither is. An emoji image is 1em high, its bottom 0.1em below the
+//! baseline, and its alternative text is the sequence.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use crate::fonts::FontSet;
 use crate::images::ImageKey;
 use crate::schema::{ImageFit, ObjectPosition, RunAlign, TextRun};
 
-/// The images available to inline objects, by run.
+/// The images available to inline objects: by run, and by emoji sequence
+/// (without U+FE0F).
 #[derive(Debug, Default)]
 pub(crate) struct InlineObjects {
     runs: HashMap<usize, Source>,
+    emoji: HashMap<String, Source>,
+}
+
+/// An `emojiImages` key: the sequence without its emoji presentation
+/// selectors, which writers add or leave out.
+pub(crate) fn emoji_key(sequence: &str) -> String {
+    sequence.chars().filter(|&c| c != '\u{FE0F}').collect()
 }
 
 /// An image and its intrinsic size, in points.
@@ -32,8 +44,50 @@ pub(crate) fn run_key(r: &TextRun) -> usize {
 }
 
 impl InlineObjects {
-    pub fn new(runs: HashMap<usize, Source>) -> Self {
-        Self { runs }
+    pub fn new(runs: HashMap<usize, Source>, emoji: HashMap<String, Source>) -> Self {
+        Self { runs, emoji }
+    }
+
+    /// The emoji of `text` (a run's text) drawn as images, by byte range:
+    /// each emoji presentation sequence with an image, or, for a ZWJ
+    /// sequence without one, each of its parts with an image.
+    pub fn emoji_in(&self, text: &str, run: &TextRun) -> Vec<(Range<usize>, InlineObject)> {
+        if self.emoji.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for q in super::emoji::sequences(text)
+            .into_iter()
+            .filter(|q| q.emoji)
+        {
+            let seq = &text[q.range.clone()];
+            if let Some(object) = self.emoji_object(seq, run) {
+                out.push((q.range, object));
+                continue;
+            }
+            let mut at = q.range.start;
+            for part in seq.split('\u{200D}') {
+                if let Some(object) = self.emoji_object(part, run) {
+                    out.push((at..at + part.len(), object));
+                }
+                at += part.len() + '\u{200D}'.len_utf8();
+            }
+        }
+        out
+    }
+
+    fn emoji_object(&self, seq: &str, run: &TextRun) -> Option<InlineObject> {
+        let src = self.emoji.get(&emoji_key(seq))?;
+        let (w, h) = size(src.intrinsic, None, None, run.size);
+        Some(InlineObject {
+            key: src.key,
+            width: w,
+            height: h,
+            fit: ImageFit::Fill,
+            position: ObjectPosition::default(),
+            align: RunAlign::Points(-0.1 * run.size),
+            alt: Some(seq.into()),
+        })
     }
 
     /// The object of image run `run`.

@@ -37,6 +37,9 @@ pub struct Document {
     pub fonts: Vec<FontDecl>,
     #[serde(default)]
     pub fallback_fonts: Vec<String>,
+    /// Emoji sequences drawn as images: sequence → image id.
+    #[serde(default)]
+    pub emoji_images: std::collections::BTreeMap<String, String>,
     pub pages: Vec<PageSpec>,
 }
 

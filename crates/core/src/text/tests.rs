@@ -1010,3 +1010,44 @@ fn placeholders_keep_the_objects() {
     assert!(p.glyphs[0].is_object());
     assert_eq!(p.segments[0].object, Some(0));
 }
+
+#[test]
+fn emoji_with_images_are_objects_and_zwj_sequences_try_their_parts() {
+    let mut emoji = std::collections::HashMap::new();
+    let source = |key| objects::Source {
+        key,
+        intrinsic: (30.0, 20.0),
+    };
+    emoji.insert("😀".to_string(), source(0));
+    emoji.insert("❤".to_string(), source(1));
+    let objects = InlineObjects::new(std::collections::HashMap::new(), emoji);
+    let d = doc(&para("x", ""));
+    let crate::schema::NodeKind::Text { runs } = &d.pages[0].children[0].kind else {
+        unreachable!()
+    };
+    let run = &runs[0];
+    let found = |text: &str| -> Vec<(String, String, f32)> {
+        objects
+            .emoji_in(text, run)
+            .into_iter()
+            .map(|(r, o)| (text[r].to_string(), o.alt.unwrap().to_string(), o.width))
+            .collect()
+    };
+    // 1em high (10 pt), the ratio kept; FE0F does not matter; text
+    // presentation is left to the fonts.
+    assert_eq!(found("a 😀 b"), [("😀".into(), "😀".into(), 15.0)]);
+    assert_eq!(
+        found("❤\u{FE0F}"),
+        [("❤\u{FE0F}".into(), "❤\u{FE0F}".into(), 15.0)]
+    );
+    assert_eq!(found("❤ 😀\u{FE0E}"), []);
+    // A ZWJ sequence without an image of its own: its parts that have one.
+    let parts = found("😀\u{200D}❤\u{FE0F}\u{200D}👍");
+    assert_eq!(
+        parts,
+        [
+            ("😀".into(), "😀".into(), 15.0),
+            ("❤\u{FE0F}".into(), "❤\u{FE0F}".into(), 15.0)
+        ]
+    );
+}

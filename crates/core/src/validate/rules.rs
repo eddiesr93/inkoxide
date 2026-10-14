@@ -140,6 +140,10 @@ pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
 /// Longest alternative text of an inline image, in characters.
 pub(crate) const MAX_ALT: usize = 1024;
+/// Most entries of `emojiImages`.
+pub(crate) const MAX_EMOJI_IMAGES: usize = 4096;
+/// Longest key of `emojiImages`, in characters.
+pub(crate) const MAX_EMOJI_SEQUENCE: usize = 64;
 /// Thickest `decorationThickness`, in points.
 pub(crate) const MAX_DECORATION_THICKNESS: f32 = 100.0;
 /// Largest `letterSpacing` either way, in points.
@@ -299,6 +303,17 @@ impl<'a> Checker<'a> {
             self.at("fallbackFonts", |c| {
                 c.at_index(i, |c| c.font_ref(None, id));
             });
+        }
+        if doc.emoji_images.len() > MAX_EMOJI_IMAGES {
+            self.err(
+                Code::OutOfRange,
+                Some("emojiImages"),
+                format!("at most {MAX_EMOJI_IMAGES} emoji images"),
+            );
+        } else {
+            for (sequence, id) in &doc.emoji_images {
+                self.at("emojiImages", |c| c.emoji_image(sequence, id));
+            }
         }
         if doc.pages.is_empty() {
             self.err(
@@ -800,6 +815,41 @@ impl<'a> Checker<'a> {
                 );
             }
         });
+    }
+
+    /// An `emojiImages` entry: its key is one emoji sequence, of at most
+    /// [`MAX_EMOJI_SEQUENCE`] characters, and its image decodes.
+    fn emoji_image(&mut self, sequence: &str, id: &str) {
+        let one = crate::text::emoji_sequences(sequence);
+        let whole = matches!(&one[..], [q] if q.range == (0..sequence.len()));
+        if !whole || sequence.chars().count() > MAX_EMOJI_SEQUENCE {
+            self.err(
+                Code::InvalidValue,
+                Some(sequence),
+                format!("a key of `emojiImages` is one emoji sequence of at most {MAX_EMOJI_SEQUENCE} characters"),
+            );
+        }
+        if !self.id(Some(sequence), id) {
+            return;
+        }
+        let Some(images) = self.images else { return };
+        let Some(data) = images.get(id) else {
+            self.err(
+                Code::UnknownImage,
+                Some(sequence),
+                format!("image `{id}` was not provided in the render options"),
+            );
+            return;
+        };
+        if let Err(e) = crate::images::probe(&data.bytes) {
+            self.err(probe_code(&e), Some(sequence), format!("image `{id}`: {e}"));
+        } else if let Err(e) = data.decoded(&ImageCrateDecoder) {
+            self.err(
+                Code::InvalidImage,
+                Some(sequence),
+                format!("image `{id}`: {e}"),
+            );
+        }
     }
 
     /// A run's `image`: its source and placement, as an image node's, a

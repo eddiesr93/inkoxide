@@ -304,6 +304,7 @@ fn render_inner(
     };
     let mut image_set =
         images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
+    image_set.load_emoji(&document.emoji_images, images, &images::ImageCrateDecoder)?;
     let shaper = RustybuzzShaper::new(&font_set)?
         .with_hyphenator(&hyphenator)
         .with_objects(Arc::new(image_set.inline_objects()));

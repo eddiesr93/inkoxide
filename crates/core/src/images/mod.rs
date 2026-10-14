@@ -197,6 +197,8 @@ pub(crate) struct ImageSet {
     by_background: HashMap<usize, ImageKey>,
     /// Image run address → its image.
     by_run: HashMap<usize, ImageKey>,
+    /// Emoji sequence (without U+FE0F) → its image.
+    by_emoji: BTreeMap<String, ImageKey>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -273,7 +275,36 @@ impl ImageSet {
             by_node: keys(found),
             by_background: keys(backgrounds),
             by_run: keys(runs),
+            by_emoji: BTreeMap::new(),
         })
+    }
+
+    /// Adds the images of the document's `emojiImages` (sequence → image
+    /// id), each distinct image once. Assumes the document validated.
+    pub fn load_emoji(
+        &mut self,
+        emoji: &BTreeMap<String, String>,
+        store: &ImageStore,
+        decoder: &dyn ImageDecoder,
+    ) -> Result<(), InkoxideError> {
+        let mut by_hash: HashMap<u64, ImageKey> = HashMap::new();
+        for (sequence, id) in emoji {
+            let data = store
+                .get(id)
+                .ok_or_else(|| InkoxideError::Image(format!("image `{id}` is not registered")))?;
+            let key = if let Some(&k) = by_hash.get(&data.hash) {
+                k
+            } else {
+                let img = data
+                    .decoded(decoder)
+                    .map_err(|e| InkoxideError::Image(e.clone()))?;
+                let k = self.add(img);
+                by_hash.insert(data.hash, k);
+                k
+            };
+            self.by_emoji.insert(crate::text::emoji_key(sequence), key);
+        }
+        Ok(())
     }
 
     /// The images of the document's image runs, for the shaper.
@@ -283,7 +314,12 @@ impl ImageSet {
             intrinsic: self.intrinsic_of(key),
         };
         let runs = self.by_run.iter().map(|(&r, k)| (r, source(k))).collect();
-        crate::text::InlineObjects::new(runs)
+        let emoji = self
+            .by_emoji
+            .iter()
+            .map(|(s, k)| (s.clone(), source(k)))
+            .collect();
+        crate::text::InlineObjects::new(runs, emoji)
     }
 
     /// Adds an image the engine draws of its own accord (a colour

@@ -1358,11 +1358,17 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         2 => &["EmojiTest-CBDT", "EmojiTest-COLR"],
         _ => &["Inter-Regular", "EmojiTest-CBDT"],
     };
+    let emoji = match s.below(6) {
+        0 => json!({"😀": "logo", "🇫🇷": "chart", "👩\u{200D}💻": "palette", "❤\u{FE0F}": "photo"}),
+        1 if s.chaos => json!({"a": "logo", "😀😀": "logo", "😀": "missing", "👍🏽": "bad"}),
+        _ => json!({}),
+    };
     let doc = json!({
         "version": 1,
         "meta": meta,
         "fonts": fonts,
         "fallbackFonts": fallbacks,
+        "emojiImages": emoji,
         "pages": pages,
     });
     doc.to_string().into_bytes()
@@ -1416,6 +1422,7 @@ mod tests {
             r#""backgroundImage":{"#,
             r#""fallbackFonts":["EmojiTest-CBDT""#,
             r#""image":{"src":"#,
+            r#""emojiImages":{"❤"#,
             "👩\u{200D}💻",
         ];
         let mut seen = vec![false; features.len()];

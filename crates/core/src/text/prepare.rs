@@ -191,10 +191,32 @@ fn itemize(
         let mut sequences = super::emoji::sequences(&text[start..end])
             .into_iter()
             .peekable();
+        // Emoji drawn as images: objects of their own.
+        let mut emoji = objects
+            .emoji_in(&text[start..end], run)
+            .into_iter()
+            .peekable();
+        let mut skip_to = 0;
         // The end and font of the emoji sequence being itemised.
         let mut sequence: Option<(usize, FontKey)> = None;
         for (off, c) in text[start..end].char_indices() {
             let i = start + off;
+            if off < skip_to {
+                continue;
+            }
+            if let Some((r, object)) = emoji.next_if(|(r, _)| r.start == off) {
+                if let Some((f, s)) = current.take() {
+                    segs.push(Segment::new(ri, f, level, s..i));
+                }
+                let mut seg = Segment::new(ri, primary, level_at(i), i..start + r.end);
+                seg.object = Some(objs.len() as u32);
+                objs.push(object);
+                segs.push(seg);
+                skip_to = r.end;
+                while sequences.next_if(|q| q.range.start < r.end).is_some() {}
+                sequence = None;
+                continue;
+            }
             sequence = sequence.filter(|&(e, _)| i < e);
             if let Some(q) = sequences.next_if(|q| q.range.start == off) {
                 sequence = Some((start + q.range.end, super::emoji::font(&q, primary, fonts)));
