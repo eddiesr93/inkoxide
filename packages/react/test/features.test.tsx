@@ -1631,3 +1631,62 @@ describe('debug', () => {
     expect((wrapper.children as BoxNode[]).map((v) => v.debug)).toEqual([true, true]);
   });
 });
+
+describe('Image inside Text', () => {
+  it('is a run of its own, sized in points or em and placed by verticalAlign', () => {
+    const r = tree(
+      <Text style={{ fontSize: 12 }}>
+        a <Image src="logo" />
+        <Image src="logo" style={{ height: '2em', verticalAlign: 'middle' }} alt="Logo" />
+        <Image src="logo" style={{ width: 30, height: 10 }} fit="cover" className="object-left" />
+        <Image src="logo" style={{ verticalAlign: 'text-top' }} />
+        <Image src="logo" style={{ verticalAlign: -3 }} />
+        <Text style={{ verticalAlign: 'super' }}>
+          <Image src="logo" />
+        </Text>
+        <Link href="#x">
+          <Image src="data:image/png;base64,AAAA" />
+        </Link>
+        b
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs[0]).toMatchObject({ text: 'a ', size: 12 });
+    const images = runs.filter((run) => run.image);
+    expect(images.map((run) => [run.image, run.verticalAlign, run.size])).toEqual([
+      [{ src: 'logo' }, undefined, 12],
+      [{ src: 'logo', height: 24, alt: 'Logo' }, 'middle', 12],
+      [
+        { src: 'logo', width: 30, height: 10, fit: 'cover', objectPosition: { x: 'left', y: 'center' } },
+        undefined,
+        12,
+      ],
+      [{ src: 'logo' }, 'textTop', 12],
+      [{ src: 'logo' }, -3, 12],
+      [{ src: 'logo' }, 'super', 12],
+      [{ data: 'data:image/png;base64,AAAA' }, undefined, 12],
+    ]);
+    expect(images[6]?.link).toBe('#x');
+    expect(images.every((run) => run.text === undefined && run.font === 'Inter-Regular')).toBe(true);
+    expect(runs[runs.length - 1]).toMatchObject({ text: 'b' });
+  });
+
+  it('takes no box styles, percentages or block props', () => {
+    const inText = (img: ReactNode) => () => tree(<Text>{img}</Text>);
+    expect(thrown(inText(<Image src="logo" style={{ margin: 4 }} />)).message).toContain(
+      'An <Image> inside <Text> is part of the line: it takes width, height, objectFit, objectPosition and verticalAlign, not "marginTop',
+    );
+    expect(thrown(inText(<Image src="logo" style={{ width: '50%' }} />)).message).toContain(
+      'takes its width in points or em, not 50%',
+    );
+    expect(thrown(inText(<Image src="logo" bookmark="x" />)).message).toContain(
+      '`bookmark` does not apply to it',
+    );
+    expect(thrown(inText(<Image src="logo" href="https://example.com" />)).message).toContain(
+      'Wrap it in a <Link>',
+    );
+    expect(
+      thrown(inText(<Image src="logo" style={{ verticalAlign: 'sideways' as never }} />)).message,
+    ).toContain('verticalAlign "sideways" is not supported');
+  });
+});

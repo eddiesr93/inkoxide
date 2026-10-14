@@ -355,12 +355,15 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       s.borderSpacing = r.points(x);
       return;
     }
-    case 'vertical-align':
-      // `top`, `middle` and `bottom` for a cell; `baseline`, `super` and `sub` for text.
-      if (!['top', 'middle', 'bottom', 'baseline', 'super', 'sub'].includes(v))
+    case 'vertical-align': {
+      // `top`, `middle` and `bottom` for a cell; `baseline`, `super` and `sub` for text; and
+      // `text-top` and `text-bottom` too for an image in text.
+      const camel = { 'text-top': 'textTop', 'text-bottom': 'textBottom' }[v] ?? v;
+      if (!['top', 'middle', 'bottom', 'baseline', 'super', 'sub', 'textTop', 'textBottom'].includes(camel))
         throw r.error(`vertical-align: ${v}`);
-      s.verticalAlign = v as NonNullable<FlatStyle['verticalAlign']>;
+      s.verticalAlign = camel as NonNullable<FlatStyle['verticalAlign']>;
       return;
+    }
     case 'font-feature-settings':
       s.fontFeatureSettings = parseFontFeatureSettings(prop, v);
       return;

@@ -51,10 +51,11 @@ All notable changes to the packages in this repository. The format follows
   colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
   field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
   render, draws without colour.
-- Inline images: `image` on a document's text run puts an image in the line, as wide and high as
-  asked (1em high by default, keeping its aspect ratio), placed by the run's `verticalAlign`
-  (`baseline`, `middle`, `textTop`, `textBottom`, `top`, `bottom`, `super`, `sub` or points),
-  with `alt` as the text it copies as. Lines break around it like around a character.
+- Images in text: an `<Image>` inside a `<Text>` (and `image` on a document's text run) sits in
+  the line, as wide and high as asked in points or em (1em high by default, keeping its aspect
+  ratio), placed by `verticalAlign` (`baseline`, `middle`, `text-top`, `text-bottom`, `top`,
+  `bottom`, `super`, `sub` or points; `align-text-top` and `align-text-bottom` in Tailwind), with
+  `alt` as the text it copies as. Lines break around it like around a character.
 
 ### Changed
 

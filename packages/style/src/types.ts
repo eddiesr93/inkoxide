@@ -134,6 +134,10 @@ export interface FlatStyle {
   borderCollapse?: Style['borderCollapse'];
   borderSpacing?: number;
   /** `top`, `middle` or `bottom` on a `Cell`; `baseline`, `super` or `sub` on a `Text` and the runs in it. */
+  /**
+   * A cell's content (`top`, `middle`, `bottom`), a run on its line (`super`, `sub`), or an image
+   * in a line (`textTop`, `textBottom`, a number of points, and the others).
+   */
   verticalAlign?: Style['verticalAlign'] | RunAlign;
   /** How an `Image` or `ImageBackground` fills its box: the image's `fit`. */
   objectFit?: ObjectFit;

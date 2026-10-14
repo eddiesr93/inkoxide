@@ -130,11 +130,20 @@ export function usesPatterns(ctx: TextCtx): boolean {
 /** `verticalAlign` when it places a run (`super`, `sub`, `baseline`), not a cell's content. */
 export function runAlignOf(s: FlatStyle): RunAlign | undefined {
   const v = s.verticalAlign;
-  return (RUN_ALIGNS as readonly string[]).includes(v ?? '') ? (v as RunAlign) : undefined;
+  return typeof v === 'string' && (RUN_ALIGNS as readonly string[]).includes(v) ? (v as RunAlign) : undefined;
 }
 
-/** `verticalAlign`'s values: a cell's, then a run's. */
-const VERTICAL_ALIGNS: readonly string[] = ['top', 'middle', 'bottom', ...RUN_ALIGNS];
+/** `verticalAlign`'s values: a cell's, then a run's, then those that place an image in text. */
+const VERTICAL_ALIGNS: readonly string[] = [
+  'top',
+  'middle',
+  'bottom',
+  ...RUN_ALIGNS,
+  'textTop',
+  'textBottom',
+  'text-top',
+  'text-bottom',
+];
 
 /** A colour, with `currentColor` as `current`. */
 export const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
@@ -682,12 +691,19 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     out.textWrap = new Reader('textWrap').oneOf('textWrap', String(textWrap));
   }
   if (verticalAlign !== undefined) {
-    if (!VERTICAL_ALIGNS.includes(verticalAlign)) {
+    // A number (points up) or a CSS keyword; an `<Image>` in a `<Text>` takes them all.
+    const v = verticalAlign as unknown;
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) throw new Error(`verticalAlign ${v} is not a finite number of points`);
+      out.verticalAlign = v as FlatStyle['verticalAlign'];
+    } else if (typeof v === 'string' && VERTICAL_ALIGNS.includes(v)) {
+      const camel = { 'text-top': 'textTop', 'text-bottom': 'textBottom' }[v] ?? v;
+      out.verticalAlign = camel as FlatStyle['verticalAlign'];
+    } else {
       throw new Error(
-        `verticalAlign "${verticalAlign}" is not supported: use 'super', 'sub' or 'baseline' on a Text, and 'top', 'middle' or 'bottom' on a Cell`,
+        `verticalAlign "${String(v)}" is not supported: use 'super', 'sub' or 'baseline' on a Text, 'top', 'middle' or 'bottom' on a Cell, and on an Image in a Text also 'text-top', 'text-bottom' or a number of points`,
       );
     }
-    out.verticalAlign = verticalAlign;
   }
   if (out.fontSize !== undefined) out.fontSize = lengthOf('points', 'fontSize', out.fontSize, fontUnits);
   for (const [k, kind] of LENGTH_KEYS) if (out[k] !== undefined) out[k] = lengthOf(kind, k, out[k], units);

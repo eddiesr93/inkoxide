@@ -48,8 +48,8 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
 
-**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link` and
-other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
+**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link`,
+`Image` (an image in the line) and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
 
 ## Styling
 
@@ -217,6 +217,24 @@ const logo = readFileSync('logo.png');
   ```tsx
   <Image src={photo} className="h-40 w-full" fit="cover" style={{ objectPosition: 'center top' }} />
   <Image src={logo} className="h-10 w-32 object-contain object-left" />
+  ```
+
+- **Images in text.** An `Image` inside a `Text` sits in the line, like a character: lines break
+  before and after it. With neither `width` nor `height` it is 1em high (the text's size) and as
+  wide as its aspect ratio gives; with one of them (in points or em), the other follows the
+  ratio. Percentages and box styles (margins, padding, borders) are errors there. `fit`,
+  `objectFit` and `objectPosition` work as on a block image, `alt` is the text it copies and
+  searches as, and a `Link` around it makes it a link. `verticalAlign` places it: `baseline` (the
+  default, its bottom on the baseline), `middle` (its middle half an x-height above the
+  baseline), `text-top` and `text-bottom` (its top at the font's ascender, its bottom at its
+  descender), `top` and `bottom` (at the line's top or bottom), `super` and `sub`, or a number of
+  points its bottom sits above the baseline. The line grows to fit it. SVG images work too.
+
+  ```tsx
+  <Text>
+    Rated <Image src={star} style={{ height: '0.9em', verticalAlign: 'middle' }} alt="4 stars" /> by
+    <Link href="https://example.com"><Image src={logo} className="align-text-bottom" /></Link>
+  </Text>
   ```
 
 - **Background images.** `ImageBackground` is a `View` with an image behind its children. It

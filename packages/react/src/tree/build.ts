@@ -8,6 +8,7 @@ import type {
   Document,
   FieldNode,
   ImageNode,
+  InlineImage,
   Meta,
   PageFilter,
   PageSpec,
@@ -827,6 +828,9 @@ class Builder {
           this.runs(n.children, inner, out, n, para);
           break;
         }
+        case HOST.Image:
+          out.push(this.inlineImage(n, ctx));
+          break;
         case HOST.PageNumber:
         case HOST.TotalPages:
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
@@ -835,6 +839,58 @@ class Builder {
           throw new Error(`Internal error: the reconciler let <${n.type}> into a <Text>.`);
       }
     }
+  }
+
+  /**
+   * An `<Image>` in a `<Text>`: a run of its own with the image in place of text, sized by its
+   * `width` and `height` (points or em; with neither, 1em high), placed by `verticalAlign`.
+   */
+  private inlineImage(n: Instance, ctx: TextCtx): TextRun {
+    const init = { kind: 'props' } as const;
+    const prop =
+      BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
+      (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
+    if (prop) {
+      this.fail(
+        n,
+        `An <Image> inside <Text> is part of the line, so \`${prop}\` does not apply to it.${prop === 'href' ? ' Wrap it in a <Link>.' : ''}`,
+        init,
+      );
+    }
+    const own = this.styleOf(n, ctx);
+    const allowed = new Set(['width', 'height', 'verticalAlign']);
+    const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => !allowed.has(k));
+    if (bad[0] !== undefined) {
+      const { fromClass, init: from } = this.source(n, own, bad[0]);
+      this.fail(
+        n,
+        `An <Image> inside <Text> is part of the line: it takes width, height, objectFit, objectPosition and verticalAlign, not "${bad.join(', ')}" (from ${fromClass ? `className="${from.className}"` : 'its style'}).`,
+        from,
+      );
+    }
+    const src = this.imageTable.resolve(n.props.src, (msg) => this.fail(n, msg, init));
+    const image: InlineImage = 'data' in src ? { data: src.data } : { src: src.src };
+    for (const side of ['width', 'height'] as const) {
+      const v = own[side];
+      if (v === undefined || v === 'auto') continue;
+      if (typeof v !== 'number') {
+        this.fail(
+          n,
+          `An <Image> inside <Text> takes its ${side} in points or em, not ${String(v)}: a line has no size to take a percentage of.`,
+          init,
+        );
+      }
+      image[side] = v;
+    }
+    const fit = (n.props.fit as InlineImage['fit']) ?? own.objectFit;
+    if (fit) image.fit = fit;
+    if (own.objectPosition) image.objectPosition = own.objectPosition;
+    if (typeof n.props.alt === 'string' && n.props.alt !== '') image.alt = n.props.alt;
+    const run: TextRun = { image, font: this.font(ctx, n), size: ctx.fontSize };
+    const align = own.verticalAlign ?? ctx.verticalAlign;
+    if (align !== undefined && align !== 'baseline') run.verticalAlign = align as TextRun['verticalAlign'];
+    if (ctx.link !== undefined) run.link = ctx.link;
+    return this.mark(run, n);
   }
 
   private push(

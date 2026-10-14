@@ -51,7 +51,7 @@ const FLOW = new Set<string>([
   HOST.Svg,
   HOST.Canvas,
 ]);
-const INLINE = new Set<string>([HOST.Text, HOST.Link, HOST.PageNumber, HOST.TotalPages]);
+const INLINE = new Set<string>([HOST.Text, HOST.Link, HOST.Image, HOST.PageNumber, HOST.TotalPages]);
 const SVG_SHAPES = new Set<string>([
   HOST.Path,
   HOST.Rect,
@@ -153,7 +153,7 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
   if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
   if (parent === HOST.Text) {
     return new TemplateError(
-      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <PageNumber> and <TotalPages>.`,
+      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <PageNumber> and <TotalPages>.`,
     );
   }
   if (child === HOST.PageNumber || child === HOST.TotalPages) {

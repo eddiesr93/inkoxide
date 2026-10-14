@@ -509,6 +509,17 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'align-baseline': { verticalAlign: 'baseline' },
     },
   },
+  {
+    group: 'Text',
+    utilities: '`align-text-top`, `align-text-bottom`, and `align-top`, `align-middle`, `align-bottom`',
+    maps: 'run `verticalAlign` (on an `Image` in a `Text`)',
+    notes:
+      "Places an image in its line: its top at the font's ascender, its bottom at the descender, its top or bottom at the line's, or its middle half an x-height above the baseline.",
+    examples: {
+      'align-text-top': { verticalAlign: 'textTop' },
+      'align-text-bottom': { verticalAlign: 'textBottom' },
+    },
+  },
   // Text
   {
     group: 'Text',

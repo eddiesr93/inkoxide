@@ -542,6 +542,24 @@ describe('ImageBackground', () => {
   });
 });
 
+describe('Image inside Text', () => {
+  it('draws the image in the line, and copies as its alternative text', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Text>
+            Made by <Image src={logo} alt="Inkoxide" style={{ height: '1.5em', verticalAlign: 'middle' }} />{' '}
+            in 2026
+          </Text>
+        </Page>
+      </Document>,
+      { compress: false },
+    );
+    expect(pageImages(pdf)).toEqual([[LOGO]]);
+    expect(Buffer.from(pdf).toString('latin1')).toContain('/ActualText (Inkoxide)');
+  });
+});
+
 describe('images in render props', () => {
   // A header image chosen per page, a static image on page 1; the page count is known on pass 2.
   const TwoPages = ({ header, body }: { header: (page: number) => ImageSrc; body?: ImageSrc }) => (

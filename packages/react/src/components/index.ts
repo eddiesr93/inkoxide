@@ -118,6 +118,7 @@ export interface StyleProp extends Omit<
   | 'fontFeatureSettings'
   | 'fontVariantNumeric'
   | 'textWrap'
+  | 'verticalAlign'
 > {
   fontFamily?: string | string[];
   /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
@@ -227,6 +228,12 @@ export interface StyleProp extends Omit<
    * centred.
    */
   objectPosition?: string;
+  /**
+   * A `Cell`'s content (`top`, `middle`, `bottom`), a run of a `Text` on its line (`super`,
+   * `sub`, `baseline`), or an `Image` in a `Text` (also `text-top`, `text-bottom` and a number of
+   * points its bottom sits above the baseline).
+   */
+  verticalAlign?: FlatStyle['verticalAlign'] | 'text-top' | 'text-bottom';
 }
 
 /** One style object, or a list of them merged left to right (falsy entries are skipped). */
@@ -484,6 +491,11 @@ export interface ImageProps extends Omit<Flow, 'children'> {
    */
   src: ImageSrc;
   fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * Inside a `<Text>`: the text the image copies and searches as (its alternative text, at most
+   * 1024 characters).
+   */
+  alt?: string;
 }
 
 export interface ImageBackgroundProps extends Flow {
