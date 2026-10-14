@@ -784,3 +784,77 @@ fn a_break_with_nothing_above_it_on_its_page_adds_no_page() {
     assert_eq!(rect(&t, &p, 2).0, H + 10.0);
     assert_eq!(p.pages, 2);
 }
+
+/// Lays out and paginates `children` (200 wide, pages `H` tall) with
+/// Inter, and returns the tree, the placement and the line pages of each
+/// text node.
+fn run_text<R>(
+    children: &str,
+    f: impl FnOnce(&Tree<'_>, &Placement, &mut dyn LineSource) -> R,
+) -> R {
+    use crate::fonts::FontSet;
+    use crate::text::{RustybuzzShaper, TextCache};
+    let store = crate::test_fixtures::inter();
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[{children}]}}]}}"#
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut tree = Tree::build(&d.pages[0].children);
+    TaffyLayout
+        .compute(&mut tree, 200.0, H, &mut cache)
+        .unwrap();
+    let p = paginate(&tree, H, &mut cache);
+    f(&tree, &p, &mut cache)
+}
+
+const FLOAT_WORDS: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do \
+    eiusmod tempor incididunt ut labore et dolore magna aliqua, ut enim ad minim veniam.";
+
+#[test]
+fn a_float_moves_to_the_next_page_with_the_lines_beside_it() {
+    let children = format!(
+        r#"{{"type":"box","style":{{"height":78}}}},
+           {{"type":"box","children":[
+             {{"type":"box","style":{{"float":"left","width":60,"height":20}}}},
+             {{"type":"text","runs":[{{"text":"{FLOAT_WORDS}","font":"Inter-Regular","size":10}}]}}]}}"#
+    );
+    run_text(&children, |t, p, lines| {
+        // Node 2 is the container, 3 the float, 4 the text. The float fits
+        // on the first page, the lines beside it do not: they move
+        // together.
+        let (ftop, fbottom) = rect(t, p, 3);
+        assert_eq!(p.page_of(ftop), 1, "{ftop}");
+        assert_eq!(p.page_of_bottom(fbottom), 1);
+        let node = t.nodes[4].node().unwrap();
+        let layout = lines.lines(node, &t.line_boxes(4)).unwrap();
+        let cy = t.nodes[4].geo.content_box().y;
+        for (k, line) in layout.lines.iter().enumerate() {
+            let top = cy + line.top + p.line_shift(4, k);
+            if line.top < 20.0 {
+                // Beside the float, on its page, next to it.
+                assert_eq!(p.page_of(top), 1, "line {k}");
+                assert!(top >= ftop - PAGED_EPS && top < fbottom, "line {k}: {top}");
+            }
+        }
+        check_invariants(t, p);
+    });
+}
+
+#[test]
+fn a_float_taller_than_a_page_is_sliced() {
+    let children = format!(
+        r#"{{"type":"box","style":{{"height":30}}}},
+           {{"type":"box","children":[
+             {{"type":"box","style":{{"float":"right","width":50,"height":150}}}},
+             {{"type":"text","runs":[{{"text":"{FLOAT_WORDS}","font":"Inter-Regular","size":10}}]}}]}}"#
+    );
+    run_text(&children, |t, p, _| {
+        // Moved whole to a new page, then sliced across two.
+        let (ftop, fbottom) = rect(t, p, 3);
+        assert_eq!(ftop, 100.0);
+        assert_eq!(fbottom - ftop, 150.0);
+        assert!(p.pages >= 3);
+    });
+}

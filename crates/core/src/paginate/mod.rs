@@ -29,9 +29,13 @@
 //!   A forced break inside an `inside: avoid` box wins (as in CSS); the
 //!   part before it moves whole.
 //! - Atomic nodes (images, spacers, form fields, empty boxes, and
-//!   positioned, rotated, transformed or fixed nodes) move whole; taller
-//!   than a page, they are sliced (with a warning). A form field's widget
-//!   is on the page it starts on only.
+//!   positioned, rotated, transformed, floated or fixed nodes) move whole;
+//!   taller than a page, they are sliced (with a warning). A form field's
+//!   widget is on the page it starts on only.
+//! - A float needs room for its group (the floats beside it and the lines
+//!   and boxes beside them), which moves to the next page with it; the
+//!   lines of a paragraph beside a float count as its orphans. Lines
+//!   carried to a later page otherwise keep their place beside the float.
 //! - Column boxes split between children; text splits between lines.
 //! - Tables split between row groups (rows tied by row spans). A group
 //!   that does not fit moves to the next page, below room kept for the
@@ -386,6 +390,7 @@ impl Paginator<'_, '_, '_> {
     fn atomic(&self, i: NodeIdx, node: &Node) -> bool {
         let s = &node.style;
         if node.brk.fixed
+            || s.floats().is_some()
             || s.position == Some(Position::Absolute)
             || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
             || s.transform.as_ref().is_some_and(|t| !t.is_empty())
@@ -441,15 +446,17 @@ impl Paginator<'_, '_, '_> {
         match &node.kind {
             NodeKind::Text { .. } => {
                 let Rect { y: cy, .. } = g.content_box();
-                let (orphans, widows) = Self::orphans_widows(node);
-                match self.lines.lines(node, &self.tree.line_boxes(i)) {
-                    // Too short to leave `orphans` and carry `widows` lines:
-                    // it moves whole.
-                    Some(l) if l.lines.len() >= orphans + widows => {
-                        let last = &l.lines[orphans - 1];
-                        (cy - g.y) + last.top + last.height
-                    }
-                    _ => g.h,
+                let Some(l) = self.lines.lines(node, &self.tree.line_boxes(i)) else {
+                    return g.h;
+                };
+                let (orphans, widows) = self.orphans_widows_of(i, node, &l);
+                // Too short to leave `orphans` and carry `widows` lines: it
+                // moves whole.
+                if orphans > 0 && l.lines.len() >= orphans + widows {
+                    let last = &l.lines[orphans - 1];
+                    (cy - g.y) + last.top + last.height
+                } else {
+                    g.h
                 }
             }
             NodeKind::Table(_) => {
@@ -525,12 +532,33 @@ impl Paginator<'_, '_, '_> {
     }
 
     /// Room node `i` needs from its top to stay on the page: its head,
-    /// or its `minPresenceAhead` when taller.
+    /// or its `minPresenceAhead` when taller; for a float, its group (the
+    /// floats beside it and what wraps beside them), which moves with it.
     fn need(&mut self, i: NodeIdx) -> f32 {
         let mpa = self.tree.nodes[i as usize]
             .node()
             .and_then(|n| n.brk.min_presence_ahead);
-        self.head(i).max(mpa.unwrap_or(0.0))
+        let group = self
+            .tree
+            .float_groups
+            .get(&i)
+            .map_or(0.0, |end| end - self.tree.nodes[i as usize].geo.y);
+        self.head(i).max(mpa.unwrap_or(0.0)).max(group)
+    }
+
+    /// `(orphans, widows)` of text node `i` laid out in `l`: lines beside
+    /// a float count as orphans, so they stay on the float's page.
+    fn orphans_widows_of(&self, i: NodeIdx, node: &Node, l: &LineLayout) -> (usize, usize) {
+        let (orphans, widows) = Self::orphans_widows(node);
+        let Some(boxes) = self.tree.wraps.get(&i) else {
+            return (orphans, widows);
+        };
+        let wrapped = l
+            .boxes
+            .iter()
+            .rposition(|&(left, avail)| left > 0.0 || avail < boxes.width - PAGED_EPS)
+            .map_or(0, |k| k + 1);
+        (orphans.max(wrapped).min(l.lines.len()), widows)
     }
 
     fn in_flow(&self, c: NodeIdx) -> bool {
@@ -803,7 +831,7 @@ impl Paginator<'_, '_, '_> {
         let Some(layout) = self.lines.lines(node, &self.tree.line_boxes(i)) else {
             return;
         };
-        let (orphans, widows) = Self::orphans_widows(node);
+        let (orphans, widows) = self.orphans_widows_of(i, node, &layout);
         let lines = &layout.lines;
         let n = lines.len();
         let mut shifts: Vec<f32> = Vec::with_capacity(n);
