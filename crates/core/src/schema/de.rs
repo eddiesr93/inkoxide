@@ -11,9 +11,9 @@ use serde::Deserialize;
 
 use super::{
     BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
-    ColumnWidth, Corners, Field, FontFeature, ImageFit, ImageSource, InlineImage, Node, NodeKind,
-    ObjectPosition, OptEdges, PageFilter, PagePattern, Style, Table, TableRow, TextRun,
-    TransformOp,
+    ColumnWidth, Corners, Field, FieldValue, FontFeature, ImageFit, ImageSource, InlineImage, Node,
+    NodeKind, Note, ObjectPosition, OptEdges, PageFilter, PagePattern, Style, Table, TableRow,
+    TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -262,6 +262,29 @@ impl<'de> Deserialize<'de> for PageFilter {
             fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<PageFilter, A::Error> {
                 Vec::<Int<i32>>::deserialize(de::value::SeqAccessDeserializer::new(seq))
                     .map(|v| PageFilter::List(v.into_iter().map(|i| i.0).collect()))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for FieldValue {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = FieldValue;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string, or an array of strings")
+            }
+            fn visit_str<E: de::Error>(self, s: &str) -> Result<FieldValue, E> {
+                Ok(FieldValue::One(s.to_string()))
+            }
+            fn visit_string<E: de::Error>(self, s: String) -> Result<FieldValue, E> {
+                Ok(FieldValue::One(s))
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<FieldValue, A::Error> {
+                Vec::<String>::deserialize(de::value::SeqAccessDeserializer::new(seq))
+                    .map(|v| FieldValue::Many(shrink(v)))
             }
         }
         d.deserialize_any(V)
@@ -583,6 +606,7 @@ pub(super) enum NodeType {
     PageBreak,
     Spacer,
     Field,
+    Note,
 }
 
 /// Properties that most node types take.
@@ -590,7 +614,7 @@ const COMMON: &[&str] = &["style", "break", "link", "bookmark", "pages", "debug"
 
 impl NodeType {
     #[cfg(test)]
-    pub(super) const ALL: [Self; 7] = [
+    pub(super) const ALL: [Self; 8] = [
         Self::Box,
         Self::Text,
         Self::Image,
@@ -598,6 +622,7 @@ impl NodeType {
         Self::PageBreak,
         Self::Spacer,
         Self::Field,
+        Self::Note,
     ];
 
     /// The `type` value.
@@ -610,6 +635,7 @@ impl NodeType {
             Self::PageBreak => "pageBreak",
             Self::Spacer => "spacer",
             Self::Field => "field",
+            Self::Note => "note",
         }
     }
 
@@ -623,6 +649,7 @@ impl NodeType {
             Self::PageBreak => (&[], &[]),
             Self::Spacer => (COMMON, &[]),
             Self::Field => (&["style", "break", "pages", "debug"], &["field"]),
+            Self::Note => (&["style", "break", "pages", "debug"], &["note"]),
         };
         common.iter().chain(own).copied()
     }
@@ -655,6 +682,7 @@ pub struct RawNode {
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
     field: Option<Box<Field>>,
+    note: Option<Box<Note>>,
     background_image: Option<Box<BackgroundImage>>,
 }
 
@@ -697,6 +725,7 @@ impl TryFrom<RawNode> for Node {
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
             ("field", r.field.is_some()),
+            ("note", r.note.is_some()),
             ("backgroundImage", r.background_image.is_some()),
         ];
         if let Some((field, _)) = present
@@ -733,6 +762,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::PageBreak => NodeKind::PageBreak,
             NodeType::Spacer => NodeKind::Spacer,
             NodeType::Field => NodeKind::Field(r.field.ok_or_else(|| missing("field"))?),
+            NodeType::Note => NodeKind::Note(r.note.ok_or_else(|| missing("note"))?),
         };
         Ok(Node {
             id: r.id,

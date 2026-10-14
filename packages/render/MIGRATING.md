@@ -27,19 +27,21 @@ over by changing the import. This page lists what has another name, and what is 
 | `float: 'left'`, `clear: 'both'` | The same, or `float-left` and `clear-both`, on children of a column `View` (or a `Page` or `Cell`) | Works, as in CSS: text after a float wraps beside it, and a box after it is narrowed to the room beside it, or moves below it when that is too narrow. Boxes and their parent never overlap a float, and the parent grows to hold its floats. A float in a row, or with `position: 'absolute'`, throws; in a box with floats, `flexGrow`, `flexBasis`, `justifyContent` and `alignContent` throw |
 | `<ImageBackground src style>` | The same, with `fit` (or `objectFit`) and `objectPosition` placing the image; see [Images](GUIDE.md#images) | Works. The image fills the padding box, inside the borders, not the content box, and is clipped to it with `borderRadius`. `source`, `imageStyle` and `srcSet` throw: pass `src`, and place the image with `fit` and `objectPosition` |
 | `<Svg>`, `<Canvas>` | The same | `<Svg>` has no `<Text>` or `<Tspan>` yet. The `<Canvas>` painter draws paths, shapes, fills and strokes with transforms, opacity, clipping (`clip`) and gradients (`linearGradient`, `radialGradient`); it has no `text`, `font` or `fontSize`, and calling one throws |
+| `<TextInput>`, `<Checkbox>`, `<Select select={[…]}>`, `<List select={[…]}>` | The same; `TextField` is another name for `TextInput`, and `options` for `select`. See [Forms](GUIDE.md#forms) | Works, with `multiSelect` on a `List`; the size, border, background and text style come from style props or classes |
+| `format={{ type, param, nDec, sepComma, negStyle, currency, currencyPrepend }}` on `<TextInput>` | The same, or the readable keys `pattern`, `decimals`, `separators`, `negative` and `currencyBefore`; see [Forms](GUIDE.md#forms) | Works for every `type`. `value` is the raw value (`'1250'`, `'2026-10-14'`), which the field shows formatted. A PDF/A document leaves the formatting scripts out |
+| `<FieldSet name="address">` | The same | Works as is, for every kind of field, and sets inside sets nest: `a.b.c` |
+| `<Note>` | The same, see [Notes](GUIDE.md#notes) | Works with text children, `backgroundColor` for the colour, and `author` and `open`. It cannot go inside a `<Text>` yet |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
 
 **Not available:**
 - **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.
 - **Other output forms:** `pdf().toBuffer()`. Use `renderToBuffer`.
-- **Document options:** `ownerPassword`, `userPassword` and `permissions` (encryption); `conformance` other than PDF/A-2b (use the `pdfA` render option for 2b); `pdfVersion`; `onRender`.
+- **Document options:** `conformance` at the a and u levels (`PDF/A-2a`, `PDF/A-3u`, …), which need tagged PDF; `conformance` takes `PDF/A-1b`, `PDF/A-2b` and `PDF/A-3b`; `pdfVersion`; `onRender`.
 - **Text:**
   - `Image` inside `Text`.
   - `Font.registerEmojiSource`: there are no colour emoji yet.
   - `hyphenationPenalty` on `Text`.
 - **Layout:** `shapeOutside`: floats are rectangles.
-- **Forms:** `<List>`, `<FieldSet>`, and `format` on a text field.
-- **Annotations:** `<Note>`.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document

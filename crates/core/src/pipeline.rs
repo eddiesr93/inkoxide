@@ -43,6 +43,8 @@ const BOX_BYTES: u64 = 768;
 /// and a shape of a paragraph's `debug` outline: a line box, a baseline or
 /// a run's box on a line.
 const LINE_SHAPE_BYTES: u64 = 64;
+/// Estimated output of the scripts of a field format, in bytes.
+const SCRIPT_BYTES: u64 = 512;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -87,6 +89,8 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
+            // It takes no space.
+            NodeKind::Note(_) => Size::ZERO,
             _ => self.text.measure(node, known, available),
         }
     }
@@ -108,6 +112,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
+            NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),
         }
     }
@@ -422,8 +427,18 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     }
                 }
                 NodeKind::Field(f) => {
-                    let options: usize = f.options.iter().map(String::len).sum();
-                    size = size.saturating_add(BOX_BYTES + options as u64 * ITEM_BYTES);
+                    // Its options and values, in the field and in its
+                    // appearance.
+                    let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
+                    size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
+                    if f.format.is_some() {
+                        // Its two scripts.
+                        size = size.saturating_add(SCRIPT_BYTES);
+                    }
+                }
+                NodeKind::Note(note) => {
+                    let text = note.contents.len() + note.author.as_ref().map_or(0, String::len);
+                    size = size.saturating_add(BOX_BYTES + text as u64);
                 }
                 _ => {}
             }

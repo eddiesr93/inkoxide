@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { inspect } from 'node:util';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
 import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
@@ -755,6 +756,85 @@ describe('pages, images and structure', () => {
       pageMode: 'useThumbs',
       pageLayout: 'twoPageRight',
     });
+  });
+
+  it('moves conformance out of the document, into the output options', () => {
+    const output = (conformance?: unknown) =>
+      renderTemplate(
+        <Document title="A" conformance={conformance as 'PDF/A-2b'}>
+          <Page />
+        </Document>,
+        { fonts },
+      );
+    expect(output().output).toEqual({});
+    for (const [conformance, pdfA] of [
+      ['PDF/A-1', '1b'],
+      ['PDF/A-1b', '1b'],
+      ['PDF/A-2', '2b'],
+      ['PDF/A-2b', '2b'],
+      ['PDF/A-3', '3b'],
+      ['PDF/A-3b', '3b'],
+    ]) {
+      const r = output(conformance);
+      expect(r.output).toEqual({ pdfA });
+      expect(r.document.meta).toEqual({ title: 'A' });
+      // Rebuilds for the page count keep it.
+      expect(r.rebuild(2).output).toEqual({ pdfA });
+    }
+    for (const level of ['PDF/A-2a', 'PDF/A-3u', 'PDF/A-1a']) {
+      expect(() => output(level)).toThrow(/the a and u levels need tagged PDF.*use 'PDF\/A-\db'/);
+    }
+    for (const bad of ['PDF/A-4', 'pdf/a-2b', 'PDF/UA-1', '2b', true]) {
+      expect(() => output(bad)).toThrow(/is not a PDF\/A level: use 'PDF\/A-1b', 'PDF\/A-2b' or 'PDF\/A-3b'/);
+    }
+  });
+
+  it('moves the passwords and permissions into output options that never show them', () => {
+    const secret = 's3cret-marker';
+    const r = renderTemplate(
+      <Document
+        title="A"
+        userPassword={secret}
+        ownerPassword={`${secret}-owner`}
+        permissions={{ copying: true }}
+      >
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(r.output.encryption).toEqual({
+      userPassword: secret,
+      ownerPassword: `${secret}-owner`,
+      permissions: { copying: true },
+    });
+    expect(r.document.meta).toEqual({ title: 'A' });
+    expect(JSON.stringify(r.document)).not.toContain(secret);
+    for (const shown of [JSON.stringify(r), JSON.stringify(r.output), inspect(r), inspect(r.output)]) {
+      expect(shown).not.toContain(secret);
+    }
+    expect(JSON.parse(JSON.stringify(r.output))).toEqual({ encryption: '<redacted>' });
+    expect(r.rebuild(2).output.encryption?.userPassword).toBe(secret);
+    // Without the props there is no encryption.
+    const plain = renderTemplate(
+      <Document>
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(plain.output.encryption).toBeUndefined();
+    // Wrong types fail without showing the value.
+    for (const props of [{ userPassword: 12345 }, { ownerPassword: [secret] }, { permissions: secret }]) {
+      const e = thrown(() =>
+        renderTemplate(
+          <Document {...(props as object)}>
+            <Page />
+          </Document>,
+          { fonts },
+        ),
+      );
+      expect(e.message).toMatch(/<Document (userPassword|ownerPassword|permissions)> must be/);
+      expect(e.message).not.toContain(secret);
+    }
   });
 
   it('maps page size presets, margins, background, header and footer', () => {

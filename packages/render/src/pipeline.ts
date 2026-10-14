@@ -298,7 +298,7 @@ export async function renderSettled(
     Object.assign(all, await loadImages(missing, registered, policies));
     fetchMs += performance.now() - f0;
     try {
-      return await renderPdf(tr.document, opts, all);
+      return await renderPdf(tr.document, opts, all, tr.output);
     } catch (e) {
       throw locateEngineError(e, tr);
     }

@@ -5,7 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use inkoxide::{FontStore, HyphenationStore, ImageStore, InputFormat, RenderOptions};
+use inkoxide::{
+    FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions,
+    ValidationCode,
+};
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -111,54 +114,128 @@ fn all_fixtures_render() {
     }
 }
 
-/// Every fixture also renders as PDF/A-2b, deterministically. With
-/// `VERAPDF` set to a veraPDF command, each output must pass its `2b`
-/// profile.
+/// The fixtures PDF/A-1b rejects, because they need transparency, and the
+/// path of the first thing that does.
+const NOT_PDF_A_1B: &[(&str, &str)] = &[
+    (
+        "background-image",
+        "pages[0].children[2].children[0].children[1].backgroundImage.src",
+    ),
+    ("debug-text", "pages[0].children[2].debug"),
+    ("floats", "pages[0].children[1].children[1].debug"),
+    (
+        "boxes-nested",
+        "pages[0].children[0].children[0].style.backgroundColor",
+    ),
+    (
+        "header-footer-pagenumbers",
+        "pages[0].children[0].children[0].runs[0].color",
+    ),
+    (
+        "images-gif-webp",
+        "pages[0].children[1].children[0].children[0].src",
+    ),
+    (
+        "images-jpeg-png",
+        "pages[0].children[3].children[1].children[1].src",
+    ),
+    (
+        "paint-transforms",
+        "pages[0].children[1].children[11].children[0].children[0].children[1].style.opacity",
+    ),
+    ("svg", "pages[0].children[1].src"),
+    (
+        "text-super-sub-features",
+        "pages[0].children[6].children[1].debug",
+    ),
+];
+
+/// Every fixture also renders at every PDF/A level, deterministically,
+/// except for those PDF/A-1b rejects ([`NOT_PDF_A_1B`]). With `VERAPDF`
+/// set to a veraPDF command, each output must pass the profile of its
+/// level.
 #[test]
 fn pdf_a_fixtures() {
     let (fonts, images) = stores();
-    let out_dir = root().join("target/fixtures-pdfa");
-    fs::create_dir_all(&out_dir).unwrap();
-    let mut outputs = Vec::new();
-    for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
-        let name = doc.file_stem().unwrap().to_str().unwrap();
-        let input = fs::read(&doc).unwrap();
-        let opts = RenderOptions::default()
-            .with_creation_date("2026-10-08T12:30:00+03:00")
-            .with_pdf_a(true)
-            .with_hyphenation(hyphenation_for(name));
-        let a = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images)
-            .unwrap_or_else(|e| panic!("{name}: {e}"));
-        let single = opts.clone().with_threads(1);
-        let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
-        assert!(a == b, "{name}: PDF/A output is not deterministic");
-        let has = |needle: &[u8]| a.windows(needle.len()).any(|w| w == needle);
-        for needle in [
-            &b"/GTS_PDFA1"[..],
-            b"<pdfaid:part>2</pdfaid:part>",
-            b"<xmp:CreateDate>2026-10-08T12:30:00+03:00</xmp:CreateDate>",
-            b"/ID [",
-        ] {
-            assert!(
-                has(needle),
-                "{name}: no {}",
-                String::from_utf8_lossy(needle)
+    for (level, part, version) in [
+        (PdfALevel::A1b, 1, "1.4"),
+        (PdfALevel::A2b, 2, "1.7"),
+        (PdfALevel::A3b, 3, "1.7"),
+    ] {
+        let name = level.as_str();
+        let out_dir = root().join(format!("target/fixtures-pdfa-{name}"));
+        fs::create_dir_all(&out_dir).unwrap();
+        let mut outputs = Vec::new();
+        for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
+            let fixture = doc.file_stem().unwrap().to_str().unwrap();
+            let name = format!("{fixture} ({name})");
+            let input = fs::read(&doc).unwrap();
+            let opts = RenderOptions::default()
+                .with_creation_date("2026-10-08T12:30:00+03:00")
+                .with_pdf_a_level(level)
+                .with_hyphenation(hyphenation_for(fixture));
+            let rendered = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images);
+            let rejected = NOT_PDF_A_1B.iter().find(|(f, _)| *f == fixture);
+            if let (PdfALevel::A1b, Some((_, path))) = (level, rejected) {
+                match rendered {
+                    Err(InkoxideError::Validation(e)) => {
+                        assert_eq!(e.code, ValidationCode::PdfaConflict, "{name}: {e}");
+                        assert_eq!(e.path, *path, "{name}: {e}");
+                    }
+                    other => panic!("{name}: not rejected: {:?}", other.map(|_| ())),
+                }
+                continue;
+            }
+            let a = rendered.unwrap_or_else(|e| panic!("{name}: {e}"));
+            let single = opts.clone().with_threads(1);
+            let b = inkoxide::render(&input, InputFormat::Json, &single, &fonts, &images).unwrap();
+            assert!(a == b, "{name}: PDF/A output is not deterministic");
+            let has = |needle: &[u8]| a.windows(needle.len()).any(|w| w == needle);
+            let part = format!("<pdfaid:part>{part}</pdfaid:part>");
+            let header = format!("%PDF-{version}");
+            assert!(a.starts_with(header.as_bytes()), "{name}: not {header}");
+            for needle in [
+                &b"/GTS_PDFA1"[..],
+                part.as_bytes(),
+                b"<xmp:CreateDate>2026-10-08T12:30:00+03:00</xmp:CreateDate>",
+                b"/ID [",
+            ] {
+                assert!(
+                    has(needle),
+                    "{name}: no {}",
+                    String::from_utf8_lossy(needle)
+                );
+            }
+            assert!(!has(b"/DeviceCMYK"), "{name}: DeviceCMYK in PDF/A output");
+            // PDF/A-1 font subsets list their CIDs; the others need none.
+            let subset = a
+                .windows(18)
+                .any(|w| w.starts_with(b"/FontName /") && w[17] == b'+');
+            assert_eq!(
+                has(b"/CIDSet"),
+                subset && level == PdfALevel::A1b,
+                "{name}: CIDSet"
             );
+            let out = out_dir.join(format!("{fixture}.pdf"));
+            fs::write(&out, &a).unwrap();
+            outputs.push(out);
         }
-        assert!(!has(b"/DeviceCMYK"), "{name}: DeviceCMYK in PDF/A output");
-        let out = out_dir.join(format!("{name}.pdf"));
-        fs::write(&out, &a).unwrap();
-        outputs.push(out);
+        verapdf(name, &outputs);
     }
+}
+
+/// With `VERAPDF` set, every one of `outputs` passes veraPDF's profile
+/// for `flavour` (`1b`, `2b`, `3b`).
+fn verapdf(flavour: &str, outputs: &[PathBuf]) {
     if let Ok(vera) = std::env::var("VERAPDF") {
         let o = Command::new(vera)
-            .args(["--flavour", "2b", "--format", "text"])
-            .args(&outputs)
+            .args(["--flavour", flavour, "--format", "text"])
+            .args(outputs)
             .output()
             .unwrap();
         let report = String::from_utf8_lossy(&o.stdout);
         let passed = report.lines().filter(|l| l.starts_with("PASS ")).count();
-        assert_eq!(passed, outputs.len(), "veraPDF:\n{report}");
+        assert_eq!(passed, outputs.len(), "veraPDF ({flavour}):\n{report}");
     }
 }
 

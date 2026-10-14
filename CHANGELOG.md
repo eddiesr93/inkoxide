@@ -15,13 +15,32 @@ All notable changes to the packages in this repository. The format follows
   room beside it, or moved below it; the parent grows to hold its floats; and a float moves to
   the next page with the lines beside it. A float taller than a page is sliced. `debug` on a
   paragraph beside a float shows its narrower line boxes.
-
+- Encryption: user and owner passwords and permissions (printing at low or high resolution,
+  modifying, copying, annotating, filling forms, content accessibility, document assembly),
+  with AES-256 (PDF 2.0, revision 6). `RenderOptions::encryption` with `Encryption`,
+  `Permissions` and `Printing` in Rust, `encryption: { userPassword, ownerPassword,
+  permissions }` in the Node binding and in `@inkoxide/render`, and `<Document userPassword
+  ownerPassword permissions>`, which the option replaces. Passwords are printable ASCII up to
+  127 bytes, never part of the document tree, and never shown in errors or `Debug` output.
+  Output stays deterministic: the keys are derived from the document and the passwords.
+  Encryption with PDF/A is `INVALID_VALUE` at `options.encryption`.
+- PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
+  Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
+  `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and
+  `<Document conformance>` (`'PDF/A-1b'`, `'PDF/A-2b'`, `'PDF/A-3b'`, or the part alone), which
+  the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
+  `TEMPLATE_ERROR`.
+- PDF/A-1b has no transparency: a render at 1b fails with the new code `PDFA_CONFLICT` at the
+  path of the first colour with alpha below 1, `opacity` between 0 and 1, `debug`, image (or
+  background image) with an alpha channel, or SVG drawn with opacity, a mask or a blend mode
+  (`ENGINE_REJECTED` with the component in `@inkoxide/render`). `validate` does not know the
+  level and does not report it. A PDF/A-1b file also keeps within the limits of PDF/A-1
+  (numbers, strings, arrays, dictionaries, graphics state nesting) or fails with `PDF_ERROR`.
 - `textWrap: 'pretty'` (Tailwind `text-pretty`) breaks a paragraph's lines over the whole
   paragraph for even lines (Knuth and Plass's total fit), with fewer hyphens; justified
   `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the
   default, keeps first fit and the same output; `'balance'` is reserved. `text-wrap` maps to
   `wrap` and `text-nowrap` to `whiteSpace: 'nowrap'`.
-
 - Superscripts and subscripts: `verticalAlign: 'super'` or `'sub'` on a `Text` (the Tailwind
   classes `align-super` and `align-sub`) raises or lowers its baseline by the font's own
   superscript and subscript offsets, and the line grows to fit it. `verticalAlign` stays `top`,
@@ -51,12 +70,42 @@ All notable changes to the packages in this repository. The format follows
   it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
   background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
   `objectPosition` and the `object-*` classes place it as on an `Image`.
+- Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
+  field names. `address.street` and `address.city` are the fields `street` and `city` of the
+  group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
+  show and export by their full names.
+- List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
+  without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
+  array and several options can be selected.
+- Formats on text fields: `format` shows a number (decimals, separators, negative style,
+  currency), a percent, a date or a time (with a pattern such as `dd/mm/yyyy`), a postal code, a
+  phone number or a social security number, and viewers format what the user types with the
+  standard form scripts. PDF/A output keeps the formatted text and value but leaves the scripts
+  out, as PDF/A requires.
+- Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
+  author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
+  corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
+  and passes PDF/A-2b.
+- `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
+  fields inside it, at any depth (`address.street`); sets nest.
+- `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
+  takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
+  `TextInput` is another name for `TextField`.
+- `format` on `TextField` in `@inkoxide/render`, with the readable keys of the schema, or `param`,
+  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported.
+- `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
+  its `backgroundColor` as its colour.
 
 ### Changed
 
 - Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
   pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
   mitred instead of bevelled. `miterLimit(4)` gives the old joins.
+
+### Security
+
+- Field options and values are limited to 1000 options of at most 1000 characters each, and a
+  `value` of at most 8000 characters. Longer ones are `INVALID_VALUE`.
 
 ## 0.6.5 - 2026-10-13
 

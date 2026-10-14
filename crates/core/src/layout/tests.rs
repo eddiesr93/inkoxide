@@ -579,3 +579,21 @@ fn floats_shrink_to_fit_and_work_in_cells_and_the_page() {
         assert_eq!(wrapped.len(), 2, "{wrapped:?}");
     });
 }
+
+#[test]
+fn a_note_in_a_box_with_floats_is_a_zero_height_leaf() {
+    let children = format!(
+        r#"{{"type":"box","children":[
+            {{"type":"box","style":{{"float":"left","width":40,"height":30}}}},
+            {{"type":"note","note":{{"contents":"Checked"}}}},
+            {}]}}"#,
+        text("")
+    );
+    with_floats(&children, 300.0, |tree, _| {
+        let note = tree.nodes[3].geo;
+        assert_eq!((note.y, note.h), (0.0, 0.0));
+        // The text after it still wraps beside the float.
+        assert_eq!(tree.nodes[4].geo.y, 0.0);
+        assert!(tree.wraps.contains_key(&4));
+    });
+}

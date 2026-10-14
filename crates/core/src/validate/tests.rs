@@ -945,7 +945,7 @@ fn form_fields() {
     let f = "pages[0].children[0].field";
     let cases = [
         (
-            r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}}"#,
+            r#"{"type":"field","field":{"name":"a..b","kind":"checkbox"}}"#,
             C::InvalidValue,
             "name",
         ),
@@ -983,6 +983,231 @@ fn form_fields() {
     for (node, code, field) in cases {
         assert_eq!(one(&doc(node)), (code, format!("{f}.{field}")), "{node}");
     }
+    // List boxes: one value, or several with `multiSelect`.
+    let list = |extra: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"l","kind":"list","font":"Inter-Regular","options":["x","y","z"]{extra}}}}}"#
+        ))
+    };
+    for ok in [
+        "",
+        r#","value":"y""#,
+        r#","multiSelect":true"#,
+        r#","multiSelect":true,"value":"y""#,
+        r#","multiSelect":true,"value":["z","x"]"#,
+        r#","multiSelect":true,"value":[]"#,
+    ] {
+        assert_eq!(run(&list(ok)), vec![], "{ok}");
+    }
+    for (extra, code, path) in [
+        (r#","value":"w""#, C::InvalidValue, "value"),
+        (r#","value":["x"]"#, C::InvalidValue, "value"),
+        (
+            r#","multiSelect":true,"value":["x","w"]"#,
+            C::InvalidValue,
+            "value[1]",
+        ),
+        (
+            r#","multiSelect":true,"value":["x","x"]"#,
+            C::InvalidValue,
+            "value[1]",
+        ),
+        (
+            r#","multiSelect":true,"multiline":true"#,
+            C::InvalidValue,
+            "multiline",
+        ),
+    ] {
+        assert_eq!(one(&list(extra)), (code, format!("{f}.{path}")), "{extra}");
+    }
+    for (node, code, path) in [
+        (
+            r#"{"type":"field","field":{"name":"l","kind":"list","font":"Inter-Regular"}}"#,
+            C::MissingField,
+            "options",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"l","kind":"list","options":["x"]}}"#,
+            C::MissingField,
+            "font",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x"],"multiSelect":true}}"#,
+            C::InvalidValue,
+            "multiSelect",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x"],"value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"t","kind":"text","font":"Inter-Regular","value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"r","kind":"radio","value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"t","kind":"text","font":"Inter-Regular","value":[1]}}"#,
+            C::InvalidType,
+            "value[0]",
+        ),
+    ] {
+        assert_eq!(one(&doc(node)), (code, format!("{f}.{path}")), "{node}");
+    }
+    // Formats: on single-line text fields, with the keys of their type,
+    // and a value that fits.
+    let text = |format: &str, value: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","format":{format}{value}}}}}"#
+        ))
+    };
+    for (format, value) in [
+        (
+            r#"{"type":"number","decimals":0,"separators":"1.234,56","negative":"parensRed","currency":"€","currencyBefore":false}"#,
+            r#","value":"-1234.5""#,
+        ),
+        (r#"{"type":"percent","decimals":1}"#, r#","value":"0.125""#),
+        (
+            r#"{"type":"date","pattern":"dd/mm/yyyy"}"#,
+            r#","value":"2026-10-14""#,
+        ),
+        (
+            r#"{"type":"time","pattern":"hh:MM tt"}"#,
+            r#","value":"18:30""#,
+        ),
+        (r#"{"type":"zip"}"#, r#","value":"02134""#),
+        (r#"{"type":"ssn"}"#, ""),
+    ] {
+        assert_eq!(run(&text(format, value)), vec![], "{format}");
+    }
+    for (format, value, code, path) in [
+        (
+            r#"{"type":"number"}"#,
+            r#","value":"1,000""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"date","pattern":"dd"}"#,
+            r#","value":"2026-02-30""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"zip"}"#,
+            r#","value":"1234""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (r#"{"type":"date"}"#, "", C::MissingField, "format.pattern"),
+        (
+            r#"{"type":"date","pattern":"dd\");app.alert(1);//"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"time","pattern":"dd HH"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"number","currency":"\""}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"number","currency":"\n"}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"number","pattern":"dd"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"percent","currency":"$"}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"zip","decimals":2}"#,
+            "",
+            C::InvalidValue,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"number","decimals":11}"#,
+            "",
+            C::OutOfRange,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"number","decimals":-1}"#,
+            "",
+            C::OutOfRange,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"phone"}"#,
+            r#","multiline":true"#,
+            C::InvalidValue,
+            "format",
+        ),
+        (
+            r#"{"type":"phone"}"#,
+            r#","password":true"#,
+            C::InvalidValue,
+            "format",
+        ),
+        (r#"{"type":"money"}"#, "", C::InvalidValue, "format.type"),
+    ] {
+        assert_eq!(
+            one(&text(format, value)),
+            (code, format!("{f}.{path}")),
+            "{format}"
+        );
+    }
+    assert_eq!(
+        one(&doc(
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["1"],"format":{"type":"zip"}}}"#
+        )),
+        (C::InvalidValue, format!("{f}.format"))
+    );
+    // Options and values are bounded.
+    let select = |options: &[String]| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"s","kind":"select","font":"Inter-Regular","options":{}}}}}"#,
+            serde_json::to_string(options).unwrap()
+        ))
+    };
+    assert_eq!(
+        one(&select(&vec!["o".into(); 1001])),
+        (C::InvalidValue, format!("{f}.options"))
+    );
+    assert_eq!(
+        one(&select(&["o".into(), "x".repeat(1001)])),
+        (C::InvalidValue, format!("{f}.options[1]"))
+    );
+    let text = |n: usize| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","value":"{}"}}}}"#,
+            "é".repeat(n)
+        ))
+    };
+    assert_eq!(run(&text(8000)), vec![]);
+    assert_eq!(one(&text(8001)), (C::InvalidValue, format!("{f}.value")));
     let dup = doc(
         r#"{"type":"field","field":{"name":"a","kind":"checkbox"}},{"type":"field","field":{"name":"a","kind":"checkbox"}}"#,
     );
@@ -993,6 +1218,34 @@ fn form_fields() {
             "pages[0].children[1].field.name".to_string()
         )
     );
+    // Dots make groups; a name is either a field or a group.
+    let ok = doc(
+        r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}},
+           {"type":"field","field":{"name":"a.c.d","kind":"checkbox"}},
+           {"type":"field","field":{"name":"a.r","kind":"radio","value":"1"}},
+           {"type":"field","field":{"name":"a.r","kind":"radio","value":"2"}},
+           {"type":"field","field":{"name":"b","kind":"checkbox"}}"#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    for pair in [
+        r#""a","a.b""#,
+        r#""a.b","a""#,
+        r#""a.b","a.b.c""#,
+        r#""a.b.c","a.b""#,
+    ] {
+        let (first, second) = pair.split_once(',').unwrap();
+        let dup = doc(&format!(
+            r#"{{"type":"field","field":{{"name":{first},"kind":"checkbox"}}}},{{"type":"field","field":{{"name":{second},"kind":"checkbox"}}}}"#
+        ));
+        assert_eq!(
+            one(&dup),
+            (
+                C::DuplicateId,
+                "pages[0].children[1].field.name".to_string()
+            ),
+            "{pair}"
+        );
+    }
     let (code, path) = one(&doc(
         r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
     ));
@@ -1000,6 +1253,52 @@ fn form_fields() {
         (code, path.as_str()),
         (C::UnknownField, "pages[0].children[0].link")
     );
+}
+
+#[test]
+fn notes() {
+    let ok = doc(r#"{"type":"note","note":{"contents":"x"}},
+           {"type":"note","id":"n","style":{"position":"absolute"},"pages":"first","debug":true,
+            "note":{"contents":"y","author":"Ana","color":[0,0.5,1,1],"open":true}},
+           {"type":"table","columns":[{"width":"auto"}],"headerRows":0,"rows":[
+              {"cells":[{"children":[{"type":"note","note":{"contents":"z"}}]}]}]}"#);
+    assert_eq!(run(&ok), vec![]);
+    let n = "pages[0].children[0]";
+    for (node, code, path) in [
+        (
+            r#"{"type":"note","note":{"contents":""}}"#,
+            C::InvalidValue,
+            "note.contents",
+        ),
+        (
+            r#"{"type":"note","note":{"contents":"x","color":[2,0,0,1]}}"#,
+            C::OutOfRange,
+            "note.color",
+        ),
+        (
+            r#"{"type":"note","note":{}}"#,
+            C::MissingField,
+            "note.contents",
+        ),
+        (r#"{"type":"note"}"#, C::MissingField, ""),
+        (
+            r#"{"type":"note","link":"https://x.ro","note":{"contents":"x"}}"#,
+            C::UnknownField,
+            "link",
+        ),
+        (
+            r#"{"type":"note","note":{"contents":"x","icon":"Key"}}"#,
+            C::UnknownField,
+            "note.icon",
+        ),
+    ] {
+        let want = if path.is_empty() {
+            n.to_string()
+        } else {
+            format!("{n}.{path}")
+        };
+        assert_eq!(one(&doc(node)), (code, want), "{node}");
+    }
 }
 
 #[test]
@@ -1246,6 +1545,141 @@ fn out_of_range_messages_state_the_range() {
             ),
         ]
     );
+}
+
+/// The images `logo` (alpha), `photo` (opaque) and `veil` (an SVG drawn
+/// at half opacity).
+fn images_1b() -> ImageStore {
+    let mut images = ImageStore::new();
+    images.insert("logo", fixture("images/logo.png"));
+    images.insert("photo", fixture("images/photo.jpg"));
+    images.insert(
+        "veil",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" opacity="0.5"/></svg>"#[..],
+    );
+    images
+}
+
+/// Renders `doc` as PDF/A-1b with [`images_1b`].
+fn render_1b(doc: &str) -> Result<Vec<u8>, crate::InkoxideError> {
+    let images = images_1b();
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    crate::render(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &options,
+        &fonts(),
+        &images,
+    )
+}
+
+#[test]
+fn pdf_a_1b_rejects_transparency_at_its_path() {
+    let text = |run: &str| {
+        format!(
+            r#"{{"type":"text","runs":[{{"text":"x","font":"Inter-Regular","size":10{run}}}]}}"#
+        )
+    };
+    let cases = [
+        (text(r#","color":[0,0,0,0.5]"#), "children[0].runs[0].color", "a colour with alpha"),
+        (text(r#","color":[0,0,0,0]"#), "children[0].runs[0].color", "a colour with alpha"),
+        (
+            text(r#","decoration":"underline","decorationColor":[1,0,0,0.9]"#),
+            "children[0].runs[0].decorationColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"borderWidth":{"top":1},"borderColor":{"top":[0,0,0,0.5]}}}"#.into(),
+            "children[0].style.borderColor.top",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"backgroundColor":[0,0,0,0.5]}}"#.into(),
+            "children[0].style.backgroundColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"backgroundColor":[0,0,0,0.5],"cells":[{}]}]}"#.into(),
+            "children[0].rows[0].backgroundColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"opacity":0.5}}"#.into(),
+            "children[0].style.opacity",
+            "an `opacity`",
+        ),
+        (r#"{"type":"box","debug":true}"#.into(), "children[0].debug", "`debug`"),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"debug":true}]}]}"#.into(),
+            "children[0].rows[0].cells[0].debug",
+            "`debug`",
+        ),
+        (
+            r#"{"type":"image","src":"logo"}"#.into(),
+            "children[0].src",
+            "image `logo` (an alpha channel)",
+        ),
+        (
+            r#"{"type":"image","src":"veil"}"#.into(),
+            "children[0].src",
+            "image `veil` (group opacity)",
+        ),
+        (
+            r#"{"type":"box","backgroundImage":{"src":"logo"},"style":{"width":10,"height":10}}"#
+                .into(),
+            "children[0].backgroundImage.src",
+            "image `logo` (an alpha channel)",
+        ),
+        // The first use is reported.
+        (
+            format!(r#"{{"type":"box","children":[{},{{"type":"box","style":{{"opacity":0.5}}}}]}}"#, text(r#","color":[0,0,0,0.5]"#)),
+            "children[0].children[0].runs[0].color",
+            "a colour with alpha",
+        ),
+    ];
+    for (child, path, what) in cases {
+        // Validation does not know the level.
+        let d = doc(&child);
+        let errors = validate(d.as_bytes(), InputFormat::Json, &fonts(), &images_1b());
+        assert_eq!(errors, [], "{child}");
+        let e = match render_1b(&doc(&child)) {
+            Err(crate::InkoxideError::Validation(e)) => e,
+            other => panic!("{child}: {:?}", other.map(|_| ())),
+        };
+        assert_eq!(e.code, C::PdfaConflict, "{child}");
+        assert_eq!(e.path, format!("pages[0].{path}"), "{child}");
+        assert!(
+            e.message
+                .starts_with("PDF/A-1b does not allow transparency"),
+            "{}",
+            e.message
+        );
+        assert!(e.message.contains(what), "{}", e.message);
+    }
+    let e = render_1b(r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"debug":true}]}"#)
+        .unwrap_err();
+    assert_eq!(
+        (e.code(), e.to_string().contains("pages[0].debug")),
+        ("PDFA_CONFLICT", true)
+    );
+
+    // What draws nothing, or ignores alpha, is opaque.
+    for child in [
+        r#"{"type":"box","style":{"backgroundColor":[0,0,0,0]}}"#,
+        r#"{"type":"box","style":{"opacity":0},"children":[{"type":"image","src":"photo"}]}"#,
+        r#"{"type":"image","src":"photo"}"#,
+        r#"{"type":"box","backgroundImage":{"src":"photo"},"style":{"width":10,"height":10}}"#,
+        r#"{"type":"field","field":{"name":"a","kind":"checkbox","color":[0,0,0,0.5]}}"#,
+    ] {
+        render_1b(&doc(child)).unwrap_or_else(|e| panic!("{child}: {e}"));
+    }
+    render_1b(
+        r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"background":[1,0,0,0.5]}]}"#,
+    )
+    .unwrap();
+    // Another problem wins over transparency.
+    let e = render_1b(&doc(r#"{"type":"box","debug":true,"style":{"width":-1}}"#)).unwrap_err();
+    assert_eq!(e.code(), "OUT_OF_RANGE");
 }
 
 #[test]
