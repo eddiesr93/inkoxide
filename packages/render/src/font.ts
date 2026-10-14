@@ -6,7 +6,13 @@
  */
 import { readFile } from 'node:fs/promises';
 
-import { type FontWeightName, fonts, fontWeightValue, type HyphenationCallback } from '@inkoxide/react';
+import {
+  type EmojiSource,
+  type FontWeightName,
+  fonts,
+  fontWeightValue,
+  type HyphenationCallback,
+} from '@inkoxide/react';
 
 import { registerEngineFont } from './engine.ts';
 import { DEFAULT_FACES } from './fonts.ts';
@@ -179,6 +185,28 @@ export const Font = {
       throw new Error('Font.registerHyphenationCallback needs a function, or null to remove it.');
     }
     fonts.hyphenationCallback = callback ?? undefined;
+  },
+
+  /**
+   * Draws emoji as images, in every `Text` of later renders: `{ url, format = 'png',
+   * withVariationSelectors = false }` adds each emoji's code points (`1f469-200d-1f4bb`, without
+   * `fe0f` unless asked) and `.format` to `url`; `{ builder }` turns those code points into any
+   * image `src`. The images load like `<Image src>`: a URL must be allowed by `remoteImages`, and a
+   * path needs `localImages`. An emoji whose image cannot be loaded is drawn by the fonts, with a
+   * warning. Registering again replaces the source; `null` removes it.
+   */
+  registerEmojiSource(source: EmojiSource | null): void {
+    const ok =
+      source === null ||
+      (typeof source === 'object' &&
+        (('url' in source && typeof source.url === 'string') ||
+          ('builder' in source && typeof source.builder === 'function')));
+    if (!ok) {
+      throw new Error(
+        'Font.registerEmojiSource needs { url, format? } or { builder }, or null to remove it.',
+      );
+    }
+    fonts.emojiSource = source ?? undefined;
   },
 };
 

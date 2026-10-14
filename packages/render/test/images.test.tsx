@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
@@ -15,6 +15,7 @@ import {
   Document,
   Header,
   type ImageSrc,
+  Font,
   Image,
   ImageBackground,
   init,
@@ -92,7 +93,8 @@ beforeAll(async () => {
   server = createServer(async (req, res) => {
     seen.push({ method: req.method, header: req.headers['x-token'], body: await bodyOf(req) });
     const body = seen[seen.length - 1]?.body;
-    if (req.url === '/logo.png') res.end(logo);
+    if (req.url === '/logo.png' || req.url === '/emoji/1f600.png') res.end(logo);
+    else if (req.url === '/emoji/1f1eb-1f1f7.png') res.end(palette);
     else if (req.url === '/palette.png') res.end(palette);
     else if (req.url === '/photo.jpg') res.end(photo);
     else if (req.url === '/image' && req.method === 'POST') res.end(body === 'palette' ? palette : logo);
@@ -539,6 +541,47 @@ describe('ImageBackground', () => {
       { ...files, compress: false },
     );
     expect(pageImages(pdf)).toEqual([[LOGO], [LOGO, PALETTE, PHOTO]]);
+  });
+});
+
+describe('Font.registerEmojiSource', () => {
+  const emojiTemplate = {
+    meta: { id: 'emoji' },
+    schema: z.object({}),
+    Template: () => (
+      <Document>
+        <Page>
+          <Text>Smile 😀, flag 🇫🇷, thumbs 👍 and ❤︎ as text</Text>
+        </Page>
+      </Document>
+    ),
+  };
+  afterEach(() => Font.registerEmojiSource(null));
+
+  it('draws emoji from images at a URL, and leaves those it cannot load to the fonts', async () => {
+    Font.registerEmojiSource({ url: `${base}/emoji/` });
+    const opts = { ...allowed(), compress: false };
+    const first = renderTree(emojiTemplate, {}, opts);
+    // Each sequence once, without U+FE0F; text presentation is left alone.
+    expect(Object.keys(first.document.emojiImages ?? {})).toEqual(['😀', '🇫🇷', '👍']);
+    const settled = await renderSettled(first, first.images, opts);
+    expect(pageImages(settled.pdf)).toEqual([[PALETTE, LOGO]]);
+    expect(settled.tree.warnings).toEqual([
+      expect.stringMatching(/^The image of the emoji 👍 could not be loaded, so a font draws it: .*404/),
+    ]);
+  });
+
+  it('takes a builder, and refuses a URL outside remoteImages', async () => {
+    Font.registerEmojiSource({
+      builder: (points) => (points === '1f600' ? logo : `${base}/emoji/${points}.png`),
+    });
+    const pdf = await renderToBuffer(<emojiTemplate.Template />, { ...allowed(), compress: false });
+    expect(pageImages(pdf)).toEqual([[PALETTE, LOGO]]);
+    Font.registerEmojiSource({ url: 'https://elsewhere.example/emoji/' });
+    const e = await renderToBuffer(<emojiTemplate.Template />).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(RenderError);
+    expect((e as RenderError).message).toContain('Font.registerEmojiSource, for 😀');
+    expect(() => Font.registerEmojiSource({} as never)).toThrow('needs { url, format? } or { builder }');
   });
 });
 

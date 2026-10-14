@@ -22,6 +22,7 @@ export {
   type DocumentProps,
   Ellipse,
   type EllipseProps,
+  type EmojiSource,
   Field,
   type FieldProps,
   Footer,

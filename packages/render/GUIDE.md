@@ -179,6 +179,21 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
   colour glyphs past the first 4096 of a render. Fonts with only `SVG` glyphs are not drawn in
   colour.
+- **Emoji from images.** `Font.registerEmojiSource` draws emoji from an image set instead:
+  `{ url, format }` adds each emoji's code points and the format to the URL
+  (`https://cdn.example.com/emoji/1f469-200d-1f4bb.png`; `withVariationSelectors: true` keeps
+  `fe0f` in them), and `{ builder }` turns the code points into any image `src`. The images load
+  like `<Image src>`: a URL must be allowed by `remoteImages` (else the render fails, naming the
+  emoji), a path needs `localImages`, and images fetched from URLs are kept between renders. An
+  emoji image is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies
+  as the emoji. An emoji whose image cannot be loaded is drawn by the fonts, with a warning; a ZWJ
+  sequence (`👩‍💻`) without an image of its own uses the images of its parts. `null` removes the
+  source.
+
+  ```ts
+  Font.registerEmojiSource({ url: 'https://cdn.example.com/emoji/72x72/', format: 'png' });
+  ```
+
 - **Faces.** A face is a family, a weight and a style. Registering one again from the same
   source (the same path, URL or bytes) does nothing, and from another source throws. A face the
   bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
@@ -789,7 +804,7 @@ attributes every SVG shape takes. Also exported:
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, and `CanvasGradient`, its
   gradients;
 - options and results: `RenderToBufferOptions`, `LocalImageOptions`, `RemoteImageOptions`,
-  `FontRegistration`, `FontSource`, `FontSrc`, `FontWeight`, `HyphenationCallback`,
+  `FontRegistration`, `FontSource`, `FontSrc`, `EmojiSource`, `FontWeight`, `HyphenationCallback`,
   `EngineStatus`, `EngineVersion`, `RenderErrorCode` and `DataIssue`.
 
 **Concurrency.** A render runs on Node's thread pool, so many can run at once. `threads` sets
@@ -983,8 +998,7 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
 - **Drawing.** Text inside `<Svg>` is not supported yet. Colour emoji need a colour emoji font
-  ([Fonts](#fonts)); emoji from images (`Font.registerEmojiSource`) are not supported yet. SVG
-  filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
+  or an emoji image source ([Fonts](#fonts)). SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, an absolutely positioned,
   rotated or transformed element, table rows tied by a `rowSpan`) is cut at the page edge when

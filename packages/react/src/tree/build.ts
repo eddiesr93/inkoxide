@@ -177,8 +177,13 @@ function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
   return typeof b === 'string' ? { title: b } : b;
 }
 
+/** An emoji sequence (Unicode's RGI emoji); the `v` flag is built at run time for the ES2023 target. */
+const EMOJI = new RegExp('\\p{RGI_Emoji}', 'gv');
+
 class Builder {
   readonly imageTable: ImageTable;
+  /** The document's `emojiImages`: emoji sequence (without U+FE0F) → image id. */
+  readonly emoji: Record<string, string> = {};
   private readonly used = new Set<string>();
   readonly warnings: string[] = [];
   private readonly warned = new Set<string>();
@@ -383,6 +388,7 @@ class Builder {
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
       fonts: fontIds.map((id) => this.opts.fonts.decl(id)),
       ...(fallbackFonts.length > 0 ? { fallbackFonts } : {}),
+      ...(Object.keys(this.emoji).length > 0 ? { emojiImages: this.emoji } : {}),
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
@@ -893,6 +899,43 @@ class Builder {
     return this.mark(run, n);
   }
 
+  /**
+   * With an emoji source registered, the image of each emoji sequence in `text` (by its sequence
+   * without U+FE0F) goes to the document's `emojiImages`, resolved like an `<Image src>`.
+   */
+  private emojiOf(text: string, owner: Instance): void {
+    const source = this.opts.fonts.emojiSource;
+    // Every emoji is outside ASCII (a keycap ends in U+20E3).
+    if (!source || !/[\u0080-\u{10FFFF}]/u.test(text)) return;
+    for (const [sequence] of text.matchAll(EMOJI)) {
+      const key = sequence.replaceAll('\uFE0F', '');
+      if (Object.hasOwn(this.emoji, key)) continue;
+      const points = (s: string) => [...s].map((c) => c.codePointAt(0)?.toString(16)).join('-');
+      let src: unknown;
+      if ('builder' in source) {
+        src = source.builder(points(key));
+      } else {
+        const named = source.withVariationSelectors ? sequence : key;
+        src = `${source.url}${points(named)}.${source.format ?? 'png'}`;
+      }
+      const fail = (msg: string): never =>
+        this.fail(owner, `Font.registerEmojiSource, for ${sequence}: ${msg}`, { kind: 'props' });
+      let image = this.imageTable.resolve(src, fail);
+      if ('data' in image) {
+        // `emojiImages` takes image ids: a data: URL becomes bytes with an id of their own.
+        const body = /;base64,(.*)$/s.exec(image.data)?.[1]?.replace(/\s/g, '');
+        if (body === undefined || !/^[A-Za-z0-9+/]*={0,2}$/.test(body)) {
+          return fail('a data: URL that is not valid base64 (`data:<type>;base64,…`)');
+        }
+        image = this.imageTable.resolve(
+          Uint8Array.from(atob(body), (c) => c.charCodeAt(0)),
+          fail,
+        );
+      }
+      if ('src' in image) this.emoji[key] = image.src;
+    }
+  }
+
   private push(
     out: TextRun[],
     text: string | undefined,
@@ -901,6 +944,7 @@ class Builder {
     placeholder: TextRun['placeholder'],
     hyphenate?: boolean,
   ): void {
+    if (text !== undefined) this.emojiOf(text, owner);
     const font = this.font(ctx, owner);
     const size = ctx.fontSize;
     const ls = ctx.letterSpacing;

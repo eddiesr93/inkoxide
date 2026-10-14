@@ -8,8 +8,6 @@ or should come sooner.
 - **Encryption**: user and owner passwords, and permissions.
 - **Text in `<Svg>`**: `<Text>` and `<Tspan>` inside `<Svg>`, and `<text>` in SVG files.
 - **`<Canvas>`**: text in the painter (`text`, `font` and `fontSize`).
-- **Inline images** inside `Text`.
-- **Colour emoji from images** (`Font.registerEmojiSource`); emoji fonts already work.
 - **Forms**: list boxes, field groups and number or date formats.
 - **Text annotations** (`<Note>`).
 - **Floats**: elements floated left or right, with text wrapping around them.

@@ -44,6 +44,58 @@ export async function loadImages(
   return Object.fromEntries(await Promise.all([...remote, ...pending]));
 }
 
+/** Emoji images fetched from URLs, kept across renders: the same few hundred come back. */
+const EMOJI_CACHE_BYTES = 16 << 20;
+const emojiCache = new Map<string, Uint8Array>();
+let emojiCacheSize = 0;
+
+function cacheEmoji(url: string, bytes: Uint8Array): void {
+  if (bytes.byteLength > EMOJI_CACHE_BYTES / 16) return;
+  emojiCache.set(url, bytes);
+  emojiCacheSize += bytes.byteLength;
+  // Least recently used first: a Map iterates in insertion order, and a hit is moved to the end.
+  for (const [k, v] of emojiCache) {
+    if (emojiCacheSize <= EMOJI_CACHE_BYTES) break;
+    emojiCache.delete(k);
+    emojiCacheSize -= v.byteLength;
+  }
+}
+
+/**
+ * The emoji images of a tree, like `loadImages`, but an image that cannot be loaded is left out
+ * with the reason, instead of failing the render: its emoji are then drawn by the fonts. Images
+ * fetched from URLs are cached across renders.
+ */
+export async function loadEmojiImages(
+  tree: Pick<TreeResult, 'remote' | 'pending'>,
+  registered: Record<string, Uint8Array>,
+  policies: ImagePolicies,
+): Promise<{ loaded: Record<string, Uint8Array>; failed: Record<string, string> }> {
+  const remote = Object.entries(tree.remote).map(async ([id, url]): Promise<[string, Uint8Array]> => {
+    const hit = emojiCache.get(url);
+    if (hit) {
+      emojiCache.delete(url);
+      emojiCache.set(url, hit);
+      return [id, hit];
+    }
+    const bytes = await fetchAllowed(url, policies.remote);
+    cacheEmoji(url, bytes);
+    return [id, bytes];
+  });
+  const pending = Object.entries(tree.pending).map(async ([id, image]): Promise<[string, Uint8Array]> => [
+    id,
+    await loadPending(image, registered, policies),
+  ]);
+  const ids = [...Object.keys(tree.remote), ...Object.keys(tree.pending)];
+  const loaded: Record<string, Uint8Array> = {};
+  const failed: Record<string, string> = {};
+  (await Promise.allSettled([...remote, ...pending])).forEach((r, i) => {
+    if (r.status === 'fulfilled') loaded[r.value[0]] = r.value[1];
+    else failed[ids[i] as string] = (r.reason as Error)?.message ?? String(r.reason);
+  });
+  return { loaded, failed };
+}
+
 async function loadPending(
   image: PendingImage,
   registered: Record<string, Uint8Array>,

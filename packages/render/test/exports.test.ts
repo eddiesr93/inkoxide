@@ -77,6 +77,7 @@ const MAIN_TYPES = [
   'DefsProps',
   'DocumentProps',
   'EllipseProps',
+  'EmojiSource',
   'EngineStatus',
   'EngineVersion',
   'FieldProps',

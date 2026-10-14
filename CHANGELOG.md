@@ -51,6 +51,13 @@ All notable changes to the packages in this repository. The format follows
   colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
   field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
   render, draws without colour.
+- Emoji from images: `Font.registerEmojiSource({ url, format, withVariationSelectors })` or
+  `{ builder }` draws the emoji of every `Text` from an image set, through the document's new
+  `emojiImages` (emoji sequence → image id). The images load like `<Image src>` (URLs allowed by
+  `remoteImages`, kept between renders); an emoji image is 1em high with its aspect ratio and
+  copies as the emoji. An emoji whose image cannot be loaded is drawn by the fonts with a
+  warning, and a ZWJ sequence without an image uses those of its parts. `EmojiSource` is
+  exported.
 - Images in text: an `<Image>` inside a `<Text>` (and `image` on a document's text run) sits in
   the line, as wide and high as asked in points or em (1em high by default, keeping its aspect
   ratio), placed by `verticalAlign` (`baseline`, `middle`, `text-top`, `text-bottom`, `top`,

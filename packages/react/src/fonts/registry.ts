@@ -3,7 +3,22 @@ import { join } from 'node:path';
 
 import type { FontDecl } from '@inkoxide/schema';
 
-import type { HyphenationCallback } from '../components/index.ts';
+import type { HyphenationCallback, ImageSrcValue } from '../components/index.ts';
+
+/**
+ * Where emoji images come from (`Font.registerEmojiSource`): a base URL to which the code points
+ * of each emoji (`1f469-200d-1f4bb`) and `.format` are added, or a function from those code
+ * points to an image `src`.
+ */
+export type EmojiSource =
+  | {
+      url: string;
+      /** The file extension. Default `png`. */
+      format?: string;
+      /** Keep U+FE0F (`fe0f`) in the code points. Default: left out, as most emoji sets name files. */
+      withVariationSelectors?: boolean;
+    }
+  | { builder: (codePoints: string) => ImageSrcValue };
 
 export interface FontFace {
   /** The engine font id, used in `fonts[].id` and `runs[].font` (`Inter-Bold`). */
@@ -43,6 +58,8 @@ export class FontRegistry {
   private readonly memo = new Map<string, ResolvedFont>();
   /** Splits words into syllables in every `Text` without its own `hyphenationCallback`. */
   hyphenationCallback: HyphenationCallback | undefined;
+  /** Draws the emoji of every `Text` as images from here. */
+  emojiSource: EmojiSource | undefined;
 
   register(face: FontFace, bytes?: Uint8Array): this {
     if (this.byId.has(face.id)) throw new Error(`Font id "${face.id}" is already registered`);
