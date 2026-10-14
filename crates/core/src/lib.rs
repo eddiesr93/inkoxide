@@ -19,6 +19,7 @@ mod forms;
 mod images;
 mod layout;
 mod lru;
+mod notes;
 mod paginate;
 mod paint;
 mod pdf;

@@ -11,8 +11,10 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [Tables](#tables)
 - [Links, bookmarks and metadata](#links-bookmarks-and-metadata)
 - [Text: hyphenation and direction](#text-hyphenation-and-direction)
+- [Text: superscripts and font features](#text-superscripts-and-font-features)
 - [Drawing: SVG and Canvas](#drawing-svg-and-canvas)
 - [Forms](#forms)
+- [Notes](#notes)
 - [Debugging layout](#debugging-layout)
 - [API](#api)
 - [Errors](#errors)
@@ -27,8 +29,8 @@ Components take `className`, `style` and `id`, and those with a box also take `d
 `Page` and `Canvas` have no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
 take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
 `transform`, `id`) instead of `className` and `style`; and a `Text` or `Link` inside a `Text`,
-a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
-`hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
+a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
+`href`, `lang`, `hyphenate` and `hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
 
 | Component | What it is |
 |---|---|
@@ -38,13 +40,16 @@ a run of the paragraph, takes only text styles, `href`, `lang`, `hyphenate` and
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
 | `Image` | JPEG, PNG, GIF, WebP or SVG. `fit` (or `objectFit` in its style): `fill`, `contain`, `cover`, `none`; `objectPosition` in its style places the fitted image. |
+| `ImageBackground` | A `View` with an image behind its children: `src` and `fit` as on `Image` ([Images](#images)). |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop`, `Tspan` | Vector drawing in JSX; a `Text` in an `Svg` is SVG text. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
-| `TextField`, `Checkbox`, `Radio`, `Select`, `Field` | Fillable form fields (AcroForm). |
+| `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
+| `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
+| `Note` | A text note: an icon that opens its text in the viewer. |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link` and
 other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
@@ -79,9 +84,9 @@ other `Text`, and nothing else. A `View` inside a `Text` is an error that names 
   line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
   `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
   `decorationStyle` and `decorationThickness`. `textOverflow: 'ellipsis'` is `ellipsis: true`
-  (with `maxLines`). `objectFit` on an `Image` is its `fit` prop, which wins when both are set.
-  `objectPosition` on an `Image` places it in its box (see [Images](#images)). Both throw on
-  other elements.
+  (with `maxLines`). `objectFit` on an `Image` or `ImageBackground` is its `fit` prop, which
+  wins when both are set. `objectPosition` on them places the image in its box (see
+  [Images](#images)). Both throw on other elements.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
@@ -195,6 +200,21 @@ const logo = readFileSync('logo.png');
   ```tsx
   <Image src={photo} className="h-40 w-full" fit="cover" style={{ objectPosition: 'center top' }} />
   <Image src={logo} className="h-10 w-32 object-contain object-left" />
+  ```
+
+- **Background images.** `ImageBackground` is a `View` with an image behind its children. It
+  takes the props of a `View` and `src` in any form `Image` takes; `fit`, `objectFit` and
+  `objectPosition` (and the `object-*` classes) place the image as on an `Image`, `fill` by
+  default. The image fills the padding box, inside the borders, as a CSS `background-image`
+  does: it is drawn over the background colour and under the borders and the children, and
+  clipped to the box, rounded by `borderRadius`. A box split across pages is sliced with its
+  image, like its background colour. `source`, `imageStyle` and `srcSet` throw: pass the image
+  as `src`, and place it with `fit` and `objectPosition`.
+
+  ```tsx
+  <ImageBackground src={photo} fit="cover" className="h-48 rounded-xl p-6 object-top">
+    <Text className="text-2xl font-bold text-white">Annual report</Text>
+  </ImageBackground>
   ```
 
 - **Files.** Image files are off by default. Allow the folders they come from with the
@@ -502,8 +522,44 @@ An id that is not registered is skipped, and `fallbackFonts={[]}` turns the fall
 - **Right-to-left text** uses `dir="rtl"` on a `Text`. Register a font that covers the script
   first (for example Noto Sans Arabic or Noto Sans Hebrew with `Font.register`): the bundled
   fonts cover Latin, Greek and Cyrillic.
+- **Even lines.** `textWrap: 'pretty'` (the class `text-pretty`) breaks a paragraph's lines
+  over the whole paragraph instead of filling each in turn, as TeX does: lines come out more
+  even, with fewer hyphens, and the spaces of justified lines may also shrink by up to a third.
+  It is inherited, so `<Page style={{ textWrap: 'pretty' }}>` sets it for a page. `'wrap'` is
+  the default and fills lines in turn; `'balance'` is not supported yet. Text with
+  `whitespace-nowrap` or `whitespace-pre`, and very long paragraphs past the limits in the
+  [schema](../../docs/SCHEMA.md), break first fit.
 - **Orphans and widows:** `orphans={2}` and `widows={2}` keep at least two lines of a paragraph
   together at the foot and the head of a page.
+
+## Text: superscripts and font features
+
+```tsx
+<Text>
+  E = mc<Text style={{ verticalAlign: 'super', fontSize: 7 }}>2</Text>, H
+  <Text className="align-sub text-[7pt]">2</Text>O
+</Text>
+<Text style={{ fontFeatureSettings: "'tnum' 1, 'ss01'" }}>1,111.10</Text>
+<Text className="tabular-nums slashed-zero">10,000</Text>
+```
+
+- **Superscripts and subscripts.** `verticalAlign: 'super'` or `'sub'` on a `Text` (the classes
+  `align-super` and `align-sub`) raises or lowers its baseline by the offsets the font gives for
+  superscripts and subscripts, for text of its size; `'baseline'` puts it back. The size stays
+  the one you set: give the superscript a smaller `fontSize`. The line grows to fit it, as in
+  CSS. A `Text` inside a superscript stays on its baseline. On a `Cell`, `verticalAlign` places
+  the content (`top`, `middle`, `bottom`), and `super` or `sub` there is an error.
+- **OpenType features.** `fontFeatureSettings` takes a CSS string
+  (`"'tnum' 1, 'liga' off"`), a list of tags to turn on (`['tnum', 'smcp']`), or an object of
+  tags to values or switches (`{ tnum: 1, liga: false, salt: 2 }`): 1 turns a feature on, 0
+  off, and a larger number picks an alternate. `fontVariantNumeric` (`'tabular-nums'`,
+  `'oldstyle-nums slashed-zero'`, …) and its Tailwind classes turn on the matching features,
+  and `fontFeatureSettings` (or `font-features-[…]`) wins over them. Both are inherited like the
+  other text properties; a `Text` that sets its own `fontFeatureSettings` replaces the inherited
+  one. A feature does something only when the font has it: Inter has `tnum`, `zero`, `ss01` to
+  `ss08`, `frac`, `case` and more, but no small capitals; Noto Sans has `smcp`. A run takes at
+  most 32 features, and a document at most 64 different sets of them.
+- `PageNumber` and `TotalPages` draw their digits without the features.
 
 ## Drawing: SVG and Canvas
 
@@ -649,6 +705,7 @@ In an SVG, whether in `<Svg>` or an image file:
 ```tsx
 <TextField name="email" className="h-6 w-full rounded border border-gray-300 px-1" />
 <Select name="plan" options={['Starter', 'Team']} value="Team" className="h-6 w-40 border" />
+<List name="days" options={['Mon', 'Tue', 'Wed']} multiSelect value={['Mon', 'Wed']} className="w-40 border" />
 <Checkbox name="terms" className="h-3.5 w-3.5 border" />
 <Radio name="billing" value="yearly" checked className="h-3.5 w-3.5 rounded-full border" />
 ```
@@ -656,8 +713,72 @@ In an SVG, whether in `<Svg>` or an image file:
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
 must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
 `maxLength` and `password`; size, border, background and text style come from the classes.
-`Field` is any of the four, picked by its `kind` (`"text"`, `"checkbox"`, `"radio"`,
-`"select"`), for forms built from data: `<Field kind={q.kind} name={q.name} … />`.
+`TextInput` is another name for `TextField`.
+
+`Select` is a drop-down list and `List` a list box, which shows several options at once (four
+rows without a height) and starts at the first selected one. Both take their choices as
+`options`, or `select`, and the selected one as `value`; a `List` with `multiSelect` takes an
+array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkbox"`,
+`"radio"`, `"select"`, `"list"`), for forms built from data:
+`<Field kind={q.kind} name={q.name} … />`.
+
+A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
+the name of every field inside it, at any depth. Viewers show and export the fields by those
+full names, and sets nest:
+
+```tsx
+<FieldSet name="billing" className="gap-2">
+  <TextField name="street" />                 {/* billing.street */}
+  <FieldSet name="contact">
+    <TextField name="email" />                {/* billing.contact.email */}
+  </FieldSet>
+</FieldSet>
+```
+
+A dot in a field's own `name` does the same (`name="billing.street"`). A name is either a field
+or a group: `billing` cannot also be a field when `billing.street` is one.
+
+A single-line `TextField` takes a `format`, which it shows its value in and which viewers apply
+as the user types:
+
+```tsx
+<TextField name="fee" value="1250" format={{ type: 'number', currency: '$' }} />          {/* $1,250.00 */}
+<TextField name="rate" value="0.125" format={{ type: 'percent', decimals: 1 }} />         {/* 12.5% */}
+<TextField name="start" value="2026-10-14" format={{ type: 'date', pattern: 'd mmm yyyy' }} /> {/* 14 Oct 2026 */}
+<TextField name="phone" value="5551234567" format={{ type: 'phone' }} />                   {/* (555) 123-4567 */}
+```
+
+| `type` | `value` | Options |
+|---|---|---|
+| `number` | digits, as `'-1234.5'` | `decimals` (default 2, rounded half away from zero), `separators` (`'1,234.56'`, `'1234.56'`, `'1.234,56'`, `'1234,56'`), `negative` (`'minus'`, `'red'`, `'parens'`, `'parensRed'`), `currency` and `currencyBefore` (default `true`) |
+| `percent` | a fraction, as `'0.125'` | `decimals`, `separators` |
+| `date` | `'2026-10-14'`, with an optional time (`T18:30`) | `pattern` (required) |
+| `time` | `'18:30'` or `'18:30:05'`, or a date with a time | `pattern` (required) |
+| `zip`, `zipPlus4`, `phone`, `ssn` | 5, 9, 10 or 9 digits | none |
+
+A `pattern` uses `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`, `mmm` (Oct), `mmmm`
+(October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t`
+(a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English. The keys `nDec`,
+`sepComma`, `negStyle`, `currencyPrepend` and `param` are other names for `decimals`,
+`separators`, `negative`, `currencyBefore` and `pattern`. Viewers apply the format with the
+standard form scripts, which some (Preview) do not run; a PDF/A document leaves the scripts out
+and keeps the formatted text.
+
+## Notes
+
+```tsx
+<Note author="Ana">Check the totals against the ledger.</Note>
+<Note className="absolute right-0 top-0 bg-blue-500" open>Draft: not for circulation.</Note>
+```
+
+A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
+its children (strings and numbers only). `author` is shown as its title, `open` shows the text
+when the document opens, and its `backgroundColor` (or a `bg-*` class) is its colour, yellow by
+default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
+its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
+insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
+`fixed` element it is on every page. The icon is drawn into the PDF, so it prints and looks the
+same in every viewer, and the output stays PDF/A-2b. A note cannot go inside a `Text` yet.
 
 ## Debugging layout
 
@@ -670,13 +791,16 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 `debug` draws an element's boxes over the page, like the box model in browser developer tools:
 the margin in orange, the border in yellow, the padding in green, the content box as a blue
 outline, and the element's width and height in points as a small label. It works on `View`,
-`Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
+`ImageBackground`, `Text`, `Image`, `Svg`, `Canvas`, `Table`, `Row`, `Cell`, `Spacer`, the fields, `Header` and
 `Footer`; on a `Page` it also outlines the page margins. A box split across pages is outlined
 on each page it crosses, and a header or footer on every page.
 
-It outlines elements with a box of their own. A `Text` or `Link` inside a `Text` is a run of that
-paragraph's lines, not a box, so `debug` on it draws nothing: put it on the outer `Text`, which
-outlines the whole paragraph.
+On a `Text`, it also outlines the paragraph line by line: each line box as a dashed outline, its
+baseline, and the glyphs of each run on the line, from the font's ascender to its descender,
+filled in purple and teal by turns. A run that wraps has a box on each line it reaches, so a
+`Text` or `Link` inside a `Text` shows where its words landed. Those inner elements are runs of
+the paragraph's lines, not boxes, so `debug` on one of them draws nothing: put it on the outer
+`Text`.
 
 The outlines are drawn last, on top of the content, and the labels are drawn with lines, so
 text selection, search, links, bookmarks and form fields are unchanged. It changes the output,
@@ -749,7 +873,8 @@ attributes every SVG shape takes, and `SvgTextProps` the props of a `Text` in an
 exported:
 
 - styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
-  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`;
+  `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`, and
+  `TextFormat`, the `format` of a `TextField`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, `CanvasGradient`, its
   gradients, and `CanvasTextOptions`, the options of its `text`;

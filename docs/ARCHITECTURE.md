@@ -64,8 +64,8 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
-| PDF | `pdf` | Pages and content streams (encoded in parallel), links, outline, forms, PDF/A-2b |
-| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
+| PDF | `pdf` | Pages and content streams (encoded in parallel), links, notes, outline, forms, PDF/A-2b |
+| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects |
 
 ## Public API (core)
 
@@ -95,9 +95,22 @@ margin offset.
 
 ```
 runs ─▶ prepare (whitespace, soft hyphens, font per char, rustybuzz) ─▶ Prepared   (cached per node)
-Prepared + width ─▶ break_lines (greedy, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per width)
+Prepared + LineBoxes ─▶ break_lines (per chunk: greedy or optimal, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per boxes)
 LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
 ```
+
+`break_lines` breaks each chunk between forced breaks on its own, first
+fit (`lines.rs`) or, for `textWrap: pretty`, with Knuth and Plass's
+total fit (`optimal.rs`), which falls back to first fit past its caps.
+Lines are laid in `LineBoxes` (`layout/float.rs`): the content width,
+and bands where room is taken on a side, where each line finds its box
+at its own top; no paragraph has bands until floats exist.
+
+A run's `fontFeatures` go to rustybuzz with its words; shaped words and
+shape plans are cached per feature set too. A run's `verticalAlign` moves
+its baseline (`text::baseline_shift`, from the font's OS/2 superscript and
+subscript metrics): line metrics count the moved glyph boxes, and the
+painter draws the run, its decorations and its `debug` box there.
 
 Two third-party crates stay behind one module each, so replacing them
 touches only that module: ttf-parser (font parsing) is used only in
@@ -139,8 +152,9 @@ document order. `FlowPart` tells
 the box painter which part of a flow to paint; leaf painters get a
 `ContentCtx` with the node's shift, per-line shifts and the page window.
 Elements with `debug` have their boxes recorded as they are painted
-(`paint/debug.rs`); the outlines are drawn last, over everything, the
-flow's clipped to its content band.
+(`paint/debug.rs`), a paragraph's with the lines and runs the text painter
+placed (`ContentPainter::paint_outlined`); the outlines are drawn last,
+over everything, the flow's clipped to its content band.
 
 Page-number placeholders are laid out as `999` until the page count is
 known. Then flow text that shows them gets the numbers of the page its

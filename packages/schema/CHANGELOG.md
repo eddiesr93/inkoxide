@@ -7,13 +7,57 @@ version 2.
 
 ## Unreleased
 
+Still document schema version 1.
+
 ### Added
 
+- `Style.textWrap` on text nodes: `wrap` (the default, first fit, as before) or `pretty`, which
+  sets each stretch between forced breaks as a whole (Knuth and Plass's total fit) and lets the
+  spaces of justified lines shrink by up to a third. Bounded per paragraph (20 000 break
+  opportunities, 512 open breakpoints, 2 097 152 lines tried), past which it breaks first fit.
+- `TextRun.verticalAlign`: `baseline` (the default), `super` or `sub`. A superscript's
+  baseline is raised and a subscript's lowered by the offsets the font gives (OS/2), for text
+  of the run's size, and the line grows to fit them. The run keeps its own `size`.
+- `TextRun.fontFeatures`: OpenType features by tag, as CSS `font-feature-settings`
+  (`{"tnum": 1, "liga": 0}`): 0 turns a feature off, 1 on, and a larger value picks an
+  alternate. At most 32 per run, values up to 65535, and 64 different sets in a document.
+- `BoxNode.backgroundImage` (`$defs/BackgroundImage`): an image painted into the box's padding
+  box, over its `backgroundColor` and under its borders and children, clipped to the padding box
+  rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
+  (default `fill`) and `objectPosition`, with the same bounds as on an `image` node. Optional;
+  documents without it render as before.
+- `Field.name` may contain dots, which make groups of fields: `address.street` is the field
+  `street` in the group `address`. A name has at most 32 parts of 1 to 128 characters, and at
+  most 512 characters in all (it was one part of at most 128). A name that is both a field and a
+  group (`a` and `a.b`) is `DUPLICATE_ID`. Documents without dots render as before.
+- `Field.kind: "list"`, a list box: `options` (required) and `font` (required) as for `select`,
+  and `value`, the selected option. `Field.multiSelect` (list only) lets several options be
+  selected; `value` is then an array of options, each at most once (at most 1000). An array
+  `value` on any other field is `INVALID_VALUE`.
+- `Field.format` (`$defs/FieldFormat`), on single-line text fields that are not passwords:
+  `type` (`number`, `percent`, `date`, `time`, `zip`, `zipPlus4`, `phone`, `ssn`) with
+  `decimals` (0 to 10), `separators`, `negative`, `currency` (at most 8 characters, no control
+  characters, quotes or backslashes) and `currencyBefore` for numbers, and `pattern` (required,
+  at most 64 characters) for dates and times. `value` must fit the format.
+- A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
+  `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
+  at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
+  `bookmark`, and no space in the layout.
 - SVG images may contain text (`<text>`, `<tspan>`). It is laid out with the document's fonts:
   `FontDecl.family`, `weight` and `style`, which were descriptive until now, are what its
   `font-family`, `font-weight` and `font-style` select a declared font by. A document whose SVG
   images have text must declare a font; one that declares none fails with `INVALID_IMAGE`.
   Documents with SVG images without text render as before.
+
+### Changed
+
+- `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
+  at most 8000 characters; longer ones are `INVALID_VALUE`.
+
+### Changed
+
+- `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of
+  each run on the line.
 
 ## 2.3.0 - 2026-10-13
 

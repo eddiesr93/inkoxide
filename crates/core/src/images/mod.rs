@@ -189,11 +189,13 @@ impl ImageStore {
 pub(crate) type ImageKey = u32;
 
 /// The unique images of one document, decoded, with the image each node
-/// shows.
+/// shows and the background image each box paints.
 pub(crate) struct ImageSet {
     pub images: Vec<Arc<DecodedImage>>,
-    /// Node address → image.
+    /// Image node address → image.
     by_node: HashMap<usize, ImageKey>,
+    /// Box address → its background image.
+    by_background: HashMap<usize, ImageKey>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -208,7 +210,18 @@ impl ImageSet {
         store: &ImageStore,
         decoder: &dyn ImageDecoder,
     ) -> Result<Self, InkoxideError> {
+        let source_data = |source: &ImageSource| match source {
+            ImageSource::Ref(id) => store
+                .get(id)
+                .cloned()
+                .ok_or_else(|| InkoxideError::Image(format!("image `{id}` is not registered"))),
+            ImageSource::Inline(inline) => inline
+                .data()
+                .map_err(|e| InkoxideError::Image(format!("inline image: {e}")))
+                .cloned(),
+        };
         let mut found: Vec<(usize, Arc<ImageData>)> = Vec::new();
+        let mut backgrounds: Vec<(usize, Arc<ImageData>)> = Vec::new();
         let mut stack: Vec<&Node> = Vec::new();
         for p in pages {
             stack.extend(p.children.iter());
@@ -216,19 +229,11 @@ impl ImageSet {
             stack.extend(p.footer.as_deref());
         }
         while let Some(n) = stack.pop() {
+            if let Some(bg) = &n.background_image {
+                backgrounds.push((node_key(n), source_data(&bg.source)?));
+            }
             match &n.kind {
-                NodeKind::Image { source, .. } => {
-                    let data = match source {
-                        ImageSource::Ref(id) => store.get(id).cloned().ok_or_else(|| {
-                            InkoxideError::Image(format!("image `{id}` is not registered"))
-                        })?,
-                        ImageSource::Inline(inline) => inline
-                            .data()
-                            .map_err(|e| InkoxideError::Image(format!("inline image: {e}")))?
-                            .clone(),
-                    };
-                    found.push((node_key(n), data));
-                }
+                NodeKind::Image { source, .. } => found.push((node_key(n), source_data(source)?)),
                 _ => stack.extend(n.children()),
             }
         }
@@ -236,7 +241,7 @@ impl ImageSet {
         // Dedupe by content hash; keys follow first appearance in hash
         // order so numbering is deterministic.
         let mut unique: BTreeMap<u64, Arc<ImageData>> = BTreeMap::new();
-        for (_, d) in &found {
+        for (_, d) in found.iter().chain(&backgrounds) {
             unique.entry(d.hash).or_insert_with(|| d.clone());
         }
         let mut key_of: HashMap<u64, ImageKey> = HashMap::new();
@@ -248,11 +253,17 @@ impl ImageSet {
             images.push(img);
             key_of.insert(*hash, i as ImageKey);
         }
-        let by_node = found
-            .into_iter()
-            .map(|(n, d)| (n, key_of[&d.hash]))
-            .collect();
-        Ok(Self { images, by_node })
+        let keys = |found: Vec<(usize, Arc<ImageData>)>| {
+            found
+                .into_iter()
+                .map(|(n, d)| (n, key_of[&d.hash]))
+                .collect()
+        };
+        Ok(Self {
+            images,
+            by_node: keys(found),
+            by_background: keys(backgrounds),
+        })
     }
 
     /// Converts the SVGs with text again, each text laid out with this
@@ -294,15 +305,25 @@ impl ImageSet {
         self.by_node.get(&node_key(node)).copied()
     }
 
+    /// The background image of box `node`.
+    pub fn background_key(&self, node: &Node) -> Option<ImageKey> {
+        self.by_background.get(&node_key(node)).copied()
+    }
+
     pub fn get(&self, key: ImageKey) -> &DecodedImage {
         &self.images[key as usize]
     }
 
     /// Intrinsic size in points (96 dpi, after EXIF orientation).
     pub fn intrinsic(&self, node: &Node) -> Option<(f32, f32)> {
-        let img = self.get(self.key(node)?);
-        let (w, h) = img.display_size();
-        Some((w * PT_PER_PX, h * PT_PER_PX))
+        Some(self.intrinsic_of(self.key(node)?))
+    }
+
+    /// Intrinsic size of image `key` in points (96 dpi, after EXIF
+    /// orientation).
+    pub fn intrinsic_of(&self, key: ImageKey) -> (f32, f32) {
+        let (w, h) = self.get(key).display_size();
+        (w * PT_PER_PX, h * PT_PER_PX)
     }
 
     /// Size of an image leaf: an explicit dimension wins and the other
@@ -347,7 +368,6 @@ impl ImageSet {
         ctx: &crate::paint::ContentCtx<'_>,
         ops: &mut Vec<crate::paint::Op>,
     ) {
-        use crate::paint::Op;
         let NodeKind::Image {
             fit,
             object_position,
@@ -356,7 +376,7 @@ impl ImageSet {
         else {
             return;
         };
-        let (Some(key), Some(intrinsic)) = (self.key(node), self.intrinsic(node)) else {
+        let Some(key) = self.key(node) else {
             return;
         };
         let Rect {
@@ -365,11 +385,30 @@ impl ImageSet {
             w: cw,
             h: ch,
         } = geo.content_box();
-        if cw <= 0.0 || ch <= 0.0 {
+        let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
+        // `borderRadius` rounds the image without `overflow: hidden`.
+        let radii = crate::paint::content_radii(&node.style, geo);
+        self.paint_in(key, bx, *fit, *object_position, &radii, ops);
+    }
+
+    /// Paints image `key` into `bx` (page coordinates) according to `fit`
+    /// and `position`, clipped to `bx` rounded by `radii`.
+    pub fn paint_in(
+        &self,
+        key: ImageKey,
+        bx: Rect,
+        fit: ImageFit,
+        position: ObjectPosition,
+        radii: &crate::paint::Radii,
+        ops: &mut Vec<crate::paint::Op>,
+    ) {
+        use crate::paint::Op;
+        if bx.w <= 0.0 || bx.h <= 0.0 {
             return;
         }
-        let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
-        let (rect, clip) = match (&self.get(key).body, fit) {
+        let img = self.get(key);
+        let intrinsic = self.intrinsic_of(key);
+        let (rect, clip) = match (&img.body, fit) {
             // The box is the SVG's viewport, which its `viewBox` fits.
             (
                 ImageBody::Svg {
@@ -377,14 +416,12 @@ impl ImageSet {
                 },
                 ImageFit::Fill,
             ) => vb.place(intrinsic, bx),
-            _ => fit_rect(*fit, *object_position, bx, intrinsic),
+            _ => fit_rect(fit, position, bx, intrinsic),
         };
-        // `borderRadius` rounds the image without `overflow: hidden`.
-        let radii = crate::paint::content_radii(&node.style, geo);
         ops.push(Op::Save);
-        if !crate::paint::is_square(&radii) {
+        if !crate::paint::is_square(radii) {
             ops.push(Op::ClipPath {
-                path: crate::paint::rounded_rect(bx, &radii),
+                path: crate::paint::rounded_rect(bx, radii),
                 rule: crate::paint::FillRule::NonZero,
             });
         } else if clip {
@@ -392,7 +429,7 @@ impl ImageSet {
         }
         ops.push(Op::Image {
             key,
-            matrix: image_matrix(self.get(key).orientation, rect),
+            matrix: image_matrix(img.orientation, rect),
         });
         ops.push(Op::Restore);
     }

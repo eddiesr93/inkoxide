@@ -141,8 +141,23 @@ fn structs_match_schema() {
     );
     check(
         &s,
+        Some("BackgroundImage"),
+        &node(r#"{"type":"box","backgroundImage":{@"src":"i"}}"#),
+    );
+    check(
+        &s,
         Some("Field"),
         &node(r#"{"type":"field","field":{@"name":"n","kind":"text"}}"#),
+    );
+    check(
+        &s,
+        Some("FieldFormat"),
+        &node(r#"{"type":"field","field":{"name":"n","kind":"text","format":{@"type":"zip"}}}"#),
+    );
+    check(
+        &s,
+        Some("Note"),
+        &node(r#"{"type":"note","note":{@"contents":"n"}}"#),
     );
 
     // Node: the union of all node-type properties.
@@ -155,6 +170,7 @@ fn structs_match_schema() {
         "PageBreakNode",
         "SpacerNode",
         "FieldNode",
+        "NoteNode",
     ] {
         want.extend(schema_props(&s, Some(d)));
     }
@@ -338,10 +354,12 @@ type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
 #[test]
 #[allow(clippy::cast_precision_loss)]
 fn named_bounds_match_schema() {
+    use crate::forms::format::{MAX_CURRENCY, MAX_DECIMALS, MAX_PATTERN};
     use crate::validate::rules::{
-        MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FIELD_NAME,
-        MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_ORPHANS, MAX_TEXT_INDENT,
-        MAX_WEIGHT,
+        MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS, MAX_FEATURE_VALUE,
+        MAX_FIELD_NAME, MAX_FIELD_OPTION, MAX_FIELD_OPTIONS, MAX_FIELD_VALUE, MAX_FONT_FEATURES,
+        MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_ORPHANS,
+        MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -363,6 +381,30 @@ fn named_bounds_match_schema() {
         )
     };
     let chars = |n: f64| "x".repeat(n as usize);
+    let format = |f: &str| {
+        doc(
+            font,
+            &format!(
+                r#"{{"type":"field","field":{{"name":"n","kind":"text","font":"f","format":{{{f}}}}}}}"#
+            ),
+        )
+    };
+    let select = |options: &[String]| {
+        doc(
+            font,
+            &format!(
+                r#"{{"type":"field","field":{{"name":"n","kind":"select","font":"f","options":{}}}}}"#,
+                serde_json::to_string(options).unwrap()
+            ),
+        )
+    };
+    // `n` features, each with a tag of its own.
+    let features = |n: f64| {
+        (0..n as usize)
+            .map(|k| format!(r#""f{k:03}":1"#))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
     let run = "pages[0].children[0].runs[0]";
     let style = "pages[0].children[0].style";
     // (schema pointer, the engine's bound, the document with a value, the
@@ -380,17 +422,131 @@ fn named_bounds_match_schema() {
             "/$defs/Field/properties/name/maxLength",
             MAX_FIELD_NAME as f64,
             Box::new(|n| {
+                // Parts short enough, with a dot every 128 characters.
+                let name: String = (0..n as usize)
+                    .map(|i| if i % 128 == 64 { '.' } else { 'x' })
+                    .collect();
                 doc(
                     "",
-                    &format!(
-                        r#"{{"type":"field","field":{{"name":"{}","kind":"checkbox"}}}}"#,
-                        chars(n)
-                    ),
+                    &format!(r#"{{"type":"field","field":{{"name":"{name}","kind":"checkbox"}}}}"#),
                 )
             }),
             MAX_FIELD_NAME as f64 + 1.0,
             "INVALID_VALUE",
             "pages[0].children[0].field.name".into(),
+        ),
+        (
+            "/$defs/Field/properties/options/maxItems",
+            MAX_FIELD_OPTIONS as f64,
+            Box::new(|n| select(&vec!["o".to_string(); n as usize])),
+            MAX_FIELD_OPTIONS as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.options".into(),
+        ),
+        (
+            "/$defs/Field/properties/options/items/maxLength",
+            MAX_FIELD_OPTION as f64,
+            Box::new(|n| select(&[chars(n)])),
+            MAX_FIELD_OPTION as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.options[0]".into(),
+        ),
+        (
+            "/$defs/Field/properties/value/oneOf/0/maxLength",
+            MAX_FIELD_VALUE as f64,
+            Box::new(|n| {
+                doc(
+                    font,
+                    &format!(
+                        r#"{{"type":"field","field":{{"name":"n","kind":"text","font":"f","value":"{}"}}}}"#,
+                        chars(n)
+                    ),
+                )
+            }),
+            MAX_FIELD_VALUE as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.value".into(),
+        ),
+        (
+            "/$defs/Field/properties/value/oneOf/1/maxItems",
+            MAX_FIELD_OPTIONS as f64,
+            Box::new(|n| {
+                let options: Vec<String> = (0..(n as usize).min(MAX_FIELD_OPTIONS))
+                    .map(|i| format!("o{i}"))
+                    .collect();
+                let values: Vec<String> = (0..n as usize)
+                    .map(|i| format!("o{}", i % MAX_FIELD_OPTIONS))
+                    .collect();
+                doc(
+                    font,
+                    &format!(
+                        r#"{{"type":"field","field":{{"name":"n","kind":"list","multiSelect":true,"font":"f","options":{},"value":{}}}}}"#,
+                        serde_json::to_string(&options).unwrap(),
+                        serde_json::to_string(&values).unwrap()
+                    ),
+                )
+            }),
+            MAX_FIELD_OPTIONS as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.value".into(),
+        ),
+        (
+            "/$defs/FieldFormat/properties/decimals/maximum",
+            f64::from(MAX_DECIMALS),
+            Box::new(|v| format(&format!(r#""type":"number","decimals":{v}"#))),
+            f64::from(MAX_DECIMALS) + 1.0,
+            "OUT_OF_RANGE",
+            "pages[0].children[0].field.format.decimals".into(),
+        ),
+        (
+            "/$defs/FieldFormat/properties/currency/maxLength",
+            MAX_CURRENCY as f64,
+            Box::new(|n| format(&format!(r#""type":"number","currency":"{}""#, chars(n)))),
+            MAX_CURRENCY as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.format.currency".into(),
+        ),
+        (
+            "/$defs/FieldFormat/properties/pattern/maxLength",
+            MAX_PATTERN as f64,
+            Box::new(|n| {
+                let pattern: String = (0..n as usize)
+                    .map(|i| if i % 2 == 0 { 'd' } else { '/' })
+                    .collect();
+                format(&format!(r#""type":"date","pattern":"{pattern}""#))
+            }),
+            MAX_PATTERN as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].field.format.pattern".into(),
+        ),
+        (
+            "/$defs/Note/properties/contents/maxLength",
+            MAX_NOTE as f64,
+            Box::new(|n| {
+                doc(
+                    "",
+                    &format!(r#"{{"type":"note","note":{{"contents":"{}"}}}}"#, chars(n)),
+                )
+            }),
+            MAX_NOTE as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].note.contents".into(),
+        ),
+        (
+            "/$defs/Note/properties/author/maxLength",
+            MAX_NOTE_AUTHOR as f64,
+            Box::new(|n| {
+                doc(
+                    "",
+                    &format!(
+                        r#"{{"type":"note","note":{{"contents":"c","author":"{}"}}}}"#,
+                        chars(n)
+                    ),
+                )
+            }),
+            MAX_NOTE_AUTHOR as f64 + 1.0,
+            "INVALID_VALUE",
+            "pages[0].children[0].note.author".into(),
         ),
         (
             "/$defs/TextRun/properties/size/maximum",
@@ -464,6 +620,22 @@ fn named_bounds_match_schema() {
             format!("{run}.letterSpacing"),
         ),
         (
+            "/$defs/TextRun/properties/fontFeatures/maxProperties",
+            MAX_FONT_FEATURES as f64,
+            Box::new(|n| text("", &format!(r#","fontFeatures":{{{}}}"#, features(n)))),
+            MAX_FONT_FEATURES as f64 + 1.0,
+            "OUT_OF_RANGE",
+            format!("{run}.fontFeatures"),
+        ),
+        (
+            "/$defs/TextRun/properties/fontFeatures/additionalProperties/maximum",
+            f64::from(MAX_FEATURE_VALUE),
+            Box::new(|v| text("", &format!(r#","fontFeatures":{{"salt":{v}}}"#))),
+            f64::from(MAX_FEATURE_VALUE) + 1.0,
+            "OUT_OF_RANGE",
+            format!("{run}.fontFeatures"),
+        ),
+        (
             "/$defs/Style/properties/lineHeight/maximum",
             f64::from(MAX_LINE_HEIGHT),
             Box::new(|v| text(&format!(r#""lineHeight":{v}"#), "")),
@@ -516,6 +688,47 @@ fn named_bounds_match_schema() {
             one(code, &path),
             "{pointer}: {past}"
         );
+    }
+}
+
+/// The schema's pattern for field names states the engine's bounds on
+/// their parts, and the engine enforces them.
+#[test]
+fn field_name_parts_match_schema() {
+    use crate::validate::rules::{MAX_FIELD_PART, MAX_FIELD_PARTS};
+    let s = schema();
+    let pattern = s
+        .pointer("/$defs/Field/properties/name/pattern")
+        .and_then(serde_json::Value::as_str)
+        .unwrap();
+    assert_eq!(
+        pattern,
+        format!(
+            r"^[^.]{{1,{MAX_FIELD_PART}}}(\.[^.]{{1,{MAX_FIELD_PART}}}){{0,{}}}$",
+            MAX_FIELD_PARTS - 1
+        )
+    );
+    let doc = |name: &str| {
+        format!(
+            r#"{{"version":1,"pages":[{{{PAGE},"children":[{{"type":"field","field":{{"name":"{name}","kind":"checkbox"}}}}]}}]}}"#
+        )
+    };
+    let path = "pages[0].children[0].field.name";
+    let part = "p".repeat(MAX_FIELD_PART);
+    let parts = |n: usize| vec!["p"; n].join(".");
+    for ok in [part.clone(), format!("a.{part}"), parts(MAX_FIELD_PARTS)] {
+        assert_eq!(errors(&doc(&ok), &[]), [], "{ok}");
+    }
+    for bad in [
+        format!("{part}p"),
+        format!("a.{part}p"),
+        parts(MAX_FIELD_PARTS + 1),
+        "a..b".into(),
+        ".a".into(),
+        "a.".into(),
+        String::new(),
+    ] {
+        assert_eq!(errors(&doc(&bad), &[]), one("INVALID_VALUE", path), "{bad}");
     }
 }
 

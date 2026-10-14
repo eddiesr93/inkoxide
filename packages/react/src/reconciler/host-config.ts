@@ -43,10 +43,13 @@ const FLOW = new Set<string>([
   HOST.Text,
   HOST.Link,
   HOST.Image,
+  HOST.ImageBackground,
   HOST.Table,
   HOST.PageBreak,
   HOST.Spacer,
   HOST.Field,
+  HOST.FieldSet,
+  HOST.Note,
   HOST.Svg,
   HOST.Canvas,
 ]);
@@ -97,7 +100,9 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
     case HOST.Header:
     case HOST.Footer:
     case HOST.View:
+    case HOST.ImageBackground:
     case HOST.Link:
+    case HOST.FieldSet:
     case HOST.Cell:
       return FLOW.has(child);
     case HOST.Svg:
@@ -120,7 +125,10 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
 const TEXT_PARENTS = new Set<string>([
   HOST.Text,
   HOST.View,
+  HOST.ImageBackground,
   HOST.Link,
+  HOST.FieldSet,
+  HOST.Note,
   HOST.Cell,
   HOST.Header,
   HOST.Footer,
@@ -159,6 +167,9 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
   }
   if (child === HOST.Tspan) {
     return new TemplateError('<Tspan> goes inside a <Text> in an <Svg>.');
+  }
+  if (parent === HOST.Note) {
+    return new TemplateError(`A <Note> contains only text: ${name(child)} cannot be inside it.`);
   }
   if (parent === HOST.Text) {
     return new TemplateError(

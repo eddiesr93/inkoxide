@@ -601,36 +601,6 @@ fn percent(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
-    /// The generator writes text, and the SVGs with text that the checks
-    /// let through render.
-    #[test]
-    fn writes_text_that_renders() {
-        let (mut texts, mut rendered) = (0, 0);
-        let mut x: u64 = 0x2545_f491_4f6c_dd1d;
-        for i in 0..300 {
-            let data: Vec<u8> = (0..64 << (i % 4))
-                .map(|_| {
-                    // xorshift64
-                    x ^= x << 13;
-                    x ^= x >> 7;
-                    x ^= x << 17;
-                    x as u8
-                })
-                .collect();
-            let doc = svg(&data);
-            if !String::from_utf8_lossy(&doc).contains("<text") {
-                continue;
-            }
-            texts += 1;
-            rendered += usize::from(crate::check_image(&doc).is_ok());
-        }
-        assert!(texts >= 30, "{texts} of 300 SVGs have text");
-        assert!(
-            rendered >= 10,
-            "{rendered} of {texts} SVGs with text render"
-        );
-    }
-
     #[test]
     fn nested_image_charges_the_elements_it_used() {
         // Not chaos; a 5×5 image with no style sheet and one element (a

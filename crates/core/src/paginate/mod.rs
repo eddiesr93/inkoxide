@@ -173,6 +173,13 @@ impl PageWindow {
         top >= self.top - HAIR && top < self.bottom - HAIR
     }
 
+    /// Whether something with no height at paged `top` is on the page: it
+    /// starts on it, or sits on its bottom edge (after the last content of
+    /// a flow, which makes no page of its own).
+    pub fn holds(self, top: f32) -> bool {
+        self.starts(top) || (top >= self.bottom - HAIR && top < self.bottom + HAIR)
+    }
+
     /// The part of `top..bottom` (page coordinates) shown on the page, for
     /// a page whose paged y 0 is at page y `dy`.
     pub fn clip(self, top: f32, bottom: f32, dy: f32) -> (f32, f32) {

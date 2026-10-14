@@ -1,0 +1,254 @@
+//! Text annotations: one per painted note, drawn as a sticky-note icon by
+//! an appearance stream of its own (PDF/A-2b requires one, and it looks the
+//! same in every viewer).
+
+use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
+use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
+
+use super::{annot_rect, content_bytes, path, q, set_fill, EncodedPage, RefAlloc};
+use crate::notes::{NoteOp, ICON};
+use crate::paint::{rounded_rect, Rect};
+use crate::schema::{Color, NOTE_YELLOW};
+
+/// Writes the notes of every page, in page order; appends their refs to
+/// `annots` (per page).
+pub(super) fn write_notes(
+    pdf: &mut Pdf,
+    alloc: &mut RefAlloc,
+    pages: &[EncodedPage],
+    page_refs: &[Ref],
+    annots: &mut [Vec<Ref>],
+) {
+    for (i, page) in pages.iter().enumerate() {
+        for n in &page.notes {
+            let r = alloc.next();
+            let ap = alloc.next();
+            write_note(pdf, (r, ap), n, page, page_refs[i]);
+            annots[i].push(r);
+        }
+    }
+}
+
+/// Writes note `n` of `page` as annotation `r`, with appearance `ap`.
+fn write_note(pdf: &mut Pdf, (r, ap): (Ref, Ref), n: &NoteOp, page: &EncodedPage, page_ref: Ref) {
+    let color = n.note.color.unwrap_or(NOTE_YELLOW);
+    // Inside the page, where viewers show it.
+    let x = n.x.min(page.width - ICON).max(0.0);
+    let y = n.y.min(page.height - ICON).max(0.0);
+    let mut a = pdf.annotation(r);
+    a.subtype(AnnotationType::Text)
+        .rect(annot_rect(Rect::new(x, y, ICON, ICON), page.height))
+        .page(page_ref)
+        .contents(TextStr(&n.note.contents))
+        .color_rgb(q(color[0]), q(color[1]), q(color[2]))
+        .flags(AnnotationFlags::PRINT | AnnotationFlags::NO_ZOOM | AnnotationFlags::NO_ROTATE)
+        .icon(AnnotationIcon::Note);
+    if let Some(author) = &n.note.author {
+        a.author(TextStr(author));
+    }
+    if n.note.open {
+        a.pair(Name(b"Open"), true);
+    }
+    a.appearance().normal().stream(ap);
+    a.finish();
+    let content = icon(&color);
+    pdf.form_xobject(ap, &content)
+        .bbox(PdfRect::new(0.0, 0.0, ICON, ICON));
+}
+
+/// A sticky note in `color`: a rounded square with a darker outline and
+/// three lines of "text".
+fn icon(color: &Color) -> Vec<u8> {
+    let dark = color.map(|v| q(v * 0.45));
+    let mut c = Content::new();
+    set_fill(&mut c, color);
+    c.set_stroke_rgb(dark[0], dark[1], dark[2]);
+    c.set_line_width(1.0);
+    let body = rounded_rect(
+        Rect::new(1.0, 1.0, ICON - 2.0, ICON - 2.0),
+        &[(3.0, 3.0); 4],
+    );
+    path(&mut c, &body.segs);
+    c.fill_nonzero_and_stroke();
+    c.set_line_width(1.25);
+    for y in [13.5, 10.0, 6.5] {
+        c.move_to(5.0, y);
+        c.line_to(ICON - 5.0, y);
+    }
+    c.stroke();
+    content_bytes(c)
+}
+
+#[cfg(test)]
+mod tests {
+    /// The PDF (uncompressed, as text) of `pages` pages of 200 × 200 pt,
+    /// with `header` and `children`.
+    fn render(header: &str, children: &str, pages: usize, pdf_a: bool) -> String {
+        let header = if header.is_empty() {
+            String::new()
+        } else {
+            format!(r#""header":{header},"#)
+        };
+        let page =
+            format!(r#"{{"size":{{"width":200,"height":200}},{header}"children":[{children}]}}"#);
+        let doc = format!(
+            r#"{{"version":1,"pages":[{}]}}"#,
+            vec![page; pages].join(",")
+        );
+        let options = crate::RenderOptions::default()
+            .with_compress(false)
+            .with_pdf_a(pdf_a);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &options,
+            &crate::FontStore::new(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        String::from_utf8_lossy(&pdf).into_owned()
+    }
+
+    fn note(json: &str) -> String {
+        format!(r#"{{"type":"note","note":{json}}}"#)
+    }
+
+    /// The `/Rect` of every annotation, in order.
+    fn rects(pdf: &str) -> Vec<[f32; 4]> {
+        pdf.split("/Rect [")
+            .skip(1)
+            .map(|s| {
+                let v: Vec<f32> = s
+                    .split(']')
+                    .next()
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|n| n.parse().unwrap())
+                    .collect();
+                [v[0], v[1], v[2], v[3]]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_note_is_a_text_annotation_with_an_icon() {
+        let pdf = render(
+            "",
+            &note(r#"{"contents":"Check (this)","author":"Ana","open":true}"#),
+            1,
+            false,
+        );
+        for entry in [
+            "/Subtype /Text",
+            "/Contents (Check (this))",
+            "/T (Ana)",
+            "/Name /Note",
+            "/C [1 0.82 0.2]",
+            "/Open true",
+            "/F 28",
+            "/AP <<",
+        ] {
+            assert!(pdf.contains(entry), "{entry}: {pdf}");
+        }
+        assert_eq!(rects(&pdf), [[0.0, 180.0, 20.0, 200.0]]);
+        // The icon is in the appearance stream, in the note's colour.
+        assert!(pdf.contains("/BBox [0 0 20 20]"), "{pdf}");
+        assert!(pdf.contains("1 0.82 0.2 rg"), "{pdf}");
+        // Closed and anonymous by default, in its own colour.
+        let pdf = render("", &note(r#"{"contents":"x","color":[0,0,1,1]}"#), 1, false);
+        assert!(!pdf.contains("/Open") && !pdf.contains("/T ("), "{pdf}");
+        assert!(pdf.contains("/C [0 0 1]"), "{pdf}");
+    }
+
+    #[test]
+    fn notes_take_no_space_and_stay_inside_the_page() {
+        // Between two boxes, which touch.
+        let pdf = render(
+            "",
+            &[
+                r#"{"type":"box","style":{"height":50}}"#.to_string(),
+                note(r#"{"contents":"x"}"#),
+                r#"{"type":"box","link":"https://a.example","style":{"height":10}}"#.to_string(),
+            ]
+            .join(","),
+            1,
+            false,
+        );
+        assert_eq!(
+            rects(&pdf),
+            [[0.0, 140.0, 200.0, 150.0], [0.0, 130.0, 20.0, 150.0]]
+        );
+        // At the bottom right corner, the icon is moved in.
+        let pdf = render(
+            "",
+            r#"{"type":"note","style":{"position":"absolute","inset":{"left":195,"top":195}},"note":{"contents":"x"}}"#,
+            1,
+            false,
+        );
+        assert_eq!(rects(&pdf), [[180.0, 0.0, 200.0, 20.0]]);
+    }
+
+    #[test]
+    fn a_note_after_a_break_or_on_the_bottom_edge_is_on_one_page() {
+        let full = r#"{"type":"box","style":{"height":200}}"#;
+        let count = |pdf: &str| pdf.matches("/Subtype /Text").count();
+        // On the bottom edge of the last page.
+        let pdf = render(
+            "",
+            &format!("{full},{}", note(r#"{"contents":"x"}"#)),
+            1,
+            false,
+        );
+        assert_eq!(count(&pdf), 1);
+        assert_eq!(rects(&pdf), [[0.0, 0.0, 20.0, 20.0]]);
+        // At the top of the next page, before more content.
+        let pdf = render(
+            "",
+            &format!("{full},{},{full}", note(r#"{"contents":"x"}"#)),
+            1,
+            false,
+        );
+        assert_eq!(count(&pdf), 1);
+        assert_eq!(pdf.matches("/Type /Page\n").count(), 2, "{pdf}");
+        assert_eq!(rects(&pdf), [[0.0, 180.0, 20.0, 200.0]]);
+        // After a forced break.
+        let pdf = render(
+            "",
+            &format!(
+                r#"{{"type":"box","style":{{"height":20}}}},{{"type":"pageBreak"}},{},{{"type":"box","style":{{"height":20}}}}"#,
+                note(r#"{"contents":"x"}"#)
+            ),
+            1,
+            false,
+        );
+        assert_eq!(count(&pdf), 1);
+    }
+
+    #[test]
+    fn a_note_in_a_header_is_on_every_page() {
+        let pdf = render(&note(r#"{"contents":"x"}"#), "", 3, false);
+        assert_eq!(pdf.matches("/Subtype /Text").count(), 3);
+    }
+
+    #[test]
+    fn a_transformed_note_moves_its_corner_and_stays_upright() {
+        let pdf = render(
+            "",
+            &format!(
+                r#"{{"type":"box","style":{{"width":100,"height":40,"transform":[{{"translate":[50,60]}},{{"rotate":90}}]}},"children":[{}]}}"#,
+                note(r#"{"contents":"x"}"#)
+            ),
+            1,
+            false,
+        );
+        // The top-left corner (0, 0) turns a quarter around (50, 20), then
+        // moves by (50, 60): to (120, 30).
+        assert_eq!(rects(&pdf), [[120.0, 150.0, 140.0, 170.0]]);
+    }
+
+    #[test]
+    fn pdf_a_keeps_the_appearance_and_the_print_flag() {
+        let pdf = render("", &note(r#"{"contents":"x"}"#), 1, true);
+        assert!(pdf.contains("/F 28") && pdf.contains("/AP <<"), "{pdf}");
+    }
+}

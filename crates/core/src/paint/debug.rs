@@ -1,5 +1,6 @@
 //! `debug` outlines: the margin, border, padding and content boxes of an
-//! element, and its size as a small label, drawn over the page.
+//! element, and its size as a small label, drawn over the page; for a
+//! paragraph, also its lines and the runs on each line.
 //!
 //! The box painter records a [`DebugBox`] for each element to outline as
 //! it paints it (it knows the element's boxes on this page, split ones
@@ -10,7 +11,7 @@
 use std::collections::HashMap;
 
 use super::shapes::{push_rounded_rect, NO_RADII};
-use super::{with_alpha, FillRule, Op, Path, PathSeg, Rect};
+use super::{with_alpha, Dash, FillRule, Op, Path, PathSeg, Rect};
 use crate::schema::{Color, Edges, PageSpec};
 
 /// Margin: orange, like browser developer tools.
@@ -25,6 +26,13 @@ const CONTENT_WIDTH: f32 = 0.5;
 /// Label background (blue) and digits (white).
 pub(crate) const LABEL_BG: Color = [0.16, 0.38, 0.75, 0.85];
 const LABEL_FG: Color = [1.0, 1.0, 1.0, 1.0];
+
+/// Line box outline (dashed) and baseline of a paragraph line.
+pub(crate) const LINE: Color = [0.2, 0.5, 0.9, 0.6];
+pub(crate) const BASELINE: Color = [0.85, 0.2, 0.55, 0.8];
+const LINE_WIDTH: f32 = 0.35;
+/// Runs on a line, alternately purple and teal, so that neighbours differ.
+pub(crate) const RUN: [Color; 2] = [[0.6, 0.35, 0.85, 0.2], [0.15, 0.65, 0.7, 0.2]];
 
 /// Glyph unit of the label digits, points: digits are 2 × 4 units.
 const UNIT: f32 = 1.1;
@@ -48,6 +56,22 @@ pub(crate) struct DebugBox {
     pub shown: (f32, f32),
     /// Transform in effect for the element (rotation, `transform`).
     pub ctm: Option<[f32; 6]>,
+    /// A paragraph's lines painted on this page.
+    pub lines: Vec<DebugLine>,
+}
+
+/// One line of a paragraph, outlined: its line box, its baseline and its
+/// runs.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DebugLine {
+    /// From the start of the line's first glyph to the end of its last, as
+    /// high as the line box.
+    pub rect: Rect,
+    pub baseline: f32,
+    /// Each run's part of the line, in visual order, with the run's index:
+    /// the advance of its glyphs, from its font's ascender to its
+    /// descender around its own baseline.
+    pub runs: Vec<(Rect, u16)>,
 }
 
 /// What to outline while painting one part of a page.
@@ -167,6 +191,7 @@ pub(crate) fn page_box(spec: &PageSpec) -> DebugBox {
         size: [s.width, s.height],
         shown: (0.0, s.height),
         ctm: None,
+        lines: Vec::new(),
     }
 }
 
@@ -198,6 +223,9 @@ fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Labels) {
     if any(b.padding) {
         ring(padding, content, PADDING, ops);
     }
+    if !b.lines.is_empty() {
+        lines(&b.lines, ops);
+    }
     let mut path = Path::default();
     push_rounded_rect(&mut path, content, &NO_RADII);
     ops.push(Op::StrokePath {
@@ -223,6 +251,56 @@ fn draw_box(b: &DebugBox, ops: &mut Vec<Op>, labels: &mut Labels) {
         labels.place(corners, (lw, lh))
     };
     label(place.0, place.1, &text, ops);
+}
+
+/// Draws a paragraph's lines: its runs filled, each colour as one path,
+/// then the line boxes dashed and the baselines.
+fn lines(lines: &[DebugLine], ops: &mut Vec<Op>) {
+    for (k, color) in RUN.into_iter().enumerate() {
+        let mut path = Path::default();
+        let runs = lines.iter().flat_map(|l| &l.runs);
+        for (rect, _) in runs.filter(|(_, run)| usize::from(*run) % 2 == k) {
+            push_rounded_rect(&mut path, *rect, &NO_RADII);
+        }
+        if !path.segs.is_empty() {
+            with_alpha(ops, 1.0, color[3], |ops| {
+                ops.push(Op::FillPath {
+                    path,
+                    color,
+                    rule: FillRule::NonZero,
+                });
+            });
+        }
+    }
+    let mut boxes = Path::default();
+    let mut baselines = Path::default();
+    for l in lines {
+        push_rounded_rect(&mut boxes, l.rect, &NO_RADII);
+        baselines.segs.push(PathSeg::MoveTo(l.rect.x, l.baseline));
+        baselines
+            .segs
+            .push(PathSeg::LineTo(l.rect.x + l.rect.w, l.baseline));
+    }
+    for (path, color, dash) in [
+        (
+            boxes,
+            LINE,
+            Some(Dash {
+                pattern: [1.5, 1.0],
+                round_cap: false,
+            }),
+        ),
+        (baselines, BASELINE, None),
+    ] {
+        with_alpha(ops, 1.0, color[3], |ops| {
+            ops.push(Op::StrokePath {
+                path,
+                color,
+                width: LINE_WIDTH,
+                dash,
+            });
+        });
+    }
 }
 
 fn overlap(a: Rect, b: Rect) -> bool {
@@ -393,6 +471,7 @@ mod tests {
                 size: [50.0, 20.0],
                 shown: (10.0, 30.0),
                 ctm: None,
+                lines: Vec::new(),
             }],
             &mut ops,
             &mut Labels::default(),

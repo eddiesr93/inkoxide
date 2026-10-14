@@ -83,8 +83,8 @@ that are supported and tested; each example is a unit test.
 | `skew-*`, `skew-x-*`, `skew-y-*`, `transform-[…]`, `transform-none` | `transform` | `skew-x-12` → `{"transform":[{"skew":[12,0]}]}` | Composed in CSS order: translate, rotate, scale, then `transform`. 3D functions (`rotate-x-*`, `perspective-*`) are not supported. |
 | `origin-*` | `transformOrigin` | `origin-center` → `{"transformOrigin":["50%","50%"]}` |  |
 | `z-*`, `-z-*`, `z-auto` | `zIndex` | `z-10` → `{"zIndex":10}` | Paint order among siblings; not on table cells. |
-| `object-contain`, `object-cover`, `object-fill`, `object-none` | image `fit` | `object-contain` → `{"objectFit":"contain"}` | On `Image` only. The `fit` prop wins over it. |
-| `object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]` | image `objectPosition` | `object-left-top` → `{"objectPosition":{"x":"left","y":"top"}}` | On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported. |
+| `object-contain`, `object-cover`, `object-fill`, `object-none` | image `fit` | `object-contain` → `{"objectFit":"contain"}` | On `Image` and `ImageBackground` only. The `fit` prop wins over it. |
+| `object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]` | image `objectPosition` | `object-left-top` → `{"objectPosition":{"x":"left","y":"top"}}` | On `Image` and `ImageBackground` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported. |
 
 ## Border
 
@@ -100,6 +100,7 @@ that are supported and tested; each example is a unit test.
 
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
+| `align-super`, `align-sub`, `align-baseline` | run `verticalAlign` (on `Text`) | `align-super` → `{"verticalAlign":"super"}` | Raises or lowers the baseline by the font's superscript or subscript offset; the size stays: add a smaller `text-*`. |
 | `text-{size}`, `text-[11pt]`, `text-{size}/{leading}` | run `size` (and `lineHeight` when the size utility sets one) | `text-xs` → `{"fontSize":9,"lineHeight":{"mult":1.333333}}` | `text-base` is 12pt. Named sizes also set Tailwind's line height; `leading-*` overrides it. |
 | `font-sans`, `font-serif`, `font-mono`, `font-display`, `font-[…]` | run `font` (through the FontRegistry) | `font-sans` → `{"fontFamily":["Inter","Noto Sans"]}` | The first family of the stack that is registered wins. No serif face is bundled, so the default theme sets `font-serif` to Noto Sans: register a serif and set `--font-serif` in your theme. |
 | `font-thin` … `font-black`, `font-[650]` | run `font` (weight) | `font-light` → `{"fontWeight":300}` | A missing weight falls back to the nearest registered one. |
@@ -108,6 +109,8 @@ that are supported and tested; each example is a unit test.
 | `text-left`, `text-center`, `text-right`, `text-justify`, `text-start`, `text-end` | `textAlign` | `text-left` → `{"textAlign":"left"}` |  |
 | `leading-*` | `lineHeight` | `leading-none` → `{"lineHeight":{"mult":1}}` | Unitless values are multipliers; lengths (`leading-6`) are divided by the text size. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5). |
 | `tracking-*` | run `letterSpacing` | `tracking-wide` → `{"letterSpacing":{"em":0.025}}` |  |
+| `font-features-[…]` | run `fontFeatures` | `font-features-['tnum','ss01']` → `{"fontFeatureSettings":{"tnum":1,"ss01":1}}` | CSS `font-feature-settings`, with `_` for spaces: `font-features-['tnum','ss01']`. |
+| `tabular-nums`, `proportional-nums`, `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions`, `stacked-fractions`, `normal-nums` | run `fontFeatures` | `tabular-nums` → `{"fontVariantNumeric":{"tnum":1}}` | The OpenType features of CSS `font-variant-numeric` (`tnum`, `pnum`, `lnum`, `onum`, `zero`, `ordn`, `frac`, `afrc`): the font must have them. `font-features-[…]` wins over them. |
 | `underline`, `line-through`, `no-underline` | run `decoration` | `underline` → `{"textDecoration":"underline"}` |  |
 | `decoration-{colour}`, `decoration-N`, `decoration-{solid,double,dotted,dashed,wavy}` | run `decorationColor`, `decorationThickness`, `decorationStyle` | `decoration-red-500` → `{"decorationColor":[0.982661,0.171797,0.21307,1]}` | `overline` and `underline-offset-*` are not supported. |
 | `indent-*`, `-indent-*` | `textIndent` | `indent-4` → `{"textIndent":12}` | A negative indent hangs the first line. |
@@ -115,6 +118,7 @@ that are supported and tested; each example is a unit test.
 | `uppercase`, `lowercase`, `capitalize`, `normal-case` | run `text` (transformed by the tree builder with the document `lang`) | `uppercase` → `{"textTransform":"uppercase"}` |  |
 | `truncate`, `line-clamp-N`, `line-clamp-none` | `maxLines` + `ellipsis` | `truncate` → `{"maxLines":1,"ellipsis":true}` |  |
 | `whitespace-normal`, `whitespace-nowrap`, `whitespace-pre`, `whitespace-pre-wrap`, `whitespace-pre-line` | `whiteSpace` | `whitespace-normal` → `{"whiteSpace":"normal"}` |  |
+| `text-wrap`, `text-pretty`, `text-nowrap` | `textWrap`, `whiteSpace` | `text-wrap` → `{"textWrap":"wrap"}` | `text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`. |
 | `hyphens-auto`, `hyphens-manual`, `hyphens-none` | `hyphenate` | `hyphens-auto` → `{"hyphenate":true}` | The `hyphenate` prop on `Text` does the same. Soft hyphens (U+00AD) always work. |
 
 ## Not supported
@@ -136,6 +140,7 @@ that are supported and tested; each example is a unit test.
 | `overline` | `overline` and `underline-offset-*`. |
 | `whitespace-break-spaces` | `break-spaces`. |
 | `text-ellipsis` | `text-overflow` alone; use `truncate` or `line-clamp-N`. |
+| `text-balance` | `text-wrap: balance`; `text-pretty` evens lines. |
 | `object-scale-down` | `object-fit: scale-down`. |
 | `object-[right_1rem_top]` | `object-position` with edge offsets. |
 | `not-a-class` | Classes Tailwind does not know. |

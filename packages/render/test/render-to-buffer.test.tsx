@@ -12,10 +12,13 @@ import {
   countPages,
   Defs,
   Document,
+  FieldSet,
   Footer,
   Line,
   Link,
+  List,
   Marker,
+  Note,
   Page,
   PageBreak,
   PageNumber,
@@ -29,6 +32,7 @@ import {
   Svg,
   Text,
   Tspan,
+  TextField,
   TotalPages,
   View,
 } from '../src/index.ts';
@@ -139,6 +143,78 @@ describe('renderToBuffer', () => {
     const bytes = Buffer.from(pdf).toString('latin1');
     expect(bytes.match(/\/Subtype ?\/Link/g)).toHaveLength(2);
     expect(bytes).toContain('https://example.com/inline');
+  });
+
+  it('writes the fields of a FieldSet as a field tree', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <FieldSet name="address">
+            <TextField name="street" />
+            <TextField name="city" />
+          </FieldSet>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes).toContain('/T (address)');
+    expect(bytes).toContain('/T (street)');
+    expect(bytes).toContain('/T (city)');
+    // Both fields have the group as their parent.
+    const group = bytes.split('endobj').find((o) => o.includes('/T (address)')) ?? '';
+    const ref = /(\d+) 0 obj/.exec(group)?.[1];
+    expect(bytes.split(`/Parent ${ref} 0 R`)).toHaveLength(3);
+    expect(bytes).not.toContain('address.street');
+  });
+
+  it('writes a list box, and rejects a value that is not one of its options', async () => {
+    const list = (value: string[]) => (
+      <Document>
+        <Page>
+          <List name="days" options={['Mon', 'Tue', 'Wed']} multiSelect value={value} />
+        </Page>
+      </Document>
+    );
+    const bytes = Buffer.from(await renderToBuffer(list(['Wed', 'Mon']))).toString('latin1');
+    expect(bytes).toContain('/FT /Ch');
+    expect(bytes).toContain('/V [(Wed) (Mon)]');
+    expect(bytes).toContain('/I [0 2]');
+    const err = await renderToBuffer(list(['Sun'])).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect((err as RenderError).message).toContain('is not one of `options`');
+  });
+
+  it('writes a formatted text field with its scripts, and leaves them out in PDF/A', async () => {
+    const doc = (
+      <Document>
+        <Page>
+          <TextField name="fee" value="1250" format={{ type: 'number', currency: '$' }} />
+        </Page>
+      </Document>
+    );
+    const bytes = Buffer.from(await renderToBuffer(doc)).toString('latin1');
+    expect(bytes).toContain('/V (1250)');
+    expect(bytes).toContain('AFNumber_Format(2, 0, 0, 0, "$", true);');
+    const pdfA = Buffer.from(await renderToBuffer(doc, { pdfA: true })).toString('latin1');
+    expect(pdfA).toContain('/V (1250)');
+    expect(pdfA).not.toContain('AFNumber_Format');
+  });
+
+  it('writes a note as a text annotation with its icon', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Note author="Ana" style={{ backgroundColor: '#3b82f6' }}>
+            Check the totals
+          </Note>
+        </Page>
+      </Document>,
+    );
+    const bytes = Buffer.from(pdf).toString('latin1');
+    expect(bytes).toMatch(/\/Subtype ?\/Text/);
+    expect(bytes).toContain('/Contents (Check the totals)');
+    expect(bytes).toContain('/T (Ana)');
+    expect(bytes).toMatch(/\/AP ?<</);
   });
 
   it('repeats a fixed element with its link on every page, and its bookmark once', async () => {
@@ -309,6 +385,41 @@ describe('renderToBuffer', () => {
     // Inter Bold, used only in the drawing, is embedded too.
     expect(fonts(await renderToBuffer(doc(true)))).toBe(2);
     expect(fonts(await renderToBuffer(doc(false)))).toBe(1);
+  });
+
+  it('renders superscripts, subscripts and font features', async () => {
+    const doc = (features: boolean) => (
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <Text style={features ? { fontFeatureSettings: ['tnum', 'zero'] } : {}}>
+            x<Text style={{ verticalAlign: 'super', fontSize: 7 }}>2</Text> H
+            <Text style={{ verticalAlign: 'sub', fontSize: 7 }}>2</Text>O 1,110.10
+          </Text>
+        </Page>
+      </Document>
+    );
+    const plain = await renderToBuffer(doc(false));
+    const tnum = await renderToBuffer(doc(true));
+    expect(countPages(plain)).toBe(1);
+    // Other glyphs: tabular digits and a slashed zero.
+    expect(Buffer.compare(tnum, plain)).not.toBe(0);
+  });
+
+  it('breaks the lines of a page with textWrap pretty over each paragraph', async () => {
+    const words =
+      'In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself was astonished.';
+    const doc = (wrap: 'wrap' | 'pretty') => (
+      <Document>
+        <Page style={{ padding: 40, textWrap: wrap }}>
+          <View style={{ width: 150 }}>
+            <Text>{words}</Text>
+          </View>
+        </Page>
+      </Document>
+    );
+    const wrap = await renderToBuffer(doc('wrap'));
+    const pretty = await renderToBuffer(doc('pretty'));
+    expect(Buffer.compare(pretty, wrap)).not.toBe(0);
   });
 
   it('names the component when the structure is wrong', async () => {

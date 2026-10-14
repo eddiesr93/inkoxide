@@ -1,13 +1,16 @@
 //! Text nodes → `Op::Text` (plus decorations), with alignment,
 //! justification and page-number placeholders.
 
+use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
-use super::{ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
+use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
 use crate::layout::Geometry;
-use crate::paint::{ContentCtx, ContentPainter, Dash, Op, Path, PathSeg, Rect, TextGlyph, TextOp};
+use crate::paint::{
+    ContentCtx, ContentPainter, Dash, DebugLine, Op, Path, PathSeg, Rect, TextGlyph, TextOp,
+};
 use crate::schema::{
-    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, BLACK,
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextWrap, BLACK,
 };
 
 /// Page numbers substituted for placeholders on the page being painted.
@@ -36,8 +39,16 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     pub numbers: PageNumbers,
 }
 
-impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
-    fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
+impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
+    /// Paints text node `node`; with `outline`, records its lines there.
+    fn paint_text(
+        &self,
+        node: &Node,
+        geo: &Geometry,
+        ctx: &ContentCtx<'_>,
+        ops: &mut Vec<Op>,
+        mut outline: Option<&mut Vec<DebugLine>>,
+    ) {
         let NodeKind::Text { runs } = &node.kind else {
             return;
         };
@@ -67,9 +78,32 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
             if ctx.window.is_some_and(|w| w.hides(top, line.height)) {
                 continue;
             }
-            let content = Rect::new(cx + ctx.dx, top - line.top + ctx.dy, cw, ch);
-            paint_line(line, &para, content, self.numbers, ctx.opacity, ops);
+            // The line's box: the content box, or beside a float, the part
+            // of it the line was broken in.
+            let (bx, bw) = layout.boxes.get(li).copied().unwrap_or((0.0, cw));
+            let content = Rect::new(cx + ctx.dx + bx, top - line.top + ctx.dy, bw, ch);
+            let painted = paint_line(line, &para, content, self.numbers, ctx.opacity, ops);
+            if let Some(lines) = outline.as_deref_mut() {
+                lines.push(painted.outline(line, &para));
+            }
         }
+    }
+}
+
+impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
+    fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
+        self.paint_text(node, geo, ctx, ops, None);
+    }
+
+    fn paint_outlined(
+        &mut self,
+        node: &Node,
+        geo: &Geometry,
+        ctx: &ContentCtx<'_>,
+        ops: &mut Vec<Op>,
+        lines: &mut Vec<DebugLine>,
+    ) {
+        self.paint_text(node, geo, ctx, ops, Some(lines));
     }
 
     fn numbers(&self) -> PageNumbers {
@@ -86,6 +120,57 @@ struct Piece {
     width: f32,
 }
 
+/// Where a line was painted: its baseline, and each piece's run, start
+/// and advance, in visual order.
+struct PaintedLine {
+    top: f32,
+    baseline: f32,
+    pieces: Vec<(u16, f32, f32)>,
+}
+
+impl PaintedLine {
+    /// The line's `debug` outline: its painted extent, and one box per
+    /// stretch of a run, from its font's ascender to its descender.
+    fn outline(&self, line: &Line, para: &Para<'_>) -> DebugLine {
+        let mut runs: Vec<(Rect, u16)> = Vec::new();
+        for &(run, x, w) in &self.pieces {
+            match runs.last_mut() {
+                // Pieces of one run (fonts, bidi levels) abut: one box.
+                Some((r, last)) if *last == run && (r.x + r.w - x).abs() < WIDTH_EPS => {
+                    r.w = x + w - r.x;
+                }
+                _ => {
+                    let (above, below) = run_extent(para, run);
+                    let rect = Rect::new(x, self.baseline - above, w, above + below);
+                    runs.push((rect, run));
+                }
+            }
+        }
+        let x0 = self.pieces.first().map_or(0.0, |p| p.1);
+        let x1 = self.pieces.last().map_or(x0, |p| p.1 + p.2);
+        DebugLine {
+            rect: Rect::new(x0, self.top, x1 - x0, line.height),
+            baseline: self.baseline,
+            runs,
+        }
+    }
+}
+
+/// Height of run `run`'s glyph box above and below the line's baseline:
+/// its font's ascender and descender at its size, around its own
+/// (shifted) baseline.
+fn run_extent(para: &Para<'_>, run: u16) -> (f32, f32) {
+    let r = &para.runs[usize::from(run)];
+    let shift = baseline_shift(r, para.fonts);
+    let Some(key) = para.fonts.key(&r.font) else {
+        return (r.size + shift, -shift);
+    };
+    let font = para.fonts.get(key);
+    let m = &font.data.metrics;
+    let scale = font.scale(r.size);
+    (m.ascender * scale + shift, -m.descender * scale - shift)
+}
+
 /// Paints one line of `para`. `content` is the paragraph's content box on
 /// the page, placed for this line (a split paragraph shifts its lines).
 fn paint_line(
@@ -95,7 +180,7 @@ fn paint_line(
     numbers: PageNumbers,
     opacity: f32,
     ops: &mut Vec<Op>,
-) {
+) -> PaintedLine {
     let Para {
         prepared: p,
         runs,
@@ -128,7 +213,19 @@ fn paint_line(
     let spaces = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
     let justify_extra =
         if align == TextAlign::Justify && !line.forced && spaces > 0 && line.ellipsis.is_none() {
-            ((cw - line.width) / spaces as f32).max(0.0)
+            // `pretty` lines may be set a little too wide, for their spaces
+            // to shrink by up to a third.
+            let least = if style.text_wrap == TextWrap::Pretty {
+                let space: f32 = p.glyphs[s..e]
+                    .iter()
+                    .filter(|g| g.is_space())
+                    .map(|g| g.advance)
+                    .sum();
+                -space * SHRINK / spaces as f32
+            } else {
+                0.0
+            };
+            ((cw - line.width) / spaces as f32).max(least)
         } else {
             0.0
         };
@@ -214,8 +311,14 @@ fn paint_line(
     // Link areas of the line, adjacent pieces of one target merged
     // (adjacent pieces abut exactly).
     let mut links: Vec<(f32, f32, &str)> = Vec::new();
+    let mut painted = PaintedLine {
+        top: cy + line.top,
+        baseline,
+        pieces: Vec::with_capacity(pieces.len()),
+    };
 
     for piece in pieces {
+        painted.pieces.push((piece.run, x, piece.width));
         let run = &runs[piece.run as usize];
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
@@ -227,6 +330,8 @@ fn paint_line(
         }
         let color = run.color.unwrap_or(BLACK);
         let alpha = color[3] * opacity;
+        // The run's own baseline: raised or lowered by `verticalAlign`.
+        let baseline = baseline - baseline_shift(run, fonts);
         let piece_width = piece.width;
         if alpha < 1.0 {
             ops.push(Op::Save);
@@ -273,6 +378,7 @@ fn paint_line(
             });
         }
     }
+    painted
 }
 
 fn extra_piece(e: &ExtraGlyph) -> Piece {

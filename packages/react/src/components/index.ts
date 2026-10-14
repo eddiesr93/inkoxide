@@ -1,5 +1,5 @@
 import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { FlatStyle } from '@inkoxide/style';
+import type { FlatStyle, FontFeatureSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 /**
@@ -15,6 +15,7 @@ export const HOST = {
   Text: 'ink-text',
   Link: 'ink-link',
   Image: 'ink-image',
+  ImageBackground: 'ink-image-background',
   Table: 'ink-table',
   Row: 'ink-row',
   Cell: 'ink-cell',
@@ -23,6 +24,8 @@ export const HOST = {
   PageBreak: 'ink-page-break',
   Spacer: 'ink-spacer',
   Field: 'ink-field',
+  FieldSet: 'ink-field-set',
+  Note: 'ink-note',
   Canvas: 'ink-canvas',
   Svg: 'ink-svg',
   G: 'ink-svg-g',
@@ -115,6 +118,9 @@ export interface StyleProp extends Omit<
   | 'transform'
   | 'transformOrigin'
   | 'objectPosition'
+  | 'fontFeatureSettings'
+  | 'fontVariantNumeric'
+  | 'textWrap'
 > {
   fontFamily?: string | string[];
   /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
@@ -200,14 +206,28 @@ export interface StyleProp extends Omit<
   textDecorationThickness?: Length;
   /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
   textOverflow?: 'ellipsis' | 'clip';
+  /**
+   * OpenType features: a CSS string (`"'tnum' 1, 'smcp'"`), a list of tags to turn on
+   * (`['tnum', 'smcp']`) or tags with a value (`{ tnum: 1, liga: false }`). Inherited, and a
+   * `Text` that sets its own replaces them.
+   */
+  fontFeatureSettings?: FontFeatureSettings;
+  /** CSS `font-variant-numeric` (`'tabular-nums slashed-zero'`): turns on the features it names. */
+  fontVariantNumeric?: string;
+  /**
+   * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
+   * breaks over the whole paragraph for even lines. Inherited. `'balance'` is not supported yet.
+   */
+  textWrap?: FlatStyle['textWrap'] | 'balance';
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;
   /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
   transformOrigin?: [LengthPercent, LengthPercent] | string;
   /**
-   * `Image` only: where a `contain`, `cover` or `none` image sits in its box, as CSS
-   * `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default centred.
+   * `Image` and `ImageBackground` only: where a `contain`, `cover` or `none` image sits in its
+   * box, as CSS `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default
+   * centred.
    */
   objectPosition?: string;
 }
@@ -469,6 +489,16 @@ export interface ImageProps extends Omit<Flow, 'children'> {
   fit?: 'fill' | 'contain' | 'cover' | 'none';
 }
 
+export interface ImageBackgroundProps extends Flow {
+  /** The image, in any form `<Image src>` takes. */
+  src: ImageSrc;
+  /**
+   * How the image fills the padding box: `fill` (default) stretches it, `contain` and `cover`
+   * keep its aspect ratio, `none` keeps its size. Wins over `objectFit`.
+   */
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+}
+
 export interface TableProps extends Flow {
   /** Column widths: points, `'1fr'`-style fractions, or `'auto'`. */
   columns: Array<number | string>;
@@ -510,7 +540,10 @@ export interface PageBreakProps {
 }
 
 interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
-  /** Field name, unique in the document (radio buttons of one group share it). No `.`. */
+  /**
+   * Field name, unique in the document (radio buttons of one group share it). A `<FieldSet>`
+   * puts its name in front; dots make groups the same way (`address.street`).
+   */
   name: string;
   readOnly?: boolean;
   required?: boolean;
@@ -522,6 +555,36 @@ export interface TextFieldProps extends FieldCommon {
   /** The value is neither shown nor stored. */
   password?: boolean;
   maxLength?: number;
+  /** How the value shows and is typed: a number, a date, a phone number… */
+  format?: TextFormat;
+}
+
+/**
+ * The format of a single-line `TextField`. `value` must fit it: a number or percent as digits
+ * (`'-1234.5'`, `'0.125'` for 12.50 %), a date as `'2026-10-14'` (a time may follow,
+ * `T18:30`), a time as `'18:30'`, and a zip code, phone or social security number as its digits.
+ * The keys in the second group of each pair are their other names.
+ */
+export interface TextFormat {
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'phone' | 'ssn';
+  /** Number and percent: digits after the decimal separator; default 2. */
+  decimals?: number;
+  nDec?: number;
+  /** Number and percent: the separators, by example; default `'1,234.56'`. */
+  separators?: '1,234.56' | '1234.56' | '1.234,56' | '1234,56';
+  /** `true` is `'1,234.56'`, `false` `'1234.56'`. */
+  sepComma?: boolean;
+  /** Number: how negative numbers show; default `'minus'`. */
+  negative?: 'minus' | 'red' | 'parens' | 'parensRed';
+  negStyle?: 'MinusBlack' | 'Red' | 'ParensBlack' | 'ParensRed';
+  /** Number: a currency symbol, as it shows (`'$'`, `' €'`). */
+  currency?: string;
+  /** Number: the currency goes before the number; default `true`. */
+  currencyBefore?: boolean;
+  currencyPrepend?: boolean;
+  /** Date and time: how the value shows, as `'dd/mm/yyyy'` or `'HH:MM'`. */
+  pattern?: string;
+  param?: string;
 }
 
 export interface CheckboxProps extends FieldCommon {
@@ -534,9 +597,43 @@ export interface RadioProps extends FieldCommon {
   checked?: boolean;
 }
 
-export interface SelectProps extends FieldCommon {
-  options: string[];
-  value?: string;
+/** The choices of a `Select` or a `List`: `options`, or its other name `select`. */
+type Choices = { options: string[]; select?: never } | { select: string[]; options?: never };
+
+export type SelectProps = FieldCommon &
+  Choices & {
+    /** The selected option. */
+    value?: string;
+  };
+
+export type ListProps = FieldCommon &
+  Choices &
+  (
+    | {
+        multiSelect?: false;
+        /** The selected option. */
+        value?: string;
+      }
+    | {
+        /** Several options can be selected at once. */
+        multiSelect: true;
+        /** The selected options, or one. */
+        value?: string | string[];
+      }
+  );
+
+export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
+  /** Who wrote the note; viewers show it as its title. */
+  author?: string;
+  /** Shows the note's text when the document opens. */
+  open?: boolean;
+  /** The note's text: strings and numbers only. */
+  children?: ReactNode;
+}
+
+export interface FieldSetProps extends Flow {
+  /** The group's name, put in front of the name of every field inside it: `address.street`. */
+  name: string;
 }
 
 /** Any field; `kind` picks the type. The font, size and colour come from the text utilities. */
@@ -544,7 +641,8 @@ export type FieldProps =
   | ({ kind: 'text' } & TextFieldProps)
   | ({ kind: 'checkbox' } & CheckboxProps)
   | ({ kind: 'radio' } & RadioProps)
-  | ({ kind: 'select' } & SelectProps);
+  | ({ kind: 'select' } & SelectProps)
+  | ({ kind: 'list' } & ListProps);
 
 type SvgPaint = string;
 /** SVG presentation attributes, camelCase (`strokeWidth`), as in React DOM. */
@@ -747,6 +845,12 @@ export const Text = host<TextProps | SvgTextProps>(HOST.Text);
  */
 export const Link = host<LinkProps>(HOST.Link);
 export const Image = host<ImageProps>(HOST.Image);
+/**
+ * A `View` with an image behind its children: the image fills the padding box (inside the
+ * borders), placed by `fit` and `objectPosition`, over the background colour and under the
+ * borders, clipped to the box and its `borderRadius`.
+ */
+export const ImageBackground = host<ImageBackgroundProps>(HOST.ImageBackground);
 export const Table = host<TableProps>(HOST.Table);
 export const Row = host<RowProps>(HOST.Row);
 export const Cell = host<CellProps>(HOST.Cell);
@@ -763,6 +867,18 @@ export const PageBreak = host<PageBreakProps>(HOST.PageBreak);
 export const Spacer = host<SpacerProps>(HOST.Spacer);
 /** An interactive form field (AcroForm). */
 export const Field = host<FieldProps>(HOST.Field);
+/**
+ * A group of form fields: a `View` whose `name` goes in front of the name of every field inside
+ * it, at any depth (`<FieldSet name="address"><TextField name="street" /></FieldSet>` is the
+ * field `address.street`). Sets nest: `a.b.c`.
+ */
+export const FieldSet = host<FieldSetProps>(HOST.FieldSet);
+/**
+ * A text note: a sticky-note icon that viewers open to show its text (the children, which are
+ * strings). It takes no space; the icon sits at the top-left corner of its box. Its colour is its
+ * `backgroundColor` (default yellow).
+ */
+export const Note = host<NoteProps>(HOST.Note);
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
 export const Svg = host<SvgProps>(HOST.Svg);
 export const G = host<SvgPresentation>(HOST.G);
@@ -795,9 +911,13 @@ function field<P extends object>(kind: FieldProps['kind'], displayName: string):
 }
 /** A text field. */
 export const TextField: FC<TextFieldProps> = field('text', 'TextField');
+/** The same as `TextField`. */
+export const TextInput: FC<TextFieldProps> = field('text', 'TextInput');
 /** A checkbox. */
 export const Checkbox: FC<CheckboxProps> = field('checkbox', 'Checkbox');
 /** One button of a radio group (buttons share `name`). */
 export const Radio: FC<RadioProps> = field('radio', 'Radio');
 /** A drop-down list. */
 export const Select: FC<SelectProps> = field('select', 'Select');
+/** A list box: several options in view (four without a height), one or several selected. */
+export const List: FC<ListProps> = field('list', 'List');

@@ -9,6 +9,25 @@ All notable changes to the packages in this repository. The format follows
 
 ### Added
 
+- `textWrap: 'pretty'` (Tailwind `text-pretty`) breaks a paragraph's lines over the whole
+  paragraph for even lines (Knuth and Plass's total fit), with fewer hyphens; justified
+  `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the
+  default, keeps first fit and the same output; `'balance'` is reserved. `text-wrap` maps to
+  `wrap` and `text-nowrap` to `whiteSpace: 'nowrap'`.
+
+- Superscripts and subscripts: `verticalAlign: 'super'` or `'sub'` on a `Text` (the Tailwind
+  classes `align-super` and `align-sub`) raises or lowers its baseline by the font's own
+  superscript and subscript offsets, and the line grows to fit it. `verticalAlign` stays `top`,
+  `middle` or `bottom` on a `Cell`.
+- OpenType features: `fontFeatureSettings` as a CSS string (`"'tnum' 1, 'liga' off"`), a list
+  of tags or an object of tags to values or switches, and `fontVariantNumeric`
+  (`'tabular-nums slashed-zero'`); in Tailwind, `font-features-[…]`, `tabular-nums`,
+  `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions` and the other numeric
+  classes. Both are inherited. `@inkoxide/style` exports `parseFontFeatureSettings`,
+  `parseFontVariantNumeric` and `RUN_ALIGNS`.
+- `debug` on a `Text` outlines the paragraph line by line: each line box, its baseline, and the
+  glyphs of every run on the line, so nested `Text` and `Link` elements show where their words
+  landed.
 - **`<Marker>`** in `<Svg>`: a shape drawn at the start, middle or end vertices of a path, line
   or poly shape, referenced with the new `markerStart`, `markerMid` and `markerEnd` props. It
   takes `viewBox`, `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `markerUnits`.
@@ -45,6 +64,37 @@ All notable changes to the packages in this repository. The format follows
   like other text, and declared in the document. `Tspan`, `SvgTextProps` and `TspanProps` are
   exported; `SvgPresentation` gains the font props, `textAnchor`, `dominantBaseline` and
   `visibility`.
+- Background images: `<ImageBackground src fit>`, a `View` with an image behind its children,
+  and `backgroundImage` on a box node of the document (`src` or `data`, `fit`, `objectPosition`).
+  The image fills the padding box, over the background colour and under the borders, clipped to
+  it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
+  background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
+  `objectPosition` and the `object-*` classes place it as on an `Image`.
+- Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
+  field names. `address.street` and `address.city` are the fields `street` and `city` of the
+  group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
+  show and export by their full names.
+- List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
+  without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
+  array and several options can be selected.
+- Formats on text fields: `format` shows a number (decimals, separators, negative style,
+  currency), a percent, a date or a time (with a pattern such as `dd/mm/yyyy`), a postal code, a
+  phone number or a social security number, and viewers format what the user types with the
+  standard form scripts. PDF/A output keeps the formatted text and value but leaves the scripts
+  out, as PDF/A requires.
+- Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
+  author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
+  corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
+  and passes PDF/A-2b.
+- `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
+  fields inside it, at any depth (`address.street`); sets nest.
+- `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
+  takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
+  `TextInput` is another name for `TextField`.
+- `format` on `TextField` in `@inkoxide/render`, with the readable keys of the schema, or `param`,
+  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported.
+- `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
+  its `backgroundColor` as its colour.
 
 ### Changed
 
@@ -56,6 +106,11 @@ All notable changes to the packages in this repository. The format follows
 - Font family names match ignoring ASCII case, as in CSS: `fontFamily: 'inter'` picks Inter
   instead of falling back with a warning. `Font.register` refuses a family that differs from
   a registered or bundled one only in case, for the same weight and style.
+
+### Security
+
+- Field options and values are limited to 1000 options of at most 1000 characters each, and a
+  `value` of at most 8000 characters. Longer ones are `INVALID_VALUE`.
 
 ## 0.6.5 - 2026-10-13
 

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::images::svg_text::{Anchor, Baseline, Shift, SvgSpan, SvgText};
-use crate::schema::{Direction, FontStyle, TextAlign, TextRun, WhiteSpace};
+use crate::schema::{Direction, FontStyle, TextAlign, TextRun, TextWrap, WhiteSpace};
 
 /// A glyph of SVG text.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -167,6 +167,9 @@ fn shape<S: TextShaper>(
                 placeholder: None,
                 link: None,
                 hyphenate: Some(false),
+                // SVG text shifts baselines itself (`baseline-shift`).
+                vertical_align: None,
+                font_features: None,
             });
             run_span.push(span);
         }
@@ -182,6 +185,8 @@ fn shape<S: TextShaper>(
         max_lines: None,
         ellipsis: false,
         white_space: WhiteSpace::Pre,
+        // One line: nothing to break.
+        text_wrap: TextWrap::Wrap,
         indent: 0.0,
         direction: if text.rtl {
             Direction::Rtl
