@@ -89,12 +89,14 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   [Images](#images)). Both throw on other elements.
 - **Floats.** `float: 'left'` or `'right'` (`float-left`, `float-right`) on a child of a column
   `View`, a `Page` or a `Cell` puts it at that side, as narrow as its content unless it has a
-  width, at or below where it comes in the flow. Text after it wraps beside it line by line; a
-  box after it is narrowed to the room beside it, or moves below it when its content does not
-  fit there. `clear: 'left'`, `'right'` or `'both'` moves an element below the floats before
-  it, and a parent is as tall as its floats. A float moves to the next page with the lines
-  beside it. Floats are rectangles (`shapeOutside` is not supported), do not float inside rows
-  or grids, and a box with floats lays its children out top to bottom: `flexGrow`,
+  width, at or below where it comes in the flow. Text after it wraps beside it line by line, in
+  its own box: a `Text` with a width, an `alignSelf` or auto side margins keeps the box it would
+  have without the float, and its lines take the room the float leaves in it. A box after it is
+  narrowed to the room beside the floats over its whole height, or moves below them when its
+  content does not fit there. `clear: 'left'`, `'right'` or `'both'` moves an element below the
+  floats before it, and a parent is as tall as its floats. A float moves to the next page with
+  the lines beside it. Floats are rectangles (`shapeOutside` is not supported), do not float
+  inside rows or grids, and a box with floats lays its children out top to bottom: `flexGrow`,
   `flexBasis`, `justifyContent` and `alignContent` are errors there.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
@@ -1204,9 +1206,9 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 - **Drawing.** SVG text on a path and vertical SVG text are not supported, and colour emoji in
   SVG text are drawn in one colour. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
-- **Content taller than a page.** What cannot split (an `Image`, an absolutely positioned,
-  rotated or transformed element, table rows tied by a `rowSpan`) is cut at the page edge when
-  it is taller than a page.
+- **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely
+  positioned, rotated or transformed element, table rows tied by a `rowSpan`) is cut at the
+  page edge when it is taller than a page.
 - **Tailwind.** Variants (`md:`, `hover:`), shadows and gradients are not supported.
 - **Output.** The engine produces the whole PDF at once: `renderToStream` streams the finished
   file, it does not send pages while later ones are still being laid out.

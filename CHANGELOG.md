@@ -49,8 +49,9 @@ All notable changes to the packages in this repository. The format follows
   of tags or an object of tags to values or switches, and `fontVariantNumeric`
   (`'tabular-nums slashed-zero'`); in Tailwind, `font-features-[…]`, `tabular-nums`,
   `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions` and the other numeric
-  classes. Both are inherited. `@inkoxide/style` exports `parseFontFeatureSettings`,
-  `parseFontVariantNumeric` and `RUN_ALIGNS`.
+  classes. Both are inherited. A run takes at most 32 features, with values up to 65535, and a
+  document at most 64 different sets of them (`OUT_OF_RANGE`). `@inkoxide/style` exports
+  `parseFontFeatureSettings`, `parseFontVariantNumeric` and `RUN_ALIGNS`.
 - `debug` on a `Text` outlines the paragraph line by line: each line box, its baseline, and the
   glyphs of every run on the line, so nested `Text` and `Link` elements show where their words
   landed.
