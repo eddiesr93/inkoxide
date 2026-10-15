@@ -131,7 +131,9 @@ sequence with emoji presentation tries the colour fallback fonts first.
 After shaping, the glyphs text uses from colour fonts become images once
 per render (`text/color.rs`): `fonts/color.rs` writes `COLR` v0 and v1
 glyphs as SVG, under a work budget, and takes PNG bitmaps from `CBDT` and
-`sbix`; they decode through `images` like document images. The painter
+`sbix`; they decode through `images` like document images. A `COLR`
+glyph with layers in the foreground colour becomes one image per run
+colour it is drawn in. The painter
 then replaces each colour glyph with its image, in a `/Span` whose
 `/ActualText` is the glyph's text, with an invisible space for text
 extraction. A font with colour bitmaps and no outlines is never embedded.

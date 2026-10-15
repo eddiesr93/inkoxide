@@ -256,11 +256,16 @@ pub(crate) fn run<'d, T: Send>(
         }
     }
     text.prepare_all(&texts, parallel);
-    drop(texts);
     let color = |k| fonts.get(k).has_color();
-    let mut used = text.glyphs_of(color);
+    let mut used = text.glyph_colors(&texts, color);
+    drop(texts);
+    // SVG text draws colour glyphs in black.
     for (k, glyphs) in images.svg_text_glyphs(color) {
-        used.entry(k).or_default().extend(glyphs);
+        for g in glyphs {
+            used.entry((k, g))
+                .or_default()
+                .insert(crate::fonts::BLACK_TEXT);
+        }
     }
     let colors = ColorGlyphs::load(fonts, &used, images, parallel);
     if !profile.transparency() {
