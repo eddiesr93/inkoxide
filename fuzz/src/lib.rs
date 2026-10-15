@@ -1064,6 +1064,11 @@ const WORDS: &[&str] = &[
     "",
 ];
 
+/// A sentence of plain words, repeated into long paragraphs: one chunk
+/// with a break opportunity at every space, for `textWrap: pretty`.
+const PROSE: &str = "In olden times when wishing still helped one, there lived a king \
+    whose daughters were all beautiful. ";
+
 fn text(s: &mut Src) -> String {
     let mut t = String::new();
     for _ in 0..s.below(24) {
@@ -1073,7 +1078,12 @@ fn text(s: &mut Src) -> String {
         }
     }
     if s.chance(6) {
-        t = "x".repeat(s.below(5000));
+        // One long word, or a long paragraph.
+        t = if s.chance(128) {
+            "x".repeat(s.below(5000))
+        } else {
+            PROSE.repeat(2 + s.below(200))
+        };
     }
     t
 }
@@ -2011,6 +2021,7 @@ mod tests {
             r#""verticalAlign":"super""#,
             r#""fontFeatures":{""#,
             r#""textWrap":"pretty""#,
+            "beautiful. In olden",
             r#""float":"left""#,
             r#""clear":""#,
             r#""backgroundImage":{"#,
