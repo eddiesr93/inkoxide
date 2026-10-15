@@ -257,7 +257,7 @@ fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
 }
 
 /// Error message for a forced page break in [`Ctx::Whole`].
-const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node";
+const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside an absolutely positioned, rotated, transformed, floated or fixed node";
 
 /// Where a node sits; some node types are only valid in the flow.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -266,7 +266,7 @@ enum Ctx {
     Page,
     Flow,
     /// In flowing content that does not split at forced breaks: inside a
-    /// row, grid, wrapping or reversed box, or inside a positioned,
+    /// row, grid, wrapping or reversed box, or inside an absolutely positioned,
     /// rotated, transformed or fixed node.
     Whole,
     /// In a header or footer.

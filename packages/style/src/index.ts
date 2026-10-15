@@ -24,7 +24,7 @@ export {
   ValueError,
 } from './values.ts';
 
-// Moved to `@inkoxide/style/internal`: only @inkoxide/tailwind uses them.
+// Moved to `@inkoxide/style/internal`: only Inkoxide's own packages (@inkoxide/tailwind and @inkoxide/react) use them.
 
 /** @deprecated Internal to Inkoxide's packages, and will be removed from this entry. */
 export const ENUMS = internal.ENUMS;

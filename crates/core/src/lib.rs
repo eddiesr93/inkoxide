@@ -175,7 +175,8 @@ impl RenderOptions {
         self
     }
 
-    /// Sets [`compression_level`](Self::compression_level) (clamped to 9).
+    /// Sets [`compression_level`](Self::compression_level). The setter keeps
+    /// the value; a render uses 9 for a larger one.
     #[must_use]
     pub fn with_compression_level(mut self, level: u32) -> Self {
         self.compression_level = level;

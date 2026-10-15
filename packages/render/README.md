@@ -45,8 +45,9 @@ A one-page invoice renders in about a millisecond, a 43-page report in about 33 
   fillable form fields.
 - **Output.** Subset fonts, PDF/A (1b, 2b and 3b), encryption with passwords and permissions,
   and byte-identical output for identical input.
-- **Diagnostics.** A component in the wrong place, an unknown class or an unknown style key
-  fails with the component stack that produced it.
+- **Diagnostics.** A component in the wrong place or an unknown style key fails with the
+  component stack that produced it, and so does an unknown Tailwind class, except in
+  production, where it is logged once and ignored.
 
 ## Quick start
 

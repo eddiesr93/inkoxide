@@ -51,7 +51,8 @@ validation_codes! {
     /// for content.
     OutOfRange = "OUT_OF_RANGE",
     /// A font id is declared twice, or a form field name is used twice
-    /// (other than by the buttons of one radio group).
+    /// (other than by the buttons of one radio group), or used both for a
+    /// field and for a group of fields (`a` and `a.b`).
     DuplicateId = "DUPLICATE_ID",
     /// A run or `fallbackFonts` references a font id not declared in `fonts`.
     UnknownFont = "UNKNOWN_FONT",
@@ -62,7 +63,9 @@ validation_codes! {
     /// Image bytes are not a supported JPEG, PNG, GIF, WebP or SVG, or do
     /// not decode. A JPEG is not decoded: its structure is checked.
     InvalidImage = "INVALID_IMAGE",
-    /// An image has more than 50 million pixels (width × height).
+    /// A raster image has more than 50 million pixels (width × height). An
+    /// SVG has its own limit, and fails as
+    /// [`InvalidImage`](Self::InvalidImage).
     ImageTooLarge = "IMAGE_TOO_LARGE",
     /// A style property was set on a node type it does not apply to.
     StyleNotApplicable = "STYLE_NOT_APPLICABLE",
@@ -73,9 +76,11 @@ validation_codes! {
     /// A `#id` link names no node in the document.
     UnknownAnchor = "UNKNOWN_ANCHOR",
     /// The document uses something the PDF/A level it is rendered at does
-    /// not allow: transparency under PDF/A-1b (a colour with alpha, an
-    /// `opacity`, `debug` outlines, an image with an alpha channel, or an
-    /// SVG drawn with opacity, a mask or a blend mode). Only
+    /// not allow: a page side under 3 points, at any level; under PDF/A-1b,
+    /// transparency (a colour with alpha, an `opacity`, `debug` outlines,
+    /// an image with an alpha channel, an SVG drawn with opacity, a mask or
+    /// a blend mode, an isolated group, a clip path of more than one path,
+    /// or a colour glyph that needs transparency). Only
     /// [`render`](crate::render) reports it: [`validate`](crate::validate)
     /// does not know the level.
     PdfaConflict = "PDFA_CONFLICT",

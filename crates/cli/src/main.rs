@@ -98,7 +98,8 @@ enum Cmd {
         /// writes PDF/A-2b.
         #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = pdf_a_level)]
         pdf_a: Option<PdfALevel>,
-        /// Also rasterise every page to PNG with `pdftoppm` (if installed).
+        /// Also rasterise every page to PNG with `pdftoppm`, which must be
+        /// installed: without it the PDF is written and the exit code is 2.
         #[arg(long)]
         png_dir: Option<PathBuf>,
         /// Resolution for --png-dir.

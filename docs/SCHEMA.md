@@ -41,7 +41,9 @@
   reserves the width of `999` in the run's font for each page's digits; a
   longer number can overflow that space.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
-  like CSS. `fit` defaults to `fill`, like CSS `object-fit`, and
+  like CSS. An image with no `width` and no `height` that is wider than
+  the room it has is scaled down to fit it, keeping its aspect ratio
+  (CSS would let it overflow). `fit` defaults to `fill`, like CSS `object-fit`, and
   `objectPosition` places a fitted image in its box like `object-position`
   (centred by default; what falls outside the box is clipped).
 
@@ -56,17 +58,17 @@
 | `INVALID_TYPE` | Wrong JSON type |
 | `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays), or a forced break where it would do nothing (see `Break.before`) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
-| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
+| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group), or used both for a field and for a group of fields (`a` and `a.b`) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
 | `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
-| `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
+| `IMAGE_TOO_LARGE` | Raster image (not SVG) over 50 megapixels (width × height). An SVG has its own limit: a width or height over 100,000 px is `INVALID_IMAGE` |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -85,7 +87,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 | `meta` | [`Meta`](#meta) |  |  |
 | `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | max items 256; Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`; an id listed again is skipped. |
-| `emojiImages` | `object` |  | Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the run's baseline (which its `verticalAlign` raises or lowers), and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
+| `emojiImages` | `object` |  | max properties 4096; Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the run's baseline (which its `verticalAlign` raises or lowers), and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
 | `pages` | array of [`PageSpec`](#pagespec) | yes | min items 1 |
 
 ## Definitions
@@ -248,19 +250,19 @@ A page template. Its content flows across as many physical pages as needed.
 |---|---|---|---|
 | `size` | [`Size`](#size) | yes |  |
 | `margin` | [`EdgesNumber`](#edgesnumber) |  | `left + right` must be less than the page width and `top + bottom` less than its height; margins that leave no room for content are `OUT_OF_RANGE` at `margin`. |
-| `background` | [`Color`](#color) |  |  |
+| `background` | [`Color`](#color) |  | Fills the whole page behind its content. The fill is opaque: the alpha of the colour is ignored, so `[1, 0, 0, 0]` paints solid red. |
 | `debug` | [`Debug`](#debug) |  | Draws the boxes of the page (its margins and content area) and of every element on it, the header and footer included. |
-| `header` | [`Node`](#node) |  | Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth. |
-| `footer` | [`Node`](#node) |  | Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth. |
+| `header` | [`Node`](#node) |  | Laid out at the full page width, once, or again on every page when it shows page numbers, and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth. |
+| `footer` | [`Node`](#node) |  | Laid out at the full page width, once, or again on every page when it shows page numbers, and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth. |
 | `children` | array of [`Node`](#node) |  |  |
 
 ### Break
 
-Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`. A box laid out as a row, a grid, wrapping or reversed moves to the next page whole when it fits on one; taller than a page, it splits between its rows (children whose extents overlap), each child continuing from the row's top. Content that cannot split (an image, a positioned, rotated, transformed or fixed node, table rows tied by a row span) is cut across pages when it is taller than a page.
+Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`. A box laid out as a row, a grid, wrapping or reversed moves to the next page whole when it fits on one; taller than a page, it splits between its rows (children whose extents overlap), each child continuing from the row's top. Content that cannot split (an image, an absolutely positioned, rotated, transformed or fixed node, table rows tied by a row span) is cut across pages when it is taller than a page.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `before` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing. |
+| `before` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside an absolutely positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing. |
 | `after` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page after the node when in-flow content follows it: a break at the end of the flow adds no page. Allowed where `before` is. |
 | `inside` | `"auto"` \| `"avoid"` |  | default `"auto"`; `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole. |
 | `minPresenceAhead` | [`NonNegative`](#nonnegative) |  | Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: "page"` on a first child moves the box the same way. |
@@ -343,7 +345,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
 | `clear` | `"left"` \| `"right"` \| `"both"` \| `"none"` |  | default `"none"`; Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides. |
 | `backgroundColor` | [`Color`](#color) |  |  |
-| `opacity` | `number` |  | ≥ 0, ≤ 1 |
+| `opacity` | `number` |  | ≥ 0, ≤ 1; Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |
 | `borderColor` | [`EdgesColor`](#edgescolor) |  |  |
 | `borderRadius` | [`BorderRadius`](#borderradius) |  |  |
@@ -385,7 +387,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
 | `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |
-| `fontFeatures` | `object` |  | OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features. |
+| `fontFeatures` | `object` |  | max properties 32; OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters, and a value is 0 to 65535. A run may have at most 32 features, and a document at most 64 different sets of features. |
 | `image` | [`InlineImage`](#inlineimage) |  |  |
 | `note` | [`Note`](#note) |  | A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it. |
 
@@ -520,7 +522,7 @@ An image painted behind the box's children and over its `backgroundColor`, under
 
 ### PageBreakNode
 
-Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
+Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside an absolutely positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|

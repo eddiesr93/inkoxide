@@ -58,7 +58,9 @@ INTRO = """# Document schema v1
   reserves the width of `999` in the run's font for each page's digits; a
   longer number can overflow that space.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
-  like CSS. `fit` defaults to `fill`, like CSS `object-fit`, and
+  like CSS. An image with no `width` and no `height` that is wider than
+  the room it has is scaled down to fit it, keeping its aspect ratio
+  (CSS would let it overflow). `fit` defaults to `fill`, like CSS `object-fit`, and
   `objectPosition` places a fitted image in its box like `object-position`
   (centred by default; what falls outside the box is clipped).
 
@@ -73,17 +75,17 @@ INTRO = """# Document schema v1
 | `INVALID_TYPE` | Wrong JSON type |
 | `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays), or a forced break where it would do nothing (see `Break.before`) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
-| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group) |
+| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group), or used both for a field and for a group of fields (`a` and `a.b`) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
 | `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
-| `IMAGE_TOO_LARGE` | Image over 50 megapixels (width × height) |
+| `IMAGE_TOO_LARGE` | Raster image (not SVG) over 50 megapixels (width × height). An SVG has its own limit: a width or height over 100,000 px is `INVALID_IMAGE` |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -146,6 +148,8 @@ def constraints(p, defaults=True):
         ("exclusiveMaximum", "<"),
         ("minLength", "min length"),
         ("maxLength", "max length"),
+        ("minProperties", "min properties"),
+        ("maxProperties", "max properties"),
     ]:
         if key in p:
             parts.append(f"{label} {number(p[key])}")

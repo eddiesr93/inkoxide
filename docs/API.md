@@ -77,7 +77,7 @@ are left out. Every level is "b": the pages look the same in every reader.
 | Level | Node | Rust | Notes |
 |---|---|---|---|
 | PDF/A-2b | `true` or `'2b'` | `PdfALevel::A2b` (default) | Based on PDF 1.7 |
-| PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b that may carry embedded files |
+| PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b; the level allows embedded files, but Inkoxide cannot attach any yet |
 | PDF/A-1b | `'1b'` | `PdfALevel::A1b` | Based on PDF 1.4, for archives that require it. Font subsets list their glyphs (`CIDSet`) |
 
 Every level takes page sides of 3 points or more: a render of a smaller
@@ -93,8 +93,9 @@ or a colour glyph that needs transparency (a bitmap with an alpha channel
 or a layer with an opacity, at the path of its run). `validate` does not
 know the level, so it does not report these. A PDF/A-1b file also keeps
 within the limits of PDF/A-1: real numbers within ±32767, strings of at
-most 65535 bytes, arrays of at most 8191 entries, dictionaries of at
-most 4095, and graphics states nested at most 28 deep. A document that
+most 65535 bytes, names of at most 127 bytes, arrays of at most 8191
+entries, dictionaries of at most 4095, and graphics states nested at
+most 28 deep. A document that
 would pass one fails with `PDF_ERROR`.
 
 The a and u levels need tagged PDF, which Inkoxide does not write yet.
@@ -186,8 +187,8 @@ language hypher lacks), register a file:
 
 1. Download a pattern file from hyph-utf8, for example `hyph-en-us.tex` from
    `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`.
-2. Check that its licence suits you. Pattern files are not shipped with
-   Inkoxide.
+2. Check that its licence suits you. The `inkoxide` package ships no
+   pattern files. `@inkoxide/render` ships `hyph-en-us.tex`.
 3. Register it:
 
 ```js
@@ -268,7 +269,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, or transparency under PDF/A-1b. The path names the first such use. Only `render` reports it: `validate` does not know the level |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
-| `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit or the limit on content repeated on every page was exceeded |
+| `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed, or a PDF/A-1b file would pass one of the limits of PDF/A-1 |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
@@ -297,8 +298,11 @@ inside a complete JPEG is not found. Without images (Node `validate`
 with no `images`, Rust `validate_without_images`), image ids are not
 looked up and everything else is checked. An empty result means the
 document is valid; `render` can still fail on an option, on the page
-limit or the limit on content repeated on every page (`LAYOUT_ERROR`), or on a font that cannot be shaped or embedded
-(`FONT_ERROR`). `validate` reads the document's structure first, and a problem found there (input that does
+limit or the limit on content repeated on every page (`LAYOUT_ERROR`), on
+a font that cannot be shaped or embedded (`FONT_ERROR`), on
+something its PDF/A level does not allow (`PDFA_CONFLICT`, which `validate` cannot know),
+or on a failure in writing the PDF (`PDF_ERROR`). `validate` reads the
+document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the
 reader rejects) is returned alone, as the rest cannot be checked.
 
