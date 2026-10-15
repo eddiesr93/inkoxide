@@ -7,6 +7,11 @@ version 2.
 
 ## Unreleased
 
+## 2.5.0 - 2026-10-15
+
+Still document schema version 1. New definitions `NonNegativePercent`, `NonNegativeLength`
+and `NonNegativeLengthPercent`.
+
 ### Fixed
 
 - A character that the font of a text, select or list field has no glyph for, in the shown

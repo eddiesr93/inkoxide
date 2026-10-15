@@ -9,6 +9,17 @@ together. The document schema has its own version and
 
 ## Unreleased
 
+## 0.8.0 - 2026-10-15
+
+`inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style`
+0.8.0, and `@inkoxide/schema` 2.5.0. Fixes for layout, pagination, colour glyphs, forms, PDF/A
+and the packages' option checks. Upgrading: some documents and templates that were accepted are
+now errors, because what they asked for was ignored or drawn wrong. These are a field character
+its font lacks, two checked radio buttons in a group, `permissions` with equal owner and user
+passwords, a PDF/A page with a side under 3 points, `options: []`, React props an element would
+ignore, and wrongly typed render options. `baseline` alignment and `fixed` elements in the body
+now render as documented (see **Fixed**).
+
 ### Fixed
 
 - An SVG without `width`, `height` or `viewBox` is laid out at the size of what it draws without
