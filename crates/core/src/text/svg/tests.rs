@@ -25,7 +25,7 @@ fn laid_with(fonts: &str, body: &str) -> LaidText {
     let src =
         format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">{body}</svg>"#);
     let xml = usvg::roxmltree::Document::parse(&src).unwrap();
-    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let text = extract(&xml, usize::MAX).unwrap().0.texts.remove(0);
     let store = store();
     let doc = document(fonts);
     let set = FontSet::load(&doc, &store).unwrap();
@@ -213,7 +213,7 @@ fn records_glyphs_for_the_text_layer() {
     // Shaping through the render's shaper maps each glyph to its text.
     let src = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Hi</text></svg>"#;
     let xml = usvg::roxmltree::Document::parse(src).unwrap();
-    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let text = extract(&xml, usize::MAX).unwrap().0.texts.remove(0);
     let store = store();
     let doc = document(FONTS);
     let set = FontSet::load(&doc, &store).unwrap();
@@ -253,7 +253,7 @@ fn decorates_and_sorts_many_spans_in_linear_time() {
 fn lays_out_emoji_images_as_images() {
     let src = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text x="10" y="50" font-size="20" fill="red">a😀b</text></svg>"#;
     let xml = usvg::roxmltree::Document::parse(src).unwrap();
-    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let text = extract(&xml, usize::MAX).unwrap().0.texts.remove(0);
     let store = store();
     let doc = document(FONTS);
     let set = FontSet::load(&doc, &store).unwrap();

@@ -18,6 +18,7 @@ mod rewrite;
 mod survival;
 
 use std::ops::Range;
+use std::sync::Arc;
 
 pub(crate) use extract::{extract, TextError, DEFAULT_FONT_SIZE};
 pub(crate) use rewrite::{index_bits, most_bytes, rewrite, worst_case, Probes};
@@ -152,8 +153,9 @@ pub(crate) struct SvgChar {
 /// The resolved text properties of an element that holds characters.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SvgSpan {
-    /// `font-family`, in order of preference.
-    pub families: Vec<String>,
+    /// `font-family`, in order of preference, shared by the spans that
+    /// inherit the same declaration.
+    pub families: Arc<[String]>,
     pub weight: u16,
     pub italic: bool,
     /// Font size in user units; a span whose size is not finite and

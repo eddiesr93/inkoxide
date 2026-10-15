@@ -864,14 +864,16 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         inherited: 0,
         depth,
         shared: false,
+        in_text: false,
     };
     walk.visit(root, &mut Vec::new(), at)?;
     let mut text = SvgTextDoc::default();
     if text_found {
         // Reading the text matches its elements against the sheets once
         // more.
-        let (read, work) = super::svg_text::extract(doc).map_err(|e| match e {
+        let (read, work) = super::svg_text::extract(doc, MAX_PROBE_BYTES).map_err(|e| match e {
             super::svg_text::TextError::Unsupported(m) => Reject::Unsupported(m),
+            super::svg_text::TextError::Limit(m) => too_complex(&m),
         })?;
         walk.cost.add(Cost {
             rule_matches: work.matched.saturating_mul(rule_matches),
@@ -1207,6 +1209,8 @@ struct Info<'d> {
     /// A `text`: the text nodes in it, which comments and other markup
     /// split; each is read like an element.
     text_nodes: usize,
+    /// Has text nodes of its own: inside a `text`, a span.
+    holds_text: bool,
 }
 
 impl<'d> Info<'d> {
@@ -1281,6 +1285,7 @@ impl<'d> Info<'d> {
         info.drawn.resolve(doc, ids);
         info.refs.retain(|r| ids.contains_key(r));
         info.vertices = marker_vertices(tag, vertices);
+        info.holds_text = n.children().any(|c| c.is_text());
         if tag == "text" && is_svg_ns(n) {
             for t in n
                 .descendants()
@@ -1314,6 +1319,8 @@ struct At {
     depth: usize,
     /// Inside a paint server drawn before.
     shared: bool,
+    /// Inside a `text`.
+    in_text: bool,
 }
 
 impl At {
@@ -1322,6 +1329,7 @@ impl At {
     fn fresh(self) -> Self {
         Self {
             inherited: 0,
+            in_text: false,
             ..self
         }
     }
@@ -1377,6 +1385,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
             inherited,
             depth,
             shared,
+            in_text,
         } = at;
         if depth > MAX_DEPTH {
             return Err(Reject::Limit(format!(
@@ -1400,11 +1409,18 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         self.own += 1;
         let tag = n.tag_name().name();
         let shape = SHAPES.contains(&tag);
+        let text = tag == "text" && is_svg_ns(n);
+        let in_text = in_text || text;
+        // Each element of a text that holds characters is a span, which
+        // keeps the text properties it inherits.
+        let span = in_text && info.holds_text;
         if !shared {
             self.cost.add(Cost {
-                parsed_bytes: info
-                    .parsed_bytes
-                    .saturating_add(if shape { inherited } else { 0 }),
+                parsed_bytes: info.parsed_bytes.saturating_add(if shape || span {
+                    inherited
+                } else {
+                    0
+                }),
                 copied_bytes: self.sheet_values,
                 style_work: info.style_work,
                 rule_matches: self.rule_matches,
@@ -1442,6 +1458,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         }
         let at = At {
             inherited: inherited.saturating_add(info.inherited_bytes),
+            in_text,
             ..at
         };
         if let Some(r) = info.link {
@@ -2133,6 +2150,24 @@ mod tests {
         parse(
             svg(&format!(
                 r#"<g stroke="red" stroke-dasharray="1 2">{rects}</g>"#
+            ))
+            .as_bytes(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn charges_inherited_text_properties_per_span() {
+        // Each span of a text reads the properties it inherits again.
+        let families = vec!["a"; 50_000].join(",");
+        let spans = "<tspan>a</tspan>".repeat(400);
+        let e = rejected(&svg(&format!(
+            r#"<g font-family="{families}"><text>{spans}</text></g>"#
+        )));
+        assert!(e.contains("attributes"), "{e}");
+        parse(
+            svg(&format!(
+                r#"<g font-family="Inter"><text>{spans}</text></g>"#
             ))
             .as_bytes(),
         )

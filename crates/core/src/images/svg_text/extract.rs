@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use simplecss::{Declaration, DeclarationTokenizer, Element, StyleSheet};
 use svgtypes::{FontFamily, FontShorthand, Length, LengthUnit};
@@ -31,6 +32,8 @@ const DPI: f32 = 96.0;
 pub(crate) enum TextError {
     /// Text this version does not lay out (`textPath`, vertical text).
     Unsupported(String),
+    /// Text whose properties take more than the bytes allowed.
+    Limit(String),
 }
 
 /// Paint properties: declared on the text or its spans, they go on the
@@ -116,9 +119,14 @@ fn known(name: &str) -> Option<&'static str> {
 /// Reads every `<text>` of `doc`. Returns them, and how many elements it
 /// matched against the style sheets, for the caller to charge
 /// (`images/svg.rs`): the checks charged each element's `style` already.
-pub(crate) fn extract(doc: &Document<'_>) -> Result<(SvgTextDoc, Work), TextError> {
+/// Stops once the texts keep more than `max_bytes` of property values
+/// (font families, paint, the placeholders' attributes and effects).
+pub(crate) fn extract(
+    doc: &Document<'_>,
+    max_bytes: usize,
+) -> Result<(SvgTextDoc, Work), TextError> {
     let root = doc.root_element();
-    let mut cascade = Cascade::new(doc);
+    let mut cascade = Cascade::new(doc, max_bytes);
     let form = cascade.form();
     let viewport = viewport(root);
     let mut texts: Vec<SvgText> = Vec::new();
@@ -183,12 +191,19 @@ struct Cascade<'a, 'i> {
     /// does.
     ruled: HashSet<&'static str>,
     decls: HashMap<NodeId, Decls>,
+    /// Font family lists by declared value: the spans that inherit one
+    /// share it.
+    families: HashMap<String, Arc<[String]>>,
+    /// Bytes of property values the texts read so far keep, and the most
+    /// they may.
+    kept: usize,
+    max_kept: usize,
     work: Work,
     _doc: std::marker::PhantomData<&'i ()>,
 }
 
 impl<'a, 'i: 'a> Cascade<'a, 'i> {
-    fn new(doc: &'a Document<'i>) -> Self {
+    fn new(doc: &'a Document<'i>, max_kept: usize) -> Self {
         // As `usvg` collects them (`resolve_css`).
         let mut sheet = StyleSheet::new();
         for n in doc.descendants().filter(|n| n.has_tag_name("style")) {
@@ -207,6 +222,9 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
             sheet,
             ruled,
             decls: HashMap::new(),
+            families: HashMap::new(),
+            kept: 0,
+            max_kept,
             work: Work::default(),
             _doc: std::marker::PhantomData,
         }
@@ -265,6 +283,39 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
     fn own_or_parent(&mut self, n: Node<'a, 'i>, prop: &str) -> Option<String> {
         self.own(n, prop)
             .or_else(|| n.parent_element().and_then(|p| self.own(p, prop)))
+    }
+
+    /// Counts `bytes` more kept, failing past the most allowed.
+    fn keep(&mut self, bytes: usize) -> Result<(), TextError> {
+        self.kept = self.kept.saturating_add(bytes);
+        if self.kept > self.max_kept {
+            return Err(TextError::Limit(format!(
+                "its text properties take more than {} MiB",
+                self.max_kept >> 20
+            )));
+        }
+        Ok(())
+    }
+
+    /// The font families `value` lists, read once per distinct value.
+    fn families(&mut self, value: String) -> Result<Arc<[String]>, TextError> {
+        if let Some(f) = self.families.get(&value) {
+            return Ok(f.clone());
+        }
+        let list: Arc<[String]> = svgtypes::parse_font_families(&value)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| match f {
+                FontFamily::Named(s) => s,
+                generic => generic.to_string(),
+            })
+            .collect();
+        let bytes = list
+            .iter()
+            .fold(value.len(), |sum, f| sum + f.len() + size_of::<String>());
+        self.keep(bytes)?;
+        self.families.insert(value, list.clone());
+        Ok(list)
     }
 
     /// How this document's placeholders are written: as elements no
@@ -768,12 +819,17 @@ fn read_text<'a, 'i>(
         let (span, hidden) = if let Some(&s) = span_of.get(&n.parent.id()) {
             s
         } else {
-            let props = span_props(n.parent, text, cascade, vw.hypot(vh) / 2f32.sqrt());
+            let props = span_props(n.parent, text, cascade, vw.hypot(vh) / 2f32.sqrt())?;
             let paint = paint_style(n.parent, text, cascade);
-            let p = *paint_of.entry(paint).or_insert_with_key(|paint| {
+            let p = if let Some(&p) = paint_of.get(&paint) {
+                p
+            } else {
+                cascade.keep(paint.len())?;
                 paints.push(paint.clone());
-                (paints.len() - 1) as u32
-            });
+                let p = (paints.len() - 1) as u32;
+                paint_of.insert(paint, p);
+                p
+            };
             spans.push(SvgSpan { paint: p, ..props });
             let hidden = cascade.own(n.parent, "display").as_deref() == Some("none");
             let s = ((spans.len() - 1) as u32, hidden);
@@ -813,6 +869,7 @@ fn read_text<'a, 'i>(
             let _ = write!(effects, "{prop}:{v};");
         }
     }
+    cascade.keep(attrs.len() + effects.len())?;
     let rtl = cascade.inherited(text, "direction").as_deref() == Some("rtl");
     Ok(SvgText {
         range: text.range(),
@@ -835,18 +892,12 @@ fn span_props<'a, 'i>(
     text: Node<'a, 'i>,
     cascade: &mut Cascade<'a, 'i>,
     diagonal: f32,
-) -> SvgSpan {
+) -> Result<SvgSpan, TextError> {
     let size = cascade.font_size(n);
-    let families = cascade
-        .inherited(n, "font-family")
-        .and_then(|v| svgtypes::parse_font_families(&v).ok())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|f| match f {
-            FontFamily::Named(s) => s,
-            generic => generic.to_string(),
-        })
-        .collect();
+    let families = match cascade.inherited(n, "font-family") {
+        Some(v) => cascade.families(v)?,
+        None => Arc::default(),
+    };
     let italic = matches!(
         cascade.inherited(n, "font-style").as_deref(),
         Some("italic" | "oblique")
@@ -900,7 +951,7 @@ fn span_props<'a, 'i>(
                 .is_some_and(|v| v.split(' ').any(|w| w == kind))
         })
     };
-    SvgSpan {
+    Ok(SvgSpan {
         families,
         weight,
         italic,
@@ -914,7 +965,7 @@ fn span_props<'a, 'i>(
         overline: decoration("overline"),
         line_through: decoration("line-through"),
         paint: 0,
-    }
+    })
 }
 
 fn baseline(v: Option<&str>) -> Baseline {

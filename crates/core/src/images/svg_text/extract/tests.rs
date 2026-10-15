@@ -4,7 +4,7 @@ fn texts(body: &str) -> Vec<SvgText> {
     let src =
         format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">{body}</svg>"#);
     let doc = Document::parse(&src).unwrap();
-    extract(&doc).unwrap().0.texts
+    extract(&doc, usize::MAX).unwrap().0.texts
 }
 
 fn one(body: &str) -> SvgText {
@@ -20,8 +20,8 @@ fn string(t: &SvgText) -> String {
 fn error(body: &str) -> String {
     let src = format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{body}</svg>"#);
     let doc = Document::parse(&src).unwrap();
-    match extract(&doc) {
-        Err(TextError::Unsupported(m)) => m,
+    match extract(&doc, usize::MAX) {
+        Err(TextError::Unsupported(m) | TextError::Limit(m)) => m,
         Ok(_) => panic!("accepted {body}"),
     }
 }
@@ -56,7 +56,7 @@ fn spans_hold_their_own_properties() {
     assert_eq!(string(&t), "Ab c");
     assert_eq!(t.spans.len(), 3);
     let [a, b, c] = [&t.spans[0], &t.spans[1], &t.spans[2]];
-    assert_eq!(a.families, ["Inter", "Noto Sans", "serif"]);
+    assert_eq!(*a.families, ["Inter", "Noto Sans", "serif"]);
     assert_eq!((a.size, a.weight, a.italic), (20.0, 700, false));
     assert_eq!((b.size, b.weight, b.italic), (10.0, 600, true));
     assert_eq!(c.size, 40.0);
@@ -81,13 +81,13 @@ fn resolves_the_cascade_like_usvg() {
     let [a, b, c] = [&t.spans[0], &t.spans[1], &t.spans[2]];
     // `!important` in a sheet wins over the `style` attribute.
     assert_eq!(a.size, 40.0);
-    assert_eq!(a.families, ["Brand"]);
+    assert_eq!(*a.families, ["Brand"]);
     assert_eq!(a.letter_spacing, 2.0);
     assert_eq!(
         (b.weight, b.word_spacing, b.letter_spacing),
         (900, 3.0, 2.0)
     );
-    assert_eq!(c.families, ["Other", "serif"]);
+    assert_eq!(*c.families, ["Other", "serif"]);
     assert_eq!(
         (c.size, c.weight, c.italic, c.word_spacing),
         (12.0, 300, true, 0.0)
@@ -121,7 +121,7 @@ fn placeholders_avoid_elements_important_rules_name() {
             r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{sheet}</style><text>a</text></svg>"#
         );
         let doc = Document::parse(&src).unwrap();
-        let f = extract(&doc).unwrap().0.form;
+        let f = extract(&doc, usize::MAX).unwrap().0.form;
         (f.shape, f.group, f.group_paint)
     };
     let plain = (ProbeShape::Path, "a", String::new());
@@ -320,7 +320,7 @@ fn refuses_text_from_entities() {
         ..Default::default()
     };
     let doc = Document::parse_with_options(src, opts).unwrap();
-    let Err(TextError::Unsupported(e)) = extract(&doc) else {
+    let Err(TextError::Unsupported(e)) = extract(&doc, usize::MAX) else {
         panic!("accepted text from an entity");
     };
     assert!(e.contains("entity"), "{e}");
@@ -363,4 +363,39 @@ fn reads_many_spans_and_text_nodes_in_linear_time() {
             4 * n
         );
     }
+}
+
+/// Spans that inherit one `font-family` share its list, read once, and
+/// the values the texts keep count toward the bytes allowed.
+#[test]
+fn shares_inherited_font_families_and_counts_what_texts_keep() {
+    let families = vec!["Inter"; 1_000].join(",");
+    let body = format!(
+        r#"<g font-family="{families}"><text>{}</text><text>b</text></g>"#,
+        "<tspan>a</tspan>".repeat(100)
+    );
+    let t = texts(&body);
+    let first = &t[0].spans[0].families;
+    assert_eq!(first.len(), 1_000);
+    assert!(t
+        .iter()
+        .flat_map(|t| &t.spans)
+        .all(|s| Arc::ptr_eq(&s.families, first)));
+
+    // One list is kept once, however many spans inherit it.
+    let src = format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{body}</svg>"#);
+    let doc = Document::parse(&src).unwrap();
+    let once = families.len() + 1_000 * (5 + size_of::<String>());
+    assert!(extract(&doc, once + 1_000).is_ok());
+    let Err(TextError::Limit(e)) = extract(&doc, once / 2) else {
+        panic!("kept more than allowed");
+    };
+    assert!(e.contains("text properties"), "{e}");
+    // Paint declarations count too.
+    let src = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg"><text>{}</text></svg>"#,
+        r#"<tspan fill="red">a</tspan><tspan fill="blue">a</tspan>"#
+    );
+    let doc = Document::parse(&src).unwrap();
+    assert!(matches!(extract(&doc, 10), Err(TextError::Limit(_))));
 }
