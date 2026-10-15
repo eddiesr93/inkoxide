@@ -18,7 +18,6 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 
 use ttf_parser::colr::{ClipBox, CompositeMode, GradientExtend, Paint, Painter};
 use ttf_parser::{GlyphId, RasterImageFormat, RgbaColor, Transform};
@@ -314,10 +313,6 @@ impl Reader<'_> {
     }
 }
 
-/// Why painting stopped: unwound out of `ttf-parser`, which has no way to
-/// stop a painter, and caught in [`colr_svg`].
-struct OverBudget;
-
 /// Glyph `id` of `face` as SVG, its layers in the foreground colour in
 /// `text`, and whether anything was painted in `text`.
 fn colr_svg(
@@ -328,18 +323,9 @@ fn colr_svg(
     let mut painter = SvgPainter::new(face, text);
     let [r, g, b] = text;
     let foreground = RgbaColor::new(r, g, b, 255);
-    let painted = catch_unwind(AssertUnwindSafe(|| {
-        face.paint_color_glyph(id, 0, foreground, &mut painter)
-    }));
-    match painted {
-        Ok(Some(())) => {
-            let seen = painter.text_seen;
-            painter.finish().map(|glyph| (glyph, seen))
-        }
-        Ok(None) => None,
-        Err(payload) if payload.is::<OverBudget>() => None,
-        Err(payload) => resume_unwind(payload),
-    }
+    face.paint_color_glyph(id, 0, foreground, &mut painter)?;
+    let seen = painter.text_seen;
+    painter.finish().map(|glyph| (glyph, seen))
 }
 
 /// The 2×3 matrix of `t`, `[a b c d e f]`.
@@ -391,6 +377,10 @@ struct SvgPainter<'a, 'f> {
     bounds: Option<[f32; 4]>,
     ids: usize,
     ops: usize,
+    /// Past the budget: `ttf-parser` cannot stop a painter, so the calls
+    /// after that do nothing (the paint graph's size bounds them), and the
+    /// glyph has no colour.
+    over: bool,
     /// The text colour, and whether a fill or a stop was in it.
     text: TextColor,
     text_seen: bool,
@@ -412,6 +402,7 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
             bounds: None,
             ids: 0,
             ops: 0,
+            over: false,
             text,
             text_seen: false,
         }
@@ -423,12 +414,11 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
         format!("rgb({},{},{})", c.red, c.green, c.blue)
     }
 
-    /// Counts one call against the budget, and unwinds past it.
-    fn spend(&mut self) {
+    /// Counts one call against the budget; false past it.
+    fn spend(&mut self) -> bool {
         self.ops += 1;
-        if self.ops > MAX_PAINT_OPS || self.body.len() > MAX_SVG_BYTES {
-            resume_unwind(Box::new(OverBudget));
-        }
+        self.over |= self.ops > MAX_PAINT_OPS || self.body.len() > MAX_SVG_BYTES;
+        !self.over
     }
 
     fn next_id(&mut self, prefix: char) -> String {
@@ -510,6 +500,9 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
 
     /// The SVG of the glyph and its box; `None` when nothing was painted.
     fn finish(self) -> Option<ColorGlyph> {
+        if self.over {
+            return None;
+        }
         let [x0, y0, x1, y1] = self.clip_box.or(self.bounds)?;
         let (w, h) = (x1 - x0, y1 - y0);
         if !(w > 0.0 && h > 0.0 && w.is_finite() && h.is_finite()) {
@@ -529,7 +522,9 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
 
 impl<'a> Painter<'a> for SvgPainter<'a, '_> {
     fn outline_glyph(&mut self, glyph_id: GlyphId) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         self.path.clear();
         let rect = self
             .face
@@ -546,7 +541,9 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
     }
 
     fn paint(&mut self, paint: Paint<'a>) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         match paint {
             Paint::Solid(c) => {
                 let fill = self.rgb(c);
@@ -617,7 +614,9 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
     }
 
     fn push_clip(&mut self) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         let path = std::mem::take(&mut self.path);
         let m = self.path_transform;
         self.clip(&path, m);
@@ -625,7 +624,9 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
     }
 
     fn push_clip_box(&mut self, clip: ClipBox) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         let (x0, y0, x1, y1) = (clip.x_min, clip.y_min, clip.x_max, clip.y_max);
         if self.clip_box.is_none() && self.transforms.is_empty() {
             self.clip_box = Some([x0, y0, x1, y1]);
@@ -636,28 +637,38 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
     }
 
     fn pop_clip(&mut self) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         self.body.push_str("</g>");
     }
 
     fn push_layer(&mut self, _mode: CompositeMode) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         self.body.push_str("<g>");
     }
 
     fn pop_layer(&mut self) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         self.body.push_str("</g>");
     }
 
     fn push_transform(&mut self, transform: Transform) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         self.transforms.push(self.transform);
         self.transform = mul(self.transform, matrix(transform));
     }
 
     fn pop_transform(&mut self) {
-        self.spend();
+        if !self.spend() {
+            return;
+        }
         if let Some(t) = self.transforms.pop() {
             self.transform = t;
         }
@@ -821,6 +832,30 @@ mod tests {
                 assert_eq!(font.color_glyph(font.glyph('😀').unwrap()), None);
                 assert!(t.elapsed().as_secs() < 2, "took {:?}", t.elapsed());
             }
+        });
+    }
+
+    /// A glyph whose paint graph is within the limit can still call the
+    /// painter more often than that: the calls past the budget do nothing,
+    /// and the glyph has no colour.
+    #[test]
+    fn painter_calls_past_the_budget_leave_no_colour() {
+        with_fonts(|fonts| {
+            let painted = |calls: usize| {
+                let mut p = SvgPainter::new(&fonts.get(0).face, BLACK_TEXT);
+                p.push_clip_box(ClipBox {
+                    x_min: 0.0,
+                    y_min: 0.0,
+                    x_max: 10.0,
+                    y_max: 10.0,
+                });
+                for _ in 1..calls {
+                    p.push_layer(CompositeMode::SourceOver);
+                }
+                p.finish()
+            };
+            assert!(painted(MAX_PAINT_OPS).is_some());
+            assert_eq!(painted(MAX_PAINT_OPS + 1), None);
         });
     }
 
