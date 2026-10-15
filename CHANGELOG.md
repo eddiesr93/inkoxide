@@ -21,7 +21,9 @@ All notable changes to the packages in this repository. The format follows
   `Permissions` and `Printing` in Rust, `encryption: { userPassword, ownerPassword,
   permissions }` in the Node binding and in `@inkoxide/render`, and `<Document userPassword
   ownerPassword permissions>`, which the option replaces. Passwords are printable ASCII up to
-  127 bytes, never part of the document tree, and never shown in errors or `Debug` output.
+  127 bytes, never part of the document tree, and never shown in errors or `Debug` output; in
+  Node, a password that is not a string is `INVALID_ARGUMENT` at its path before the engine
+  sees it.
   Output stays deterministic: the keys are derived from the document and the passwords.
   Radio buttons name their states by position in an encrypted file, with their values in
   `/Opt`, so the values are encrypted too. Encryption with PDF/A is `INVALID_VALUE` at
