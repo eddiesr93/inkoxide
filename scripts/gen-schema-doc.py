@@ -30,6 +30,12 @@ INTRO = """# Document schema v1
   padding and horizontal properties, as in CSS). Gaps resolve against the
   box's own content box, and a percentage height needs a containing block
   with a set height: the page content box, for a child of the page.
+- **Numbers.** An integer may be written with a zero fraction (`400.0`),
+  as JSON Schema reads it. Other numbers are read as 32-bit floats, so a
+  number past a bound by less than a float's precision there is read as
+  the bound and accepted (`1000000.01` where the maximum is `1000000`).
+  Percentages and `fr` sizes are bounded as written: `"10000.0001%"` is
+  out of range.
 - **Colours.** `[r, g, b, a]` floats in `[0, 1]`, DeviceRGB.
 - **Strictness.** Unknown properties are errors (`UNKNOWN_FIELD`), as are
   properties on the wrong node type (e.g. `runs` on a `box`) and text-only

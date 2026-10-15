@@ -2442,3 +2442,104 @@ fn checks_wide_tables_in_linear_time() {
         4 * n
     );
 }
+
+/// An integer written with a zero fraction reads as the integer, as JSON
+/// Schema reads it; another fraction is the wrong type.
+#[test]
+fn integers_may_be_written_as_floats() {
+    let text = r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9}]"#;
+    let table = |rest: &str| {
+        format!(r#"{{"type":"table","columns":[{{"width":10}},{{"width":10}}],{rest}}}"#)
+    };
+    for child in [
+        format!(r#"{text},"style":{{"maxLines":3.0,"zIndex":-1.0,"orphans":2.0}}}}"#),
+        table(r#""headerRows":1.0,"rows":[{"cells":[{"colSpan":2.0}]}]"#),
+        table(r#""rows":[{"cells":[{"rowSpan":2.0},{}]},{"cells":[{}]}]"#),
+        r#"{"type":"box","pages":[1.0,-1.0],"bookmark":{"title":"t","level":2.0}}"#.into(),
+        r#"{"type":"box","style":{"gridRow":{"start":1.0,"end":-1.0},"gridColumn":{"span":2.0}}}"#
+            .into(),
+    ] {
+        assert_eq!(run(&doc(&child)), [], "{child}");
+    }
+    let d = doc(&format!("{text}}}")).replace(r#""version":1"#, r#""version":1.0"#);
+    assert_eq!(run(&d), [], "{d}");
+    for (child, code, path) in [
+        (
+            format!(r#"{text},"style":{{"maxLines":2.5}}}}"#),
+            C::InvalidType,
+            "style.maxLines",
+        ),
+        (
+            format!(r#"{text},"style":{{"zIndex":1e300}}}}"#),
+            C::OutOfRange,
+            "style.zIndex",
+        ),
+        (
+            r#"{"type":"box","style":{"gridRow":{"start":1.5}}}"#.into(),
+            C::InvalidType,
+            "style.gridRow.start",
+        ),
+    ] {
+        assert_eq!(
+            one(&doc(&child)),
+            (code, format!("pages[0].children[0].{path}")),
+            "{child}"
+        );
+    }
+}
+
+/// `options`, when set, lists at least one choice, whatever the field.
+#[test]
+fn field_options_are_not_empty() {
+    for kind in ["text", "checkbox", "select", "list"] {
+        let child = format!(
+            r#"{{"type":"field","field":{{"name":"f","kind":"{kind}","font":"Inter-Regular","options":[]}}}}"#
+        );
+        assert_eq!(
+            one(&doc(&child)),
+            (C::InvalidValue, "pages[0].children[0].field.options".into()),
+            "{kind}"
+        );
+    }
+}
+
+/// Percentages and flexible sizes are bounded as written, not as rounded
+/// to an `f32`; a negative one that is not 0 stays negative.
+#[test]
+fn suffixed_numbers_are_bounded_as_written() {
+    let tiny = format!("0.{}1", "0".repeat(60));
+    let width = |w: &str| doc(&format!(r#"{{"type":"box","style":{{"width":"{w}"}}}}"#));
+    for w in [
+        "10000%",
+        "9999.99999999999999999%",
+        "-0.000%",
+        &format!("{tiny}%"),
+    ] {
+        assert_eq!(run(&width(w)), [], "{w}");
+    }
+    for w in [
+        "10000.0001%",
+        "10000.0000000000000000001%",
+        "010000.5%",
+        &format!("-{tiny}%"),
+    ] {
+        assert_eq!(
+            one(&width(w)),
+            (C::OutOfRange, "pages[0].children[0].style.width".into()),
+            "{w}"
+        );
+    }
+    let grid = |fr: &str| {
+        doc(&format!(
+            r#"{{"type":"box","style":{{"display":"grid","gridTemplateColumns":["{fr}"]}}}}"#
+        ))
+    };
+    assert_eq!(run(&grid("1000000fr")), []);
+    for fr in ["1000000.01fr", "1000000.000000000000001fr"] {
+        assert_eq!(one(&grid(fr)).0, C::OutOfRange, "{fr}");
+    }
+    let column = doc(&format!(
+        r#"{{"type":"table","columns":[{{"width":"{tiny}fr"}}],"rows":[{{"cells":[{{}}]}}]}}"#
+    ));
+    assert_eq!(run(&column), []);
+}

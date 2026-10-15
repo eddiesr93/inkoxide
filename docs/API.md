@@ -334,15 +334,21 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   (`OUT_OF_RANGE`).
 - `float` applies to the children of a column box, not with `position:
   absolute` nor with a forced break (`INVALID_VALUE`), and not to table
-  cells (`STYLE_NOT_APPLICABLE`); a box holds at most 1000 floated
-  children (`OUT_OF_RANGE`). A box with floats takes no `justifyContent`
-  or `alignContent`, and its children no `flexGrow` or `flexBasis`
-  (`STYLE_NOT_APPLICABLE`).
+  cells (`STYLE_NOT_APPLICABLE`, as `clear`). Inside a float, a forced
+  break is `INVALID_VALUE` and a `pageBreak` `INVALID_NODE`. A box holds
+  at most 1000 floated children (`OUT_OF_RANGE`). A box with floats
+  takes no `justifyContent` or `alignContent`, and its children no
+  `flexGrow` or `flexBasis` (`STYLE_NOT_APPLICABLE`).
 - `transform`, `transformOrigin` and `zIndex` do not apply to table
   cells (`STYLE_NOT_APPLICABLE`).
 - The tables of a document have at most 1000000 grid slots in all, a
   slot being one row of one column, however the cells span them
   (`OUT_OF_RANGE` at the table's `rows`).
+
+The other way, the engine reads a number as a 32-bit float: one past a
+bound by less than a float's precision there is read as the bound and
+accepted (`flexGrow: 1000000.01`). Integers (also written as `400.0`),
+percentages and `fr` sizes are bounded as written.
 
 ## Not part of the API
 

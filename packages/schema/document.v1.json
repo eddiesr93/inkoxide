@@ -187,6 +187,11 @@
       "type": "string",
       "pattern": "^-?0*([0-9]{1,4}(\\.[0-9]+)?|10000(\\.0+)?)%$"
     },
+    "NonNegativePercent": {
+      "description": "A percentage within [0%, 10000%], like `\"50%\"`.",
+      "type": "string",
+      "pattern": "^(0*([0-9]{1,4}(\\.[0-9]+)?|10000(\\.0+)?)|-0+(\\.0+)?)%$"
+    },
     "Fr": {
       "description": "A flexible size, a share of the free space, of at most 1000000fr, like `\"1fr\"`.",
       "type": "string",
@@ -218,6 +223,35 @@
         },
         {
           "$ref": "#/$defs/Percent"
+        }
+      ]
+    },
+    "NonNegativeLength": {
+      "description": "A `Length` that is not negative: points (at most 1000000), a percentage of the containing block (at most 10000%), or \"auto\". A percentage height needs a containing block with a definite height, as for `Length`.",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        {
+          "$ref": "#/$defs/NonNegativePercent"
+        },
+        {
+          "const": "auto"
+        }
+      ]
+    },
+    "NonNegativeLengthPercent": {
+      "description": "A `LengthPercent` that is not negative: points (at most 1000000) or a percentage (at most 10000%), of what `LengthPercent` says.",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        {
+          "$ref": "#/$defs/NonNegativePercent"
         }
       ]
     },
@@ -272,20 +306,21 @@
       }
     },
     "EdgesLengthPercent": {
+      "description": "Padding: a `NonNegativeLengthPercent` per side.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "top": {
-          "$ref": "#/$defs/LengthPercent"
+          "$ref": "#/$defs/NonNegativeLengthPercent"
         },
         "right": {
-          "$ref": "#/$defs/LengthPercent"
+          "$ref": "#/$defs/NonNegativeLengthPercent"
         },
         "bottom": {
-          "$ref": "#/$defs/LengthPercent"
+          "$ref": "#/$defs/NonNegativeLengthPercent"
         },
         "left": {
-          "$ref": "#/$defs/LengthPercent"
+          "$ref": "#/$defs/NonNegativeLengthPercent"
         }
       }
     },
@@ -369,7 +404,7 @@
       "additionalProperties": false,
       "properties": {
         "before": {
-          "description": "`page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, or on an absolutely positioned node: there it would do nothing.",
+          "description": "`page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing.",
           "enum": [
             "auto",
             "page"
@@ -461,7 +496,7 @@
           ],
           "properties": {
             "fitContent": {
-              "$ref": "#/$defs/LengthPercent"
+              "$ref": "#/$defs/NonNegativeLengthPercent"
             }
           }
         }
@@ -717,36 +752,36 @@
           "$ref": "#/$defs/NonNegative"
         },
         "flexBasis": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "gap": {
-          "$ref": "#/$defs/LengthPercent",
+          "$ref": "#/$defs/NonNegativeLengthPercent",
           "description": "Sets both rowGap and columnGap; either of those, when present, wins."
         },
         "rowGap": {
-          "$ref": "#/$defs/LengthPercent",
+          "$ref": "#/$defs/NonNegativeLengthPercent",
           "description": "A percentage is of the box's own content height, as in CSS. In a box whose height is not set, it is of the height of the content without the gaps, so it adds little: use points."
         },
         "columnGap": {
-          "$ref": "#/$defs/LengthPercent"
+          "$ref": "#/$defs/NonNegativeLengthPercent"
         },
         "width": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "height": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "minWidth": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "minHeight": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "maxWidth": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "maxHeight": {
-          "$ref": "#/$defs/Length"
+          "$ref": "#/$defs/NonNegativeLength"
         },
         "aspectRatio": {
           "type": "number",
@@ -861,7 +896,7 @@
             "none"
           ],
           "default": "none",
-          "description": "Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page."
+          "description": "Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `\"page\"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page."
         },
         "clear": {
           "enum": [
@@ -1356,7 +1391,7 @@
         },
         "style": {
           "$ref": "#/$defs/Style",
-          "description": "The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`."
+          "description": "The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin`, `zIndex`, `float` and `clear`."
         },
         "children": {
           "type": "array",
@@ -1754,7 +1789,7 @@
       }
     },
     "PageBreakNode": {
-      "description": "Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, it is `INVALID_NODE`.",
+      "description": "Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -2074,7 +2109,7 @@
           "maximum": 1000000
         },
         {
-          "$ref": "#/$defs/Percent"
+          "$ref": "#/$defs/NonNegativePercent"
         },
         {
           "$ref": "#/$defs/Fr"

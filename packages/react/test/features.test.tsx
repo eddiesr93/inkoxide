@@ -323,9 +323,11 @@ describe('relative units in the style prop', () => {
         .validate()
         .map((p) => `${p.path}: ${p.message}`);
     expect(problems({ width: '20000%' })[0]).toBe(
-      'pages[0].children[0].style.width: must be a percentage within ±10000%, like "50%"',
+      'pages[0].children[0].style.width: must be a percentage within [0%, 10000%], like "50%"',
     );
     expect(problems({ width: 2e6 })[0]).toBe('pages[0].children[0].style.width: must be <= 1000000');
+    expect(problems({ width: -5 })[0]).toBe('pages[0].children[0].style.width: must be >= 0');
+    expect(problems({ marginLeft: -5 })).toEqual([]);
     expect(problems({ transform: 'scale(2000000)' })[0]).toBe(
       'pages[0].children[0].style.transform[0].scale[0]: must be <= 1000000',
     );
@@ -341,7 +343,7 @@ describe('relative units in the style prop', () => {
       'pages[0].children[0].style.gridTemplateColumns[0]: must be a flexible size, a share of the free space, of at most 1000000fr, like "1fr"',
     );
     expect(firstProblem({ gridTemplateColumns: ['20000%'] })).toBe(
-      'pages[0].children[0].style.gridTemplateColumns[0]: must be a percentage within ±10000%, like "50%"',
+      'pages[0].children[0].style.gridTemplateColumns[0]: must be a percentage within [0%, 10000%], like "50%"',
     );
   });
 });
