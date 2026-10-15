@@ -263,6 +263,108 @@ mod tests {
         assert_eq!(rects(&pdf), [[120.0, 150.0, 140.0, 170.0]]);
     }
 
+    /// The PDF (uncompressed, as text) of `pages` pages of 200 × 200 pt in
+    /// Inter, with header `header` and `children`, and its pages' content
+    /// streams.
+    fn render_text(header: &str, children: &str, pages: usize) -> (String, Vec<String>) {
+        let header = if header.is_empty() {
+            String::new()
+        } else {
+            format!(r#""header":{header},"#)
+        };
+        let page =
+            format!(r#"{{"size":{{"width":200,"height":200}},{header}"children":[{children}]}}"#);
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{}]}}"#,
+            vec![page; pages].join(",")
+        );
+        let options = crate::RenderOptions::default().with_compress(false);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &options,
+            &crate::test_fixtures::inter(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        let pdf = String::from_utf8_lossy(&pdf).into_owned();
+        let streams = pdf
+            .split("stream\n")
+            .skip(1)
+            .filter_map(|s| s.split("\nendstream").next())
+            .filter(|s| s.contains(" Tf"))
+            .map(String::from)
+            .collect();
+        (pdf, streams)
+    }
+
+    /// A text node of runs in Inter, 10 pt, `width` wide.
+    fn text(width: u32, runs: &[&str]) -> String {
+        let runs: Vec<String> = runs
+            .iter()
+            .map(|r| match r.strip_prefix('@') {
+                Some(contents) => format!(
+                    r#"{{"note":{{"contents":"{contents}"}},"font":"Inter-Regular","size":10}}"#
+                ),
+                None => format!(r#"{{"text":"{r}","font":"Inter-Regular","size":10}}"#),
+            })
+            .collect();
+        format!(
+            r#"{{"type":"text","style":{{"width":{width}}},"runs":[{}]}}"#,
+            runs.join(",")
+        )
+    }
+
+    #[test]
+    fn a_note_in_text_hangs_from_the_line_where_it_is() {
+        let (pdf, streams) = render_text("", &text(200, &["ab", "@See", "cd"]), 1);
+        assert_eq!(pdf.matches("/Subtype /Text").count(), 1, "{pdf}");
+        assert!(pdf.contains("/Contents (See)"), "{pdf}");
+        let [[x0, y0, x1, y1]] = rects(&pdf)[..] else {
+            panic!("{pdf}");
+        };
+        // After `ab`, at the line's top.
+        assert!(x0 > 5.0 && x0 < 15.0, "{x0}");
+        assert_eq!((x1 - x0, y0, y1), (20.0, 180.0, 200.0));
+        // It takes no room and draws nothing in the text.
+        let (_, plain) = render_text("", &text(200, &["ab", "cd"]), 1);
+        assert_eq!(streams, plain);
+    }
+
+    #[test]
+    fn a_note_in_text_stays_with_its_word() {
+        // `aaaa bbbb` does not fit on one line.
+        let rect = |runs: &[&str]| {
+            let (pdf, _) = render_text("", &text(30, runs), 1);
+            rects(&pdf)[0]
+        };
+        // After a word, it stays at its end on the first line.
+        let [x0, y0, ..] = rect(&["aaaa", "@n", " bbbb"]);
+        assert!(x0 > 15.0 && y0 == 180.0, "{x0} {y0}");
+        // After a space, it goes with the next word, at the start of the
+        // second line.
+        let [x0, y0, ..] = rect(&["aaaa ", "@n", "bbbb"]);
+        assert!(x0 == 0.0 && y0 < 180.0, "{x0} {y0}");
+        // The spaces around it collapse to one.
+        let (_, two) = render_text("", &text(200, &["a ", "@n", " b"]), 1);
+        let (_, one) = render_text("", &text(200, &["a ", "b"]), 1);
+        assert_eq!(two, one);
+    }
+
+    #[test]
+    fn a_note_in_text_is_on_the_page_of_its_line() {
+        let count = |pdf: &str| pdf.matches("/Subtype /Text").count();
+        // In a header, on every page.
+        let (pdf, _) = render_text(&text(200, &["Draft", "@x"]), "", 3);
+        assert_eq!(count(&pdf), 3);
+        // A line on the second page.
+        let full = r#"{"type":"box","style":{"height":195}}"#;
+        let (pdf, _) = render_text("", &format!("{full},{}", text(200, &["a", "@x"])), 1);
+        assert_eq!(pdf.matches("/Type /Page\n").count(), 2, "{pdf}");
+        assert_eq!(count(&pdf), 1);
+        assert_eq!(rects(&pdf)[0][3], 200.0);
+    }
+
     #[test]
     fn pdf_a_keeps_the_appearance_and_the_print_flag() {
         let pdf = render("", &note(r#"{"contents":"x"}"#), 1, true);

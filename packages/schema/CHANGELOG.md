@@ -62,7 +62,13 @@ Still document schema version 1.
 - A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
   `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
   at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
-  `bookmark`, and no space in the layout.
+  `bookmark`, and no space in the layout. Its icon is 20 pt square at any zoom and stays upright
+  under a transform.
+- `TextRun.note` (`$defs/Note`): a note in the line, in place of the run's text, a run having
+  exactly one of `text`, `placeholder`, `image` and `note`. It takes no room; its icon hangs from
+  the top of the line where the run is, on the page where the line starts. The run's `font` and
+  `size` are the line's strut, and line breaking keeps it with the character before it, or after
+  a space, the one after it.
 - SVG images may contain text (`<text>`, `<tspan>`). It is laid out with the document's fonts:
   `FontDecl.family`, `weight` and `style`, which were descriptive until now, are what its
   `font-family`, `font-weight` and `font-style` select a declared font by. A document whose SVG

@@ -904,6 +904,7 @@ no thousands separator, so `{ type: 'number', currencyPrepend: true }` shows `'1
 ```tsx
 <Note author="Ana">Check the totals against the ledger.</Note>
 <Note className="absolute right-0 top-0 bg-blue-500" open>Draft: not for circulation.</Note>
+<Text>Total: 1,250<Note author="Ana">Includes the March refund.</Note> due on 1 May.</Text>
 ```
 
 A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
@@ -912,8 +913,13 @@ when the document opens, and its `backgroundColor` (or a `bg-*` class) is its co
 default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
 its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
 insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
-`fixed` element it is on every page. The icon is drawn into the PDF, so it prints and looks the
-same in every viewer, and the output stays PDF/A-2b. A note cannot go inside a `Text` yet.
+`fixed` element it is on every page. Under a `transform`, the icon stays upright and the same
+size: only its corner moves. The icon is drawn into the PDF, so it prints and looks the same in
+every viewer, and the output stays PDF/A-2b.
+
+Inside a `Text`, a note is part of the line: it takes no room, and its icon hangs from the top of
+the line where it is, on the page of that line. Line breaking keeps it with the word before it,
+or after a space, with the word after it. There it takes `backgroundColor` and no other style.
 
 ## Debugging layout
 

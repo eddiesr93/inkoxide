@@ -1,4 +1,4 @@
-//! Text notes: the icon ops of `note` nodes.
+//! Text notes: the icon ops of `note` nodes and of note runs in text.
 
 use crate::icons::{IconKind, IconOp};
 use crate::layout::Geometry;
@@ -13,9 +13,15 @@ pub(crate) fn paint(note: &Note, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut
     if ctx.window.is_some_and(|w| !w.holds(top)) {
         return;
     }
+    paint_at(note, (b.x + ctx.dx, top + ctx.dy), ops);
+}
+
+/// Emits the icon op of `note` with its top-left corner at `(x, y)`, in
+/// page coordinates: a note in a line of text hangs from the line's top.
+pub(crate) fn paint_at(note: &Note, (x, y): (f32, f32), ops: &mut Vec<Op>) {
     ops.push(Op::Icon(Box::new(IconOp {
-        x: b.x + ctx.dx,
-        y: top + ctx.dy,
+        x,
+        y,
         kind: IconKind::Note(note.clone()),
     })));
 }

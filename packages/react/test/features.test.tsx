@@ -1290,7 +1290,7 @@ describe('notes', () => {
     expect(r.validate()).toEqual([]);
   });
 
-  it('contains only text, and is a block, not a run', () => {
+  it('contains only text', () => {
     expect(
       thrown(() =>
         tree(
@@ -1301,15 +1301,6 @@ describe('notes', () => {
       ).message,
     ).toContain('A <Note> contains only text');
     expect(thrown(() => tree(<Note />)).message).toContain('<Note> needs text');
-    expect(
-      thrown(() =>
-        tree(
-          <Text>
-            a <Note>b</Note>
-          </Text>,
-        ),
-      ).message,
-    ).toContain('cannot be inside <Text>');
     // Fixed on every page, like a watermark.
     const fixed = tree(
       <Note fixed className="absolute right-0 top-0">
@@ -1317,6 +1308,43 @@ describe('notes', () => {
       </Note>,
     );
     expect(first<NoteNode>(fixed)).toMatchObject({ type: 'note', break: { fixed: true } });
+  });
+
+  it('is a run of its own inside a Text, with its colour', () => {
+    const r = tree(
+      <Text className="text-[12pt]">
+        Total
+        <Note author="Ana" className="bg-blue-500">
+          Check it ({3} rows).
+        </Note>{' '}
+        due
+        <Link href="https://example.com">
+          {' '}
+          now<Note>Linked</Note>
+        </Link>
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs.map((x) => x.text ?? x.note?.contents)).toEqual([
+      'Total',
+      'Check it (3 rows).',
+      ' due',
+      ' now',
+      'Linked',
+    ]);
+    expect(runs[1]).toMatchObject({ note: { contents: 'Check it (3 rows).', author: 'Ana' }, size: 12 });
+    expect(runs[1]?.note?.color).toHaveLength(4);
+    // A note carries no link: it takes no room to click.
+    expect(runs[4]).toEqual({ note: { contents: 'Linked' }, font: runs[0]?.font, size: 12 });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('takes no block props or box styles inside a Text', () => {
+    const inText = (note: ReactNode) => thrown(() => tree(<Text>a {note}</Text>)).message;
+    expect(inText(<Note id="n">b</Note>)).toContain('`id` does not apply to it');
+    expect(inText(<Note fixed>b</Note>)).toContain('`fixed` does not apply to it');
+    expect(inText(<Note className="p-2">b</Note>)).toContain('it takes only backgroundColor');
+    expect(inText(<Note />)).toContain('<Note> needs text');
   });
 });
 

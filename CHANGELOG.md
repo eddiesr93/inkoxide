@@ -131,8 +131,10 @@ All notable changes to the packages in this repository. The format follows
   out, as PDF/A requires.
 - Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
   author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
-  corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
-  and passes PDF/A-2b.
+  corner of its box, keeps its size at any zoom and stays upright under a transform. It has an
+  appearance stream, so it prints and passes PDF/A-2b. A note can also be part of a line of text
+  (`note` on a text run): it takes no room there, and its icon hangs from the top of the line
+  where it is. Line breaking keeps it with the word before it.
 - `<FieldSet name>` in `@inkoxide/render`: a `View`, with its props and `render`, whose name goes
   in front of the names of the fields inside it, at any depth (`address.street`); sets nest.
 - `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
@@ -143,7 +145,7 @@ All notable changes to the packages in this repository. The format follows
   number or percent format with any of those keys defaults to no decimals and no thousands
   separator; on a `time`, `param` is one of four styles, `0` to `3`; `zip4` is `zipPlus4`.
 - `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
-  its `backgroundColor` as its colour.
+  its `backgroundColor` as its colour. Inside a `<Text>`, it is part of the line.
 
 ### Changed
 

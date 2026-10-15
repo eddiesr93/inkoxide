@@ -1303,15 +1303,23 @@ impl<'a> Checker<'a> {
                 Some("image"),
                 "a run takes one of `text`, `placeholder` and `image`",
             ),
-            (None, None, None) => self.err(
+            (None, None, None) if r.note.is_none() => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder` or an `image`)",
+                "a run requires `text` (or a `placeholder`, an `image` or a `note`)",
+            ),
+            (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.note.is_some() => self.err(
+                Code::InvalidValue,
+                Some("note"),
+                "a run takes one of `text`, `placeholder`, `image` and `note`",
             ),
             _ => {}
         }
         if let Some(image) = &r.image {
             self.at("image", |c| c.run_image(image));
+        }
+        if let Some(note) = &r.note {
+            self.at("note", |c| c.note(note));
         }
         match r.vertical_align {
             Some(RunAlign::Points(v)) if !(v.abs() <= MAX_PAGE_EDGE) => self.err(

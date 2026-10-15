@@ -938,6 +938,9 @@ class Builder {
         case HOST.Image:
           out.push(this.inlineImage(n, ctx));
           break;
+        case HOST.Note:
+          out.push(this.inlineNote(n, ctx));
+          break;
         case HOST.PageNumber:
         case HOST.TotalPages:
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
@@ -998,6 +1001,33 @@ class Builder {
     if (align !== undefined && align !== 'baseline') run.verticalAlign = align as TextRun['verticalAlign'];
     if (ctx.link !== undefined) run.link = ctx.link;
     return this.mark(run, n);
+  }
+
+  /**
+   * A `<Note>` in a `<Text>`: a run of its own that takes no room, its icon hanging from the top
+   * of the line where it is. Its `backgroundColor` is its colour.
+   */
+  private inlineNote(n: Instance, ctx: TextCtx): TextRun {
+    const prop =
+      BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
+      (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
+    if (prop) {
+      this.fail(n, `A <Note> inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
+        kind: 'props',
+      });
+    }
+    const own = this.styleOf(n, ctx);
+    const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => k !== 'backgroundColor');
+    if (bad[0] !== undefined) {
+      const { fromClass, init } = this.source(n, own, bad[0]);
+      this.fail(
+        n,
+        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${fromClass ? `className="${init.className}"` : 'its style'}).`,
+        init,
+      );
+    }
+    const note = this.noteOf(n, boxStyle(own, ctx.color)?.backgroundColor);
+    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
   }
 
   /**
@@ -1288,6 +1318,15 @@ class Builder {
   private note(inst: Instance, ctx: TextCtx): NoteNode {
     const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
+    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
+    const node: NoteNode = { type: 'note', note: this.noteOf(inst, backgroundColor) };
+    if (Object.keys(style).length > 0) node.style = style;
+    this.flowProps(node, inst);
+    return this.mark(node, inst);
+  }
+
+  /** What a `<Note>` holds: its text children, `author`, `open`, and `color`. */
+  private noteOf(inst: Instance, color: NoteNode['note']['color']): NoteNode['note'] {
     const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
     if (contents === '') {
       this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });
@@ -1296,12 +1335,8 @@ class Builder {
     const note: NoteNode['note'] = { contents };
     if (typeof p.author === 'string') note.author = p.author;
     if (p.open) note.open = true;
-    const node: NoteNode = { type: 'note', note };
-    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
-    if (backgroundColor) note.color = backgroundColor;
-    if (Object.keys(style).length > 0) node.style = style;
-    this.flowProps(node, inst);
-    return this.mark(node, inst);
+    if (color) note.color = color;
+    return note;
   }
 
   /** A `TextField`'s format, from its readable keys or their other names. */

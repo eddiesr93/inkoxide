@@ -1338,6 +1338,59 @@ fn notes() {
 }
 
 #[test]
+fn note_runs_are_checked() {
+    let with_run = |r: &str| {
+        doc(&format!(
+            r#"{{"type":"text","runs":[{{"text":"a","font":"Inter-Regular","size":10}},{{"font":"Inter-Regular","size":10{r}}}]}}"#
+        ))
+    };
+    let p = "pages[0].children[0].runs[1]";
+    for ok in [
+        r#","note":{"contents":"x"}"#,
+        r#","note":{"contents":"x","author":"Ana","color":[0,0,1,1],"open":true},"link":"https://x.ro""#,
+        r#","note":{"contents":"x"},"verticalAlign":"super""#,
+    ] {
+        assert_eq!(run(&with_run(ok)), vec![], "{ok}");
+    }
+    for (bad, code, path) in [
+        (
+            r#","text":"x","note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","placeholder":"pageNumber","note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","image":{"src":"logo"},"note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","note":{"contents":""}"#,
+            C::InvalidValue,
+            "note.contents",
+        ),
+        (r#","note":{}"#, C::MissingField, "note.contents"),
+        (
+            r#","note":{"contents":"x","icon":"Key"}"#,
+            C::UnknownField,
+            "note.icon",
+        ),
+        (
+            r#","note":{"contents":"x"},"verticalAlign":"middle""#,
+            C::InvalidValue,
+            "verticalAlign",
+        ),
+    ] {
+        let (c, got) = one(&with_run(bad));
+        assert_eq!((c, got), (code, format!("{p}.{path}")), "{bad}");
+    }
+}
+
+#[test]
 fn decoration_thickness_and_colour_are_checked() {
     let (code, path) = one(&doc(
         r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10,"decorationThickness":0}]}"#,
