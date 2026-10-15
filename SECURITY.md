@@ -30,12 +30,26 @@ Inkoxide is designed to render documents built from untrusted data:
 
 An encrypted PDF (the `encryption` option, or `<Document userPassword>`) keeps its strings and
 streams, so its text, images and form field values, radio buttons' included, from whoever lacks
-a password. It does not hide the structure
-of the file: the page count and sizes, font names and glyph widths, and where links are. The
-permissions are honoured by readers, not enforced by the file. The keys are derived from the
-document and the passwords rather than drawn at random, so the same input gives the same file;
-a password is only as strong as it is hard to guess, since anyone with the file can test
-guesses. Passwords never appear in errors, logs or `Debug` output.
+a password. What it does not do:
+
+- **Hide the structure of the file.** The page count and sizes, font names and glyph widths,
+  where links and fields are, and the length of every stream and string stay readable, as in
+  any encrypted PDF. Stream lengths are measured after compression, so they say something about
+  the content. The subset tags of font names are keyed, so they do not tell which glyphs the
+  file uses.
+- **Protect anything without a user password.** Without one, anyone opens the file; the owner
+  password then only guards the permissions, which readers honour and the file cannot enforce.
+- **Resist weak passwords.** Anyone with the file can test password guesses offline, at the
+  cost revision 6 sets, which is low. Use a long, random user password.
+- **Detect changes.** PDF encryption has no integrity check: a changed file still opens.
+- **Hide equal documents.** The keys, salts and IVs are derived from the document and the
+  passwords rather than drawn at random, so the same input gives the same file. A service that
+  encrypts documents it is asked to, with a fixed password, lets whoever asks confirm a guess
+  of another file encrypted with that password by comparing the bytes.
+
+The derivation is not the standard's random one. It has been reviewed internally but has not
+had an independent cryptography review yet. Passwords never appear in errors, logs or `Debug`
+output.
 
 A crash, a hang, unbounded memory use, a network request or a file read that the caller did not
 allow is a security issue. Please report it as above.
