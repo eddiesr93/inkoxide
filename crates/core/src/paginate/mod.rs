@@ -39,7 +39,8 @@
 //! - Column boxes split between children; text splits between lines.
 //! - Tables split between row groups (rows tied by row spans). A group
 //!   that does not fit moves to the next page, below room kept for the
-//!   repeated header rows. A single row taller than a page splits inside
+//!   repeated header rows (and those of the tables around a nested
+//!   table). A single row taller than a page splits inside
 //!   its cells: each cell's content paginates like a column from the row
 //!   top, and the row ends below the longest cell.
 
@@ -69,6 +70,13 @@ pub(crate) struct Placement {
     /// their place on their first page, in paint order. Overlays are not in
     /// the flow tree.
     pub fixed: Vec<NodeIdx>,
+    /// The ancestors of [`Placement::fixed`] nodes: painted on every page
+    /// to paint those.
+    pub holds_fixed: Vec<bool>,
+    /// Tables nested in a row split across pages: the room above their
+    /// repeated header rows on a continuation page (the header rows of the
+    /// tables around them).
+    pub header_above: std::collections::BTreeMap<NodeIdx, f32>,
 }
 
 impl Placement {
@@ -83,6 +91,11 @@ impl Placement {
     pub fn on_page(&self, i: NodeIdx, page: u32) -> bool {
         let (a, b) = self.page_range[i as usize];
         a <= page && page <= b
+    }
+
+    /// Whether node `i` holds a fixed node.
+    pub fn holds_fixed(&self, i: NodeIdx) -> bool {
+        self.holds_fixed[i as usize]
     }
 
     /// First page node `i` or any descendant touches.
@@ -247,6 +260,8 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
             line_shifts: vec![Vec::new(); n],
             page_range: vec![(0, 0); n],
             fixed: Vec::new(),
+            holds_fixed: vec![false; n],
+            header_above: std::collections::BTreeMap::new(),
         },
     };
     // The synthetic root is a splittable column. A forced break still
@@ -300,6 +315,16 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
                 .unwrap_or(0)
         });
         stack.extend(kids.into_iter().rev());
+    }
+    for &f in &p.out.fixed {
+        let mut a = tree.nodes[f as usize].parent;
+        while !p.out.holds_fixed[a as usize] {
+            p.out.holds_fixed[a as usize] = true;
+            if a == 0 {
+                break;
+            }
+            a = tree.nodes[a as usize].parent;
+        }
     }
     p.out
 }
@@ -729,7 +754,12 @@ impl Paginator<'_, '_, '_> {
             return;
         };
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
-        let header_h = t.header_height();
+        // Room kept at the top of a continuation page: this table's header
+        // rows, below those of the tables it is nested in.
+        let header_h = self.reserve + t.header_height();
+        if self.reserve > 0.0 && t.header_rows > 0 {
+            self.out.header_above.insert(i, self.reserve);
+        }
         // Paged y where body rows start on the current continuation page;
         // a group placed there is never pushed again (it is sliced).
         let mut fresh_start = f32::NEG_INFINITY;
@@ -795,8 +825,9 @@ impl Paginator<'_, '_, '_> {
     }
 
     /// Splits a row taller than a page inside its cells: each cell's
-    /// content paginates like a column from the row top, keeping room for
-    /// the repeated header rows; the row ends below the longest cell.
+    /// content paginates like a column from the row top, keeping `header_h`
+    /// for the repeated header rows (of this table and the tables around
+    /// it); the row ends below the longest cell.
     fn split_row(&mut self, row: NodeIdx, header_h: f32) {
         let start = self.shift;
         let mut end = start;

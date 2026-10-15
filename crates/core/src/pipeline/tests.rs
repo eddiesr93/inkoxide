@@ -561,6 +561,35 @@ fn a_repeated_header_is_painted_once_per_page() {
 }
 
 #[test]
+fn a_nested_table_repeats_its_header_below_the_outer_one() {
+    // An outer row taller than a page holds an inner table: on every page,
+    // the inner header row (red) sits below the outer one (green, 20pt).
+    let cell = |h: f32| format!(r#"{{"children":[{{"type":"box","style":{{"height":{h}}}}}]}}"#);
+    let rows = vec![format!(r#"{{"cells":[{}]}}"#, cell(10.0)); 20].join(",");
+    let inner = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[1,0,0,1],"cells":[{}]}},{rows}]}}"#,
+        cell(10.0)
+    );
+    let outer = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[0,1,0,1],"cells":[{}]}},
+            {{"cells":[{{"children":[{inner}]}}]}}]}}"#,
+        cell(20.0)
+    );
+    let boxes = red_boxes(&with_fixed(1, &outer));
+    let on_table = boxes.iter().take_while(|page| !page.is_empty()).count();
+    assert!(on_table >= 3, "{boxes:?}");
+    for (k, page) in boxes.iter().take(on_table).enumerate() {
+        assert!(
+            page.len() == 1 && close(page[0].1, M + 20.0),
+            "page {}: {page:?}",
+            k + 1
+        );
+    }
+}
+
+#[test]
 fn overlays_take_no_space() {
     // Below the content box: painted off the page, without adding pages.
     let low = red_box(
@@ -635,6 +664,62 @@ fn fills(json: &str) -> Vec<Vec<f32>> {
             })
             .collect()
     })
+}
+
+#[test]
+fn fixed_nodes_in_the_flow_are_painted_in_paint_order() {
+    // Boxes told apart by their red component; `{F}` is where `fixed` goes.
+    let shade = |red: f32, f: &str, style: &str, children: &str| {
+        format!(
+            r#"{{"type":"box"{f},"style":{{"backgroundColor":[{red},0,0,1],"height":10{style}}}{children}}}"#
+        )
+    };
+    let plain = |red: f32, style: &str| shade(red, "", style, "");
+    let fixed = |red: f32, style: &str| shade(red, "{F}", style, "");
+    let around = |red: f32, style: &str, child: &str| {
+        shade(red, "", style, &format!(r#","children":[{child}]"#))
+    };
+    let cases = [
+        // First in document order.
+        vec![fixed(0.1, ""), plain(0.2, "")],
+        // Over its next sibling.
+        vec![fixed(0.1, r#","zIndex":1"#), plain(0.2, "")],
+        // Under its previous sibling.
+        vec![plain(0.2, ""), fixed(0.1, r#","zIndex":-1"#)],
+        // Nested: after its parent, before the parent's next sibling.
+        vec![around(0.3, "", &fixed(0.1, "")), plain(0.2, "")],
+        // In a parent painted over its next sibling.
+        vec![
+            around(0.3, r#","zIndex":1"#, &fixed(0.1, "")),
+            plain(0.2, ""),
+        ],
+    ];
+    for case in cases {
+        let children = case.join(",");
+        let with = fills(&with_fixed(2, &children.replace("{F}", FIXED)));
+        let without = fills(&with_fixed(2, &children.replace("{F}", "")));
+        assert_eq!(with[0], without[0], "{children}");
+        // On later pages, alone, even where its parent is not.
+        assert_eq!(with[1], [0.1], "{children}");
+    }
+    // Not cut to the content band, unlike the flow around it.
+    let children = format!("{},{}", fixed(0.1, ""), plain(0.2, "")).replace("{F}", FIXED);
+    let clipped = render_doc(&with_fixed(1, &children), |pages, _| {
+        // Per fill, whether a clip is in effect.
+        let mut stack = vec![false];
+        let mut out = Vec::new();
+        for op in &pages[0].ops {
+            match op {
+                Op::Save => stack.push(*stack.last().unwrap()),
+                Op::Restore => drop(stack.pop()),
+                Op::ClipRect(_) | Op::ClipPath { .. } => *stack.last_mut().unwrap() = true,
+                Op::FillPath { color, .. } => out.push((color[0], *stack.last().unwrap())),
+                _ => {}
+            }
+        }
+        out
+    });
+    assert_eq!(clipped, [(0.1, false), (0.2, true)]);
 }
 
 #[test]
