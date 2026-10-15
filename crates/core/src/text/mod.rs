@@ -581,6 +581,35 @@ fn node_key(n: &Node) -> usize {
 }
 
 impl TextCache<'_, RustybuzzShaper<'_, '_>> {
+    /// Most bytes the text of the images text node `node` draws takes in
+    /// the file, once it is shaped: each image is in a span with its text,
+    /// the `alt` of an inline object or the text of a colour glyph.
+    pub fn image_text_len(&self, node: &Node) -> usize {
+        let fonts = self.shaper.fonts();
+        let Some(e) = self.entries.get(&node_key(node)) else {
+            return 0;
+        };
+        let p = &e.prepared;
+        let mut total = 0;
+        for s in &p.segments {
+            if let Some(o) = s.object {
+                let alt = p.objects.get(o as usize).and_then(|o| o.alt.as_deref());
+                total += alt.map_or(0, crate::pdf::written_text_len);
+            } else if fonts.get(s.font).has_color() {
+                let Some(texts) = self.shaper.unicode.fonts.get(&s.font) else {
+                    continue;
+                };
+                let glyphs = &p.glyphs[s.glyphs.start as usize..s.glyphs.end as usize];
+                total += glyphs
+                    .iter()
+                    .filter_map(|g| texts.get(&g.id))
+                    .map(|t| crate::pdf::written_text_len(t))
+                    .sum::<usize>();
+            }
+        }
+        total
+    }
+
     /// Shapes `nodes` (text nodes in document order) ahead of layout, in
     /// parallel on the current rayon pool unless `parallel` is false. Each
     /// worker has its own shaper; glyph-to-Unicode maps are merged in

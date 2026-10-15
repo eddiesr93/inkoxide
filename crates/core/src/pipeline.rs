@@ -597,8 +597,8 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
             if let Some(most) = n.pages.as_deref().and_then(most_pages) {
                 pages = pages.min(most);
             }
-            if n.link.is_some() {
-                size += LINK_BYTES;
+            if let Some(target) = &n.link {
+                size += LINK_BYTES + crate::pdf::written_uri_len(target) as u64;
             }
             if n.background_image.is_some() {
                 size += BOX_BYTES;
@@ -607,6 +607,10 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                 NodeKind::Text { runs } => {
                     let mut bytes: u64 = 0;
                     let mut wavy = false;
+                    // A link per piece of a run on a line, at most: one per
+                    // segment, plus one per line where a segment wraps or a
+                    // hyphen or an ellipsis shows.
+                    let mut pieces = None;
                     for r in runs {
                         if let Some(note) = &r.note {
                             size = size.saturating_add(note_bytes(note));
@@ -620,6 +624,16 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                         }
                         size = size.saturating_add(chars * each);
                         bytes += chars;
+                        if let Some(target) = &r.link {
+                            let most = *pieces.get_or_insert_with(|| {
+                                text.paragraph(n, &tree.line_boxes(j))
+                                    .map_or(u64::MAX, |(l, p, _)| {
+                                        (p.segments.len() + 2 * l.lines.len()) as u64
+                                    })
+                            });
+                            let uri = crate::pdf::written_uri_len(target) as u64;
+                            size = size.saturating_add(chars.min(most).saturating_mul(uri));
+                        }
                     }
                     // Glyphs beyond one per byte: a font's layout tables
                     // can multiply them.
@@ -630,8 +644,10 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                         ITEM_BYTES
                     };
                     size = size.saturating_add(glyphs.saturating_sub(bytes) * each);
+                    // Images in the text, each in a span with its text.
                     let colored = text.image_glyph_count(n) as u64;
                     size = size.saturating_add(colored * LINK_BYTES);
+                    size = size.saturating_add(text.image_text_len(n) as u64);
                     if debug {
                         // A box and a baseline per line, and a box per
                         // stretch of a run on a line: at most one per

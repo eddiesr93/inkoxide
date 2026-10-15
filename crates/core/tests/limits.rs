@@ -91,6 +91,12 @@ fn fonts() -> FontStore {
     ))
     .unwrap();
     f.register("Fanout", bytes).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/EmojiTest-COLR.ttf"
+    ))
+    .unwrap();
+    f.register("EmojiTest-COLR", bytes).unwrap();
     f
 }
 
@@ -220,6 +226,98 @@ fn wavy_decorations_are_drawn_where_the_page_shows_them() {
         assert!(peak < 64 << 20, "{what}: {} MiB", peak >> 20);
         assert!(took.as_secs() < 5, "{what}: took {took:?}");
     }
+}
+
+/// The text of images in text counts as the file holds it: each image is
+/// in a span with its text, an inline image's `alt` or a colour glyph's
+/// text, UTF-16 in hex when it is not printable ASCII.
+#[test]
+fn image_text_repeated_on_every_page_is_counted() {
+    let mut images = ImageStore::new();
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#;
+    images.insert("dot", svg.as_bytes().to_vec());
+    let render = |doc: &str| {
+        let options = RenderOptions::default().with_threads(1);
+        inkoxide::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &images,
+        )
+    };
+    let alt = "é".repeat(1000);
+    let image =
+        format!(r#"{{"font":"Inter-Regular","size":10,"image":{{"src":"dot","alt":"{alt}"}}}}"#);
+    let inline = |pages: &str| {
+        let runs = [image.as_str(); 100].join(",");
+        format!(r#"{{"type":"text","break":{{"fixed":true}},{pages}"runs":[{runs}]}}"#)
+    };
+    // About 190 pages.
+    let tall = r#"{"type":"box","style":{"height":160000}}"#;
+    // A colour glyph's text is that of the cluster it is first shaped in.
+    let marked = format!("😀{}", "\u{301}".repeat(1000));
+    let first = format!(
+        r#"{{"type":"text","runs":[{{"text":"{marked}","font":"EmojiTest-COLR","size":10}}]}}"#
+    );
+    let emoji = |pages: &str| {
+        let text = "😀".repeat(100);
+        format!(
+            r#"{{"type":"text","break":{{"fixed":true}},{pages}
+                "runs":[{{"text":"{text}","font":"EmojiTest-COLR","size":10}}]}}"#
+        )
+    };
+    let fonts = r#"{"id":"Inter-Regular","family":"Inter"},{"id":"EmojiTest-COLR","family":"E"}"#;
+    let doc = |children: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{fonts}],
+               "pages":[{{"size":{{"width":595,"height":842}},"children":[{children}]}}]}}"#
+        )
+    };
+    for (what, every, first_only) in [
+        (
+            "inline images",
+            format!("{},{tall}", inline("")),
+            format!("{},{tall}", inline(r#""pages":"first","#)),
+        ),
+        (
+            "colour glyphs",
+            format!("{first},{},{tall}", emoji("")),
+            format!("{first},{},{tall}", emoji(r#""pages":"first","#)),
+        ),
+    ] {
+        let t = std::time::Instant::now();
+        let err = render(&doc(&every)).unwrap_err();
+        assert_eq!(err.code(), "LAYOUT_ERROR", "{what}: {err}");
+        assert!(
+            err.to_string().contains("the limit is 64 MB"),
+            "{what}: {err}"
+        );
+        assert!(t.elapsed().as_secs() < 5, "{what}: took {:?}", t.elapsed());
+        render(&doc(&first_only)).unwrap();
+    }
+}
+
+/// A link's target counts as the file holds it, once for each link.
+#[test]
+fn link_targets_repeated_on_every_page_are_counted() {
+    let target = format!("https://example.com/{}", "x".repeat(2000));
+    let linked = |pages: &str| {
+        format!(
+            r#"{{"type":"box","break":{{"fixed":true}},{pages}"link":"{target}",
+                "style":{{"width":10,"height":10}}}}"#
+        )
+    };
+    // About 2400 pages.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let every = vec![linked(""); 20].join(",");
+    let t = std::time::Instant::now();
+    let err = render(&doc(&format!("{every},{tall}")), Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    let once = vec![linked(r#""pages":"first","#); 20].join(",");
+    render(&doc(&format!("{once},{tall}")), Some(1)).unwrap();
 }
 
 /// A form field taller than a page is sliced across pages like any atomic
