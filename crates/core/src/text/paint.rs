@@ -10,7 +10,7 @@ use super::{
 };
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet, Placement};
-use crate::layout::{Geometry, LineBoxes};
+use crate::layout::{Geometry, LineBox, LineBoxes};
 use crate::paint::{
     span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg, Rect,
     TextGlyph, TextOp, NO_RADII,
@@ -115,8 +115,11 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             }
             // The line's box: the content box, or beside a float, the part
             // of it the line was broken in.
-            let (bx, bw) = layout.boxes.get(li).copied().unwrap_or((0.0, cw));
-            let content = Rect::new(cx + ctx.dx + bx, top - line.top + ctx.dy, bw, ch);
+            let b = layout.boxes.get(li).copied().unwrap_or(LineBox {
+                left: 0.0,
+                width: cw,
+            });
+            let content = Rect::new(cx + ctx.dx + b.left, top - line.top + ctx.dy, b.width, ch);
             let first_op = ops.len();
             let painted = paint_line(line, &para, content, ink, ctx.opacity, ops);
             // A line taller than the page is sliced across pages; its notes
@@ -251,25 +254,28 @@ fn paint_line(
     };
 
     // Justification: spread the free space over the spaces of the line.
-    let spaces = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
-    let justify_extra =
-        if align == TextAlign::Justify && !line.forced && spaces > 0 && line.ellipsis.is_none() {
-            // `pretty` lines may be set a little too wide, for their spaces
-            // to shrink by up to a third.
-            let least = if style.text_wrap == TextWrap::Pretty {
-                let space: f32 = p.glyphs[s..e]
-                    .iter()
-                    .filter(|g| g.is_space())
-                    .map(|g| g.advance)
-                    .sum();
-                -space * SHRINK / spaces as f32
-            } else {
-                0.0
-            };
-            ((cw - line.width) / spaces as f32).max(least)
+    let space_count = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
+    let justify_extra = if align == TextAlign::Justify
+        && !line.forced
+        && space_count > 0
+        && line.ellipsis.is_none()
+    {
+        // `pretty` lines may be set a little too wide, for their spaces
+        // to shrink by up to a third.
+        let least = if style.text_wrap == TextWrap::Pretty {
+            let space: f32 = p.glyphs[s..e]
+                .iter()
+                .filter(|g| g.is_space())
+                .map(|g| g.advance)
+                .sum();
+            -space * SHRINK / space_count as f32
         } else {
             0.0
         };
+        ((cw - line.width) / space_count as f32).max(least)
+    } else {
+        0.0
+    };
 
     // Segment slices of the line, in visual order. Segments are in glyph
     // order: those on the line follow the first that ends after its start.

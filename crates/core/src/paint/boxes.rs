@@ -335,7 +335,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             None => self.content.paint(node, &g, &ctx, self.ops),
         }
         let tree = self.tree;
-        if has_z(tree, i) {
+        if reordered(tree, i) {
             for c in paint_order(tree, i) {
                 self.node(c);
             }
@@ -746,8 +746,10 @@ fn z_index(tree: &Tree<'_>, j: NodeIdx) -> i32 {
         .unwrap_or(0)
 }
 
-/// Whether a child of `i` sets a non-zero `zIndex`.
-fn has_z(tree: &Tree<'_>, i: NodeIdx) -> bool {
+/// Whether the children of `i` paint in another order than the
+/// document's: one sets a non-zero `zIndex`, or `i` holds floats, which
+/// paint after their siblings (see [`paint_order`]).
+fn reordered(tree: &Tree<'_>, i: NodeIdx) -> bool {
     tree.holds_floats(i) || tree.children(i).any(|j| z_index(tree, j) != 0)
 }
 

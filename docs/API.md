@@ -203,6 +203,24 @@ first fit:
 - at most 512 open breakpoints at a time;
 - at most 2 097 152 lines tried in a paragraph.
 
+## Font features
+
+A run's `fontFeatures` set OpenType features by tag, as CSS
+`font-feature-settings`: 1 turns a feature on, 0 off, and a larger value
+picks an alternate. A feature does something only when the run's font
+has it. The features are bounded:
+
+- a tag is four printable ASCII characters, set once per run
+  (`INVALID_VALUE`);
+- a value is at most 65535 (`OUT_OF_RANGE`);
+- a run takes at most 32 features (`OUT_OF_RANGE`);
+- a document uses at most 64 different sets of features, as each set is
+  shaped with plans and words of its own (`OUT_OF_RANGE`).
+
+`@inkoxide/render` reads `fontFeatureSettings` and `fontVariantNumeric`,
+and their Tailwind classes, into a run's `fontFeatures`, within the same
+bounds.
+
 ## Determinism
 
 For a fixed `creationDate` (or `meta.creationDate`), output bytes depend

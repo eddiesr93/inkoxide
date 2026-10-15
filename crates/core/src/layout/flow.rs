@@ -5,18 +5,19 @@
 //! flexbox (margins without collapsing, `rowGap`, `alignItems` and
 //! `alignSelf`, auto margins), each laid out by Taffy at the width this
 //! module gives it. Floats are placed with a [`FloatContext`] where they
-//! occur: shrink-to-fit, at their side. Text after a float wraps beside
-//! it, through line boxes; other boxes after it are narrowed to the room
-//! beside it, or moved below it when that is too narrow for them. `clear`
-//! moves a box below the floats of its sides. Absolutely positioned
-//! children are placed against the padding box.
+//! occur: shrink-to-fit, at their side. Text keeps its own box, as CSS
+//! lays out a paragraph beside floats, and its lines wrap beside them
+//! through line boxes; other boxes are narrowed to the room beside the
+//! floats over their whole height, or moved below them when that is too
+//! narrow for them. `clear` moves a box below the floats of its sides.
+//! Absolutely positioned children are placed against the padding box.
 //!
 //! Validation keeps the rest out: no `flexGrow` or `flexBasis` on the
 //! children, no `justifyContent` or `alignContent` on the container.
 
 use std::sync::Arc;
 
-use super::float::{FloatContext, LineBoxes, Side};
+use super::float::{FloatContext, Insets, LineBoxes, Side};
 use super::{AvailableSpace, Geometry, LayoutCtx, NodeIdx, RootMode, Size, Tree};
 use crate::schema::{
     AlignItems, AlignSelf, Clear, Display, Edges, Float, Length, LengthPercent, NodeKind, Position,
@@ -44,8 +45,8 @@ pub(crate) struct FlowLayout {
 }
 
 /// What a text leaf measured beside floats reports: its content height,
-/// and the bottom of its last line that starts beside a float.
-#[derive(Debug, Clone, Copy)]
+/// and the bottom of its last line set beside a float.
+#[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Wrapped {
     pub height: f32,
     pub wrapped: f32,
@@ -77,12 +78,85 @@ fn len_pct(l: LengthPercent, base: f32) -> f32 {
     }
 }
 
-/// Margins against the container width `w`: `None` for `auto`.
-fn margins(s: &Style, w: f32) -> [Option<f32>; 4] {
-    let Some(m) = s.margin else {
-        return [Some(0.0); 4];
-    };
-    [m.top, m.right, m.bottom, m.left].map(|v| v.map_or(Some(0.0), |l| len(l, w)))
+/// What a child's style sets across its container, resolved against
+/// the width `w` its percentages are of.
+struct Across {
+    /// Left and right margins: `None` for `auto`.
+    left: Option<f32>,
+    right: Option<f32>,
+    width: Option<f32>,
+    min: Option<f32>,
+    max: Option<f32>,
+}
+
+impl Across {
+    fn of(s: &Style, w: f32) -> Self {
+        let [left, right] = margins(s, w, |m| [m.left, m.right]);
+        Self {
+            left,
+            right,
+            width: s.width.and_then(|l| len(l, w)),
+            min: s.min_width.and_then(|l| len(l, w)),
+            max: s.max_width.and_then(|l| len(l, w)),
+        }
+    }
+
+    /// Both margins, `auto` as 0.
+    fn margins(&self) -> f32 {
+        self.left.unwrap_or(0.0) + self.right.unwrap_or(0.0)
+    }
+
+    /// Whether neither margin is `auto`, so that the box may stretch.
+    fn definite_margins(&self) -> bool {
+        self.left.is_some() && self.right.is_some()
+    }
+
+    /// `v` within the minimum and maximum width.
+    fn clamp(&self, v: f32) -> f32 {
+        clamp(v, self.min, self.max)
+    }
+
+    /// Where a border box `w` wide aligned by `a` goes in the room
+    /// `left..left + room`, and its margins there, auto margins taking
+    /// what they leave: `(x, left margin, right margin)`.
+    fn place(&self, a: Align, left: f32, room: f32, w: f32) -> (f32, f32, f32) {
+        let (ml, mr) = (self.left.unwrap_or(0.0), self.right.unwrap_or(0.0));
+        let x = match (self.left, self.right) {
+            (None, None) => left + (room - w) / 2.0,
+            (None, Some(_)) => left + room - mr - w,
+            (Some(_), None) => left + ml,
+            _ => match a {
+                Align::Start | Align::Stretch => left + ml,
+                Align::End => left + room - mr - w,
+                Align::Center => left + ml + (room - ml - mr - w) / 2.0,
+            },
+        };
+        (
+            x,
+            self.left.unwrap_or(x - left),
+            self.right.unwrap_or(left + room - x - w),
+        )
+    }
+}
+
+/// Top and bottom margins against the container width `w`: `None` for
+/// `auto`.
+fn vertical_margins(s: &Style, w: f32) -> (Option<f32>, Option<f32>) {
+    let [top, bottom] = margins(s, w, |m| [m.top, m.bottom]);
+    (top, bottom)
+}
+
+/// The margins `pick` takes from `s`, against the container width `w`:
+/// `None` for `auto`, 0 when not set.
+fn margins<const N: usize>(
+    s: &Style,
+    w: f32,
+    pick: impl Fn(&crate::schema::OptEdges<Length>) -> [Option<Length>; N],
+) -> [Option<f32>; N] {
+    match &s.margin {
+        Some(m) => pick(m).map(|v| v.map_or(Some(0.0), |l| len(l, w))),
+        None => [Some(0.0); N],
+    }
 }
 
 /// Padding and border of a box, against the container width `w`.
@@ -141,13 +215,7 @@ fn clamp(v: f32, min: Option<f32>, max: Option<f32>) -> f32 {
 /// Whether node `idx` of `tree` holds floats: the root, a box or a cell
 /// with a displayed, floated child.
 pub(super) fn holds_floats(tree: &Tree<'_>, idx: usize) -> bool {
-    let ln = &tree.nodes[idx];
-    let holds = match ln.part {
-        super::Part::Root | super::Part::Cell(_) => true,
-        super::Part::Node(n) => matches!(n.kind, NodeKind::Box { .. }),
-        super::Part::Row(_) => false,
-    };
-    holds
+    tree.nodes[idx].holds_children()
         && tree.children(idx as NodeIdx).any(|c| {
             tree.nodes[c as usize].node().is_some_and(|n| {
                 n.style.floats().is_some() && n.style.display != Some(Display::None)
@@ -155,15 +223,22 @@ pub(super) fn holds_floats(tree: &Tree<'_>, idx: usize) -> bool {
         })
 }
 
-/// A child being laid out: the container's width and the height its
-/// children's percentages resolve against.
-struct Item<'t, 'a> {
+/// A float container, as its children see it: its content width and the
+/// height their percentages resolve against.
+struct Container<'t, 'a> {
     tree: &'t Tree<'a>,
     width: f32,
     parent_h: Option<f32>,
 }
 
-impl Item<'_, '_> {
+impl Container<'_, '_> {
+    /// Whether child `c` is a leaf (text, an image, a field), not a box.
+    fn leaf(&self, c: NodeIdx) -> bool {
+        self.tree.nodes[c as usize]
+            .node()
+            .is_some_and(|n| !matches!(n.kind, NodeKind::Box { .. }))
+    }
+
     /// Border-box width and height of child `c`, `width` wide (`None`:
     /// its intrinsic `mode` width), as Taffy lays it out.
     fn size(
@@ -192,71 +267,58 @@ impl Item<'_, '_> {
         Ok(ctx.layout_subtree(self.tree, c, mode, false)?.size)
     }
 
-    /// The width of child `c` (style `s`) with `avail` of room for its
-    /// margin box: its own width, stretched, or shrink-to-fit.
+    /// The width of child `c` (style `s`, `a` across) with `avail` of room
+    /// for its margin box: its own width, stretched, or shrink-to-fit.
     fn width(
         &self,
         ctx: &mut LayoutCtx<'_>,
         c: NodeIdx,
-        s: &Style,
+        (s, a): (&Style, &Across),
         avail: f32,
         stretch: bool,
     ) -> Result<f32, InkoxideError> {
         // Never narrower than its padding and border.
         let (pad, bor) = insets(s, self.width);
         let edges = pad.left + pad.right + bor.left + bor.right;
-        Ok(self.width_unclamped(ctx, c, s, avail, stretch)?.max(edges))
+        Ok(self.width_unclamped(ctx, c, a, avail, stretch)?.max(edges))
     }
 
     fn width_unclamped(
         &self,
         ctx: &mut LayoutCtx<'_>,
         c: NodeIdx,
-        s: &Style,
+        a: &Across,
         avail: f32,
         stretch: bool,
     ) -> Result<f32, InkoxideError> {
-        let w = self.width;
-        let min = s.min_width.and_then(|l| len(l, w));
-        let max = s.max_width.and_then(|l| len(l, w));
-        if let Some(own) = s.width.and_then(|l| len(l, w)) {
-            return Ok(clamp(own, min, max));
+        if let Some(own) = a.width {
+            return Ok(a.clamp(own));
         }
-        let [_, mr, _, ml] = margins(s, w);
-        let room = avail - ml.unwrap_or(0.0) - mr.unwrap_or(0.0);
-        if stretch && ml.is_some() && mr.is_some() {
-            return Ok(clamp(room, min, max));
+        let room = avail - a.margins();
+        if stretch && a.definite_margins() {
+            return Ok(a.clamp(room));
         }
         // A leaf takes what it measures in the room (text the width of its
         // widest line); a box fits its content to it.
-        let leaf = self.tree.nodes[c as usize]
-            .node()
-            .is_some_and(|n| !matches!(n.kind, NodeKind::Box { .. }));
-        if leaf {
-            let w = self.fit_leaf(ctx, c, s, avail)?.width;
-            return Ok(clamp(w, min, max));
+        if self.leaf(c) {
+            return Ok(a.clamp(self.fit_leaf(ctx, c, a, avail)?.width));
         }
         let lo = self.size(ctx, c, AvailableSpace::MinContent)?.width;
         let hi = self.size(ctx, c, AvailableSpace::MaxContent)?.width;
-        Ok(clamp(hi.min(lo.max(room)), min, max))
+        Ok(a.clamp(hi.min(lo.max(room))))
     }
 
-    /// Leaf `c` (style `s`) measured in `room` for its margin box, within
-    /// its own minimum and maximum width, as Taffy measures a leaf that
-    /// does not stretch: text as wide as its widest line there.
+    /// Leaf `c` measured in `room` for its margin box, within its own
+    /// minimum and maximum width, as Taffy measures a leaf that does not
+    /// stretch: text as wide as its widest line there.
     fn fit_leaf(
         &self,
         ctx: &mut LayoutCtx<'_>,
         c: NodeIdx,
-        s: &Style,
+        a: &Across,
         room: f32,
     ) -> Result<Size<f32>, InkoxideError> {
-        let w = self.width;
-        let min = s.min_width.and_then(|l| len(l, w));
-        let max = s.max_width.and_then(|l| len(l, w));
-        let [_, mr, _, ml] = margins(s, w);
-        let room = room - ml.unwrap_or(0.0) - mr.unwrap_or(0.0);
-        let available = clamp(room, min, max).max(0.0);
+        let available = a.clamp(room - a.margins()).max(0.0);
         self.sized(ctx, c, AvailableSpace::Definite(available), true)
     }
 
@@ -266,25 +328,18 @@ impl Item<'_, '_> {
         &self,
         ctx: &mut LayoutCtx<'_>,
         c: NodeIdx,
-        s: &Style,
+        (s, a): (&Style, &Across),
         avail: f32,
         stretch: bool,
     ) -> Result<Size<f32>, InkoxideError> {
-        let w = self.width(ctx, c, s, avail, stretch)?;
-        let leaf = self.tree.nodes[c as usize]
-            .node()
-            .is_some_and(|n| !matches!(n.kind, NodeKind::Box { .. }));
-        let [_, mr, _, ml] = margins(s, self.width);
-        let fits = !(stretch && ml.is_some() && mr.is_some());
-        if leaf && fits && s.width.is_none() {
+        let w = self.width(ctx, c, (s, a), avail, stretch)?;
+        let fits = !(stretch && a.definite_margins());
+        let h = if self.leaf(c) && fits && a.width.is_none() {
             // Measured where it was fitted, as Taffy keeps it.
-            let h = self.fit_leaf(ctx, c, s, avail)?.height;
-            return Ok(Size {
-                width: w,
-                height: h,
-            });
-        }
-        let h = self.size(ctx, c, AvailableSpace::Definite(w))?.height;
+            self.fit_leaf(ctx, c, a, avail)?.height
+        } else {
+            self.size(ctx, c, AvailableSpace::Definite(w))?.height
+        };
         Ok(Size {
             width: w,
             height: h,
@@ -297,19 +352,262 @@ impl Item<'_, '_> {
         &self,
         ctx: &mut LayoutCtx<'_>,
         c: NodeIdx,
-        s: &Style,
+        a: &Across,
     ) -> Result<f32, InkoxideError> {
-        let w = self.width;
-        let [_, mr, _, ml] = margins(s, w);
-        let m = ml.unwrap_or(0.0) + mr.unwrap_or(0.0);
-        let min = s.min_width.and_then(|l| len(l, w));
-        let max = s.max_width.and_then(|l| len(l, w));
-        let own = match s.width.and_then(|l| len(l, w)) {
+        let own = match a.width {
             Some(own) => own,
             None => self.size(ctx, c, AvailableSpace::MinContent)?.width,
         };
-        Ok(clamp(own, min, max) + m)
+        Ok(a.clamp(own) + a.margins())
     }
+}
+
+/// The children of a float container placed in its content box.
+#[derive(Default)]
+struct Placement {
+    /// Per child: its border box with its margins, and how it was placed.
+    placed: Vec<(NodeIdx, Geometry, Kind)>,
+    /// The floats, and where each is in `placed`.
+    floats: Vec<(NodeIdx, usize)>,
+    wraps: Vec<(NodeIdx, Arc<LineBoxes>)>,
+    /// The bottom of the in-flow children's margin boxes and of the
+    /// floats.
+    bottom: f32,
+    /// How many top and bottom margins of in-flow children are `auto`.
+    autos: usize,
+}
+
+/// Places the children of float container `idx`, the `auto` top and
+/// bottom margins of its in-flow children resolved to `auto_margin`.
+fn place(
+    ctx: &mut LayoutCtx<'_>,
+    container: &Container<'_, '_>,
+    idx: NodeIdx,
+    auto_margin: f32,
+) -> Result<Placement, InkoxideError> {
+    let tree = container.tree;
+    let width = container.width;
+    let style = tree.nodes[idx as usize].style();
+    let gap = style.row_gap.or(style.gap).map_or(0.0, |g| match g {
+        LengthPercent::Points(v) => v,
+        LengthPercent::Percent(p) => container.parent_h.map_or(0.0, |h| p * h),
+    });
+    // Each displayed child, and whether it is text.
+    let kids: Vec<(NodeIdx, &Style, bool)> = tree
+        .children(idx)
+        .filter_map(|c| {
+            let n = tree.nodes[c as usize].node()?;
+            let text = matches!(n.kind, NodeKind::Text { .. });
+            (n.style.display != Some(Display::None)).then_some((c, &*n.style, text))
+        })
+        .collect();
+    // How far the cursor may still move up from each child on: by
+    // negative margins and gaps. Floats that end above that are done with.
+    let mut rise = vec![0.0f32; kids.len() + 1];
+    for (k, &(_, s, _)) in kids.iter().enumerate().rev() {
+        let in_flow = s.position != Some(Position::Absolute) && s.floats().is_none();
+        let (mt, mb) = vertical_margins(s, width);
+        rise[k] = rise[k + 1]
+            + if in_flow {
+                gap.min(0.0) + mt.unwrap_or(0.0).min(0.0) + mb.unwrap_or(0.0).min(0.0)
+            } else {
+                0.0
+            };
+    }
+    let mut floats = FloatContext::new(width);
+    let mut out = Placement::default();
+    let mut cursor = 0.0f32;
+    let mut any_in_flow = false;
+    for (k, &(c, s, text)) in kids.iter().enumerate() {
+        if s.position == Some(Position::Absolute) {
+            out.placed.push((c, Geometry::default(), Kind::Absolute));
+            continue;
+        }
+        floats.retire(cursor + rise[k]);
+        let a = Across::of(s, width);
+        let (mt, mb) = vertical_margins(s, width);
+        let cleared = s.clear.and_then(|c| floats.clear_y(c));
+        if let Some(side) = s.floats() {
+            let side = if side == Float::Left {
+                Side::Left
+            } else {
+                Side::Right
+            };
+            let (mt, mb) = (mt.unwrap_or(0.0), mb.unwrap_or(0.0));
+            let (ml, mr) = (a.left.unwrap_or(0.0), a.right.unwrap_or(0.0));
+            let size = container.item_size(ctx, c, (s, &a), width, false)?;
+            let min_y = cleared.map_or(cursor, |y| y.max(cursor));
+            let f = floats.place(side, size.width + ml + mr, size.height + mt + mb, min_y);
+            let geo = Geometry {
+                x: f.x + ml,
+                y: f.y + mt,
+                w: size.width,
+                h: size.height,
+                margin: Edges {
+                    top: mt,
+                    right: mr,
+                    bottom: mb,
+                    left: ml,
+                },
+                ..Geometry::default()
+            };
+            out.bottom = out.bottom.max(f.bottom());
+            out.floats.push((c, out.placed.len()));
+            out.placed.push((c, geo, Kind::Float(f.y, f.bottom())));
+            continue;
+        }
+        if any_in_flow {
+            cursor += gap;
+        }
+        any_in_flow = true;
+        out.autos += usize::from(mt.is_none()) + usize::from(mb.is_none());
+        let (mt, mb) = (mt.unwrap_or(auto_margin), mb.unwrap_or(auto_margin));
+        // Its border box goes below the floats it clears.
+        let mut top = cursor + mt;
+        if let Some(y) = cleared {
+            top = top.max(y);
+        }
+        let item = Item {
+            c,
+            style: s,
+            across: &a,
+            align: align(style, s),
+        };
+        let (geo, kind) = if text && floats.next_change(top).is_some() {
+            let (geo, boxes, wrapped) = wrap_text(ctx, container, &floats, &item, top)?;
+            out.wraps.push((c, boxes));
+            (geo, Kind::Wrapped(wrapped))
+        } else {
+            let geo = narrow(ctx, container, &floats, &item, top)?;
+            (geo, Kind::InFlow)
+        };
+        let geo = Geometry {
+            margin: Edges {
+                top: mt,
+                bottom: mb,
+                ..geo.margin
+            },
+            ..geo
+        };
+        cursor = geo.y + geo.h + mb;
+        out.bottom = out.bottom.max(cursor);
+        out.placed.push((c, geo, kind));
+    }
+    Ok(out)
+}
+
+/// An in-flow child being placed.
+struct Item<'s> {
+    c: NodeIdx,
+    style: &'s Style,
+    across: &'s Across,
+    align: Align,
+}
+
+/// Text child `item` with its border box's top at `top`, beside floats:
+/// its own box, as wide as it would be without them, and its lines in
+/// the room the floats leave in it. Also returns those line boxes and the
+/// bottom of its last line beside a float.
+fn wrap_text(
+    ctx: &mut LayoutCtx<'_>,
+    container: &Container<'_, '_>,
+    floats: &FloatContext,
+    item: &Item<'_>,
+    top: f32,
+) -> Result<(Geometry, Arc<LineBoxes>, f32), InkoxideError> {
+    let (s, a) = (item.style, item.across);
+    let width = container.width;
+    let w = container.width(ctx, item.c, (s, a), width, item.align == Align::Stretch)?;
+    let (x, ml, mr) = a.place(item.align, 0.0, width, w);
+    let (pad, bor) = insets(s, width);
+    let cx = x + bor.left + pad.left;
+    let cy = top + bor.top + pad.top;
+    let cw = (w - bor.left - pad.left - pad.right - bor.right).max(0.0);
+    let boxes = Arc::new(LineBoxes {
+        width: cw,
+        bands: floats.bands(cx, cy, cw).into(),
+    });
+    let node = container.tree.nodes[item.c as usize]
+        .node()
+        .expect("a text child is a node");
+    let measured = ctx.leaves.measure_lines(node, &boxes);
+    let edges_h = bor.top + pad.top + pad.bottom + bor.bottom;
+    let parent_h = container.parent_h;
+    let h = clamp(
+        len_h(s.height, parent_h).unwrap_or(measured.height + edges_h),
+        len_h(s.min_height, parent_h),
+        len_h(s.max_height, parent_h),
+    );
+    let geo = Geometry {
+        x,
+        y: top,
+        w,
+        h,
+        border: bor,
+        padding: pad,
+        margin: Edges {
+            right: mr,
+            left: ml,
+            ..Edges::default()
+        },
+    };
+    Ok((geo, boxes, cy + measured.wrapped))
+}
+
+/// Child `item` with its border box's top at `top` or lower: narrowed to
+/// the room the floats leave beside it over its whole height, or moved
+/// below them where that is narrower than its min-content width.
+fn narrow(
+    ctx: &mut LayoutCtx<'_>,
+    container: &Container<'_, '_>,
+    floats: &FloatContext,
+    item: &Item<'_>,
+    mut top: f32,
+) -> Result<Geometry, InkoxideError> {
+    let (s, a) = (item.style, item.across);
+    let width = container.width;
+    let beside = floats.next_change(top).is_some();
+    let need = if beside {
+        container.min_width(ctx, item.c, a)?
+    } else {
+        0.0
+    };
+    let mut taken = floats.band(top, 0.0);
+    // Each turn moves `top` down to a float bottom, or takes more room
+    // from a side, up to a float edge; there are finitely many of both.
+    let (taken, size) = loop {
+        if beside && need > taken.room(width) + EPS {
+            if let Some(y) = floats.next_change(top) {
+                top = y;
+                taken = floats.band(top, 0.0);
+                continue;
+            }
+        }
+        let stretch = item.align == Align::Stretch;
+        let size = container.item_size(ctx, item.c, (s, a), taken.room(width), stretch)?;
+        // A float lower down may reach into it: then it fits the room
+        // left there, or moves down.
+        let over = taken.max(floats.band(top, size.height));
+        if over != taken && size.width + a.margins() > over.room(width) + EPS {
+            taken = over;
+            continue;
+        }
+        break (over, size);
+    };
+    let Insets { left, .. } = taken;
+    let (x, ml, mr) = a.place(item.align, left, taken.room(width), size.width);
+    Ok(Geometry {
+        x,
+        y: top,
+        w: size.width,
+        h: size.height,
+        margin: Edges {
+            right: mr,
+            left: ml,
+            ..Edges::default()
+        },
+        ..Geometry::default()
+    })
 }
 
 /// Lays out the children of float container `idx` in a content box
@@ -326,240 +624,32 @@ pub(super) fn layout(
     parent_h: Option<f32>,
     collect: bool,
 ) -> Result<FlowLayout, InkoxideError> {
-    let container = tree.nodes[idx as usize].style();
-    let item = Item {
+    let container = Container {
         tree,
         width,
         parent_h,
     };
-    let gap = container
-        .row_gap
-        .or(container.gap)
-        .map_or(0.0, |g| match g {
-            LengthPercent::Points(v) => v,
-            LengthPercent::Percent(p) => parent_h.map_or(0.0, |h| p * h),
-        });
-    let mut floats = FloatContext::new(width);
-    let mut out = FlowLayout::default();
-    // Per child: its border box, margins, and the kind of placement.
-    let mut placed: Vec<(NodeIdx, Geometry, Kind)> = Vec::new();
-    let mut cursor = 0.0f32;
-    let mut any_in_flow = false;
-    let mut bottom = 0.0f32;
-    let mut float_ids: Vec<(NodeIdx, usize)> = Vec::new();
-    for c in tree.children(idx) {
-        let Some(node) = tree.nodes[c as usize].node() else {
-            continue;
-        };
-        let s = &node.style;
-        if s.display == Some(Display::None) {
-            continue;
-        }
-        if s.position == Some(Position::Absolute) {
-            placed.push((c, Geometry::default(), Kind::Absolute));
-            continue;
-        }
-        let [mt, mr, mb, ml] = margins(s, width);
-        let cleared = match s.clear {
-            Some(Clear::Left) => floats.clear_y(true, false),
-            Some(Clear::Right) => floats.clear_y(false, true),
-            Some(Clear::Both) => floats.clear_y(true, true),
-            Some(Clear::None) | None => None,
-        };
-        if let Some(side) = s.floats() {
-            let side = if side == Float::Left {
-                Side::Left
-            } else {
-                Side::Right
-            };
-            let (mt, mr, mb, ml) = (
-                mt.unwrap_or(0.0),
-                mr.unwrap_or(0.0),
-                mb.unwrap_or(0.0),
-                ml.unwrap_or(0.0),
-            );
-            let Size {
-                width: w,
-                height: h,
-            } = item.item_size(ctx, c, s, width, false)?;
-            let min_y = cleared.map_or(cursor, |y| y.max(cursor));
-            let f = floats.place(side, w + ml + mr, h + mt + mb, min_y);
-            let geo = Geometry {
-                x: f.x + ml,
-                y: f.y + mt,
-                w,
-                h,
-                margin: Edges {
-                    top: mt,
-                    right: mr,
-                    bottom: mb,
-                    left: ml,
-                },
-                ..Geometry::default()
-            };
-            bottom = bottom.max(f.bottom());
-            float_ids.push((c, placed.len()));
-            placed.push((c, geo, Kind::Float(f.y, f.bottom())));
-            continue;
-        }
-        if any_in_flow {
-            cursor += gap;
-        }
-        any_in_flow = true;
-        let top_margin = mt.unwrap_or(0.0);
-        // Its border box goes below the floats it clears.
-        let mut top = cursor + top_margin;
-        if let Some(y) = cleared {
-            top = top.max(y);
-        }
-        let a = align(container, s);
-        let stretch = a == Align::Stretch;
-        let beside = floats.next_change(top).is_some();
-        let is_text = matches!(node.kind, NodeKind::Text { .. });
-        let mut kind = Kind::InFlow;
-        let geo =
-            if beside && is_text && stretch && s.width.is_none() && ml.is_some() && mr.is_some() {
-                // Text wraps beside the floats, line by line.
-                let (ml, mr) = (ml.unwrap_or(0.0), mr.unwrap_or(0.0));
-                let (pad, bor) = insets(s, width);
-                let w = clamp(
-                    width - ml - mr,
-                    s.min_width.and_then(|l| len(l, width)),
-                    s.max_width.and_then(|l| len(l, width)),
-                );
-                let cx = ml + bor.left + pad.left;
-                let cy = top + bor.top + pad.top;
-                let cw = (w - bor.left - pad.left - pad.right - bor.right).max(0.0);
-                let bands = floats.bands(cx, cy, cw);
-                let boxes = Arc::new(LineBoxes {
-                    width: cw,
-                    bands: bands.into(),
-                });
-                let measured = ctx.leaves.measure_lines(node, &boxes);
-                let edges_h = bor.top + pad.top + pad.bottom + bor.bottom;
-                let h = clamp(
-                    len_h(s.height, parent_h).unwrap_or(measured.height + edges_h),
-                    len_h(s.min_height, parent_h),
-                    len_h(s.max_height, parent_h),
-                );
-                out.wraps.push((c, boxes));
-                kind = Kind::Wrapped(cy + measured.wrapped);
-                Geometry {
-                    x: ml,
-                    y: top,
-                    w,
-                    h,
-                    border: bor,
-                    padding: pad,
-                    margin: Edges {
-                        top: top_margin,
-                        right: mr,
-                        bottom: mb.unwrap_or(0.0),
-                        left: ml,
-                    },
-                }
-            } else {
-                // A box: narrowed to the room beside the floats, or moved
-                // below them when it does not fit there.
-                let need = if beside {
-                    item.min_width(ctx, c, s)?
-                } else {
-                    0.0
-                };
-                loop {
-                    let (left, right) = floats.band(top, 0.0);
-                    let room = width - left - right;
-                    if beside && need > room + EPS {
-                        if let Some(y) = floats.next_change(top) {
-                            top = y;
-                            continue;
-                        }
-                    }
-                    let Size {
-                        width: w,
-                        height: h,
-                    } = item.item_size(ctx, c, s, room, stretch)?;
-                    let (l2, r2) = floats.band(top, h);
-                    if beside && w + ml.unwrap_or(0.0) + mr.unwrap_or(0.0) > width - l2 - r2 + EPS {
-                        // A float lower down narrows it: below that one.
-                        if let Some(y) = floats.next_change(top) {
-                            top = y;
-                            continue;
-                        }
-                    }
-                    let (ml_v, mr_v) = (ml.unwrap_or(0.0), mr.unwrap_or(0.0));
-                    let x = match (ml, mr) {
-                        (None, None) => left + (room - w) / 2.0,
-                        (None, Some(_)) => left + room - mr_v - w,
-                        (Some(_), None) => left + ml_v,
-                        _ => match a {
-                            Align::Start | Align::Stretch => left + ml_v,
-                            Align::End => left + room - mr_v - w,
-                            Align::Center => left + ml_v + (room - ml_v - mr_v - w) / 2.0,
-                        },
-                    };
-                    // Auto margins resolve to the room they take.
-                    let resolved = |m: Option<f32>, auto: f32| m.unwrap_or(auto);
-                    break Geometry {
-                        x,
-                        y: top,
-                        w,
-                        h,
-                        margin: Edges {
-                            top: top_margin,
-                            right: resolved(mr, left + room - x - w),
-                            bottom: mb.unwrap_or(0.0),
-                            left: resolved(ml, x - left),
-                        },
-                        ..Geometry::default()
-                    };
-                }
-            };
-        cursor = geo.y + geo.h + mb.unwrap_or(0.0);
-        bottom = bottom.max(cursor);
-        if mt.is_none() || mb.is_none() {
-            kind = match kind {
-                Kind::InFlow => Kind::AutoVertical(mt.is_none(), mb.is_none()),
-                k => k,
-            };
-        }
-        placed.push((c, geo, kind));
-    }
-
-    // Auto vertical margins share the free room of a container whose
-    // height is known.
+    let mut placement = place(ctx, &container, idx, 0.0)?;
+    // Auto top and bottom margins share the free room of a container
+    // whose height is known: placed again with them, as floats may then
+    // sit beside other lines.
     if let Some(h) = height {
-        let autos: usize = placed
-            .iter()
-            .map(|(_, _, k)| match k {
-                Kind::AutoVertical(t, b) => usize::from(*t) + usize::from(*b),
-                _ => 0,
-            })
-            .sum();
-        let free = h - bottom;
-        if autos > 0 && free > EPS && float_ids.is_empty() {
-            let share = free / autos as f32;
-            let mut moved = 0.0f32;
-            for (_, g, k) in &mut placed {
-                match *k {
-                    Kind::AutoVertical(t, b) => {
-                        if t {
-                            moved += share;
-                            g.margin.top += share;
-                        }
-                        g.y += moved;
-                        if b {
-                            moved += share;
-                            g.margin.bottom += share;
-                        }
-                    }
-                    Kind::InFlow | Kind::Wrapped(_) => g.y += moved,
-                    _ => {}
-                }
-            }
-            bottom += moved;
+        let free = h - placement.bottom;
+        if placement.autos > 0 && free > EPS {
+            placement = place(ctx, &container, idx, free / placement.autos as f32)?;
         }
     }
+    let Placement {
+        mut placed,
+        floats: float_ids,
+        wraps,
+        bottom,
+        ..
+    } = placement;
+    let mut out = FlowLayout {
+        wraps,
+        ..FlowLayout::default()
+    };
 
     // Relative offsets move a box where it is painted, not its room.
     for (c, g, k) in &mut placed {
@@ -592,7 +682,7 @@ pub(super) fn layout(
                 Kind::Wrapped(wrapped) if g.y < fb && g.y + g.h > top => {
                     end = end.max(wrapped.min(g.y + g.h));
                 }
-                Kind::InFlow | Kind::AutoVertical(..) if g.y < fb && g.y + g.h > top => {
+                Kind::InFlow if g.y < fb && g.y + g.h > top => {
                     end = end.max(g.y + g.h);
                 }
                 _ => {}
@@ -601,20 +691,19 @@ pub(super) fn layout(
         out.groups.push((f, end));
     }
 
-    let content_h = bottom;
     out.size = Size {
         width,
-        height: content_h,
+        height: bottom,
     };
     if !collect {
         return Ok(out);
     }
-    let box_h = height.unwrap_or(content_h);
-    let (pad, _) = insets(container, width);
+    let box_h = height.unwrap_or(bottom);
+    let (pad, _) = insets(tree.nodes[idx as usize].style(), width);
     for (c, mut g, kind) in placed {
         if matches!(kind, Kind::Absolute) {
             let s = tree.nodes[c as usize].style();
-            g = absolute(ctx, &item, c, s, pad, box_h)?;
+            g = absolute(ctx, &container, c, s, pad, box_h)?;
         }
         if matches!(kind, Kind::Wrapped(_)) {
             // A text leaf: no subtree.
@@ -650,10 +739,8 @@ pub(super) fn layout(
 #[derive(Debug, Clone, Copy)]
 enum Kind {
     InFlow,
-    /// In flow, with an auto top or bottom margin.
-    AutoVertical(bool, bool),
-    /// Text wrapped beside floats, with the bottom of its last line that
-    /// starts beside one.
+    /// Text wrapped beside floats, with the bottom of its last line set
+    /// beside one.
     Wrapped(f32),
     /// A float, with the top and bottom of its margin box.
     Float(f32, f32),
@@ -661,18 +748,18 @@ enum Kind {
 }
 
 /// The border box of absolutely positioned child `c`, against the
-/// container's padding box (`pad` around a content box `item.width` ×
-/// `height`).
+/// container's padding box (`pad` around a content box `container.width`
+/// × `height`).
 fn absolute(
     ctx: &mut LayoutCtx<'_>,
-    item: &Item<'_, '_>,
+    container: &Container<'_, '_>,
     c: NodeIdx,
     s: &Style,
     pad: Edges<f32>,
     height: f32,
 ) -> Result<Geometry, InkoxideError> {
     let (pw, ph) = (
-        item.width + pad.left + pad.right,
+        container.width + pad.left + pad.right,
         height + pad.top + pad.bottom,
     );
     let x_of = |l: Option<Length>| l.and_then(|l| len(l, pw));
@@ -681,17 +768,17 @@ fn absolute(
         Some(i) => (x_of(i.left), x_of(i.right), y_of(i.top), y_of(i.bottom)),
         None => (None, None, None, None),
     };
-    let [mt, mr, mb, ml] = margins(s, pw).map(|m| m.unwrap_or(0.0));
-    let min_w = s.min_width.and_then(|l| len(l, pw));
-    let max_w = s.max_width.and_then(|l| len(l, pw));
-    let w = match (s.width.and_then(|l| len(l, pw)), left, right) {
-        (Some(w), ..) => clamp(w, min_w, max_w),
-        (None, Some(l), Some(r)) => clamp(pw - l - r - ml - mr, min_w, max_w),
+    let a = Across::of(s, pw);
+    let (mt, mb) = vertical_margins(s, pw);
+    let [mt, mr, mb, ml] = [mt, a.right, mb, a.left].map(|m| m.unwrap_or(0.0));
+    let w = match (a.width, left, right) {
+        (Some(w), ..) => a.clamp(w),
+        (None, Some(l), Some(r)) => a.clamp(pw - l - r - ml - mr),
         _ => {
-            let lo = item.size(ctx, c, AvailableSpace::MinContent)?.width;
-            let hi = item.size(ctx, c, AvailableSpace::MaxContent)?.width;
+            let lo = container.size(ctx, c, AvailableSpace::MinContent)?.width;
+            let hi = container.size(ctx, c, AvailableSpace::MaxContent)?.width;
             let room = pw - left.unwrap_or(0.0) - right.unwrap_or(0.0) - ml - mr;
-            clamp(hi.min(lo.max(room)), min_w, max_w)
+            a.clamp(hi.min(lo.max(room)))
         }
     };
     let mode = RootMode::Item {
@@ -700,7 +787,10 @@ fn absolute(
         height: None,
         parent_h: Some(ph),
     };
-    let mut h = ctx.layout_subtree(item.tree, c, mode, false)?.size.height;
+    let mut h = ctx
+        .layout_subtree(container.tree, c, mode, false)?
+        .size
+        .height;
     if s.height.is_none() {
         if let (Some(t), Some(b)) = (top, bottom) {
             h = (ph - t - b - mt - mb).max(0.0);
@@ -748,9 +838,10 @@ pub(super) fn definite_content_height(tree: &Tree<'_>, idx: NodeIdx) -> Option<f
     Some((h - edges).max(0.0))
 }
 
-/// The min-content or max-content width of float container `idx`: its
-/// widest child, or for the maximum, its floats side by side when wider
-/// (side by side up to each `clear`).
+/// The min-content or max-content width of float container `idx`. The
+/// minimum is its widest child. The maximum is its widest in-flow child
+/// with the floats beside it, or its floats side by side when wider; a
+/// `clear` starts a new row of floats.
 pub(super) fn intrinsic_width(
     ctx: &mut LayoutCtx<'_>,
     tree: &Tree<'_>,
@@ -758,12 +849,13 @@ pub(super) fn intrinsic_width(
     mode: AvailableSpace,
     parent_h: Option<f32>,
 ) -> Result<f32, InkoxideError> {
-    let item = Item {
+    let container = Container {
         tree,
         width: 0.0,
         parent_h,
     };
-    let (mut widest, mut row, mut rows) = (0.0f32, 0.0f32, 0.0f32);
+    let max = mode == AvailableSpace::MaxContent;
+    let (mut widest, mut row) = (0.0f32, 0.0f32);
     for c in tree.children(idx) {
         let Some(node) = tree.nodes[c as usize].node() else {
             continue;
@@ -772,19 +864,20 @@ pub(super) fn intrinsic_width(
         if s.display == Some(Display::None) || s.position == Some(Position::Absolute) {
             continue;
         }
-        let [_, mr, _, ml] = margins(s, 0.0).map(|m| m.unwrap_or(0.0));
-        let w = item.size(ctx, c, mode)?.width + ml + mr;
+        let w = container.size(ctx, c, mode)?.width + Across::of(s, 0.0).margins();
         if s.clear.is_some_and(|c| c != Clear::None) {
             row = 0.0;
         }
-        if s.floats().is_some() && mode == AvailableSpace::MaxContent {
+        if s.floats().is_some() && max {
             row += w;
-            rows = rows.max(row);
+            widest = widest.max(row);
+        } else if max {
+            widest = widest.max(w + row);
         } else {
             widest = widest.max(w);
         }
     }
-    Ok(widest.max(rows))
+    Ok(widest)
 }
 
 /// Whether node `idx` is a column box with children, which `flow.rs`
@@ -792,18 +885,8 @@ pub(super) fn intrinsic_width(
 #[cfg(test)]
 pub(super) fn column_box(tree: &Tree<'_>, idx: NodeIdx) -> bool {
     let ln = &tree.nodes[idx as usize];
-    let s = ln.style();
-    let kind_ok = match ln.part {
-        super::Part::Root | super::Part::Cell(_) => true,
-        super::Part::Node(n) => matches!(n.kind, NodeKind::Box { .. }),
-        super::Part::Row(_) => false,
-    };
-    kind_ok
+    ln.holds_children()
         && !ln.children.is_empty()
-        && matches!(s.display, None | Some(Display::Flex))
-        && matches!(
-            s.flex_direction,
-            None | Some(crate::schema::FlexDirection::Column)
-        )
-        && matches!(s.flex_wrap, None | Some(crate::schema::FlexWrap::NoWrap))
+        && ln.style().display != Some(Display::None)
+        && ln.style().column()
 }

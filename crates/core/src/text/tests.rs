@@ -607,7 +607,8 @@ fn lines_beside_a_band_are_narrower_and_the_rest_full_width() {
     assert_eq!(texts.join(" "), plain.join(" "));
     assert_eq!(l.boxes.len(), l.lines.len());
     let mut narrow = 0;
-    for (line, &(left, avail)) in l.lines.iter().zip(&l.boxes) {
+    for (line, b) in l.lines.iter().zip(&l.boxes) {
+        let (left, avail) = (b.left, b.width);
         assert!(line.width <= avail + 1e-3, "{line:?} in {avail}");
         if line.top < 30.0 {
             assert_eq!((left, avail), (80.0, 120.0));
@@ -630,7 +631,7 @@ fn a_line_that_does_not_fit_beside_a_band_moves_below_it() {
     let (texts, l) = lines_in(&d, &s, &boxes);
     assert_eq!(texts, ["Unbreakable words"]);
     assert_eq!(l.lines[0].top, 25.0);
-    assert_eq!(l.boxes[0], (0.0, 200.0));
+    assert_eq!((l.boxes[0].left, l.boxes[0].width), (0.0, 200.0));
     assert!((l.height - (25.0 + l.lines[0].height)).abs() < 1e-4);
     // A band that ends leaves room to every later line; with no band below,
     // a word too wide for the line breaks anyway.
@@ -651,7 +652,7 @@ fn indent_and_ellipsis_use_the_line_box() {
     assert!(texts[0].ends_with('…'), "{texts:?}");
     let line = &l.lines[0];
     assert!(line.width + line.indent <= 120.0 + 1e-3, "{line:?}");
-    assert_eq!(l.boxes[0], (50.0, 120.0));
+    assert_eq!((l.boxes[0].left, l.boxes[0].width), (50.0, 120.0));
 }
 
 /// `node`, with `textWrap: pretty`.
@@ -675,7 +676,7 @@ fn assert_fits(l: &LineLayout, width: f32) {
 /// for line `i`) by up to a third.
 fn assert_fits_shrunk(l: &LineLayout, width: f32, spaces: &[f32]) {
     for (i, line) in l.lines.iter().enumerate() {
-        let avail = l.boxes.get(i).map_or(width, |b| b.1);
+        let avail = l.boxes.get(i).map_or(width, |b| b.width);
         let shrink = spaces.get(i).map_or(0.0, |s| s / 3.0);
         assert!(
             line.width + line.indent <= avail + shrink + 1e-3,
@@ -1063,4 +1064,98 @@ fn emoji_with_images_are_objects_and_zwj_sequences_try_their_parts() {
             ("❤\u{FE0F}".into(), "❤\u{FE0F}".into(), 15.0)
         ]
     );
+}
+
+/// How first fit or `pretty` broke each chunk of the document's first
+/// node in `boxes`.
+fn chunks(
+    d: &Document,
+    store: &FontStore,
+    boxes: &LineBoxes,
+) -> Vec<Result<(), optimal::FirstFit>> {
+    let fonts = FontSet::load(d, store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let NodeKind::Text { runs } = &node.kind else {
+        unreachable!()
+    };
+    cache.layout_in(node, boxes).unwrap();
+    let (prepared, style) = cache.prepared(node).unwrap();
+    let para = Para {
+        prepared,
+        runs,
+        style,
+        fonts: &fonts,
+    };
+    let mut out = Vec::new();
+    lines::break_chunks(&para, boxes, |r| out.push(r));
+    out
+}
+
+#[test]
+fn pretty_avoids_a_hyphen_on_the_line_before_the_last() {
+    // At these widths, the best lines without the demerits of a hyphen
+    // there (TeX's `\finalhyphendemerits`) end that line in one.
+    let s = store();
+    let style = r#""hyphenate":true,"lang":"en","textAlign":"justify""#;
+    for width in [311.5, 371.0] {
+        let (texts, l) = lines(&pretty(doc(&para(PROSE, style))), &s, width);
+        let n = l.lines.len();
+        assert!(l.lines[n - 2].hyphen.is_none(), "{width}: {texts:#?}");
+    }
+}
+
+#[test]
+fn pretty_falls_back_to_first_fit_past_its_caps() {
+    use optimal::FirstFit;
+    let s = store();
+    let justify = r#""textAlign":"justify""#;
+    // More break opportunities in one chunk than it sets optimally.
+    let text = "ab ".repeat(20_002);
+    let d = pretty(doc(&para(&text, "")));
+    assert_eq!(
+        chunks(&d, &s, &LineBoxes::plain(100.0)),
+        [Err(FirstFit::TooManyBreaks)]
+    );
+    assert_eq!(
+        lines(&d, &s, 100.0).0,
+        lines(&doc(&para(&text, "")), &s, 100.0).0
+    );
+    // Lines so long, with so many spaces to stretch, that too many may
+    // start at once.
+    let text = [PROSE; 20].join(" ");
+    let d = pretty(doc(&para(&text, justify)));
+    assert_eq!(
+        chunks(&d, &s, &LineBoxes::plain(3000.0)),
+        [Err(FirstFit::TooManyActive)]
+    );
+    assert_eq!(
+        lines(&d, &s, 3000.0).0,
+        lines(&doc(&para(&text, justify)), &s, 3000.0).0
+    );
+    // Too many lines tried over the chunks of one paragraph: the first
+    // are set optimally, the last first fit.
+    let chunk = [PROSE; 8].join(" ");
+    let text = vec![chunk; 50].join("\\n");
+    let d = pretty(doc(&para(&text, justify)));
+    let r = chunks(&d, &s, &LineBoxes::plain(1500.0));
+    assert_eq!(r.len(), 50);
+    assert_eq!(r[0], Ok(()));
+    assert_eq!(r[49], Err(FirstFit::OutOfBudget));
+}
+
+#[test]
+fn a_long_pretty_paragraph_beside_a_float_is_set_optimally() {
+    // Below the band, lines merge as without one: a long paragraph does
+    // not run out of room for its breakpoints.
+    let s = store();
+    let text = [PROSE; 10].join(" ");
+    let boxes = banded(300.0, &[(0.0, 40.0, 60.0, 0.0)]);
+    for style in [r#""textAlign":"justify""#, ""] {
+        let d = pretty(doc(&para(&text, style)));
+        assert_eq!(chunks(&d, &s, &boxes), [Ok(())], "{style}");
+        let (_, l) = lines_in(&d, &s, &boxes);
+        assert_eq!(l.boxes[0].left, 60.0);
+        assert!(l.lines.len() > 30);
+    }
 }

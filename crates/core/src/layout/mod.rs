@@ -25,7 +25,7 @@ use std::sync::Arc;
 use taffy::prelude::{NodeId as TaffyId, Size as TSize, TaffyTree};
 use taffy::{LayoutInput, LayoutOutput};
 
-pub(crate) use float::LineBoxes;
+pub(crate) use float::{LineBox, LineBoxes};
 pub(crate) use flow::Wrapped;
 pub(crate) use table::TableLayout;
 
@@ -178,6 +178,16 @@ impl<'a> LNode<'a> {
     pub fn is_table(&self) -> bool {
         matches!(self.node().map(|n| &n.kind), Some(NodeKind::Table(_)))
     }
+
+    /// Whether it lays out children as a box does: the root, a box or a
+    /// table cell (not a row, nor a leaf).
+    pub fn holds_children(&self) -> bool {
+        match self.part {
+            Part::Root | Part::Cell(_) => true,
+            Part::Node(n) => matches!(n.kind, NodeKind::Box { .. }),
+            Part::Row(_) => false,
+        }
+    }
 }
 
 /// Arena of layout nodes. Index 0 is the root.
@@ -285,7 +295,7 @@ pub(crate) trait LeafMeasure {
     ) -> Size<f32>;
 
     /// The content height of text leaf `node` laid out in `boxes`, beside
-    /// floats, and the bottom of its last line that starts beside one.
+    /// floats, and the bottom of its last line set beside one.
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
         let width = AvailableSpace::Definite(boxes.width);
         let available = Size {

@@ -96,6 +96,12 @@ fn script_shift(offset: f32, size: f32, default_offset: f32) -> f32 {
         .unwrap_or(default_offset / SCRIPT_SIZE)
 }
 
+/// The OpenType tag of `bytes`, such as a feature's (`tnum`): the type
+/// the shaper takes, built here so that only this module names ttf-parser.
+pub(crate) fn opentype_tag(bytes: [u8; 4]) -> ttf_parser::Tag {
+    ttf_parser::Tag::from_bytes(&bytes)
+}
+
 /// A registered font face.
 #[derive(Debug)]
 pub struct FontData {
@@ -1011,6 +1017,28 @@ mod tests {
             ],
             [2048.0 * 0.2, 2048.0 * 0.65, 2048.0 * 0.34, 2048.0 * 0.65]
         );
+        // In the script's own size, a script at 0.65 em sits as browsers
+        // put one: raised 0.34 em, lowered 0.2 em of the text around it.
+        assert!((m.superscript_shift() - 0.34 / 0.65).abs() < 1e-6);
+        assert!((m.subscript_shift() - 0.2 / 0.65).abs() < 1e-6);
+        assert!((m.superscript_shift() - 0.523).abs() < 1e-3);
+        assert!((m.subscript_shift() - 0.308).abs() < 1e-3);
+        // OS/2 sizes that make no ratio in (0, 1] fall back the same way.
+        let odd = FontMetrics {
+            superscript_size: 100.0,
+            superscript_offset: 300.0,
+            subscript_size: 100.0,
+            subscript_offset: -5.0,
+            ..m.clone()
+        };
+        assert_eq!(odd.superscript_shift(), m.superscript_shift());
+        assert_eq!(odd.subscript_shift(), m.subscript_shift());
+        // Inter's own: the OS/2 offset over the OS/2 size.
+        let inter = fixture("Inter-Regular.ttf");
+        s.register("Inter", inter).unwrap();
+        let inter = &s.get("Inter").unwrap().metrics;
+        assert_eq!(inter.superscript_shift(), 717.0 / 1229.0);
+        assert_eq!(inter.subscript_shift(), 154.0 / 1229.0);
     }
 
     #[test]

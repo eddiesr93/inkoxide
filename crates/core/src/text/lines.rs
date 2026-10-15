@@ -4,7 +4,7 @@
 use super::{
     baseline_shift, optimal, BreakKind, BreakPoint, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS,
 };
-use crate::layout::LineBoxes;
+use crate::layout::{LineBox, LineBoxes};
 use crate::schema::RunAlign;
 
 /// Shown at the end of a truncated line; three dots in fonts without it.
@@ -16,6 +16,16 @@ pub(super) const HYPHEN: char = '\u{2010}';
 /// (`f32::INFINITY` wide for max-content), each chunk between forced breaks
 /// on its own.
 pub(crate) fn break_lines(para: &Para<'_>, boxes: &LineBoxes) -> LineLayout {
+    break_chunks(para, boxes, |_| {})
+}
+
+/// [`break_lines`], telling `chunk` how each chunk was broken: optimally,
+/// or first fit and why.
+pub(super) fn break_chunks(
+    para: &Para<'_>,
+    boxes: &LineBoxes,
+    mut chunk: impl FnMut(Result<(), optimal::FirstFit>),
+) -> LineLayout {
     let p = para.prepared;
     if p.glyphs.is_empty() {
         return LineLayout::default();
@@ -42,12 +52,16 @@ pub(crate) fn break_lines(para: &Para<'_>, boxes: &LineBoxes) -> LineLayout {
         let inside = &p.breaks[first..last];
         first = (last + 1).min(p.breaks.len());
         match optimal::lines(&b, start, end, inside, &mut budget) {
-            Some(lines) => {
+            Ok(lines) => {
                 for (s, e, kind) in lines {
                     b.push(s, e, kind);
                 }
+                chunk(Ok(()));
             }
-            None => b.greedy(start, end, inside),
+            Err(why) => {
+                b.greedy(start, end, inside);
+                chunk(Err(why));
+            }
         }
         start = end;
     }
@@ -64,8 +78,8 @@ pub(super) struct Breaker<'a, 'p> {
     /// its box over that height, as it is not known before its glyphs.
     tallest: f32,
     lines: Vec<Line>,
-    /// Each line's box (left edge, width), when the boxes have bands.
-    line_boxes: Vec<(f32, f32)>,
+    /// Each line's box, when the boxes have bands.
+    line_boxes: Vec<LineBox>,
     /// Top of the next line.
     y: f32,
 }
@@ -112,40 +126,39 @@ impl<'a, 'p> Breaker<'a, 'p> {
         }
     }
 
-    /// The box of the next line, at the current top: its left edge and
-    /// its width.
-    fn next_box(&self) -> (f32, f32) {
+    /// The box of a line with its top at `y`.
+    fn box_at(&self, y: f32) -> LineBox {
         if self.boxes.banded() {
-            self.boxes.at(self.y, self.tallest)
+            self.boxes.at(y, self.tallest)
         } else {
-            (0.0, self.boxes.width)
+            LineBox {
+                left: 0.0,
+                width: self.boxes.width,
+            }
         }
     }
 
-    /// The room for the glyphs of the next line: its box, less the indent
-    /// on the first line (which a hanging indent widens).
-    pub fn limit(&self) -> f32 {
-        let w = self.next_box().1;
-        if self.lines.is_empty() {
-            w - self.para.style.indent
-        } else {
-            w
-        }
-    }
-
-    /// The room for the glyphs of line `index` with its top at `y`, as
-    /// [`limit`](Self::limit) gives it once the lines before are set.
+    /// The room for the glyphs of line `index` with its top at `y`: its
+    /// box, less the indent on the first line (which a hanging indent
+    /// widens).
     pub fn limit_at(&self, index: usize, y: f32) -> f32 {
-        let w = if self.boxes.banded() {
-            self.boxes.at(y, self.tallest).1
-        } else {
-            self.boxes.width
-        };
+        let w = self.box_at(y).width;
         if index == 0 {
             w - self.para.style.indent
         } else {
             w
         }
+    }
+
+    /// The room for the glyphs of the next line.
+    pub fn limit(&self) -> f32 {
+        self.limit_at(self.lines.len(), self.y)
+    }
+
+    /// Where line widths stop depending on the line's top: below every
+    /// band. Without bands, at the top.
+    pub fn bands_end(&self) -> f32 {
+        self.boxes.end()
     }
 
     /// Whether the boxes have bands: line widths depend on where lines go.
@@ -195,7 +208,7 @@ impl<'a, 'p> Breaker<'a, 'p> {
             None
         };
         let ve = p.visible_end(s, e);
-        let (left, avail) = self.next_box();
+        let line_box = self.box_at(self.y);
         let mut line = Line {
             width: self.prefix[ve] - self.prefix[s] + hyphen.as_ref().map_or(0.0, |h| h.advance),
             hyphen,
@@ -208,13 +221,14 @@ impl<'a, 'p> Breaker<'a, 'p> {
         if self.boxes.banded() {
             // The box, found over the tallest line, holds the line: no band
             // (no float) reaches into it.
-            let (l, a) = self.boxes.at(self.y, line.height);
+            let room = self.boxes.at(self.y, line.height);
             debug_assert!(
-                left >= l - 1e-3 && left + avail <= l + a + 1e-3,
-                "a line box meets a float: {left}+{avail} at {} in {l}+{a}",
+                line_box.left >= room.left - 1e-3
+                    && line_box.left + line_box.width <= room.left + room.width + 1e-3,
+                "a line box meets a float: {line_box:?} at {} in {room:?}",
                 self.y
             );
-            self.line_boxes.push((left, avail));
+            self.line_boxes.push(line_box);
         }
         self.y += line.height;
         self.lines.push(line);
@@ -313,7 +327,7 @@ impl<'a, 'p> Breaker<'a, 'p> {
             lines.truncate(max);
             line_boxes.truncate(max);
             if style.ellipsis {
-                let width = line_boxes.last().map_or(boxes.width, |b| b.1);
+                let width = line_boxes.last().map_or(boxes.width, |b| b.width);
                 if let Some(last) = lines.last_mut() {
                     let limit = width - last.indent;
                     if truncated || last.width > limit + WIDTH_EPS {
@@ -325,7 +339,7 @@ impl<'a, 'p> Breaker<'a, 'p> {
         let mut max_w = 0.0f32;
         for (i, l) in lines.iter().enumerate() {
             let w = l.width + l.indent;
-            max_w = max_w.max(line_boxes.get(i).map_or(w, |b| b.0 + w));
+            max_w = max_w.max(line_boxes.get(i).map_or(w, |b| b.left + w));
         }
         LineLayout {
             height: lines.last().map_or(0.0, |l| l.top + l.height),

@@ -1101,6 +1101,14 @@ impl Style {
         self.float.filter(|f| *f != Float::None)
     }
 
+    /// Whether a box with this style lays its children out in one column,
+    /// top to bottom: not a grid, nor a row, wrapping or reversed box.
+    pub fn column(&self) -> bool {
+        self.display != Some(Display::Grid)
+            && matches!(self.flex_direction, None | Some(FlexDirection::Column))
+            && matches!(self.flex_wrap, None | Some(FlexWrap::NoWrap))
+    }
+
     /// Names of text-only properties that are set, for applicability checks.
     pub fn text_props_set(&self) -> impl Iterator<Item = &'static str> + '_ {
         [

@@ -55,6 +55,11 @@ SVG with 15 texts: each render lays the text out with its fonts, and reuses the 
 with that layout from an earlier render. On an Apple M4 Pro it takes about 0.8 ms, against
 0.6 ms for `render/svg`, a page of SVG images without text.
 
+`render/text-pretty` sets three paragraphs of 87 words with `textWrap: 'pretty'`, next to the
+same paragraphs first fit. With those three paragraphs first fit as well, the page renders in
+0.58 ms against 0.66 ms: `pretty` costs about 25 µs per paragraph (Apple M4 Pro, median of
+criterion's samples).
+
 ## Where the time goes
 
 A single-thread profile of `table-dump-500p`. Wall times come from an instrumented build;

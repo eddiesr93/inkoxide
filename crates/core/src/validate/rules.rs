@@ -509,14 +509,7 @@ impl<'a> Checker<'a> {
                 format!("a box holds at most {MAX_FLOATS} floated children"),
             );
         }
-        let column = parent.is_none_or(|s| {
-            s.display != Some(crate::schema::Display::Grid)
-                && matches!(
-                    s.flex_direction,
-                    None | Some(crate::schema::FlexDirection::Column)
-                )
-                && matches!(s.flex_wrap, None | Some(crate::schema::FlexWrap::NoWrap))
-        });
+        let column = parent.is_none_or(Style::column);
         if let Some(p) = parent.filter(|_| column) {
             for (name, set) in [
                 ("justifyContent", p.justify_content.is_some()),
@@ -656,12 +649,7 @@ impl<'a> Checker<'a> {
         }
         // Inside these, forced breaks would do nothing.
         let inner = if ctx == Ctx::Flow
-            && (absolute
-                || node.brk.fixed
-                || node.style.rotate.is_some_and(|r| r % 360.0 != 0.0)
-                || node.style.transform.as_ref().is_some_and(|t| !t.is_empty())
-                || node.style.floats().is_some()
-                || crate::paginate::banded(node))
+            && (crate::paginate::moves_whole(node) || crate::paginate::banded(node))
         {
             Ctx::Whole
         } else {

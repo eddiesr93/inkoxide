@@ -6,8 +6,7 @@
 
 use super::{AvailableSpace, CellSpace, Geometry, LeafMeasure, NodeIdx, Size, SubLayout, Tree};
 use crate::schema::{
-    AlignItems, AlignSelf, Display, Edges, FlexDirection, FlexWrap, LengthPercent, NodeKind, Style,
-    VerticalAlign,
+    AlignItems, AlignSelf, Display, Edges, LengthPercent, NodeKind, Style, VerticalAlign,
 };
 
 /// A set height short of the content by less than this (points) is float
@@ -27,9 +26,8 @@ pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, Edg
         return None;
     }
     let s = ln.style();
-    let container_ok = matches!(s.display, None | Some(Display::Flex))
-        && matches!(s.flex_direction, None | Some(FlexDirection::Column))
-        && matches!(s.flex_wrap, None | Some(FlexWrap::NoWrap))
+    let container_ok = s.display != Some(Display::None)
+        && s.column()
         && matches!(s.align_items, None | Some(AlignItems::Stretch))
         && s.align_content.is_none()
         && s.height.is_none()
