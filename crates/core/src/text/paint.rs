@@ -5,8 +5,7 @@ use super::objects::InlineObject;
 use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
 use super::{
-    baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper,
-    UnicodeMap, WIDTH_EPS,
+    baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS,
 };
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet, Placement};
@@ -46,19 +45,22 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     /// The images of inline objects and colour glyphs.
     pub images: &'f ImageSet,
     pub colors: &'f ColorGlyphs,
-    /// The text of each glyph, for the spans of colour glyphs.
-    pub unicode: &'f UnicodeMap,
     pub numbers: PageNumbers,
+    /// The page's area, in page coordinates: decorations are drawn only
+    /// where the page shows them.
+    pub page_box: Rect,
 }
 
 /// What a line's pieces are drawn with besides their glyphs: page
-/// numbers, and the images of inline objects and colour glyphs.
+/// numbers, the images of inline objects and colour glyphs, and the area
+/// of the page, in the coordinates the text is drawn in (`None`: not
+/// known, nothing is left out).
 #[derive(Clone, Copy)]
 struct Ink<'x> {
     numbers: PageNumbers,
     images: &'x ImageSet,
     colors: &'x ColorGlyphs,
-    unicode: &'x UnicodeMap,
+    view: Option<Rect>,
 }
 
 impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
@@ -104,7 +106,7 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             numbers: self.numbers,
             images: self.images,
             colors: self.colors,
-            unicode: self.unicode,
+            view: view(self.page_box, ctx.ctm),
         };
         for (li, line) in layout.lines.iter().enumerate() {
             let shift = ctx.line_shifts.get(li).copied().unwrap_or(ctx.shift);
@@ -157,11 +159,16 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
 }
 
 /// One output glyph sequence in a single run/font, or an inline object.
-struct Piece {
+struct Piece<'t> {
     run: u16,
     font: u16,
     object: Option<u32>,
     glyphs: Vec<TextGlyph>,
+    /// The text of each glyph, for the spans of those drawn as images: set
+    /// in colour fonts only.
+    texts: Vec<Option<&'t str>>,
+    /// Glyphs the piece stands for, drawn or not.
+    count: usize,
     /// Pen advance of the whole piece.
     width: f32,
 }
@@ -199,6 +206,31 @@ impl PaintedLine {
             runs,
         }
     }
+}
+
+/// The bounds of page area `page` in the coordinates that `ctm` maps to
+/// the page's (`None`: identity); `None` when `ctm` has no inverse.
+fn view(page: Rect, ctm: Option<[f32; 6]>) -> Option<Rect> {
+    let Some(m) = ctm else {
+        return Some(page);
+    };
+    let inv = crate::paint::invert(m)?;
+    let (x1, y1) = (page.x + page.w, page.y + page.h);
+    let corners = [(page.x, page.y), (x1, page.y), (page.x, y1), (x1, y1)];
+    let (mut lo, mut hi) = (
+        (f32::INFINITY, f32::INFINITY),
+        (f32::NEG_INFINITY, f32::NEG_INFINITY),
+    );
+    for c in corners {
+        let (x, y) = crate::paint::apply(inv, c);
+        lo = (lo.0.min(x), lo.1.min(y));
+        hi = (hi.0.max(x), hi.1.max(y));
+    }
+    let r = Rect::new(lo.0, lo.1, hi.0 - lo.0, hi.1 - lo.1);
+    [r.x, r.y, r.w, r.h]
+        .iter()
+        .all(|v| v.is_finite())
+        .then_some(r)
 }
 
 /// Height of run `r`'s glyph box above and below the line's baseline:
@@ -300,15 +332,19 @@ fn paint_line(
     let mut width = 0.0f32;
     for (seg, a, b) in items {
         let run = &runs[seg.run as usize];
+        let color = fonts.get(seg.font).has_color();
         let mut piece = Piece {
             run: seg.run,
             font: seg.font,
             object: seg.object,
             glyphs: Vec::with_capacity(b - a),
+            texts: Vec::new(),
+            count: b - a,
             width: 0.0,
         };
         if let Some(ph) = run.placeholder.filter(|_| p.placeholders) {
-            for (id, advance) in number_glyphs(fonts.get(seg.font), run, ink.numbers.of(ph)) {
+            let n = ink.numbers.of(ph);
+            for (id, advance) in number_glyphs(fonts.get(seg.font), run, n) {
                 piece.glyphs.push(TextGlyph {
                     id,
                     x: piece.width,
@@ -316,20 +352,31 @@ fn paint_line(
                 });
                 piece.width += advance;
             }
+            if color {
+                let digits = n.to_string().into_bytes();
+                piece.texts = digits
+                    .iter()
+                    .map(|d| DIGITS.get(usize::from(d - b'0')).copied())
+                    .collect();
+            }
+            piece.count = piece.glyphs.len();
         } else {
-            let slice = &p.glyphs[a..b];
-            let visual: Box<dyn Iterator<Item = &super::Glyph>> = if seg.level % 2 == 1 {
-                Box::new(slice.iter().rev())
+            let visual: Box<dyn Iterator<Item = usize>> = if seg.level % 2 == 1 {
+                Box::new((a..b).rev())
             } else {
-                Box::new(slice.iter())
+                Box::new(a..b)
             };
-            for g in visual {
+            for k in visual {
+                let g = &p.glyphs[k];
                 if !g.is_invisible() && !g.is_object() {
                     piece.glyphs.push(TextGlyph {
                         id: g.id,
                         x: piece.width + g.x_offset,
                         y_offset: g.y_offset,
                     });
+                    if color {
+                        piece.texts.push(p.glyph_text(seg, k));
+                    }
                 }
                 piece.width += g.advance;
                 if g.is_space() {
@@ -340,8 +387,9 @@ fn paint_line(
         width += piece.width;
         pieces.push(piece);
     }
-    for extra in [line.hyphen, line.ellipsis].into_iter().flatten() {
-        let piece = extra_piece(&extra);
+    let extras = [(line.hyphen, "-"), (line.ellipsis, "\u{2026}")];
+    for (extra, text) in extras.into_iter().filter_map(|(e, t)| Some((e?, t))) {
+        let piece = extra_piece(&extra, text);
         width += piece.width;
         if rtl {
             pieces.insert(0, piece);
@@ -402,6 +450,7 @@ fn paint_line(
         // The run's own baseline: raised or lowered by `verticalAlign`.
         let baseline = baseline - baseline_shift(run, fonts);
         let piece_width = piece.width;
+        let piece_count = piece.count;
         if alpha < 1.0 {
             ops.push(Op::Save);
             ops.push(Op::SetOpacity(alpha));
@@ -422,7 +471,7 @@ fn paint_line(
                 None
             };
             ink.colors
-                .push(text, strut, fonts, ink.images, ink.unicode, ops);
+                .push(text, strut, fonts, ink.images, &piece.texts, ops);
         }
         if let Some(dec) = run.decoration.filter(|d| *d != Decoration::None) {
             let font = fonts.get(piece.font);
@@ -440,7 +489,11 @@ fn paint_line(
             let dcolor = run.decoration_color.unwrap_or(color);
             let style = run.decoration_style.unwrap_or(DecorationStyle::Solid);
             let rect = Rect::new(x, y, piece_width, thick);
-            decoration(ops, style, rect, dcolor, opacity, alpha);
+            let bounds = WaveBounds {
+                view: ink.view,
+                most: WAVES_PER_GLYPH * piece_count.max(1),
+            };
+            decoration(ops, style, rect, dcolor, (opacity, alpha), bounds);
         }
         if alpha < 1.0 {
             ops.push(Op::Restore);
@@ -529,7 +582,13 @@ pub(super) fn image_span(
     }
 }
 
-fn extra_piece(e: &ExtraGlyph) -> Piece {
+/// The text of each digit, for the spans of colour digits.
+const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+/// The piece of extra glyph `e`, whose text is `text`.
+fn extra_piece(e: &ExtraGlyph, text: &'static str) -> Piece<'static> {
+    // Three dots stand for an ellipsis in a font without one.
+    let text = if e.count > 1 { "." } else { text };
     let glyphs = (0..e.count)
         .map(|i| TextGlyph {
             id: e.glyph,
@@ -542,6 +601,8 @@ fn extra_piece(e: &ExtraGlyph) -> Piece {
         font: e.font,
         object: None,
         glyphs,
+        texts: vec![Some(text); usize::from(e.count)],
+        count: usize::from(e.count),
         width: e.advance * f32::from(e.count),
     }
 }
@@ -572,16 +633,31 @@ pub(super) fn reorder<T>(items: &mut [T], level: impl Fn(&T) -> u8) {
     }
 }
 
+/// Most half waves of a `wavy` decoration per glyph it is under: wider
+/// pieces (wide letter spacing, a thin decoration under large text) get
+/// longer waves.
+pub(crate) const WAVES_PER_GLYPH: usize = 16;
+
+/// Where a `wavy` decoration may draw its waves.
+#[derive(Clone, Copy)]
+struct WaveBounds {
+    /// The area the page shows, in the decoration's coordinates (`None`:
+    /// anywhere).
+    view: Option<Rect>,
+    /// The most half waves.
+    most: usize,
+}
+
 /// Draws a text decoration in `rect`: its top edge, length and thickness.
-/// `alpha` is the opacity in effect for the run's colour; the decoration
-/// colour's own alpha replaces the run's.
+/// `opacity` is the cumulative opacity, `alpha` the opacity in effect for
+/// the run's colour; the decoration colour's own alpha replaces the run's.
 fn decoration(
     ops: &mut Vec<Op>,
     style: DecorationStyle,
     rect: Rect,
     color: Color,
-    opacity: f32,
-    alpha: f32,
+    (opacity, alpha): (f32, f32),
+    bounds: WaveBounds,
 ) {
     let Rect { x, y, w, h: thick } = rect;
     let own = color[3] * opacity;
@@ -629,28 +705,9 @@ fn decoration(
             }),
         ),
         DecorationStyle::Wavy => {
-            // Half waves of width 2·amplitude, as cubic arcs.
-            let amp = (thick * 1.5).max(0.75);
-            let half = 2.0 * amp;
-            let mut segs = vec![PathSeg::MoveTo(x, mid)];
-            let mut cx = x;
-            let mut up = true;
-            while cx < x + w - WIDTH_EPS {
-                let nx = (cx + half).min(x + w);
-                let k = (nx - cx) / half;
-                let dy = if up { -amp } else { amp } * k;
-                segs.push(PathSeg::CubicTo(
-                    cx + (nx - cx) / 3.0,
-                    mid + dy * 1.33,
-                    cx + 2.0 * (nx - cx) / 3.0,
-                    mid + dy * 1.33,
-                    nx,
-                    mid,
-                ));
-                cx = nx;
-                up = !up;
+            if let Some(path) = wave(x, mid, w, thick, bounds) {
+                stroke(ops, path, None);
             }
-            stroke(ops, Path { segs }, None);
         }
     }
     if swap {
@@ -658,9 +715,122 @@ fn decoration(
     }
 }
 
+/// The path of a `wavy` decoration `w` long from `(x, mid)`, `thick`
+/// thick: half waves of width 2·amplitude, as cubic arcs, only where the
+/// page shows them (`None`: nowhere).
+fn wave(x: f32, mid: f32, w: f32, thick: f32, bounds: WaveBounds) -> Option<Path> {
+    let amp = (thick * 1.5).max(0.75);
+    let mut half = 2.0 * amp;
+    let end = x + w;
+    // The half waves the page shows, with a half wave and the stroke to
+    // spare on each side.
+    let (mut from, mut to) = (0.0f32, w);
+    if let Some(v) = bounds.view {
+        let spare = half + thick;
+        let reach = amp * 1.33 + thick;
+        if mid + reach < v.y || mid - reach > v.y + v.h {
+            return None;
+        }
+        from = ((v.x - spare - x) / half).floor().max(0.0) * half;
+        to = to.min(v.x + v.w + spare - x);
+    }
+    if to - from <= WIDTH_EPS {
+        return None;
+    }
+    // Waves from `from`, so that the part shown is the part a whole wave
+    // shows; past the most, longer ones.
+    let up_first = (from / half).round() % 2.0 == 0.0;
+    let count = ((to - from) / half).ceil();
+    let most = bounds.most as f32;
+    if count > most {
+        half = (to - from) / most;
+    }
+    let mut cx = x + from;
+    let stop = (x + to).min(end);
+    let mut segs = vec![PathSeg::MoveTo(cx, mid)];
+    let mut up = up_first;
+    for _ in 0..=bounds.most {
+        if cx >= stop - WIDTH_EPS {
+            break;
+        }
+        let nx = (cx + half).min(end);
+        let k = (nx - cx) / half;
+        let dy = if up { -amp } else { amp } * k;
+        segs.push(PathSeg::CubicTo(
+            cx + (nx - cx) / 3.0,
+            mid + dy * 1.33,
+            cx + 2.0 * (nx - cx) / 3.0,
+            mid + dy * 1.33,
+            nx,
+            mid,
+        ));
+        cx = nx;
+        up = !up;
+    }
+    Some(Path { segs })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::reorder;
+    use super::{reorder, wave, WaveBounds};
+    use crate::paint::{PathSeg, Rect};
+
+    fn ends(segs: &[PathSeg]) -> Vec<(f32, f32)> {
+        segs.iter()
+            .map(|s| match *s {
+                PathSeg::MoveTo(x, y)
+                | PathSeg::LineTo(x, y)
+                | PathSeg::CubicTo(_, _, _, _, x, y) => (x, y),
+                PathSeg::Close => panic!("closed wave"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_wave_is_drawn_where_the_page_shows_it() {
+        let all = WaveBounds {
+            view: None,
+            most: 10_000,
+        };
+        let full = wave(0.0, 10.0, 1000.0, 0.5, all).unwrap().segs;
+        let view = Some(Rect::new(400.0, 0.0, 100.0, 20.0));
+        let shown = wave(0.0, 10.0, 1000.0, 0.5, WaveBounds { view, ..all })
+            .unwrap()
+            .segs;
+        assert!(shown.len() < full.len() / 5, "{} curves", shown.len());
+        // The same curves as the whole wave's, from before the view to
+        // after it.
+        let (PathSeg::MoveTo(x0, _), PathSeg::CubicTo(_, y1, ..)) = (shown[0], shown[1]) else {
+            panic!("not a wave");
+        };
+        let k = full
+            .iter()
+            .position(|s| matches!(*s, PathSeg::CubicTo(.., x, _) if (x - x0).abs() < 1e-3))
+            .unwrap();
+        let PathSeg::CubicTo(_, y, ..) = full[k + 1] else {
+            panic!("not a wave");
+        };
+        assert!((y - y1).abs() < 1e-3);
+        for (a, b) in ends(&shown[1..]).iter().zip(ends(&full[k + 1..])) {
+            assert!((a.0 - b.0).abs() < 1e-2 && (a.1 - b.1).abs() < 1e-3);
+        }
+        let end = ends(&shown).last().unwrap().0;
+        assert!(x0 < 400.0 && end > 500.0, "{x0}..{end}");
+        // Above the page: nothing.
+        let view = Some(Rect::new(0.0, 100.0, 1000.0, 20.0));
+        assert!(wave(0.0, 10.0, 1000.0, 0.5, WaveBounds { view, ..all }).is_none());
+    }
+
+    #[test]
+    fn a_wave_has_at_most_its_half_waves() {
+        let bounds = WaveBounds {
+            view: None,
+            most: 16,
+        };
+        let segs = wave(0.0, 10.0, 100_000.0, 0.1, bounds).unwrap().segs;
+        assert!(segs.len() <= 18, "{} curves", segs.len());
+        assert!((ends(&segs).last().unwrap().0 - 100_000.0).abs() < 1.0);
+    }
 
     #[test]
     fn reorder_reverses_rtl_runs() {

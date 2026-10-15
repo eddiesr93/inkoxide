@@ -17,7 +17,9 @@ mod rewrite;
 #[cfg(test)]
 mod survival;
 
+use std::collections::HashSet;
 use std::ops::Range;
+use std::sync::Arc;
 
 pub(crate) use extract::{extract, TextError, DEFAULT_FONT_SIZE};
 pub(crate) use rewrite::{index_bits, most_bytes, rewrite, worst_case, Probes};
@@ -47,6 +49,35 @@ impl SvgTextDoc {
     /// paint style.
     pub fn most_probes(&self) -> usize {
         self.texts.iter().map(|t| t.paints.len()).sum()
+    }
+
+    /// Approximate bytes these texts hold, each font family list the
+    /// spans share counted once.
+    pub fn heap_size(&self) -> usize {
+        let strings = |v: &[String]| {
+            v.iter()
+                .map(|s| s.capacity() + size_of::<String>())
+                .sum::<usize>()
+        };
+        let mut lists = HashSet::new();
+        let mut size =
+            self.form.group_paint.capacity() + self.texts.capacity() * size_of::<SvgText>();
+        for t in &self.texts {
+            size += t.attrs.capacity()
+                + t.effects.capacity()
+                + t.chars.capacity() * size_of::<SvgChar>()
+                + t.spans.capacity() * size_of::<SvgSpan>()
+                + t.paints.capacity() * size_of::<String>()
+                + strings(&t.paints)
+                + t.adjust.capacity() * size_of::<LengthAdjust>();
+            for s in &t.spans {
+                size += s.shift.capacity() * size_of::<Shift>();
+                if lists.insert(Arc::as_ptr(&s.families).cast::<u8>()) {
+                    size += strings(&s.families);
+                }
+            }
+        }
+        size
     }
 }
 
@@ -152,8 +183,9 @@ pub(crate) struct SvgChar {
 /// The resolved text properties of an element that holds characters.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SvgSpan {
-    /// `font-family`, in order of preference.
-    pub families: Vec<String>,
+    /// `font-family`, in order of preference, shared by the spans that
+    /// inherit the same declaration.
+    pub families: Arc<[String]>,
     pub weight: u16,
     pub italic: bool,
     /// Font size in user units; a span whose size is not finite and

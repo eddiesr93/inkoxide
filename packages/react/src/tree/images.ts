@@ -10,7 +10,9 @@ export interface RemoteImagePolicy {
   /**
    * Allowed URLs (`'https://cdn.example.com/img/'`: the same origin, and the entry's path or a
    * path under it) or host names, with `*.` for subdomains (`'*.example.com'`; host entries
-   * allow `https:` only).
+   * allow `https:` only). Ports must match: an entry without a port allows only its scheme's
+   * default port (443 for `https:`, 80 for `http:`), and `'cdn.example.com:8443'` or
+   * `'https://cdn.example.com:8443'` only port 8443.
    */
   allow: readonly string[];
 }
@@ -28,8 +30,9 @@ export function remoteAllowed(url: string, policy: RemoteImagePolicy | undefined
   return policy.allow.some((entry) => {
     if (entry.includes('://')) return urlEntryAllows(entry, u);
     if (u.protocol !== 'https:') return false;
+    const [, e = '', port = '443'] = /^(.*?)(?::(\d+))?$/.exec(entry.toLowerCase()) ?? [];
+    if ((u.port || '443') !== String(Number(port))) return false;
     const host = u.hostname.toLowerCase();
-    const e = entry.toLowerCase();
     return e.startsWith('*.') ? host.endsWith(e.slice(1)) && host.length > e.length - 1 : host === e;
   });
 }

@@ -91,6 +91,12 @@ fn fonts() -> FontStore {
     ))
     .unwrap();
     f.register("Fanout", bytes).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/EmojiTest-COLR.ttf"
+    ))
+    .unwrap();
+    f.register("EmojiTest-COLR", bytes).unwrap();
     f
 }
 
@@ -147,6 +153,28 @@ fn runaway_repeated_content_is_an_error() {
     render(&once, Some(1)).unwrap();
 }
 
+/// A `wavy` decoration repeated on every page counts its waves.
+#[test]
+fn wavy_decorations_repeated_on_every_page_are_counted() {
+    let fixed = |pages: &str| {
+        let text = "x".repeat(100);
+        format!(
+            r#"{{"type":"text","break":{{"fixed":true}},{pages}
+                "runs":[{{"text":"{text}","font":"Inter-Regular","size":10,"letterSpacing":1000,
+                "decoration":"underline","decorationStyle":"wavy","decorationThickness":0.1}}]}}"#
+        )
+    };
+    // About 2400 pages.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let t = std::time::Instant::now();
+    let err = render(&doc(&format!("{},{tall}", fixed(""))), Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    let once = doc(&format!("{},{tall}", fixed(r#""pages":"first","#)));
+    render(&once, Some(1)).unwrap();
+}
+
 /// A note's text counts as the file holds it: anything but printable
 /// ASCII makes it UTF-16 in hex, four bytes a character.
 #[test]
@@ -166,6 +194,174 @@ fn runaway_notes_repeated_on_every_page_are_an_error() {
     assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
     let once = doc(&format!("{},{tall}", note(r#""pages":"first","#)));
     render(&once, Some(1)).unwrap();
+}
+
+/// A `wavy` decoration is drawn only where the page shows it, and with
+/// a bounded number of waves per glyph however wide its text is set.
+#[test]
+fn wavy_decorations_are_drawn_where_the_page_shows_them() {
+    let wide = |style: &str| {
+        let text = "x".repeat(1000);
+        format!(
+            r#"{{"type":"text","style":{{"width":500{style}}},"runs":[{{"text":"{text}",
+                "font":"Inter-Regular","size":10,"letterSpacing":1000,"decoration":"underline",
+                "decorationStyle":"wavy","decorationThickness":0.1}}]}}"#
+        )
+    };
+    for (what, style) in [
+        ("a line wider than the page", ""),
+        (
+            "a line scaled down onto the page",
+            r#","transform":[{"scale":[0.0001,0.0001]}]"#,
+        ),
+        (
+            "a line beside the page",
+            r#","transform":[{"translate":[-1000000,0]}]"#,
+        ),
+    ] {
+        let page = doc(&[wide(style), wide(style), wide(style)].join(","));
+        let (out, took, peak) = measure(|| render(&page, Some(1)));
+        let pdf = out.unwrap();
+        assert!(pdf.len() < 4 << 20, "{what}: {} KiB", pdf.len() >> 10);
+        assert!(peak < 64 << 20, "{what}: {} MiB", peak >> 20);
+        assert!(took.as_secs() < 5, "{what}: took {took:?}");
+    }
+}
+
+/// The text of images in text counts as the file holds it: each image is
+/// in a span with its text, an inline image's `alt` or a colour glyph's
+/// text, UTF-16 in hex when it is not printable ASCII.
+#[test]
+fn image_text_repeated_on_every_page_is_counted() {
+    let mut images = ImageStore::new();
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#;
+    images.insert("dot", svg.as_bytes().to_vec());
+    let render = |doc: &str| {
+        let options = RenderOptions::default().with_threads(1);
+        inkoxide::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &images,
+        )
+    };
+    let alt = "é".repeat(1000);
+    let image =
+        format!(r#"{{"font":"Inter-Regular","size":10,"image":{{"src":"dot","alt":"{alt}"}}}}"#);
+    let inline = |pages: &str| {
+        let runs = [image.as_str(); 100].join(",");
+        format!(r#"{{"type":"text","break":{{"fixed":true}},{pages}"runs":[{runs}]}}"#)
+    };
+    // About 190 pages.
+    let tall = r#"{"type":"box","style":{"height":160000}}"#;
+    // A colour glyph's text is its cluster's: here with the marks after it.
+    let emoji = |pages: &str| {
+        let text = format!("😀{}", "\u{301}".repeat(1000)).repeat(100);
+        format!(
+            r#"{{"type":"text","break":{{"fixed":true}},{pages}
+                "runs":[{{"text":"{text}","font":"EmojiTest-COLR","size":10}}]}}"#
+        )
+    };
+    let fonts = r#"{"id":"Inter-Regular","family":"Inter"},{"id":"EmojiTest-COLR","family":"E"}"#;
+    let doc = |children: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{fonts}],
+               "pages":[{{"size":{{"width":595,"height":842}},"children":[{children}]}}]}}"#
+        )
+    };
+    for (what, every, first_only) in [
+        (
+            "inline images",
+            format!("{},{tall}", inline("")),
+            format!("{},{tall}", inline(r#""pages":"first","#)),
+        ),
+        (
+            "colour glyphs",
+            format!("{},{tall}", emoji("")),
+            format!("{},{tall}", emoji(r#""pages":"first","#)),
+        ),
+    ] {
+        let t = std::time::Instant::now();
+        let err = render(&doc(&every)).unwrap_err();
+        assert_eq!(err.code(), "LAYOUT_ERROR", "{what}: {err}");
+        assert!(
+            err.to_string().contains("the limit is 64 MB"),
+            "{what}: {err}"
+        );
+        assert!(t.elapsed().as_secs() < 5, "{what}: took {:?}", t.elapsed());
+        render(&doc(&first_only)).unwrap();
+    }
+}
+
+/// Each colour glyph is in a span with the text of its own cluster: a
+/// glyph shaped once with many marks after it does not carry them to its
+/// other copies.
+#[test]
+fn colour_glyphs_carry_their_own_text() {
+    let marked = format!("😀{}", "\u{301}".repeat(20_000));
+    let copies = "😀 ".repeat(2000);
+    let mut images = ImageStore::new();
+    let svg_copies = "😀".repeat(2000);
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text font-size="10">{marked}{svg_copies}</text></svg>"#
+    );
+    images.insert("svg", svg.into_bytes());
+    let text = |copies: &str| {
+        format!(
+            r#"{{"type":"text","runs":[{{"text":"{marked} {copies}","font":"EmojiTest-COLR","size":10}}]}}"#
+        )
+    };
+    let image = r#"{"type":"image","src":"svg","style":{"width":100,"height":100}}"#;
+    for (what, children) in [
+        ("page text", text(&copies)),
+        ("SVG text", image.to_string()),
+    ] {
+        let page = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"EmojiTest-COLR","family":"E"}}],
+               "fallbackFonts":["EmojiTest-COLR"],"pages":[{{"size":{{"width":595,"height":842}},"children":[{children}]}}]}}"#
+        );
+        let options = RenderOptions::default()
+            .with_threads(1)
+            .with_compress(false);
+        let render = || {
+            let f = fonts();
+            inkoxide::render(page.as_bytes(), InputFormat::Json, &options, &f, &images)
+        };
+        let (out, took, peak) = measure(render);
+        let pdf = out.unwrap();
+        assert!(pdf.len() < 4 << 20, "{what}: {} KiB", pdf.len() >> 10);
+        assert!(peak < 64 << 20, "{what}: {} MiB", peak >> 20);
+        assert!(took.as_secs() < 5, "{what}: took {took:?}");
+        if what == "page text" {
+            // The copies extract as the emoji alone.
+            let own = b"/ActualText <FEFFD83DDE00>";
+            let found = pdf.windows(own.len()).filter(|w| w == own).count();
+            assert!(found >= 2000, "{found} spans");
+        }
+    }
+}
+
+/// A link's target counts as the file holds it, once for each link.
+#[test]
+fn link_targets_repeated_on_every_page_are_counted() {
+    let target = format!("https://example.com/{}", "x".repeat(2000));
+    let linked = |pages: &str| {
+        format!(
+            r#"{{"type":"box","break":{{"fixed":true}},{pages}"link":"{target}",
+                "style":{{"width":10,"height":10}}}}"#
+        )
+    };
+    // About 2400 pages.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let every = vec![linked(""); 20].join(",");
+    let t = std::time::Instant::now();
+    let err = render(&doc(&format!("{every},{tall}")), Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    let once = vec![linked(r#""pages":"first","#); 20].join(",");
+    render(&doc(&format!("{once},{tall}")), Some(1)).unwrap();
 }
 
 /// A form field taller than a page is sliced across pages like any atomic

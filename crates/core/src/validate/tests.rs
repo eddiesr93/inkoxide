@@ -1282,6 +1282,21 @@ fn form_fields() {
             "{pair}"
         );
     }
+    // A name with an error makes no groups and takes no name: the next
+    // field's `a` is not reported again.
+    let bad = format!("a.{}", "b".repeat(129));
+    let errs = run(&doc(&format!(
+        r#"{{"type":"field","field":{{"name":"{bad}","kind":"checkbox"}}}},{{"type":"field","field":{{"name":"a","kind":"checkbox"}}}},{{"type":"field","field":{{"name":"{bad}","kind":"checkbox"}}}}"#
+    )));
+    assert_eq!(
+        errs.iter()
+            .map(|e| (e.code, e.path.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (C::InvalidValue, "pages[0].children[0].field.name"),
+            (C::InvalidValue, "pages[0].children[2].field.name"),
+        ]
+    );
     let (code, path) = one(&doc(
         r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
     ));
@@ -2093,6 +2108,22 @@ fn image_runs_are_checked() {
 }
 
 #[test]
+fn fallback_fonts_are_limited() {
+    let with = |n: usize| {
+        let ids = vec![r#""Inter-Regular""#; n].join(",");
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"fallbackFonts":[{ids}],
+                "pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    assert_eq!(run(&with(256)), vec![]);
+    assert_eq!(
+        one(&with(257)),
+        (C::OutOfRange, "fallbackFonts".to_string())
+    );
+}
+
+#[test]
 fn emoji_images_are_checked() {
     let with = |map: &str| {
         format!(
@@ -2153,6 +2184,26 @@ fn emoji_images_are_checked() {
 /// Under PDF/A-1b, a colour glyph whose image needs transparency (the PNG
 /// strikes of the test fonts have alpha, the COLR grin an opacity) fails
 /// the render at its run, as an image would; an opaque one draws.
+/// Each image is checked for transparency on its own, even when its hash
+/// equals that of an image checked before.
+#[test]
+fn pdf_a_1b_checks_images_with_equal_hashes_apart() {
+    let mut images = ImageStore::new();
+    images.insert("photo", fixture("images/photo.jpg"));
+    let hash = images.get("photo").unwrap().hash;
+    images.insert_with_hash("logo", fixture("images/logo.png"), hash);
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    let d = doc(r#"{"type":"image","src":"photo"},{"type":"image","src":"logo"}"#);
+    let e = match crate::render(d.as_bytes(), InputFormat::Json, &options, &fonts(), &images) {
+        Err(crate::InkoxideError::Validation(e)) => e,
+        other => panic!("{:?}", other.map(|_| ())),
+    };
+    assert_eq!(
+        (e.code, e.path.as_str()),
+        (C::PdfaConflict, "pages[0].children[1].src")
+    );
+}
+
 #[test]
 fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
     let mut fonts = fonts();
@@ -2268,5 +2319,56 @@ fn a_box_holds_a_bounded_number_of_floats() {
     assert_eq!(
         one(&d(MAX_FLOATS + 1)),
         (C::OutOfRange, "pages[0].children[0].children".into())
+    );
+}
+
+/// A table of `cols` auto columns and `rows` rows of one cell spanning
+/// them all.
+fn spanned_table(cols: usize, rows: usize) -> String {
+    let columns = vec![r#"{"width":"auto"}"#; cols].join(",");
+    let row = format!(r#"{{"cells":[{{"colSpan":{cols}}}]}}"#);
+    let rows = vec![row.as_str(); rows].join(",");
+    format!(r#"{{"type":"table","columns":[{columns}],"rows":[{rows}]}}"#)
+}
+
+#[test]
+fn a_document_holds_a_bounded_number_of_table_slots() {
+    use crate::validate::rules::MAX_TABLE_SLOTS;
+    let cols = 1000;
+    let rows = MAX_TABLE_SLOTS / cols;
+    assert_eq!(run(&doc(&spanned_table(cols, rows))), vec![]);
+    assert_eq!(
+        one(&doc(&spanned_table(cols, rows + 1))),
+        (C::OutOfRange, "pages[0].children[0].rows".into())
+    );
+    // The slots of all the tables count.
+    let two = format!(
+        "{},{}",
+        spanned_table(cols, rows / 2),
+        spanned_table(cols, rows / 2 + 1)
+    );
+    assert_eq!(
+        one(&doc(&two)),
+        (C::OutOfRange, "pages[0].children[1].rows".into())
+    );
+}
+
+/// Four times the rows and columns take well under the sixteen times a
+/// check of every slot would. A ratio, not a wall-clock limit, so a slow
+/// or busy machine does not fail it.
+#[test]
+fn checks_wide_tables_in_linear_time() {
+    let check = |n: usize| {
+        let d = doc(&spanned_table(n, n));
+        let t = std::time::Instant::now();
+        assert_eq!(one(&d).0, C::OutOfRange);
+        t.elapsed()
+    };
+    let n = 4000;
+    let (small, big) = (check(n), check(4 * n));
+    assert!(
+        big < small * 8 + std::time::Duration::from_millis(500),
+        "{n} took {small:?}, {} took {big:?}",
+        4 * n
     );
 }

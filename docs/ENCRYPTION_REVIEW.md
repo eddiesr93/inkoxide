@@ -68,7 +68,7 @@ subject of this review.**
   object, the cross-reference table and the trailer.
   - The engine writes the file twice: once in plain to compute `D`, then once encrypted. Both
     passes are deterministic and differ only in what `out.rs` does to strings and streams, and in
-    the font subset tags below.
+    the font subset tags and widths below.
   - The plain file is never returned or stored; it is dropped once `D` is computed.
 
 ## The derivation
@@ -124,7 +124,7 @@ stream of object r:                            place = "stream" ‖ BE32(r)
   CBC, so a repeated IV implies a repeated (place, plaintext) pair.
 - **Encryption order.** Streams are compressed (Flate) before encryption.
 
-### Font subset tags
+### Font subset tags and widths
 
 Font names (`/BaseFont`, `/FontName`) are PDF names, which are never encrypted. A subset font's
 name starts with a six-letter tag. Unencrypted, the tag is made from an xxh3 hash of the
@@ -135,6 +135,13 @@ v   = BE64(HMAC(tag_key, postscript_name ‖ 0x00 ‖ plain_tag)[0..8])
 tag = six letters 'A' + (v mod 26), v = v / 26 each time, then '+'
 ```
 
+The widths of a `CIDFont` (`/DW` and `/W`) are numbers, never encrypted either. Unencrypted, `/W`
+lists the glyphs used, each CID being the font's own glyph ID. Encrypted, `/W` lists every glyph
+of the font, whichever are used: `/DW` is the font's most common width, and `/W` gives the others,
+a run of equal widths as one range. The widths then depend on the font alone. This costs up to
+about 5 bytes a glyph: some 15 KB for a Latin font of 3,000 glyphs, some 40 KB for a CJK font of
+50,000, whose widths are mostly equal.
+
 ## Where secrets go
 
 | Value | Public? | Depends on |
@@ -142,11 +149,13 @@ tag = six letters 'A' + (v mod 26), v = v / 26 each time, then '+'
 | `U`, `O` (with the salts) | yes | passwords, `D` |
 | `UE`, `OE`, `Perms`, `/ID`, the IVs | yes | passwords, `D`, content |
 | font subset tags | yes | passwords, `D`, glyph set |
+| font widths (`/DW`, `/W`) | yes | the font only: every glyph is listed |
 | `D`, `S_u`, `S_o`, `IK_u`, `IK_o`, `M`, the keys | no | |
 
 A reader with the user password computes `IK_u`, decrypts `UE`, gets `file_key` and reads
 everything. It can usually rebuild the plain file, and so `D`: that is the decrypted file with the
-plain subset tags, which come from the glyph set. It still cannot compute `M` or the other keys
+plain subset tags and the widths of the glyphs used only, both of which come from the glyph set
+that the decrypted content shows. It still cannot compute `M` or the other keys
 without the owner password, unless the two passwords are the same.
 
 ## Accepted limitations (documented in SECURITY.md)
@@ -155,8 +164,14 @@ without the owner password, unless the two passwords are the same.
   encrypt a chosen document with the victim's passwords can confirm a guess of another such file by
   comparing them.
 - **Structure stays visible**, as in any revision 6 file: page count and sizes, object structure,
-  annotation rectangles, font names and widths, and the length of every string and stream. Streams
-  are compressed before encryption, so their lengths depend on the content.
+  annotation rectangles, font names, and the length of every string and stream. Streams are
+  compressed before encryption, so their lengths depend on the content: the length of a font
+  subset says roughly how many glyphs it holds.
+- **Form field state stays visible** where the standard makes it a name or a number: checkbox
+  states (`/V /Yes`, `/AS`), the position of the radio button that is on (radio states are named
+  by position when encrypted, with the values in the encrypted `/Opt`), and the positions of a
+  list box's selected options (`/I`) and first visible one (`/TI`). Text field values, select and
+  list values, and all options are strings, and are encrypted.
 - **No integrity.** CBC is malleable and revision 6 has no MAC over the content; `Perms` protects
   only the permission bits.
 - **Password strength.** `U` lets anyone test user password guesses at the cost of one `H2B`. Without
@@ -202,9 +217,11 @@ without the owner password, unless the two passwords are the same.
   - the salts depend on the passwords;
   - IVs differ by place and by content.
 - **Integration tests** (`cargo test -p inkoxide --test encryption`, need qpdf):
-  - every fixture decrypts, with either password, to the plain render's objects;
+  - every fixture decrypts, with either password, to the plain render's objects, but for font
+    widths, which give each glyph used its plain width;
   - no plaintext string is in plain sight;
   - no plain subset tag survives;
+  - font widths are the same whatever the text;
   - changing an image, link, field, note or bookmark changes the key and `/ID`;
   - bad options never echo a password.
 - **By hand:** the integration tests leave each fixture encrypted in `target/fixtures-encrypted/`

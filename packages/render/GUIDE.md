@@ -327,7 +327,8 @@ const logo = readFileSync('logo.png');
   unhandled rejection.
 
 Image files and remote images are off by default, so a template cannot make your server read
-its files or fetch arbitrary URLs. Allow only the folders and hosts your images are in. Remote
+its files or fetch arbitrary URLs. Allow only the folders and hosts your images are in. An entry
+allows only the default port of its scheme unless it names one (`cdn.example.com:8443`). Remote
 images are allowed per render, or with the `INKOXIDE_REMOTE_IMAGES` environment variable (a
 comma-separated list):
 
@@ -612,7 +613,8 @@ reader without it may do:
   No error shows a password, and the passwords are not part of `result.document` or of the
   tree's JSON.
 - Readers enforce the permissions; the file cannot. Encryption hides the text and images, not
-  the page count or sizes.
+  the page count or sizes. Field values are hidden, but not which checkboxes are checked, nor
+  the positions of the chosen radio button and list box options.
 - The same document and passwords give the same bytes, as unencrypted output does.
 
 ## Text: hyphenation and direction
@@ -978,7 +980,7 @@ All three take the same options:
 |---|---|---|
 | `images` | none | Image bytes by id, for `<Image src="logo">`. An id wins over a path or URL with the same text. |
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
-| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
+| `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. A host entry allows `https:` at that host, or with `*.` at its subdomains. Ports must match: an entry without a port allows only its scheme's default port (443 for `https:`, 80 for `http:`), and `cdn.example.com:8443` or `https://cdn.example.com:8443` only port 8443. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'` or `'1b'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
 | `encryption` | none | `{ userPassword, ownerPassword, permissions }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |

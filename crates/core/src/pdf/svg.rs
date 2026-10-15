@@ -41,7 +41,7 @@ use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
 use crate::paint::{span, InvisibleGlyph, Op, TextGlyph, TextOp, NO_RADII};
-use crate::text::{ColorGlyphs, LaidText, UnicodeMap};
+use crate::text::{ColorGlyphs, LaidText};
 use crate::{flate, InkoxideError};
 
 /// Most path segments one SVG may emit, copies included.
@@ -59,7 +59,6 @@ const MAX_PERIODS: f32 = 1000.0;
 pub(crate) struct TextInk<'a, 'f> {
     pub fonts: &'a FontSet<'f>,
     pub colors: &'a ColorGlyphs,
-    pub unicode: &'a UnicodeMap,
     pub images: &'a ImageSet,
 }
 
@@ -152,8 +151,14 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
         };
         let mut ops = Vec::new();
         let strut = strut(res.fonts, None);
-        res.colors
-            .push(op, strut, res.fonts, res.images, res.unicode, &mut ops);
+        res.colors.push(
+            op,
+            strut,
+            res.fonts,
+            res.images,
+            &[text.glyph_text(g)],
+            &mut ops,
+        );
         out.push((Frame::of(g.x, g.y, g.rotate, g.scale_x), ops));
     }
     for i in images {

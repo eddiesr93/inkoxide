@@ -36,6 +36,9 @@ pub(crate) struct ContentCtx<'p> {
     /// The line boxes of text laid out beside floats (`None`: its content
     /// width).
     pub line_boxes: Option<&'p LineBoxes>,
+    /// Transform in effect, from the node's coordinates to the page's
+    /// (`None`: identity).
+    pub ctm: Option<[f32; 6]>,
 }
 
 /// Paints leaf content (text, images, tables) inside a node's content box.
@@ -327,6 +330,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             window,
             opacity: self.opacity,
             line_boxes: self.tree.wraps.get(&i).map(|b| &**b),
+            ctm: self.ctm,
         };
         match outlined.and_then(|k| self.debug.boxes.get_mut(k)) {
             Some(b) => self
@@ -800,6 +804,25 @@ pub(crate) fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
         a[0] * b[4] + a[2] * b[5] + a[4],
         a[1] * b[4] + a[3] * b[5] + a[5],
     ]
+}
+
+/// The inverse of `m`, when it has one.
+pub(crate) fn invert(m: [f32; 6]) -> Option<[f32; 6]> {
+    let [a, b, c, d, e, f] = m;
+    let det = a * d - b * c;
+    if det == 0.0 || !det.is_finite() {
+        return None;
+    }
+    let inv = [d / det, -b / det, -c / det, a / det, 0.0, 0.0];
+    let r = [
+        inv[0],
+        inv[1],
+        inv[2],
+        inv[3],
+        -(inv[0] * e + inv[2] * f),
+        -(inv[1] * e + inv[3] * f),
+    ];
+    r.iter().all(|v| v.is_finite()).then_some(r)
 }
 
 /// Point `(x, y)` transformed by `m`.

@@ -18,8 +18,8 @@ Inkoxide is designed to render documents built from untrusted data:
   every night with JSON, structured documents, SVG images and fonts as input.
 - Documents are validated before rendering, and page counts, nesting depth, image sizes, SVG
   complexity and the colour glyphs drawn from fonts are limited, so hostile input fails with an error instead of exhausting memory.
-- `@inkoxide/render` does not fetch remote images unless the caller allows their origins, and
-  does not follow a redirect from an allowed URL, since its target could be outside them. Each
+- `@inkoxide/render` does not fetch remote images unless the caller allows their origins (an
+  entry without a port allows only its scheme's default port), and does not follow a redirect from an allowed URL, since its target could be outside them. Each
   download has a timeout and a size limit. It does not read image files unless the caller allows their folders (`localImages`). An allowed
   path must lead, symbolic links followed, to a regular file inside one of those folders and
   within the size limit; network paths are refused. Errors name the path as the template wrote
@@ -29,14 +29,21 @@ Inkoxide is designed to render documents built from untrusted data:
 ## Encryption
 
 An encrypted PDF (the `encryption` option, or `<Document userPassword>`) keeps its strings and
-streams, so its text, images and form field values, radio buttons' included, from whoever lacks
-a password. What it does not do:
+streams, so its text, images and form field values from whoever lacks a password: the text of
+text fields, and the options of select, list and radio fields with the values chosen. What it
+does not do:
 
 - **Hide the structure of the file.** The page count and sizes, font names and glyph widths,
   where links and fields are, and the length of every stream and string stay readable, as in
   any encrypted PDF. Stream lengths are measured after compression, so they say something about
-  the content. The subset tags of font names are keyed, so they do not tell which glyphs the
-  file uses.
+  the content: the length of a font subset, roughly how many glyphs it holds. The subset tags
+  of font names are keyed, and the widths cover every glyph of the font, so neither tells which
+  glyphs the file uses.
+- **Hide which form choices are made.** PDF writes this state as names and numbers, which are
+  never encrypted: whether each checkbox is checked, which radio button of a group is on (by its
+  position in the group, not its value), and which options of a list box are selected and
+  scrolled to (by their positions in the list). Anyone who knows the form's layout, from a blank
+  copy for instance, can read the choices from these.
 - **Protect anything without a user password.** Without one, anyone opens the file; the owner
   password then only guards the permissions, which readers honour and the file cannot enforce.
 - **Resist weak passwords.** Anyone with the file can test password guesses offline, at the

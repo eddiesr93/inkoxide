@@ -313,7 +313,6 @@ fn text_ink<'a>(doc: &DocumentOut<'a>) -> svg::TextInk<'a, 'a> {
     svg::TextInk {
         fonts: doc.fonts,
         colors: doc.colors,
-        unicode: doc.unicode,
         images: doc.images,
     }
 }
@@ -741,6 +740,17 @@ fn xyz(d: pdf_writer::writers::Destination<'_>, dest: Dest, pages: &[Ref]) {
         .xyz(q(dest.x), q(dest.y), None);
 }
 
+/// Most bytes URI `uri` takes in the file once written by [`write_link`],
+/// delimiters included: percent-encoded, at most doubled by escapes, and
+/// encrypted with up to 32 bytes of padding and IV first.
+pub(crate) fn written_uri_len(uri: &str) -> usize {
+    let bytes: usize = uri
+        .bytes()
+        .map(|b| if b.is_ascii_graphic() { 1 } else { 3 })
+        .sum();
+    2 + 2 * (bytes + 32)
+}
+
 /// PDF URIs are 7-bit ASCII: percent-encode everything else (and spaces).
 fn uri_bytes(uri: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(uri.len());
@@ -1146,6 +1156,27 @@ fn invisible_glyph(
 mod tests {
     use super::*;
     use crate::paint::{Dash, Path};
+
+    #[test]
+    fn written_uri_len_bounds_what_uris_take() {
+        let written = |uri: &str| {
+            let mut c = pdf_writer::Chunk::new();
+            c.indirect(Ref::new(1)).primitive(Str(&uri_bytes(uri)));
+            let mut empty = pdf_writer::Chunk::new();
+            empty.indirect(Ref::new(1)).primitive(Str(b""));
+            c.as_bytes().len() - empty.as_bytes().len() + 2
+        };
+        for uri in [
+            "https://example.com/".to_string(),
+            format!("https://example.com/{}", "x".repeat(100)),
+            format!("https://example.com/{}", "(".repeat(100)),
+            format!("https://example.com/{}", "é 😀".repeat(100)),
+        ] {
+            let n = written(&uri);
+            assert!(n <= written_uri_len(&uri), "{uri}: {n}");
+            assert!(written_uri_len(&uri) <= 2 * n + 66, "{uri}: {n}");
+        }
+    }
 
     #[test]
     fn numbers_are_rounded_bounded_and_never_non_finite() {

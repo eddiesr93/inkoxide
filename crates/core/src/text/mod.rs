@@ -28,7 +28,7 @@ use rayon::prelude::*;
 pub(crate) use color::{glyph_transparency as color_glyph_transparency, ColorGlyphs};
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
-pub(crate) use paint::{PageNumbers, TextPainter};
+pub(crate) use paint::{PageNumbers, TextPainter, WAVES_PER_GLYPH};
 #[cfg(test)]
 pub(crate) use svg::SvgGlyph;
 pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};
@@ -129,9 +129,7 @@ pub(crate) struct BreakPoint {
 /// A shaped paragraph, independent of the available width.
 #[derive(Debug, Default)]
 pub(crate) struct Prepared {
-    /// The paragraph text that glyph clusters index into (tests map lines
-    /// back to text with it).
-    #[cfg(test)]
+    /// The paragraph text that glyph clusters index into.
     pub text: String,
     pub segments: Vec<Segment>,
     pub glyphs: Vec<Glyph>,
@@ -149,6 +147,29 @@ pub(crate) struct Prepared {
 }
 
 impl Prepared {
+    /// The text glyph `k` of segment `seg` stands for, on the first glyph
+    /// of its cluster: the cluster's text. `None` on the cluster's other
+    /// glyphs and on glyphs with no text (a newline, a soft hyphen).
+    pub fn glyph_text(&self, seg: &Segment, k: usize) -> Option<&str> {
+        let (first, last) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
+        let g = self.glyphs.get(k)?;
+        let start = g.cluster as usize;
+        let c = self.text.get(start..)?.chars().next()?;
+        if c == '\n' || c == prepare::SHY || c.is_control() {
+            return None;
+        }
+        if k > first && self.glyphs[k - 1].cluster == g.cluster {
+            return None;
+        }
+        let end = self.glyphs[k + 1..last.max(k + 1)]
+            .iter()
+            .map(|n| n.cluster as usize)
+            .find(|&n| n != start)
+            .unwrap_or(seg.text.end as usize);
+        let end = end.max(start + c.len_utf8()).min(self.text.len());
+        self.text.get(start..end)
+    }
+
     /// The end of glyphs `start..end` without their trailing spaces and
     /// invisible glyphs.
     pub fn visible_end(&self, start: usize, end: usize) -> usize {
@@ -581,6 +602,30 @@ fn node_key(n: &Node) -> usize {
 }
 
 impl TextCache<'_, RustybuzzShaper<'_, '_>> {
+    /// Most bytes the text of the images text node `node` draws takes in
+    /// the file, once it is shaped: each image is in a span with its text,
+    /// the `alt` of an inline object or the text of a colour glyph.
+    pub fn image_text_len(&self, node: &Node) -> usize {
+        let fonts = self.shaper.fonts();
+        let Some(e) = self.entries.get(&node_key(node)) else {
+            return 0;
+        };
+        let p = &e.prepared;
+        let mut total = 0;
+        for s in &p.segments {
+            if let Some(o) = s.object {
+                let alt = p.objects.get(o as usize).and_then(|o| o.alt.as_deref());
+                total += alt.map_or(0, crate::pdf::written_text_len);
+            } else if fonts.get(s.font).has_color() {
+                total += (s.glyphs.start as usize..s.glyphs.end as usize)
+                    .filter_map(|k| p.glyph_text(s, k))
+                    .map(crate::pdf::written_text_len)
+                    .sum::<usize>();
+            }
+        }
+        total
+    }
+
     /// Shapes `nodes` (text nodes in document order) ahead of layout, in
     /// parallel on the current rayon pool unless `parallel` is false. Each
     /// worker has its own shaper; glyph-to-Unicode maps are merged in

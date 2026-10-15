@@ -105,6 +105,7 @@ beforeAll(async () => {
     else if (req.url === '/emoji/1f389.png') res.end(huge);
     // Slow enough for two renders to want it at once.
     else if (req.url === '/slow/1f600.png') setTimeout(() => res.end(logo), 100);
+    else if (req.url === '/slower/1f600.png') setTimeout(() => res.end(logo), 1000);
     else if (req.url === '/emoji/1f1eb-1f1f7.png') res.end(palette);
     else if (req.url === '/palette.png') res.end(palette);
     else if (req.url === '/photo.jpg') res.end(photo);
@@ -632,6 +633,20 @@ describe('Font.registerEmojiSource', () => {
     const pdfs = await Promise.all([1, 2, 3].map(() => renderToBuffer(<emojiTemplate.Template />, opts)));
     expect(hits.get('/slow/1f600.png')).toBe(1);
     for (const pdf of pdfs) expect(pageImages(pdf)[0]).toContain(LOGO);
+  });
+
+  it("holds each render to its own timeout while it waits for another render's download", async () => {
+    Font.registerEmojiSource({ url: `${base}/slower/` });
+    const patient = { remoteImages: { allow: [`${base}/`], timeoutMs: Infinity } };
+    const hasty = { remoteImages: { allow: [`${base}/`], timeoutMs: 50 } };
+    const first = renderSettled(renderTree(emojiTemplate, {}, patient), {}, patient);
+    const second = await renderSettled(renderTree(emojiTemplate, {}, hasty), {}, hasty);
+    expect(second.tree.warnings).toContainEqual(
+      expect.stringMatching(/^The image of the emoji 😀 could not be loaded, .*timed out after 50 ms/),
+    );
+    // The first render still gets the image, fetched once.
+    expect((await first).tree.warnings.some((w) => w.includes('😀'))).toBe(false);
+    expect(hits.get('/slower/1f600.png')).toBe(1);
   });
 
   it('takes a builder, and refuses a URL outside remoteImages', async () => {

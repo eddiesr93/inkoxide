@@ -312,6 +312,7 @@ fn painted_ops(node: &str) -> Vec<crate::paint::Op> {
         window: None,
         opacity: 1.0,
         line_boxes: None,
+        ctm: None,
     };
     let mut ops = Vec::new();
     set.paint(&doc.pages[0].children[0], &geo, &ctx, &mut ops);
@@ -624,4 +625,40 @@ fn emoji_images_are_deduplicated_with_the_document_s() {
     assert_eq!(set.by_emoji.get("😀").copied(), node);
     assert_eq!(set.by_emoji.get("👍").copied(), node);
     assert_eq!(set.by_emoji.get("❤").copied(), Some(1));
+}
+
+/// Two different images are two images, even when their hashes are equal.
+#[test]
+fn images_with_equal_hashes_stay_apart() {
+    let mut store = ImageStore::new();
+    store.insert("logo", fixture("logo.png"));
+    let hash = store.get("logo").unwrap().hash;
+    store.insert_with_hash("other", fixture("palette.png"), hash);
+    let size = |id: &str| {
+        let d = ImageCrateDecoder
+            .decode(&store.get(id).unwrap().bytes)
+            .unwrap();
+        (d.width, d.height)
+    };
+    assert_ne!(size("logo"), size("other"));
+
+    let json = r#"{"version":1,"pages":[{"size":{"width":100,"height":100},"children":[
+        {"type":"image","src":"logo"},{"type":"image","src":"other"}]}]}"#;
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let set = ImageSet::load(&doc.pages, &store, &ImageCrateDecoder).unwrap();
+    assert_eq!(set.images.len(), 2);
+    for (node, id) in doc.pages[0].children.iter().zip(["logo", "other"]) {
+        let image = set.get(set.key(node).unwrap());
+        assert_eq!((image.width, image.height), size(id), "{id}");
+    }
+
+    let json = r#"{"version":1,"emojiImages":{"😀":"other"},
+        "pages":[{"size":{"width":100,"height":100},"children":[{"type":"image","src":"logo"}]}]}"#;
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let mut set = ImageSet::load(&doc.pages, &store, &ImageCrateDecoder).unwrap();
+    set.load_emoji(&doc.emoji_images, &store, &ImageCrateDecoder)
+        .unwrap();
+    assert_eq!(set.images.len(), 2);
+    let emoji = set.get(set.by_emoji["😀"]);
+    assert_eq!((emoji.width, emoji.height), size("other"));
 }

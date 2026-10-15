@@ -1,7 +1,8 @@
 //! Font embedding: Type0 / Identity-H with a `CIDFontType2` descendant and a
 //! TrueType program (`FontFile2`), or a `CIDFontType0` descendant and a
 //! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`); `W`
-//! widths for used glyphs and a `ToUnicode` `CMap`.
+//! widths for used glyphs (for every glyph when encrypted) and a
+//! `ToUnicode` `CMap`.
 //!
 //! With `subset_fonts` (the default), programs are subset to the glyphs
 //! used (`fonts` does the subsetting; this module compresses and writes).
@@ -68,8 +69,9 @@ pub(crate) struct Program {
 /// cost of embedding it.
 const SUBSET_BUDGET: usize = 32 << 20;
 
-/// Font hash and the glyph set.
-type SubsetKey = (u64, Vec<u16>);
+/// The font's SHA-256 and the glyph set: two different fonts never share
+/// a subset, and a cached subset does not keep its font's bytes.
+type SubsetKey = ([u8; 32], Vec<u16>);
 
 static SUBSETS: SharedLru<SubsetKey, Program> = SharedLru::new(SUBSET_BUDGET);
 
@@ -81,7 +83,7 @@ pub(crate) fn program(
     subset: bool,
 ) -> Result<Program, InkoxideError> {
     if subset {
-        let key = (font.data.hash, used.iter().copied().collect::<Vec<u16>>());
+        let key = (font.data.digest, used.iter().copied().collect::<Vec<u16>>());
         if let Some(p) = SUBSETS.get(&key) {
             return Ok(p);
         }
@@ -195,7 +197,21 @@ pub(crate) fn write_font(
     })
     .base_font(Name(name));
     system_info(c.insert(Name(b"CIDSystemInfo")), &identity(out));
-    c.font_descriptor(descriptor).default_width(0.0);
+    let width = |g: u16| (font.advance(g) * to_1000 * 1000.0).round() / 1000.0;
+    // Dictionaries are not encrypted, so an encrypted file lists the
+    // widths of the whole font: those of the glyphs used would tell
+    // which they are.
+    let (default_width, widths) = if out.is_encrypted() {
+        let all: Vec<f32> = (0..font.glyph_count()).map(width).collect();
+        whole_font_widths(&all)
+    } else {
+        let entries = width_runs(used, profile.max_array())
+            .into_iter()
+            .map(|run| WidthEntry::Each(*run.start(), run.map(width).collect()))
+            .collect();
+        (0.0, entries)
+    };
+    c.font_descriptor(descriptor).default_width(default_width);
     match map_ref {
         Some(r) => {
             c.pair(Name(b"CIDToGIDMap"), r);
@@ -208,12 +224,11 @@ pub(crate) fn write_font(
     }
     {
         let mut w = c.widths();
-        for run in width_runs(used, profile.max_array()) {
-            let widths: Vec<f32> = run
-                .clone()
-                .map(|g| (font.advance(g) * to_1000 * 1000.0).round() / 1000.0)
-                .collect();
-            w.consecutive(*run.start(), widths);
+        for entry in widths {
+            match entry {
+                WidthEntry::Each(start, widths) => w.consecutive(start, widths),
+                WidthEntry::Same(first, last, width) => w.same(first, last, width),
+            };
         }
     }
     c.finish();
@@ -291,6 +306,57 @@ pub(crate) fn write_font(
     Ok(type0)
 }
 
+/// One entry of a `W` array.
+#[derive(Debug, PartialEq)]
+enum WidthEntry {
+    /// The widths of consecutive CIDs from the first.
+    Each(u16, Vec<f32>),
+    /// One width for every CID from the first to the last.
+    Same(u16, u16, f32),
+}
+
+/// Shortest run of equal widths written as one [`WidthEntry::Same`]: it
+/// takes three array items, the run inside an `Each` one item a width.
+const SAME_RUN: usize = 4;
+
+/// The `DW` and `W` of a font whose glyph `g` is `widths[g]` wide, for
+/// every glyph: `DW` is the most common width (the smallest of equally
+/// common ones), which `W` leaves out; runs of at least [`SAME_RUN`]
+/// equal widths take one `Same` entry, the other widths `Each` entries.
+fn whole_font_widths(widths: &[f32]) -> (f32, Vec<WidthEntry>) {
+    let mut counts: BTreeMap<u32, usize> = BTreeMap::new();
+    for w in widths {
+        *counts.entry(w.to_bits()).or_default() += 1;
+    }
+    let default = counts
+        .iter()
+        .max_by_key(|&(&bits, &n)| (n, std::cmp::Reverse(bits)))
+        .map_or(0, |(&bits, _)| bits);
+    let id = |g: usize| u16::try_from(g).unwrap_or(u16::MAX);
+    let mut entries = Vec::new();
+    let mut g = 0;
+    while g < widths.len() {
+        let bits = widths[g].to_bits();
+        let end = g + widths[g..]
+            .iter()
+            .take_while(|w| w.to_bits() == bits)
+            .count();
+        let same = &widths[g..end];
+        match entries.last_mut() {
+            _ if bits == default => {}
+            _ if same.len() >= SAME_RUN => {
+                entries.push(WidthEntry::Same(id(g), id(end - 1), widths[g]));
+            }
+            Some(WidthEntry::Each(start, run)) if usize::from(*start) + run.len() == g => {
+                run.extend_from_slice(same);
+            }
+            _ => entries.push(WidthEntry::Each(id(g), same.to_vec())),
+        }
+        g = end;
+    }
+    (f32::from_bits(default), entries)
+}
+
 /// The glyph id ranges of a `W` array for the glyphs `used`: each run of
 /// consecutive ids shares one `consecutive` entry. With `max_array`
 /// (PDF/A-1), no array has more entries: a run is split into pieces of at
@@ -344,6 +410,8 @@ fn cid_set_bits(used: &BTreeSet<u16>) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    /// Two different fonts get their own subsets, even when their hashes
+    /// are equal.
     #[test]
     fn width_runs_keep_to_the_array_limit() {
         let used = BTreeSet::from([1, 2, 3, 7, 9, 10]);
@@ -365,6 +433,46 @@ mod tests {
         let runs = width_runs(&all, Some(8191));
         assert_eq!(runs.len(), 9);
         assert_eq!(*runs[8].end(), u16::MAX);
+    }
+
+    #[test]
+    fn whole_font_widths_cover_every_glyph() {
+        use WidthEntry::{Each, Same};
+        let widths = [
+            0.0, 500.0, 500.0, 250.5, 600.0, 600.0, 600.0, 600.0, 500.0, 700.0, 500.0,
+        ];
+        let (default, entries) = whole_font_widths(&widths);
+        assert_eq!(default.to_bits(), 500.0f32.to_bits());
+        assert_eq!(
+            entries,
+            [
+                Each(0, vec![0.0]),
+                Each(3, vec![250.5]),
+                Same(4, 7, 600.0),
+                Each(9, vec![700.0])
+            ]
+        );
+        // Every glyph's width, read back.
+        let mut read = [default; 11];
+        for e in &entries {
+            match e {
+                Each(start, run) => {
+                    for (i, w) in run.iter().enumerate() {
+                        read[usize::from(*start) + i] = *w;
+                    }
+                }
+                Same(first, last, w) => {
+                    read[usize::from(*first)..=usize::from(*last)].fill(*w);
+                }
+            }
+        }
+        assert_eq!(read.map(f32::to_bits), widths.map(f32::to_bits));
+        // Short runs join the `Each` before them; ties pick the smallest.
+        let (default, entries) = whole_font_widths(&[1.0, 2.0, 2.0, 3.0, 3.0, 1.0]);
+        assert_eq!(default.to_bits(), 1.0f32.to_bits());
+        assert_eq!(entries, [Each(1, vec![2.0, 2.0, 3.0, 3.0])]);
+        let (default, entries) = whole_font_widths(&[]);
+        assert_eq!((default.to_bits(), entries), (0, vec![]));
     }
 
     #[test]

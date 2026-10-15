@@ -3,12 +3,13 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::forms::format;
-use crate::images::{ImageCrateDecoder, ImageData};
+use crate::images::{ContentKey, ImageCrateDecoder, ImageData};
 use crate::pdf::Profile;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
@@ -106,6 +107,7 @@ pub(crate) fn check(
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
         feature_sets: HashSet::new(),
+        table_slots: 0,
     };
     c.document(doc);
     if c.errors.is_empty() {
@@ -153,14 +155,16 @@ struct Checker<'a> {
     opaque: bool,
     /// The first use of transparency, under `opaque`.
     conflict: Option<ValidationError>,
-    /// What needs transparency in each image checked (by content hash),
-    /// under `opaque`: an image used many times is scanned once.
-    image_transparency: HashMap<u64, Option<&'static str>>,
+    /// What needs transparency in each image checked (by content), under
+    /// `opaque`: an image used many times is scanned once.
+    image_transparency: HashMap<ContentKey<Arc<[u8]>>, Option<&'static str>>,
     /// The groups field names make: every name before one of its dots
     /// (`a` and `a.b` for `a.b.c`).
     field_groups: HashSet<String>,
     /// The different `fontFeatures` of runs seen so far, sorted by tag.
     feature_sets: HashSet<Vec<FontFeature>>,
+    /// Grid slots (rows times columns) of the tables seen so far.
+    table_slots: usize,
 }
 
 /// Longest link target accepted.
@@ -200,6 +204,8 @@ pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
 /// Longest alternative text of an inline image, in characters.
 pub(crate) const MAX_ALT: usize = 1024;
+/// Most entries of `fallbackFonts`.
+pub(crate) const MAX_FALLBACK_FONTS: usize = 256;
 /// Most entries of `emojiImages`.
 pub(crate) const MAX_EMOJI_IMAGES: usize = 4096;
 /// Longest key of `emojiImages`, in bytes (UTF-8). The schema's
@@ -226,6 +232,10 @@ pub(crate) const MAX_FLOATS: usize = 1000;
 /// Most different sets of `fontFeatures` in a document: each is shaped
 /// with plans and words of its own.
 pub(crate) const MAX_FEATURE_SETS: usize = 64;
+
+/// Most grid slots (rows times columns) of the tables of a document, in
+/// all: table layout keeps a few values per slot, whatever the spans.
+pub(crate) const MAX_TABLE_SLOTS: usize = 1_000_000;
 
 /// Ids of the nodes that get a destination: the page body (flow and
 /// overlays) that is displayed (not headers or footers, not under
@@ -383,10 +393,18 @@ impl<'a> Checker<'a> {
             });
             self.declared.insert(&f.id);
         }
-        for (i, id) in doc.fallback_fonts.iter().enumerate() {
-            self.at("fallbackFonts", |c| {
-                c.at_index(i, |c| c.font_ref(None, id));
-            });
+        if doc.fallback_fonts.len() > MAX_FALLBACK_FONTS {
+            self.err(
+                Code::OutOfRange,
+                Some("fallbackFonts"),
+                format!("at most {MAX_FALLBACK_FONTS} fallback fonts"),
+            );
+        } else {
+            for (i, id) in doc.fallback_fonts.iter().enumerate() {
+                self.at("fallbackFonts", |c| {
+                    c.at_index(i, |c| c.font_ref(None, id));
+                });
+            }
         }
         if doc.emoji_images.len() > MAX_EMOJI_IMAGES {
             self.err(
@@ -776,7 +794,7 @@ impl<'a> Checker<'a> {
             Ok(img) if self.opaque && self.conflict.is_none() => {
                 let what = *self
                     .image_transparency
-                    .entry(data.hash)
+                    .entry(data.key())
                     .or_insert_with(|| crate::pdf::image_transparency(&img));
                 if let Some(what) = what {
                     let image = id.map_or("the image".into(), |id| format!("image `{id}`"));
@@ -812,20 +830,9 @@ impl<'a> Checker<'a> {
         });
     }
 
-    fn field(&mut self, f: &Field) {
-        let parts = f.name.split('.').count();
-        if f.name.chars().count() > MAX_FIELD_NAME
-            || parts > MAX_FIELD_PARTS
-            || f.name
-                .split('.')
-                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
-        {
-            self.err(
-                Code::InvalidValue,
-                Some("name"),
-                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
-            );
-        }
+    /// Records a well-formed field `name` and the groups it makes, after
+    /// checking it against the names and groups seen so far.
+    fn field_name(&mut self, f: &Field) {
         // The groups the name is in: what comes before each of its dots.
         let groups = f.name.match_indices('.').map(|(i, _)| &f.name[..i]);
         if let Some(g) = groups.clone().find(|g| self.fields.contains_key(*g)) {
@@ -862,6 +869,24 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+        }
+    }
+
+    fn field(&mut self, f: &Field) {
+        let parts = f.name.split('.').count();
+        if f.name.chars().count() > MAX_FIELD_NAME
+            || parts > MAX_FIELD_PARTS
+            || f.name
+                .split('.')
+                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("name"),
+                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
+            );
+        } else {
+            self.field_name(f);
         }
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {
@@ -1426,9 +1451,19 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        // Occupancy: how many more rows each column is covered by a rowSpan from above.
-        let mut carry = vec![0u32; ncols];
         let nrows = t.rows.len();
+        self.table_slots = self.table_slots.saturating_add(nrows.saturating_mul(ncols));
+        if self.table_slots > MAX_TABLE_SLOTS {
+            self.err(
+                Code::OutOfRange,
+                Some("rows"),
+                format!("a document's tables have at most {MAX_TABLE_SLOTS} grid slots (rows times columns) in all"),
+            );
+            return;
+        }
+        // Occupancy: the row each column is covered until (exclusive) by a
+        // rowSpan from above.
+        let mut busy = vec![0usize; ncols];
         self.at("rows", |c| {
             for (ri, row) in t.rows.iter().enumerate() {
                 c.at_index(ri, |c| {
@@ -1447,7 +1482,7 @@ impl<'a> Checker<'a> {
                                 if let Some(id) = &cell.id {
                                     c.id(Some("id"), id);
                                 }
-                                while col < ncols && carry[col] > 0 {
+                                while col < ncols && busy[col] > ri {
                                     col += 1;
                                 }
                                 let span = cell.col_span.max(1) as usize;
@@ -1458,7 +1493,9 @@ impl<'a> Checker<'a> {
                                         "colSpan and rowSpan must be at least 1",
                                     );
                                 }
-                                if col + span > ncols || (col..col + span).any(|k| carry[k] > 0) {
+                                if col + span > ncols
+                                    || busy[col..col + span].iter().any(|&b| b > ri)
+                                {
                                     c.err(
                                         Code::InvalidTable,
                                         None,
@@ -1479,7 +1516,7 @@ impl<'a> Checker<'a> {
                                         "a header cell cannot span into body rows",
                                     );
                                 } else {
-                                    carry[col..col + span].fill(cell.row_span);
+                                    busy[col..col + span].fill(ri + cell.row_span as usize);
                                 }
                                 col += span;
                                 c.debug(cell.debug);
@@ -1491,7 +1528,7 @@ impl<'a> Checker<'a> {
                             });
                         });
                     }
-                    while col < ncols && carry[col] > 0 {
+                    while col < ncols && busy[col] > ri {
                         col += 1;
                     }
                     if col < ncols {
@@ -1500,9 +1537,6 @@ impl<'a> Checker<'a> {
                             Some("cells"),
                             format!("row covers {col} of {ncols} columns"),
                         );
-                    }
-                    for v in &mut carry {
-                        *v = v.saturating_sub(1);
                     }
                 });
             }

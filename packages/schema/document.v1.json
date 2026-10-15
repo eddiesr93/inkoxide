@@ -24,8 +24,9 @@
       }
     },
     "fallbackFonts": {
-      "description": "Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`.",
+      "description": "Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`; an id listed again is skipped.",
       "type": "array",
+      "maxItems": 256,
       "items": {
         "$ref": "#/$defs/Id"
       }

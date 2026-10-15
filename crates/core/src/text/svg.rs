@@ -39,6 +39,9 @@ pub(crate) struct SvgGlyph {
     pub scale_x: f32,
     /// The span style it is painted with ([`SvgText::paints`]).
     pub paint: u32,
+    /// Its text, in [`LaidText::text`]: the text of its cluster, on the
+    /// cluster's first glyph (an empty range: none).
+    pub text: (u32, u32),
 }
 
 /// An underline, overline or line-through: a quadrilateral, filled.
@@ -84,9 +87,17 @@ pub(crate) struct LaidText {
     /// The box of the glyph outlines and decorations, `[x0, y0, x1, y1]`;
     /// `None` when nothing has ink.
     pub ink: Option<[f32; 4]>,
+    /// The text of the glyphs ([`SvgGlyph::text`]).
+    pub text: String,
 }
 
 impl LaidText {
+    /// The text of glyph `g`, if it has any.
+    pub fn glyph_text(&self, g: &SvgGlyph) -> Option<&str> {
+        let (start, end) = (g.text.0 as usize, g.text.1 as usize);
+        self.text.get(start..end).filter(|t| !t.is_empty())
+    }
+
     /// The glyphs drawn in paint style `paint`.
     pub fn glyphs_of(&self, paint: u32) -> &[SvgGlyph] {
         let start = self.glyphs.partition_point(|g| g.paint < paint);
@@ -113,12 +124,14 @@ impl LaidText {
             rotate: 0.0,
             scale_x: 1.0,
             paint,
+            text: (0, 0),
         };
         Self {
             glyphs: (0..paints as u32).map(glyph).collect(),
             decorations: Vec::new(),
             images: Vec::new(),
             ink: Some([0.0, 0.0, 1.0, 1.0]),
+            text: String::new(),
         }
     }
 
@@ -131,9 +144,11 @@ impl LaidText {
 }
 
 /// A glyph of a cluster, as shaped.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ShapedGlyph {
     id: u16,
+    /// The text of its cluster, on the cluster's first glyph.
+    text: Option<Box<str>>,
     /// Offsets from the pen, in user units, y up.
     x_offset: f32,
     y_offset: f32,
@@ -310,6 +325,7 @@ fn shape<S: TextShaper>(
         let span = text.chars[char].span as usize;
         let item = ShapedGlyph {
             id: glyph.id,
+            text: prepared.glyph_text(seg, g).map(Box::from),
             x_offset: glyph.x_offset,
             y_offset: glyph.y_offset,
             advance: glyph.advance,
@@ -361,32 +377,58 @@ fn spacing(text: &SvgText, clusters: &mut [Cluster]) {
 
 /// `textLength`: spreads the difference over the gaps between clusters
 /// (`spacing`), or stretches them (`spacingAndGlyphs`). Innermost first.
+/// Each finds its clusters by character in an index, so the work is the
+/// clusters inside each, not all of them.
 fn length_adjust(text: &SvgText, chunks: &mut [Chunk]) {
+    if text.adjust.is_empty() {
+        return;
+    }
+    // Every cluster as (chunk, index), in the order they are drawn, and
+    // their positions in that order by first character.
+    let all: Vec<(usize, usize)> = chunks
+        .iter()
+        .enumerate()
+        .flat_map(|(k, c)| (0..c.clusters.len()).map(move |i| (k, i)))
+        .collect();
+    let mut by_char: Vec<(usize, usize)> = all
+        .iter()
+        .enumerate()
+        .map(|(at, &(k, i))| (chunks[k].clusters[i].char, at))
+        .collect();
+    by_char.sort_unstable();
+    let mut order: Vec<usize> = Vec::new();
     for adjust in &text.adjust {
-        let mut inside: Vec<&mut Cluster> = chunks
-            .iter_mut()
-            .flat_map(|c| c.clusters.iter_mut())
-            .filter(|c| adjust.chars.contains(&c.char))
-            .collect();
-        if inside.is_empty() {
+        let start = by_char.partition_point(|e| e.0 < adjust.chars.start);
+        let end = by_char.partition_point(|e| e.0 < adjust.chars.end);
+        // In the order they are drawn, which the sums and the last gap
+        // follow.
+        order.clear();
+        order.extend(by_char[start..end].iter().map(|e| e.1));
+        order.sort_unstable();
+        let inside = order.iter().map(|&at| all[at]);
+        let n = order.len();
+        if n == 0 {
             continue;
         }
-        let width: f32 = inside.iter().map(|c| c.advance).sum();
+        let width: f32 = inside
+            .clone()
+            .map(|(k, i)| chunks[k].clusters[i].advance)
+            .sum();
         if adjust.glyphs {
             let factor = adjust.length / width;
             // Nothing to stretch, or nearly nothing left.
             if !factor.is_finite() || factor < 0.001 {
                 continue;
             }
-            for c in &mut inside {
+            for (k, i) in inside {
+                let c = &mut chunks[k].clusters[i];
                 c.scale_x *= factor;
                 c.advance *= factor;
             }
-        } else if inside.len() > 1 {
-            let extra = (adjust.length - width) / (inside.len() - 1) as f32;
-            let n = inside.len();
-            for c in inside.iter_mut().take(n - 1) {
-                c.advance += extra;
+        } else if n > 1 {
+            let extra = (adjust.length - width) / (n - 1) as f32;
+            for (k, i) in inside.take(n - 1) {
+                chunks[k].clusters[i].advance += extra;
             }
         }
     }
@@ -505,13 +547,19 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             } else {
                 &c.glyphs[..]
             };
-            for &ShapedGlyph {
+            for ShapedGlyph {
                 id,
+                text: glyph_text,
                 x_offset,
                 y_offset,
                 advance,
             } in glyphs
             {
+                let (id, x_offset, y_offset, advance) = (*id, *x_offset, *y_offset, *advance);
+                let start = out.text.len() as u32;
+                if let Some(t) = glyph_text {
+                    out.text.push_str(t);
+                }
                 let (gx, gy) = turn(((pen + x_offset) * c.scale_x, -y_offset), ch.rotate);
                 let g = SvgGlyph {
                     font: c.font,
@@ -522,6 +570,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                     rotate: ch.rotate,
                     scale_x: c.scale_x,
                     paint: span.paint,
+                    text: (start, out.text.len() as u32),
                 };
                 let bbox = *boxes
                     .entry((c.font, id))
