@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/schema",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "private": false,
   "description": "TypeScript types and JSON Schema for Inkoxide documents (schema version 1).",
   "license": "MIT",

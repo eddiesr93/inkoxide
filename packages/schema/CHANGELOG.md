@@ -7,6 +7,10 @@ version 2.
 
 ## Unreleased
 
+## 2.4.1 - 2026-10-15
+
+Still document schema version 1.
+
 ### Fixed
 
 - `fallbackFonts` holds at most 256 ids; a longer list is `OUT_OF_RANGE`. It was unbounded, so
