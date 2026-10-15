@@ -1980,7 +1980,7 @@ mod tests {
     /// that validate.
     #[test]
     fn document_covers_the_schema() {
-        const FEW: usize = 1000;
+        const FEW: usize = 2000;
         const MOST: usize = 20_000;
         let features = [
             r#""type":"field""#,
