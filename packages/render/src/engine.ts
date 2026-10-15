@@ -153,6 +153,44 @@ export function toRenderError(e: unknown): RenderError {
 }
 
 /**
+ * The entries of a document's `emojiImages` (sequence → image id) whose image the engine refuses,
+ * as it would refuse the document: bytes that are not an image, or an image over the size limits.
+ * Sequence → why.
+ */
+export function refusedEmoji(
+  doc: Pick<Document, 'emojiImages' | 'fonts'>,
+  images: Record<string, Uint8Array>,
+): Record<string, string> {
+  const emojiImages = doc.emojiImages ?? {};
+  const map: Record<string, string> = {};
+  const own: Record<string, Uint8Array> = {};
+  for (const [sequence, id] of Object.entries(emojiImages)) {
+    if (id === undefined) continue;
+    map[sequence] = id;
+    if (Object.hasOwn(images, id)) own[id] = images[id] as Uint8Array;
+  }
+  const refused: Record<string, string> = {};
+  const at = 'emojiImages.';
+  // `validate` returns at most 100 problems: check again without those found until none is left.
+  for (;;) {
+    // The document's fonts draw the text of SVG images.
+    const check = {
+      version: SCHEMA_VERSION,
+      fonts: doc.fonts ?? [],
+      emojiImages: map,
+      pages: [{ size: { width: 100, height: 100 } }],
+    };
+    const found = ink.validate(JSON.stringify(check), 'json', own).filter((e) => e.path.startsWith(at));
+    for (const e of found) {
+      const sequence = e.path.slice(at.length);
+      refused[sequence] = e.message;
+      delete map[sequence];
+    }
+    if (found.length === 0 || Object.keys(map).length === 0) return refused;
+  }
+}
+
+/**
  * Renders a document tree to PDF bytes on the libuv pool. `output` holds the render options its
  * `<Document>` set (`conformance`, the passwords and permissions); `opts` wins over them.
  */
