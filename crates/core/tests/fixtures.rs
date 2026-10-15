@@ -427,6 +427,34 @@ fn colour_emoji_extract_as_text() {
     }
 }
 
+/// The text of an SVG image is PDF text: the fonts' `ToUnicode` maps hold
+/// its characters, those only the SVG has too (its Hebrew, its digits, the
+/// capitals of its clip path).
+#[test]
+fn svg_text_maps_to_unicode() {
+    let (fonts, images) = stores();
+    let input = fs::read(root().join("fixtures/docs/svg-text.json")).unwrap();
+    let options = RenderOptions::default().with_compress(false);
+    let pdf = inkoxide::render(&input, InputFormat::Json, &options, &fonts, &images).unwrap();
+    let pdf = String::from_utf8_lossy(&pdf);
+    let mut mapped = String::new();
+    for block in pdf.split("beginbfchar").skip(1) {
+        let block = block.split("endbfchar").next().unwrap_or("");
+        // `<glyph> <UTF-16BE text>` per line.
+        for target in block.lines().filter_map(|l| l.split_whitespace().nth(1)) {
+            let hex = target.trim_matches(['<', '>']);
+            let units: Vec<u16> = (0..hex.len())
+                .step_by(4)
+                .filter_map(|i| u16::from_str_radix(hex.get(i..i + 4)?, 16).ok())
+                .collect();
+            mapped.push_str(&String::from_utf16_lossy(&units));
+        }
+    }
+    for c in "שלוםCLIP42H".chars() {
+        assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
+    }
+}
+
 /// SVG text draws a colour font's glyphs in one colour: from outlines
 /// (`COLR`), and not at all from a font without outlines, which is never
 /// embedded.
