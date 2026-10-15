@@ -2042,6 +2042,33 @@ fn emoji_images_are_checked() {
         let (c, got) = one(&with(bad));
         assert_eq!((c, got.as_str()), (code, path), "{bad}");
     }
+    // At most 64 bytes: a ZWJ chain of 34 characters is 119.
+    let long = ["👩"; 17].join("\u{200D}");
+    assert!(long.chars().count() < 64 && long.len() > 64);
+    let (c, path) = one(&with(&format!(r#""{long}":"logo""#)));
+    assert_eq!((c, path), (C::InvalidValue, format!("emojiImages.{long}")));
+    let mut images = ImageStore::new();
+    let svg =
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>a</text></svg>"#;
+    images.insert("svg", svg.as_bytes());
+    images.insert("bad", b"not an image".as_slice());
+    let errors = |map: &str| validate(with(map).as_bytes(), InputFormat::Json, &fonts(), &images);
+    // An image is checked as anywhere else: an SVG with text needs fonts.
+    let e = errors(r#""😀":"svg""#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::InvalidImage, "emojiImages.😀")
+    );
+    assert!(
+        e[0].message.contains("declares no fonts"),
+        "{}",
+        e[0].message
+    );
+    let e = errors(r#""😀":"bad""#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::InvalidImage, "emojiImages.😀")
+    );
     // At most 4096, reported once.
     let many: Vec<String> = (0..4097).map(|i| format!(r#""k{i}":"logo""#)).collect();
     assert_eq!(

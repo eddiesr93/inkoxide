@@ -38,7 +38,7 @@ Still document schema version 1.
   the text copying and searching give for it. The run's `font` and `size` are the line's strut.
   It breaks lines like one character.
 - `Document.emojiImages`: emoji sequences drawn as images, sequence → image id (at most 4096,
-  each key one emoji sequence of at most 64 characters; U+FE0F is ignored). Where text has the
+  each key one emoji sequence of at most 64 bytes in UTF-8; U+FE0F is ignored). Where text has the
   sequence with emoji presentation, the image takes its place, 1em high with its aspect ratio,
   its bottom 0.1em below the baseline, and copies as the sequence. A ZWJ sequence without an
   image tries its parts; the rest is drawn by the fonts.
