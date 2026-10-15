@@ -14,8 +14,12 @@ decision. Where the implementation differs from this plan:
 - **`@inkoxide/wasm`** is an optional peer of `@inkoxide/render`, so that Node installs do not
   download it.
 - **`examples/browser`** has an invoice of its own: the Node examples import Node modules.
-- **Not done:** the browser benchmark in `benchmarks/`, and Deno in CI. It covers the [ROADMAP.md](../../ROADMAP.md) "Later"
-item **Rendering in the browser, through a WebAssembly build of the engine** (ROADMAP.md:8).
+- **Edge runtimes (Decision 7)** are out of scope: no Deno in CI, and the docs name browsers and
+  Node only.
+- **Not done:** the browser benchmark in `benchmarks/`.
+
+It covers the [ROADMAP.md](../../ROADMAP.md) "Later" item **Rendering in the browser, through a
+WebAssembly build of the engine** (ROADMAP.md:8).
 
 ## Summary
 

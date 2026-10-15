@@ -101,10 +101,9 @@ async function compile(source) {
   if (source === undefined) source = new URL('./inkoxide.wasm', import.meta.url);
   if (typeof source === 'string') source = new URL(source, import.meta.url);
   if (source instanceof URL && source.protocol === 'file:') {
-    // Node and Deno: fetch does not read files.
+    // Node: fetch does not read files.
     const fs = globalThis.process?.getBuiltinModule?.('node:fs/promises');
     if (fs) source = await fs.readFile(source);
-    else if (globalThis.Deno) source = await globalThis.Deno.readFile(source);
   }
   if (source instanceof URL) source = await fetch(source);
   if (typeof Response !== 'undefined' && source instanceof Response) {

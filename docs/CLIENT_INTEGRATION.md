@@ -4,8 +4,8 @@ How to use the engine directly from a Node application, with documents
 built as JSON. To write documents as React components, use
 [`@inkoxide/render`](../packages/render/README.md) instead; it does all of
 this for you. [API.md](API.md) has the full API and
-[EXAMPLES.md](../packages/schema/EXAMPLES.md) has complete documents. In a browser or another
-WebAssembly runtime, [`@inkoxide/wasm`](../packages/wasm/README.md) has the same functions, on one
+[EXAMPLES.md](../packages/schema/EXAMPLES.md) has complete documents. In a browser,
+[`@inkoxide/wasm`](../packages/wasm/README.md) has the same functions, on one
 thread: see [API.md](API.md#webassembly-inkoxidewasm).
 
 ## Install

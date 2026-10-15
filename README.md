@@ -190,8 +190,7 @@ Node.js 22 or later and is an ES module.
 
 In browsers (current Chrome, Edge, Firefox and Safari), the engine is WebAssembly
 (`@inkoxide/wasm`), and `@inkoxide/render/browser` renders in a Web Worker; see
-[In the browser](packages/render/GUIDE.md#in-the-browser). Deno, Bun and edge runtimes can load
-`@inkoxide/wasm` too, but are not tested.
+[In the browser](packages/render/GUIDE.md#in-the-browser).
 
 ## Contributing
 

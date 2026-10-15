@@ -1338,8 +1338,7 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 ## Limitations
 
 - **Browsers.** Renders run on one thread, in a worker (see [In the browser](#in-the-browser)).
-  Other WebAssembly runtimes, such as Deno, Bun and edge runtimes, can load `@inkoxide/wasm`,
-  but they are not tested.
+  Browsers and Node are the runtimes supported; edge runtimes are not.
 - **Drawing.** SVG text on a path and vertical SVG text are not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely

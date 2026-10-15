@@ -161,7 +161,7 @@ function check(name: string, value: unknown, unit: string): void {
 }
 
 /**
- * The environment variable `name`, where there is an environment (Node, Deno, Bun); undefined in
+ * The environment variable `name`, where there is an environment (Node); undefined in
  * a browser.
  */
 export function env(name: string): string | undefined {
