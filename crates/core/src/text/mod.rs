@@ -17,7 +17,6 @@ mod optimal;
 mod paint;
 mod prepare;
 mod svg;
-pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -685,6 +684,14 @@ impl TextCache<'_, RustybuzzShaper<'_, '_>> {
             self.entries.extend(entries);
             self.shaper.unicode.merge_first(unicode);
         }
+    }
+
+    /// The error the render fails with when shaping its text failed.
+    pub fn shaping_error(&self) -> Option<InkoxideError> {
+        self.shaper
+            .shapes
+            .failure()
+            .map(prepare::ShapingFailure::error)
     }
 
     /// The glyph → text mappings of every paragraph shaped, for the PDF.
