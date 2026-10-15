@@ -490,6 +490,48 @@ fn encrypted_text_is_not_in_plain_sight() {
     );
 }
 
+/// Field values and options are strings, so encrypted; the state PDF
+/// writes as names and numbers stays readable, as SECURITY.md says:
+/// checkbox states and the positions of selected list options.
+#[test]
+fn encrypted_field_values_are_strings_and_states_are_names() {
+    let (fonts, images) = stores();
+    let doc = br#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+        "pages":[{"size":{"width":300,"height":300},"children":[
+          {"type":"field","field":{"name":"agree","kind":"checkbox","checked":true}},
+          {"type":"field","style":{"height":20},"field":{"name":"pick","kind":"select","font":"Inter-Regular",
+           "options":["CANARY-SELECT-A","CANARY-SELECT-B"],"value":"CANARY-SELECT-B"}},
+          {"type":"field","style":{"height":60},"field":{"name":"list","kind":"list","font":"Inter-Regular",
+           "options":["CANARY-LIST-A","CANARY-LIST-B"],"value":"CANARY-LIST-B"}}]}]}"#;
+    let render = |options: &RenderOptions| {
+        inkoxide::render(doc, InputFormat::Json, options, &fonts, &images).unwrap()
+    };
+    let plain = render(&options(None).with_compress(false));
+    let encrypted = render(&options(Some(both())).with_compress(false));
+    let has = |pdf: &[u8], needle: &[u8]| pdf.windows(needle.len()).any(|w| w == needle);
+    for needle in [
+        &b"CANARY-SELECT-A"[..],
+        b"CANARY-SELECT-B",
+        b"CANARY-LIST-A",
+        b"CANARY-LIST-B",
+    ] {
+        assert!(has(&plain, needle), "{}", String::from_utf8_lossy(needle));
+        assert!(
+            !has(&encrypted, needle),
+            "{}",
+            String::from_utf8_lossy(needle)
+        );
+    }
+    for needle in [&b"/V /Yes"[..], b"/AS /Yes", b"/I [1]"] {
+        assert!(has(&plain, needle), "{}", String::from_utf8_lossy(needle));
+        assert!(
+            has(&encrypted, needle),
+            "{}",
+            String::from_utf8_lossy(needle)
+        );
+    }
+}
+
 /// The `/DW` and `/W` entries of each `CIDFont` in `pdf`, as written.
 fn width_entries(pdf: &[u8]) -> Vec<String> {
     let find = |from: usize, needle: &[u8]| {

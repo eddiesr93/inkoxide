@@ -139,6 +139,12 @@ password lifts the permissions.
   otherwise named after their values, are named by their position in the
   group instead, with the values in `/Opt`, so the values are encrypted
   too.
+- Form field state that PDF writes as names and numbers stays readable:
+  whether a checkbox is checked (`/V` and `/AS`), which radio button of a
+  group is on (its position, as above), and the positions of a list box's
+  selected options (`/I`) and of its first visible one (`/TI`). Text field
+  values, select and list values and every option are strings, and are
+  encrypted.
 
 ```rust
 use inkoxide::{Encryption, Permissions, Printing, RenderOptions};

@@ -612,7 +612,8 @@ reader without it may do:
   No error shows a password, and the passwords are not part of `result.document` or of the
   tree's JSON.
 - Readers enforce the permissions; the file cannot. Encryption hides the text and images, not
-  the page count or sizes.
+  the page count or sizes. Field values are hidden, but not which checkboxes are checked, nor
+  the positions of the chosen radio button and list box options.
 - The same document and passwords give the same bytes, as unencrypted output does.
 
 ## Text: hyphenation and direction

@@ -167,6 +167,11 @@ without the owner password, unless the two passwords are the same.
   annotation rectangles, font names, and the length of every string and stream. Streams are
   compressed before encryption, so their lengths depend on the content: the length of a font
   subset says roughly how many glyphs it holds.
+- **Form field state stays visible** where the standard makes it a name or a number: checkbox
+  states (`/V /Yes`, `/AS`), the position of the radio button that is on (radio states are named
+  by position when encrypted, with the values in the encrypted `/Opt`), and the positions of a
+  list box's selected options (`/I`) and first visible one (`/TI`). Text field values, select and
+  list values, and all options are strings, and are encrypted.
 - **No integrity.** CBC is malleable and revision 6 has no MAC over the content; `Perms` protects
   only the permission bits.
 - **Password strength.** `U` lets anyone test user password guesses at the cost of one `H2B`. Without
