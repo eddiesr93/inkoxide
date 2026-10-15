@@ -119,8 +119,8 @@ All notable changes to the packages in this repository. The format follows
   `alt` as the text it copies as. Lines break around it like around a character.
 - Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
   field names. `address.street` and `address.city` are the fields `street` and `city` of the
-  group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
-  show and export by their full names.
+  group `address`; a name has at most 32 parts, so groups nest up to 31 deep. The PDF holds
+  them as a field tree, which viewers show and export by their full names.
 - List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
   without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
   array and several options can be selected.
@@ -131,17 +131,21 @@ All notable changes to the packages in this repository. The format follows
   out, as PDF/A requires.
 - Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
   author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
-  corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
-  and passes PDF/A-2b.
-- `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
-  fields inside it, at any depth (`address.street`); sets nest.
+  corner of its box, keeps its size at any zoom and stays upright under a transform. It has an
+  appearance stream, so it prints and passes PDF/A-2b. A note can also be part of a line of text
+  (`note` on a text run): it takes no room there, and its icon hangs from the top of the line
+  where it is. Line breaking keeps it with the word before it.
+- `<FieldSet name>` in `@inkoxide/render`: a `View`, with its props and `render`, whose name goes
+  in front of the names of the fields inside it, at any depth (`address.street`); sets nest.
 - `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
   takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
   `TextInput` is another name for `TextField`.
 - `format` on `TextField` in `@inkoxide/render`, with the readable keys of the schema, or `param`,
-  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported.
+  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported. A
+  number or percent format with any of those keys defaults to no decimals and no thousands
+  separator; on a `time`, `param` is one of four styles, `0` to `3`; `zip4` is `zipPlus4`.
 - `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
-  its `backgroundColor` as its colour.
+  its `backgroundColor` as its colour. Inside a `<Text>`, it is part of the line.
 
 ### Changed
 

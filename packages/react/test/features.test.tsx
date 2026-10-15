@@ -52,6 +52,7 @@ import {
   Text,
   TextField,
   TextInput,
+  type TextFormat,
   TotalPages,
   Tspan,
   type TspanProps,
@@ -1140,10 +1141,72 @@ describe('form fields', () => {
     const both = tree(
       <TextField name="a" format={{ type: 'number', sepComma: true, separators: '1234,56' }} />,
     );
-    expect(first<FieldNode>(both).field.format).toEqual({ type: 'number', separators: '1234,56' });
+    expect(first<FieldNode>(both).field.format).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1234,56',
+    });
     expect(
       thrown(() => tree(<TextField name="a" format={'number' as unknown as { type: 'number' }} />)).message,
     ).toContain('<TextField format> is an object');
+  });
+
+  it('gives a format with the other names their defaults', () => {
+    const format = (f: TextFormat) => first<FieldNode>(tree(<TextInput name="a" format={f} />)).field.format;
+    // With none of them, the readable defaults (2 decimals, `1,234.56`) apply in the engine.
+    expect(format({ type: 'number' })).toEqual({ type: 'number' });
+    expect(format({ type: 'number', currency: '$' })).toEqual({ type: 'number', currency: '$' });
+    // With any of them: no decimals and no thousands separator.
+    for (const f of [
+      { currencyPrepend: true },
+      { negStyle: 'MinusBlack' as const },
+      { nDec: 0 },
+      { sepComma: false },
+    ]) {
+      expect(format({ type: 'number', ...f })).toMatchObject({ decimals: 0, separators: '1234.56' });
+    }
+    expect(format({ type: 'number', negStyle: 'Red' })).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1234.56',
+      negative: 'red',
+    });
+    expect(format({ type: 'percent', nDec: 1 })).toEqual({
+      type: 'percent',
+      decimals: 1,
+      separators: '1234.56',
+    });
+    expect(format({ type: 'percent', sepComma: true })).toEqual({
+      type: 'percent',
+      decimals: 0,
+      separators: '1,234.56',
+    });
+    // The readable keys keep their values.
+    expect(format({ type: 'number', nDec: 1, separators: '1.234,56' })).toEqual({
+      type: 'number',
+      decimals: 1,
+      separators: '1.234,56',
+    });
+    expect(format({ type: 'zip4' })).toEqual({ type: 'zipPlus4' });
+    expect(format({ type: 'date', param: 'yyyy-mm-dd' })).toEqual({ type: 'date', pattern: 'yyyy-mm-dd' });
+  });
+
+  it('takes a time format by the index of its style', () => {
+    const pattern = (param: string | number) =>
+      first<FieldNode>(tree(<TextInput name="a" value="18:05" format={{ type: 'time', param }} />)).field
+        .format?.pattern;
+    expect([0, 1, 2, 3].map(pattern)).toEqual(['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt']);
+    expect(pattern('1')).toBe('h:MM tt');
+    const r = tree(<TextInput name="a" value="18:05" format={{ type: 'time', param: 1 }} />);
+    expect(r.validate()).toEqual([]);
+    for (const bad of [4, -1, 1.5, '', 'HH:MM', ' 1']) {
+      expect(thrown(() => pattern(bad)).message).toContain('param on a time is a style from 0 to 3');
+    }
+    // A pattern still works, and wins.
+    expect(
+      first<FieldNode>(tree(<TextInput name="a" format={{ type: 'time', pattern: 'H:MM', param: 9 }} />))
+        .field.format,
+    ).toEqual({ type: 'time', pattern: 'H:MM' });
   });
 
   it('puts the names of field sets in front of the names of their fields', () => {
@@ -1178,6 +1241,29 @@ describe('form fields', () => {
     expect(first<FieldNode>(tree(<TextField name="plain" />)).field.name).toBe('plain');
     expect(thrown(() => tree(<FieldSet name="">x</FieldSet>)).message).toContain('<FieldSet> needs a name');
   });
+
+  it('takes a render prop, as a View does, and names the fields it renders', () => {
+    const r = tree(
+      <FieldSet
+        name="page"
+        className="p-2"
+        render={({ pageNumber }) => <TextField name={pageNumber === 1 ? 'first' : 'later'} />}
+      />,
+      { pageCount: 2 },
+    );
+    expect(r.dynamic).toBe(true);
+    const variants = (first<BoxNode>(r).children ?? []) as BoxNode[];
+    expect(variants.map((v) => [v.pages, ((v.children ?? []) as FieldNode[])[0]?.field.name])).toEqual([
+      [[1], 'page.first'],
+      [[2], 'page.later'],
+    ]);
+    // One page: a plain set, with its style.
+    const one = first<BoxNode>(
+      tree(<FieldSet name="s" className="p-2" render={() => <TextField name="a" />} />),
+    );
+    expect(one.style).toEqual({ padding: { top: 6, right: 6, bottom: 6, left: 6 } });
+    expect(((one.children ?? []) as FieldNode[])[0]?.field.name).toBe('s.a');
+  });
 });
 
 describe('notes', () => {
@@ -1204,7 +1290,7 @@ describe('notes', () => {
     expect(r.validate()).toEqual([]);
   });
 
-  it('contains only text, and is a block, not a run', () => {
+  it('contains only text', () => {
     expect(
       thrown(() =>
         tree(
@@ -1215,15 +1301,6 @@ describe('notes', () => {
       ).message,
     ).toContain('A <Note> contains only text');
     expect(thrown(() => tree(<Note />)).message).toContain('<Note> needs text');
-    expect(
-      thrown(() =>
-        tree(
-          <Text>
-            a <Note>b</Note>
-          </Text>,
-        ),
-      ).message,
-    ).toContain('cannot be inside <Text>');
     // Fixed on every page, like a watermark.
     const fixed = tree(
       <Note fixed className="absolute right-0 top-0">
@@ -1231,6 +1308,43 @@ describe('notes', () => {
       </Note>,
     );
     expect(first<NoteNode>(fixed)).toMatchObject({ type: 'note', break: { fixed: true } });
+  });
+
+  it('is a run of its own inside a Text, with its colour', () => {
+    const r = tree(
+      <Text className="text-[12pt]">
+        Total
+        <Note author="Ana" className="bg-blue-500">
+          Check it ({3} rows).
+        </Note>{' '}
+        due
+        <Link href="https://example.com">
+          {' '}
+          now<Note>Linked</Note>
+        </Link>
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs.map((x) => x.text ?? x.note?.contents)).toEqual([
+      'Total',
+      'Check it (3 rows).',
+      ' due',
+      ' now',
+      'Linked',
+    ]);
+    expect(runs[1]).toMatchObject({ note: { contents: 'Check it (3 rows).', author: 'Ana' }, size: 12 });
+    expect(runs[1]?.note?.color).toHaveLength(4);
+    // A note carries no link: it takes no room to click.
+    expect(runs[4]).toEqual({ note: { contents: 'Linked' }, font: runs[0]?.font, size: 12 });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('takes no block props or box styles inside a Text', () => {
+    const inText = (note: ReactNode) => thrown(() => tree(<Text>a {note}</Text>)).message;
+    expect(inText(<Note id="n">b</Note>)).toContain('`id` does not apply to it');
+    expect(inText(<Note fixed>b</Note>)).toContain('`fixed` does not apply to it');
+    expect(inText(<Note className="p-2">b</Note>)).toContain('it takes only backgroundColor');
+    expect(inText(<Note />)).toContain('<Note> needs text');
   });
 });
 

@@ -93,6 +93,7 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             // of it the line was broken in.
             let (bx, bw) = layout.boxes.get(li).copied().unwrap_or((0.0, cw));
             let content = Rect::new(cx + ctx.dx + bx, top - line.top + ctx.dy, bw, ch);
+            let first_op = ops.len();
             let painted = paint_line(
                 line,
                 &para,
@@ -101,6 +102,12 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
                 ctx.opacity,
                 ops,
             );
+            // A line taller than the page is sliced across pages; its notes
+            // are on the page it starts on.
+            if ctx.window.is_some_and(|w| !w.starts(top)) {
+                let line_ops = ops.split_off(first_op);
+                ops.extend(line_ops.into_iter().filter(|op| !matches!(op, Op::Icon(_))));
+            }
             if let Some(lines) = outline.as_deref_mut() {
                 lines.push(painted.outline(line, &para));
             }
@@ -338,8 +345,13 @@ fn paint_line(
     };
 
     for piece in pieces {
-        painted.pieces.push((piece.run, x, piece.width));
         let run = &runs[piece.run as usize];
+        if let Some(note) = run.note.as_deref() {
+            // It takes no room: its icon hangs from the line's top.
+            crate::notes::paint_at(note, (x, cy + line.top), ops);
+            continue;
+        }
+        painted.pieces.push((piece.run, x, piece.width));
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
                 Some((_, x1, t)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {

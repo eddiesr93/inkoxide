@@ -625,6 +625,9 @@ pub struct TextRun {
     pub font_features: Option<Box<[FontFeature]>>,
     /// An image in the line, in place of text (boxed: rare).
     pub image: Option<Box<RunImage>>,
+    /// A note in the line, in place of text (boxed: rare): it takes no
+    /// room, and its icon hangs from the line's top where the run is.
+    pub note: Option<Box<Note>>,
 }
 
 /// A run's `image`: drawn in the line like a glyph, `width` × `height`

@@ -166,13 +166,13 @@ pub(crate) const MAX_WEIGHT: u16 = 1000;
 /// Longest form field `name`, in characters.
 pub(crate) const MAX_FIELD_NAME: usize = 512;
 /// Longest part of a form field `name` between dots, in characters.
-pub(crate) const MAX_FIELD_PART: usize = 128;
+pub(crate) const MAX_FIELD_PART_LEN: usize = 128;
 /// Most parts of a form field `name`: groups nest at most one less deep.
 pub(crate) const MAX_FIELD_PARTS: usize = 32;
 /// Most `options` of a form field.
 pub(crate) const MAX_FIELD_OPTIONS: usize = 1000;
 /// Longest option of a form field, in characters.
-pub(crate) const MAX_FIELD_OPTION: usize = 1000;
+pub(crate) const MAX_FIELD_OPTION_LEN: usize = 1000;
 /// Longest form field `value`, in characters (PDF/A-2 holds strings to
 /// 32767 bytes; a character is at most 4 of them in UTF-16).
 pub(crate) const MAX_FIELD_VALUE: usize = 8000;
@@ -815,12 +815,12 @@ impl<'a> Checker<'a> {
             || parts > MAX_FIELD_PARTS
             || f.name
                 .split('.')
-                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART)
+                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
         {
             self.err(
                 Code::InvalidValue,
                 Some("name"),
-                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
+                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
             );
         }
         // The groups the name is in: what comes before each of its dots.
@@ -937,13 +937,13 @@ impl<'a> Checker<'a> {
             );
         }
         for (i, o) in f.options.iter().enumerate() {
-            if o.chars().count() > MAX_FIELD_OPTION {
+            if o.chars().count() > MAX_FIELD_OPTION_LEN {
                 self.at("options", |c| {
                     c.at_index(i, |c| {
                         c.err(
                             Code::InvalidValue,
                             None,
-                            format!("an option is at most {MAX_FIELD_OPTION} characters"),
+                            format!("an option is at most {MAX_FIELD_OPTION_LEN} characters"),
                         );
                     });
                 });
@@ -1303,15 +1303,23 @@ impl<'a> Checker<'a> {
                 Some("image"),
                 "a run takes one of `text`, `placeholder` and `image`",
             ),
-            (None, None, None) => self.err(
+            (None, None, None) if r.note.is_none() => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder` or an `image`)",
+                "a run requires `text` (or a `placeholder`, an `image` or a `note`)",
+            ),
+            (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.note.is_some() => self.err(
+                Code::InvalidValue,
+                Some("note"),
+                "a run takes one of `text`, `placeholder`, `image` and `note`",
             ),
             _ => {}
         }
         if let Some(image) = &r.image {
             self.at("image", |c| c.run_image(image));
+        }
+        if let Some(note) = &r.note {
+            self.at("note", |c| c.note(note));
         }
         match r.vertical_align {
             Some(RunAlign::Points(v)) if !(v.abs() <= MAX_PAGE_EDGE) => self.err(

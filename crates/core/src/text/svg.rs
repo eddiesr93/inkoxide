@@ -171,6 +171,7 @@ fn shape<S: TextShaper>(
                 vertical_align: None,
                 font_features: None,
                 image: None,
+                note: None,
             });
             run_span.push(span);
         }

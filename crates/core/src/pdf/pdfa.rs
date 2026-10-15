@@ -62,7 +62,9 @@ impl Profile {
     }
 
     /// Whether the file may carry scripts (form field actions): not under
-    /// PDF/A, at any level.
+    /// PDF/A, at any level, which forbids JavaScript actions and `/AA`
+    /// (ISO 19005-1, 6.6.1; 19005-2, 6.6.1). A format keeps its formatted
+    /// text and value there.
     pub fn scripts(self) -> bool {
         self.level.is_none()
     }
@@ -381,7 +383,7 @@ pub(crate) fn xmp(
 /// `2026-01-31T12:00:00+02:00`, the same instant as the info dictionary's
 /// `CreationDate`.
 fn xmp_date(t: Timestamp) -> String {
-    let off = t.offset_minutes;
+    let (d, off) = (t.local, t.offset_minutes);
     let zone = if off == 0 {
         "Z".to_string()
     } else {
@@ -391,7 +393,7 @@ fn xmp_date(t: Timestamp) -> String {
     };
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{zone}",
-        t.year, t.month, t.day, t.hour, t.minute, t.second
+        d.year, d.month, d.day, d.hour, d.minute, d.second
     )
 }
 
@@ -524,12 +526,14 @@ mod tests {
             ..Default::default()
         };
         let t = Timestamp {
-            year: 2026,
-            month: 3,
-            day: 4,
-            hour: 5,
-            minute: 6,
-            second: 7,
+            local: crate::date::LocalDateTime {
+                year: 2026,
+                month: 3,
+                day: 4,
+                hour: 5,
+                minute: 6,
+                second: 7,
+            },
             offset_minutes: -150,
         };
         let profile = Profile::new(Some(PdfALevel::A2b));

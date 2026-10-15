@@ -150,8 +150,11 @@ is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
 which only a PDF/A-1b render reports (by input length, a quarter of the
 inputs render as plain PDF and a quarter at each PDF/A level); the
 writer never refuses transparency at 1b, which would mean validation
-missed it (for SVG, that its scan disagrees with the writer); the
-output is a complete
+missed it (for SVG, that its scan disagrees with the writer); every
+form script (`/JS`) is a call of a standard form function (`AFNumber_Format`
+and the like) with only integers, booleans and string literals as
+arguments, and PDF/A output has no scripts and no `/AA` (`check_scripts`);
+the output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
 from MessagePack (`render_json` and `render_tree`), and a document

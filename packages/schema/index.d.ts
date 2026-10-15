@@ -684,7 +684,7 @@ export interface TextNode {
  */
 export interface TextRun {
   /**
-   * Required unless `placeholder` or `image` is set; forbidden when one is.
+   * Required unless `placeholder`, `image` or `note` is set; forbidden when one is.
    */
   text?: string;
   font: Id;
@@ -723,6 +723,10 @@ export interface TextRun {
     [k: string]: number | undefined;
   };
   image?: InlineImage;
+  /**
+   * A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it.
+   */
+  note?: Note;
 }
 /**
  * An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.
@@ -750,6 +754,28 @@ export interface InlineImage {
    * Alternative text: what copying, searching and screen readers get for the image.
    */
   alt?: string;
+}
+/**
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Note".
+ */
+export interface Note {
+  /**
+   * The text of the note.
+   */
+  contents: string;
+  /**
+   * Who wrote it; viewers show it as the note's title.
+   */
+  author?: string;
+  /**
+   * The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1].
+   */
+  color?: Color;
+  /**
+   * Whether viewers show the text when the document opens.
+   */
+  open?: boolean;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -966,7 +992,7 @@ export interface FieldFormat {
   pattern?: string;
 }
 /**
- * A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.
+ * A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. Under a transform, the icon stays upright and the same size: only its corner moves. In a header, a footer or a fixed element it is on every page.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "NoteNode".
@@ -979,28 +1005,6 @@ export interface NoteNode {
   pages?: PageFilter;
   debug?: Debug;
   note: Note;
-}
-/**
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "Note".
- */
-export interface Note {
-  /**
-   * The text of the note.
-   */
-  contents: string;
-  /**
-   * Who wrote it; viewers show it as the note's title.
-   */
-  author?: string;
-  /**
-   * The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1].
-   */
-  color?: Color;
-  /**
-   * Whether viewers show the text when the document opens.
-   */
-  open?: boolean;
 }
 
 /** The document `version` this schema describes. */

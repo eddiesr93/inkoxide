@@ -1098,9 +1098,29 @@ fn form_fields() {
         ),
         (r#"{"type":"zip"}"#, r#","value":"02134""#),
         (r#"{"type":"ssn"}"#, ""),
+        // A time value is a time of day, or a date with a time.
+        (
+            r#"{"type":"time","pattern":"HH:MM:ss"}"#,
+            r#","value":"2026-10-14T18:30:05""#,
+        ),
     ] {
         assert_eq!(run(&text(format, value)), vec![], "{format}");
     }
+    // A pattern is at most 64 characters.
+    let pattern = |n: usize| format!(r#"{{"type":"date","pattern":"{}"}}"#, "d/".repeat(n / 2));
+    assert_eq!(run(&text(&pattern(64), "")), vec![]);
+    assert_eq!(
+        one(&text(&pattern(66), "")),
+        (C::InvalidValue, format!("{f}.format.pattern"))
+    );
+    // A date value has no time of its own.
+    assert_eq!(
+        one(&text(
+            r#"{"type":"date","pattern":"dd"}"#,
+            r#","value":"18:30""#
+        )),
+        (C::InvalidValue, format!("{f}.value"))
+    );
     for (format, value, code, path) in [
         (
             r#"{"type":"number"}"#,
@@ -1314,6 +1334,59 @@ fn notes() {
             format!("{n}.{path}")
         };
         assert_eq!(one(&doc(node)), (code, want), "{node}");
+    }
+}
+
+#[test]
+fn note_runs_are_checked() {
+    let with_run = |r: &str| {
+        doc(&format!(
+            r#"{{"type":"text","runs":[{{"text":"a","font":"Inter-Regular","size":10}},{{"font":"Inter-Regular","size":10{r}}}]}}"#
+        ))
+    };
+    let p = "pages[0].children[0].runs[1]";
+    for ok in [
+        r#","note":{"contents":"x"}"#,
+        r#","note":{"contents":"x","author":"Ana","color":[0,0,1,1],"open":true},"link":"https://x.ro""#,
+        r#","note":{"contents":"x"},"verticalAlign":"super""#,
+    ] {
+        assert_eq!(run(&with_run(ok)), vec![], "{ok}");
+    }
+    for (bad, code, path) in [
+        (
+            r#","text":"x","note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","placeholder":"pageNumber","note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","image":{"src":"logo"},"note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","note":{"contents":""}"#,
+            C::InvalidValue,
+            "note.contents",
+        ),
+        (r#","note":{}"#, C::MissingField, "note.contents"),
+        (
+            r#","note":{"contents":"x","icon":"Key"}"#,
+            C::UnknownField,
+            "note.icon",
+        ),
+        (
+            r#","note":{"contents":"x"},"verticalAlign":"middle""#,
+            C::InvalidValue,
+            "verticalAlign",
+        ),
+    ] {
+        let (c, got) = one(&with_run(bad));
+        assert_eq!((c, got), (code, format!("{p}.{path}")), "{bad}");
     }
 }
 

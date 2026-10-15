@@ -850,9 +850,9 @@ array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkb
 `"radio"`, `"select"`, `"list"`), for forms built from data:
 `<Field kind={q.kind} name={q.name} … />`.
 
-A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
-the name of every field inside it, at any depth. Viewers show and export the fields by those
-full names, and sets nest:
+A `FieldSet` groups fields: it is a `View`, with the same props (`render` too), whose `name`
+goes in front of the name of every field inside it, at any depth. Viewers show and export the
+fields by those full names, and sets nest:
 
 ```tsx
 <FieldSet name="billing" className="gap-2">
@@ -884,19 +884,27 @@ as the user types:
 | `time` | `'18:30'` or `'18:30:05'`, or a date with a time | `pattern` (required) |
 | `zip`, `zipPlus4`, `phone`, `ssn` | 5, 9, 10 or 9 digits | none |
 
-A `pattern` uses `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`, `mmm` (Oct), `mmmm`
-(October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t`
-(a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English. The keys `nDec`,
-`sepComma`, `negStyle`, `currencyPrepend` and `param` are other names for `decimals`,
-`separators`, `negative`, `currencyBefore` and `pattern`. Viewers apply the format with the
-standard form scripts, which some (Preview) do not run; a PDF/A document leaves the scripts out
-and keeps the formatted text.
+A `pattern` is at most 64 characters of `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`,
+`mmm` (Oct), `mmmm` (October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM`
+(minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English.
+A `time` pattern takes only the time letters, `H`, `h`, `M`, `s` and `t`. Viewers apply the
+format with the standard form scripts, which some (Preview) do not run; a PDF/A document leaves
+the scripts out and keeps the formatted text.
+
+The keys `nDec`, `sepComma` (`true` is `'1,234.56'`, `false` `'1234.56'`), `negStyle`
+(`'MinusBlack'`, `'Red'`, `'ParensBlack'`, `'ParensRed'`), `currencyPrepend` and `param` are
+other names for `decimals`, `separators`, `negative`, `currencyBefore` and `pattern`, and
+`zip4` for `zipPlus4`. A number or percent format with any of them defaults to no decimals and
+no thousands separator, so `{ type: 'number', currencyPrepend: true }` shows `'1250'` as
+`1250`; without them, to 2 decimals and `'1,234.56'`. On a `time`, `param` is a style: `0` (`HH:MM`), `1` (`h:MM tt`), `2`
+(`HH:MM:ss`) or `3` (`h:MM:ss tt`).
 
 ## Notes
 
 ```tsx
 <Note author="Ana">Check the totals against the ledger.</Note>
 <Note className="absolute right-0 top-0 bg-blue-500" open>Draft: not for circulation.</Note>
+<Text>Total: 1,250<Note author="Ana">Includes the March refund.</Note> due on 1 May.</Text>
 ```
 
 A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
@@ -905,8 +913,13 @@ when the document opens, and its `backgroundColor` (or a `bg-*` class) is its co
 default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
 its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
 insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
-`fixed` element it is on every page. The icon is drawn into the PDF, so it prints and looks the
-same in every viewer, and the output stays PDF/A-2b. A note cannot go inside a `Text` yet.
+`fixed` element it is on every page. Under a `transform`, the icon stays upright and the same
+size: only its corner moves. The icon is drawn into the PDF, so it prints and looks the same in
+every viewer, and the output stays PDF/A-2b.
+
+Inside a `Text`, a note is part of the line: it takes no room, and its icon hangs from the top of
+the line where it is, on the page of that line. Line breaking keeps it with the word before it,
+or after a space, with the word after it. There it takes `backgroundColor` and no other style.
 
 ## Debugging layout
 

@@ -424,6 +424,9 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                 NodeKind::Text { runs } => {
                     let mut bytes: u64 = 0;
                     for r in runs {
+                        if let Some(note) = &r.note {
+                            size = size.saturating_add(note_bytes(note));
+                        }
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
                         let each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
@@ -457,10 +460,7 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                         size = size.saturating_add(SCRIPT_BYTES);
                     }
                 }
-                NodeKind::Note(note) => {
-                    let text = note.contents.len() + note.author.as_ref().map_or(0, String::len);
-                    size = size.saturating_add(BOX_BYTES + text as u64);
-                }
+                NodeKind::Note(note) => size = size.saturating_add(note_bytes(note)),
                 _ => {}
             }
         }
@@ -468,6 +468,17 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
         stack.extend(tree.children(j).map(|c| (c, pages)));
     }
     total
+}
+
+/// Estimated output of a note, in bytes: its icon, and its text as the
+/// file holds it.
+fn note_bytes(note: &crate::schema::Note) -> u64 {
+    let text = crate::pdf::written_text_len(&note.contents)
+        + note
+            .author
+            .as_deref()
+            .map_or(0, crate::pdf::written_text_len);
+    BOX_BYTES + text as u64
 }
 
 /// Most pages a node with page filter `f` is painted on, when that is a

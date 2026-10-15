@@ -31,6 +31,19 @@ pub(crate) fn text_bytes(s: &str) -> Vec<u8> {
     }
 }
 
+/// Most bytes text string `s` takes in the file once written through
+/// [`Out::text`], delimiters included: printable ASCII at most doubled by
+/// escapes, anything else as UTF-16BE in hex, four bytes a code unit, and
+/// encrypted strings in hex with up to 32 bytes of padding and IV first.
+pub(crate) fn written_text_len(s: &str) -> usize {
+    let bytes = if s.bytes().all(|b| matches!(b, 32..=126)) {
+        s.len()
+    } else {
+        2 + 2 * s.encode_utf16().count()
+    };
+    2 + 2 * (bytes + 32)
+}
+
 /// Strings and streams on their way into the file, encrypted when the
 /// file is.
 pub(crate) struct Out {
@@ -165,7 +178,31 @@ impl Out {
 mod tests {
     use pdf_writer::{Chunk, Ref, Str, TextStr};
 
-    use super::Out;
+    use super::{written_text_len, Out};
+
+    #[test]
+    fn written_text_len_bounds_what_text_strings_take() {
+        let written = |s: &str| {
+            let mut c = Chunk::new();
+            c.indirect(Ref::new(1)).primitive(TextStr(s));
+            let mut empty = Chunk::new();
+            empty.indirect(Ref::new(1)).primitive(TextStr(""));
+            c.as_bytes().len() - empty.as_bytes().len() + 2
+        };
+        for s in [
+            String::new(),
+            "x".repeat(100),
+            ")".repeat(100),
+            format!("{}é", "x".repeat(100)),
+            "\n\n".repeat(50),
+            "😀".repeat(100),
+        ] {
+            let n = written(&s);
+            assert!(n <= written_text_len(&s), "{s}: {n}");
+            // Close, apart from the room for encryption.
+            assert!(written_text_len(&s) <= 2 * n + 66, "{s}: {n}");
+        }
+    }
 
     #[test]
     fn plain_text_is_written_as_text_str_writes_it() {
