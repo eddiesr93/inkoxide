@@ -216,7 +216,7 @@ fn font_of(span: &SvgSpan, fonts: &FontSet<'_>) -> Option<FontKey> {
     } else {
         FontStyle::Normal
     };
-    fonts.select(&families, span.weight, style).map(|m| m.key)
+    fonts.select(&families, span.weight, style)
 }
 
 fn valid_size(size: f32) -> bool {
