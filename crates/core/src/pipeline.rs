@@ -17,11 +17,12 @@ use crate::paint::{
 };
 use crate::pdf::Profile;
 use crate::schema::{
-    Display, Document, Node, NodeKind, PageFilter, PagePattern, PageSpec, Position,
+    Decoration, DecorationStyle, Display, Document, Node, NodeKind, PageFilter, PagePattern,
+    PageSpec, Position, TextRun,
 };
 use crate::text::{
     color_glyph_transparency, ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache,
-    TextPainter,
+    TextPainter, WAVES_PER_GLYPH,
 };
 use crate::{InkoxideError, ValidationError};
 
@@ -51,6 +52,9 @@ const BOX_BYTES: u64 = 768;
 const LINE_SHAPE_BYTES: u64 = 64;
 /// Estimated output of the scripts of a field format, in bytes.
 const SCRIPT_BYTES: u64 = 512;
+/// Estimated output, in bytes per page, of the `wavy` decoration under a
+/// glyph: at most [`WAVES_PER_GLYPH`] half waves, a curve each.
+const WAVE_BYTES: u64 = WAVES_PER_GLYPH as u64 * 48;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -593,8 +597,8 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
             if let Some(most) = n.pages.as_deref().and_then(most_pages) {
                 pages = pages.min(most);
             }
-            if n.link.is_some() {
-                size += LINK_BYTES;
+            if let Some(target) = &n.link {
+                size += LINK_BYTES + crate::pdf::written_uri_len(target) as u64;
             }
             if n.background_image.is_some() {
                 size += BOX_BYTES;
@@ -602,22 +606,48 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
             match &n.kind {
                 NodeKind::Text { runs } => {
                     let mut bytes: u64 = 0;
+                    let mut wavy = false;
+                    // A link per piece of a run on a line, at most: one per
+                    // segment, plus one per line where a segment wraps or a
+                    // hyphen or an ellipsis shows.
+                    let mut pieces = None;
                     for r in runs {
                         if let Some(note) = &r.note {
                             size = size.saturating_add(note_bytes(note));
                         }
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
-                        let each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
+                        let mut each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
+                        if is_wavy(r) {
+                            wavy = true;
+                            each += WAVE_BYTES;
+                        }
                         size = size.saturating_add(chars * each);
                         bytes += chars;
+                        if let Some(target) = &r.link {
+                            let most = *pieces.get_or_insert_with(|| {
+                                text.paragraph(n, &tree.line_boxes(j))
+                                    .map_or(u64::MAX, |(l, p, _)| {
+                                        (p.segments.len() + 2 * l.lines.len()) as u64
+                                    })
+                            });
+                            let uri = crate::pdf::written_uri_len(target) as u64;
+                            size = size.saturating_add(chars.min(most).saturating_mul(uri));
+                        }
                     }
                     // Glyphs beyond one per byte: a font's layout tables
                     // can multiply them.
                     let glyphs = text.glyph_count(n).unwrap_or(0) as u64;
-                    size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
+                    let each = if wavy {
+                        ITEM_BYTES + WAVE_BYTES
+                    } else {
+                        ITEM_BYTES
+                    };
+                    size = size.saturating_add(glyphs.saturating_sub(bytes) * each);
+                    // Images in the text, each in a span with its text.
                     let colored = text.image_glyph_count(n) as u64;
                     size = size.saturating_add(colored * LINK_BYTES);
+                    size = size.saturating_add(text.image_text_len(n) as u64);
                     if debug {
                         // A box and a baseline per line, and a box per
                         // stretch of a run on a line: at most one per
@@ -647,6 +677,12 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
         stack.extend(tree.children(j).map(|c| (c, pages)));
     }
     total
+}
+
+/// Whether run `r` has a `wavy` decoration.
+fn is_wavy(r: &TextRun) -> bool {
+    r.decoration.is_some_and(|d| d != Decoration::None)
+        && r.decoration_style == Some(DecorationStyle::Wavy)
 }
 
 /// Estimated output of a note, in bytes: its icon, and its text as the
@@ -891,6 +927,7 @@ fn paint_page(
             colors,
             unicode: text.unicode(),
             numbers,
+            page_box: Rect::new(0.0, 0.0, pw, ph),
         },
         images,
         fonts,

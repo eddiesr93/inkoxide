@@ -9,7 +9,7 @@ pub(crate) mod debug;
 mod shapes;
 
 pub(crate) use boxes::{
-    apply, content_radii, mul, paint_flow, ContentCtx, ContentPainter, FlowPart,
+    apply, content_radii, invert, mul, paint_flow, ContentCtx, ContentPainter, FlowPart,
 };
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
 pub(crate) use debug::{DebugBoxes, DebugLine, Labels as DebugLabels};

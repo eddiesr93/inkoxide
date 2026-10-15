@@ -17,7 +17,7 @@ use ttf_parser::colr::{ClipBox, CompositeMode, GradientExtend, Paint, Painter};
 use ttf_parser::{GlyphId, RasterImageFormat, RgbaColor, Transform};
 
 use super::LoadedFont;
-use crate::paint::mul;
+use crate::paint::{invert, mul};
 
 /// Most painter calls (outlines, fills, clips, layers, transforms) for one
 /// colour glyph. Emoji take a few hundred.
@@ -88,24 +88,6 @@ fn colr_svg(face: &ttf_parser::Face<'_>, id: GlyphId) -> Option<ColorGlyph> {
 /// The 2×3 matrix of `t`, `[a b c d e f]`.
 fn matrix(t: Transform) -> [f32; 6] {
     [t.a, t.b, t.c, t.d, t.e, t.f]
-}
-
-fn invert(m: [f32; 6]) -> Option<[f32; 6]> {
-    let [a, b, c, d, e, f] = m;
-    let det = a * d - b * c;
-    if det == 0.0 || !det.is_finite() {
-        return None;
-    }
-    let inv = [d / det, -b / det, -c / det, a / det, 0.0, 0.0];
-    let r = [
-        inv[0],
-        inv[1],
-        inv[2],
-        inv[3],
-        -(inv[0] * e + inv[2] * f),
-        -(inv[1] * e + inv[3] * f),
-    ];
-    r.iter().all(|v| v.is_finite()).then_some(r)
 }
 
 fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
