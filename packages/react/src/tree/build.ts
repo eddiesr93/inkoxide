@@ -8,6 +8,7 @@ import type {
   Document,
   FieldFormat,
   FieldNode,
+  FontDecl,
   ImageNode,
   InlineImage,
   Meta,
@@ -25,7 +26,7 @@ import type {
 import { round, type FlatStyle, type Units } from '@inkoxide/style';
 import { createElement } from 'react';
 
-import { Painter } from '../canvas.ts';
+import { type DrawingFont, Painter } from '../canvas.ts';
 import {
   type AbsoluteLength,
   type BookmarkProp,
@@ -226,6 +227,13 @@ function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
 
 /** An emoji sequence (Unicode's RGI emoji); the `v` flag is built at run time for the ES2023 target. */
 const EMOJI = new RegExp('\\p{RGI_Emoji}', 'gv');
+
+/** The face a declared font is, as the text of a drawing names it. */
+const faceOf = (d: FontDecl): DrawingFont => ({
+  family: [d.family],
+  weight: d.weight ?? 400,
+  style: d.style ?? 'normal',
+});
 
 class Builder {
   readonly imageTable: ImageTable;
@@ -1320,8 +1328,7 @@ class Builder {
       size: ctx.fontSize,
       face: (font, inst) => {
         const own = { ...ctx, fontFamily: font.family, fontWeight: font.weight, fontStyle: font.style };
-        const decl = this.opts.fonts.decl(this.font({ ...own, fontId: undefined }, inst));
-        return { family: [decl.family], weight: decl.weight ?? 400, style: decl.style ?? 'normal' };
+        return faceOf(this.opts.fonts.decl(this.font({ ...own, fontId: undefined }, inst)));
       },
       fail: (inst, message) => this.fail(inst, message, { kind: 'props' }),
     };
@@ -1433,8 +1440,7 @@ class Builder {
         font: text.font,
         byId: (id) => {
           if (!this.opts.fonts.has(id)) return undefined;
-          const d = this.opts.fonts.decl(id);
-          return { family: [d.family], weight: d.weight ?? 400, style: d.style ?? 'normal' };
+          return faceOf(this.opts.fonts.decl(id));
         },
         face: (font) => text.face(font, inst),
       });

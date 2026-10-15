@@ -56,21 +56,24 @@ function gradientMarkup(g: CanvasGradient, id: string): string {
 
 type Paint = string | CanvasGradient;
 
-/** A font as the painter asks for it: a family stack, a weight and a style. */
-export interface PainterFont {
+/** A font as the text of a drawing (`<Svg>`, `<Canvas>`) asks for it: a family stack, a weight and a style. */
+export interface DrawingFont {
   family: readonly string[];
   weight: number;
   style: 'normal' | 'italic';
 }
 
+/** A family name for an SVG `font-family`, quoted. */
+export const quotedFamily = (family: string): string => `'${family.replace(/['\\]/g, (c) => `\\${c}`)}'`;
+
 /** What the painter's text needs from the tree builder. */
 export interface PainterFonts {
   /** The text style around the canvas: the font until `font()` sets one. */
-  font: PainterFont;
+  font: DrawingFont;
   /** The face of registered font id `id`, if it is one. */
-  byId(id: string): PainterFont | undefined;
+  byId(id: string): DrawingFont | undefined;
   /** The registered face a font resolves to, which the document then declares. */
-  face(font: PainterFont): PainterFont;
+  face(font: DrawingFont): DrawingFont;
 }
 
 /** Options of `painter.text`. */
@@ -130,7 +133,7 @@ interface State {
   miterLimit: number;
   dash: number[] | undefined;
   /** Set by `font()`; the canvas's text style until then. */
-  font: PainterFont | undefined;
+  font: DrawingFont | undefined;
   fontSize: number;
 }
 
@@ -153,7 +156,7 @@ const INITIAL: State = {
 
 export class Painter {
   /** @internal The tree builder makes the painter. */
-  constructor(private readonly fonts?: PainterFonts) {}
+  constructor(private readonly fonts: PainterFonts) {}
 
   private d = '';
   private state: State = { ...INITIAL };
@@ -364,8 +367,11 @@ export class Painter {
     );
   }
 
-  /** The value of a `fill` or `stroke` attribute, writing a gradient's element the first time. */
-  private paint(p: Paint): string {
+  /**
+   * Writes what paint `p` needs (a gradient's element, the first time) and returns the value of a
+   * `fill` or `stroke` attribute that refers to it.
+   */
+  private writePaint(p: Paint): string {
     if (typeof p === 'string') return escapeXml(p);
     const key = gradientMarkup(p, '');
     let id = this.gradients.get(key);
@@ -407,8 +413,8 @@ export class Painter {
   private paintAttrs(fill: boolean, stroke: boolean, rule: 'nonzero' | 'evenodd'): string {
     const s = this.state;
     // Gradients are written before the shape that uses them.
-    const fillPaint = fill ? this.paint(s.fill) : 'none';
-    const strokePaint = stroke ? this.paint(s.stroke) : '';
+    const fillPaint = fill ? this.writePaint(s.fill) : 'none';
+    const strokePaint = stroke ? this.writePaint(s.stroke) : '';
     let a = ` fill="${fillPaint}"`;
     if (fill && s.fillOpacity !== 1) a += ` fill-opacity="${fmt(s.fillOpacity)}"`;
     if (fill && rule === 'evenodd') a += ' fill-rule="evenodd"';
@@ -433,9 +439,9 @@ export class Painter {
    */
   font(name: string, size?: number): this {
     const standard = STANDARD_FONTS[name];
-    const around = this.fonts?.font.family ?? [];
+    const around = this.fonts.font.family;
     this.state.font =
-      this.fonts?.byId(name) ??
+      this.fonts.byId(name) ??
       (standard
         ? { family: [name.split('-')[0] ?? name, ...around], weight: standard[0], style: standard[1] }
         : { family: [name], weight: 400, style: 'normal' });
@@ -457,7 +463,6 @@ export class Painter {
     if (/[\r\n]/.test(text)) {
       throw new Error('painter.text draws one line; call it once per line.');
     }
-    if (!this.fonts) throw new Error('painter.text needs the fonts of a <Canvas>.');
     const s = this.state;
     const face = this.fonts.face(s.font ?? this.fonts.font);
     const width = opts.width ?? 0;
@@ -467,7 +472,7 @@ export class Painter {
         : opts.align === 'right'
           ? [x + width, 'end']
           : [x, 'start'];
-    const family = `'${(face.family[0] ?? '').replace(/['\\]/g, (c) => `\\${c}`)}'`;
+    const family = quotedFamily(face.family[0] ?? '');
     let a = `<text x="${fmt(at)}" y="${fmt(y)}" xml:space="preserve" font-family="${escapeXml(family)}"`;
     a += ` font-weight="${face.weight}"`;
     if (face.style === 'italic') a += ' font-style="italic"';

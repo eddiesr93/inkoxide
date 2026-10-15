@@ -1,6 +1,6 @@
 import { parseFontFamily } from '@inkoxide/style';
 
-import { escapeXml } from '../canvas.ts';
+import { type DrawingFont, escapeXml, quotedFamily } from '../canvas.ts';
 import { HOST, type SvgPresentation, type SvgProps } from '../components/index.ts';
 import type { Instance, Node } from '../reconciler/instance.ts';
 import { weightOf } from './style.ts';
@@ -81,26 +81,19 @@ const CHILD_SKIP = new Set(['children']);
 /** The font props of SVG text, which it writes as the face they resolve to. */
 const TEXT_SKIP = new Set(['children', 'fontFamily', 'fontWeight', 'fontStyle']);
 
-/** A font as SVG text inherits it. */
-export interface SvgFont {
-  family: readonly string[];
-  weight: number;
-  style: 'normal' | 'italic';
-}
-
 /** What the text of a drawing needs from the tree builder. */
 export interface SvgTextFonts {
   /** The text style around the drawing, which its text inherits. */
-  font: SvgFont;
+  font: DrawingFont;
   /** Its font size in points. */
   size: number;
   /** The registered face for `font` (marked as used): its family, weight and style. */
-  face(font: SvgFont, inst: Instance): SvgFont;
+  face(font: DrawingFont, inst: Instance): DrawingFont;
   fail(inst: Instance, message: string): never;
 }
 
 /** `font` with the font props `props` set. */
-function fontOf(font: SvgFont, props: Record<string, unknown>): SvgFont {
+function fontOf(font: DrawingFont, props: Record<string, unknown>): DrawingFont {
   const { fontFamily, fontWeight, fontStyle } = props;
   return {
     family: typeof fontFamily === 'string' ? parseFontFamily(fontFamily) : font.family,
@@ -109,10 +102,7 @@ function fontOf(font: SvgFont, props: Record<string, unknown>): SvgFont {
   };
 }
 
-/** A family name for `font-family`, quoted. */
-const familyName = (family: string): string => `'${family.replace(/['\\]/g, (c) => `\\${c}`)}'`;
-
-function element(n: Node, font: SvgFont, text: SvgTextFonts | undefined, inText: boolean): string {
+function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean): string {
   if (n.kind === 'text') {
     if (!inText) throw new Error('Internal error: the reconciler let text into an <Svg>.');
     return escapeXml(n.text);
@@ -120,15 +110,14 @@ function element(n: Node, font: SvgFont, text: SvgTextFonts | undefined, inText:
   const isText = n.type === HOST.Text || n.type === HOST.Tspan;
   const tag = n.type === HOST.Text ? 'text' : SVG_TAGS[n.type];
   if (tag === undefined) throw new Error(`Internal error: the reconciler let <${n.type}> into an <Svg>.`);
-  let inner: SvgFont;
+  let inner: DrawingFont;
   try {
     inner = fontOf(font, n.props);
   } catch (e) {
-    if (!text) throw e;
     return text.fail(n, (e as Error).message);
   }
   let a: string;
-  if (isText && text) {
+  if (isText) {
     for (const key of ['style', 'className'] as const) {
       if (n.props[key] !== undefined) {
         text.fail(
@@ -139,7 +128,7 @@ function element(n: Node, font: SvgFont, text: SvgTextFonts | undefined, inText:
     }
     const face = text.face(inner, n);
     a = attrs(n.props, TEXT_SKIP);
-    a += ` font-family="${escapeXml(familyName(face.family[0] ?? ''))}" font-weight="${face.weight}"`;
+    a += ` font-family="${escapeXml(quotedFamily(face.family[0] ?? ''))}" font-weight="${face.weight}"`;
     if (face.style === 'italic') a += ' font-style="italic"';
   } else {
     a = attrs(n.props, CHILD_SKIP);
@@ -156,11 +145,11 @@ const hasText = (n: Node): boolean =>
  * The SVG document of an `<Svg>` element, sized `width` × `height` points. Its text is written
  * with the faces `text` resolves, at the size around it unless it sets one.
  */
-export function svgMarkup(inst: Instance, width: number, height: number, text?: SvgTextFonts): string {
-  const font = text ? fontOf(text.font, inst.props) : { family: [], weight: 400, style: 'normal' as const };
+export function svgMarkup(inst: Instance, width: number, height: number, text: SvgTextFonts): string {
+  const font = fontOf(text.font, inst.props);
   const body = inst.children.map((c) => element(c, font, text, false)).join('');
   let a = attrs(inst.props, BOX_PROPS);
-  if (text && inst.children.some(hasText) && inst.props.fontSize === undefined) {
+  if (inst.children.some(hasText) && inst.props.fontSize === undefined) {
     a += ` font-size="${text.size}"`;
   }
   return svgDocument(width, height, body, inst.props.viewBox !== undefined, a);
