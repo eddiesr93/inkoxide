@@ -19,30 +19,32 @@ const MAX_VALUE = 65_535;
 
 const TAG = /^[\x20-\x7e]{4}$/;
 
-function checked(prop: string, shown: string, features: Record<string, number>): FontFeatures {
-  if (Object.keys(features).length > MAX_FEATURES) {
-    throw new UnsupportedValueError(prop, `${prop}: ${shown} (at most ${MAX_FEATURES} features)`);
-  }
+/** Throws that a setting is unsupported, saying why. */
+type Fail = (why: string) => never;
+
+/** The {@link Fail} of the setting `shown` of style property `prop`. */
+function failing(prop: string, shown: string): Fail {
+  return (why) => {
+    throw new UnsupportedValueError(prop, `${prop}: ${shown} (${why})`);
+  };
+}
+
+function checked(fail: Fail, features: Record<string, number>): FontFeatures {
+  if (Object.keys(features).length > MAX_FEATURES) fail(`at most ${MAX_FEATURES} features`);
   return features;
 }
 
-function tagOf(prop: string, shown: string, tag: string): string {
+function tagOf(fail: Fail, tag: string): string {
   if (!TAG.test(tag)) {
-    throw new UnsupportedValueError(
-      prop,
-      `${prop}: ${shown} (${JSON.stringify(tag)} is not a feature tag: four ASCII characters, such as "tnum")`,
-    );
+    fail(`${JSON.stringify(tag)} is not a feature tag: four ASCII characters, such as "tnum"`);
   }
   return tag;
 }
 
-function valueOf(prop: string, shown: string, tag: string, v: number | boolean): number {
+function valueOf(fail: Fail, tag: string, v: number | boolean): number {
   const n = typeof v === 'boolean' ? Number(v) : v;
   if (!Number.isInteger(n) || n < 0 || n > MAX_VALUE) {
-    throw new UnsupportedValueError(
-      prop,
-      `${prop}: ${shown} (the value of "${tag}" is a whole number from 0 to ${MAX_VALUE}, or on or off)`,
-    );
+    fail(`the value of "${tag}" is a whole number from 0 to ${MAX_VALUE}, or on or off`);
   }
   return n;
 }
@@ -52,44 +54,36 @@ function valueOf(prop: string, shown: string, tag: string, v: number | boolean):
  * later setting of a tag wins; `'normal'` (or nothing) sets none.
  */
 export function parseFontFeatureSettings(prop: string, value: FontFeatureSettings): FontFeatures {
-  const shown = typeof value === 'string' ? value : JSON.stringify(value);
+  const fail: Fail = failing(prop, typeof value === 'string' ? value : JSON.stringify(value));
   const out: Record<string, number> = {};
   if (Array.isArray(value)) {
     for (const tag of value as readonly unknown[]) {
-      if (typeof tag !== 'string')
-        throw new UnsupportedValueError(prop, `${prop}: ${shown} (a list of tags)`);
-      out[tagOf(prop, shown, tag)] = 1;
+      if (typeof tag !== 'string') fail('a list of tags');
+      out[tagOf(fail, tag)] = 1;
     }
-    return checked(prop, shown, out);
+    return checked(fail, out);
   }
   if (typeof value === 'object' && value !== null) {
     for (const [tag, v] of Object.entries(value as Record<string, unknown>)) {
       if (typeof v !== 'number' && typeof v !== 'boolean') {
-        throw new UnsupportedValueError(
-          prop,
-          `${prop}: ${shown} (the value of "${tag}" is a number or a boolean)`,
-        );
+        fail(`the value of "${tag}" is a number or a boolean`);
       }
-      out[tagOf(prop, shown, tag)] = valueOf(prop, shown, tag, v);
+      out[tagOf(fail, tag)] = valueOf(fail, tag, v);
     }
-    return checked(prop, shown, out);
+    return checked(fail, out);
   }
-  if (typeof value !== 'string') {
-    throw new UnsupportedValueError(prop, `${prop}: ${shown} (a CSS string, a list of tags or an object)`);
-  }
+  if (typeof value !== 'string') fail('a CSS string, a list of tags or an object');
   if (value.trim() === 'normal') return {};
   for (const item of splitFeatures(value)) {
     // `"tnum"`, `'tnum' 1`, `"smcp" on`.
     const m = /^(["'])(.*)\1(?:\s+(\S+))?$/s.exec(item);
-    if (!m) {
-      throw new UnsupportedValueError(prop, `${prop}: ${value} (expected a quoted tag such as "'tnum' 1")`);
-    }
-    const tag = tagOf(prop, value, m[2] ?? '');
+    if (!m) fail(`expected a quoted tag such as "'tnum' 1"`);
+    const tag = tagOf(fail, m[2] ?? '');
     const v = m[3];
     const n = v === undefined || v === 'on' ? 1 : v === 'off' ? 0 : /^\d+$/.test(v) ? Number(v) : Number.NaN;
-    out[tag] = valueOf(prop, value, tag, n);
+    out[tag] = valueOf(fail, tag, n);
   }
-  return checked(prop, value, out);
+  return checked(fail, out);
 }
 
 /** Splits a feature list at the commas outside quotes; an empty item between commas stays, to fail. */
@@ -129,28 +123,17 @@ const NUMERIC: Readonly<Record<string, readonly [tag: string, group: string]>> =
  * it turns on.
  */
 export function parseFontVariantNumeric(prop: string, value: string): FontFeatures {
-  if (typeof value !== 'string') {
-    throw new UnsupportedValueError(
-      prop,
-      `${prop}: ${JSON.stringify(value)} (a CSS string such as 'tabular-nums')`,
-    );
-  }
+  if (typeof value !== 'string') failing(prop, JSON.stringify(value))("a CSS string such as 'tabular-nums'");
+  const fail: Fail = failing(prop, value);
   const words = splitTopLevel(value, ' ');
   if (words.length === 1 && words[0] === 'normal') return {};
   const out: Record<string, number> = {};
   const groups = new Set<string>();
   for (const w of words) {
     const known = Object.hasOwn(NUMERIC, w) ? NUMERIC[w] : undefined;
-    if (!known) {
-      throw new UnsupportedValueError(
-        prop,
-        `${prop}: ${value} (supported: normal, ${Object.keys(NUMERIC).join(', ')})`,
-      );
-    }
+    if (!known) fail(`supported: normal, ${Object.keys(NUMERIC).join(', ')}`);
     const [tag, group] = known;
-    if (groups.has(group)) {
-      throw new UnsupportedValueError(prop, `${prop}: ${value} (two values of one kind)`);
-    }
+    if (groups.has(group)) fail('two values of one kind');
     groups.add(group);
     out[tag] = 1;
   }
