@@ -362,9 +362,9 @@ fn named_bounds_match_schema() {
     use crate::forms::format::{MAX_CURRENCY, MAX_DECIMALS, MAX_PATTERN};
     use crate::validate::rules::{
         MAX_ALT, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS,
-        MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTION, MAX_FIELD_OPTIONS, MAX_FIELD_VALUE,
-        MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_NOTE,
-        MAX_NOTE_AUTHOR, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
+        MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTIONS, MAX_FIELD_OPTION_LEN,
+        MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT,
+        MAX_NOTE, MAX_NOTE_AUTHOR, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -450,9 +450,9 @@ fn named_bounds_match_schema() {
         ),
         (
             "/$defs/Field/properties/options/items/maxLength",
-            MAX_FIELD_OPTION as f64,
+            MAX_FIELD_OPTION_LEN as f64,
             Box::new(|n| select(&[chars(n)])),
-            MAX_FIELD_OPTION as f64 + 1.0,
+            MAX_FIELD_OPTION_LEN as f64 + 1.0,
             "INVALID_VALUE",
             "pages[0].children[0].field.options[0]".into(),
         ),
@@ -717,7 +717,7 @@ fn named_bounds_match_schema() {
 /// their parts, and the engine enforces them.
 #[test]
 fn field_name_parts_match_schema() {
-    use crate::validate::rules::{MAX_FIELD_PART, MAX_FIELD_PARTS};
+    use crate::validate::rules::{MAX_FIELD_PARTS, MAX_FIELD_PART_LEN};
     let s = schema();
     let pattern = s
         .pointer("/$defs/Field/properties/name/pattern")
@@ -726,7 +726,7 @@ fn field_name_parts_match_schema() {
     assert_eq!(
         pattern,
         format!(
-            r"^[^.]{{1,{MAX_FIELD_PART}}}(\.[^.]{{1,{MAX_FIELD_PART}}}){{0,{}}}$",
+            r"^[^.]{{1,{MAX_FIELD_PART_LEN}}}(\.[^.]{{1,{MAX_FIELD_PART_LEN}}}){{0,{}}}$",
             MAX_FIELD_PARTS - 1
         )
     );
@@ -736,7 +736,7 @@ fn field_name_parts_match_schema() {
         )
     };
     let path = "pages[0].children[0].field.name";
-    let part = "p".repeat(MAX_FIELD_PART);
+    let part = "p".repeat(MAX_FIELD_PART_LEN);
     let parts = |n: usize| vec!["p"; n].join(".");
     for ok in [part.clone(), format!("a.{part}"), parts(MAX_FIELD_PARTS)] {
         assert_eq!(errors(&doc(&ok), &[]), [], "{ok}");

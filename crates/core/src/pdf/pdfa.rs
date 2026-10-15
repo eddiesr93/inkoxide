@@ -62,7 +62,9 @@ impl Profile {
     }
 
     /// Whether the file may carry scripts (form field actions): not under
-    /// PDF/A, at any level.
+    /// PDF/A, at any level, which forbids JavaScript actions and `/AA`
+    /// (ISO 19005-1, 6.6.1; 19005-2, 6.6.1). A format keeps its formatted
+    /// text and value there.
     pub fn scripts(self) -> bool {
         self.level.is_none()
     }
