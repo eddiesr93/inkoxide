@@ -88,9 +88,6 @@ importers:
       '@inkoxide/style':
         specifier: workspace:*
         version: link:../style
-      ajv:
-        specifier: 8.20.0
-        version: 8.20.0
       ajv-formats:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
@@ -110,6 +107,9 @@ importers:
       '@types/react-reconciler':
         specifier: 0.33.1
         version: 0.33.1(@types/react@19.3.0)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
 
   packages/render:
     dependencies:

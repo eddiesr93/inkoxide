@@ -4,8 +4,6 @@
  * to the engine before the next render, so `register` stays synchronous.
  * `Font.registerHyphenationCallback`: the word breaking used by every render.
  */
-import { readFile } from 'node:fs/promises';
-
 import {
   type EmojiSource,
   familyKey,
@@ -15,8 +13,10 @@ import {
   type HyphenationCallback,
 } from '@inkoxide/react';
 
+import { sameBytes } from './bytes.ts';
 import { registerEngineFont } from './engine.ts';
 import { DEFAULT_FACES } from './fonts.ts';
+import { engineHost, NO_FILES } from './host.ts';
 import { FONT_TIMEOUT_MS, MAX_FONT_BYTES } from './policy.ts';
 import { fetchBytes } from './remote.ts';
 import { RenderError } from './types.ts';
@@ -87,19 +87,15 @@ const describe = (src: FontSrc): string =>
 const isFontSrc = (src: unknown): src is FontSrc =>
   typeof src === 'string' || src instanceof URL || src instanceof Uint8Array || src instanceof ArrayBuffer;
 
-const bytesView = (src: FontSrc): Buffer | undefined =>
-  src instanceof Uint8Array
-    ? Buffer.from(src.buffer, src.byteOffset, src.byteLength)
-    : src instanceof ArrayBuffer
-      ? Buffer.from(src)
-      : undefined;
+const bytesView = (src: FontSrc): Uint8Array | undefined =>
+  src instanceof Uint8Array ? src : src instanceof ArrayBuffer ? new Uint8Array(src) : undefined;
 
 /** Whether two sources are the same font: the same bytes, or the same path or URL. */
 function sameSource(a: FontSrc, b: FontSrc): boolean {
   if (a === b) return true;
   const x = bytesView(a);
   const y = bytesView(b);
-  if (x || y) return x !== undefined && y !== undefined && x.equals(y);
+  if (x || y) return x !== undefined && y !== undefined && sameBytes(x, y);
   return describe(a) === describe(b);
 }
 
@@ -114,7 +110,9 @@ async function bytesOf(src: FontSrc): Promise<Uint8Array> {
       throw new Error(why, { cause });
     });
   }
-  return readFile(url ?? src);
+  const files = engineHost().files;
+  if (!files) throw new Error(NO_FILES);
+  return files.readFile(url ?? src);
 }
 
 export const Font = {

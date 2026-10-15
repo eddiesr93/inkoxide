@@ -83,7 +83,9 @@ export interface TailwindOptions {
 let compiler: Compiler | undefined;
 /** The theme load asked for last, until it settles: a later theme replaces an earlier one. */
 let loading: Promise<Compiler> | undefined;
-let strict = process.env.NODE_ENV !== 'production';
+let strict =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NODE_ENV !==
+  'production';
 let cache = new Lru<FlatStyle>(5000);
 const warned = new Set<string>();
 const EMPTY: FlatStyle = Object.freeze({}) as FlatStyle;

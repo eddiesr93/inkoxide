@@ -1,11 +1,10 @@
-import { createRequire } from 'node:module';
-
 import { createContext } from 'react';
 import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants.js';
 
 import { HOST, type HostType } from '../components/index.ts';
 import { TemplateError } from '../errors.ts';
 import { SVG_TAGS } from '../tree/svg.ts';
+import { VERSION } from '../version.ts';
 import {
   type Container,
   hostName,
@@ -23,9 +22,6 @@ interface HostContext {
    */
   parent: HostType | 'root' | (string & {});
 }
-
-/** This package's version: its package.json is two levels up from `src/reconciler` and `dist/reconciler`. */
-const { version } = createRequire(import.meta.url)('../../package.json') as { version: string };
 
 const ROOT_CONTEXT: HostContext = { parent: 'root' };
 const contexts = new Map<string, HostContext>();
@@ -221,7 +217,7 @@ const remove = (parent: Instance | Container, child: Node): void => {
  */
 export const hostConfig = {
   rendererPackageName: '@inkoxide/react',
-  rendererVersion: version,
+  rendererVersion: VERSION,
   extraDevToolsConfig: null,
   isPrimaryRenderer: false,
   supportsMutation: true,

@@ -1,6 +1,6 @@
 import { enginePath, schema } from '@inkoxide/schema';
-import addFormatsModule from 'ajv-formats';
-import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
+
+import { validate } from './schema-validator.ts';
 
 export interface SchemaProblem {
   path: string;
@@ -8,18 +8,20 @@ export interface SchemaProblem {
   keyword: string;
 }
 
-let validator: ValidateFunction | undefined;
-
-// ajv-formats is CommonJS with a default export; normalise the interop shape.
-const addFormats = ((addFormatsModule as unknown as { default?: unknown }).default ?? addFormatsModule) as (
-  ajv: Ajv2020,
-) => Ajv2020;
-
-function compile(): ValidateFunction {
-  const ajv = new Ajv2020({ discriminator: true, strict: false, allErrors: false });
-  addFormats(ajv);
-  return ajv.compile(schema);
+/** A problem as ajv reports it. */
+interface ErrorObject {
+  instancePath: string;
+  schemaPath: string;
+  keyword: string;
+  params: Record<string, unknown>;
+  message?: string;
 }
+
+/**
+ * The document schema's validator, compiled when the package is built
+ * (scripts/gen-schema-validator.mjs): nothing is compiled at run time.
+ */
+const validator = validate as ((data: unknown) => boolean) & { errors?: ErrorObject[] | null };
 
 /** Keywords that only say a `oneOf` branch did not apply: the least telling errors. */
 const BRANCH_KEYWORDS: Readonly<Record<string, number>> = { type: 1, const: 1, enum: 1, oneOf: 2 };
@@ -77,7 +79,6 @@ function suffixRank(e: ErrorObject, doc: unknown): number {
  * the value's suffix (`fr` or `%`).
  */
 export function validateTree(doc: unknown): SchemaProblem[] {
-  validator ??= compile();
   if (validator(doc)) return [];
   const errors = [...(validator.errors ?? [])].sort(
     (a, b) =>

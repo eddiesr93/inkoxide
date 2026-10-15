@@ -12,7 +12,8 @@ import {
   type TreeResult,
 } from '@inkoxide/react';
 
-import { readLocalImage } from './local.ts';
+import { base64Bytes } from './bytes.ts';
+import { engineHost, NO_FILES } from './host.ts';
 import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, timerMs } from './policy.ts';
 import { fetchImage, REMOTE_IMAGES_VARIABLE } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
@@ -286,7 +287,7 @@ function dataUrlBytes(url: string): Uint8Array | undefined {
   if (at < 0) return undefined;
   const body = url.slice(at + ';base64,'.length).replace(/[ \t\n\f\r]/g, '');
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body) || body.replace(/=+$/, '').length % 4 === 1) return undefined;
-  return Buffer.from(body, 'base64');
+  return base64Bytes(body);
 }
 
 /** Reads an image file, when the render allows local images. */
@@ -297,5 +298,7 @@ async function readFile(path: string, policy: LocalImageOptions | undefined): Pr
       `<Image src="${path}">: image files are off. Allow their folder with the render option localImages.root (or the INKOXIDE_LOCAL_IMAGES variable), or pass the bytes.`,
     );
   }
-  return readLocalImage(path, policy);
+  const files = engineHost().files;
+  if (!files) throw new RenderError('TEMPLATE_ERROR', `<Image src="${path}">: ${NO_FILES}`);
+  return files.readLocalImage(path, policy);
 }

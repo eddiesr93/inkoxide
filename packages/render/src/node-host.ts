@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import * as ink from 'inkoxide';
 
 import { type EngineHost, setEngineHost } from './host.ts';
+import { localPolicy, readLocalImage } from './local.ts';
 
 /**
  * Where the bundled fonts and hyphenation patterns are read from: `INKOXIDE_ASSETS_DIR` when set,
@@ -35,6 +36,7 @@ export const nodeHost: EngineHost = {
     }
   },
   assetLocation: (path) => join(assetsDir(), path),
+  files: { localPolicy, readLocalImage, readFile: (path) => readFile(path) },
 };
 
 setEngineHost(nodeHost);

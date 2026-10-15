@@ -7,6 +7,7 @@ import type { Document } from '@inkoxide/schema';
 import { SCHEMA_VERSION } from '@inkoxide/schema';
 import type { RenderOptions } from 'inkoxide';
 
+import { latin1 } from './bytes.ts';
 import { DEFAULT_FACES } from './fonts.ts';
 import { engineHost, type EngineVersion } from './host.ts';
 import { HYPHENATION_FILES } from './hyphenation.ts';
@@ -211,7 +212,7 @@ export async function renderPdf(
  * streams, so the dictionary is plain text.
  */
 export function countPages(pdf: Uint8Array): number {
-  const s = Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength).toString('latin1');
+  const s = latin1(pdf);
   const at = s.search(/\/Type\s*\/Pages\b/);
   if (at < 0) return 0;
   const open = s.lastIndexOf('<<', at);

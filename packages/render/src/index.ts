@@ -114,13 +114,8 @@ export {
 } from '@inkoxide/react';
 export { countPages, type EngineStatus, type EngineVersion, engineStatus, version } from './engine.ts';
 export { Font, type FontRegistration, type FontSource, type FontSrc, type FontWeight } from './font.ts';
-export {
-  init,
-  type RenderToBufferOptions,
-  renderToBuffer,
-  renderToFile,
-  renderToStream,
-} from './pipeline.ts';
+export { renderToFile, renderToStream } from './node.ts';
+export { init, type RenderToBufferOptions, renderToBuffer } from './pipeline.ts';
 export {
   type DataIssue,
   type LocalImageOptions,

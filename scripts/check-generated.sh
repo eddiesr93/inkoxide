@@ -37,9 +37,11 @@ generated=(
 
 if [[ $python_only == 0 ]]; then
   node scripts/gen-schema-types.mjs >/dev/null
+  node scripts/gen-schema-validator.mjs
   pnpm exec tsx scripts/gen-tailwind-docs.ts >/dev/null
   generated+=(
     packages/schema/index.d.ts
+    packages/react/src/tree/schema-validator.ts
     docs/TAILWIND_SUPPORT.md
   )
 fi

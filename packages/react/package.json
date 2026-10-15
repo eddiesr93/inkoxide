@@ -10,7 +10,6 @@
   "dependencies": {
     "@inkoxide/schema": "workspace:*",
     "@inkoxide/style": "workspace:*",
-    "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "react": "19.3.0",
     "react-reconciler": "0.34.0"
@@ -18,7 +17,8 @@
   "devDependencies": {
     "@inkoxide/tailwind": "workspace:*",
     "@types/react": "19.3.0",
-    "@types/react-reconciler": "0.33.1"
+    "@types/react-reconciler": "0.33.1",
+    "ajv": "8.20.0"
   },
   "peerDependencies": {
     "@inkoxide/tailwind": "workspace:*"

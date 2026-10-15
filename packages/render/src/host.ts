@@ -6,6 +6,8 @@
  */
 import type { RenderOptions } from 'inkoxide';
 
+import type { LocalImageOptions } from './types.ts';
+
 export interface EngineVersion {
   engine: string;
   schema: number;
@@ -35,7 +37,22 @@ export interface EngineHost {
   readAsset(path: string): Promise<Uint8Array | undefined>;
   /** Where a bundled asset is read from, for messages. */
   assetLocation(path: string): string;
+  /** Files, where there is a file system: undefined in a browser. */
+  files?: FileAccess;
 }
+
+/** Files: image files (`localImages`) and fonts registered from a path. */
+export interface FileAccess {
+  /** The local image policy of the options, else of the environment. */
+  localPolicy(opts: LocalImageOptions | undefined): LocalImageOptions | undefined;
+  /** An image file inside the policy's folders (`local.ts`). */
+  readLocalImage(src: string, opts: LocalImageOptions): Promise<Uint8Array>;
+  /** A file by path or `file:` URL. */
+  readFile(path: string | URL): Promise<Uint8Array>;
+}
+
+/** Why a file cannot be read where there is no file system. */
+export const NO_FILES = 'files cannot be read here (no file system): pass the bytes or a URL.';
 
 let host: EngineHost | undefined;
 

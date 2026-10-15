@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import type { FontDecl } from '@inkoxide/schema';
 
 import type { HyphenationCallback, ImageSrcValue } from '../components/index.ts';
@@ -78,17 +75,23 @@ export class FontRegistry {
 
   /**
    * Registers every face whose `file` is in `dir`, skipping ids already registered, and returns
-   * the ids it registered (`loaded`) and the ids whose file it could not read (`missing`).
+   * the ids it registered (`loaded`) and the ids whose file it could not read (`missing`). Node
+   * only.
    * @deprecated Read the files and pass their bytes to `register`.
    */
   loadDirectory(dir: string, faces: readonly FontFace[]): { loaded: string[]; missing: string[] } {
+    // Not imported, so that the package loads where there is no `node:fs`.
+    const process = (globalThis as { process?: { getBuiltinModule?(id: string): unknown } }).process;
+    const fs = process?.getBuiltinModule?.('node:fs') as typeof import('node:fs') | undefined;
+    const path = process?.getBuiltinModule?.('node:path') as typeof import('node:path') | undefined;
+    if (!fs || !path) throw new Error('fonts.loadDirectory reads files, which only Node can do here.');
     const loaded: string[] = [];
     const missing: string[] = [];
     for (const face of faces) {
       if (!face.file || this.byId.has(face.id)) continue;
       let bytes: Uint8Array;
       try {
-        bytes = readFileSync(join(dir, face.file));
+        bytes = fs.readFileSync(path.join(dir, face.file));
       } catch {
         missing.push(face.id);
         continue;
