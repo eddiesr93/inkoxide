@@ -22,7 +22,8 @@ versions; removing or renaming any of them is a major version.
 | Validate without the images | `validate_without_images(doc, format, &fonts) -> Vec<ValidationError>` | `validate(doc, format?)`, with no `images` |
 | Render | `render(doc, format, &options, &fonts, &images) -> Result<Vec<u8>, InkoxideError>` | `render(doc, options?): Promise<Uint8Array>` (libuv pool) |
 | Render, blocking | (same `render`) | `renderSync(doc, options?): Uint8Array` |
-| Input format | `InputFormat::Json` (default), `InputFormat::MessagePack` | `options.format` / `format`: `'json'` (default) or `'msgpack'` |
+| Input format | `InputFormat::Json` (default), `InputFormat::MessagePack` (cargo feature `msgpack`, on by default; without it, `PARSE_ERROR`) | `options.format` / `format`: `'json'` (default) or `'msgpack'` |
+| Empty the caches renders share (decoded images, font subsets, SVG with its text) | `clear_caches()` | (not available) |
 | Version | `ENGINE_VERSION`, `SCHEMA_VERSION` | `version(): { engine, schema, gitSha }` |
 | Error | `InkoxideError` (`.code()`), `ValidationError { code, path, message }` | `InkoxideError extends Error { code, path, message }` |
 

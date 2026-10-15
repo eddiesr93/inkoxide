@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::InkoxideError;
+use crate::{InkoxideError, ValidationCode, ValidationError};
 
 /// Upper bound on a requested pool size (stated in the `RenderOptions::threads`
 /// docs, docs/API.md and the Node binding, which rejects larger values).
@@ -19,6 +19,14 @@ static POOLS: Mutex<Option<HashMap<usize, Arc<ThreadPool>>>> = Mutex::new(None);
 
 pub(crate) fn get(threads: usize) -> Result<Arc<ThreadPool>, InkoxideError> {
     let n = threads.clamp(1, MAX_THREADS);
+    // No threads to start: a pool would fail to build.
+    if cfg!(target_family = "wasm") && n > 1 {
+        return Err(InkoxideError::Validation(ValidationError {
+            code: ValidationCode::InvalidValue,
+            path: "options.threads".into(),
+            message: format!("{threads} threads: this build renders on one thread"),
+        }));
+    }
     let mut pools = POOLS
         .lock()
         .map_err(|_| InkoxideError::Internal("thread pool registry poisoned".into()))?;

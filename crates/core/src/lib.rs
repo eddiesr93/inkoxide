@@ -278,6 +278,15 @@ fn validate_with(
     }
 }
 
+/// Empties the process-wide caches renders share: decoded images, font
+/// subsets, and SVG converted with its text. Later renders fill them
+/// again, with the same output. In WebAssembly the memory goes back to the
+/// instance for reuse, not to the host.
+pub fn clear_caches() {
+    images::clear_caches();
+    pdf::clear_subsets();
+}
+
 /// Validates and renders a document to PDF bytes. Never renders a partial
 /// document: any validation problem is returned as an error.
 ///

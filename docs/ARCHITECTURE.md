@@ -75,6 +75,7 @@ pub fn validate(doc: &[u8], format: InputFormat, fonts: &FontStore, images: &Ima
 pub fn validate_without_images(doc: &[u8], format: InputFormat, fonts: &FontStore) -> Vec<ValidationError>;
 pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &FontStore, images: &ImageStore)
     -> Result<Vec<u8>, InkoxideError>;
+pub fn clear_caches();
 ```
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,

@@ -1,10 +1,16 @@
 //! A small size-bounded LRU map for the process-wide caches (decoded
 //! images, font subsets). Entries are few (tens to hundreds), so eviction
 //! scans for the oldest instead of keeping an ordered list.
+//!
+//! WebAssembly memory grows but never shrinks, so there the process-wide
+//! caches keep a quarter of their budgets.
 
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Mutex;
+
+/// What a [`SharedLru`]'s budget is divided by.
+const BUDGET_DIVISOR: usize = if cfg!(target_family = "wasm") { 4 } else { 1 };
 
 pub(crate) struct Lru<K, V> {
     entries: HashMap<K, Slot<V>>,
@@ -81,9 +87,9 @@ impl<K: Eq + Hash + Clone, V: Clone> Lru<K, V> {
     }
 }
 
-/// An [`Lru`] for a `static`: created on first use, behind a lock. A
-/// poisoned lock (a panic while it was held) leaves the cache out: lookups
-/// miss and inserts are dropped.
+/// An [`Lru`] for a `static`: created on first use, behind a lock, with
+/// its budget divided by [`BUDGET_DIVISOR`]. A poisoned lock (a panic while
+/// it was held) leaves the cache out: lookups miss and inserts are dropped.
 pub(crate) struct SharedLru<K, V> {
     budget: usize,
     lru: Mutex<Option<Lru<K, V>>>,
@@ -92,8 +98,15 @@ pub(crate) struct SharedLru<K, V> {
 impl<K: Eq + Hash + Clone, V: Clone> SharedLru<K, V> {
     pub const fn new(budget: usize) -> Self {
         Self {
-            budget,
+            budget: budget / BUDGET_DIVISOR,
             lru: Mutex::new(None),
+        }
+    }
+
+    /// Drops every entry, and the map that held them.
+    pub fn clear(&self) {
+        if let Ok(mut guard) = self.lru.lock() {
+            *guard = None;
         }
     }
 
@@ -142,5 +155,16 @@ mod tests {
         // First value wins.
         lru.insert(1, 'z', 1);
         assert_eq!(lru.get(&1), Some('a'));
+    }
+
+    #[test]
+    fn shared_caches_clear() {
+        let lru = super::SharedLru::new(100);
+        lru.insert(1, 'a', 20);
+        assert!(lru.contains(&1));
+        lru.clear();
+        assert!(!lru.contains(&1));
+        lru.insert(1, 'b', 20);
+        assert_eq!(lru.get(&1), Some('b'));
     }
 }
