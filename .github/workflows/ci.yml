@@ -1,5 +1,5 @@
-# Checks every pull request and every push to main. scripts/ci.sh runs the same checks, and the
-# slower ones (visual regression, cargo-deny, fuzzing), locally.
+# Checks every pull request and every push to main (cargo-deny runs in deny.yml). scripts/ci.sh
+# runs the same checks, and the slower ones (visual regression, fuzzing), locally.
 name: ci
 
 on:
@@ -88,9 +88,11 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install jsonschema
-        run: python -m pip install --quiet jsonschema
+        run: python -m pip install --quiet jsonschema==4.26.0
       - name: Fixtures and examples conform to the schema
         run: python scripts/check-schema.py
+      - name: Lockstep package versions
+        run: python scripts/check-versions.py
 
   node:
     name: Node packages

@@ -1,12 +1,14 @@
 # Testing
 
 Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
-clippy, the Rust tests, the schema checks, the Node binding tests and the
-TypeScript packages. The Rust tests check the PDFs with qpdf, poppler's
+clippy, the Rust tests, the schema checks, the lockstep versions of the
+packages released together (`scripts/check-versions.py`), the Node
+binding tests and the TypeScript packages; and `.github/workflows/deny.yml`:
+cargo-deny (`deny.toml`), which also runs every night for new advisories. The Rust tests check the PDFs with qpdf, poppler's
 `pdftotext` and veraPDF, which the workflow installs. Locally a test
 skips the checks of a tool that is not installed; with `CI` set, a
 missing tool fails it. `scripts/ci.sh` runs the same checks and more
-(visual regression, cargo-deny, a fuzz smoke) on your machine:
+(visual regression, a fuzz smoke) on your machine:
 
 ```sh
 scripts/ci.sh          # everything
@@ -124,7 +126,7 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 Needs the nightly toolchain and cargo-fuzz:
 
 ```sh
-rustup toolchain install nightly
+rustup toolchain install "$(scripts/fuzz.sh --toolchain)"   # the dated nightly CI uses
 cargo install cargo-fuzz
 scripts/fuzz.sh 60                    # every target, 60 s each
 scripts/fuzz.sh 3600                  # a one-hour run
@@ -140,11 +142,15 @@ the `ci` workflow builds them and runs clippy on them):
 
 - `render_json`: raw bytes, seeded with `fixtures/docs`, with a dictionary
   of schema keys and enum values (`fuzz/render_json.dict`, generated from
-  the schema by `scripts/gen-fuzz-dict.py`).
+  the schema by `scripts/gen-fuzz-dict.py`). The harness registers every
+  fixture font and image under its file name, as the fixture tests do, and
+  a unit test checks that every seed validates, so each reaches layout.
 - `render_tree`: a structure-aware generator of schema-shaped documents
-  (edge values, long words, mixed scripts, big tables, deep nesting, form
-  fields, page filters). A unit test checks that its valid documents
-  reach the newer parts of the schema; extend its list with the generator.
+  (edge values, long words, mixed scripts, big tables, form fields, page
+  filters, document metadata, and boxes nested up to and past the
+  parser's limit of 128 levels). A unit test checks that its valid
+  documents reach the newer parts of the schema; extend its list with the
+  generator.
 - `render_svg`: raw bytes registered as an image and drawn twice; seeded
   with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
 - `render_svg_tree`: a structure-aware SVG generator that combines what
@@ -158,7 +164,7 @@ the `ci` workflow builds them and runs clippy on them):
   decoders; each font that registers sets a line of text, and is the
   fallback of a line of emoji sequences (flags, keycaps, skin tones, ZWJ
   sequences), which a colour font draws from its colour tables. Seeded with
-  `fixtures/fonts`.
+  `fixtures/fonts`, its WOFF files and its malformed and limit fonts.
 
 All share one oracle: no panic; `render` succeeds only when `validate`
 is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
@@ -166,13 +172,15 @@ which only a PDF/A-1b render reports (by input length, a quarter of the
 inputs render as plain PDF and a quarter at each PDF/A level); the
 writer never refuses transparency at 1b, which would mean validation
 missed it (for SVG, that its scan disagrees with the writer); every
-form script (`/JS`) is a call of a standard form function (`AFNumber_Format`
+form script (`/JS`, read from the parsed object syntax, so a script
+written as a hex string is checked and a document title that looks like
+one is not) is a call of a standard form function (`AFNumber_Format`
 and the like) with only integers, booleans and string literals as
 arguments, and PDF/A output has no scripts and no `/AA` (`check_scripts`);
 the output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
-from MessagePack (`render_json` and `render_tree`), and a document
+from MessagePack (the image and font targets included), and a document
 rendered as plain PDF also renders encrypted exactly when it renders
 plain, without its title in plain text (only the encrypted file's
 object syntax is scanned for numbers). An input that runs
@@ -192,7 +200,7 @@ cargo run --release --bin repro -- font artifacts/register_font/crash-…
 cargo run --release --bin repro -- stats corpus/render_tree             # generator validity rate
 ```
 
-`scripts/ci.sh` runs a 30-second smoke per target when nightly and
+`scripts/ci.sh` runs a 30-second smoke per target when that nightly and
 cargo-fuzz are installed and skips it otherwise.
 
 ### Nightly

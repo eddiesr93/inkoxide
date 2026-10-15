@@ -1,0 +1,60 @@
+# cargo-deny (deny.toml) on every pull request and every push to main, and every night for the
+# advisories published since. scripts/ci.sh runs the same check locally.
+name: deny
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '41 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deny-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deny:
+    name: ${{ matrix.checks }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [advisories, bans licenses sources]
+    # A new advisory against a dependency a pull request does not touch should not block it: the
+    # nightly run (and main) report it.
+    continue-on-error: ${{ github.event_name == 'pull_request' && matrix.checks == 'advisories' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        # cargo-deny reads the dependency graph with cargo metadata.
+        uses: ./.github/actions/install-rust
+      - name: Install cargo-deny
+        env:
+          DENY_VERSION: 0.20.2
+          DENY_SHA256: 9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+        run: |
+          name=cargo-deny-$DENY_VERSION-x86_64-unknown-linux-musl
+          curl -fsSL -o "$RUNNER_TEMP/deny.tar.gz" \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/$DENY_VERSION/$name.tar.gz"
+          echo "$DENY_SHA256  $RUNNER_TEMP/deny.tar.gz" | sha256sum --check --quiet
+          mkdir "$RUNNER_TEMP/deny"
+          tar -xzf "$RUNNER_TEMP/deny.tar.gz" -C "$RUNNER_TEMP/deny" --strip-components=1
+          "$RUNNER_TEMP/deny/cargo-deny" --version
+          echo "$RUNNER_TEMP/deny" >>"$GITHUB_PATH"
+      - name: cargo deny check ${{ matrix.checks }}
+        env:
+          CHECKS: ${{ matrix.checks }}
+        run: |
+          read -ra checks <<<"$CHECKS"
+          cargo deny --locked check "${checks[@]}"

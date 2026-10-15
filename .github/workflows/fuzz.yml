@@ -29,8 +29,6 @@ defaults:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: '0'
-  # cargo-fuzz needs nightly; a dated one keeps the runs comparable.
-  FUZZ_TOOLCHAIN: nightly-2026-10-11
 
 jobs:
   targets:
@@ -72,7 +70,8 @@ jobs:
         # The pinned stable of rust-toolchain.toml (what rustc means here), and the nightly.
         uses: ./.github/actions/install-rust
       - name: Install nightly
-        run: rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal --no-self-update
+        # cargo-fuzz needs nightly: the dated one fuzz.sh runs (and scripts/ci.sh checks for).
+        run: rustup toolchain install "$(scripts/fuzz.sh --toolchain)" --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: fuzz -> target

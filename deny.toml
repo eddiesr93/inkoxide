@@ -1,4 +1,5 @@
-# cargo-deny: licences, advisories, bans. Run via scripts/ci.sh.
+# cargo-deny: licences, advisories, bans. Run by .github/workflows/deny.yml
+# (pull requests and nightly) and scripts/ci.sh.
 
 [graph]
 all-features = false
