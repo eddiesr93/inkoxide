@@ -80,6 +80,9 @@ pub enum PdfALevel {
 }
 
 impl PdfALevel {
+    /// Every level, from the oldest part.
+    pub const ALL: [Self; 3] = [Self::A1b, Self::A2b, Self::A3b];
+
     /// The level's short name, as the Node binding and the CLI take it:
     /// `"1b"`, `"2b"`, `"3b"`.
     #[must_use]
@@ -94,9 +97,7 @@ impl PdfALevel {
     /// The level named `s` ([`as_str`](Self::as_str)).
     #[must_use]
     pub fn from_name(s: &str) -> Option<Self> {
-        [Self::A1b, Self::A2b, Self::A3b]
-            .into_iter()
-            .find(|l| l.as_str() == s)
+        Self::ALL.into_iter().find(|l| l.as_str() == s)
     }
 }
 

@@ -20,8 +20,13 @@ use inkoxide::{
 
 /// `--pdf-a=LEVEL`.
 fn pdf_a_level(s: &str) -> Result<PdfALevel, String> {
-    PdfALevel::from_name(s)
-        .ok_or_else(|| format!("unsupported PDF/A level `{s}` (expected 1b, 2b or 3b)"))
+    PdfALevel::from_name(s).ok_or_else(|| {
+        let names: Vec<&str> = PdfALevel::ALL.iter().map(|l| l.as_str()).collect();
+        format!(
+            "unsupported PDF/A level `{s}` (expected one of {})",
+            names.join(", ")
+        )
+    })
 }
 
 #[derive(Parser)]
@@ -88,8 +93,10 @@ enum Cmd {
         /// RFC 3339 creation date to embed.
         #[arg(long)]
         creation_date: Option<String>,
-        /// Write PDF/A at LEVEL: 1b, 2b (the default) or 3b.
-        #[arg(long, value_name = "LEVEL", num_args = 0..=1, default_missing_value = "2b", value_parser = pdf_a_level)]
+        /// Write PDF/A, at LEVEL: 1b, 2b (the default) or 3b. The level
+        /// follows an equals sign (`--pdf-a=1b`), so `--pdf-a doc.json`
+        /// writes PDF/A-2b.
+        #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = pdf_a_level)]
         pdf_a: Option<PdfALevel>,
         /// Also rasterise every page to PNG with `pdftoppm` (if installed).
         #[arg(long)]
@@ -416,13 +423,24 @@ mod tests {
         assert_eq!(level(&["--pdf-a"]), Ok(Some(PdfALevel::A2b)));
         assert_eq!(level(&["--pdf-a=1b"]), Ok(Some(PdfALevel::A1b)));
         assert_eq!(level(&["--pdf-a=3b"]), Ok(Some(PdfALevel::A3b)));
-        // A bare flag before the document does not take it as its level.
+        // A bare flag before another flag or the document does not take it
+        // as its level.
         assert_eq!(
             level(&["--pdf-a", "--no-compress"]),
             Ok(Some(PdfALevel::A2b))
         );
+        let cli = Cli::try_parse_from(["inkoxide", "render", "--pdf-a", "doc.json"]).unwrap();
+        let Cmd::Render { doc, pdf_a, .. } = cli.command else {
+            unreachable!()
+        };
+        assert_eq!(
+            (doc, pdf_a),
+            (PathBuf::from("doc.json"), Some(PdfALevel::A2b))
+        );
+        // The level follows an equals sign.
+        assert!(level(&["--pdf-a", "1b"]).is_err());
         assert!(level(&["--pdf-a=2a"])
             .unwrap_err()
-            .contains("unsupported PDF/A level"));
+            .contains("unsupported PDF/A level `2a` (expected one of 1b, 2b, 3b)"));
     }
 }

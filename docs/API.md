@@ -94,6 +94,9 @@ would pass one fails with `PDF_ERROR`.
 
 The a and u levels need tagged PDF, which Inkoxide does not write yet.
 
+In the CLI, `--pdf-a` alone writes PDF/A-2b, and a level follows an
+equals sign:
+
 ```sh
 inkoxide render doc.json --fonts fonts/ --pdf-a=1b
 ```

@@ -27,8 +27,9 @@ All notable changes to the packages in this repository. The format follows
   `/Opt`, so the values are encrypted too. Encryption with PDF/A is `INVALID_VALUE` at
   `options.encryption` in Rust and `INVALID_ARGUMENT` in Node.
 - PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
-  Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
-  `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and
+  Rust (`with_pdf_a_level`; `PdfALevel::ALL` lists the levels), `pdfA: '1b' | '2b' | '3b'` in
+  the Node binding and in `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the
+  CLI (`--pdf-a` alone is still PDF/A-2b, also before the document), and
   `<Document conformance>` (`'PDF/A-1b'`, `'PDF/A-2b'`, `'PDF/A-3b'`, or the part alone), which
   the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
   `TEMPLATE_ERROR`.
