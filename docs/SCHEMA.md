@@ -60,7 +60,7 @@
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -170,6 +170,8 @@ Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent)
 Type: array of `number` (each ≥ 0, ≤ 1) (exactly 4 items)
 
 ### Size
+
+Page size in points. PDF/A, at any level, takes sides of 3 points or more: a render of a smaller page as PDF/A fails with `PDFA_CONFLICT` at the page's `size`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|

@@ -425,12 +425,17 @@ fn render_with(
             assert_finite_numbers(pdf, true);
             check_scripts(pdf, pdf_a.is_some());
         }
-        // `validate` does not know the PDF/A level: PDF/A-1b rejects valid
-        // documents that need transparency.
+        // `validate` does not know the PDF/A level: every level rejects
+        // valid documents with a page side under 3 points, PDF/A-1b those
+        // that need transparency.
         Err(InkoxideError::Validation(e))
             if e.code == ValidationCode::PdfaConflict && errors.is_empty() =>
         {
-            assert_eq!(pdf_a, Some(PdfALevel::A1b), "PDFA_CONFLICT at {pdf_a:?}");
+            assert!(
+                pdf_a == Some(PdfALevel::A1b)
+                    || (pdf_a.is_some() && e.message.contains("page side")),
+                "PDFA_CONFLICT at {pdf_a:?}: {e:?}"
+            );
         }
         Err(InkoxideError::Validation(e)) => {
             assert!(

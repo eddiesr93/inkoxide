@@ -338,6 +338,8 @@ export interface PageSpec {
   children?: Node[];
 }
 /**
+ * Page size in points. PDF/A, at any level, takes sides of 3 points or more: a render of a smaller page as PDF/A fails with `PDFA_CONFLICT` at the page's `size`.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Size".
  */

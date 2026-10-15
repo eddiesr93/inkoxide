@@ -7,6 +7,12 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- A page with a side under 3 points renders as PDF/A no more: the render fails with
+  `PDFA_CONFLICT` at the page's `size`, at every level. Such a file was not PDF/A. The `Size`
+  description says so.
+
 ## 2.4.1 - 2026-10-15
 
 Still document schema version 1.

@@ -1821,6 +1821,76 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
     assert_eq!(e.code(), "OUT_OF_RANGE");
 }
 
+/// PDF/A, at every level, takes page sides of 3 points or more: a smaller
+/// page fails at its size, which plain PDF and validation accept.
+#[test]
+fn pdf_a_rejects_pages_under_3_points() {
+    let pages = |sizes: &[(f32, f32)]| {
+        let pages: Vec<String> = sizes
+            .iter()
+            .map(|(w, h)| format!(r#"{{"size":{{"width":{w},"height":{h}}}}}"#))
+            .collect();
+        format!(r#"{{"version":1,"pages":[{}]}}"#, pages.join(","))
+    };
+    let render = |d: &str, level: Option<crate::PdfALevel>| {
+        let mut options = crate::RenderOptions::default();
+        if let Some(level) = level {
+            options = options.with_pdf_a_level(level);
+        }
+        crate::render(
+            d.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &ImageStore::new(),
+        )
+    };
+    for sizes in [
+        &[(1.0, 1.0)][..],
+        &[(2.999, 500.0)],
+        &[(500.0, 2.5)],
+        &[(3.0, 3.0), (100.0, 0.5), (1.0, 1.0)],
+    ] {
+        let d = pages(sizes);
+        let i = sizes.iter().position(|(w, h)| w.min(*h) < 3.0).unwrap();
+        assert_eq!(
+            validate(
+                d.as_bytes(),
+                InputFormat::Json,
+                &fonts(),
+                &ImageStore::new()
+            ),
+            [],
+            "{d}"
+        );
+        render(&d, None).unwrap();
+        for level in crate::PdfALevel::ALL {
+            let e = match render(&d, Some(level)) {
+                Err(crate::InkoxideError::Validation(e)) => e,
+                other => panic!("{d}: {:?}", other.map(|_| ())),
+            };
+            assert_eq!(
+                (e.code, e.path),
+                (C::PdfaConflict, format!("pages[{i}].size")),
+                "{d}"
+            );
+            assert!(e
+                .message
+                .starts_with("PDF/A does not allow a page side under 3 points"));
+        }
+    }
+    for level in crate::PdfALevel::ALL {
+        render(&pages(&[(3.0, 3.0), (3.0, 14400.0)]), Some(level)).unwrap();
+    }
+    // Another problem wins.
+    let e = render(
+        &pages(&[(1.0, 1.0), (0.0, 1.0)]),
+        Some(crate::PdfALevel::A2b),
+    )
+    .unwrap_err();
+    assert_eq!(e.code(), "OUT_OF_RANGE");
+}
+
 #[test]
 fn background_images_are_checked_like_images() {
     let bg = |b: &str| doc(&format!(r#"{{"type":"box","backgroundImage":{b}}}"#));
