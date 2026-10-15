@@ -5,8 +5,7 @@ use super::objects::InlineObject;
 use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
 use super::{
-    baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper,
-    UnicodeMap, WIDTH_EPS,
+    baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS,
 };
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet, Placement};
@@ -46,8 +45,6 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     /// The images of inline objects and colour glyphs.
     pub images: &'f ImageSet,
     pub colors: &'f ColorGlyphs,
-    /// The text of each glyph, for the spans of colour glyphs.
-    pub unicode: &'f UnicodeMap,
     pub numbers: PageNumbers,
     /// The page's area, in page coordinates: decorations are drawn only
     /// where the page shows them.
@@ -63,7 +60,6 @@ struct Ink<'x> {
     numbers: PageNumbers,
     images: &'x ImageSet,
     colors: &'x ColorGlyphs,
-    unicode: &'x UnicodeMap,
     view: Option<Rect>,
 }
 
@@ -110,7 +106,6 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             numbers: self.numbers,
             images: self.images,
             colors: self.colors,
-            unicode: self.unicode,
             view: view(self.page_box, ctx.ctm),
         };
         for (li, line) in layout.lines.iter().enumerate() {
@@ -164,11 +159,14 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
 }
 
 /// One output glyph sequence in a single run/font, or an inline object.
-struct Piece {
+struct Piece<'t> {
     run: u16,
     font: u16,
     object: Option<u32>,
     glyphs: Vec<TextGlyph>,
+    /// The text of each glyph, for the spans of those drawn as images: set
+    /// in colour fonts only.
+    texts: Vec<Option<&'t str>>,
     /// Glyphs the piece stands for, drawn or not.
     count: usize,
     /// Pen advance of the whole piece.
@@ -334,16 +332,19 @@ fn paint_line(
     let mut width = 0.0f32;
     for (seg, a, b) in items {
         let run = &runs[seg.run as usize];
+        let color = fonts.get(seg.font).has_color();
         let mut piece = Piece {
             run: seg.run,
             font: seg.font,
             object: seg.object,
             glyphs: Vec::with_capacity(b - a),
+            texts: Vec::new(),
             count: b - a,
             width: 0.0,
         };
         if let Some(ph) = run.placeholder.filter(|_| p.placeholders) {
-            for (id, advance) in number_glyphs(fonts.get(seg.font), run, ink.numbers.of(ph)) {
+            let n = ink.numbers.of(ph);
+            for (id, advance) in number_glyphs(fonts.get(seg.font), run, n) {
                 piece.glyphs.push(TextGlyph {
                     id,
                     x: piece.width,
@@ -351,21 +352,31 @@ fn paint_line(
                 });
                 piece.width += advance;
             }
+            if color {
+                let digits = n.to_string().into_bytes();
+                piece.texts = digits
+                    .iter()
+                    .map(|d| DIGITS.get(usize::from(d - b'0')).copied())
+                    .collect();
+            }
             piece.count = piece.glyphs.len();
         } else {
-            let slice = &p.glyphs[a..b];
-            let visual: Box<dyn Iterator<Item = &super::Glyph>> = if seg.level % 2 == 1 {
-                Box::new(slice.iter().rev())
+            let visual: Box<dyn Iterator<Item = usize>> = if seg.level % 2 == 1 {
+                Box::new((a..b).rev())
             } else {
-                Box::new(slice.iter())
+                Box::new(a..b)
             };
-            for g in visual {
+            for k in visual {
+                let g = &p.glyphs[k];
                 if !g.is_invisible() && !g.is_object() {
                     piece.glyphs.push(TextGlyph {
                         id: g.id,
                         x: piece.width + g.x_offset,
                         y_offset: g.y_offset,
                     });
+                    if color {
+                        piece.texts.push(p.glyph_text(seg, k));
+                    }
                 }
                 piece.width += g.advance;
                 if g.is_space() {
@@ -376,8 +387,9 @@ fn paint_line(
         width += piece.width;
         pieces.push(piece);
     }
-    for extra in [line.hyphen, line.ellipsis].into_iter().flatten() {
-        let piece = extra_piece(&extra);
+    let extras = [(line.hyphen, "-"), (line.ellipsis, "\u{2026}")];
+    for (extra, text) in extras.into_iter().filter_map(|(e, t)| Some((e?, t))) {
+        let piece = extra_piece(&extra, text);
         width += piece.width;
         if rtl {
             pieces.insert(0, piece);
@@ -459,7 +471,7 @@ fn paint_line(
                 None
             };
             ink.colors
-                .push(text, strut, fonts, ink.images, ink.unicode, ops);
+                .push(text, strut, fonts, ink.images, &piece.texts, ops);
         }
         if let Some(dec) = run.decoration.filter(|d| *d != Decoration::None) {
             let font = fonts.get(piece.font);
@@ -570,7 +582,13 @@ pub(super) fn image_span(
     }
 }
 
-fn extra_piece(e: &ExtraGlyph) -> Piece {
+/// The text of each digit, for the spans of colour digits.
+const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+/// The piece of extra glyph `e`, whose text is `text`.
+fn extra_piece(e: &ExtraGlyph, text: &'static str) -> Piece<'static> {
+    // Three dots stand for an ellipsis in a font without one.
+    let text = if e.count > 1 { "." } else { text };
     let glyphs = (0..e.count)
         .map(|i| TextGlyph {
             id: e.glyph,
@@ -583,6 +601,7 @@ fn extra_piece(e: &ExtraGlyph) -> Piece {
         font: e.font,
         object: None,
         glyphs,
+        texts: vec![Some(text); usize::from(e.count)],
         count: usize::from(e.count),
         width: e.advance * f32::from(e.count),
     }

@@ -925,7 +925,6 @@ fn paint_page(
             fonts,
             images,
             colors,
-            unicode: text.unicode(),
             numbers,
             page_box: Rect::new(0.0, 0.0, pw, ph),
         },

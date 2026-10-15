@@ -39,6 +39,9 @@ pub(crate) struct SvgGlyph {
     pub scale_x: f32,
     /// The span style it is painted with ([`SvgText::paints`]).
     pub paint: u32,
+    /// Its text, in [`LaidText::text`]: the text of its cluster, on the
+    /// cluster's first glyph (an empty range: none).
+    pub text: (u32, u32),
 }
 
 /// An underline, overline or line-through: a quadrilateral, filled.
@@ -84,9 +87,17 @@ pub(crate) struct LaidText {
     /// The box of the glyph outlines and decorations, `[x0, y0, x1, y1]`;
     /// `None` when nothing has ink.
     pub ink: Option<[f32; 4]>,
+    /// The text of the glyphs ([`SvgGlyph::text`]).
+    pub text: String,
 }
 
 impl LaidText {
+    /// The text of glyph `g`, if it has any.
+    pub fn glyph_text(&self, g: &SvgGlyph) -> Option<&str> {
+        let (start, end) = (g.text.0 as usize, g.text.1 as usize);
+        self.text.get(start..end).filter(|t| !t.is_empty())
+    }
+
     /// The glyphs drawn in paint style `paint`.
     pub fn glyphs_of(&self, paint: u32) -> &[SvgGlyph] {
         let start = self.glyphs.partition_point(|g| g.paint < paint);
@@ -113,12 +124,14 @@ impl LaidText {
             rotate: 0.0,
             scale_x: 1.0,
             paint,
+            text: (0, 0),
         };
         Self {
             glyphs: (0..paints as u32).map(glyph).collect(),
             decorations: Vec::new(),
             images: Vec::new(),
             ink: Some([0.0, 0.0, 1.0, 1.0]),
+            text: String::new(),
         }
     }
 
@@ -131,9 +144,11 @@ impl LaidText {
 }
 
 /// A glyph of a cluster, as shaped.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ShapedGlyph {
     id: u16,
+    /// The text of its cluster, on the cluster's first glyph.
+    text: Option<Box<str>>,
     /// Offsets from the pen, in user units, y up.
     x_offset: f32,
     y_offset: f32,
@@ -310,6 +325,7 @@ fn shape<S: TextShaper>(
         let span = text.chars[char].span as usize;
         let item = ShapedGlyph {
             id: glyph.id,
+            text: prepared.glyph_text(seg, g).map(Box::from),
             x_offset: glyph.x_offset,
             y_offset: glyph.y_offset,
             advance: glyph.advance,
@@ -531,13 +547,19 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             } else {
                 &c.glyphs[..]
             };
-            for &ShapedGlyph {
+            for ShapedGlyph {
                 id,
+                text: glyph_text,
                 x_offset,
                 y_offset,
                 advance,
             } in glyphs
             {
+                let (id, x_offset, y_offset, advance) = (*id, *x_offset, *y_offset, *advance);
+                let start = out.text.len() as u32;
+                if let Some(t) = glyph_text {
+                    out.text.push_str(t);
+                }
                 let (gx, gy) = turn(((pen + x_offset) * c.scale_x, -y_offset), ch.rotate);
                 let g = SvgGlyph {
                     font: c.font,
@@ -548,6 +570,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                     rotate: ch.rotate,
                     scale_x: c.scale_x,
                     paint: span.paint,
+                    text: (start, out.text.len() as u32),
                 };
                 let bbox = *boxes
                     .entry((c.font, id))

@@ -666,7 +666,6 @@ pub(crate) fn prepare(
     place_tabs(&mut glyphs, &segments, &breaks, opts.runs, fonts);
 
     Prepared {
-        #[cfg(test)]
         text,
         segments,
         glyphs,
@@ -758,9 +757,7 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
     let mut segments: Vec<Segment> = Vec::with_capacity(p.segments.len());
     // Per segment: (first old glyph, first new glyph) for remapping breaks.
     let mut starts: Vec<(u32, u32)> = Vec::with_capacity(p.segments.len());
-    #[cfg(test)]
     let mut text = String::with_capacity(p.text.len() + 4);
-    #[cfg(test)]
     let mut copied = 0usize;
     // Bytes the text has grown by so far.
     let mut grown = 0i64;
@@ -790,10 +787,7 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
         // level); any later piece of it is dropped with its stand-ins.
         if segments.last().is_some_and(|s| s.run == seg.run) {
             grown -= i64::from(seg.text.end - seg.text.start);
-            #[cfg(test)]
-            {
-                copied = seg.text.end as usize;
-            }
+            copied = seg.text.end as usize;
             continue;
         }
         let n = numbers.of(ph);
@@ -817,12 +811,9 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
         if seg.level % 2 == 1 {
             glyphs[at..].reverse();
         }
-        #[cfg(test)]
-        {
-            text.push_str(&p.text[copied..seg.text.start as usize]);
-            text.push_str(&digits);
-            copied = seg.text.end as usize;
-        }
+        text.push_str(&p.text[copied..seg.text.start as usize]);
+        text.push_str(&digits);
+        copied = seg.text.end as usize;
         grown += digits.len() as i64 - i64::from(seg.text.end - seg.text.start);
         segments.push(Segment {
             text: text_start..text_start + digits.len() as u32,
@@ -830,7 +821,6 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
             ..seg.clone()
         });
     }
-    #[cfg(test)]
     text.push_str(&p.text[copied..]);
 
     // No break falls inside a number (UAX #14 keeps digits together), so
@@ -851,7 +841,6 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
     place_tabs(&mut glyphs, &segments, &breaks, runs, fonts);
 
     Prepared {
-        #[cfg(test)]
         text,
         segments,
         glyphs,

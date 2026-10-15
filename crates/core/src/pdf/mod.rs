@@ -313,7 +313,6 @@ fn text_ink<'a>(doc: &DocumentOut<'a>) -> svg::TextInk<'a, 'a> {
     svg::TextInk {
         fonts: doc.fonts,
         colors: doc.colors,
-        unicode: doc.unicode,
         images: doc.images,
     }
 }

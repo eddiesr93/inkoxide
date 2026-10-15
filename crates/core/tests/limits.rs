@@ -255,13 +255,9 @@ fn image_text_repeated_on_every_page_is_counted() {
     };
     // About 190 pages.
     let tall = r#"{"type":"box","style":{"height":160000}}"#;
-    // A colour glyph's text is that of the cluster it is first shaped in.
-    let marked = format!("😀{}", "\u{301}".repeat(1000));
-    let first = format!(
-        r#"{{"type":"text","runs":[{{"text":"{marked}","font":"EmojiTest-COLR","size":10}}]}}"#
-    );
+    // A colour glyph's text is its cluster's: here with the marks after it.
     let emoji = |pages: &str| {
-        let text = "😀".repeat(100);
+        let text = format!("😀{}", "\u{301}".repeat(1000)).repeat(100);
         format!(
             r#"{{"type":"text","break":{{"fixed":true}},{pages}
                 "runs":[{{"text":"{text}","font":"EmojiTest-COLR","size":10}}]}}"#
@@ -282,8 +278,8 @@ fn image_text_repeated_on_every_page_is_counted() {
         ),
         (
             "colour glyphs",
-            format!("{first},{},{tall}", emoji("")),
-            format!("{first},{},{tall}", emoji(r#""pages":"first","#)),
+            format!("{},{tall}", emoji("")),
+            format!("{},{tall}", emoji(r#""pages":"first","#)),
         ),
     ] {
         let t = std::time::Instant::now();
@@ -295,6 +291,54 @@ fn image_text_repeated_on_every_page_is_counted() {
         );
         assert!(t.elapsed().as_secs() < 5, "{what}: took {:?}", t.elapsed());
         render(&doc(&first_only)).unwrap();
+    }
+}
+
+/// Each colour glyph is in a span with the text of its own cluster: a
+/// glyph shaped once with many marks after it does not carry them to its
+/// other copies.
+#[test]
+fn colour_glyphs_carry_their_own_text() {
+    let marked = format!("😀{}", "\u{301}".repeat(20_000));
+    let copies = "😀 ".repeat(2000);
+    let mut images = ImageStore::new();
+    let svg_copies = "😀".repeat(2000);
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text font-size="10">{marked}{svg_copies}</text></svg>"#
+    );
+    images.insert("svg", svg.into_bytes());
+    let text = |copies: &str| {
+        format!(
+            r#"{{"type":"text","runs":[{{"text":"{marked} {copies}","font":"EmojiTest-COLR","size":10}}]}}"#
+        )
+    };
+    let image = r#"{"type":"image","src":"svg","style":{"width":100,"height":100}}"#;
+    for (what, children) in [
+        ("page text", text(&copies)),
+        ("SVG text", image.to_string()),
+    ] {
+        let page = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"EmojiTest-COLR","family":"E"}}],
+               "fallbackFonts":["EmojiTest-COLR"],"pages":[{{"size":{{"width":595,"height":842}},"children":[{children}]}}]}}"#
+        );
+        let options = RenderOptions::default()
+            .with_threads(1)
+            .with_compress(false);
+        let render = || {
+            let f = fonts();
+            inkoxide::render(page.as_bytes(), InputFormat::Json, &options, &f, &images)
+        };
+        let (out, took, peak) = measure(render);
+        let pdf = out.unwrap();
+        assert!(pdf.len() < 4 << 20, "{what}: {} KiB", pdf.len() >> 10);
+        assert!(peak < 64 << 20, "{what}: {} MiB", peak >> 20);
+        assert!(took.as_secs() < 5, "{what}: took {took:?}");
+        if what == "page text" {
+            // The copies extract as the emoji alone.
+            let own = b"/ActualText <FEFFD83DDE00>";
+            let found = pdf.windows(own.len()).filter(|w| w == own).count();
+            assert!(found >= 2000, "{found} spans");
+        }
     }
 }
 

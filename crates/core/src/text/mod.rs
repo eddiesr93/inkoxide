@@ -129,9 +129,7 @@ pub(crate) struct BreakPoint {
 /// A shaped paragraph, independent of the available width.
 #[derive(Debug, Default)]
 pub(crate) struct Prepared {
-    /// The paragraph text that glyph clusters index into (tests map lines
-    /// back to text with it).
-    #[cfg(test)]
+    /// The paragraph text that glyph clusters index into.
     pub text: String,
     pub segments: Vec<Segment>,
     pub glyphs: Vec<Glyph>,
@@ -149,6 +147,29 @@ pub(crate) struct Prepared {
 }
 
 impl Prepared {
+    /// The text glyph `k` of segment `seg` stands for, on the first glyph
+    /// of its cluster: the cluster's text. `None` on the cluster's other
+    /// glyphs and on glyphs with no text (a newline, a soft hyphen).
+    pub fn glyph_text(&self, seg: &Segment, k: usize) -> Option<&str> {
+        let (first, last) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
+        let g = self.glyphs.get(k)?;
+        let start = g.cluster as usize;
+        let c = self.text.get(start..)?.chars().next()?;
+        if c == '\n' || c == prepare::SHY || c.is_control() {
+            return None;
+        }
+        if k > first && self.glyphs[k - 1].cluster == g.cluster {
+            return None;
+        }
+        let end = self.glyphs[k + 1..last.max(k + 1)]
+            .iter()
+            .map(|n| n.cluster as usize)
+            .find(|&n| n != start)
+            .unwrap_or(seg.text.end as usize);
+        let end = end.max(start + c.len_utf8()).min(self.text.len());
+        self.text.get(start..end)
+    }
+
     /// The end of glyphs `start..end` without their trailing spaces and
     /// invisible glyphs.
     pub fn visible_end(&self, start: usize, end: usize) -> usize {
@@ -596,14 +617,9 @@ impl TextCache<'_, RustybuzzShaper<'_, '_>> {
                 let alt = p.objects.get(o as usize).and_then(|o| o.alt.as_deref());
                 total += alt.map_or(0, crate::pdf::written_text_len);
             } else if fonts.get(s.font).has_color() {
-                let Some(texts) = self.shaper.unicode.fonts.get(&s.font) else {
-                    continue;
-                };
-                let glyphs = &p.glyphs[s.glyphs.start as usize..s.glyphs.end as usize];
-                total += glyphs
-                    .iter()
-                    .filter_map(|g| texts.get(&g.id))
-                    .map(|t| crate::pdf::written_text_len(t))
+                total += (s.glyphs.start as usize..s.glyphs.end as usize)
+                    .filter_map(|k| p.glyph_text(s, k))
+                    .map(crate::pdf::written_text_len)
                     .sum::<usize>();
             }
         }
