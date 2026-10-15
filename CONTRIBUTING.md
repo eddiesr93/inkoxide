@@ -19,7 +19,8 @@ pnpm install
 ```
 
 Optional, for the full local check: poppler and `numpy`/`Pillow` (visual regression), `qpdf`
-(PDF structure), `cargo-deny`, and a nightly toolchain with `cargo-fuzz` (fuzzing).
+(PDF structure), `cargo-deny`, and the nightly toolchain `scripts/fuzz.sh --toolchain` prints,
+with `cargo-fuzz` (fuzzing).
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the repository is organised and how
 a document goes from React to PDF.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Every check a pull request must pass, plus the slower ones that the hosted
-# workflow skips (visual regression, cargo-deny, a fuzz smoke).
+# Every check a pull request must pass (the ci and deny workflows), plus the
+# slower ones that the hosted workflows skip (visual regression, a fuzz smoke).
 #
 #   scripts/ci.sh           # full run
 #   scripts/ci.sh --quick   # skip clippy, cargo-deny, fuzzing and the visual diff
@@ -75,19 +75,31 @@ fi
 step "schema conformance of fixtures"
 python3 scripts/check-schema.py
 
+step "lockstep package versions"
+python3 scripts/check-versions.py
+
 if [[ $quick == 0 ]]; then
   step "cargo-deny"
+  # The deny workflow runs it on every pull request and every night; in CI
+  # (CI set) a missing cargo-deny fails instead of skipping.
   if command -v cargo-deny >/dev/null; then
     cargo deny check
+  elif [[ -n "${CI:-}" ]]; then
+    echo "cargo-deny not installed" >&2
+    exit 1
   else
-    echo "cargo-deny not installed; skipped (cargo install cargo-deny)"
+    echo "cargo-deny not installed; skipped (cargo install cargo-deny --locked)"
   fi
 
   step "fuzz smoke (30 s per target)"
-  if command -v cargo-fuzz >/dev/null && rustup toolchain list | grep -q nightly; then
+  # The toolchain fuzz.sh runs: the nightly the fuzz workflow pins.
+  nightly=$(scripts/fuzz.sh --toolchain)
+  host=$(rustc -vV | sed -n 's/^host: //p')
+  if command -v cargo-fuzz >/dev/null &&
+    rustup toolchain list | awk '{print $1}' | grep -qx -e "$nightly" -e "$nightly-$host"; then
     scripts/fuzz.sh 30
   else
-    echo "nightly or cargo-fuzz missing; skipped (see docs/TESTING.md)"
+    echo "$nightly or cargo-fuzz missing; skipped (see docs/TESTING.md)"
   fi
 
   if [[ -x scripts/visual-diff.sh ]]; then

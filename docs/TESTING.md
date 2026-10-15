@@ -1,12 +1,14 @@
 # Testing
 
 Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
-clippy, the Rust tests, the schema checks, the Node binding tests and the
-TypeScript packages. The Rust tests check the PDFs with qpdf, poppler's
+clippy, the Rust tests, the schema checks, the lockstep versions of the
+packages released together (`scripts/check-versions.py`), the Node
+binding tests and the TypeScript packages; and `.github/workflows/deny.yml`:
+cargo-deny (`deny.toml`), which also runs every night for new advisories. The Rust tests check the PDFs with qpdf, poppler's
 `pdftotext` and veraPDF, which the workflow installs. Locally a test
 skips the checks of a tool that is not installed; with `CI` set, a
 missing tool fails it. `scripts/ci.sh` runs the same checks and more
-(visual regression, cargo-deny, a fuzz smoke) on your machine:
+(visual regression, a fuzz smoke) on your machine:
 
 ```sh
 scripts/ci.sh          # everything
@@ -124,7 +126,7 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 Needs the nightly toolchain and cargo-fuzz:
 
 ```sh
-rustup toolchain install nightly
+rustup toolchain install "$(scripts/fuzz.sh --toolchain)"   # the dated nightly CI uses
 cargo install cargo-fuzz
 scripts/fuzz.sh 60                    # every target, 60 s each
 scripts/fuzz.sh 3600                  # a one-hour run
@@ -198,7 +200,7 @@ cargo run --release --bin repro -- font artifacts/register_font/crash-…
 cargo run --release --bin repro -- stats corpus/render_tree             # generator validity rate
 ```
 
-`scripts/ci.sh` runs a 30-second smoke per target when nightly and
+`scripts/ci.sh` runs a 30-second smoke per target when that nightly and
 cargo-fuzz are installed and skips it otherwise.
 
 ### Nightly
