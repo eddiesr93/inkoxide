@@ -607,7 +607,8 @@ fn lines_beside_a_band_are_narrower_and_the_rest_full_width() {
     assert_eq!(texts.join(" "), plain.join(" "));
     assert_eq!(l.boxes.len(), l.lines.len());
     let mut narrow = 0;
-    for (line, &(left, avail)) in l.lines.iter().zip(&l.boxes) {
+    for (line, b) in l.lines.iter().zip(&l.boxes) {
+        let (left, avail) = (b.left, b.width);
         assert!(line.width <= avail + 1e-3, "{line:?} in {avail}");
         if line.top < 30.0 {
             assert_eq!((left, avail), (80.0, 120.0));
@@ -630,7 +631,7 @@ fn a_line_that_does_not_fit_beside_a_band_moves_below_it() {
     let (texts, l) = lines_in(&d, &s, &boxes);
     assert_eq!(texts, ["Unbreakable words"]);
     assert_eq!(l.lines[0].top, 25.0);
-    assert_eq!(l.boxes[0], (0.0, 200.0));
+    assert_eq!((l.boxes[0].left, l.boxes[0].width), (0.0, 200.0));
     assert!((l.height - (25.0 + l.lines[0].height)).abs() < 1e-4);
     // A band that ends leaves room to every later line; with no band below,
     // a word too wide for the line breaks anyway.
@@ -651,7 +652,7 @@ fn indent_and_ellipsis_use_the_line_box() {
     assert!(texts[0].ends_with('…'), "{texts:?}");
     let line = &l.lines[0];
     assert!(line.width + line.indent <= 120.0 + 1e-3, "{line:?}");
-    assert_eq!(l.boxes[0], (50.0, 120.0));
+    assert_eq!((l.boxes[0].left, l.boxes[0].width), (50.0, 120.0));
 }
 
 /// `node`, with `textWrap: pretty`.
@@ -675,7 +676,7 @@ fn assert_fits(l: &LineLayout, width: f32) {
 /// for line `i`) by up to a third.
 fn assert_fits_shrunk(l: &LineLayout, width: f32, spaces: &[f32]) {
     for (i, line) in l.lines.iter().enumerate() {
-        let avail = l.boxes.get(i).map_or(width, |b| b.1);
+        let avail = l.boxes.get(i).map_or(width, |b| b.width);
         let shrink = spaces.get(i).map_or(0.0, |s| s / 3.0);
         assert!(
             line.width + line.indent <= avail + shrink + 1e-3,

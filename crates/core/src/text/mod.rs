@@ -33,7 +33,7 @@ pub(crate) use svg::SvgGlyph;
 pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};
 
 use crate::fonts::{FontKey, FontSet};
-use crate::layout::{AvailableSpace, LeafMeasure, LineBoxes, Size, Wrapped};
+use crate::layout::{AvailableSpace, LeafMeasure, LineBox, LineBoxes, Size, Wrapped};
 use crate::schema::{
     Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, TextWrap, WhiteSpace,
 };
@@ -204,10 +204,21 @@ pub(crate) struct LineLayout {
     /// Widest line, from the left of the content box.
     pub width: f32,
     pub height: f32,
-    /// Each line's box, its left edge and width, when the boxes the lines
-    /// were broken in have bands; empty when every line is as wide as the
-    /// content box.
-    pub boxes: Vec<(f32, f32)>,
+    /// Each line's box, when the boxes the lines were broken in have
+    /// bands; empty when every line is as wide as the content box.
+    pub boxes: Vec<LineBox>,
+}
+
+impl LineLayout {
+    /// How many lines, from the first, it takes to reach the last line set
+    /// beside a float: one whose box is narrower than the content box,
+    /// `width` wide. A float keeps those lines on its page.
+    pub fn wrapped_lines(&self, width: f32) -> usize {
+        self.boxes
+            .iter()
+            .rposition(|b| b.left > 0.0 || b.width < width - WIDTH_EPS)
+            .map_or(0, |k| k + 1)
+    }
 }
 
 /// Paragraph-level settings resolved from the node style.
@@ -541,23 +552,6 @@ impl Entry {
             width,
         )
     }
-
-    /// [`measure`](Self::measure) for an entry only read: its lines are
-    /// not cached.
-    fn measure_at(
-        &self,
-        fonts: &FontSet<'_>,
-        runs: &[TextRun],
-        known: Size<Option<f32>>,
-        available: Size<AvailableSpace>,
-    ) -> Size<f32> {
-        let width = self.width_in(available.width);
-        leaf_size(
-            &self.layout_at(fonts, runs, &LineBoxes::plain(width)),
-            known,
-            width,
-        )
-    }
 }
 
 /// A text leaf's size from its lines at `width`. The layout engine's
@@ -804,26 +798,18 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
     }
 
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
-        match self.layout_in(node, boxes) {
-            Some(l) => wrapped(&l, boxes),
-            None => Wrapped {
-                height: 0.0,
-                wrapped: 0.0,
-            },
-        }
+        self.layout_in(node, boxes)
+            .map_or_else(Wrapped::default, |l| wrapped(&l, boxes))
     }
 }
 
 /// What text laid out in `boxes` reports to a float container: its height,
-/// and the bottom of its last line that starts beside a band.
+/// and the bottom of its last line set beside a float.
 fn wrapped(l: &LineLayout, boxes: &LineBoxes) -> Wrapped {
-    let end = boxes.bands.iter().map(|b| b.bottom).fold(0.0f32, f32::max);
-    let wrapped = l
-        .lines
-        .iter()
-        .filter(|line| line.top < end)
-        .map(|line| line.top + line.height)
-        .fold(0.0f32, f32::max);
+    let wrapped = match l.wrapped_lines(boxes.width) {
+        0 => 0.0,
+        n => l.lines[n - 1].top + l.lines[n - 1].height,
+    };
     Wrapped {
         height: l.height,
         wrapped,
@@ -851,6 +837,36 @@ impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
         }
     }
 
+    /// The lines of text node `node` on this page, in the boxes `boxes`
+    /// gives for the entry they are broken from: the shared one, or for a
+    /// paragraph with placeholders, one with this page's numbers, whose
+    /// lines it caches. Also returns those boxes.
+    fn lines(
+        &mut self,
+        node: &Node,
+        boxes: impl FnOnce(&Entry) -> LineBoxes,
+    ) -> Option<(Arc<LineLayout>, LineBoxes)> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return None;
+        };
+        let key = node_key(node);
+        // Every header, footer and overlay paragraph was shaped before
+        // layout.
+        let shared = self.cache.entries.get(&key)?;
+        let fonts = self.cache.shaper.fonts();
+        if !shared.prepared.placeholders {
+            let boxes = boxes(shared);
+            return Some((shared.layout_at(fonts, runs, &boxes), boxes));
+        }
+        let numbers = self.numbers;
+        let own = self
+            .entries
+            .entry(key)
+            .or_insert_with(|| shared.with_numbers(fonts, runs, numbers));
+        let boxes = boxes(own);
+        Some((own.layout(fonts, runs, &boxes), boxes))
+    }
+
     /// For a paragraph with placeholders measured on this page: its lines
     /// in `boxes`, and the text and style they were broken from.
     pub fn paragraph(
@@ -873,51 +889,13 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
         known: Size<Option<f32>>,
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
-        let NodeKind::Text { runs } = &node.kind else {
-            return Size::ZERO;
-        };
-        let key = node_key(node);
-        // Every header, footer and overlay paragraph was shaped before
-        // layout.
-        let Some(shared) = self.cache.entries.get(&key) else {
-            return Size::ZERO;
-        };
-        let fonts = self.cache.shaper.fonts();
-        if !shared.prepared.placeholders {
-            return shared.measure_at(fonts, runs, known, available);
-        }
-        let numbers = self.numbers;
-        self.entries
-            .entry(key)
-            .or_insert_with(|| shared.with_numbers(fonts, runs, numbers))
-            .measure(fonts, runs, known, available)
+        self.lines(node, |e| LineBoxes::plain(e.width_in(available.width)))
+            .map_or(Size::ZERO, |(l, boxes)| leaf_size(&l, known, boxes.width))
     }
 
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
-        let NodeKind::Text { runs } = &node.kind else {
-            return Wrapped {
-                height: 0.0,
-                wrapped: 0.0,
-            };
-        };
-        let key = node_key(node);
-        let Some(shared) = self.cache.entries.get(&key) else {
-            return Wrapped {
-                height: 0.0,
-                wrapped: 0.0,
-            };
-        };
-        let fonts = self.cache.shaper.fonts();
-        if !shared.prepared.placeholders {
-            return wrapped(&shared.layout_at(fonts, runs, boxes), boxes);
-        }
-        let numbers = self.numbers;
-        let l = self
-            .entries
-            .entry(key)
-            .or_insert_with(|| shared.with_numbers(fonts, runs, numbers))
-            .layout(fonts, runs, boxes);
-        wrapped(&l, boxes)
+        self.lines(node, |_| boxes.clone())
+            .map_or_else(Wrapped::default, |(l, _)| wrapped(&l, boxes))
     }
 }
 

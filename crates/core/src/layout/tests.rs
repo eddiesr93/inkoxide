@@ -500,7 +500,8 @@ fn text_wraps_beside_a_float_and_the_container_holds_it() {
         let boxes = tree.line_boxes(3);
         assert!(boxes.banded());
         let layout = cache.layout_in(t.node().unwrap(), &boxes).unwrap();
-        for (line, &(left, avail)) in layout.lines.iter().zip(&layout.boxes) {
+        for (line, b) in layout.lines.iter().zip(&layout.boxes) {
+            let (left, avail) = (b.left, b.width);
             if line.top < 50.0 {
                 assert_eq!((left, avail), (90.0, 210.0), "{line:?}");
             } else {
@@ -596,4 +597,113 @@ fn a_note_in_a_box_with_floats_is_a_zero_height_leaf() {
         assert_eq!(tree.nodes[4].geo.y, 0.0);
         assert!(tree.wraps.contains_key(&4));
     });
+}
+
+#[test]
+fn a_narrowed_box_keeps_clear_of_a_wider_float_lower_down() {
+    // A second, wider float sits below the first; a box 80 tall beside
+    // the first reaches down beside the second too.
+    let floats = r#"{"type":"box","style":{"float":"left","width":100,"height":50}},
+        {"type":"box","style":{"float":"left","width":350,"height":50}}"#;
+    let children = format!(
+        r#"{{"type":"box","children":[{floats},{{"type":"box","style":{{"width":50,"height":80}}}}]}},
+           {{"type":"box","children":[{floats},{{"type":"box","style":{{"height":80}}}}]}},
+           {{"type":"box","children":[{floats},{{"type":"box","style":{{"width":60,"height":80}}}}]}}"#
+    );
+    with_floats(&children, 400.0, |tree, _| {
+        // In its parent's content box.
+        let g = |i: usize| {
+            let g = tree.nodes[i].geo;
+            let p = tree.nodes[tree.nodes[i].parent as usize].geo;
+            (g.x - p.x, g.y - p.y, g.w, g.h)
+        };
+        assert_eq!(g(5), (0.0, 50.0, 350.0, 50.0));
+        // Beside both floats, right of the wider one.
+        assert_eq!(g(6), (350.0, 0.0, 50.0, 80.0));
+        // A box that stretches is narrowed to the room beside both.
+        assert_eq!(g(9), (350.0, 0.0, 50.0, 80.0));
+        // Too wide for that room: below both floats.
+        assert_eq!(g(12), (0.0, 100.0, 60.0, 80.0));
+        for (f, b) in [(4, 6), (5, 6), (7, 9), (8, 9), (10, 12), (11, 12)] {
+            let (f, b) = (tree.nodes[f].geo, tree.nodes[b].geo);
+            let apart = f.x + f.w <= b.x + 1e-3
+                || b.x + b.w <= f.x + 1e-3
+                || f.y + f.h <= b.y + 1e-3
+                || b.y + b.h <= f.y + 1e-3;
+            assert!(apart, "{f:?} meets {b:?}");
+        }
+    });
+}
+
+#[test]
+fn auto_margins_share_the_free_room_beside_floats() {
+    let children = r#"{"type":"box","style":{"height":200},"children":[
+        {"type":"box","style":{"float":"left","width":50,"height":30}},
+        {"type":"box","style":{"height":20}},
+        {"type":"box","style":{"height":20,"margin":{"top":"auto"}}}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let g = |i: usize| {
+            let g = tree.nodes[i].geo;
+            (g.x, g.y, g.w, g.h)
+        };
+        // Pushed to the bottom, as without the float.
+        assert_eq!(g(4), (0.0, 180.0, 300.0, 20.0));
+        assert_eq!(tree.nodes[4].geo.margin.top, 160.0);
+        assert_eq!(g(3), (50.0, 0.0, 250.0, 20.0));
+    });
+}
+
+#[test]
+fn the_max_content_width_counts_the_floats_beside_a_child() {
+    // Floats shrink to fit: to their max-content width here.
+    let children = r#"{"type":"box","children":[{"type":"box","style":{"float":"left"},"children":[
+            {"type":"box","style":{"float":"left","width":50,"height":20}},
+            {"type":"box","style":{"width":30,"height":10}}]}]},
+        {"type":"box","children":[{"type":"box","style":{"float":"left"},"children":[
+            {"type":"box","style":{"float":"left","width":50,"height":20}},
+            {"type":"box","style":{"width":30,"height":10,"clear":"left"}}]}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let n = &tree.nodes;
+        // The box sits beside the float: the floated box holds both.
+        assert_eq!(n[3].geo.w, 80.0);
+        assert_eq!(n[6].geo.x - n[3].geo.x, 50.0);
+        // Below it, after `clear`: as wide as the wider of the two.
+        assert_eq!(n[4].geo.w, 50.0);
+        assert_eq!(n[8].geo.y - n[4].geo.y, 20.0);
+    });
+}
+
+#[test]
+fn text_with_a_width_or_an_alignment_wraps_line_by_line() {
+    for style in [
+        r#""width":250"#,
+        r#""alignSelf":"center""#,
+        r#""margin":{"left":"auto","right":20}"#,
+    ] {
+        let children = format!(
+            r#"{{"type":"box","children":[
+                {{"type":"box","style":{{"float":"left","width":80,"height":50}}}},
+                {}]}}"#,
+            text(style)
+        );
+        with_floats(&children, 300.0, |tree, cache| {
+            let t = tree.nodes[3].geo;
+            // Its own box, beside the float: not moved below it.
+            assert_eq!(t.y, 0.0, "{style}");
+            assert!(tree.wraps.contains_key(&3), "{style}");
+            let boxes = tree.line_boxes(3);
+            let layout = cache.layout_in(tree.nodes[3].node().unwrap(), &boxes).unwrap();
+            let (cx, cw) = (t.content_box().x, t.content_box().w);
+            for (line, b) in layout.lines.iter().zip(&layout.boxes) {
+                assert!(line.width <= b.width + 1e-3, "{style}: {line:?}");
+                if line.top < 50.0 {
+                    // Right of the float.
+                    assert!(cx + b.left >= 80.0 - 1e-3, "{style}: {b:?}");
+                } else {
+                    assert_eq!((b.left, b.width), (0.0, cw), "{style}");
+                }
+            }
+            assert!(layout.boxes.iter().any(|b| b.left > 0.0), "{style}");
+        });
+    }
 }

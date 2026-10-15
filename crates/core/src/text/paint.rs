@@ -6,7 +6,7 @@ use super::prepare::number_glyphs;
 use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
-use crate::layout::{Geometry, LineBoxes};
+use crate::layout::{Geometry, LineBox, LineBoxes};
 use crate::paint::{
     span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg, Rect,
     TextGlyph, TextOp, NO_RADII,
@@ -91,8 +91,11 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             }
             // The line's box: the content box, or beside a float, the part
             // of it the line was broken in.
-            let (bx, bw) = layout.boxes.get(li).copied().unwrap_or((0.0, cw));
-            let content = Rect::new(cx + ctx.dx + bx, top - line.top + ctx.dy, bw, ch);
+            let b = layout.boxes.get(li).copied().unwrap_or(LineBox {
+                left: 0.0,
+                width: cw,
+            });
+            let content = Rect::new(cx + ctx.dx + b.left, top - line.top + ctx.dy, b.width, ch);
             let painted = paint_line(
                 line,
                 &para,

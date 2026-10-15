@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use super::width_key;
+use crate::schema::Clear;
 
 /// A vertical range of a paragraph's content box with room taken on its
 /// sides, in points from the top and from each side.
@@ -19,6 +20,42 @@ pub(crate) struct Band {
     pub bottom: f32,
     pub left: f32,
     pub right: f32,
+}
+
+/// The box of one line in a paragraph's content box: its left edge and
+/// its width.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LineBox {
+    pub left: f32,
+    pub width: f32,
+}
+
+/// The room taken on each side of a range of heights, from that side of
+/// the content box.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct Insets {
+    pub left: f32,
+    pub right: f32,
+}
+
+impl Insets {
+    /// Whether no room is taken.
+    pub fn is_empty(self) -> bool {
+        self.left == 0.0 && self.right == 0.0
+    }
+
+    /// The room left between the insets in a box `width` wide.
+    pub fn room(self, width: f32) -> f32 {
+        width - self.left - self.right
+    }
+
+    /// The room both take, on each side.
+    pub fn max(self, other: Self) -> Self {
+        Self {
+            left: self.left.max(other.left),
+            right: self.right.max(other.right),
+        }
+    }
 }
 
 /// The boxes a paragraph's lines go in: its width, and the bands where
@@ -43,17 +80,28 @@ impl LineBoxes {
         !self.bands.is_empty()
     }
 
-    /// The box of a line from `y` down to `y + h`: its left edge and its
-    /// width, after the room every band it meets takes.
-    pub fn at(&self, y: f32, h: f32) -> (f32, f32) {
-        let (mut left, mut right) = (0.0f32, 0.0f32);
+    /// The box of a line from `y` down to `y + h`, after the room every
+    /// band it meets takes.
+    pub fn at(&self, y: f32, h: f32) -> LineBox {
+        let mut taken = Insets::default();
         for b in self.bands.iter().take_while(|b| b.top < y + h) {
             if b.bottom > y {
-                left = left.max(b.left);
-                right = right.max(b.right);
+                taken = taken.max(Insets {
+                    left: b.left,
+                    right: b.right,
+                });
             }
         }
-        (left, (self.width - left - right).max(0.0))
+        LineBox {
+            left: taken.left,
+            width: taken.room(self.width).max(0.0),
+        }
+    }
+
+    /// The bottom of the lowest band: from there down, every line is as
+    /// wide as the content box.
+    pub fn end(&self) -> f32 {
+        self.bands.iter().map(|b| b.bottom).fold(0.0, f32::max)
     }
 
     /// The first band edge below `y`, where a line that does not fit at `y`
@@ -105,7 +153,11 @@ const HAIR: f32 = 1e-3;
 #[derive(Debug, Clone)]
 pub(crate) struct FloatContext {
     width: f32,
+    /// The floats that may still sit beside what comes next.
     floats: Vec<Placed>,
+    /// The lowest bottom of the left and of the right floats dropped from
+    /// `floats`, which only `clear` still looks at.
+    retired: [Option<f32>; 2],
     /// The top of the last float placed: a later float goes no higher
     /// (CSS 2.2 §9.5.1, rule 5).
     last_top: f32,
@@ -116,6 +168,7 @@ impl FloatContext {
         Self {
             width,
             floats: Vec::new(),
+            retired: [None; 2],
             last_top: f32::NEG_INFINITY,
         }
     }
@@ -123,18 +176,32 @@ impl FloatContext {
     /// The room the floats take beside `y..y + h`: on the left, up to the
     /// right edge of the left floats it meets; on the right, from the left
     /// edge of the right floats.
-    pub fn band(&self, y: f32, h: f32) -> (f32, f32) {
+    pub fn band(&self, y: f32, h: f32) -> Insets {
         let h = h.max(HAIR);
-        let (mut left, mut right) = (0.0f32, 0.0f32);
+        let mut taken = Insets::default();
         for f in &self.floats {
             if f.y < y + h && f.bottom() > y {
                 match f.side {
-                    Side::Left => left = left.max(f.x + f.w),
-                    Side::Right => right = right.max(self.width - f.x),
+                    Side::Left => taken.left = taken.left.max(f.x + f.w),
+                    Side::Right => taken.right = taken.right.max(self.width - f.x),
                 }
             }
         }
-        (left, right)
+        taken
+    }
+
+    /// Drops the floats whose bottom is at or above `y`, which nothing
+    /// from `y` down meets: the caller asks about nothing above `y` again.
+    pub fn retire(&mut self, y: f32) {
+        let retired = &mut self.retired;
+        self.floats.retain(|f| {
+            if f.bottom() > y {
+                return true;
+            }
+            let side = &mut retired[usize::from(f.side == Side::Right)];
+            *side = Some(side.map_or(f.bottom(), |b| b.max(f.bottom())));
+            false
+        });
     }
 
     /// The first float bottom below `y`: where more room may open. `None`
@@ -147,31 +214,45 @@ impl FloatContext {
             .min_by(f32::total_cmp)
     }
 
-    /// The lowest bottom of the floats on the cleared sides, or `None`.
-    pub fn clear_y(&self, left: bool, right: bool) -> Option<f32> {
+    /// The lowest bottom of the floats `clear` moves below, or `None`.
+    pub fn clear_y(&self, clear: Clear) -> Option<f32> {
+        let (left, right) = match clear {
+            Clear::Left => (true, false),
+            Clear::Right => (false, true),
+            Clear::Both => (true, true),
+            Clear::None => return None,
+        };
+        let cleared = |side: Side| match side {
+            Side::Left => left,
+            Side::Right => right,
+        };
         self.floats
             .iter()
-            .filter(|f| match f.side {
-                Side::Left => left,
-                Side::Right => right,
-            })
+            .filter(|f| cleared(f.side))
             .map(Placed::bottom)
+            .chain(
+                [Side::Left, Side::Right]
+                    .into_iter()
+                    .filter(|&s| cleared(s))
+                    .filter_map(|s| self.retired[usize::from(s == Side::Right)]),
+            )
             .max_by(f32::total_cmp)
     }
 
-    /// Where a top of at least `min_y` finds `w` of room over `h`: moving
-    /// down past float bottoms until it does, or until no float is left.
-    /// Each step goes to a float bottom below the last, so it ends.
-    pub fn fit(&self, w: f32, h: f32, min_y: f32) -> (f32, f32, f32) {
+    /// Where a top of at least `min_y` finds `w` of room over `h`, and the
+    /// room the floats take there: moving down past float bottoms until it
+    /// does, or until no float is left. Each step goes to a float bottom
+    /// below the last, so it ends.
+    pub fn fit(&self, w: f32, h: f32, min_y: f32) -> (f32, Insets) {
         let mut y = min_y;
         loop {
-            let (left, right) = self.band(y, h);
-            if w <= self.width - left - right + 1e-3 || (left == 0.0 && right == 0.0) {
-                return (y, left, right);
+            let taken = self.band(y, h);
+            if w <= taken.room(self.width) + 1e-3 || taken.is_empty() {
+                return (y, taken);
             }
             match self.next_change(y) {
                 Some(next) => y = next,
-                None => return (y, left, right),
+                None => return (y, taken),
             }
         }
     }
@@ -180,10 +261,10 @@ impl FloatContext {
     /// than `min_y` (where it occurs in the flow) nor than earlier floats,
     /// and returns it.
     pub fn place(&mut self, side: Side, w: f32, h: f32, min_y: f32) -> Placed {
-        let (y, left, right) = self.fit(w, h, min_y.max(self.last_top));
+        let (y, taken) = self.fit(w, h, min_y.max(self.last_top));
         let x = match side {
-            Side::Left => left,
-            Side::Right => self.width - right - w,
+            Side::Left => taken.left,
+            Side::Right => self.width - taken.right - w,
         };
         let placed = Placed { side, x, y, w, h };
         self.last_top = y;
@@ -234,8 +315,9 @@ mod tests {
         // A right float goes no higher than `d`, and takes the room there.
         let r = c.place(Side::Right, 15.0, 10.0, 0.0);
         assert_eq!((r.x, r.y), (85.0, 30.0));
-        assert_eq!(c.band(0.0, 5.0), (80.0, 0.0));
-        assert_eq!(c.band(30.0, 1.0), (40.0, 15.0));
+        let insets = |left, right| Insets { left, right };
+        assert_eq!(c.band(0.0, 5.0), insets(80.0, 0.0));
+        assert_eq!(c.band(30.0, 1.0), insets(40.0, 15.0));
         assert_eq!(c.next_change(0.0), Some(20.0));
         assert_eq!(c.next_change(40.0), None);
     }
@@ -251,12 +333,38 @@ mod tests {
     #[test]
     fn clear_goes_below_the_floats_of_its_sides() {
         let mut c = FloatContext::new(100.0);
-        assert_eq!(c.clear_y(true, true), None);
+        assert_eq!(c.clear_y(Clear::Both), None);
         c.place(Side::Left, 30.0, 50.0, 0.0);
         c.place(Side::Right, 30.0, 20.0, 0.0);
-        assert_eq!(c.clear_y(true, false), Some(50.0));
-        assert_eq!(c.clear_y(false, true), Some(20.0));
-        assert_eq!(c.clear_y(true, true), Some(50.0));
+        assert_eq!(c.clear_y(Clear::Left), Some(50.0));
+        assert_eq!(c.clear_y(Clear::Right), Some(20.0));
+        assert_eq!(c.clear_y(Clear::Both), Some(50.0));
+        assert_eq!(c.clear_y(Clear::None), None);
+    }
+
+    #[test]
+    fn retired_floats_still_count_for_clear_only() {
+        let mut c = FloatContext::new(100.0);
+        c.place(Side::Left, 30.0, 50.0, 0.0);
+        c.place(Side::Right, 30.0, 20.0, 0.0);
+        c.retire(20.0);
+        // The right float is done with: no longer active, still cleared.
+        assert_eq!(c.floats.len(), 1);
+        assert_eq!(c.clear_y(Clear::Right), Some(20.0));
+        assert_eq!(
+            c.band(20.0, 10.0),
+            Insets {
+                left: 30.0,
+                right: 0.0
+            }
+        );
+        c.retire(60.0);
+        assert!(c.floats.is_empty());
+        assert_eq!(c.next_change(0.0), None);
+        assert_eq!(c.clear_y(Clear::Both), Some(50.0));
+        assert_eq!(c.clear_y(Clear::Left), Some(50.0));
+        // A later float still goes no higher than the earlier ones.
+        assert_eq!(c.place(Side::Left, 10.0, 10.0, 0.0).y, 0.0);
     }
 
     #[test]
@@ -305,14 +413,17 @@ mod tests {
                 right: 25.0,
             },
         ]);
-        assert_eq!(b.at(0.0, 10.0), (30.0, 70.0));
-        assert_eq!(b.at(12.0, 10.0), (30.0, 45.0));
-        assert_eq!(b.at(20.0, 10.0), (10.0, 65.0));
-        assert_eq!(b.at(40.0, 10.0), (0.0, 100.0));
+        let line = |left, width| LineBox { left, width };
+        assert_eq!(b.at(0.0, 10.0), line(30.0, 70.0));
+        assert_eq!(b.at(12.0, 10.0), line(30.0, 45.0));
+        assert_eq!(b.at(20.0, 10.0), line(10.0, 65.0));
+        assert_eq!(b.at(40.0, 10.0), line(0.0, 100.0));
+        assert_eq!(b.end(), 40.0);
         assert_eq!(b.next_change(0.0), Some(15.0));
         assert_eq!(b.next_change(15.0), Some(20.0));
         assert_eq!(b.next_change(40.0), None);
         assert!(!LineBoxes::plain(10.0).banded());
-        assert_eq!(LineBoxes::plain(10.0).at(5.0, 5.0), (0.0, 10.0));
+        assert_eq!(LineBoxes::plain(10.0).at(5.0, 5.0), line(0.0, 10.0));
+        assert_eq!(LineBoxes::plain(10.0).end(), 0.0);
     }
 }

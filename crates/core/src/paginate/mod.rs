@@ -558,11 +558,7 @@ impl Paginator<'_, '_, '_> {
         let Some(boxes) = self.tree.wraps.get(&i) else {
             return (orphans, widows);
         };
-        let wrapped = l
-            .boxes
-            .iter()
-            .rposition(|&(left, avail)| left > 0.0 || avail < boxes.width - PAGED_EPS)
-            .map_or(0, |k| k + 1);
+        let wrapped = l.wrapped_lines(boxes.width);
         (orphans.max(wrapped).min(l.lines.len()), widows)
     }
 

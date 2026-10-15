@@ -25,7 +25,7 @@ use std::sync::Arc;
 use taffy::prelude::{NodeId as TaffyId, Size as TSize, TaffyTree};
 use taffy::{LayoutInput, LayoutOutput};
 
-pub(crate) use float::LineBoxes;
+pub(crate) use float::{LineBox, LineBoxes};
 pub(crate) use flow::Wrapped;
 pub(crate) use table::TableLayout;
 
@@ -295,7 +295,7 @@ pub(crate) trait LeafMeasure {
     ) -> Size<f32>;
 
     /// The content height of text leaf `node` laid out in `boxes`, beside
-    /// floats, and the bottom of its last line that starts beside one.
+    /// floats, and the bottom of its last line set beside one.
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
         let width = AvailableSpace::Definite(boxes.width);
         let available = Size {
