@@ -31,7 +31,8 @@
 @inkoxide/render turns React components into PDF documents. You write `Document`, `Page`,
 `View` and `Text`, style them with Tailwind classes or style objects, and a layout engine
 written in Rust does the typesetting: text shaping, line breaking, pagination and PDF output.
-A one-page invoice renders in about a millisecond, a 43-page report in about 33 ms.
+A one-page invoice renders in about a millisecond and a half, a 43-page report in about 43 ms; in
+a browser, in a Web Worker, about 2 ms and 56 ms.
 
 ## Features
 
@@ -1022,11 +1023,11 @@ Median render times after warm-up, on an Apple M4 Pro with Node 24:
 
 | Document | Pages | All cores | One thread |
 |---|---:|---:|---:|
-| Invoice | 1 | 1.3 ms | 1.0 ms |
-| Report: 40 sections, 1,000 table rows | 43 | 33 ms | 44 ms |
+| Invoice | 1 | 1.6 ms | 1.3 ms |
+| Report: 40 sections, 1,000 table rows | 43 | 43 ms | 56 ms |
 
 The first render in a new process also loads the engine, the fonts and Tailwind's compiler:
-about 160 ms. Call `init()` at startup to keep that cost out of the first request. Each render
+about 180 ms. Call `init()` at startup to keep that cost out of the first request. Each render
 spreads its pages over the available cores; many renders run concurrently on Node's thread
 pool.
 
