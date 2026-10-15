@@ -1,19 +1,19 @@
-//! Text annotations: one per painted note, drawn as a sticky-note icon by
-//! an appearance stream of its own (PDF/A-2b requires one, and it looks the
-//! same in every viewer).
+//! Icon annotations: one per painted icon op. A text note is drawn as a
+//! sticky-note icon by an appearance stream of its own (PDF/A-2b requires
+//! one, and it looks the same in every viewer).
 
 use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::{annot_rect, content_bytes, path, q, set_fill, EncodedPage, Out, Profile, RefAlloc};
-use crate::notes::{NoteOp, ICON};
+use crate::icons::{IconKind, ICON};
 use crate::paint::{rounded_rect, Rect};
-use crate::schema::{Color, NOTE_YELLOW};
+use crate::schema::{Color, Note, NOTE_YELLOW};
 use crate::InkoxideError;
 
-/// Writes the notes of every page, in page order; appends their refs to
-/// `annots` (per page).
-pub(super) fn write_notes(
+/// Writes the icon annotations of every page, in page order; appends
+/// their refs to `annots` (per page).
+pub(super) fn write_icons(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     out: &mut Out,
@@ -22,35 +22,38 @@ pub(super) fn write_notes(
     profile: Profile,
 ) -> Result<(), InkoxideError> {
     for (i, page) in pages.iter().enumerate() {
-        for n in &page.notes {
+        for icon in &page.icons {
             let r = alloc.next();
             let ap = alloc.next();
-            write_note(pdf, out, (r, ap), n, (page, page_refs[i]), profile)?;
+            // Inside the page, where viewers show it.
+            let x = icon.x.min(page.width - ICON).max(0.0);
+            let y = icon.y.min(page.height - ICON).max(0.0);
+            let rect = annot_rect(Rect::new(x, y, ICON, ICON), page.height);
+            match &icon.kind {
+                IconKind::Note(note) => {
+                    write_note(pdf, out, (r, ap), note, (rect, page_refs[i]), profile)?;
+                }
+            }
             annots[i].push(r);
         }
     }
     Ok(())
 }
 
-/// Writes note `n` of `page` as annotation `r`, with appearance `ap`.
+/// Writes `note` as annotation `r` at `rect`, with appearance `ap`.
 fn write_note(
     pdf: &mut Pdf,
     out: &mut Out,
     (r, ap): (Ref, Ref),
-    n: &NoteOp,
-    (page, page_ref): (&EncodedPage, Ref),
+    note: &Note,
+    (rect, page_ref): (PdfRect, Ref),
     profile: Profile,
 ) -> Result<(), InkoxideError> {
-    let color = n.note.color.unwrap_or(NOTE_YELLOW);
-    // Inside the page, where viewers show it.
-    let x = n.x.min(page.width - ICON).max(0.0);
-    let y = n.y.min(page.height - ICON).max(0.0);
-    let contents = out.text(&n.note.contents);
-    let author = n.note.author.as_deref().map(|a| out.text(a));
+    let color = note.color.unwrap_or(NOTE_YELLOW);
+    let contents = out.text(&note.contents);
+    let author = note.author.as_deref().map(|a| out.text(a));
     let mut a = pdf.annotation(r);
-    a.subtype(AnnotationType::Text)
-        .rect(annot_rect(Rect::new(x, y, ICON, ICON), page.height))
-        .page(page_ref);
+    a.subtype(AnnotationType::Text).rect(rect).page(page_ref);
     a.pair(Name(b"Contents"), Str(&contents));
     a.color_rgb(q(color[0]), q(color[1]), q(color[2]))
         .flags(AnnotationFlags::PRINT | AnnotationFlags::NO_ZOOM | AnnotationFlags::NO_ROTATE)
@@ -58,7 +61,7 @@ fn write_note(
     if let Some(author) = &author {
         a.pair(Name(b"T"), Str(author));
     }
-    if n.note.open {
+    if note.open {
         a.pair(Name(b"Open"), true);
     }
     a.appearance().normal().stream(ap);

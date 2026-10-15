@@ -21,7 +21,7 @@ use rayon::prelude::*;
 use crate::date::Timestamp;
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet};
-use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, Rect, TextOp};
+use crate::paint::{apply, FillRule, InvisibleGlyph, Op, PageContent, PathSeg, Rect, TextOp};
 use crate::pipeline::{Dest, Marks};
 use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
@@ -56,8 +56,9 @@ pub(crate) struct EncodedPage {
     pub links: Vec<(Rect, Box<str>)>,
     /// Form field widgets.
     pub fields: Vec<crate::forms::FieldOp>,
-    /// Text notes, at the corner the transform in effect puts them.
-    pub notes: Vec<crate::notes::NoteOp>,
+    /// Icon annotations (text notes), at the corner the transform in
+    /// effect puts them.
+    pub icons: Vec<crate::icons::IconOp>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -192,7 +193,7 @@ impl PdfSink for PdfWriterSink {
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
         let mut fields = Vec::new();
-        let mut notes = Vec::new();
+        let mut icons = Vec::new();
         // Links and widgets are areas on the page: they cover where the
         // transform in effect puts them.
         let mut ctm: Option<[f32; 6]> = None;
@@ -237,15 +238,12 @@ impl PdfSink for PdfWriterSink {
                 }
                 // An icon stays upright and the same size: only its corner
                 // moves.
-                Op::Note(n) => {
-                    let mut n = (**n).clone();
+                Op::Icon(i) => {
+                    let mut i = (**i).clone();
                     if let Some(m) = ctm {
-                        (n.x, n.y) = (
-                            m[0] * n.x + m[2] * n.y + m[4],
-                            m[1] * n.x + m[3] * n.y + m[5],
-                        );
+                        (i.x, i.y) = crate::paint::apply(m, (i.x, i.y));
                     }
-                    notes.push(n);
+                    icons.push(i);
                 }
                 _ => {}
             }
@@ -265,7 +263,7 @@ impl PdfSink for PdfWriterSink {
             images,
             links,
             fields,
-            notes,
+            icons,
         })
     }
 
@@ -411,7 +409,7 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
-        notes::write_notes(
+        notes::write_icons(
             &mut pdf,
             &mut alloc,
             &mut out,
@@ -628,8 +626,7 @@ impl PdfSink for PdfWriterSink {
 /// The upright rectangle that `rect` covers once transformed by `m`.
 fn bounds(m: [f32; 6], rect: Rect) -> Rect {
     let Rect { x, y, w, h } = rect;
-    let corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)]
-        .map(|(px, py)| (m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]));
+    let corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)].map(|p| apply(m, p));
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for (px, py) in corners {
         (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px), y1.max(py));
@@ -1030,7 +1027,7 @@ pub(crate) fn content_stream(
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) | Op::Note(_) => {}
+            Op::Link { .. } | Op::Field(_) | Op::Icon(_) => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
