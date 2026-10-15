@@ -161,6 +161,11 @@ jobs:
     needs: [linux, macos, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # A real release runs in the `release` environment: its deployment branch rule admits only
+    # main, and npm's trusted publisher for each package names that environment, so a token
+    # minted outside it cannot publish. A dry run (an empty name: no environment) may come from
+    # any branch and uploads nothing.
+    environment: ${{ !inputs.dry_run && 'release' || '' }}
     permissions:
       contents: read
       id-token: write # npm trusted publishing and provenance
