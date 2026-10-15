@@ -976,18 +976,24 @@ fn outlined_text_draws_its_colour_glyphs_as_images() {
 }
 
 /// The space in a colour glyph's span is one of its run's font, which is
-/// embedded anyway, not the first font of the document.
+/// embedded anyway, not the first font of the document; in a run whose
+/// font has no outlines, of the first font without colour.
 #[test]
 fn colour_glyph_spans_carry_a_space_of_the_run_s_font() {
-    let (pages, ids) = emoji_ops_in("\u{1F600}", "EmojiTest-COLR", "NotoSans-Regular", false);
-    let spaces: Vec<&str> = pages[0]
-        .iter()
-        .filter_map(|op| match op {
-            Op::InvisibleText(g) => Some(ids[g.font as usize].as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(spaces, ["NotoSans-Regular"]);
+    for (font, want) in [
+        ("NotoSans-Regular", "NotoSans-Regular"),
+        ("EmojiTest-CBDT", "Inter-Regular"),
+    ] {
+        let (pages, ids) = emoji_ops_in("\u{1F600}", "EmojiTest-COLR", font, false);
+        let spaces: Vec<&str> = pages[0]
+            .iter()
+            .filter_map(|op| match op {
+                Op::InvisibleText(g) => Some(ids[g.font as usize].as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces, [want], "{font}");
+    }
 }
 
 #[test]

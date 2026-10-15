@@ -8,7 +8,7 @@ use super::{
     baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper,
     UnicodeMap, WIDTH_EPS,
 };
-use crate::fonts::FontSet;
+use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet, Placement};
 use crate::layout::{Geometry, LineBoxes};
 use crate::paint::{
@@ -397,9 +397,12 @@ fn paint_line(
                 y: baseline,
                 glyphs: piece.glyphs,
             };
-            // Colour glyphs become images, their spans carrying a space
-            // of the run's own font.
-            let strut = fonts.key(&run.font);
+            // Colour glyphs become images, in spans with a space.
+            let strut = if fonts.get(piece.font).has_color() {
+                space_font(fonts, run)
+            } else {
+                None
+            };
             ink.colors
                 .push(text, strut, fonts, ink.images, ink.unicode, ops);
         }
@@ -467,12 +470,27 @@ fn paint_object(
     ops: &mut Vec<Op>,
 ) {
     let text = object.alt.as_deref().filter(|a| !a.is_empty()).map(|alt| {
-        let space = fonts.key(&run.font).and_then(|k| {
+        let space = space_font(fonts, run).and_then(|k| {
             InvisibleGlyph::space(fonts, k, run.size, (rect.x, baseline), object.width)
         });
         (alt, space)
     });
     image_span(images, object.key, rect, object.placement, text, ops);
+}
+
+/// The font of the invisible space in the span of an image drawn in run
+/// `run` (an inline object, a colour glyph): the run's own font, the
+/// paragraph's strut, which the line embeds anyway. When it has no
+/// outlines (it is never embedded) or no space, the first font of the
+/// document that has both, preferring one without colour glyphs.
+fn space_font(fonts: &FontSet<'_>, run: &TextRun) -> Option<FontKey> {
+    let spaced = |k: FontKey| InvisibleGlyph::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
+    let all = || 0..fonts.fonts.len() as FontKey;
+    fonts
+        .key(&run.font)
+        .filter(|&k| spaced(k))
+        .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
+        .or_else(|| all().find(|&k| spaced(k)))
 }
 
 /// Draws image `key` in `rect` as `placement` says. With `text`, inside a
