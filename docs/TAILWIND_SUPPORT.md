@@ -61,8 +61,9 @@ that are supported and tested; each example is a unit test.
 
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
-| `w-*`, `h-*`, `size-*` | `width`, `height` | `w-full` → `{"width":"100%"}` | Fractions become percentages. `w-screen`, `w-fit`, `w-min` and `w-max` are not supported. |
+| `w-*`, `h-*`, `size-*` | `width`, `height` | `w-full` → `{"width":"100%"}` | Fractions become percentages. `w-fit`, `w-min` and `w-max` are not supported. |
 | `min-w-*`, `max-w-*`, `min-h-*`, `max-h-*` | `minWidth`, `maxWidth`, `minHeight`, `maxHeight` | `min-w-0` → `{"minWidth":0}` |  |
+| `w-screen`, `h-screen`, `min-w-screen`, `min-h-screen`, `max-w-screen`, `max-h-screen` | `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | `w-screen` → `{"width":595.28}` | The page's width or height (`100vw`, `100vh`); the examples are on an A4 page. `dvh`, `svh`, `lvh` (`h-dvh`) and `dvw`, `svw`, `lvw` are not supported. |
 | `aspect-*` | `aspectRatio` | `aspect-square` → `{"aspectRatio":1}` |  |
 
 ## Position
@@ -136,8 +137,8 @@ that are supported and tested; each example is a unit test.
 | `rotate-x-12` | 3D transforms and `perspective-*`. |
 | `block` | `display` other than `flex`, `grid` and `none`. |
 | `fixed` | `fixed` and `sticky` positioning; the `fixed` prop with `absolute` repeats an element on every page. |
-| `w-fit` | Intrinsic sizes (`fit`, `min`, `max`) and viewport units. |
-| `w-screen` | Intrinsic sizes (`fit`, `min`, `max`) and viewport units. |
+| `w-fit` | Intrinsic sizes (`fit`, `min`, `max`). |
+| `h-dvh` | Dynamic, small and large viewport units (`dvh`, `svh`, `lvh`); `h-screen` is the page height. |
 | `rounded-[4pt/8pt]` | Elliptical corners. |
 | `overline` | `overline` and `underline-offset-*`. |
 | `whitespace-break-spaces` | `break-spaces`. |

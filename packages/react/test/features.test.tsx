@@ -290,6 +290,10 @@ describe('relative units in the style prop', () => {
     });
     expect(first<BoxNode>(r).style).toEqual({ width: 420.945, height: 59.528 });
     expect(r.document.pages[0].margin).toEqual({ top: 29.764, left: 10 });
+    const screen = tree(<View className="w-screen h-screen min-h-screen" />, {
+      page: { size: 'A4-landscape' },
+    });
+    expect(first<BoxNode>(screen).style).toEqual({ width: 841.89, height: 595.28, minHeight: 595.28 });
     expect(thrown(() => tree(null, { page: { size: { width: '50vw', height: 100 } } })).message).toContain(
       'size: 50vw (depends on the font or page size',
     );
