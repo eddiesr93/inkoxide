@@ -91,6 +91,13 @@ fn fonts() -> FontStore {
     ))
     .unwrap();
     f.register("Fanout", bytes).unwrap();
+    // The same, with a last level that paints nothing: no painter call.
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/limits/colr-fanout-empty.ttf"
+    ))
+    .unwrap();
+    f.register("FanoutEmpty", bytes).unwrap();
     let bytes = std::fs::read(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../fixtures/fonts/EmojiTest-COLR.ttf"
@@ -538,16 +545,22 @@ fn deepest_accepted_nesting_renders_on_a_small_stack() {
     }
 }
 
-/// A colour glyph that would take 10^19 paints stops at the painter's
-/// work budget: it draws without colour, as its outline, and fast.
+/// A colour glyph that would take 10^19 paints stops at the work budget,
+/// whether its paints call the painter or not: it draws without colour, as
+/// its outline, and fast.
 #[test]
 fn colour_glyphs_that_fan_out_draw_without_colour() {
-    let d = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"Fanout","family":"Fanout"}],
-        "fallbackFonts":["Fanout"],
-        "pages":[{"size":{"width":595,"height":842},"children":[
-          {"type":"text","runs":[{"text":"a \u{1F600} b \u{1F600}","font":"Inter-Regular","size":10}]}]}]}"#
-        .replace("\\u{1F600}", "\u{1F600}");
-    for threads in [Some(1), Some(4)] {
+    for (font, threads) in [
+        ("Fanout", Some(1)),
+        ("Fanout", Some(4)),
+        ("FanoutEmpty", Some(1)),
+    ] {
+        let d = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"{font}","family":"F"}}],
+            "fallbackFonts":["{font}"],
+            "pages":[{{"size":{{"width":595,"height":842}},"children":[
+              {{"type":"text","runs":[{{"text":"a 😀 b 😀","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        );
         let t = std::time::Instant::now();
         let options = RenderOptions::default()
             .with_threads(threads)
