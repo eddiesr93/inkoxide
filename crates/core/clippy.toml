@@ -1,11 +1,21 @@
 # Strings and streams reach the PDF only through `src/pdf/out.rs`, which
 # encrypts them when the file is encrypted. Content streams may hold
-# `Str`s: the whole stream is encrypted.
+# `Str`s: the whole stream is encrypted. Every pdf-writer type and method
+# that writes a stream, or a string from something other than a `Str` it
+# is given, is listed here.
 disallowed-types = [
   { path = "pdf_writer::TextStr", reason = "write strings through pdf::out::Out::text" },
+  { path = "pdf_writer::TextStrWithLang", reason = "write strings through pdf::out::Out::text" },
+  { path = "pdf_writer::Date", reason = "write dates as strings through pdf::out::Out::text" },
 ]
 disallowed-methods = [
   { path = "pdf_writer::TextStr", reason = "write strings through pdf::out::Out::text" },
+  { path = "pdf_writer::TextStrWithLang", reason = "write strings through pdf::out::Out::text" },
+  { path = "pdf_writer::Date::new", reason = "write dates as strings through pdf::out::Out::text" },
+  { path = "pdf_writer::writers::ColorSpace::indexed", reason = "writes its lookup as a string: write it through pdf::out::Out::bytes" },
+  { path = "pdf_writer::writers::SeparationInfo::device_colorant_str", reason = "write strings through pdf::out::Out::text" },
+  { path = "pdf_writer::writers::FontDescriptor::style", reason = "writes its Panose bytes as a string: write them through pdf::out::Out::bytes" },
+  { path = "pdf_writer::writers::MediaPermissions::temp_file", reason = "writes a string: write it through pdf::out::Out::bytes" },
   { path = "pdf_writer::Chunk::stream", reason = "write streams through pdf::out::Out" },
   { path = "pdf_writer::Chunk::image_xobject", reason = "write streams through pdf::out::Out" },
   { path = "pdf_writer::Chunk::form_xobject", reason = "write streams through pdf::out::Out" },
@@ -15,4 +25,6 @@ disallowed-methods = [
   { path = "pdf_writer::Chunk::icc_profile", reason = "write streams through pdf::out::Out" },
   { path = "pdf_writer::Chunk::embedded_file", reason = "write streams through pdf::out::Out" },
   { path = "pdf_writer::Chunk::stream_shading", reason = "write streams through pdf::out::Out" },
+  { path = "pdf_writer::Chunk::sampled_function", reason = "write streams through pdf::out::Out" },
+  { path = "pdf_writer::Chunk::post_script_function", reason = "write streams through pdf::out::Out" },
 ]
