@@ -858,3 +858,39 @@ fn a_float_taller_than_a_page_is_sliced() {
         assert!(p.pages >= 3);
     });
 }
+
+#[test]
+fn a_nested_table_continues_below_the_repeated_outer_header() {
+    // An outer row taller than a page holds an inner table, with or without
+    // its own header rows: its rows on later pages start below the outer
+    // header (20pt), and below the inner one (10pt) when it has one.
+    let row = r#"{"cells":[{"style":{"height":10}}]}"#;
+    for inner_header in [0u8, 1] {
+        let inner_rows = vec![row; 30].join(",");
+        let d = doc(&format!(
+            r#"{{"type":"table","columns":[{{"width":"1fr"}}],"headerRows":1,"rows":[
+                {{"cells":[{{"style":{{"height":20}}}}]}},
+                {{"cells":[{{"children":[{{"type":"table","columns":[{{"width":"1fr"}}],
+                    "headerRows":{inner_header},"rows":[{inner_rows}]}}]}}]}}]}}"#
+        ));
+        let (t, p) = run(&d);
+        let outer_row = t.children(1).nth(1).unwrap();
+        let cell = t.children(outer_row).next().unwrap();
+        let inner = t.children(cell).next().unwrap();
+        let rows: Vec<u32> = t.children(inner).collect();
+        assert!(p.pages > 1);
+        let reserved = 20.0 + 10.0 * f32::from(inner_header);
+        for &r in &rows[usize::from(inner_header)..] {
+            let (top, bottom) = rect(&t, &p, r);
+            let pg = p.page_of(top);
+            assert_eq!(pg, p.page_of_bottom(bottom), "row {r} crosses a page");
+            if pg > 0 {
+                assert!(
+                    top - pg as f32 * H >= reserved - PAGED_EPS,
+                    "inner header {inner_header}: row {r} at {top} is under the repeated headers"
+                );
+            }
+        }
+        check_invariants(&t, &p);
+    }
+}

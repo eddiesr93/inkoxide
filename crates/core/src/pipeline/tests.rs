@@ -561,6 +561,35 @@ fn a_repeated_header_is_painted_once_per_page() {
 }
 
 #[test]
+fn a_nested_table_repeats_its_header_below_the_outer_one() {
+    // An outer row taller than a page holds an inner table: on every page,
+    // the inner header row (red) sits below the outer one (green, 20pt).
+    let cell = |h: f32| format!(r#"{{"children":[{{"type":"box","style":{{"height":{h}}}}}]}}"#);
+    let rows = vec![format!(r#"{{"cells":[{}]}}"#, cell(10.0)); 20].join(",");
+    let inner = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[1,0,0,1],"cells":[{}]}},{rows}]}}"#,
+        cell(10.0)
+    );
+    let outer = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[0,1,0,1],"cells":[{}]}},
+            {{"cells":[{{"children":[{inner}]}}]}}]}}"#,
+        cell(20.0)
+    );
+    let boxes = red_boxes(&with_fixed(1, &outer));
+    let on_table = boxes.iter().take_while(|page| !page.is_empty()).count();
+    assert!(on_table >= 3, "{boxes:?}");
+    for (k, page) in boxes.iter().take(on_table).enumerate() {
+        assert!(
+            page.len() == 1 && close(page[0].1, M + 20.0),
+            "page {}: {page:?}",
+            k + 1
+        );
+    }
+}
+
+#[test]
 fn overlays_take_no_space() {
     // Below the content box: painted off the page, without adding pages.
     let low = red_box(

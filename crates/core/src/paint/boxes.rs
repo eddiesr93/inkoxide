@@ -566,7 +566,8 @@ impl BoxPainter<'_, '_, '_, '_> {
     }
 
     /// On continuation pages, repaints the header rows at the top of the
-    /// page, above the first body row (which pagination pushed down).
+    /// page (below those of the tables around it), above the first body row
+    /// (which pagination pushed down).
     fn repeat_header(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
         let Some((pl, page)) = self.mode.paged() else {
             return;
@@ -579,7 +580,8 @@ impl BoxPainter<'_, '_, '_, '_> {
         if pl.on_page(rows[0], page) {
             return;
         }
-        let page_top = pl.page_top(page);
+        // Below the repeated header rows of the tables around it.
+        let page_top = pl.page_top(page) + pl.header_above.get(&i).copied().unwrap_or(0.0);
         // First body row on this page, if it starts below a reserved header.
         let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], page)) else {
             return;
