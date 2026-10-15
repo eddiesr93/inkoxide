@@ -334,15 +334,20 @@ fn assert_parsable_tokens(tokens: &[String]) {
 }
 
 /// Asserts that `qpdf --check` passes `pdf` without warnings (exit status
-/// 0), when qpdf is installed.
+/// 0), when qpdf is installed. CI installs it, so there (`CI` set) a
+/// missing qpdf fails.
 fn assert_qpdf_check(name: &str, pdf: &[u8]) {
     let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.pdf"));
     std::fs::write(&out, pdf).unwrap();
-    if let Ok(o) = std::process::Command::new("qpdf")
+    let o = std::process::Command::new("qpdf")
         .arg("--check")
         .arg(&out)
-        .output()
-    {
+        .output();
+    assert!(
+        o.is_ok() || std::env::var_os("CI").is_none(),
+        "qpdf is not installed"
+    );
+    if let Ok(o) = o {
         assert!(
             o.status.success(),
             "{name}: qpdf --check failed:\n{}{}",

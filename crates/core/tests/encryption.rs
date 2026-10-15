@@ -46,8 +46,20 @@ fn stores() -> (FontStore, ImageStore) {
     (fonts, images)
 }
 
+/// Whether `tool` runs (with `arg`). CI installs every tool these tests
+/// use, so there (`CI` set) a missing one fails the test instead of
+/// skipping its checks.
+fn installed(tool: &str, arg: &str) -> bool {
+    let found = Command::new(tool).arg(arg).output().is_ok();
+    assert!(
+        found || std::env::var_os("CI").is_none(),
+        "{tool} is not installed"
+    );
+    found
+}
+
 fn qpdf_available() -> bool {
-    Command::new("qpdf").arg("--version").output().is_ok()
+    installed("qpdf", "--version")
 }
 
 fn qpdf(args: &[&str], file: &Path) -> Output {

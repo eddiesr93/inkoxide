@@ -1478,7 +1478,12 @@ mod tests {
             .output();
         std::fs::remove_dir_all(&dir).unwrap();
         let Ok(out) = out else {
-            return; // pdftotext is not installed
+            // CI installs pdftotext, so there a missing one fails.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "pdftotext is not installed"
+            );
+            return;
         };
         assert!(out.status.success(), "{out:?}");
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "Snowman ☃");
