@@ -8,7 +8,8 @@
 //! run's `width` and `height`, one of them from the image's aspect ratio
 //! when only the other is set, and 1em high (the run's `size`) when
 //! neither is. An emoji image is 1em high, its bottom 0.1em below the
-//! baseline, and its alternative text is the sequence.
+//! run's baseline (raised or lowered by `verticalAlign`, as the run's
+//! glyphs are), and its alternative text is the sequence.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -85,6 +86,7 @@ impl InlineObjects {
             height: h,
             placement: Placement::FILL,
             align: RunAlign::Points(-0.1 * run.size),
+            shifted: true,
             alt: Some(seq.into()),
         })
     }
@@ -100,6 +102,7 @@ impl InlineObjects {
             height: h,
             placement: Placement::new(image.fit, image.object_position),
             align: run.vertical_align.unwrap_or_default(),
+            shifted: false,
             alt: image.alt.as_deref().map(Box::from),
         })
     }
@@ -125,6 +128,11 @@ pub(crate) struct InlineObject {
     pub height: f32,
     pub placement: Placement,
     pub align: RunAlign,
+    /// Whether `align` places it from the run's baseline as its
+    /// `verticalAlign` moves it, as the run's glyphs are (an emoji image),
+    /// rather than from the line's baseline (an image run, which
+    /// `verticalAlign` places itself).
+    pub shifted: bool,
     /// What text extraction gets for it.
     pub alt: Option<Box<str>>,
 }
@@ -147,6 +155,11 @@ impl InlineObject {
             RunAlign::Middle => metric(|m| m.x_height, run.size / 2.0) / 2.0 - h / 2.0,
             RunAlign::TextTop => metric(|m| m.ascender, run.size) - h,
             RunAlign::TextBottom => metric(|m| m.descender, 0.0),
+        };
+        let bottom = if self.shifted {
+            bottom + super::baseline_shift(run, fonts)
+        } else {
+            bottom
         };
         Some((h + bottom, -bottom))
     }

@@ -7,6 +7,12 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- An `emojiImages` image in a run with `verticalAlign` `super` or `sub` is raised or lowered
+  with the run's glyphs, its bottom 0.1em below the run's moved baseline. It stayed on the
+  line's baseline.
+
 ## 2.4.1 - 2026-10-15
 
 Still document schema version 1.

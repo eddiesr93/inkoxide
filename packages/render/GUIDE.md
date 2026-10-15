@@ -203,8 +203,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   like `<Image src>`: a URL must be allowed by `remoteImages` (else the render fails, naming the
   emoji), a path needs `localImages`, and images fetched from URLs are kept between renders (16
   MB of them, each render still holding them to its own `remoteImages.maxBytes`). An emoji image
-  is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies as the
-  emoji. An emoji whose image cannot be loaded, or is not an image the engine can draw (other
+  is 1em high with its aspect ratio, its bottom 0.1em below the baseline (raised or lowered
+  with the text by `verticalAlign: 'super'` or `'sub'`), and copies as the emoji. An emoji whose image cannot be loaded, or is not an image the engine can draw (other
   bytes, an image over the size limits), is drawn by the fonts, with a warning; a ZWJ
   sequence (`👩‍💻`) without an image of its own uses the images of its parts. `null` removes the
   source.
