@@ -957,17 +957,15 @@ fn paint_page(
     let under_boxes = std::mem::take(&mut debug.boxes);
 
     // Flow: paged space [k·H, (k+1)·H) mapped onto the content band,
-    // clipped vertically (split boxes are sliced, like CSS
-    // `box-decoration-break: slice`).
+    // clipped vertically; its fixed nodes, in paint order, are not.
     let dy = m.top - k as f32 * h;
     let band = Rect::new(0.0, m.top, pw, h);
-    page.ops.push(Op::Save);
-    page.ops.push(Op::ClipRect(band));
     paint::paint_flow(
         &l.flow,
         FlowPart::Page {
             placement: &l.placement,
             page: k,
+            band,
         },
         m.left,
         dy,
@@ -975,22 +973,8 @@ fn paint_page(
         &mut page.ops,
         &mut debug,
     );
-    page.ops.push(Op::Restore);
     let flow_boxes = std::mem::take(&mut debug.boxes);
-    if !l.placement.fixed.is_empty() {
-        paint::paint_flow(
-            &l.flow,
-            FlowPart::Fixed {
-                placement: &l.placement,
-                page: k,
-            },
-            m.left,
-            dy,
-            &mut painter,
-            &mut page.ops,
-            &mut debug,
-        );
-    }
+    debug.boxes = std::mem::take(&mut debug.fixed);
     painter.text.page = Some(&page_text);
     paint_overlays(over, &mut painter, &mut page.ops, &mut debug);
     if let Some(header) = header {

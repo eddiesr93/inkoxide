@@ -70,6 +70,9 @@ pub(crate) struct Placement {
     /// their place on their first page, in paint order. Overlays are not in
     /// the flow tree.
     pub fixed: Vec<NodeIdx>,
+    /// The ancestors of [`Placement::fixed`] nodes: painted on every page
+    /// to paint those.
+    pub holds_fixed: Vec<bool>,
     /// Tables nested in a row split across pages: the room above their
     /// repeated header rows on a continuation page (the header rows of the
     /// tables around them).
@@ -88,6 +91,11 @@ impl Placement {
     pub fn on_page(&self, i: NodeIdx, page: u32) -> bool {
         let (a, b) = self.page_range[i as usize];
         a <= page && page <= b
+    }
+
+    /// Whether node `i` holds a fixed node.
+    pub fn holds_fixed(&self, i: NodeIdx) -> bool {
+        self.holds_fixed[i as usize]
     }
 
     /// First page node `i` or any descendant touches.
@@ -252,6 +260,7 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
             line_shifts: vec![Vec::new(); n],
             page_range: vec![(0, 0); n],
             fixed: Vec::new(),
+            holds_fixed: vec![false; n],
             header_above: std::collections::BTreeMap::new(),
         },
     };
@@ -306,6 +315,16 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
                 .unwrap_or(0)
         });
         stack.extend(kids.into_iter().rev());
+    }
+    for &f in &p.out.fixed {
+        let mut a = tree.nodes[f as usize].parent;
+        while !p.out.holds_fixed[a as usize] {
+            p.out.holds_fixed[a as usize] = true;
+            if a == 0 {
+                break;
+            }
+            a = tree.nodes[a as usize].parent;
+        }
     }
     p.out
 }
