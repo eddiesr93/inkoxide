@@ -431,6 +431,11 @@ impl LoadedFont<'_> {
         self.face.glyph_index(c).map(|g| g.0)
     }
 
+    /// Number of glyphs in the font: its glyph ids are `0..glyph_count()`.
+    pub fn glyph_count(&self) -> u16 {
+        self.face.number_of_glyphs()
+    }
+
     /// Horizontal advance of glyph `gid` in font units.
     pub fn advance(&self, gid: u16) -> f32 {
         f32::from(

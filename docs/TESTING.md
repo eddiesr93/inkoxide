@@ -30,7 +30,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   deterministically and, with `qpdf` installed, passes `qpdf --check`
   with either password; `qpdf --json` of it, decrypted, equals that of
   the unencrypted render object for object, minus the `Encrypt`
-  dictionary, so a string or stream left unencrypted fails it. Also the
+  dictionary, so a string or stream left unencrypted fails it. Font
+  widths are compared glyph by glyph instead: encrypted, a font lists
+  the widths of all its glyphs, the same whatever the text. Also the
   permission flags qpdf reports, wrong passwords, a file with an owner
   password only, canary strings that must not appear in plain text, and
   errors that name the option but never the password.

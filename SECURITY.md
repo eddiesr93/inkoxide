@@ -35,8 +35,9 @@ a password. What it does not do:
 - **Hide the structure of the file.** The page count and sizes, font names and glyph widths,
   where links and fields are, and the length of every stream and string stay readable, as in
   any encrypted PDF. Stream lengths are measured after compression, so they say something about
-  the content. The subset tags of font names are keyed, so they do not tell which glyphs the
-  file uses.
+  the content: the length of a font subset, roughly how many glyphs it holds. The subset tags
+  of font names are keyed, and the widths cover every glyph of the font, so neither tells which
+  glyphs the file uses.
 - **Protect anything without a user password.** Without one, anyone opens the file; the owner
   password then only guards the permissions, which readers honour and the file cannot enforce.
 - **Resist weak passwords.** Anyone with the file can test password guesses offline, at the

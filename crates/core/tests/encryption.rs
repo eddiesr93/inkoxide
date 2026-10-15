@@ -1,8 +1,10 @@
 //! Encrypted output. With `qpdf` installed, every fixture, encrypted,
 //! opens with its passwords, and qpdf's view of it, decrypted, is the
 //! unencrypted render object for object: a string or stream left in plain
-//! text would differ.
+//! text would differ. Only font widths differ: encrypted, a font lists
+//! those of all its glyphs.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -191,6 +193,75 @@ fn name_text(name: &str) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
+/// The widths of every `CIDFont` in qpdf's JSON view `objects`, by
+/// object: its `/DW` and the width of each CID its `/W` lists. Both are
+/// taken out of `objects`: an encrypted file lists the widths of every
+/// glyph of a font, a plain one those of the glyphs it uses.
+fn take_widths(
+    objects: &mut serde_json::Map<String, serde_json::Value>,
+) -> BTreeMap<String, (f64, BTreeMap<i64, f64>)> {
+    let mut fonts = BTreeMap::new();
+    for (k, v) in objects.iter_mut() {
+        if !matches!(
+            v["value"]["/Subtype"].as_str(),
+            Some("/CIDFontType0" | "/CIDFontType2")
+        ) {
+            continue;
+        }
+        let dict = v["value"].as_object_mut().unwrap();
+        let default = dict.remove("/DW").map_or(1000.0, |w| w.as_f64().unwrap());
+        let list = dict.remove("/W").unwrap_or_default();
+        let list = list.as_array().map(Vec::as_slice).unwrap_or_default();
+        let mut widths = BTreeMap::new();
+        let mut i = 0;
+        while i < list.len() {
+            let first = list[i].as_i64().unwrap();
+            if let Some(each) = list[i + 1].as_array() {
+                for (cid, w) in (first..).zip(each) {
+                    widths.insert(cid, w.as_f64().unwrap());
+                }
+                i += 2;
+            } else {
+                let last = list[i + 1].as_i64().unwrap();
+                let w = list[i + 2].as_f64().unwrap();
+                widths.extend((first..=last).map(|cid| (cid, w)));
+                i += 3;
+            }
+        }
+        fonts.insert(k.clone(), (default, widths));
+    }
+    fonts
+}
+
+/// qpdf's view of `encrypted`, decrypted, is that of `plain` but for font
+/// widths, and each glyph whose width `plain` lists has that width in
+/// `encrypted` too.
+fn assert_decrypts_to(encrypted: &Path, plain: &Path, name: &str) {
+    let mut decrypted = objects(encrypted, Some(USER));
+    let mut plain = objects(plain, None);
+    let decrypted_widths = take_widths(&mut decrypted);
+    let plain_widths = take_widths(&mut plain);
+    assert_eq!(
+        decrypted_widths.keys().collect::<Vec<_>>(),
+        plain_widths.keys().collect::<Vec<_>>(),
+        "{name}: not the same fonts"
+    );
+    for (font, (_, used)) in &plain_widths {
+        let (default, all) = &decrypted_widths[font];
+        for (cid, w) in used {
+            let got = all.get(cid).unwrap_or(default);
+            assert!(
+                (got - w).abs() < 1e-3,
+                "{name}: CID {cid} of {font} is {got} wide, not {w}"
+            );
+        }
+    }
+    assert_eq!(
+        decrypted, plain,
+        "{name}: decrypted objects differ from the plain render"
+    );
+}
+
 /// The options of these tests, encrypted with `encryption`.
 fn options(encryption: Option<Encryption>) -> RenderOptions {
     let options = RenderOptions::default().with_creation_date("2026-10-08T00:00:00Z");
@@ -263,11 +334,7 @@ fn encrypted_fixtures_decrypt_to_the_plain_render() {
                 String::from_utf8_lossy(&o.stderr)
             );
         }
-        assert_eq!(
-            objects(&encrypted_path, Some(USER)),
-            objects(&plain_path, None),
-            "{name}: decrypted objects differ from the plain render"
-        );
+        assert_decrypts_to(&encrypted_path, &plain_path, name);
     }
 }
 
@@ -308,7 +375,7 @@ fn encrypted_scripts_groups_lists_and_notes_decrypt_to_the_plain_render() {
             String::from_utf8_lossy(needle)
         );
     }
-    assert_eq!(objects(&encrypted, Some(USER)), objects(&plain, None));
+    assert_decrypts_to(&encrypted, &plain, "forms-notes");
 }
 
 #[test]
@@ -421,6 +488,85 @@ fn encrypted_text_is_not_in_plain_sight() {
         from_msgpack == encrypted,
         "MessagePack output differs from JSON"
     );
+}
+
+/// The `/DW` and `/W` entries of each `CIDFont` in `pdf`, as written.
+fn width_entries(pdf: &[u8]) -> Vec<String> {
+    let find = |from: usize, needle: &[u8]| {
+        pdf[from..]
+            .windows(needle.len())
+            .position(|w| w == needle)
+            .map(|i| from + i)
+    };
+    let mut entries = Vec::new();
+    let mut at = 0;
+    while let Some(start) = find(at, b"/DW ") {
+        let open = find(start, b"/W [").unwrap() + 3;
+        let mut depth = 0;
+        let end = (open..pdf.len())
+            .find(|&i| {
+                match pdf[i] {
+                    b'[' => depth += 1,
+                    b']' => depth -= 1,
+                    _ => {}
+                }
+                depth == 0
+            })
+            .unwrap();
+        entries.push(String::from_utf8_lossy(&pdf[start..=end]).into_owned());
+        at = end;
+    }
+    entries
+}
+
+/// Font dictionaries are not encrypted, so the widths an encrypted file
+/// gives a font are those of all its glyphs, whatever the text: TrueType
+/// and CFF fonts alike.
+#[test]
+fn encrypted_font_widths_do_not_depend_on_the_text() {
+    let (fonts, images) = stores();
+    let doc = |text: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"InterDisplay-Bold","family":"Inter Display","weight":700}}],
+            "pages":[{{"size":{{"width":300,"height":300}},"children":[
+              {{"type":"text","runs":[{{"text":"{text}","font":"Inter-Regular","size":10}},
+               {{"text":" {text}","font":"InterDisplay-Bold","size":10}}]}}]}}]}}"#
+        )
+    };
+    let render = |text: &str, options: &RenderOptions| {
+        inkoxide::render(
+            doc(text).as_bytes(),
+            InputFormat::Json,
+            options,
+            &fonts,
+            &images,
+        )
+        .unwrap()
+    };
+    let (a, b) = ("Pay 120 to Ana", "Owe 9 to Zoë");
+    let plain = options(None);
+    let encrypted = options(Some(both()));
+    let plain_a = width_entries(&render(a, &plain));
+    assert_eq!(plain_a.len(), 2);
+    assert_ne!(plain_a, width_entries(&render(b, &plain)));
+    let encrypted_a = width_entries(&render(a, &encrypted));
+    assert_eq!(encrypted_a.len(), 2);
+    assert_eq!(encrypted_a, width_entries(&render(b, &encrypted)));
+    if !qpdf_available() {
+        return;
+    }
+    let out_dir = root().join("target/fixtures-encrypted");
+    fs::create_dir_all(&out_dir).unwrap();
+    for (name, text) in [("widths-a", a), ("widths-b", b)] {
+        let (plain_path, encrypted_path) = (
+            out_dir.join(format!("{name}.plain.pdf")),
+            out_dir.join(format!("{name}.pdf")),
+        );
+        fs::write(&plain_path, render(text, &plain)).unwrap();
+        fs::write(&encrypted_path, render(text, &encrypted)).unwrap();
+        assert_decrypts_to(&encrypted_path, &plain_path, name);
+    }
 }
 
 #[test]

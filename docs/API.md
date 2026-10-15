@@ -131,8 +131,11 @@ password lifts the permissions.
 - Every string and stream is encrypted. The object structure is not: page
   count, page sizes, font names and widths, link rectangles, stream
   lengths and the other dictionary entries stay readable. Font subset tags
-  (`ABCDEF+` in a font name) are keyed by the file's keys, so they do not
-  tell which glyphs the file uses. Radio buttons, whose states are
+  (`ABCDEF+` in a font name) are keyed by the file's keys, and a font's
+  widths are listed for all its glyphs, not only those used, so neither
+  tells which glyphs the file uses. Listing them all adds up to about 5
+  bytes a glyph to each font (some 15 KB for a Latin font of 3,000
+  glyphs). Radio buttons, whose states are
   otherwise named after their values, are named by their position in the
   group instead, with the values in `/Opt`, so the values are encrypted
   too.
