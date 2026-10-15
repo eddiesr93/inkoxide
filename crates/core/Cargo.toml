@@ -35,11 +35,17 @@ usvg.workspace = true
 simplecss.workspace = true
 svgtypes.workspace = true
 data-url.workspace = true
-rmp-serde.workspace = true
+rmp-serde = { workspace = true, optional = true }
 wuff.workspace = true
+
+[features]
+default = ["msgpack"]
+# `InputFormat::MessagePack`. Without it, MessagePack input is a parse error.
+msgpack = ["dep:rmp-serde"]
 
 [dev-dependencies]
 criterion.workspace = true
+rmp-serde.workspace = true
 
 [[bench]]
 name = "render"

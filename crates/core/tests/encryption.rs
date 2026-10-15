@@ -508,20 +508,23 @@ fn encrypted_text_is_not_in_plain_sight() {
     // The passwords are nowhere in the file.
     assert!(!has(&encrypted, USER.as_bytes()) && !has(&encrypted, OWNER.as_bytes()));
     // MessagePack input gives the same bytes.
-    let value: serde_json::Value = serde_json::from_slice(doc).unwrap();
-    let packed = rmp_serde::to_vec(&value).unwrap();
-    let from_msgpack = inkoxide::render(
-        &packed,
-        InputFormat::MessagePack,
-        &options(Some(both())).with_compress(false),
-        &fonts,
-        &images,
-    )
-    .unwrap();
-    assert!(
-        from_msgpack == encrypted,
-        "MessagePack output differs from JSON"
-    );
+    #[cfg(feature = "msgpack")]
+    {
+        let value: serde_json::Value = serde_json::from_slice(doc).unwrap();
+        let packed = rmp_serde::to_vec(&value).unwrap();
+        let from_msgpack = inkoxide::render(
+            &packed,
+            InputFormat::MessagePack,
+            &options(Some(both())).with_compress(false),
+            &fonts,
+            &images,
+        )
+        .unwrap();
+        assert!(
+            from_msgpack == encrypted,
+            "MessagePack output differs from JSON"
+        );
+    }
 }
 
 /// Field values and options are strings, so encrypted; the state PDF

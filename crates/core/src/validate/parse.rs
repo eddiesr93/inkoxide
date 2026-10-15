@@ -19,17 +19,21 @@ pub(crate) fn parse(doc: &[u8], format: InputFormat) -> Result<Document, Validat
 
 /// Same nesting limit as `serde_json` (rmp-serde allows 1024, enough to
 /// overflow the stack of a worker thread).
+#[cfg(feature = "msgpack")]
 const MAX_DEPTH: usize = 128;
 
+#[cfg(feature = "msgpack")]
 type MsgpackDe<'a> =
     rmp_serde::Deserializer<rmp_serde::decode::ReadReader<std::io::Cursor<&'a [u8]>>>;
 
+#[cfg(feature = "msgpack")]
 fn msgpack_de(doc: &[u8]) -> MsgpackDe<'_> {
     let mut de = rmp_serde::Deserializer::new(std::io::Cursor::new(doc));
     de.set_max_depth(MAX_DEPTH);
     de
 }
 
+#[cfg(feature = "msgpack")]
 fn trailing_bytes() -> ValidationError {
     ValidationError {
         code: Code::ParseError,
@@ -38,6 +42,7 @@ fn trailing_bytes() -> ValidationError {
     }
 }
 
+#[cfg(feature = "msgpack")]
 fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
     use rmp_serde::decode::Error as E;
 
@@ -78,6 +83,17 @@ fn parse_msgpack(doc: &[u8]) -> Result<Document, ValidationError> {
             message: format!("not valid MessagePack: {other}"),
         }),
     }
+}
+
+/// A build without the `msgpack` feature (the WebAssembly one) reads JSON
+/// only.
+#[cfg(not(feature = "msgpack"))]
+fn parse_msgpack(_: &[u8]) -> Result<Document, ValidationError> {
+    Err(ValidationError {
+        code: Code::ParseError,
+        path: String::new(),
+        message: "this build reads JSON only, not MessagePack".into(),
+    })
 }
 
 fn parse_json(doc: &[u8]) -> Result<Document, ValidationError> {

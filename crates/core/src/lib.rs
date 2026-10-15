@@ -59,7 +59,8 @@ pub enum InputFormat {
     #[default]
     Json,
     /// `MessagePack` with the same structure as the JSON (maps keyed by the
-    /// JSON field names).
+    /// JSON field names). A build without the `msgpack` feature (on by
+    /// default) reports it as a parse error.
     MessagePack,
 }
 
