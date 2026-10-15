@@ -978,6 +978,19 @@ fn inline_images_take_the_size_asked_and_grow_their_line() {
         (a - 9.6875).abs() < 1e-3 && a > text_ascent,
         "{a} {text_ascent}"
     );
+    // Text bottom: the image's bottom at Inter's descender (about 0.24
+    // em), below the text's half-leading: the line is the image.
+    let (a, h, ..) = line(r#","height":30"#, r#","verticalAlign":"textBottom""#);
+    assert!((h - 30.0).abs() < 1e-3, "{a} {h}");
+    assert!(h - a > descent && h - a < 2.5, "{a} {h} {descent}");
+    // Superscript and subscript: the image's bottom on the raised or
+    // lowered baseline of the run, as its text would be.
+    let (sup, sup_h, ..) = line(r#","height":30"#, r#","verticalAlign":"super""#);
+    let (sub, sub_h, ..) = line(r#","height":30"#, r#","verticalAlign":"sub""#);
+    assert!(sup > 31.0 && sub < 29.0, "{sup} {sub}");
+    // Lowered: it reaches below the text's descent.
+    assert!(sub_h - sub > descent + 1.0, "{sub} {sub_h}");
+    assert!((sup_h - sup - descent).abs() < 1e-3, "{sup} {sup_h}");
 }
 
 #[test]

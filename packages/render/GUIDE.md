@@ -189,19 +189,21 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   are drawn as images that copy and search as their text. Gradients that sweep around a point
   draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
-  colour glyphs past the first 4096 of a render. Fonts with only `SVG` glyphs are not drawn in
-  colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
-  alpha channel, a layer with an opacity) is drawn without colour, as its outline, or not at all
-  in a font without outlines, instead of failing the render. Inline images and emoji images
-  that need it fail the render with `PDFA_CONFLICT`, at their `src` or `emojiImages` key.
+  colour glyphs past the first 4096 of a render or its first 32 MB of colour glyph images. Fonts
+  with only `SVG` glyphs are not drawn in colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
+  alpha channel, as in every emoji bitmap font, or a layer with an opacity) fails the render with
+  `PDFA_CONFLICT` at the path of its run, and inline images and emoji images that need it fail
+  it at their `src` or `emojiImages` key. Opaque `COLR` glyphs draw in colour there.
 - **Emoji from images.** `Font.registerEmojiSource` draws emoji from an image set instead:
   `{ url, format }` adds each emoji's code points and the format to the URL
   (`https://cdn.example.com/emoji/1f469-200d-1f4bb.png`; `withVariationSelectors: true` keeps
   `fe0f` in them), and `{ builder }` turns the code points into any image `src`. The images load
   like `<Image src>`: a URL must be allowed by `remoteImages` (else the render fails, naming the
-  emoji), a path needs `localImages`, and images fetched from URLs are kept between renders. An
-  emoji image is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies
-  as the emoji. An emoji whose image cannot be loaded is drawn by the fonts, with a warning; a ZWJ
+  emoji), a path needs `localImages`, and images fetched from URLs are kept between renders (16
+  MB of them, each render still holding them to its own `remoteImages.maxBytes`). An emoji image
+  is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies as the
+  emoji. An emoji whose image cannot be loaded, or is not an image the engine can draw (other
+  bytes, an image over the size limits), is drawn by the fonts, with a warning; a ZWJ
   sequence (`👩‍💻`) without an image of its own uses the images of its parts. `null` removes the
   source.
 

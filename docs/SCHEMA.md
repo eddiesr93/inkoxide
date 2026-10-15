@@ -79,7 +79,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 | `meta` | [`Meta`](#meta) |  |  |
 | `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`. |
-| `emojiImages` | `object` |  | Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored), each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
+| `emojiImages` | `object` |  | Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
 | `pages` | array of [`PageSpec`](#pagespec) | yes | min items 1 |
 
 ## Definitions
@@ -543,7 +543,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
-| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
+| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |

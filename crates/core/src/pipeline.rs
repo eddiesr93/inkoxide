@@ -1,10 +1,11 @@
 //! The render pipeline after validation: layout → pagination → paint.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 use rayon::prelude::*;
 
-use crate::fonts::FontSet;
+use crate::fonts::{FontKey, FontSet};
 use crate::images::ImageSet;
 use crate::layout::{
     AvailableSpace, Geometry, LayoutEngine, LeafMeasure, LineBoxes, NodeIdx, Part, Size,
@@ -14,13 +15,15 @@ use crate::paginate::{paginate, Placement};
 use crate::paint::{
     self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent, Rect,
 };
+use crate::pdf::Profile;
 use crate::schema::{
     Display, Document, Node, NodeKind, PageFilter, PagePattern, PageSpec, Position,
 };
 use crate::text::{
-    ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter, UnicodeMap,
+    color_glyph_transparency, ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache,
+    TextPainter,
 };
-use crate::InkoxideError;
+use crate::{InkoxideError, ValidationError};
 
 /// Most pages one render may produce: a memory guard against runaway
 /// sizes (a 10¹¹ pt box), checked before anything is painted. Far above
@@ -103,14 +106,11 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
     }
 }
 
-/// Leaf painting: text through `T`, with its colour glyphs as images;
-/// images and form fields.
+/// Leaf painting: text through `T`; images and form fields.
 struct Content<'x, T: ContentPainter> {
     text: T,
     images: &'x ImageSet,
     fonts: &'x FontSet<'x>,
-    colors: &'x ColorGlyphs,
-    unicode: &'x UnicodeMap,
 }
 
 impl<T: ContentPainter> ContentPainter for Content<'_, T> {
@@ -119,12 +119,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
-            _ => {
-                let from = ops.len();
-                self.text.paint(node, geo, ctx, ops);
-                self.colors
-                    .substitute(ops, from, self.fonts, self.images, self.unicode);
-            }
+            _ => self.text.paint(node, geo, ctx, ops),
         }
     }
 
@@ -150,8 +145,9 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         ops: &mut Vec<Op>,
     ) {
         if let (Some(bg), Some(key)) = (&node.background_image, self.images.background_key(node)) {
+            let placement = crate::images::Placement::new(bg.fit, bg.object_position);
             self.images
-                .paint_in(key, padding_box, bg.fit, bg.object_position, radii, ops);
+                .paint_in(key, padding_box, placement, radii, ops);
         }
     }
 
@@ -233,14 +229,15 @@ fn layout_fixed<'a>(
 /// Lays out and paginates every page template, then paints the pages,
 /// handing each to `encode` as soon as it is painted. With `parallel`,
 /// shaping and painting run on the current rayon pool; without it, on the
-/// calling thread alone. With `opaque` (PDF/A-1b), colour glyphs whose
-/// images need transparency are drawn without colour.
+/// calling thread alone. When `profile` forbids transparency (PDF/A-1b),
+/// a colour glyph that needs it fails the render, at the path of its run.
 pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
     images: &mut ImageSet,
-    (parallel, opaque): (bool, bool),
+    parallel: bool,
+    profile: Profile,
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
 ) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
@@ -256,10 +253,15 @@ pub(crate) fn run<'d, T: Send>(
     drop(texts);
     let colors = ColorGlyphs::load(
         fonts,
-        &text.glyphs_of(|k| fonts.get(k).data.metrics.color),
+        &text.glyphs_of(|k| fonts.get(k).has_color()),
         images,
-        (parallel, opaque),
+        parallel,
     );
+    if !profile.transparency() {
+        if let Some(conflict) = transparent_color_glyph(doc, fonts, text, &colors) {
+            return Err(conflict.into());
+        }
+    }
     let images: &ImageSet = images;
 
     let mut laid = Vec::with_capacity(doc.pages.len());
@@ -331,6 +333,119 @@ pub(crate) fn run<'d, T: Send>(
             .collect::<Result<_, _>>()?
     };
     Ok((pages, marks))
+}
+
+/// The first run, in document order, that draws a colour glyph needing
+/// transparency, as the error of a render that forbids it.
+fn transparent_color_glyph(
+    doc: &Document,
+    fonts: &FontSet<'_>,
+    text: &Cache<'_, '_, '_>,
+    colors: &ColorGlyphs,
+) -> Option<ValidationError> {
+    let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
+    find_shown(doc, |node, path| {
+        let (p, _) = text.prepared(node)?;
+        for seg in p.segments.iter().filter(|s| s.object.is_none()) {
+            let glyphs = &p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize];
+            for g in glyphs.iter().filter(|g| colors.draws(seg.font, g.id)) {
+                let font = fonts.get(seg.font);
+                let need = *seen
+                    .entry((seg.font, g.id))
+                    .or_insert_with(|| color_glyph_transparency(font, g.id));
+                let Some(need) = need else { continue };
+                let glyph = text
+                    .unicode()
+                    .fonts
+                    .get(&seg.font)
+                    .and_then(|m| m.get(&g.id))
+                    .map_or(String::new(), |t| format!(" `{t}`"));
+                let what = format!("the colour glyph{glyph} of font `{}` ({need})", font.id);
+                let path = format!("{path}.runs[{}]", seg.run);
+                return Some(crate::validate::transparency_conflict(path, &what));
+            }
+        }
+        None
+    })
+}
+
+/// Calls `f` on every displayed node of `doc` with its path
+/// (`pages[0].children[2]`), in document order: each page's header,
+/// footer, then children, each before its descendants. Stops at, and
+/// returns, the first `Some`.
+fn find_shown<'d, R>(
+    doc: &'d Document,
+    mut f: impl FnMut(&'d Node, &str) -> Option<R>,
+) -> Option<R> {
+    fn walk<'d, R>(
+        node: &'d Node,
+        path: &mut String,
+        f: &mut dyn FnMut(&'d Node, &str) -> Option<R>,
+    ) -> Option<R> {
+        if node.hidden() {
+            return None;
+        }
+        if let Some(r) = f(node, path) {
+            return Some(r);
+        }
+        let len = path.len();
+        let mut found = None;
+        match &node.kind {
+            NodeKind::Box { children } => {
+                for (i, c) in children.iter().enumerate() {
+                    let _ = write!(path, ".children[{i}]");
+                    found = walk(c, path, f);
+                    path.truncate(len);
+                    if found.is_some() {
+                        break;
+                    }
+                }
+            }
+            NodeKind::Table(t) => {
+                let cells = t.rows.iter().enumerate().flat_map(|(r, row)| {
+                    row.cells
+                        .iter()
+                        .enumerate()
+                        .map(move |(c, cell)| (r, c, cell))
+                });
+                'cells: for (r, c, cell) in cells {
+                    if cell.style.display == Some(Display::None) {
+                        continue;
+                    }
+                    for (i, child) in cell.children.iter().enumerate() {
+                        let _ = write!(path, ".rows[{r}].cells[{c}].children[{i}]");
+                        found = walk(child, path, f);
+                        path.truncate(len);
+                        if found.is_some() {
+                            break 'cells;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        found
+    }
+    let mut path = String::new();
+    for (i, page) in doc.pages.iter().enumerate() {
+        let fixed = [("header", &page.header), ("footer", &page.footer)];
+        let fixed = fixed
+            .into_iter()
+            .filter_map(|(name, n)| Some((name.to_string(), n.as_deref()?)));
+        let children = page
+            .children
+            .iter()
+            .enumerate()
+            .map(|(k, n)| (format!("children[{k}]"), n));
+        for (key, node) in fixed.chain(children) {
+            path.clear();
+            let _ = write!(path, "pages[{i}].{key}");
+            if let Some(r) = walk(node, &mut path, &mut f) {
+                return Some(r);
+            }
+        }
+    }
+    None
 }
 
 /// Lays out and paginates the flow of page template `spec`: its children
@@ -709,12 +824,12 @@ fn paint_page(
             page: None,
             fonts,
             images,
+            colors,
+            unicode: text.unicode(),
             numbers,
         },
         images,
         fonts,
-        colors,
-        unicode: text.unicode(),
     };
 
     // `debug` outlines, drawn over everything once the page is painted.

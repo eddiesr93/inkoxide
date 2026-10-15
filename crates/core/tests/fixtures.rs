@@ -135,6 +135,7 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
     ),
     ("emoji-images", "emojiImages.❤\u{FE0F}"),
     ("emoji-colr", "pages[0].children[3].runs[1].color"),
+    ("emoji-cbdt", "pages[0].children[1].runs[0]"),
     (
         "background-image",
         "pages[0].children[2].children[0].children[1].backgroundImage.src",
@@ -401,10 +402,11 @@ fn msgpack_errors_match_json() {
     }
 }
 
-/// Colour emoji are images, but extract as their text (`ActualText`):
-/// checked with poppler's `pdftotext` when it is installed.
+/// Colour emoji are images, but extract as their text (`ActualText`), and
+/// inline images as their alternative text: checked with poppler's
+/// `pdftotext` when it is installed.
 #[test]
-fn colour_emoji_extract_as_text() {
+fn colour_emoji_and_inline_images_extract_as_text() {
     if !installed("pdftotext", "-v") {
         return;
     }
@@ -414,13 +416,19 @@ fn colour_emoji_extract_as_text() {
     for (name, want) in [
         (
             "emoji-colr",
-            "thumbs 👍 👍🏽 flag 🇫🇷 keycap 1\u{FE0F}\u{20E3} coder",
+            &["thumbs 👍 👍🏽 flag 🇫🇷 keycap 1\u{FE0F}\u{20E3} coder"][..],
         ),
         (
             "emoji-cbdt",
-            "smile 😀 heart ❤\u{FE0F} thumbs 👍 flag 🇫🇷 end",
+            &[
+                "smile 😀 heart ❤\u{FE0F} thumbs 👍 flag 🇫🇷 end",
+                // In a run whose own font has no outlines.
+                "😀❤\u{FE0F}👍🇫🇷",
+                "😀 ❤\u{FE0F} 👍 🇫🇷",
+            ],
         ),
-        ("emoji-images", "smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"),
+        ("emoji-images", &["smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"]),
+        ("text-inline-images", &["Logo"]),
     ] {
         let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
         let pdf = inkoxide::render(
@@ -440,7 +448,9 @@ fn colour_emoji_extract_as_text() {
             .output()
             .unwrap();
         let text = String::from_utf8_lossy(&out.stdout);
-        assert!(text.contains(want), "{name}: {text}");
+        for want in want {
+            assert!(text.contains(want), "{name}: {want} in {text}");
+        }
     }
 }
 

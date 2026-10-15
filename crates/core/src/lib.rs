@@ -345,7 +345,6 @@ fn render_inner(
 ) -> Result<Vec<u8>, InkoxideError> {
     let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
-    let opaque = !profile.transparency();
     if let Some(first) = validate::check(&document, fonts, Some(images), profile)
         .into_iter()
         .next()
@@ -406,7 +405,8 @@ fn render_inner(
         &font_set,
         &mut text,
         &mut image_set,
-        (parallel, opaque),
+        parallel,
+        profile,
         |page| sink.encode_page(&page, &font_set),
     )?;
     let unicode: UnicodeMap = text.into_unicode();

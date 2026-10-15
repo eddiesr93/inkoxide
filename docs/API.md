@@ -83,9 +83,11 @@ are left out. Every level is "b": the pages look the same in every reader.
 PDF/A-1b has no transparency. A render at 1b fails with `PDFA_CONFLICT`
 at the path of the first thing that needs it: a colour with alpha below
 1 (a `backgroundColor` of alpha 0 draws nothing and is accepted), an
-`opacity` between 0 and 1, `debug`, an image or background image with an
-alpha channel, or an SVG drawn with opacity, a mask, a blend mode, an
-isolated group or a clip path other than one path. `validate` does not
+`opacity` between 0 and 1, `debug`, an image, inline image, emoji image
+or background image with an alpha channel, an SVG drawn with opacity, a
+mask, a blend mode, an isolated group or a clip path other than one path,
+or a colour glyph that needs transparency (a bitmap with an alpha channel
+or a layer with an opacity, at the path of its run). `validate` does not
 know the level, so it does not report these. A PDF/A-1b file also keeps
 within the limits of PDF/A-1: real numbers within ±32767, strings of at
 most 65535 bytes, arrays of at most 8191 entries, dictionaries of at

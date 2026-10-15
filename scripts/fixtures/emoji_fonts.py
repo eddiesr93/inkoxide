@@ -9,7 +9,8 @@ tools, no third-party artwork), so they are small and free of licences:
   skin tone;
 - fixtures/fonts/EmojiTest-CBDT.ttf: no outlines, PNG bitmaps in CBDT, and
   the same ligatures for the flag;
-- fixtures/fonts/EmojiTest-sbix.ttf: no outlines, PNG bitmaps in sbix;
+- fixtures/fonts/EmojiTest-sbix.ttf: no outlines, PNG bitmaps in sbix, in
+  two strikes (32 and 64 ppem);
 - fixtures/fonts/limits/colr-fanout.ttf: one COLR v1 glyph whose layers
   each paint the next level's glyph, 255 times per level, eight levels
   deep (about 10^19 paints): the painter's work budget must stop it.
@@ -606,16 +607,30 @@ def cbdt_font():
     return bitmap_font("Emoji Test CBDT", glyphs, mapping, {"CBDT": cbdt, "CBLC": cblc, "GSUB": gsub_table})
 
 
-def sbix_font():
-    glyphs, gid, mapping, images = bitmap_glyphs()
-    n = len(glyphs)
-    strike = bytearray(struct.pack(">HH", PX, 72) + b"\0" * (4 * (n + 1)))
+def sbix_strike(n, ppem, images):
+    """An sbix strike of `n` glyphs at `ppem`, with `images` for glyphs 1.."""
+    strike = bytearray(struct.pack(">HH", ppem, 72) + b"\0" * (4 * (n + 1)))
     for i in range(n):
         struct.pack_into(">I", strike, 4 + 4 * i, len(strike))
         if 1 <= i <= len(images):
-            strike += struct.pack(">hh4s", BEARING_X, BEARING_Y - PX, b"png ") + images[i - 1]
+            x, y = BEARING_X * ppem // PX, (BEARING_Y - PX) * ppem // PX
+            strike += struct.pack(">hh4s", x, y, b"png ") + images[i - 1]
     struct.pack_into(">I", strike, 4 + 4 * n, len(strike))
-    sbix = struct.pack(">HHII", 1, 1, 1, 12) + bytes(strike)
+    return bytes(strike)
+
+
+def sbix_font():
+    """Two strikes: the 64 ppem one, which the engine picks as the largest,
+    after one at half the size."""
+    glyphs, gid, mapping, images = bitmap_glyphs()
+    n = len(glyphs)
+    half = PX // 2
+    small = [png(half, half, lambda x, y, f=f: f(2 * x, 2 * y)) for f in (smiley, heart, thumb, flag)]
+    strikes = [sbix_strike(n, half, small), sbix_strike(n, PX, images)]
+    header = 8 + 4 * len(strikes)
+    sbix = struct.pack(">HHI", 1, 1, len(strikes))
+    sbix += struct.pack(">I", header) + struct.pack(">I", header + len(strikes[0]))
+    sbix += b"".join(strikes)
     gsub_table = gsub([([gid["ri_f"], gid["ri_r"]], gid["flag_fr"])])
     return bitmap_font("Emoji Test sbix", glyphs, mapping, {"sbix": sbix, "GSUB": gsub_table})
 

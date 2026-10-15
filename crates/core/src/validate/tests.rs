@@ -2115,6 +2115,33 @@ fn emoji_images_are_checked() {
         let (c, got) = one(&with(bad));
         assert_eq!((c, got.as_str()), (code, path), "{bad}");
     }
+    // At most 64 bytes: a ZWJ chain of 34 characters is 119.
+    let long = ["👩"; 17].join("\u{200D}");
+    assert!(long.chars().count() < 64 && long.len() > 64);
+    let (c, path) = one(&with(&format!(r#""{long}":"logo""#)));
+    assert_eq!((c, path), (C::InvalidValue, format!("emojiImages.{long}")));
+    let mut images = ImageStore::new();
+    let svg =
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>a</text></svg>"#;
+    images.insert("svg", svg.as_bytes());
+    images.insert("bad", b"not an image".as_slice());
+    let errors = |map: &str| validate(with(map).as_bytes(), InputFormat::Json, &fonts(), &images);
+    // An image is checked as anywhere else: an SVG with text needs fonts.
+    let e = errors(r#""😀":"svg""#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::InvalidImage, "emojiImages.😀")
+    );
+    assert!(
+        e[0].message.contains("declares no fonts"),
+        "{}",
+        e[0].message
+    );
+    let e = errors(r#""😀":"bad""#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::InvalidImage, "emojiImages.😀")
+    );
     // At most 4096, reported once.
     let many: Vec<String> = (0..4097).map(|i| format!(r#""k{i}":"logo""#)).collect();
     assert_eq!(
@@ -2123,40 +2150,60 @@ fn emoji_images_are_checked() {
     );
 }
 
-/// Under PDF/A-1b, colour glyphs whose images need transparency (the PNG
-/// strikes of the test fonts have alpha) draw without colour: a font
-/// without outlines then draws nothing, one with outlines its outline.
+/// Under PDF/A-1b, a colour glyph whose image needs transparency (the PNG
+/// strikes of the test fonts have alpha, the COLR grin an opacity) fails
+/// the render at its run, as an image would; an opaque one draws.
 #[test]
-fn pdf_a_1b_draws_transparent_colour_glyphs_without_colour() {
+fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
     let mut fonts = fonts();
     for id in ["EmojiTest-CBDT", "EmojiTest-COLR"] {
         fonts
             .register(id, fixture(&format!("fonts/{id}.ttf")))
             .unwrap();
     }
-    for (font, opaque_images) in [("EmojiTest-CBDT", 0), ("EmojiTest-COLR", 1)] {
+    let render = |font: &str, text: &str| {
         let doc = format!(
             r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"{font}","family":"E"}}],
                 "fallbackFonts":["{font}"],
-                "pages":[{{"size":{{"width":200,"height":100}},"children":[
-                {{"type":"text","runs":[{{"text":"a 😀 🇫🇷 b","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+                "pages":[{{"size":{{"width":200,"height":100}},
+                "header":{{"type":"text","runs":[{{"text":"head","font":"Inter-Regular","size":10}}]}},
+                "children":[
+                {{"type":"text","style":{{"display":"none"}},"runs":[{{"text":"😀","font":"Inter-Regular","size":10}}]}},
+                {{"type":"box","children":[{{"type":"text","runs":[
+                  {{"text":"a ","font":"Inter-Regular","size":10}},{{"text":"{text}","font":"Inter-Regular","size":10}}]}}]}}]}}]}}"#
         );
         let options = crate::RenderOptions::default()
             .with_pdf_a_level(crate::PdfALevel::A1b)
             .with_compress(false);
-        let pdf = crate::render(
+        crate::render(
             doc.as_bytes(),
             InputFormat::Json,
             &options,
             &fonts,
             &ImageStore::new(),
         )
-        .unwrap_or_else(|e| panic!("{font}: {e}"));
-        let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
-        // The COLR flag has solid layers only: it keeps its colour.
-        assert_eq!(count(b"/Subtype /Form"), opaque_images, "{font}");
-        assert_eq!(count(b"/SMask"), 0, "{font}");
+    };
+    for (font, what) in [
+        ("EmojiTest-CBDT", "an alpha channel"),
+        ("EmojiTest-COLR", "(fill or stroke opacity)"),
+    ] {
+        let Err(crate::InkoxideError::Validation(e)) = render(font, "😀 b") else {
+            panic!("{font}: rendered");
+        };
+        assert_eq!(e.code, C::PdfaConflict, "{font}");
+        assert_eq!(e.path, "pages[0].children[1].children[0].runs[1]", "{font}");
+        assert!(
+            e.message.contains(&format!("`😀` of font `{font}`")),
+            "{}",
+            e.message
+        );
+        assert!(e.message.contains(what), "{}", e.message);
     }
+    // The COLR flag has solid layers only: it keeps its colour.
+    let pdf = render("EmojiTest-COLR", "🇫🇷 b").unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert_eq!(count(b"/Subtype /Form"), 1);
+    assert_eq!(count(b"/SMask"), 0);
 }
 
 #[test]

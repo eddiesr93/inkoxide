@@ -242,7 +242,7 @@ export interface Document {
    */
   fallbackFonts?: Id[];
   /**
-   * Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored), each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.
+   * Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.
    */
   emojiImages?: {
     [k: string]: Id | undefined;
@@ -945,7 +945,7 @@ export interface Field {
   readOnly?: boolean;
   required?: boolean;
   /**
-   * text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display.
+   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display.
    */
   font?: Id;
   /**

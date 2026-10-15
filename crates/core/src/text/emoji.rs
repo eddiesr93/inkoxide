@@ -148,7 +148,7 @@ pub(crate) fn sequences(text: &str) -> Vec<Sequence> {
 /// none of it falls back to the run's font (`.notdef`).
 pub(crate) fn font(seq: &Sequence, primary: FontKey, fonts: &FontSet<'_>) -> FontKey {
     let has = |f: FontKey| fonts.get(f).glyph(seq.base).is_some();
-    let color = |f: FontKey| fonts.get(f).data.metrics.color;
+    let color = |f: FontKey| fonts.get(f).has_color();
     let fallback = |want: &dyn Fn(FontKey) -> bool| {
         fonts.fallbacks.iter().copied().find(|&f| want(f) && has(f))
     };

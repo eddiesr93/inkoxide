@@ -984,8 +984,7 @@ class Builder {
         from,
       );
     }
-    const src = this.imageTable.resolve(n.props.src, (msg) => this.fail(n, msg, init));
-    const image: InlineImage = 'data' in src ? { data: src.data } : { src: src.src };
+    const image: InlineImage = this.placedImage(n, own, (msg) => this.fail(n, msg, init));
     for (const side of ['width', 'height'] as const) {
       const v = own[side];
       if (v === undefined || v === 'auto') continue;
@@ -998,9 +997,6 @@ class Builder {
       }
       image[side] = v;
     }
-    const fit = (n.props.fit as InlineImage['fit']) ?? own.objectFit;
-    if (fit) image.fit = fit;
-    if (own.objectPosition) image.objectPosition = own.objectPosition;
     if (typeof n.props.alt === 'string' && n.props.alt !== '') image.alt = n.props.alt;
     const run: TextRun = { image, font: this.font(ctx, n), size: ctx.fontSize };
     const align = own.verticalAlign ?? ctx.verticalAlign;
@@ -1221,12 +1217,25 @@ class Builder {
         );
       }
     }
-    const src = this.imageTable.resolve(inst.props.src, fail, 'ImageBackground');
-    const bg: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
+    return this.placedImage(inst, own, fail, 'ImageBackground');
+  }
+
+  /**
+   * An image's source and placement, as an image node, an image run and a background image take
+   * them: its `src` prop (resolved), and `fit` and `objectPosition` from its props and style.
+   */
+  private placedImage(
+    inst: Instance,
+    own: FlatStyle,
+    fail: (message: string) => never,
+    component?: string,
+  ): BackgroundImage {
+    const src = this.imageTable.resolve(inst.props.src, fail, component);
+    const image: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
     const fit = (inst.props.fit as BackgroundImage['fit']) ?? own.objectFit;
-    if (fit) bg.fit = fit;
-    if (own.objectPosition) bg.objectPosition = own.objectPosition;
-    return bg;
+    if (fit) image.fit = fit;
+    if (own.objectPosition) image.objectPosition = own.objectPosition;
+    return image;
   }
 
   private image(inst: Instance, ctx: TextCtx): ImageNode {
@@ -1235,12 +1244,10 @@ class Builder {
     const node: ImageNode = { type: 'image' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const src = this.imageTable.resolve(inst.props.src, (msg) => this.fail(inst, msg, { kind: 'props' }));
-    if ('data' in src) node.data = src.data;
-    else node.src = src.src;
-    const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
-    if (fit) node.fit = fit;
-    if (own.objectPosition) node.objectPosition = own.objectPosition;
+    Object.assign(
+      node,
+      this.placedImage(inst, own, (msg) => this.fail(inst, msg, { kind: 'props' })),
+    );
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }

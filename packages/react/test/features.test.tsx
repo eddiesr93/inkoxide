@@ -2102,6 +2102,16 @@ describe('Image inside Text', () => {
     expect(runs[runs.length - 1]).toMatchObject({ text: 'b' });
   });
 
+  it('takes the Tailwind classes align-text-top and align-text-bottom', () => {
+    const r = tree(
+      <Text>
+        <Image src="logo" className="align-text-top" />
+        <Image src="logo" className="align-text-bottom" />
+      </Text>,
+    );
+    expect(first<TextNode>(r).runs.map((run) => run.verticalAlign)).toEqual(['textTop', 'textBottom']);
+  });
+
   it('takes no box styles, percentages or block props', () => {
     const inText = (img: ReactNode) => () => tree(<Text>{img}</Text>);
     expect(thrown(inText(<Image src="logo" style={{ margin: 4 }} />)).message).toContain(

@@ -14,7 +14,7 @@ pub use areas::{is_area_name, parse_areas};
 
 use serde::Deserialize;
 
-use crate::images::InlineImage;
+use crate::images::InlineData;
 
 pub use de::{GridLine, GridTrack, Length, LengthPercent, RepeatCount, TrackBreadth, TrackSize};
 
@@ -536,7 +536,7 @@ pub enum ImageSource {
     /// Key into the render-time image map.
     Ref(String),
     /// Inline base64 payload, decoded once, when validation first reads it.
-    Inline(InlineImage),
+    Inline(InlineData),
 }
 
 /// A box's `backgroundImage`: painted into its padding box, over its
@@ -575,12 +575,17 @@ fn centre() -> LengthPercent {
     LengthPercent::Percent(0.5)
 }
 
+impl ObjectPosition {
+    /// Centred on both axes: the default.
+    pub const CENTER: Self = Self {
+        x: LengthPercent::Percent(0.5),
+        y: LengthPercent::Percent(0.5),
+    };
+}
+
 impl Default for ObjectPosition {
     fn default() -> Self {
-        Self {
-            x: centre(),
-            y: centre(),
-        }
+        Self::CENTER
     }
 }
 
