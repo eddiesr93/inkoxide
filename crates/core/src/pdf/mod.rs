@@ -28,6 +28,7 @@ use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
 pub(crate) use image::transparency as image_transparency;
+pub(crate) use out::written_text_len;
 use out::Out;
 pub(crate) use pdfa::Profile;
 

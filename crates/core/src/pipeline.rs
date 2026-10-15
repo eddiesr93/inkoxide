@@ -458,7 +458,12 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     }
                 }
                 NodeKind::Note(note) => {
-                    let text = note.contents.len() + note.author.as_ref().map_or(0, String::len);
+                    // Its icon, and its text as the file holds it.
+                    let text = crate::pdf::written_text_len(&note.contents)
+                        + note
+                            .author
+                            .as_deref()
+                            .map_or(0, crate::pdf::written_text_len);
                     size = size.saturating_add(BOX_BYTES + text as u64);
                 }
                 _ => {}
