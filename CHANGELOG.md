@@ -9,6 +9,47 @@ together. The document schema has its own version and
 
 ## Unreleased
 
+### Changed
+
+- A host entry in `remoteImages.allow` (`cdn.example.com`, `*.example.com`) allows only port 443,
+  unless it names a port (`cdn.example.com:8443`). Host entries used to allow any port; URL
+  entries already matched it.
+- Encrypted PDFs give each font the widths of all its glyphs (`/DW` and `/W`), not only those of
+  the glyphs used, so the widths no longer depend on the text. This adds up to about 5 bytes a
+  glyph per font (some 15 KB for a Latin font); unencrypted output is unchanged.
+
+### Fixed
+
+- A colour glyph drawn as an image, in page text and in SVG text, extracts as the text of its
+  own cluster, not the text it was first shaped with.
+- Images are told apart by their bytes, not only by their hash: two different images whose
+  hashes are equal are drawn as two images, and each is checked for transparency on its own
+  under PDF/A-1b. Font subsets kept across renders are keyed by the font's SHA-256.
+- A render waiting for an emoji image another render is already fetching stops at its own
+  `remoteImages.timeoutMs`, and the download goes on for the other renders.
+- SECURITY.md and the API docs say which form field state stays readable in encrypted files:
+  checkbox states, the position of the chosen radio button, and the positions of a list box's
+  selected and first visible options. Field values and options are encrypted.
+
+### Security
+
+- The tables of a document are limited to 1000000 grid slots in all (rows times columns,
+  however the cells span them); more is `OUT_OF_RANGE` at the table's `rows`. Checking a
+  table's rows takes time in proportion to them.
+- `fallbackFonts` holds at most 256 ids; a longer list is `OUT_OF_RANGE`. A font listed more
+  than once is tried once, where it is first listed.
+- A form field `name` that breaks the name rules is reported once as `INVALID_VALUE` and is not
+  checked further against other fields' names and groups.
+- SVG text counts the properties each span inherits toward the SVG limits, as shapes do, and
+  spans that inherit one `font-family` share it; an SVG over a limit fails with
+  `INVALID_IMAGE`. The image cache counts the text read from an SVG in the size of its entry.
+- `textLength` in SVG text takes time in proportion to the characters inside it, however many
+  spans set one.
+- A wavy text decoration draws its waves only where the page shows them, and at most 16 half
+  waves per glyph: a wider piece of text gets longer waves.
+- Headers, footers and fixed nodes count the alt text of images in text, the text of colour
+  glyphs and link targets in the estimate of what they repeat on every page.
+
 ## 0.7.0 - 2026-10-15
 
 `inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style`
