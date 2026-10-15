@@ -17,6 +17,7 @@ use ttf_parser::colr::{ClipBox, CompositeMode, GradientExtend, Paint, Painter};
 use ttf_parser::{GlyphId, RasterImageFormat, RgbaColor, Transform};
 
 use super::LoadedFont;
+use crate::paint::mul;
 
 /// Most painter calls (outlines, fills, clips, layers, transforms) for one
 /// colour glyph. Emoji take a few hundred.
@@ -105,11 +106,6 @@ fn invert(m: [f32; 6]) -> Option<[f32; 6]> {
         -(inv[1] * e + inv[3] * f),
     ];
     r.iter().all(|v| v.is_finite()).then_some(r)
-}
-
-/// `a · b`: `b` first, then `a`.
-fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
-    crate::paint::mul(a, b)
 }
 
 fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {

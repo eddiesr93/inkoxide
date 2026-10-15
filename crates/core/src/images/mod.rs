@@ -104,16 +104,18 @@ impl ImageData {
     }
 }
 
-/// An image node's inline base64 payload. It is decoded once, on first
+/// The base64 `data` of an image source (an image node, a background or
+/// image run; not to be confused with the schema's `InlineImage`, an image
+/// run). It is decoded once, on first
 /// use: validation decodes it, and the render that follows reuses the
 /// bytes and their decoded image.
 #[derive(Debug, Clone)]
-pub(crate) struct InlineImage {
+pub(crate) struct InlineData {
     b64: String,
     data: OnceLock<Result<Arc<ImageData>, String>>,
 }
 
-impl InlineImage {
+impl InlineData {
     pub fn new(b64: String) -> Self {
         Self {
             b64,
