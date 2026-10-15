@@ -119,8 +119,8 @@ All notable changes to the packages in this repository. The format follows
   `alt` as the text it copies as. Lines break around it like around a character.
 - Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
   field names. `address.street` and `address.city` are the fields `street` and `city` of the
-  group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
-  show and export by their full names.
+  group `address`; a name has at most 32 parts, so groups nest up to 31 deep. The PDF holds
+  them as a field tree, which viewers show and export by their full names.
 - List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
   without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
   array and several options can be selected.

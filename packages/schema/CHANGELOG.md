@@ -70,13 +70,14 @@ Still document schema version 1.
 
 ### Changed
 
-- `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
-  at most 8000 characters; longer ones are `INVALID_VALUE`.
-
-### Changed
-
 - `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of
   each run on the line.
+
+### Fixed
+
+- `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
+  at most 8000 characters; longer ones are `INVALID_VALUE`. Both were unbounded, so a document
+  with longer ones was valid before.
 
 ## 2.3.0 - 2026-10-13
 
