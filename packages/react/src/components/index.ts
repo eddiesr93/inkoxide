@@ -129,8 +129,12 @@ export interface StyleProp extends Omit<
   fontSize?: Length;
   color?: string | Color;
   backgroundColor?: string | Color;
-  /** Multiplier of the text size. */
-  lineHeight?: number;
+  /**
+   * A multiplier of the text size (`1.5`, `'150%'`, `'1.5em'`) or a length (`'14pt'`). `em` is
+   * the size of the text it applies to, as in `leading-[1.5em]`.
+   */
+  lineHeight?: number | `${number}` | `${number}%` | Length;
+  /** Points, or a length; `em` is the size of the text it applies to, as in `tracking-[0.1em]`. */
   letterSpacing?: Length;
   width?: LengthAuto;
   height?: LengthAuto;

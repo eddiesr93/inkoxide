@@ -123,8 +123,9 @@ export const Font = {
    * faces at once with `fonts: [{ src, fontWeight: 'bold' }, { src, fontStyle: 'italic' }]`.
    * Use it with `fontFamily: 'Roboto'` in a style or `font-[Roboto]` in a class. Registering the
    * same face (family, weight and style) again with the same source does nothing; with another
-   * source it throws, and so does a face the bundled fonts have, or a family whose font id
-   * another family has (`Brand Two` and `Brand-Two`). A registration that throws adds no face.
+   * source it throws, and so does a face the bundled fonts have, or a face whose font id a face
+   * of another family has (`Brand Two` and `Brand-Two`, same weight and style). A registration
+   * that throws adds no face.
    */
   register(registration: FontRegistration): void {
     const { family } = registration;
@@ -215,7 +216,8 @@ export const Font = {
 /**
  * Reads the fonts registered since the last render and hands them to the engine. Runs after
  * `initEngine` (which registers the bundled fonts first), one load at a time. A face that cannot
- * be loaded is dropped and fails this load, after the rest of the batch has loaded.
+ * be loaded is dropped and fails this load, after the rest of the batch has loaded; later loads
+ * do not try it again, so later renders fall back from it, until it is registered again.
  */
 export function loadRegisteredFonts(): Promise<void> {
   if (pending.length === 0) return loading;

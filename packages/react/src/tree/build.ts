@@ -49,6 +49,7 @@ import {
   type Container,
   componentNames,
   componentStack,
+  formatStack,
   type Instance,
   type Node,
 } from '../reconciler/instance.ts';
@@ -208,6 +209,32 @@ function commonProps(node: { id?: string; debug?: boolean }, inst: Instance): vo
   if (inst.props.debug === true) node.debug = true;
 }
 
+/** Props of an element in the flow, which a `Page`, a band, a row or a cell does not take. */
+const FLOW_ONLY = [
+  'pages',
+  'href',
+  'bookmark',
+  'render',
+  'break',
+  'wrap',
+  'minPresenceAhead',
+  'fixed',
+] as const;
+
+/** The first flow-only prop set on `inst` to something other than its default. */
+function flowOnlyProp(inst: Instance, skip: readonly string[] = []): (typeof FLOW_ONLY)[number] | undefined {
+  return FLOW_ONLY.find((k) => {
+    if (skip.includes(k)) return false;
+    if (k === 'fixed') return isFixed(inst);
+    if (k === 'break' && inst.props.break === false) return false;
+    if (k === 'wrap' && inst.props.wrap === true) return false;
+    return inst.props[k] !== undefined;
+  });
+}
+
+/** The end of the component stack of an error inside a `render` prop's own root. */
+const RENDER_CALL = formatStack([RenderCall.name]);
+
 /** Whether the element has the `fixed` prop. */
 function isFixed(inst: Instance): boolean {
   return inst.props.fixed !== undefined && inst.props.fixed !== false;
@@ -283,6 +310,14 @@ class Builder {
 
   /** The element's own style: its classes, then its `style` prop. `parent` is the inherited context. */
   private styleOf(inst: Instance, parent: TextCtx): FlatStyle {
+    // Every `Text`, a paragraph or a run, has its style read here.
+    if (inst.type === HOST.Text && inst.props.hyphenationPenalty !== undefined) {
+      this.fail(
+        inst,
+        "<Text hyphenationPenalty> is not supported: lines break first fit, or with textWrap: 'pretty'. To keep words whole, use hyphenate={false} or a hyphenationCallback.",
+        { kind: 'props' },
+      );
+    }
     const className = inst.props.className as string | undefined;
     const style = inst.props.style as StyleInput | undefined;
     const invalidStyle = (e: unknown): never =>
@@ -382,6 +417,26 @@ class Builder {
     }
   }
 
+  /**
+   * Fails on a prop of an element in the flow (`pages`, `href`, `break`, …) set on a `Page`, a
+   * `Header` or `Footer`, a `Row` or a `Cell`, which would ignore it.
+   */
+  private noFlowProps(inst: Instance): void {
+    const prop = flowOnlyProp(inst);
+    if (prop === undefined) return;
+    const name = HOST_NAME[inst.type];
+    const band = inst.type === HOST.Header || inst.type === HOST.Footer;
+    let why = 'put it on an element inside it.';
+    if (inst.type === HOST.Page && prop === 'wrap') {
+      why =
+        'the content of a page flows onto as many pages as it needs. To keep an element on one page, give it wrap={false} or break="avoid".';
+    } else if (band && (prop === 'break' || prop === 'wrap' || prop === 'minPresenceAhead')) {
+      why = `a <${name}> is painted whole on every page. Remove it.`;
+    }
+    const shown = prop === 'wrap' ? 'wrap={false}' : prop;
+    this.fail(inst, `<${name}> does not take \`${shown}\`: ${why}`, { kind: 'props' });
+  }
+
   private noTextOnly(inst: Instance, s: FlatStyle): void {
     const [k, ...more] = textOnlyKeys(s);
     if (k === undefined) return;
@@ -405,6 +460,13 @@ class Builder {
       throw new TemplateError('A template must render exactly one <Document> at the top.');
     }
     const p = root.props;
+    for (const [key, why] of [
+      ['pdfVersion', 'the engine writes the PDF version the document needs'],
+      ['onRender', 'the render functions resolve when the PDF is ready'],
+    ] as const) {
+      if (p[key] !== undefined)
+        this.fail(root, `<Document ${key}> is not supported: ${why}.`, { kind: 'props' });
+    }
     const meta: Meta = {};
     for (const k of [
       'title',
@@ -513,6 +575,7 @@ class Builder {
       size = { width: size.height, height: size.width };
     }
     this.pageBox = size;
+    this.noFlowProps(inst);
     const own = this.styleOf(inst, parent);
     this.noTextOnly(inst, own);
     // Padding on a Page is its margin (`<Page style={{ padding: 48 }}>`).
@@ -766,9 +829,23 @@ class Builder {
 
   /** The node of a block element, built by the method for its type. */
   private nodeForType(inst: Instance, ctx: TextCtx): SchemaNode {
-    if (typeof inst.props.render === 'function') {
-      if (inst.type === HOST.View || inst.type === HOST.Text) return this.perPage(inst, ctx);
+    if (inst.props.render !== undefined) {
+      const takesRender = inst.type === HOST.View || inst.type === HOST.Text || inst.type === HOST.FieldSet;
+      const name = HOST_NAME[inst.type];
+      if (!takesRender) {
+        this.fail(
+          inst,
+          `<${name}> does not take \`render\`: it works on <View> and <Text>. Put the <${name}> in a <View render={…}>.`,
+          { kind: 'props' },
+        );
+      }
+      if (typeof inst.props.render !== 'function') {
+        this.fail(inst, `<${name} render> must be a function: render={({ pageNumber, totalPages }) => …}.`, {
+          kind: 'props',
+        });
+      }
       if (inst.type === HOST.FieldSet) return this.fieldSet(inst, () => this.perPage(inst, ctx));
+      return this.perPage(inst, ctx);
     }
     switch (inst.type) {
       case HOST.View:
@@ -842,6 +919,7 @@ class Builder {
           kind: 'props',
         });
       }
+      this.noFlowProps(inst);
       commonProps(node, inst);
     }
     const children = this.children(content, ctx, inst);
@@ -1149,6 +1227,7 @@ class Builder {
     const rowAllowed = new Set(['backgroundColor', 'minHeight']);
     for (const r of inst.children) {
       if (r.kind !== 'element') continue;
+      this.noFlowProps(r);
       const rOwn = this.styleOf(r, ctx);
       this.noTextOnly(r, rOwn);
       this.onlyKeys(
@@ -1184,6 +1263,7 @@ class Builder {
   }
 
   private cell(inst: Instance, parent: TextCtx): TableCell {
+    this.noFlowProps(inst);
     const own = this.styleOf(inst, parent);
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
@@ -1472,11 +1552,21 @@ class Builder {
     const groups = new Map<string, { node: SchemaNode; pages: number[] }>();
     for (let n = 1; n <= total; n++) {
       const page = { pageNumber: n, totalPages: total };
-      const content = renderToInstances(
-        createElement(PageContext.Provider, { value: page }, createElement(RenderCall, { fn, page })),
-        inst.type,
-      ).children;
-      const node = inst.type === HOST.Text ? this.text(inst, ctx, content) : this.box(inst, ctx, content);
+      let node: SchemaNode;
+      try {
+        const content = renderToInstances(
+          createElement(PageContext.Provider, { value: page }, createElement(RenderCall, { fn, page })),
+          inst.type,
+        ).children;
+        node = inst.type === HOST.Text ? this.text(inst, ctx, content) : this.box(inst, ctx, content);
+      } catch (e) {
+        // The content is rendered in a root of its own, whose stack ends at the call of `fn`: the
+        // components around the element carry it on.
+        if (e instanceof TemplateError && e.componentStack?.endsWith(RENDER_CALL)) {
+          e.componentStack = e.componentStack.slice(0, -RENDER_CALL.length) + componentStack(inst);
+        }
+        throw e;
+      }
       const key = JSON.stringify(node);
       const g = groups.get(key);
       if (g) g.pages.push(n);
