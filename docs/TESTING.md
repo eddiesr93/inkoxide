@@ -3,7 +3,7 @@
 Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
 clippy, the Rust tests, the schema checks, the lockstep versions of the
 packages released together (`scripts/check-versions.py`), the Node
-binding tests and the TypeScript packages; and `.github/workflows/deny.yml`:
+binding tests, the WebAssembly build and the TypeScript packages; and `.github/workflows/deny.yml`:
 cargo-deny (`deny.toml`), which also runs every night for new advisories. The Rust tests check the PDFs with qpdf, poppler's
 `pdftotext` and veraPDF, which the workflow installs. Locally a test
 skips the checks of a tool that is not installed; with `CI` set, a
@@ -110,7 +110,23 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   last level that paints nothing, so that only counting the paint graph
   stops it.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
-  first): rendering, error shapes and the libuv thread pool.
+  first): rendering, error shapes and the libuv thread pool. They are the
+  contract of `@inkoxide/wasm` too: `pnpm test` in `packages/wasm`
+  (`scripts/build-wasm.sh` first, with the `wasm32-unknown-unknown`
+  target) runs them against it, skipping the two about threads.
+- The WebAssembly build, in the `wasm` job of `ci.yml` and in
+  `scripts/ci.sh`:
+  - `scripts/wasm-size.mjs` fails when the module is over its download
+    budget with brotli, and prints its sizes in the job summary;
+  - `scripts/wasm-parity.mjs` renders every fixture document, and every
+    fixture image on a page, with both builds and compares the bytes.
+    Those in `fixtures/wasm-parity.json` may differ in the last digits of
+    numbers (trigonometry in usvg uses another libm there) and in the file
+    identifier, compared with their streams decompressed. It also registers
+    the fuzz seed fonts, and renders documents at the engine's limits from
+    `limits.rs`, with both, and compares the outcomes;
+  - the engine's tests that need MessagePack are left out of a build
+    without its feature (`--no-default-features`), which reads JSON only.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
   Tailwind class mapping and `initTailwind` options, the React tree
   builder, `renderToBuffer`, `Font.register`, error messages, the
