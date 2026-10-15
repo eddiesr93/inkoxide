@@ -3,12 +3,13 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::forms::format;
-use crate::images::{ImageCrateDecoder, ImageData};
+use crate::images::{ContentKey, ImageCrateDecoder, ImageData};
 use crate::pdf::Profile;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
@@ -153,9 +154,9 @@ struct Checker<'a> {
     opaque: bool,
     /// The first use of transparency, under `opaque`.
     conflict: Option<ValidationError>,
-    /// What needs transparency in each image checked (by content hash),
-    /// under `opaque`: an image used many times is scanned once.
-    image_transparency: HashMap<u64, Option<&'static str>>,
+    /// What needs transparency in each image checked (by content), under
+    /// `opaque`: an image used many times is scanned once.
+    image_transparency: HashMap<ContentKey<Arc<[u8]>>, Option<&'static str>>,
     /// The groups field names make: every name before one of its dots
     /// (`a` and `a.b` for `a.b.c`).
     field_groups: HashSet<String>,
@@ -786,7 +787,7 @@ impl<'a> Checker<'a> {
             Ok(img) if self.opaque && self.conflict.is_none() => {
                 let what = *self
                     .image_transparency
-                    .entry(data.hash)
+                    .entry(data.key())
                     .or_insert_with(|| crate::pdf::image_transparency(&img));
                 if let Some(what) = what {
                     let image = id.map_or("the image".into(), |id| format!("image `{id}`"));

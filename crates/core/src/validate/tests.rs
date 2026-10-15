@@ -2184,6 +2184,26 @@ fn emoji_images_are_checked() {
 /// Under PDF/A-1b, a colour glyph whose image needs transparency (the PNG
 /// strikes of the test fonts have alpha, the COLR grin an opacity) fails
 /// the render at its run, as an image would; an opaque one draws.
+/// Each image is checked for transparency on its own, even when its hash
+/// equals that of an image checked before.
+#[test]
+fn pdf_a_1b_checks_images_with_equal_hashes_apart() {
+    let mut images = ImageStore::new();
+    images.insert("photo", fixture("images/photo.jpg"));
+    let hash = images.get("photo").unwrap().hash;
+    images.insert_with_hash("logo", fixture("images/logo.png"), hash);
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    let d = doc(r#"{"type":"image","src":"photo"},{"type":"image","src":"logo"}"#);
+    let e = match crate::render(d.as_bytes(), InputFormat::Json, &options, &fonts(), &images) {
+        Err(crate::InkoxideError::Validation(e)) => e,
+        other => panic!("{:?}", other.map(|_| ())),
+    };
+    assert_eq!(
+        (e.code, e.path.as_str()),
+        (C::PdfaConflict, "pages[0].children[1].src")
+    );
+}
+
 #[test]
 fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
     let mut fonts = fonts();
