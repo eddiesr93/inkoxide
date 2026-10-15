@@ -1,5 +1,5 @@
 //! Images: registry, header probing, decoding into PDF-ready samples, and
-//! the per-render set of unique images (deduplicated by content hash).
+//! the per-render set of unique images (deduplicated by content).
 //!
 //! JPEG is not decoded: its bytes go into the PDF as `DCTDecode` and only
 //! its markers are read (a CMYK JPEG in PDF/A output is the exception: it
@@ -19,7 +19,7 @@ pub(crate) mod svg_text;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
@@ -44,7 +44,8 @@ const PT_PER_PX: f32 = 0.75;
 
 /// Image content as a map key: equal keys hold equal bytes. Keys are
 /// hashed by the content's xxh3 alone, and the bytes are compared on a
-/// match, so a hash collision never swaps one image for another.
+/// match (unless both keys hold the same bytes in memory), so a hash
+/// collision never swaps one image for another.
 #[derive(Debug, Clone)]
 pub(crate) struct ContentKey<B> {
     hash: u64,
@@ -65,7 +66,8 @@ impl<B: Deref<Target = T>, T: AsRef<[u8]> + ?Sized> ContentKey<B> {
 
 impl<B: Deref<Target = T>, T: AsRef<[u8]> + ?Sized> PartialEq for ContentKey<B> {
     fn eq(&self, other: &Self) -> bool {
-        self.hash == other.hash && self.bytes.as_ref() == other.bytes.as_ref()
+        let (a, b) = (self.bytes.as_ref(), other.bytes.as_ref());
+        self.hash == other.hash && (std::ptr::eq(a, b) || a == b)
     }
 }
 
@@ -93,6 +95,11 @@ impl ImageData {
             hash,
             decoded: OnceLock::new(),
         }
+    }
+
+    /// The key of these bytes in maps of image content.
+    pub fn key(&self) -> ContentKey<Arc<[u8]>> {
+        ContentKey::with_hash(self.bytes.clone(), self.hash)
     }
 
     /// Decodes once; later renders reuse the result, as do other stores
@@ -185,6 +192,18 @@ impl ImageStore {
     pub(crate) fn get(&self, id: &str) -> Option<&Arc<ImageData>> {
         self.images.get(id)
     }
+
+    /// Adds image `id` with `hash` in place of its xxh3: two different
+    /// images with one hash.
+    #[cfg(test)]
+    pub(crate) fn insert_with_hash(&mut self, id: &str, bytes: Vec<u8>, hash: u64) {
+        let data = ImageData {
+            bytes: bytes.into(),
+            hash,
+            decoded: OnceLock::new(),
+        };
+        self.images.insert(id.into(), Arc::new(data));
+    }
 }
 
 /// Index of a unique image within one render.
@@ -221,8 +240,8 @@ pub(crate) struct ImageSet {
     by_run: HashMap<usize, ImageKey>,
     /// Emoji sequence (without U+FE0F) → its image.
     by_emoji: BTreeMap<String, ImageKey>,
-    /// The content hash of each image of the document → its key.
-    by_hash: HashMap<u64, ImageKey>,
+    /// The content of each image of the document → its key.
+    by_content: HashMap<ContentKey<Arc<[u8]>>, ImageKey>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -273,25 +292,29 @@ impl ImageSet {
             }
         }
 
-        // Dedupe by content hash; keys follow first appearance in hash
-        // order so numbering is deterministic.
-        let mut unique: BTreeMap<u64, Arc<ImageData>> = BTreeMap::new();
+        // Dedupe by content; keys are numbered in hash order, then in
+        // order of first appearance, so numbering is deterministic.
+        let mut seen = HashSet::new();
+        let mut unique: Vec<&Arc<ImageData>> = Vec::new();
         for (_, d) in found.iter().chain(&backgrounds).chain(&runs) {
-            unique.entry(d.hash).or_insert_with(|| d.clone());
+            if seen.insert(d.key()) {
+                unique.push(d);
+            }
         }
-        let mut key_of: HashMap<u64, ImageKey> = HashMap::new();
+        unique.sort_by_key(|d| d.hash);
+        let mut key_of: HashMap<ContentKey<Arc<[u8]>>, ImageKey> = HashMap::new();
         let mut images = Vec::with_capacity(unique.len());
-        for (i, (hash, d)) in unique.iter().enumerate() {
+        for (i, d) in unique.iter().enumerate() {
             let img = d
                 .decoded(decoder)
                 .map_err(|e| InkoxideError::Image(e.clone()))?;
             images.push(img);
-            key_of.insert(*hash, i as ImageKey);
+            key_of.insert(d.key(), i as ImageKey);
         }
         let keys = |found: Vec<(usize, Arc<ImageData>)>| {
             found
                 .into_iter()
-                .map(|(n, d)| (n, key_of[&d.hash]))
+                .map(|(n, d)| (n, key_of[&d.key()]))
                 .collect()
         };
         Ok(Self {
@@ -300,7 +323,7 @@ impl ImageSet {
             by_background: keys(backgrounds),
             by_run: keys(runs),
             by_emoji: BTreeMap::new(),
-            by_hash: key_of,
+            by_content: key_of,
         })
     }
 
@@ -317,14 +340,14 @@ impl ImageSet {
             let data = store
                 .get(id)
                 .ok_or_else(|| InkoxideError::Image(format!("image `{id}` is not registered")))?;
-            let key = if let Some(&k) = self.by_hash.get(&data.hash) {
+            let key = if let Some(&k) = self.by_content.get(&data.key()) {
                 k
             } else {
                 let img = data
                     .decoded(decoder)
                     .map_err(|e| InkoxideError::Image(e.clone()))?;
                 let k = self.add(img);
-                self.by_hash.insert(data.hash, k);
+                self.by_content.insert(data.key(), k);
                 k
             };
             self.by_emoji.insert(crate::text::emoji_key(sequence), key);

@@ -22,6 +22,7 @@ use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
 use super::{deflate, Out, Profile, RefAlloc};
 use crate::flate;
 use crate::fonts::LoadedFont;
+use crate::images::ContentKey;
 use crate::lru::SharedLru;
 use crate::InkoxideError;
 
@@ -69,8 +70,9 @@ pub(crate) struct Program {
 /// cost of embedding it.
 const SUBSET_BUDGET: usize = 32 << 20;
 
-/// Font hash and the glyph set.
-type SubsetKey = (u64, Vec<u16>);
+/// The font's content and the glyph set: two different fonts never share
+/// a subset.
+type SubsetKey = (ContentKey<Arc<[u8]>>, Vec<u16>);
 
 static SUBSETS: SharedLru<SubsetKey, Program> = SharedLru::new(SUBSET_BUDGET);
 
@@ -82,7 +84,8 @@ pub(crate) fn program(
     subset: bool,
 ) -> Result<Program, InkoxideError> {
     if subset {
-        let key = (font.data.hash, used.iter().copied().collect::<Vec<u16>>());
+        let content = ContentKey::with_hash(font.data.bytes.clone(), font.data.hash);
+        let key = (content, used.iter().copied().collect::<Vec<u16>>());
         if let Some(p) = SUBSETS.get(&key) {
             return Ok(p);
         }
@@ -408,6 +411,27 @@ fn cid_set_bits(used: &BTreeSet<u16>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two different fonts get their own subsets, even when their hashes
+    /// are equal.
+    #[test]
+    fn fonts_with_equal_hashes_get_their_own_subsets() {
+        let mut store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+        let hash = store.get("Inter-Regular").unwrap().hash;
+        let noto = crate::test_fixtures::fixture("fonts/NotoSans-Regular.ttf");
+        store.register_with_hash("Other", noto, hash).unwrap();
+        let json = r#"{"version":1,
+            "fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"Other","family":"Other"}],
+            "pages":[{"size":{"width":10,"height":10}}]}"#;
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let set = crate::fonts::FontSet::load(&doc, &store).unwrap();
+        assert_eq!(set.get(1).id, "Other");
+        let used = BTreeSet::from([3, 5, 8, 13, 21]);
+        let a = program(set.get(0), &used, true).unwrap();
+        let b = program(set.get(1), &used, true).unwrap();
+        assert!(!a.tag.is_empty() && !b.tag.is_empty());
+        assert_ne!(a.data, b.data);
+    }
 
     #[test]
     fn width_runs_keep_to_the_array_limit() {

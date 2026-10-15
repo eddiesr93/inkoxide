@@ -238,7 +238,9 @@ export interface Document {
    */
   fonts?: FontDecl[];
   /**
-   * Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`.
+   * Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`; an id listed again is skipped.
+   *
+   * @maxItems 256
    */
   fallbackFonts?: Id[];
   /**

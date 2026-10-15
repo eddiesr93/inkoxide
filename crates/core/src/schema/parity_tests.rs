@@ -852,6 +852,16 @@ fn integer_bounds_match_schema() {
     }
 }
 
+/// The bound of `fallbackFonts` is the schema's.
+#[test]
+fn fallback_font_bound_matches_schema() {
+    use crate::validate::rules::MAX_FALLBACK_FONTS;
+    assert_eq!(
+        bound(&schema(), "/properties/fallbackFonts/maxItems"),
+        MAX_FALLBACK_FONTS as i64
+    );
+}
+
 /// The bounds of `emojiImages` are the schema's.
 #[test]
 fn emoji_image_bounds_match_schema() {

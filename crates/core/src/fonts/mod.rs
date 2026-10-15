@@ -108,7 +108,8 @@ pub struct FontData {
     /// The sfnt font (TrueType or CFF OpenType), decoded from WOFF or WOFF2
     /// when it was registered in one of them.
     pub(crate) bytes: Arc<[u8]>,
-    /// xxh3 of `bytes`: the font's identity in process-wide caches.
+    /// xxh3 of `bytes`: process-wide caches find the font by it, and
+    /// compare the bytes on a match.
     pub(crate) hash: u64,
     pub(crate) metrics: FontMetrics,
     /// Compressed whole font program (see [`FontData::compressed_program`]),
@@ -371,6 +372,21 @@ impl FontStore {
         Ok(())
     }
 
+    /// Registers font `id` with `hash` in place of its xxh3: two different
+    /// fonts with one hash.
+    #[cfg(test)]
+    pub(crate) fn register_with_hash(
+        &mut self,
+        id: &str,
+        bytes: Vec<u8>,
+        hash: u64,
+    ) -> Result<(), InkoxideError> {
+        let mut data = FontData::parse(id, bytes.into())?;
+        data.hash = hash;
+        self.fonts.insert(id.into(), Arc::new(data));
+        Ok(())
+    }
+
     /// Removes font `id`; returns whether it was registered.
     pub fn unregister(&mut self, id: &str) -> bool {
         self.fonts.remove(id).is_some()
@@ -540,11 +556,16 @@ impl<'a> FontSet<'a> {
                 face,
             });
         }
-        let fallbacks = doc
-            .fallback_fonts
-            .iter()
-            .filter_map(|id| by_id.get(id.as_str()).copied())
-            .collect();
+        // Each font once, where it is first listed: a font that lacks a
+        // character lacks it the second time too.
+        let mut fallbacks: Vec<FontKey> = Vec::new();
+        for id in &doc.fallback_fonts {
+            if let Some(&key) = by_id.get(id.as_str()) {
+                if !fallbacks.contains(&key) {
+                    fallbacks.push(key);
+                }
+            }
+        }
         Ok(Self {
             fonts,
             by_id,
@@ -591,6 +612,19 @@ mod tests {
         assert!(m.ascender > 0.0 && m.descender < 0.0);
         assert_eq!(m.post_script_name, "Inter-Regular");
         assert_eq!(m.weight, 400);
+    }
+
+    #[test]
+    fn fallback_fonts_are_tried_once_each_in_listed_order() {
+        let store = crate::test_fixtures::fonts(&["Inter-Regular", "NotoSans-Regular"]);
+        let json = r#"{"version":1,
+            "fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"NotoSans-Regular","family":"Noto Sans"}],
+            "fallbackFonts":["NotoSans-Regular","Inter-Regular","NotoSans-Regular","Inter-Regular"],
+            "pages":[{"size":{"width":10,"height":10}}]}"#;
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let set = FontSet::load(&doc, &store).unwrap();
+        let ids: Vec<_> = set.fallbacks.iter().map(|&k| set.get(k).id).collect();
+        assert_eq!(ids, ["NotoSans-Regular", "Inter-Regular"]);
     }
 
     #[test]

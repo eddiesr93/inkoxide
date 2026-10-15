@@ -1282,6 +1282,21 @@ fn form_fields() {
             "{pair}"
         );
     }
+    // A name with an error makes no groups and takes no name: the next
+    // field's `a` is not reported again.
+    let bad = format!("a.{}", "b".repeat(129));
+    let errs = run(&doc(&format!(
+        r#"{{"type":"field","field":{{"name":"{bad}","kind":"checkbox"}}}},{{"type":"field","field":{{"name":"a","kind":"checkbox"}}}},{{"type":"field","field":{{"name":"{bad}","kind":"checkbox"}}}}"#
+    )));
+    assert_eq!(
+        errs.iter()
+            .map(|e| (e.code, e.path.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (C::InvalidValue, "pages[0].children[0].field.name"),
+            (C::InvalidValue, "pages[0].children[2].field.name"),
+        ]
+    );
     let (code, path) = one(&doc(
         r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
     ));
@@ -2093,6 +2108,22 @@ fn image_runs_are_checked() {
 }
 
 #[test]
+fn fallback_fonts_are_limited() {
+    let with = |n: usize| {
+        let ids = vec![r#""Inter-Regular""#; n].join(",");
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"fallbackFonts":[{ids}],
+                "pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    assert_eq!(run(&with(256)), vec![]);
+    assert_eq!(
+        one(&with(257)),
+        (C::OutOfRange, "fallbackFonts".to_string())
+    );
+}
+
+#[test]
 fn emoji_images_are_checked() {
     let with = |map: &str| {
         format!(
@@ -2153,6 +2184,26 @@ fn emoji_images_are_checked() {
 /// Under PDF/A-1b, a colour glyph whose image needs transparency (the PNG
 /// strikes of the test fonts have alpha, the COLR grin an opacity) fails
 /// the render at its run, as an image would; an opaque one draws.
+/// Each image is checked for transparency on its own, even when its hash
+/// equals that of an image checked before.
+#[test]
+fn pdf_a_1b_checks_images_with_equal_hashes_apart() {
+    let mut images = ImageStore::new();
+    images.insert("photo", fixture("images/photo.jpg"));
+    let hash = images.get("photo").unwrap().hash;
+    images.insert_with_hash("logo", fixture("images/logo.png"), hash);
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    let d = doc(r#"{"type":"image","src":"photo"},{"type":"image","src":"logo"}"#);
+    let e = match crate::render(d.as_bytes(), InputFormat::Json, &options, &fonts(), &images) {
+        Err(crate::InkoxideError::Validation(e)) => e,
+        other => panic!("{:?}", other.map(|_| ())),
+    };
+    assert_eq!(
+        (e.code, e.path.as_str()),
+        (C::PdfaConflict, "pages[0].children[1].src")
+    );
+}
+
 #[test]
 fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
     let mut fonts = fonts();

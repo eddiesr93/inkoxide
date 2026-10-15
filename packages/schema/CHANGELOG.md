@@ -7,6 +7,12 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- `fallbackFonts` holds at most 256 ids; a longer list is `OUT_OF_RANGE`. It was unbounded, so
+  a document with a longer one was valid before. An id listed again is skipped: each font is
+  tried once, where it is first listed.
+
 ## 2.4.0 - 2026-10-15
 
 Still document schema version 1.
