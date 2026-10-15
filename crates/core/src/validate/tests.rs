@@ -1282,6 +1282,21 @@ fn form_fields() {
             "{pair}"
         );
     }
+    // A name with an error makes no groups and takes no name: the next
+    // field's `a` is not reported again.
+    let bad = format!("a.{}", "b".repeat(129));
+    let errs = run(&doc(&format!(
+        r#"{{"type":"field","field":{{"name":"{bad}","kind":"checkbox"}}}},{{"type":"field","field":{{"name":"a","kind":"checkbox"}}}},{{"type":"field","field":{{"name":"{bad}","kind":"checkbox"}}}}"#
+    )));
+    assert_eq!(
+        errs.iter()
+            .map(|e| (e.code, e.path.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (C::InvalidValue, "pages[0].children[0].field.name"),
+            (C::InvalidValue, "pages[0].children[2].field.name"),
+        ]
+    );
     let (code, path) = one(&doc(
         r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
     ));

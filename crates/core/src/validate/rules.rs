@@ -812,20 +812,9 @@ impl<'a> Checker<'a> {
         });
     }
 
-    fn field(&mut self, f: &Field) {
-        let parts = f.name.split('.').count();
-        if f.name.chars().count() > MAX_FIELD_NAME
-            || parts > MAX_FIELD_PARTS
-            || f.name
-                .split('.')
-                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
-        {
-            self.err(
-                Code::InvalidValue,
-                Some("name"),
-                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
-            );
-        }
+    /// Records a well-formed field `name` and the groups it makes, after
+    /// checking it against the names and groups seen so far.
+    fn field_name(&mut self, f: &Field) {
         // The groups the name is in: what comes before each of its dots.
         let groups = f.name.match_indices('.').map(|(i, _)| &f.name[..i]);
         if let Some(g) = groups.clone().find(|g| self.fields.contains_key(*g)) {
@@ -862,6 +851,24 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+        }
+    }
+
+    fn field(&mut self, f: &Field) {
+        let parts = f.name.split('.').count();
+        if f.name.chars().count() > MAX_FIELD_NAME
+            || parts > MAX_FIELD_PARTS
+            || f.name
+                .split('.')
+                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("name"),
+                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
+            );
+        } else {
+            self.field_name(f);
         }
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {
