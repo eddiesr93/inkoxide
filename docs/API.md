@@ -205,10 +205,12 @@ Without any creation date, no date is written, so output is still
 deterministic.
 
 Encrypted output is deterministic too: the keys, salts and IVs that
-revision 6 makes random are derived from the document and the passwords,
-so identical input gives identical bytes, and two different documents
-never share a key. The derivation is not the standard's random one and
-has not had a cryptography review yet.
+revision 6 makes random are derived from the passwords and the whole
+file as it would be written unencrypted, so identical input gives
+identical bytes, and documents whose files differ anywhere (text,
+images, links, form fields, notes, bookmarks, metadata) get different
+keys. The derivation is not the standard's random one and has not had a
+cryptography review yet.
 
 ## Errors
 

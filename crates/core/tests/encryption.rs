@@ -352,3 +352,81 @@ fn bad_encryption_options_name_the_option_and_never_the_password() {
         assert_eq!(render(options), ("INVALID_VALUE", path.into()));
     }
 }
+
+/// The keys and the file identifier depend on everything the document
+/// puts in the file: documents that differ only in an image's bytes, a
+/// link, a form field, a note or a bookmark get different ones.
+#[test]
+fn every_part_of_the_document_changes_the_key() {
+    let (fonts, _) = stores();
+    let doc = |link: &str, value: &str, note: &str, bookmark: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":300,"height":300}},"children":[
+              {{"type":"text","link":"{link}","bookmark":{{"title":"{bookmark}"}},
+               "runs":[{{"text":"Same text","font":"Inter-Regular","size":10}}]}},
+              {{"type":"image","src":"pic","style":{{"width":50,"height":50}}}},
+              {{"type":"field","field":{{"name":"f","kind":"text","font":"Inter-Regular","value":"{value}"}}}},
+              {{"type":"note","note":{{"contents":"{note}"}}}}]}}]}}"#
+        )
+    };
+    let photo = fs::read(root().join("fixtures/images/photo.jpg")).unwrap();
+    // The same JPEG with one byte of its compressed data changed: it is
+    // embedded as it is, so only the image stream differs.
+    let mut changed = photo.clone();
+    let mid = changed.len() / 2;
+    changed[mid] ^= 0x01;
+    let render = |doc: String, image: &[u8]| {
+        let mut images = ImageStore::new();
+        images.insert("pic", image.to_vec());
+        let pdf = inkoxide::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options(Some(both())),
+            &fonts,
+            &images,
+        )
+        .unwrap();
+        let find = |from: &[u8], to: &[u8]| {
+            let start = pdf.windows(from.len()).rposition(|w| w == from).unwrap();
+            let len = pdf[start..]
+                .windows(to.len())
+                .position(|w| w == to)
+                .unwrap();
+            pdf[start..start + len].to_vec()
+        };
+        // The file identifier, and the `Encrypt` dictionary (salts and
+        // wrapped keys).
+        (find(b"/ID [", b"]"), find(b"/Filter /Standard", b"endobj"))
+    };
+    let base = render(doc("https://a.example", "v", "n", "b"), &photo);
+    assert_eq!(
+        base,
+        render(doc("https://a.example", "v", "n", "b"), &photo)
+    );
+    for (what, other) in [
+        (
+            "image bytes",
+            render(doc("https://a.example", "v", "n", "b"), &changed),
+        ),
+        (
+            "link",
+            render(doc("https://b.example", "v", "n", "b"), &photo),
+        ),
+        (
+            "field",
+            render(doc("https://a.example", "w", "n", "b"), &photo),
+        ),
+        (
+            "note",
+            render(doc("https://a.example", "v", "m", "b"), &photo),
+        ),
+        (
+            "bookmark",
+            render(doc("https://a.example", "v", "n", "c"), &photo),
+        ),
+    ] {
+        assert_ne!(other.0, base.0, "{what}: the same /ID");
+        assert_ne!(other.1, base.1, "{what}: the same salts and keys");
+    }
+}

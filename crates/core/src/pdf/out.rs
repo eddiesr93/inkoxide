@@ -48,6 +48,11 @@ impl Out {
         Self { crypt: Some(crypt) }
     }
 
+    /// Whether strings and streams are encrypted.
+    pub fn is_encrypted(&self) -> bool {
+        self.crypt.is_some()
+    }
+
     /// A text string, to write as a `Str`: see [`text_bytes`].
     pub fn text(&mut self, s: &str) -> Vec<u8> {
         self.bytes(&text_bytes(s))

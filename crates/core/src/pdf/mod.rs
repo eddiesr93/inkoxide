@@ -270,50 +270,36 @@ impl PdfSink for PdfWriterSink {
     }
 
     fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {
-        let mut pdf = Pdf::new();
-        if let Some((major, minor)) = self.profile.version() {
-            pdf.set_version(major, minor);
-        }
-        let mut alloc = RefAlloc(0);
-        let (mut out, encrypt) = match &self.encryption {
-            Some(params) => {
-                let d = crypt::digest(doc.pages.iter().map(|p| p.stream.as_slice()), doc.meta);
-                let (crypt, dict) = crypt::Crypt::new(params, &d);
-                (Out::encrypted(crypt), Some(dict))
-            }
-            None => (Out::plain(), None),
+        let fonts = self.font_programs(doc)?;
+        let Some(params) = &self.encryption else {
+            return Ok(self.emit(doc, &fonts, Out::plain())?.0.finish());
         };
-        let catalog = alloc.next();
-        let info = alloc.next();
+        // The keys are derived from the whole file as it is written
+        // unencrypted, so documents that differ anywhere get different
+        // keys.
+        let plain = self.emit(doc, &fonts, Out::plain())?.0.finish();
+        let (crypt, dict) = crypt::Crypt::new(params, &crypt::digest(&plain));
+        drop(plain);
+        let (mut pdf, mut alloc) = self.emit(doc, &fonts, Out::encrypted(crypt))?;
+        // Last, so every other object keeps its number.
+        let r = alloc.next();
+        dict.write(&mut pdf, r);
+        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
+        crypt::splice_encrypt(pdf.finish(), r)
+            .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
+    }
+}
 
-        // Page and content stream refs first, in document order, so
-        // numbering is stable.
-        let (page_refs, content_refs): (Vec<Ref>, Vec<Ref>) = doc
-            .pages
-            .iter()
-            .map(|_| (alloc.next(), alloc.next()))
-            .unzip();
-        let tree_root = write_page_tree(&mut pdf, &mut alloc, &page_refs);
+/// The font programs a document embeds, and the glyphs each one holds.
+struct FontPrograms {
+    used: BTreeMap<FontKey, BTreeSet<u16>>,
+    programs: Vec<font::Program>,
+}
 
-        // Shared graphics states, one per distinct opacity, in value order.
-        let mut opacities: BTreeMap<u16, Ref> = BTreeMap::new();
-        for page in doc.pages {
-            for &key in &page.opacities {
-                opacities.entry(key).or_insert(Ref::new(1));
-            }
-        }
-        if opacities.keys().any(|&key| key < alpha_key(1.0)) {
-            self.profile
-                .allow_transparency("an opacity or a colour's alpha")?;
-        }
-        for (key, r) in &mut opacities {
-            *r = alloc.next();
-            let a = key_alpha(*key);
-            pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
-        }
-
-        // Fonts: embed each font that is actually painted, with the glyphs
-        // used across the whole document.
+impl PdfWriterSink {
+    /// Every font that is actually painted, with the glyphs used across
+    /// the whole document, subset and compressed.
+    fn font_programs(&self, doc: &DocumentOut<'_>) -> Result<FontPrograms, InkoxideError> {
         let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
         let mut editable = BTreeSet::new();
         for page in doc.pages {
@@ -357,8 +343,55 @@ impl PdfSink for PdfWriterSink {
         } else {
             used.iter().map(program).collect::<Result<_, _>>()?
         };
+        Ok(FontPrograms { used, programs })
+    }
+
+    /// Writes every object of the document, its strings and streams
+    /// through `out`, and hands back the file before its trailer and the
+    /// numbers it allocated. With the same `doc` and `fonts`, every call
+    /// numbers the objects the same.
+    fn emit(
+        &self,
+        doc: &DocumentOut<'_>,
+        fonts: &FontPrograms,
+        mut out: Out,
+    ) -> Result<(Pdf, RefAlloc), InkoxideError> {
+        let mut pdf = Pdf::new();
+        if let Some((major, minor)) = self.profile.version() {
+            pdf.set_version(major, minor);
+        }
+        let mut alloc = RefAlloc(0);
+        let catalog = alloc.next();
+        let info = alloc.next();
+
+        // Page and content stream refs first, in document order, so
+        // numbering is stable.
+        let (page_refs, content_refs): (Vec<Ref>, Vec<Ref>) = doc
+            .pages
+            .iter()
+            .map(|_| (alloc.next(), alloc.next()))
+            .unzip();
+        let tree_root = write_page_tree(&mut pdf, &mut alloc, &page_refs);
+
+        // Shared graphics states, one per distinct opacity, in value order.
+        let mut opacities: BTreeMap<u16, Ref> = BTreeMap::new();
+        for page in doc.pages {
+            for &key in &page.opacities {
+                opacities.entry(key).or_insert(Ref::new(1));
+            }
+        }
+        if opacities.keys().any(|&key| key < alpha_key(1.0)) {
+            self.profile
+                .allow_transparency("an opacity or a colour's alpha")?;
+        }
+        for (key, r) in &mut opacities {
+            *r = alloc.next();
+            let a = key_alpha(*key);
+            pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
+        }
+
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
-        for ((key, glyphs), program) in used.iter().zip(&programs) {
+        for ((key, glyphs), program) in fonts.used.iter().zip(&fonts.programs) {
             let embedded = font::Embedded {
                 font: doc.fonts.get(*key),
                 program,
@@ -522,7 +555,7 @@ impl PdfSink for PdfWriterSink {
         if let Some(lang) = &lang {
             cat.pair(Name(b"Lang"), Str(lang));
         }
-        if encrypt.is_some() {
+        if out.is_encrypted() {
             // Revision 6 of the security handler is extension level 8 of
             // PDF 1.7.
             cat.insert(Name(b"Extensions"))
@@ -613,15 +646,7 @@ impl PdfSink for PdfWriterSink {
             pdf.limits().real()
         );
         self.profile.check_limits(pdf.limits())?;
-        let Some(dict) = encrypt else {
-            return Ok(pdf.finish());
-        };
-        // Last, so every other object keeps its number.
-        let r = alloc.next();
-        dict.write(&mut pdf, r);
-        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
-        crypt::splice_encrypt(pdf.finish(), r)
-            .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
+        Ok((pdf, alloc))
     }
 }
 
