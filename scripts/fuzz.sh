@@ -56,7 +56,8 @@ flags() {
     render_svg_tree)
       echo -fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 -max_len=4096 ;;
     register_font)
-      cp ../fixtures/fonts/*.ttf ../fixtures/fonts/*.otf ../fixtures/fonts/woff/* corpus/register_font/
+      cp ../fixtures/fonts/*.ttf ../fixtures/fonts/*.otf ../fixtures/fonts/woff/* \
+        ../fixtures/fonts/malformed/* ../fixtures/fonts/limits/* corpus/register_font/
       echo -max_len=1048576 ;;
     *)
       echo "unknown fuzz target: $1" >&2

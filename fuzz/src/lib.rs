@@ -11,78 +11,160 @@ use inkoxide::{
 };
 use serde_json::{json, Map, Value};
 
-/// The fixture fonts: id, family, weight and bytes. Generated documents
-/// declare them all, and their runs pick from them.
-const FIXTURE_FONTS: &[(&str, &str, u16, &[u8])] = &[
+/// The fixture fonts: id, family, weight, style and bytes. Generated
+/// documents declare them all, and their runs pick from them. The ids are
+/// the file names, as `fixtures/docs` (the `render_json` seeds) expect.
+const FIXTURE_FONTS: &[(&str, &str, u16, &str, &[u8])] = &[
     (
         "Inter-Regular",
         "Inter",
         400,
+        "normal",
         include_bytes!("../../fixtures/fonts/Inter-Regular.ttf"),
     ),
     (
         "Inter-Bold",
         "Inter",
         700,
+        "normal",
         include_bytes!("../../fixtures/fonts/Inter-Bold.ttf"),
+    ),
+    (
+        "Inter-Italic",
+        "Inter",
+        400,
+        "italic",
+        include_bytes!("../../fixtures/fonts/Inter-Italic.ttf"),
+    ),
+    // CFF outlines.
+    (
+        "InterDisplay-Bold",
+        "Inter Display",
+        700,
+        "normal",
+        include_bytes!("../../fixtures/fonts/InterDisplay-Bold.otf"),
     ),
     (
         "NotoSans-Regular",
         "Noto Sans",
         400,
+        "normal",
         include_bytes!("../../fixtures/fonts/NotoSans-Regular.ttf"),
+    ),
+    (
+        "NotoSansArabic-Regular",
+        "Noto Sans Arabic",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/NotoSansArabic-Regular.ttf"),
+    ),
+    (
+        "NotoSansHebrew-Regular",
+        "Noto Sans Hebrew",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/NotoSansHebrew-Regular.ttf"),
     ),
     (
         "RobotoMono-Regular",
         "Roboto Mono",
         400,
+        "normal",
         include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf"),
     ),
-    // Colour fonts: COLR layers with outlines, PNG bitmaps without.
+    // Colour fonts: COLR layers with outlines, PNG bitmaps without (CBDT
+    // and sbix).
     (
         "EmojiTest-COLR",
         "Emoji Test",
         400,
+        "normal",
         include_bytes!("../../fixtures/fonts/EmojiTest-COLR.ttf"),
     ),
     (
         "EmojiTest-CBDT",
         "Emoji Test Bitmap",
         400,
+        "normal",
         include_bytes!("../../fixtures/fonts/EmojiTest-CBDT.ttf"),
+    ),
+    (
+        "EmojiTest-sbix",
+        "Emoji Test sbix",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/EmojiTest-sbix.ttf"),
     ),
 ];
 
+/// The colour fonts among [`FIXTURE_FONTS`]: the last ones.
+#[cfg(test)]
+const COLOUR_FONTS: usize = 3;
+
 pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
     let mut f = FontStore::new();
-    for &(id, _, _, bytes) in FIXTURE_FONTS {
+    for &(id, _, _, _, bytes) in FIXTURE_FONTS {
         f.register(id, bytes.to_vec()).unwrap();
     }
     f
 });
 
+/// The fixture images, by file name as `fixtures/docs` expects; `svgtext`
+/// is `text` under the name the generator has used.
+const FIXTURE_IMAGES: &[(&str, &[u8])] = &[
+    ("anim", include_bytes!("../../fixtures/images/anim.gif")),
+    (
+        "badge-lossless",
+        include_bytes!("../../fixtures/images/badge-lossless.webp"),
+    ),
+    ("chart", include_bytes!("../../fixtures/images/chart.svg")),
+    (
+        "checker-la",
+        include_bytes!("../../fixtures/images/checker-la.png"),
+    ),
+    (
+        "emoji-flag",
+        include_bytes!("../../fixtures/images/emoji-flag.svg"),
+    ),
+    (
+        "emoji-smile",
+        include_bytes!("../../fixtures/images/emoji-smile.svg"),
+    ),
+    ("logo", include_bytes!("../../fixtures/images/logo.png")),
+    (
+        "markers",
+        include_bytes!("../../fixtures/images/markers.svg"),
+    ),
+    (
+        "palette",
+        include_bytes!("../../fixtures/images/palette.png"),
+    ),
+    ("photo", include_bytes!("../../fixtures/images/photo.jpg")),
+    (
+        "photo-cmyk",
+        include_bytes!("../../fixtures/images/photo-cmyk.jpg"),
+    ),
+    (
+        "photo-gray",
+        include_bytes!("../../fixtures/images/photo-gray.jpg"),
+    ),
+    (
+        "photo-lossy",
+        include_bytes!("../../fixtures/images/photo-lossy.webp"),
+    ),
+    (
+        "photo-rot6",
+        include_bytes!("../../fixtures/images/photo-rot6.jpg"),
+    ),
+    ("text", include_bytes!("../../fixtures/images/text.svg")),
+    ("svgtext", include_bytes!("../../fixtures/images/text.svg")),
+];
+
 pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
     let mut s = ImageStore::new();
-    s.insert(
-        "logo",
-        include_bytes!("../../fixtures/images/logo.png").to_vec(),
-    );
-    s.insert(
-        "palette",
-        include_bytes!("../../fixtures/images/palette.png").to_vec(),
-    );
-    s.insert(
-        "photo",
-        include_bytes!("../../fixtures/images/photo-gray.jpg").to_vec(),
-    );
-    s.insert(
-        "chart",
-        include_bytes!("../../fixtures/images/chart.svg").to_vec(),
-    );
-    s.insert(
-        "svgtext",
-        include_bytes!("../../fixtures/images/text.svg").to_vec(),
-    );
+    for &(id, bytes) in FIXTURE_IMAGES {
+        s.insert(id, bytes.to_vec());
+    }
     s.insert("bad", b"\x89PNG\r\n\x1a\nnot really".to_vec());
     s.insert(
         "badsvg",
@@ -101,42 +183,62 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 /// On a finding.
 pub fn check(doc: &[u8]) {
     // Most inputs also go through the PDF/A writer.
-    let pdf_a = pdf_a_level(doc.len());
-    let json = render(doc, InputFormat::Json, pdf_a);
+    let _ = check_with(doc, &FONTS, &IMAGES, pdf_a_level(doc.len()));
+}
+
+/// The oracle of [`check`], with the given stores and PDF/A level:
+/// validates and renders the JSON `doc`, encrypted too when `pdf_a` is
+/// `None`, and as `MessagePack`. Returns the JSON render.
+fn check_with(
+    doc: &[u8],
+    fonts: &FontStore,
+    images: &ImageStore,
+    pdf_a: Option<PdfALevel>,
+) -> Result<Vec<u8>, InkoxideError> {
+    let json = render_with(doc, InputFormat::Json, fonts, images, pdf_a);
     let value = serde_json::from_slice::<serde_json::Value>(doc).ok();
     // The plain renders are also rendered encrypted.
     if pdf_a.is_none() {
-        check_encrypted(doc, &json, value.as_ref());
+        check_encrypted(doc, &json, value.as_ref(), fonts, images);
     }
     let Some(value) = value else {
-        return;
+        return json;
     };
     let Ok(packed) = rmp_serde::to_vec(&value) else {
-        return;
+        return json;
     };
     // Only a document JSON accepts has to round-trip: the `Value` detour
     // drops duplicate keys, which JSON parsing rejects.
-    let msgpack = render(&packed, InputFormat::MessagePack, pdf_a);
+    let msgpack = render_with(&packed, InputFormat::MessagePack, fonts, images, pdf_a);
     if let Ok(a) = &json {
         match &msgpack {
             Ok(b) => assert!(a == b, "MessagePack output differs from JSON"),
             Err(e) => panic!("MessagePack rejected a document JSON renders: {e}"),
         }
     }
+    json
 }
 
 /// The `fonts` of a document that declares every fixture font.
 fn fixture_fonts() -> Vec<Value> {
     FIXTURE_FONTS
         .iter()
-        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
+        .map(|(id, family, weight, style, _)| {
+            json!({"id": id, "family": family, "weight": weight, "style": style})
+        })
         .collect()
 }
 
 /// Renders `doc` encrypted: it must render exactly when `plain`, its
 /// unencrypted render, did, fail with the same code otherwise, and keep
 /// the title out of plain sight.
-fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Option<&Value>) {
+fn check_encrypted(
+    doc: &[u8],
+    plain: &Result<Vec<u8>, InkoxideError>,
+    value: Option<&Value>,
+    fonts: &FontStore,
+    images: &ImageStore,
+) {
     let options = RenderOptions::default()
         .with_compress(false)
         .with_threads(1)
@@ -146,7 +248,7 @@ fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Op
                 .with_owner_password("fuzz owner")
                 .with_permissions(Permissions::new().with_copying(true)),
         );
-    let encrypted = inkoxide::render(doc, InputFormat::Json, &options, &FONTS, &IMAGES);
+    let encrypted = inkoxide::render(doc, InputFormat::Json, &options, fonts, images);
     let (plain, encrypted) = match (plain, &encrypted) {
         (Ok(p), Ok(e)) => (p, e),
         (Err(a), Err(b)) => {
@@ -192,6 +294,7 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
     images.insert("fz", bytes.to_vec());
     let doc = json!({
         "version": 1,
+        "meta": {"title": "Fuzz-Image"},
         "fonts": fixture_fonts(),
         "pages": [{"size": {"width": 300, "height": 400}, "children": [
             {"type": "image", "src": "fz"},
@@ -199,14 +302,7 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
         ]}]
     })
     .to_string();
-    render_with(
-        doc.as_bytes(),
-        InputFormat::Json,
-        &FONTS,
-        &images,
-        pdf_a_level(bytes.len()),
-    )
-    .map(|_| ())
+    check_with(doc.as_bytes(), &FONTS, &images, pdf_a_level(bytes.len())).map(|_| ())
 }
 
 /// Registers arbitrary bytes as a font, as they are and with the WOFF and
@@ -226,18 +322,19 @@ pub fn check_font(bytes: &[u8]) -> usize {
             variants.push([&signature[..], rest].concat());
         }
     }
-    let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"},{"id":"Inter-Regular","family":"Inter"}],
+    let doc = r#"{"version":1,"meta":{"title":"Fuzz-Font"},"fonts":[{"id":"fz","family":"Fz"},{"id":"Inter-Regular","family":"Inter"}],
         "fallbackFonts":["fz"],"pages":[{"size":{"width":300,"height":200},"children":[
         {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]},
         {"type":"text","runs":[{"text":"😀 👩‍💻 🇫🇷 1️⃣ #⃣ 👍🏽 ❤️ ☺︎ 🏴󠁧󠁢󠁥󠁮󠁧󠁿","font":"Inter-Regular","size":12}]}]}]}"#;
+    let pdf_a = pdf_a_level(bytes.len());
     let mut registered = 0;
     for v in variants {
         let mut fonts = FontStore::new();
-        let (_, _, _, inter) = FIXTURE_FONTS[0];
+        let (_, _, _, _, inter) = FIXTURE_FONTS[0];
         fonts.register("Inter-Regular", inter.to_vec()).unwrap();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
-            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, None);
+            let _ = check_with(doc.as_bytes(), &fonts, &IMAGES, pdf_a);
         }
     }
     registered
@@ -247,64 +344,203 @@ pub fn check_font(bytes: &[u8]) -> usize {
 /// function with plain arguments: integers, booleans and string literals
 /// that cannot end early. PDF/A output has no scripts and no `/AA`.
 fn check_scripts(pdf: &[u8], pdf_a: bool) {
-    let text = String::from_utf8_lossy(pdf);
+    let objects = pdf_objects(pdf);
     if pdf_a {
         assert!(
-            !text.contains("/AA <<") && !text.contains("/S /JavaScript") && !text.contains("/JS ("),
+            objects.scripts.is_empty()
+                && !objects
+                    .names
+                    .iter()
+                    .any(|n| n == b"AA" || n == b"JavaScript"),
             "PDF/A output with a script"
         );
     }
-    for part in text.split("/JS (").skip(1) {
-        let script = pdf_literal(part).expect("an unterminated /JS string");
+    for script in &objects.scripts {
+        let script = script.as_deref().expect("a /JS that is not a string");
         assert!(
-            form_call(&script),
+            form_call(script),
             "a script that is not a form function call: {script:?}"
         );
     }
 }
 
-/// The text of the PDF literal string that `s` starts with, after its
-/// opening parenthesis.
-fn pdf_literal(s: &str) -> Option<String> {
-    let mut out = String::new();
-    let mut depth = 1;
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => match chars.next()? {
-                'n' => out.push('\n'),
-                'r' => out.push('\r'),
-                't' => out.push('\t'),
-                'b' => out.push('\u{8}'),
-                'f' => out.push('\u{c}'),
-                d @ '0'..='7' => {
-                    // Up to three octal digits; scripts are ASCII.
-                    let mut v = d.to_digit(8)?;
-                    let rest = chars.as_str();
-                    let more = rest.chars().take(2).take_while(|c| c.is_digit(8)).count();
-                    for c in rest.chars().take(more) {
-                        v = v * 8 + c.to_digit(8)?;
+/// What [`check_scripts`] reads from the object syntax of a PDF.
+#[derive(Debug, Default)]
+struct PdfObjects {
+    /// Every name, without its `/`.
+    names: Vec<Vec<u8>>,
+    /// The value of every `/JS` key, decoded as a text string; `None` when
+    /// it is not a string.
+    scripts: Vec<Option<String>>,
+}
+
+/// Tokenizes the object syntax of an uncompressed, unencrypted `pdf`:
+/// strings (literal and hex) are read as values, never searched, and
+/// stream data is skipped, so document text cannot pose as a key.
+fn pdf_objects(pdf: &[u8]) -> PdfObjects {
+    let mut out = PdfObjects::default();
+    let mut i = 0;
+    let (mut length, mut after_length) = (None, false);
+    while i < pdf.len() {
+        match pdf[i] {
+            b'%' => {
+                while i < pdf.len() && pdf[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            // A dictionary.
+            b'<' if pdf.get(i + 1) == Some(&b'<') => i += 2,
+            b'(' | b'<' => i = pdf_string(pdf, i).map_or(pdf.len(), |(_, end)| end),
+            b'/' => {
+                let start = i + 1;
+                i = start;
+                while i < pdf.len() && !delimiter(pdf[i]) {
+                    i += 1;
+                }
+                let name = pdf[start..i].to_vec();
+                after_length = name == b"Length";
+                if name == b"JS" {
+                    while i < pdf.len() && pdf[i].is_ascii_whitespace() {
+                        i += 1;
                     }
-                    chars = rest[more..].chars();
-                    out.push(char::from_u32(v)?);
+                    let value = pdf_string(pdf, i);
+                    out.scripts
+                        .push(value.as_ref().map(|(bytes, _)| text_string(bytes)));
+                    if let Some((_, end)) = value {
+                        i = end;
+                    }
                 }
-                c => out.push(c),
-            },
-            '(' => {
-                depth += 1;
-                out.push(c);
+                out.names.push(name);
             }
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(out);
+            b if delimiter(b) => i += 1,
+            _ => {
+                let start = i;
+                while i < pdf.len() && !delimiter(pdf[i]) {
+                    i += 1;
                 }
-                out.push(c);
+                let token = &pdf[start..i];
+                if after_length {
+                    length = std::str::from_utf8(token).ok().and_then(|t| t.parse().ok());
+                }
+                after_length = false;
+                if token == b"obj" {
+                    length = None;
+                } else if token == b"stream" {
+                    let body = i + if pdf[i..].starts_with(b"\r\n") { 2 } else { 1 };
+                    // The data ends at `/Length`, or else (an indirect
+                    // length) at the first `endstream`.
+                    let end = length
+                        .map(|n: usize| (body + n).min(pdf.len()))
+                        .filter(|&end| pdf[end..].trim_ascii_start().starts_with(b"endstream"))
+                        .or_else(|| {
+                            pdf.get(body..)?
+                                .windows(9)
+                                .position(|w| w == b"endstream")
+                                .map(|p| body + p)
+                        });
+                    i = end.unwrap_or(pdf.len());
+                }
             }
-            _ => out.push(c),
         }
     }
-    None
+    out
+}
+
+/// The bytes of the string (literal or hex) that starts at `pdf[i]`, and
+/// where it ends.
+fn pdf_string(pdf: &[u8], i: usize) -> Option<(Vec<u8>, usize)> {
+    match pdf.get(i)? {
+        b'(' => {
+            let mut out = Vec::new();
+            let mut depth = 1;
+            let mut j = i + 1;
+            while j < pdf.len() {
+                let c = pdf[j];
+                j += 1;
+                match c {
+                    b'\\' => {
+                        let e = *pdf.get(j)?;
+                        j += 1;
+                        match e {
+                            b'n' => out.push(b'\n'),
+                            b'r' => out.push(b'\r'),
+                            b't' => out.push(b'\t'),
+                            b'b' => out.push(8),
+                            b'f' => out.push(12),
+                            b'0'..=b'7' => {
+                                let mut v = u32::from(e - b'0');
+                                for _ in 0..2 {
+                                    match pdf.get(j) {
+                                        Some(&d @ b'0'..=b'7') => {
+                                            v = v * 8 + u32::from(d - b'0');
+                                            j += 1;
+                                        }
+                                        _ => break,
+                                    }
+                                }
+                                out.push(v as u8);
+                            }
+                            // A line continuation.
+                            b'\r' => {
+                                if pdf.get(j) == Some(&b'\n') {
+                                    j += 1;
+                                }
+                            }
+                            b'\n' => {}
+                            e => out.push(e),
+                        }
+                    }
+                    b'(' => {
+                        depth += 1;
+                        out.push(c);
+                    }
+                    b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some((out, j));
+                        }
+                        out.push(c);
+                    }
+                    _ => out.push(c),
+                }
+            }
+            None
+        }
+        b'<' => {
+            let end = i + 1 + pdf.get(i + 1..)?.iter().position(|&b| b == b'>')?;
+            let mut hex: Vec<u8> = pdf[i + 1..end]
+                .iter()
+                .copied()
+                .filter(|b| !b.is_ascii_whitespace())
+                .collect();
+            if hex.len() % 2 == 1 {
+                hex.push(b'0');
+            }
+            let bytes = hex
+                .chunks(2)
+                .map(|p| u8::from_str_radix(std::str::from_utf8(p).ok()?, 16).ok())
+                .collect::<Option<Vec<u8>>>()?;
+            Some((bytes, end + 1))
+        }
+        _ => None,
+    }
+}
+
+/// A PDF text string: UTF-16BE after a byte order mark, else one
+/// character per byte (`PDFDocEncoding`, which is ASCII where scripts
+/// are). Unpaired surrogates become U+FFFD, which no script accepts.
+fn text_string(bytes: &[u8]) -> String {
+    match bytes.strip_prefix(&[0xFE, 0xFF]) {
+        Some(utf16) => {
+            let units = utf16
+                .chunks(2)
+                .map(|c| u16::from_be_bytes([c[0], c.get(1).copied().unwrap_or(0)]));
+            char::decode_utf16(units)
+                .map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER))
+                .collect()
+        }
+        None => bytes.iter().map(|&b| char::from(b)).collect(),
+    }
 }
 
 /// Whether `script` is one call of a standard form function, ending with
@@ -392,6 +628,7 @@ fn pdf_a_level(len: usize) -> Option<PdfALevel> {
     }
 }
 
+#[cfg(test)]
 fn render(
     doc: &[u8],
     format: InputFormat,
@@ -1205,7 +1442,9 @@ fn run(s: &mut Src) -> Value {
         }
         m.insert("note".into(), n);
     }
-    if s.chance(25) {
+    // Images in the line are aligned more often: they have the most
+    // values.
+    if (image && s.chance(80)) || s.chance(25) {
         let which = s.below(3);
         if which != 1 {
             let align = if image && s.chance(160) {
@@ -1682,6 +1921,24 @@ fn table(s: &mut Src, depth: usize, budget: &mut usize) -> Map<String, Value> {
     m
 }
 
+/// A chain of boxes, one inside the other, around a leaf: the general
+/// recursion stops at depth 7, and this reaches the parser's nesting
+/// limit (128 JSON levels, two per box), just under it and past it.
+fn deep(s: &mut Src, budget: &mut usize) -> Value {
+    let levels = s.pick(&[20, 50, 57, 58, 59, 60, 61, 62, 63, 80]);
+    let style = match s.below(4) {
+        0 => json!({"flexDirection": "row"}),
+        1 => json!({"padding": 1, "borderWidth": 1}),
+        2 => json!({"display": "grid"}),
+        _ => json!({}),
+    };
+    let mut inner = node(s, 7, budget);
+    for _ in 0..levels {
+        inner = json!({"type": "box", "style": style, "children": [inner]});
+    }
+    inner
+}
+
 fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if *budget == 0 || s.exhausted() {
         return json!({"type": "spacer"});
@@ -1748,7 +2005,11 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             } else {
                 s.below(5)
             };
-            let mut kids: Vec<Value> = (0..n).map(|_| node(s, depth + 1, budget)).collect();
+            let mut kids: Vec<Value> = if depth < 4 && s.chance(4) {
+                vec![deep(s, budget)]
+            } else {
+                (0..n).map(|_| node(s, depth + 1, budget)).collect()
+            };
             let areas = m
                 .get("style")
                 .is_some_and(|st| st.get("gridTemplateAreas").is_some());
@@ -1823,7 +2084,20 @@ fn image_props(s: &mut Src, m: &mut Map<String, Value>) {
             json!(if s.chaos {
                 s.pick(&["bad", "badsvg", "missing"])
             } else {
-                s.pick(&["logo", "palette", "photo", "chart", "svgtext"])
+                s.pick(&[
+                    "logo",
+                    "palette",
+                    "photo",
+                    "photo-cmyk",
+                    "photo-rot6",
+                    "photo-lossy",
+                    "badge-lossless",
+                    "anim",
+                    "checker-la",
+                    "chart",
+                    "markers",
+                    "svgtext",
+                ])
             }),
         );
     }
@@ -1910,11 +2184,71 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             json!(s.pick(&["2026-01-01T00:00:00Z", "2026-13-40T99:00:00Z", "bad"])),
         );
     }
+    // The title is mostly printable ASCII, which the plain file shows as
+    // a literal string and the encrypted one must not.
+    if s.chance(128) {
+        meta.insert(
+            "title".into(),
+            json!(s.pick(&[
+                "Fuzz-Title",
+                "Quarterly-Report-2026",
+                "/JS (x)",
+                "/AA << /JS (app.alert(1);) >>",
+                "Ünïcødé ☃ 😀",
+                "a(b)c\\d",
+                "",
+            ])),
+        );
+    }
+    for key in ["author", "subject", "keywords", "creator", "producer"] {
+        if s.chance(40) {
+            let value = match s.below(6) {
+                0 => "x".repeat(s.below(5000)),
+                1 => "tab\there\nnew line\u{0}nul".to_string(),
+                2 => "שלום, مرحبا, 你好".to_string(),
+                3 => String::new(),
+                _ => format!("Fuzz {key}"),
+            };
+            meta.insert(key.into(), json!(value));
+        }
+    }
+    // An unknown value takes a high byte: an exhausted source reads zeros,
+    // and would otherwise break every chaos document here.
+    if s.chance(40) {
+        let modes = ["useNone", "useOutlines", "useThumbs", "fullScreen"];
+        let mode = if s.chaos && !s.chance(196) {
+            "useAttachments"
+        } else {
+            s.pick(&modes)
+        };
+        meta.insert("pageMode".into(), json!(mode));
+    }
+    if s.chance(40) {
+        let layouts = [
+            "singlePage",
+            "oneColumn",
+            "twoColumnLeft",
+            "twoColumnRight",
+            "twoPageLeft",
+            "twoPageRight",
+        ];
+        let layout = if s.chaos && !s.chance(196) {
+            "twoColumn"
+        } else {
+            s.pick(&layouts)
+        };
+        meta.insert("pageLayout".into(), json!(layout));
+    }
     let fonts = fixture_fonts();
-    let fallbacks: &[&str] = match s.below(4) {
+    let fallbacks: &[&str] = match s.below(6) {
         0 => &[],
         1 => &["NotoSans-Regular", "EmojiTest-COLR"],
         2 => &["EmojiTest-CBDT", "EmojiTest-COLR"],
+        3 => &[
+            "NotoSansArabic-Regular",
+            "NotoSansHebrew-Regular",
+            "EmojiTest-sbix",
+        ],
         _ => &["Inter-Regular", "EmojiTest-CBDT"],
     };
     let emoji = match s.below(6) {
@@ -1945,7 +2279,7 @@ mod tests {
         for doc in [&valid[..], &invalid[..], b"not json"] {
             let plain = render(doc, InputFormat::Json, None);
             let value = serde_json::from_slice::<Value>(doc).ok();
-            check_encrypted(doc, &plain, value.as_ref());
+            check_encrypted(doc, &plain, value.as_ref(), &FONTS, &IMAGES);
         }
         // The plain render shows the title, so the check above looked for it.
         let plain = render(valid, InputFormat::Json, None).unwrap();
@@ -1974,11 +2308,68 @@ mod tests {
         ] {
             assert!(!form_call(bad), "{bad}");
         }
+        let literal = br"(AF\(1\) (a) \134 \101b)rest";
         assert_eq!(
-            pdf_literal(r"AF\(1\) (a) \134 \101b)rest").as_deref(),
-            Some(r"AF(1) (a) \ Ab")
+            pdf_string(literal, 0),
+            Some((br"AF(1) (a) \ Ab".to_vec(), literal.len() - 4))
         );
         check_scripts(b"/JS (AFSpecial_Format\\(0\\);)", false);
+    }
+
+    /// Scripts are read from the parsed object syntax: in hex (UTF-16BE,
+    /// what a script outside printable ASCII is written as) too, and never
+    /// from strings or stream data that only look like a `/JS` key.
+    #[test]
+    fn scripts_are_read_from_the_object_syntax() {
+        let fails = |pdf: &'static [u8], pdf_a: bool| {
+            std::panic::catch_unwind(|| check_scripts(pdf, pdf_a)).is_err()
+        };
+        // "AFSpecial_Format(0);" and "app.alert(1);" in UTF-16BE.
+        let ok = b"<< /JS <FEFF00410046005300700065006300690061006C005F0046006F0072006D00610074002800300029003B> >>";
+        let bad = b"<< /JS <FEFF006100700070002E0061006C006500720074002800310029003B> >>";
+        assert!(!fails(ok, false));
+        assert!(fails(bad, false));
+        assert!(fails(ok, true));
+        assert!(fails(b"<< /AA << >> >>", true));
+        assert!(fails(b"<< /S /JavaScript >>", true));
+        assert!(fails(b"<< /JS 12 0 R >>", false));
+        // Strings and stream data that look like a script.
+        for decoy in [
+            &b"<< /Title (/JS \\(x\\)) /Subject </4A53> >>"[..],
+            b"1 0 obj << /Length 8 >> stream\n/JS (x) \nendstream endobj",
+            b"1 0 obj << /Length 2 0 R >> stream\n/JS (x)\nendstream endobj",
+        ] {
+            check_scripts(decoy, false);
+            check_scripts(decoy, true);
+        }
+        // A valid document whose title holds one renders: `render` runs
+        // the oracle on it.
+        for title in ["/JS (x)", "/AA << /JS (app.alert(1);) >>"] {
+            let doc = json!({"version": 1, "meta": {"title": title}, "pages": [{"size": {"width": 100, "height": 100}}]});
+            let doc = doc.to_string();
+            for pdf_a in [None, Some(PdfALevel::A2b)] {
+                render(doc.as_bytes(), InputFormat::Json, pdf_a).unwrap();
+            }
+        }
+    }
+
+    /// The `render_json` seeds (`fixtures/docs`) validate with the
+    /// harness's fonts and images, so they reach layout.
+    #[test]
+    fn seed_documents_validate() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/docs");
+        let mut seeds = 0;
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            let doc = std::fs::read(&path).unwrap();
+            let errors = inkoxide::validate(&doc, InputFormat::Json, &FONTS, &IMAGES);
+            assert!(errors.is_empty(), "{}: {errors:?}", path.display());
+            seeds += 1;
+        }
+        assert!(seeds > 30, "{seeds} seeds");
     }
 
     #[test]
@@ -1996,7 +2387,7 @@ mod tests {
     /// fallback for emoji sequences.
     #[test]
     fn check_font_renders_colour_fonts() {
-        for (id, _, _, bytes) in &FIXTURE_FONTS[4..] {
+        for (id, _, _, _, bytes) in &FIXTURE_FONTS[FIXTURE_FONTS.len() - COLOUR_FONTS..] {
             assert_eq!(check_font(bytes), 1, "{id}");
         }
     }
@@ -2048,7 +2439,19 @@ mod tests {
             r#""verticalAlign":"textTop""#,
             "👩\u{200D}💻",
             r#""src":"svgtext""#,
+            r#""src":"photo-cmyk""#,
+            r#""title":"Fuzz-Title""#,
+            r#""subject":"#,
+            r#""keywords":"#,
+            r#""creator":"#,
+            r#""producer":"#,
+            r#""pageMode":"#,
+            r#""pageLayout":"twoPage"#,
+            r#""EmojiTest-sbix"]"#,
         ];
+        // Boxes nested close to the parser's limit (keys are sorted).
+        let deep = r#"{"children":["#.repeat(56);
+        let features: Vec<&str> = features.into_iter().chain([&deep[..]]).collect();
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
         let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
@@ -2084,7 +2487,7 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "no valid document of {tried} has {missing:?}"
+            "no valid document of {tried} ({valid} valid) has {missing:?}"
         );
         assert!(
             valid * 10 >= tried,
