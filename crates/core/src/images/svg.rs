@@ -387,6 +387,14 @@ impl TextSource {
         })
     }
 
+    /// Approximate bytes it holds, its nested SVGs' included.
+    pub fn heap_size(&self) -> usize {
+        self.nested.iter().map(Self::heap_size).fold(
+            self.bytes.capacity() + self.text.heap_size(),
+            usize::saturating_add,
+        )
+    }
+
     /// The most probes its placeholders and its nested SVGs' hold.
     fn most_probes(&self) -> usize {
         self.nested

@@ -12,7 +12,8 @@ use super::decode::{DecodedImage, ImageBody, ImageDecoder};
 use super::ContentKey;
 use crate::lru::SharedLru;
 
-/// Bytes (encoded plus compressed samples) kept across renders.
+/// Bytes (encoded plus compressed samples, or an SVG's tree and text)
+/// kept across renders.
 const BUDGET: usize = 64 << 20;
 
 static CACHE: SharedLru<ContentKey<Arc<[u8]>>, Arc<DecodedImage>> = SharedLru::new(BUDGET);
@@ -25,8 +26,12 @@ fn size_of(image: &DecodedImage, encoded: usize) -> usize {
         ImageBody::Raw { samples, alpha, .. } => {
             samples.len() + alpha.as_ref().map_or(0, Vec::len) + encoded
         }
-        // A parsed tree is several times larger than its source.
-        ImageBody::Svg { .. } => encoded * 8,
+        // A parsed tree is several times larger than its source; its text
+        // is kept apart from the tree.
+        ImageBody::Svg { text, .. } => text
+            .as_deref()
+            .map_or(0, super::svg::TextSource::heap_size)
+            .saturating_add(encoded.saturating_mul(8)),
     }
 }
 
@@ -50,4 +55,23 @@ pub(crate) fn decode(
 #[cfg(test)]
 pub(crate) fn contains(bytes: &Arc<[u8]>, hash: u64) -> bool {
     CACHE.contains(&ContentKey::with_hash(bytes.clone(), hash))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::images::decode::ImageCrateDecoder;
+    use crate::images::svg_text::SvgChar;
+
+    #[test]
+    fn counts_the_text_an_svg_keeps() {
+        let chars = 200_000;
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>{}</text></svg>"#,
+            "a".repeat(chars)
+        );
+        let image = ImageCrateDecoder.decode(svg.as_bytes()).unwrap();
+        let text = chars * std::mem::size_of::<SvgChar>();
+        assert!(size_of(&image, svg.len()) >= svg.len() * 8 + text);
+    }
 }
