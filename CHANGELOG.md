@@ -9,6 +9,14 @@ together. The document schema has its own version and
 
 ## Unreleased
 
+## 0.7.1 - 2026-10-15
+
+`inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style`
+0.7.1, and `@inkoxide/schema` 2.4.1. Tighter limits on tables, `fallbackFonts`, SVG text and
+repeated content, and fixes for encrypted files and remote images. Upgrading: a host entry in
+`remoteImages.allow` now allows only port 443 unless it names a port, and encrypted files are
+somewhat larger (see **Changed**).
+
 ### Changed
 
 - A host entry in `remoteImages.allow` (`cdn.example.com`, `*.example.com`) allows only port 443,
