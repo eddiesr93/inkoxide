@@ -709,3 +709,50 @@ fn text_with_a_width_or_an_alignment_wraps_line_by_line() {
         });
     }
 }
+
+/// A paragraph of `size` pt, with `style`.
+fn words(size: u32, style: &str) -> String {
+    format!(
+        r#"{{"type":"text","style":{{{style}}},"runs":[{{"text":"Baseline","font":"Inter-Regular","size":{size}}}]}}"#
+    )
+}
+
+#[test]
+fn baseline_alignment_lines_up_first_baselines() {
+    // Texts of different sizes, one below padding and one in a box below
+    // its padding and border: their first baselines line up, as in CSS.
+    let children = format!(
+        r#"{{"type":"box","style":{{"flexDirection":"row","alignItems":"baseline"}},"children":[
+            {},{},
+            {{"type":"box","style":{{"padding":{{"top":7}},"borderWidth":{{"top":2}}}},"children":[{}]}},
+            {}]}}"#,
+        words(40, ""),
+        words(10, r#""padding":{"top":3}"#),
+        words(10, ""),
+        words(20, r#""alignSelf":"flex-start""#),
+    );
+    with_floats(&children, 500.0, |tree, cache| {
+        let baselines: Vec<f32> = tree
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.node()
+                    .is_some_and(|n| matches!(n.kind, NodeKind::Text { .. }))
+            })
+            .map(|n| {
+                let c = n.geo.content_box();
+                let l = cache.layout(n.node().unwrap(), c.w).unwrap();
+                c.y + l.lines[0].top + l.lines[0].ascent
+            })
+            .collect();
+        // Breadth first: the row's three texts, then the one in the box.
+        let &[big, padded, start, nested] = &baselines[..] else {
+            panic!("{baselines:?}");
+        };
+        for b in [padded, nested] {
+            assert!((b - big).abs() < 1e-3, "{baselines:?}");
+        }
+        // The flex-start one is at the top, out of baseline alignment.
+        assert!(start < big - 1.0, "{baselines:?}");
+    });
+}

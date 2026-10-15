@@ -294,6 +294,12 @@ pub(crate) trait LeafMeasure {
         available: Size<AvailableSpace>,
     ) -> Size<f32>;
 
+    /// The first baseline of text leaf `node` laid out `width` wide, from
+    /// the top of its content box; none without lines.
+    fn first_baseline(&mut self, _node: &Node, _width: f32) -> Option<f32> {
+        None
+    }
+
     /// The content height of text leaf `node` laid out in `boxes`, beside
     /// floats, and the bottom of its last line set beside one.
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
@@ -308,6 +314,35 @@ pub(crate) trait LeafMeasure {
             wrapped: height,
         }
     }
+}
+
+/// The first baseline of leaf `node` of border box `size`, from the top
+/// of its border box: its text's, below its padding and border.
+fn leaf_baseline(
+    leaves: &mut dyn LeafMeasure,
+    node: &Node,
+    style: &taffy::Style,
+    parent_width: Option<f32>,
+    size: TSize<f32>,
+) -> Option<f32> {
+    use taffy::ResolveOrZero;
+    if !matches!(node.kind, NodeKind::Text { .. }) {
+        return None;
+    }
+    let inset = |r: taffy::Rect<taffy::LengthPercentage>| -> taffy::Rect<f32> {
+        r.resolve_or_zero(
+            TSize {
+                width: parent_width,
+                height: parent_width,
+            },
+            |_, _| 0.0,
+        )
+    };
+    let (padding, border) = (inset(style.padding), inset(style.border));
+    // The width the text is painted at: its content box's.
+    let width = size.width - padding.left - padding.right - border.left - border.right;
+    let baseline = leaves.first_baseline(node, width.max(0.0))?;
+    Some(padding.top + border.top + baseline)
 }
 
 /// Leaves with no intrinsic content (empty boxes, spacers, page breaks).
@@ -613,7 +648,7 @@ impl<'m> LayoutCtx<'m> {
                             |_, _| TSize::ZERO,
                         );
                     };
-                    taffy::compute_leaf_layout(
+                    let mut out = taffy::compute_leaf_layout(
                         inputs,
                         style,
                         |_, _| 0.0,
@@ -636,7 +671,21 @@ impl<'m> LayoutCtx<'m> {
                             }
                             .into()
                         },
-                    )
+                    );
+                    // A text leaf's baseline is its first line's, for
+                    // baseline alignment and its box's own baseline.
+                    if inputs.run_mode == taffy::RunMode::PerformLayout {
+                        if let Some(n) = nodes[idx as usize].node() {
+                            out.baselines.first = leaf_baseline(
+                                self.leaves,
+                                n,
+                                style,
+                                inputs.parent_size.width,
+                                out.size,
+                            );
+                        }
+                    }
+                    out
                 },
             )
             .map_err(layout_err)?;
