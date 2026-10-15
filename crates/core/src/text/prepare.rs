@@ -33,6 +33,11 @@ pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 /// The text of an image run: U+FFFC OBJECT REPLACEMENT CHARACTER.
 const OBJECT_TEXT: &str = "\u{FFFC}";
 
+/// The text of a note run: U+200D ZERO WIDTH JOINER, which line breaking
+/// keeps with the character before it (or, after a space, the one after
+/// it), so a note never splits a word or stands alone on a line.
+const NOTE_TEXT: &str = "\u{200D}";
+
 pub(crate) struct ParagraphOptions<'a> {
     pub white_space: WhiteSpace,
     pub direction: Direction,
@@ -73,6 +78,12 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     let mut last_was_space = true;
     for run in opts.runs {
         let start = text.len();
+        if run.note.is_some() {
+            // White space collapses across a note as if it were not there.
+            text.push_str(NOTE_TEXT);
+            ranges.push((start, text.len()));
+            continue;
+        }
         let src: &str = match (run.placeholder, &run.image) {
             (Some(_), _) => PLACEHOLDER_TEXT,
             // An image is one object character: it breaks lines like one
@@ -179,6 +190,11 @@ fn itemize(
         let Some(primary) = fonts.key(&run.font) else {
             continue;
         };
+        if run.note.is_some() {
+            // No glyphs: its place in the line (see `prepare`).
+            segs.push(Segment::new(ri, primary, level_at(start), start..end));
+            continue;
+        }
         if let Some(object) = objects.of_run(run).filter(|_| start < end) {
             let mut seg = Segment::new(ri, primary, level_at(start), start..end);
             seg.object = Some(objs.len() as u32);
@@ -549,6 +565,20 @@ pub(crate) fn prepare(
             continue;
         }
         let run = &opts.runs[seg.run as usize];
+        if run.note.is_some() {
+            // A note: an object cluster that takes no room.
+            let first = glyphs.len() as u32;
+            glyphs.push(Glyph {
+                id: 0,
+                advance: 0.0,
+                x_offset: 0.0,
+                y_offset: 0.0,
+                cluster: seg.text.start,
+                flags: GLYPH_OBJECT,
+            });
+            seg.glyphs = first..first + 1;
+            continue;
+        }
         let set = sets[seg.run as usize];
         let scale = fonts.get(seg.font).scale(run.size);
         let letter_spacing = run.letter_spacing.unwrap_or(0.0);
@@ -867,6 +897,7 @@ mod tests {
     fn run(text: &str) -> TextRun {
         TextRun {
             image: None,
+            note: None,
             text: Some(text.into()),
             font: "f".into(),
             size: 10.0,

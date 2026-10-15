@@ -147,6 +147,27 @@ fn runaway_repeated_content_is_an_error() {
     render(&once, Some(1)).unwrap();
 }
 
+/// A note's text counts as the file holds it: anything but printable
+/// ASCII makes it UTF-16 in hex, four bytes a character.
+#[test]
+fn runaway_notes_repeated_on_every_page_are_an_error() {
+    let note = |pages: &str| {
+        let contents = format!("{}é", "x".repeat(7999));
+        format!(
+            r#"{{"type":"note","break":{{"fixed":true}},{pages}"note":{{"contents":"{contents}"}}}}"#
+        )
+    };
+    // About 2400 pages of 32 KB each.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let t = std::time::Instant::now();
+    let err = render(&doc(&format!("{},{tall}", note(""))), Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    let once = doc(&format!("{},{tall}", note(r#""pages":"first","#)));
+    render(&once, Some(1)).unwrap();
+}
+
 /// A form field taller than a page is sliced across pages like any atomic
 /// node, but it is one widget, on the page it starts on: not one per page.
 #[test]

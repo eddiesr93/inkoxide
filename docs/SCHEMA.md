@@ -79,7 +79,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 | `meta` | [`Meta`](#meta) |  |  |
 | `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`. |
-| `emojiImages` | `object` |  | Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored), each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
+| `emojiImages` | `object` |  | Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
 | `pages` | array of [`PageSpec`](#pagespec) | yes | min items 1 |
 
 ## Definitions
@@ -344,7 +344,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `text` | `string` |  | Required unless `placeholder` or `image` is set; forbidden when one is. |
+| `text` | `string` |  | Required unless `placeholder`, `image` or `note` is set; forbidden when one is. |
 | `font` | [`Id`](#id) | yes |  |
 | `size` | `number` | yes | > 0, ≤ 1000 |
 | `color` | [`Color`](#color) |  |  |
@@ -359,6 +359,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |
 | `fontFeatures` | `object` |  | OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features. |
 | `image` | [`InlineImage`](#inlineimage) |  |  |
+| `note` | [`Note`](#note) |  | A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it. |
 
 ### InlineImage
 
@@ -542,7 +543,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
-| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
+| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
@@ -563,7 +564,7 @@ Single-line, non-password text fields only: how the field shows and takes its va
 
 ### NoteNode
 
-A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.
+A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. Under a transform, the icon stays upright and the same size: only its corner moves. In a header, a footer or a fixed element it is on every page.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|

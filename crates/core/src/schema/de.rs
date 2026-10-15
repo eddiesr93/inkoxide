@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
-    ColumnWidth, Corners, Field, FieldValue, FontFeature, ImageFit, ImageSource, InlineImage, Node,
+    ColumnWidth, Corners, Field, FieldValue, FontFeature, ImageFit, ImageSource, InlineData, Node,
     NodeKind, Note, ObjectPosition, OptEdges, PageFilter, PagePattern, RunAlign, RunImage, Style,
     Table, TableRow, TextRun, TransformOp,
 };
@@ -787,7 +787,7 @@ fn image_source(
 ) -> Result<ImageSource, String> {
     match (src, data) {
         (Some(s), None) => Ok(ImageSource::Ref(s)),
-        (None, Some(d)) => Ok(ImageSource::Inline(InlineImage::new(d))),
+        (None, Some(d)) => Ok(ImageSource::Inline(InlineData::new(d))),
         (Some(_), Some(_)) => Err(format!(
             "[INVALID_VALUE@data] {what} takes either `src` or `data`, not both"
         )),

@@ -21,12 +21,17 @@ All notable changes to the packages in this repository. The format follows
   `Permissions` and `Printing` in Rust, `encryption: { userPassword, ownerPassword,
   permissions }` in the Node binding and in `@inkoxide/render`, and `<Document userPassword
   ownerPassword permissions>`, which the option replaces. Passwords are printable ASCII up to
-  127 bytes, never part of the document tree, and never shown in errors or `Debug` output.
+  127 bytes, never part of the document tree, and never shown in errors or `Debug` output; in
+  Node, a password that is not a string is `INVALID_ARGUMENT` at its path before the engine
+  sees it.
   Output stays deterministic: the keys are derived from the document and the passwords.
-  Encryption with PDF/A is `INVALID_VALUE` at `options.encryption`.
+  Radio buttons name their states by position in an encrypted file, with their values in
+  `/Opt`, so the values are encrypted too. Encryption with PDF/A is `INVALID_VALUE` at
+  `options.encryption` in Rust and `INVALID_ARGUMENT` in Node.
 - PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
-  Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
-  `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and
+  Rust (`with_pdf_a_level`; `PdfALevel::ALL` lists the levels), `pdfA: '1b' | '2b' | '3b'` in
+  the Node binding and in `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the
+  CLI (`--pdf-a` alone is still PDF/A-2b, also before the document), and
   `<Document conformance>` (`'PDF/A-1b'`, `'PDF/A-2b'`, `'PDF/A-3b'`, or the part alone), which
   the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
   `TEMPLATE_ERROR`.
@@ -102,16 +107,18 @@ All notable changes to the packages in this repository. The format follows
   `fallbackFonts`: an emoji goes to the first colour fallback font that has it. A font with
   colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
   field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
-  render, draws without colour. Under PDF/A-1b, which forbids transparency, a colour glyph that
-  needs it (alpha, an opacity) draws without colour. In SVG text, colour fonts are drawn in one
-  colour, from their outlines; a font without outlines draws nothing there.
+  render or the first 32 MB of colour glyph images, draws without colour. Under PDF/A-1b, which
+  forbids transparency, a colour glyph that needs it (a bitmap with an alpha channel, a layer
+  with an opacity) fails the render with `PDFA_CONFLICT` at its run, as an emoji image does at
+  its `emojiImages` key. In SVG text, colour fonts are drawn in one colour, from their outlines;
+  a font without outlines draws nothing there.
 - Emoji from images: `Font.registerEmojiSource({ url, format, withVariationSelectors })` or
   `{ builder }` draws the emoji of every `Text` from an image set, through the document's new
   `emojiImages` (emoji sequence → image id). The images load like `<Image src>` (URLs allowed by
   `remoteImages`, kept between renders); an emoji image is 1em high with its aspect ratio and
-  copies as the emoji. An emoji whose image cannot be loaded is drawn by the fonts with a
-  warning, and a ZWJ sequence without an image uses those of its parts. `EmojiSource` is
-  exported.
+  copies as the emoji. An emoji whose image cannot be loaded, or is not an image the engine can
+  draw, is drawn by the fonts with a warning, and a ZWJ sequence without an image uses those of
+  its parts. `EmojiSource` is exported.
 - Images in text: an `<Image>` inside a `<Text>` (and `image` on a document's text run) sits in
   the line, as wide and high as asked in points or em (1em high by default, keeping its aspect
   ratio), placed by `verticalAlign` (`baseline`, `middle`, `text-top`, `text-bottom`, `top`,
@@ -119,8 +126,8 @@ All notable changes to the packages in this repository. The format follows
   `alt` as the text it copies as. Lines break around it like around a character.
 - Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
   field names. `address.street` and `address.city` are the fields `street` and `city` of the
-  group `address`; groups nest up to 32 deep. The PDF holds them as a field tree, which viewers
-  show and export by their full names.
+  group `address`; a name has at most 32 parts, so groups nest up to 31 deep. The PDF holds
+  them as a field tree, which viewers show and export by their full names.
 - List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
   without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
   array and several options can be selected.
@@ -131,17 +138,21 @@ All notable changes to the packages in this repository. The format follows
   out, as PDF/A requires.
 - Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
   author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
-  corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
-  and passes PDF/A-2b.
-- `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
-  fields inside it, at any depth (`address.street`); sets nest.
+  corner of its box, keeps its size at any zoom and stays upright under a transform. It has an
+  appearance stream, so it prints and passes PDF/A-2b. A note can also be part of a line of text
+  (`note` on a text run): it takes no room there, and its icon hangs from the top of the line
+  where it is. Line breaking keeps it with the word before it.
+- `<FieldSet name>` in `@inkoxide/render`: a `View`, with its props and `render`, whose name goes
+  in front of the names of the fields inside it, at any depth (`address.street`); sets nest.
 - `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
   takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
   `TextInput` is another name for `TextField`.
 - `format` on `TextField` in `@inkoxide/render`, with the readable keys of the schema, or `param`,
-  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported.
+  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported. A
+  number or percent format with any of those keys defaults to no decimals and no thousands
+  separator; on a `time`, `param` is one of four styles, `0` to `3`; `zip4` is `zipPlus4`.
 - `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
-  its `backgroundColor` as its colour.
+  its `backgroundColor` as its colour. Inside a `<Text>`, it is part of the line.
 
 ### Changed
 

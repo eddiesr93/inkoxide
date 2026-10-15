@@ -121,8 +121,11 @@ function outputOptions(): OutputOptions {
   return out;
 }
 
+/** The PDF/A parts and conformance levels the engine writes, from the oldest part. */
+const PDF_A_LEVELS = ['1b', '2b', '3b'] as const;
+
 /** A PDF/A part and conformance level the engine writes. */
-export type PdfALevel = '1b' | '2b' | '3b';
+export type PdfALevel = (typeof PDF_A_LEVELS)[number];
 
 export interface BuildResult {
   document: Document;
@@ -470,18 +473,21 @@ class Builder {
 
   /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
   private conformance(root: Instance, value: unknown): PdfALevel {
-    const m = typeof value === 'string' ? /^PDF\/A-([123])([abu]?)$/.exec(value) : null;
-    if (m && (m[2] === '' || m[2] === 'b')) return `${m[1]}b` as PdfALevel;
+    const m = typeof value === 'string' ? /^PDF\/A-(\d)([abu]?)$/.exec(value) : null;
+    const level = PDF_A_LEVELS.find((l) => l === `${m?.[1]}b`);
+    if (m && level && (m[2] === '' || m[2] === 'b')) return level;
     const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
-    if (m) {
+    if (m && level) {
       this.fail(
         root,
-        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${m[1]}b'.`,
+        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${level}'.`,
       );
     }
+    const levels = PDF_A_LEVELS.map((l) => `'PDF/A-${l}'`);
+    const parts = PDF_A_LEVELS.map((l) => `'PDF/A-${l.slice(0, -1)}'`);
     this.fail(
       root,
-      `<Document conformance=${shown}> is not a PDF/A level: use 'PDF/A-1b', 'PDF/A-2b' or 'PDF/A-3b' (or 'PDF/A-1', 'PDF/A-2', 'PDF/A-3').`,
+      `<Document conformance=${shown}> is not a PDF/A level: use ${levels.slice(0, -1).join(', ')} or ${levels.at(-1)} (or ${parts.join(', ')}).`,
     );
   }
 
@@ -752,8 +758,9 @@ class Builder {
 
   /** The node of a block element, built by the method for its type. */
   private nodeForType(inst: Instance, ctx: TextCtx): SchemaNode {
-    if (typeof inst.props.render === 'function' && (inst.type === HOST.View || inst.type === HOST.Text)) {
-      return this.perPage(inst, ctx);
+    if (typeof inst.props.render === 'function') {
+      if (inst.type === HOST.View || inst.type === HOST.Text) return this.perPage(inst, ctx);
+      if (inst.type === HOST.FieldSet) return this.fieldSet(inst, () => this.perPage(inst, ctx));
     }
     switch (inst.type) {
       case HOST.View:
@@ -761,7 +768,7 @@ class Builder {
       case HOST.Link:
         return this.box(inst, ctx);
       case HOST.FieldSet:
-        return this.fieldSet(inst, ctx);
+        return this.fieldSet(inst, () => this.box(inst, ctx));
       case HOST.Note:
         return this.note(inst, ctx);
       case HOST.Text:
@@ -937,6 +944,9 @@ class Builder {
         case HOST.Image:
           out.push(this.inlineImage(n, ctx));
           break;
+        case HOST.Note:
+          out.push(this.inlineNote(n, ctx));
+          break;
         case HOST.PageNumber:
         case HOST.TotalPages:
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
@@ -974,8 +984,7 @@ class Builder {
         from,
       );
     }
-    const src = this.imageTable.resolve(n.props.src, (msg) => this.fail(n, msg, init));
-    const image: InlineImage = 'data' in src ? { data: src.data } : { src: src.src };
+    const image: InlineImage = this.placedImage(n, own, (msg) => this.fail(n, msg, init));
     for (const side of ['width', 'height'] as const) {
       const v = own[side];
       if (v === undefined || v === 'auto') continue;
@@ -988,15 +997,39 @@ class Builder {
       }
       image[side] = v;
     }
-    const fit = (n.props.fit as InlineImage['fit']) ?? own.objectFit;
-    if (fit) image.fit = fit;
-    if (own.objectPosition) image.objectPosition = own.objectPosition;
     if (typeof n.props.alt === 'string' && n.props.alt !== '') image.alt = n.props.alt;
     const run: TextRun = { image, font: this.font(ctx, n), size: ctx.fontSize };
     const align = own.verticalAlign ?? ctx.verticalAlign;
     if (align !== undefined && align !== 'baseline') run.verticalAlign = align as TextRun['verticalAlign'];
     if (ctx.link !== undefined) run.link = ctx.link;
     return this.mark(run, n);
+  }
+
+  /**
+   * A `<Note>` in a `<Text>`: a run of its own that takes no room, its icon hanging from the top
+   * of the line where it is. Its `backgroundColor` is its colour.
+   */
+  private inlineNote(n: Instance, ctx: TextCtx): TextRun {
+    const prop =
+      BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
+      (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
+    if (prop) {
+      this.fail(n, `A <Note> inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
+        kind: 'props',
+      });
+    }
+    const own = this.styleOf(n, ctx);
+    const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => k !== 'backgroundColor');
+    if (bad[0] !== undefined) {
+      const { fromClass, init } = this.source(n, own, bad[0]);
+      this.fail(
+        n,
+        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${fromClass ? `className="${init.className}"` : 'its style'}).`,
+        init,
+      );
+    }
+    const note = this.noteOf(n, boxStyle(own, ctx.color)?.backgroundColor);
+    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
   }
 
   /**
@@ -1184,12 +1217,25 @@ class Builder {
         );
       }
     }
-    const src = this.imageTable.resolve(inst.props.src, fail, 'ImageBackground');
-    const bg: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
+    return this.placedImage(inst, own, fail, 'ImageBackground');
+  }
+
+  /**
+   * An image's source and placement, as an image node, an image run and a background image take
+   * them: its `src` prop (resolved), and `fit` and `objectPosition` from its props and style.
+   */
+  private placedImage(
+    inst: Instance,
+    own: FlatStyle,
+    fail: (message: string) => never,
+    component?: string,
+  ): BackgroundImage {
+    const src = this.imageTable.resolve(inst.props.src, fail, component);
+    const image: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
     const fit = (inst.props.fit as BackgroundImage['fit']) ?? own.objectFit;
-    if (fit) bg.fit = fit;
-    if (own.objectPosition) bg.objectPosition = own.objectPosition;
-    return bg;
+    if (fit) image.fit = fit;
+    if (own.objectPosition) image.objectPosition = own.objectPosition;
+    return image;
   }
 
   private image(inst: Instance, ctx: TextCtx): ImageNode {
@@ -1198,12 +1244,10 @@ class Builder {
     const node: ImageNode = { type: 'image' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const src = this.imageTable.resolve(inst.props.src, (msg) => this.fail(inst, msg, { kind: 'props' }));
-    if ('data' in src) node.data = src.data;
-    else node.src = src.src;
-    const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
-    if (fit) node.fit = fit;
-    if (own.objectPosition) node.objectPosition = own.objectPosition;
+    Object.assign(
+      node,
+      this.placedImage(inst, own, (msg) => this.fail(inst, msg, { kind: 'props' })),
+    );
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }
@@ -1233,16 +1277,15 @@ class Builder {
         if (p.checked) field.checked = true;
         break;
       case 'select':
-        field.options = (p.options ?? p.select) as [string, ...string[]];
-        if (p.value !== undefined) field.value = p.value;
-        break;
       case 'list':
         field.options = (p.options ?? p.select) as [string, ...string[]];
-        if (p.multiSelect) field.multiSelect = true;
-        if (Array.isArray(p.value) && !p.multiSelect) {
-          this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
-            kind: 'props',
-          });
+        if (p.kind === 'list') {
+          if (p.multiSelect) field.multiSelect = true;
+          if (Array.isArray(p.value) && !p.multiSelect) {
+            this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
+              kind: 'props',
+            });
+          }
         }
         if (p.value !== undefined) field.value = p.value;
         break;
@@ -1288,6 +1331,15 @@ class Builder {
   private note(inst: Instance, ctx: TextCtx): NoteNode {
     const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
+    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
+    const node: NoteNode = { type: 'note', note: this.noteOf(inst, backgroundColor) };
+    if (Object.keys(style).length > 0) node.style = style;
+    this.flowProps(node, inst);
+    return this.mark(node, inst);
+  }
+
+  /** What a `<Note>` holds: its text children, `author`, `open`, and `color`. */
+  private noteOf(inst: Instance, color: NoteNode['note']['color']): NoteNode['note'] {
     const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
     if (contents === '') {
       this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });
@@ -1296,12 +1348,8 @@ class Builder {
     const note: NoteNode['note'] = { contents };
     if (typeof p.author === 'string') note.author = p.author;
     if (p.open) note.open = true;
-    const node: NoteNode = { type: 'note', note };
-    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
-    if (backgroundColor) note.color = backgroundColor;
-    if (Object.keys(style).length > 0) node.style = style;
-    this.flowProps(node, inst);
-    return this.mark(node, inst);
+    if (color) note.color = color;
+    return note;
   }
 
   /** A `TextField`'s format, from its readable keys or their other names. */
@@ -1311,24 +1359,46 @@ class Builder {
         kind: 'props',
       });
     }
-    const out: FieldFormat = { type: f.type };
-    const decimals = f.decimals ?? f.nDec;
+    const type = f.type === 'zip4' ? 'zipPlus4' : f.type;
+    const out: FieldFormat = { type };
+    // The other names come with their own defaults: no decimals and no thousands separator.
+    const aliased = ALIAS_KEYS.some((k) => f[k] !== undefined) && (type === 'number' || type === 'percent');
+    const decimals = f.decimals ?? f.nDec ?? (aliased ? 0 : undefined);
     if (decimals !== undefined) out.decimals = decimals;
+    const sepComma = f.sepComma ?? (aliased ? false : undefined);
     const separators =
-      f.separators ?? (f.sepComma === undefined ? undefined : f.sepComma ? '1,234.56' : '1234.56');
+      f.separators ?? (sepComma === undefined ? undefined : sepComma ? '1,234.56' : '1234.56');
     if (separators !== undefined) out.separators = separators;
     const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
     if (negative !== undefined) out.negative = negative;
     if (f.currency !== undefined) out.currency = f.currency;
     const before = f.currencyBefore ?? f.currencyPrepend;
     if (before !== undefined) out.currencyBefore = before;
-    const pattern = f.pattern ?? f.param;
+    const pattern = f.pattern ?? (f.param === undefined ? undefined : this.formatParam(inst, type, f.param));
     if (pattern !== undefined) out.pattern = pattern;
     return out;
   }
 
-  /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
-  private fieldSet(inst: Instance, ctx: TextCtx): SchemaNode {
+  /** A format's `param`: the pattern of a date, or one of the four styles of a time, by index. */
+  private formatParam(inst: Instance, type: FieldFormat['type'], param: string | number): string {
+    if (type !== 'time') return String(param);
+    const style = /^[0-3]$/.test(String(param)) ? TIME_STYLES[Number(param)] : undefined;
+    if (style === undefined) {
+      this.fail(
+        inst,
+        `<TextField format> param on a time is a style from 0 to 3, not ${JSON.stringify(param)}; ` +
+          "give a pattern as pattern: 'HH:MM'.",
+        { kind: 'props' },
+      );
+    }
+    return style;
+  }
+
+  /**
+   * A `<FieldSet>`: a box, made by `build`, whose name goes in front of the names of the fields
+   * inside it.
+   */
+  private fieldSet(inst: Instance, build: () => SchemaNode): SchemaNode {
     const name = inst.props.name;
     if (typeof name !== 'string' || name === '') {
       this.fail(inst, '<FieldSet> needs a name: the group its fields are in.', { kind: 'props' });
@@ -1336,7 +1406,7 @@ class Builder {
     const outer = this.fieldPrefix;
     this.fieldPrefix = `${outer}${name}.`;
     try {
-      return this.box(inst, ctx);
+      return build();
     } finally {
       this.fieldPrefix = outer;
     }
@@ -1411,6 +1481,12 @@ class Builder {
     return this.mark(stackVariants(all), inst);
   }
 }
+
+/** The other names of format keys, which come with their own defaults. */
+const ALIAS_KEYS = ['nDec', 'sepComma', 'negStyle', 'currencyPrepend', 'param'] as const;
+
+/** The patterns of a time format's `param`: the four styles of `AFTime_Format`. */
+const TIME_STYLES: readonly string[] = ['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt'];
 
 /** The negative styles by their other names (`negStyle`). */
 const NEGATIVE: Record<string, FieldFormat['negative']> = {

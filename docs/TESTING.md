@@ -2,7 +2,10 @@
 
 Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
 clippy, the Rust tests, the schema checks, the Node binding tests and the
-TypeScript packages. `scripts/ci.sh` runs the same checks and more
+TypeScript packages. The Rust tests check the PDFs with qpdf, poppler's
+`pdftotext` and veraPDF, which the workflow installs. Locally a test
+skips the checks of a tool that is not installed; with `CI` set, a
+missing tool fails it. `scripts/ci.sh` runs the same checks and more
 (visual regression, cargo-deny, a fuzz smoke) on your machine:
 
 ```sh
@@ -33,7 +36,10 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   errors that name the option but never the password.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, in SVG text too, copies
-  of SVG text, deepest accepted nesting on a small stack).
+  of SVG text, the work budget of one `COLR` glyph, deepest accepted
+  nesting on a small stack). The budgets of a render's colour glyphs
+  (how many, and the bytes of their images) are tested in
+  `text/color.rs`, with smaller limits.
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
   finite (one `inf` or `NaN` operand makes a page invalid) and one
   readers parse (an integer within 32 bits or a real within ±10¹¹), with
@@ -84,7 +90,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `fixtures/fonts/EmojiTest-COLR.ttf`, `EmojiTest-CBDT.ttf` and
   `EmojiTest-sbix.ttf`: small colour emoji fonts written from scratch by
   `scripts/fixtures/emoji_fonts.py` (outlines with `COLR` v0 and v1
-  glyphs, and PNG bitmaps without outlines), with ligatures for a ZWJ
+  glyphs, and PNG bitmaps without outlines, the sbix ones in two strikes
+  so that the largest is the one drawn), with ligatures for a ZWJ
   sequence, a flag, a keycap and a skin tone. The script also writes
   `fixtures/fonts/limits/colr-fanout.ttf`, a `COLR` glyph whose layers
   paint the next level 255 times, eight levels deep, for the colour glyph
@@ -150,8 +157,11 @@ is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
 which only a PDF/A-1b render reports (by input length, a quarter of the
 inputs render as plain PDF and a quarter at each PDF/A level); the
 writer never refuses transparency at 1b, which would mean validation
-missed it (for SVG, that its scan disagrees with the writer); the
-output is a complete
+missed it (for SVG, that its scan disagrees with the writer); every
+form script (`/JS`) is a call of a standard form function (`AFNumber_Format`
+and the like) with only integers, booleans and string literals as
+arguments, and PDF/A output has no scripts and no `/AA` (`check_scripts`);
+the output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
 from MessagePack (`render_json` and `render_tree`), and a document

@@ -111,6 +111,18 @@ pub struct FontData {
 }
 
 impl FontData {
+    /// Whether the font has colour glyphs the engine draws: `COLR` layers
+    /// or PNG bitmaps (`CBDT` or `sbix`).
+    pub(crate) fn has_color(&self) -> bool {
+        self.metrics.color
+    }
+
+    /// Whether the font has outlines. One without (colour bitmaps only) is
+    /// never embedded, and its glyphs without colour are not drawn.
+    pub(crate) fn has_outlines(&self) -> bool {
+        !self.metrics.color_only
+    }
+
     fn parse(id: &str, bytes: Arc<[u8]>) -> Result<Self, InkoxideError> {
         let err = |msg: &str| InkoxideError::Font(format!("font `{id}`: {msg}"));
         let bytes = match woff::decode(&bytes).map_err(|m| err(&m))? {
@@ -394,6 +406,16 @@ pub(crate) struct LoadedFont<'a> {
 }
 
 impl LoadedFont<'_> {
+    /// See [`FontData::has_color`].
+    pub fn has_color(&self) -> bool {
+        self.data.has_color()
+    }
+
+    /// See [`FontData::has_outlines`].
+    pub fn has_outlines(&self) -> bool {
+        self.data.has_outlines()
+    }
+
     /// Scale from font units to points at `size`.
     pub fn scale(&self, size: f32) -> f32 {
         size / self.data.metrics.units_per_em

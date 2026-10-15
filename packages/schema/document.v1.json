@@ -31,7 +31,7 @@
       }
     },
     "emojiImages": {
-      "description": "Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored), each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.",
+      "description": "Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.",
       "type": "object",
       "maxProperties": 4096,
       "propertyNames": {
@@ -1034,7 +1034,7 @@
       "properties": {
         "text": {
           "type": "string",
-          "description": "Required unless `placeholder` or `image` is set; forbidden when one is."
+          "description": "Required unless `placeholder`, `image` or `note` is set; forbidden when one is."
         },
         "font": {
           "$ref": "#/$defs/Id"
@@ -1131,6 +1131,10 @@
         },
         "image": {
           "$ref": "#/$defs/InlineImage"
+        },
+        "note": {
+          "$ref": "#/$defs/Note",
+          "description": "A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it."
         }
       },
       "oneOf": [
@@ -1148,6 +1152,11 @@
               {
                 "required": [
                   "image"
+                ]
+              },
+              {
+                "required": [
+                  "note"
                 ]
               }
             ]
@@ -1168,6 +1177,11 @@
                 "required": [
                   "image"
                 ]
+              },
+              {
+                "required": [
+                  "note"
+                ]
               }
             ]
           }
@@ -1186,6 +1200,35 @@
               {
                 "required": [
                   "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "note"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "note"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "text"
+                ]
+              },
+              {
+                "required": [
+                  "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "image"
                 ]
               }
             ]
@@ -1878,7 +1921,7 @@
         },
         "font": {
           "$ref": "#/$defs/Id",
-          "description": "text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display."
+          "description": "text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display."
         },
         "size": {
           "type": "number",
@@ -1966,7 +2009,7 @@
         "type",
         "note"
       ],
-      "description": "A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. In a header, a footer or a fixed element it is on every page.",
+      "description": "A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. Under a transform, the icon stays upright and the same size: only its corner moves. In a header, a footer or a fixed element it is on every page.",
       "properties": {
         "type": {
           "const": "note"

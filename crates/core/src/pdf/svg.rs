@@ -40,8 +40,7 @@ use crate::fonts::{FontKey, FontSet};
 use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
-use crate::paint::{InvisibleGlyph, NO_RADII};
-use crate::schema::{ImageFit, ObjectPosition};
+use crate::paint::{span, InvisibleGlyph, Op, TextGlyph, TextOp, NO_RADII};
 use crate::text::{ColorGlyphs, LaidText, UnicodeMap};
 use crate::{flate, InkoxideError};
 
@@ -54,61 +53,56 @@ const MAX_DEPTH: u32 = 256;
 /// pads. Each is an entry in a stitching function.
 const MAX_PERIODS: f32 = 1000.0;
 
-/// What SVG text is drawn with: the render's fonts and the font objects
-/// written for them, its colour glyphs and the text they extract as, and
-/// the images written for colour glyphs and emoji.
+/// What SVG text is drawn with: the render's fonts, its colour glyphs and
+/// the text they extract as, and its images.
 #[derive(Clone, Copy)]
-pub(crate) struct TextResources<'a, 'f> {
+pub(crate) struct TextInk<'a, 'f> {
     pub fonts: &'a FontSet<'f>,
-    pub refs: &'a BTreeMap<FontKey, Ref>,
     pub colors: &'a ColorGlyphs,
     pub unicode: &'a UnicodeMap,
     pub images: &'a ImageSet,
+}
+
+/// [`TextInk`], and the font and image objects written for it.
+#[derive(Clone, Copy)]
+pub(crate) struct TextResources<'a, 'f> {
+    pub ink: TextInk<'a, 'f>,
+    pub refs: &'a BTreeMap<FontKey, Ref>,
     pub image_refs: &'a BTreeMap<ImageKey, Ref>,
 }
 
 /// What the text of a render's copy of an SVG draws besides itself: the
 /// glyphs its fonts must embed (those it may draw, and the spaces its
 /// images extract through), and the images it draws (colour glyphs and
-/// emoji). An SVG with text is not drawn inside SVG text, so no form
-/// draws itself.
+/// emoji).
 pub(crate) fn text_uses(
     probed: &ProbedText,
-    fonts: &FontSet<'_>,
-    colors: &ColorGlyphs,
-    images: &ImageSet,
+    res: TextInk<'_, '_>,
 ) -> (Vec<(FontKey, u16)>, Vec<ImageKey>) {
     let mut glyphs = Vec::new();
     let mut keys = Vec::new();
-    let space = |font: FontKey, glyphs: &mut Vec<(FontKey, u16)>| {
-        if let Some(g) = InvisibleGlyph::space(fonts, font, 1.0, (0.0, 0.0), 1.0) {
-            glyphs.push((g.font, g.glyph));
-        }
-    };
     for t in &probed.texts {
-        for g in &t.glyphs {
-            // A font without outlines is never embedded.
-            if !fonts.get(g.font).data.metrics.color_only {
-                glyphs.push((g.font, g.id));
-            }
-            if let Some((key, _)) = colors.image(g.font, g.id) {
-                keys.push(key);
-                if let Some(f) = colors.space_font() {
-                    space(f, &mut glyphs);
+        // A font without outlines is never embedded.
+        let outlined = t
+            .glyphs
+            .iter()
+            .filter(|g| res.fonts.get(g.font).has_outlines());
+        glyphs.extend(outlined.map(|g| (g.font, g.id)));
+        for (_, ops) in image_ops(t, None, res) {
+            for op in ops {
+                match op {
+                    Op::Image { key, .. } => keys.push(key),
+                    Op::InvisibleText(g) => glyphs.push((g.font, g.glyph)),
+                    _ => {}
                 }
             }
-        }
-        for i in &t.images {
-            if drawable(images, i.key) {
-                keys.push(i.key);
-            }
-            space(i.font, &mut glyphs);
         }
     }
     (glyphs, keys)
 }
 
-/// Whether SVG text may draw image `key`: not an SVG with text of its own.
+/// Whether SVG text may draw image `key`: not an SVG with text of its own,
+/// so that no form draws itself.
 fn drawable(images: &ImageSet, key: ImageKey) -> bool {
     !matches!(
         images.get(key).body,
@@ -120,39 +114,84 @@ fn drawable(images: &ImageSet, key: ImageKey) -> bool {
     )
 }
 
-/// Where an image in SVG text goes: the place and turn of its glyph.
-#[derive(Clone, Copy)]
-struct Frame {
-    x: f32,
-    y: f32,
-    rotate: f32,
-    scale_x: f32,
+/// The font of the invisible space in the span of an image in SVG text:
+/// `preferred` (the font of an emoji image's span), or the first font of
+/// the document with outlines and a space, preferring one without colour
+/// glyphs, as in page text.
+fn strut(fonts: &FontSet<'_>, preferred: Option<FontKey>) -> Option<FontKey> {
+    let spaced = |k: FontKey| InvisibleGlyph::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
+    let all = || 0..fonts.fonts.len() as FontKey;
+    preferred
+        .filter(|&k| spaced(k))
+        .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
+        .or_else(|| all().find(|&k| spaced(k)))
 }
+
+/// The images of `text` in paint style `paint` (`None`: all), as page text
+/// draws them, each with the frame of its glyph: its colour glyphs
+/// ([`ColorGlyphs::push`]) and emoji images, in spans with their text.
+fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(Frame, Vec<Op>)> {
+    let (glyphs, images) = match paint {
+        Some(p) => (text.glyphs_of(p), text.images_of(p)),
+        None => (&text.glyphs[..], &text.images[..]),
+    };
+    let mut out = Vec::new();
+    let colored = glyphs.iter().filter(|g| res.colors.draws(g.font, g.id));
+    for g in colored {
+        let op = TextOp {
+            font: g.font,
+            size: g.size,
+            color: [0.0, 0.0, 0.0, 1.0],
+            x: 0.0,
+            y: 0.0,
+            glyphs: vec![TextGlyph {
+                id: g.id,
+                x: 0.0,
+                y_offset: 0.0,
+            }],
+        };
+        let mut ops = Vec::new();
+        let strut = strut(res.fonts, None);
+        res.colors
+            .push(op, strut, res.fonts, res.images, res.unicode, &mut ops);
+        out.push((Frame::of(g.x, g.y, g.rotate, g.scale_x), ops));
+    }
+    for i in images {
+        let mut ops = Vec::new();
+        let draw = |ops: &mut Vec<Op>| {
+            if drawable(res.images, i.key) {
+                res.images
+                    .paint_in(i.key, i.rect, i.placement, &NO_RADII, ops);
+            }
+        };
+        match i.text.as_deref().filter(|t| !t.is_empty()) {
+            Some(text) => {
+                let space = strut(res.fonts, Some(i.font)).and_then(|k| {
+                    InvisibleGlyph::space(res.fonts, k, i.size, (0.0, 0.0), i.rect.w)
+                });
+                span(&mut ops, text, space, draw);
+            }
+            None => draw(&mut ops),
+        }
+        out.push((Frame::of(i.x, i.y, i.rotate, i.scale_x), ops));
+    }
+    out
+}
+
+/// Where an image in SVG text goes: the place and turn of its glyph, as a
+/// matrix from the glyph's frame to the text's user space (y down).
+#[derive(Clone, Copy)]
+struct Frame([f32; 6]);
 
 impl Frame {
-    /// From the frame to the text's user space (y down, turned clockwise).
-    fn matrix(self) -> [f32; 6] {
-        let (sin, cos) = if self.rotate == 0.0 {
+    fn of(x: f32, y: f32, rotate: f32, scale_x: f32) -> Self {
+        let (sin, cos) = if rotate == 0.0 {
             (0.0, 1.0)
         } else {
-            self.rotate.to_radians().sin_cos()
+            rotate.to_radians().sin_cos()
         };
-        let k = self.scale_x;
-        [cos * k, sin * k, -sin, cos, self.x, self.y]
+        Frame([cos * scale_x, sin * scale_x, -sin, cos, x, y])
     }
-}
-
-/// An image of SVG text: what it draws, where, and what it extracts as.
-struct TextImage<'t> {
-    key: ImageKey,
-    frame: Frame,
-    /// The box it fills in its frame, y down.
-    rect: crate::paint::Rect,
-    text: Option<&'t str>,
-    /// The font and size of the invisible space its text is on, as wide
-    /// as `width`.
-    space: Option<(FontKey, f32)>,
-    width: f32,
 }
 
 /// Writes `tree` as a Form `XObject` mapping the SVG viewport, of `size`,
@@ -442,6 +481,49 @@ fn simple_clip(
     Some((path, rule))
 }
 
+/// How the writer draws a clip path: as a plain clip, not at all (it
+/// holds nothing, so neither does what it clips), or as soft masks.
+enum Clip {
+    Simple(tiny_skia_path::Path, usvg::FillRule),
+    Empty,
+    Masks,
+}
+
+/// How [`Svg::group`] draws clip path `cp`; [`scan_group`] follows it.
+fn clip_kind(cp: &usvg::ClipPath, is_probe: impl Fn(&usvg::Path) -> bool) -> Clip {
+    match simple_clip(cp, is_probe) {
+        Some((path, rule)) => Clip::Simple(path, rule),
+        None if cp.root().children().is_empty() && cp.clip_path().is_none() => Clip::Empty,
+        None => Clip::Masks,
+    }
+}
+
+/// What group `g`'s own settings draw with transparency (a transparency
+/// group, a soft mask, a constant alpha or a blend mode), if anything.
+/// Inside a clip path (`clip`) none of them apply. [`Svg::group`] draws
+/// `g` in layers exactly when this or its clip path asks for it.
+fn group_transparency(g: &Group, clip: bool) -> Option<&'static str> {
+    if clip {
+        None
+    } else if g.mask().is_some() {
+        Some("a mask")
+    } else if g.opacity().get() < 1.0 {
+        Some("group opacity")
+    } else if g.blend_mode() != usvg::BlendMode::Normal {
+        Some("a blend mode")
+    } else if g.isolate() {
+        Some("an isolated group")
+    } else {
+        None
+    }
+}
+
+/// Whether a gradient's stops vary in opacity, which [`Svg::set_paint`]
+/// draws with a soft mask.
+fn translucent_stops(stops: &[usvg::Stop]) -> bool {
+    stops.iter().any(|s| s.opacity().get() < 1.0)
+}
+
 /// The text and paint style a probe in `probes` stands for: a path of
 /// exactly the four sides of a rectangle whose corners they list.
 fn probe_of(p: &usvg::Path, probes: &Probes) -> Option<(usize, u32)> {
@@ -488,26 +570,14 @@ fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'st
         return None;
     }
     if let Some(cp) = g.clip_path() {
-        if simple_clip(cp, |p| probe_of(p, probes).is_some()).is_none() {
-            if cp.root().children().is_empty() && cp.clip_path().is_none() {
-                return None;
-            }
-            return Some("a clip path other than a single path");
+        match clip_kind(cp, |p| probe_of(p, probes).is_some()) {
+            Clip::Simple(..) => {}
+            Clip::Empty => return None,
+            Clip::Masks => return Some("a clip path other than a single path"),
         }
     }
-    if !clip {
-        if g.mask().is_some() {
-            return Some("a mask");
-        }
-        if g.opacity().get() < 1.0 {
-            return Some("group opacity");
-        }
-        if g.blend_mode() != usvg::BlendMode::Normal {
-            return Some("a blend mode");
-        }
-        if g.isolate() {
-            return Some("an isolated group");
-        }
+    if let Some(what) = group_transparency(g, clip) {
+        return Some(what);
     }
     g.children().iter().find_map(|n| match n {
         Node::Group(child) => scan_group(child, depth + 1, clip, probes),
@@ -547,7 +617,7 @@ fn scan_paint(paint: &Paint, opacity: f32, depth: u32, probes: &Probes) -> Optio
             &[][..]
         }
     };
-    if stops.iter().any(|s| s.opacity().get() < 1.0) {
+    if translucent_stops(stops) {
         Some("a gradient with stop opacity")
     } else if opacity < 1.0 {
         Some("fill or stroke opacity")
@@ -753,8 +823,8 @@ impl Svg<'_> {
         // Soft masks, outermost first.
         let mut masks: Vec<Ref> = Vec::new();
         if let Some(cp) = g.clip_path() {
-            match simple_clip(cp, |p| self.probe(p).is_some()) {
-                Some((path, rule)) => {
+            match clip_kind(cp, |p| self.probe(p).is_some()) {
+                Clip::Simple(path, rule) => {
                     self.emit_path(&mut cv.c, &path)?;
                     match rule {
                         usvg::FillRule::NonZero => cv.c.clip_nonzero(),
@@ -762,12 +832,11 @@ impl Svg<'_> {
                     };
                     cv.c.end_path();
                 }
-                None if cp.root().children().is_empty() && cp.clip_path().is_none() => {
-                    // Nothing is inside the clip.
+                Clip::Empty => {
                     cv.c.restore_state();
                     return Ok(());
                 }
-                None => self.clip_masks(cp, bbox, depth, &mut masks)?,
+                Clip::Masks => self.clip_masks(cp, bbox, depth, &mut masks)?,
             }
         }
         let (opacity, blend) = if clip {
@@ -783,7 +852,7 @@ impl Svg<'_> {
         } else {
             None
         };
-        if masks.is_empty() && last.is_none() && (clip || !g.isolate()) {
+        if masks.is_empty() && group_transparency(g, clip).is_none() {
             self.children(cv, g, at)?;
         } else {
             self.layered(cv, &masks, last, bbox, g, at)?;
@@ -1019,7 +1088,8 @@ impl Svg<'_> {
     }
 
     /// The colour glyphs and emoji images of `laid` in paint style
-    /// `paint`.
+    /// `paint`, as page text draws them: each image in a span with its
+    /// text and an invisible space.
     fn text_images(
         &mut self,
         cv: &mut Canvas,
@@ -1027,123 +1097,64 @@ impl Svg<'_> {
         paint: u32,
         res: TextResources<'_, '_>,
     ) -> Res {
-        for g in laid.glyphs_of(paint) {
-            let Some((key, [x0, y0, x1, y1])) = res.colors.image(g.font, g.id) else {
-                continue;
-            };
-            let font = res.fonts.get(g.font);
-            let scale = font.scale(g.size);
-            let image = TextImage {
-                key,
-                frame: Frame {
-                    x: g.x,
-                    y: g.y,
-                    rotate: g.rotate,
-                    scale_x: g.scale_x,
-                },
-                rect: crate::paint::Rect::new(
-                    x0 * scale,
-                    -y1 * scale,
-                    (x1 - x0) * scale,
-                    (y1 - y0) * scale,
-                ),
-                text: res
-                    .unicode
-                    .fonts
-                    .get(&g.font)
-                    .and_then(|m| m.get(&g.id))
-                    .map(String::as_str),
-                space: res.colors.space_font().map(|k| (k, g.size)),
-                width: font.advance(g.id) * scale,
-            };
-            self.text_image(cv, res, &image)?;
-        }
-        for i in laid.images_of(paint) {
-            let image = TextImage {
-                key: i.key,
-                frame: Frame {
-                    x: i.x,
-                    y: i.y,
-                    rotate: i.rotate,
-                    scale_x: i.scale_x,
-                },
-                rect: i.rect,
-                text: i.text.as_deref().filter(|t| !t.is_empty()),
-                space: Some((i.font, i.size)),
-                width: i.rect.w,
-            };
-            self.text_image(cv, res, &image)?;
-        }
-        Ok(())
-    }
-
-    /// Draws `image` as page text draws an image glyph: the image, in a
-    /// span with its text and an invisible space as wide as the image when
-    /// it has text.
-    fn text_image(
-        &mut self,
-        cv: &mut Canvas,
-        res: TextResources<'_, '_>,
-        image: &TextImage<'_>,
-    ) -> Res {
-        self.segments += 8;
-        if self.segments > MAX_SEGMENTS {
-            return Err(too_complex());
-        }
-        cv.c.save_state();
-        cv.c.transform(image.frame.matrix().map(number));
-        if let Some(text) = image.text {
-            cv.c.begin_marked_content_with_properties(Name(b"Span"))
-                .properties()
-                .pair(Name(b"ActualText"), Str(&super::out::text_bytes(text)));
-        }
-        if let Some(&r) = res.image_refs.get(&image.key) {
-            let mut ops = Vec::new();
-            let (fit, position) = (ImageFit::Fill, ObjectPosition::default());
-            res.images
-                .paint_in(image.key, image.rect, fit, position, &NO_RADII, &mut ops);
+        for (frame, ops) in image_ops(laid, Some(paint), res.ink) {
+            self.segments += ops.len();
+            if self.segments > MAX_SEGMENTS {
+                return Err(too_complex());
+            }
+            cv.c.save_state();
+            cv.c.transform(frame.0.map(number));
             for op in ops {
                 match op {
-                    crate::paint::Op::Save => {
+                    Op::Save => {
                         cv.c.save_state();
                     }
-                    crate::paint::Op::Restore => {
+                    Op::Restore => {
                         cv.c.restore_state();
                     }
-                    crate::paint::Op::ClipRect(b) => {
+                    Op::ClipRect(b) => {
                         cv.c.rect(number(b.x), number(b.y), number(b.w), number(b.h));
                         cv.c.clip_nonzero();
                         cv.c.end_path();
                     }
-                    crate::paint::Op::Image { matrix, .. } => {
+                    Op::Image { key, matrix } => {
+                        let Some(&r) = res.image_refs.get(&key) else {
+                            continue;
+                        };
                         cv.c.transform(matrix.map(number));
                         let name = cv.name(ResKind::XObject, r);
                         cv.c.x_object(Name(name.as_bytes()));
                     }
-                    // `paint_in` draws nothing else without radii.
+                    Op::Span { actual_text } => {
+                        let text = super::out::text_bytes(&actual_text);
+                        cv.c.begin_marked_content_with_properties(Name(b"Span"))
+                            .properties()
+                            .pair(Name(b"ActualText"), Str(&text));
+                    }
+                    Op::EndSpan => {
+                        cv.c.end_marked_content();
+                    }
+                    Op::InvisibleText(g) => {
+                        if let Some(&r) = res.refs.get(&g.font) {
+                            let name = cv.name(ResKind::Font, r);
+                            super::invisible_glyph(
+                                &mut cv.c,
+                                &g,
+                                name.as_bytes(),
+                                res.ink.fonts,
+                                self.profile,
+                            );
+                        }
+                    }
+                    // Colour glyphs and images draw nothing else.
                     _ => {}
                 }
             }
+            cv.c.restore_state();
         }
-        if image.text.is_some() {
-            let space = image.space.and_then(|(font, size)| {
-                InvisibleGlyph::space(res.fonts, font, size, (0.0, 0.0), image.width)
-            });
-            if let Some(g) = space {
-                if let Some(&r) = res.refs.get(&g.font) {
-                    let name = cv.name(ResKind::Font, r);
-                    super::invisible_glyph(&mut cv.c, &g, name.as_bytes(), res.fonts, self.profile);
-                }
-            }
-            cv.c.end_marked_content();
-        }
-        cv.c.restore_state();
         Ok(())
     }
 
-    /// The glyphs and decorations of `laid` in paint style `paint`, filled
-    /// or stroked with the paint set: underlines and overlines first, then
-    /// the glyphs, then line-throughs.
     /// In a clip path (`clip`), colour glyphs are drawn by their outlines.
     fn draw_text(
         &mut self,
@@ -1207,7 +1218,7 @@ impl Svg<'_> {
             .glyphs_of(paint)
             .iter()
             .filter(|g| !(self.profile.is_pdf_a() && g.id == 0))
-            .filter(|g| clip || fonts.colors.image(g.font, g.id).is_none())
+            .filter(|g| clip || !fonts.ink.colors.draws(g.font, g.id))
             .filter(|g| fonts.refs.contains_key(&g.font))
             .collect();
         if glyphs.is_empty() {
@@ -1248,7 +1259,7 @@ impl Svg<'_> {
                 ]
                 .map(number),
             );
-            let loaded = fonts.fonts.get(g0.font);
+            let loaded = fonts.ink.fonts.get(g0.font);
             let em = size * k;
             let mut shown = cv.c.show_positioned();
             let mut items = shown.items();
@@ -1342,7 +1353,7 @@ impl Svg<'_> {
                     .shading_ref(shading)
                     .matrix(matrix(at.ts.pre_concat(gt)));
                 cv.set_pattern(pattern, stroke);
-                if stops.iter().any(|s| s.opacity().get() < 1.0) {
+                if translucent_stops(stops) {
                     let alpha = self.shading(stops, &kind, periods, true);
                     let form = self.sub_form(bbox, |_, inner| {
                         inner.c.transform(matrix(gt));

@@ -21,13 +21,14 @@ use rayon::prelude::*;
 use crate::date::Timestamp;
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageKey, ImageSet};
-use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, Rect, TextOp};
+use crate::paint::{apply, FillRule, InvisibleGlyph, Op, PageContent, PathSeg, Rect, TextOp};
 use crate::pipeline::{Dest, Marks};
 use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
 pub(crate) use image::transparency as image_transparency;
+pub(crate) use out::written_text_len;
 use out::Out;
 pub(crate) use pdfa::Profile;
 
@@ -56,8 +57,9 @@ pub(crate) struct EncodedPage {
     pub links: Vec<(Rect, Box<str>)>,
     /// Form field widgets.
     pub fields: Vec<crate::forms::FieldOp>,
-    /// Text notes, at the corner the transform in effect puts them.
-    pub notes: Vec<crate::notes::NoteOp>,
+    /// Icon annotations (text notes), at the corner the transform in
+    /// effect puts them.
+    pub icons: Vec<crate::icons::IconOp>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -193,7 +195,7 @@ impl PdfSink for PdfWriterSink {
         let mut images = BTreeSet::new();
         let mut links = Vec::new();
         let mut fields = Vec::new();
-        let mut notes = Vec::new();
+        let mut icons = Vec::new();
         // Links and widgets are areas on the page: they cover where the
         // transform in effect puts them.
         let mut ctm: Option<[f32; 6]> = None;
@@ -203,10 +205,10 @@ impl PdfSink for PdfWriterSink {
                 Op::Save => saved.push(ctm),
                 Op::Restore => ctm = saved.pop().flatten(),
                 Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| crate::paint::mul(c, *m))),
-                // A font without outlines is never embedded (see
-                // `content_stream`).
-                Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
                 Op::Text(t) => {
+                    // The painter leaves out the text of a font without
+                    // outlines (`ColorGlyphs::push`): it is never embedded.
+                    debug_assert!(fonts.get(t.font).has_outlines(), "{}", fonts.get(t.font).id);
                     glyphs
                         .entry(t.font)
                         .or_default()
@@ -238,15 +240,12 @@ impl PdfSink for PdfWriterSink {
                 }
                 // An icon stays upright and the same size: only its corner
                 // moves.
-                Op::Note(n) => {
-                    let mut n = (**n).clone();
+                Op::Icon(i) => {
+                    let mut i = (**i).clone();
                     if let Some(m) = ctm {
-                        (n.x, n.y) = (
-                            m[0] * n.x + m[2] * n.y + m[4],
-                            m[1] * n.x + m[3] * n.y + m[5],
-                        );
+                        (i.x, i.y) = crate::paint::apply(m, (i.x, i.y));
                     }
-                    notes.push(n);
+                    icons.push(i);
                 }
                 _ => {}
             }
@@ -266,24 +265,122 @@ impl PdfSink for PdfWriterSink {
             images,
             links,
             fields,
-            notes,
+            icons,
         })
     }
 
     fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {
+        let fonts = self.font_programs(doc)?;
+        let Some(params) = &self.encryption else {
+            return Ok(self.emit(doc, &fonts, Out::plain())?.0.finish());
+        };
+        // The keys are derived from the whole file as it is written
+        // unencrypted, so documents that differ anywhere get different
+        // keys.
+        let plain = self.emit(doc, &fonts, Out::plain())?.0.finish();
+        let (crypt, dict) = crypt::Crypt::new(params, &crypt::digest(&plain));
+        drop(plain);
+        let (mut pdf, mut alloc) = self.emit(doc, &fonts, Out::encrypted(crypt))?;
+        // Last, so every other object keeps its number.
+        let r = alloc.next();
+        dict.write(&mut pdf, r);
+        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
+        crypt::splice_encrypt(pdf.finish(), r)
+            .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
+    }
+}
+
+/// What the text of each SVG painted in `doc` draws besides itself
+/// ([`svg::text_uses`]).
+fn svg_text_uses<'a>(
+    doc: &'a DocumentOut<'a>,
+) -> impl Iterator<Item = (Vec<(FontKey, u16)>, Vec<ImageKey>)> + 'a {
+    let painted: BTreeSet<ImageKey> = doc.pages.iter().flat_map(|p| &p.images).copied().collect();
+    painted.into_iter().filter_map(move |key| {
+        let crate::images::ImageBody::Svg {
+            probed: Some(probed),
+            ..
+        } = &doc.images.get(key).body
+        else {
+            return None;
+        };
+        Some(svg::text_uses(probed, text_ink(doc)))
+    })
+}
+
+/// What the text of the SVGs in `doc` is drawn with.
+fn text_ink<'a>(doc: &DocumentOut<'a>) -> svg::TextInk<'a, 'a> {
+    svg::TextInk {
+        fonts: doc.fonts,
+        colors: doc.colors,
+        unicode: doc.unicode,
+        images: doc.images,
+    }
+}
+
+/// The font programs a document embeds, and the glyphs each one holds.
+struct FontPrograms {
+    used: BTreeMap<FontKey, BTreeSet<u16>>,
+    programs: Vec<font::Program>,
+}
+
+impl PdfWriterSink {
+    /// Every font that is actually painted, with the glyphs used across
+    /// the whole document, subset and compressed.
+    fn font_programs(&self, doc: &DocumentOut<'_>) -> Result<FontPrograms, InkoxideError> {
+        let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
+        let mut editable = BTreeSet::new();
+        for page in doc.pages {
+            for (key, glyphs) in &page.glyphs {
+                used.entry(*key).or_default().extend(glyphs);
+            }
+            editable.extend(
+                page.fields
+                    .iter()
+                    .filter(|f| f.editable)
+                    .filter_map(|f| f.font),
+            );
+        }
+        for key in editable {
+            let font = doc.fonts.get(key);
+            used.entry(key)
+                .or_default()
+                .extend(crate::forms::edit_glyphs(font));
+        }
+        // The glyphs of SVG text laid out for the images painted: every
+        // text, drawn or not, so a superset of what the forms show.
+        for (glyphs, _) in svg_text_uses(doc) {
+            for (font, glyph) in glyphs {
+                used.entry(font).or_default().insert(glyph);
+            }
+        }
+        // Subsetting and compression are independent per font.
+        let program = |(key, glyphs): (&FontKey, &BTreeSet<u16>)| {
+            font::program(doc.fonts.get(*key), glyphs, self.subset_fonts)
+        };
+        let programs: Vec<font::Program> = if self.parallel {
+            used.par_iter().map(program).collect::<Result<_, _>>()?
+        } else {
+            used.iter().map(program).collect::<Result<_, _>>()?
+        };
+        Ok(FontPrograms { used, programs })
+    }
+
+    /// Writes every object of the document, its strings and streams
+    /// through `out`, and hands back the file before its trailer and the
+    /// numbers it allocated. With the same `doc` and `fonts`, every call
+    /// numbers the objects the same.
+    fn emit(
+        &self,
+        doc: &DocumentOut<'_>,
+        fonts: &FontPrograms,
+        mut out: Out,
+    ) -> Result<(Pdf, RefAlloc), InkoxideError> {
         let mut pdf = Pdf::new();
         if let Some((major, minor)) = self.profile.version() {
             pdf.set_version(major, minor);
         }
         let mut alloc = RefAlloc(0);
-        let (mut out, encrypt) = match &self.encryption {
-            Some(params) => {
-                let d = crypt::digest(doc.pages.iter().map(|p| p.stream.as_slice()), doc.meta);
-                let (crypt, dict) = crypt::Crypt::new(params, &d);
-                (Out::encrypted(crypt), Some(dict))
-            }
-            None => (Out::plain(), None),
-        };
         let catalog = alloc.next();
         let info = alloc.next();
 
@@ -313,57 +410,8 @@ impl PdfSink for PdfWriterSink {
             pdf.ext_graphics(*r).non_stroking_alpha(a).stroking_alpha(a);
         }
 
-        // Fonts: embed each font that is actually painted, with the glyphs
-        // used across the whole document.
-        let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
-        let mut editable = BTreeSet::new();
-        for page in doc.pages {
-            for (key, glyphs) in &page.glyphs {
-                used.entry(*key).or_default().extend(glyphs);
-            }
-            editable.extend(
-                page.fields
-                    .iter()
-                    .filter(|f| f.editable)
-                    .filter_map(|f| f.font),
-            );
-        }
-        for key in editable {
-            let font = doc.fonts.get(key);
-            used.entry(key)
-                .or_default()
-                .extend(crate::forms::edit_glyphs(font));
-        }
-        // The glyphs of SVG text laid out for the images painted: every
-        // text, drawn or not, so a superset of what the forms show; and
-        // the images that text draws.
-        let painted: BTreeSet<ImageKey> =
-            doc.pages.iter().flat_map(|p| &p.images).copied().collect();
-        let mut text_images: BTreeSet<ImageKey> = BTreeSet::new();
-        for &key in &painted {
-            if let crate::images::ImageBody::Svg {
-                probed: Some(probed),
-                ..
-            } = &doc.images.get(key).body
-            {
-                let (glyphs, images) = svg::text_uses(probed, doc.fonts, doc.colors, doc.images);
-                for (font, glyph) in glyphs {
-                    used.entry(font).or_default().insert(glyph);
-                }
-                text_images.extend(images);
-            }
-        }
-        // Subsetting and compression are independent per font.
-        let program = |(key, glyphs): (&FontKey, &BTreeSet<u16>)| {
-            font::program(doc.fonts.get(*key), glyphs, self.subset_fonts)
-        };
-        let programs: Vec<font::Program> = if self.parallel {
-            used.par_iter().map(program).collect::<Result<_, _>>()?
-        } else {
-            used.iter().map(program).collect::<Result<_, _>>()?
-        };
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
-        for ((key, glyphs), program) in used.iter().zip(&programs) {
+        for ((key, glyphs), program) in fonts.used.iter().zip(&fonts.programs) {
             let embedded = font::Embedded {
                 font: doc.fonts.get(*key),
                 program,
@@ -377,18 +425,19 @@ impl PdfSink for PdfWriterSink {
         // Images: one XObject per unique image actually painted, those
         // SVG text draws first, for the forms of the SVGs to name them.
         let mut image_refs: BTreeMap<ImageKey, Ref> = BTreeMap::new();
-        let on_pages: BTreeSet<ImageKey> = painted
+        let text_images: BTreeSet<ImageKey> =
+            svg_text_uses(doc).flat_map(|(_, images)| images).collect();
+        let on_pages: BTreeSet<ImageKey> = doc
+            .pages
             .iter()
+            .flat_map(|p| &p.images)
             .copied()
             .filter(|k| !text_images.contains(k))
             .collect();
         for key in text_images.into_iter().chain(on_pages) {
             let res = svg::TextResources {
-                fonts: doc.fonts,
+                ink: text_ink(doc),
                 refs: &font_refs,
-                colors: doc.colors,
-                unicode: doc.unicode,
-                images: doc.images,
                 image_refs: &image_refs,
             };
             let r = image::write_image(
@@ -422,7 +471,7 @@ impl PdfSink for PdfWriterSink {
             }
             annots.push(refs);
         }
-        notes::write_notes(
+        notes::write_icons(
             &mut pdf,
             &mut alloc,
             &mut out,
@@ -533,7 +582,7 @@ impl PdfSink for PdfWriterSink {
         if let Some(lang) = &lang {
             cat.pair(Name(b"Lang"), Str(lang));
         }
-        if encrypt.is_some() {
+        if out.is_encrypted() {
             // Revision 6 of the security handler is extension level 8 of
             // PDF 1.7.
             cat.insert(Name(b"Extensions"))
@@ -548,7 +597,7 @@ impl PdfSink for PdfWriterSink {
             .producer
             .as_deref()
             .unwrap_or(concat!("Inkoxide ", env!("CARGO_PKG_VERSION")));
-        if self.profile.is_pdf_a() {
+        if let Some(level) = self.profile.level() {
             let metadata = alloc.next();
             let profile = alloc.next();
             cat.metadata(metadata);
@@ -565,7 +614,7 @@ impl PdfSink for PdfWriterSink {
                 .pair(Name(b"DestOutputProfile"), profile);
             cat.finish();
             // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, self.profile);
+            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level);
             out.metadata(&mut pdf, metadata, &xmp, |_| {});
             let icc = deflate(&pdfa::srgb_icc(), 9)?;
             out.icc_profile(&mut pdf, profile, &icc, |p| {
@@ -624,23 +673,14 @@ impl PdfSink for PdfWriterSink {
             pdf.limits().real()
         );
         self.profile.check_limits(pdf.limits())?;
-        let Some(dict) = encrypt else {
-            return Ok(pdf.finish());
-        };
-        // Last, so every other object keeps its number.
-        let r = alloc.next();
-        dict.write(&mut pdf, r);
-        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
-        crypt::splice_encrypt(pdf.finish(), r)
-            .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
+        Ok((pdf, alloc))
     }
 }
 
 /// The upright rectangle that `rect` covers once transformed by `m`.
 fn bounds(m: [f32; 6], rect: Rect) -> Rect {
     let Rect { x, y, w, h } = rect;
-    let corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)]
-        .map(|(px, py)| (m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]));
+    let corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)].map(|p| apply(m, p));
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for (px, py) in corners {
         (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px), y1.max(py));
@@ -789,7 +829,7 @@ fn write_outline(
 /// hand: `pdf_writer::Date` takes the offset's sign from its hours, so an
 /// offset under an hour west of UTC (`-00:30`) would come out east of it.
 fn pdf_date(t: Timestamp) -> String {
-    let off = t.offset_minutes;
+    let (d, off) = (t.local, t.offset_minutes);
     let zone = if off == 0 {
         "Z".to_string()
     } else {
@@ -799,7 +839,7 @@ fn pdf_date(t: Timestamp) -> String {
     };
     format!(
         "D:{:04}{:02}{:02}{:02}{:02}{:02}{zone}",
-        t.year, t.month, t.day, t.hour, t.minute, t.second
+        d.year, d.month, d.day, d.hour, d.minute, d.second
     )
 }
 
@@ -1041,12 +1081,10 @@ pub(crate) fn content_stream(
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) | Op::Note(_) => {}
+            Op::Link { .. } | Op::Field(_) | Op::Icon(_) => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            // Its colour glyphs are images; the others have no ink.
-            Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
             Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
             Op::Image { key, matrix } => {
                 c.save_state();
@@ -1172,12 +1210,14 @@ mod tests {
     #[test]
     fn dates_keep_the_sign_of_offsets_under_an_hour() {
         let t = Timestamp {
-            year: 2026,
-            month: 10,
-            day: 12,
-            hour: 9,
-            minute: 30,
-            second: 0,
+            local: crate::date::LocalDateTime {
+                year: 2026,
+                month: 10,
+                day: 12,
+                hour: 9,
+                minute: 30,
+                second: 0,
+            },
             offset_minutes: -30,
         };
         assert_eq!(pdf_date(t), "D:20261012093000-00'30");
@@ -1473,7 +1513,12 @@ mod tests {
             .output();
         std::fs::remove_dir_all(&dir).unwrap();
         let Ok(out) = out else {
-            return; // pdftotext is not installed
+            // CI installs pdftotext, so there a missing one fails.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "pdftotext is not installed"
+            );
+            return;
         };
         assert!(out.status.success(), "{out:?}");
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "Snowman ☃");
@@ -1520,8 +1565,13 @@ mod tests {
                 .parse()
                 .unwrap()
         };
-        // About 1.8 million percent at 1 pt.
+        // About 1.8 million percent at 1 pt, at every level but 1b.
         assert!(operand(Profile::default(), " Tz") > 1e6);
+        for level in [crate::PdfALevel::A2b, crate::PdfALevel::A3b] {
+            let p = Profile::new(Some(level));
+            assert!(operand(p, " Tz") > 1e6);
+            assert_eq!(operand(p, " Tf"), 1.0);
+        }
         let one_b = Profile::new(Some(crate::PdfALevel::A1b));
         let (tz, size) = (operand(one_b, " Tz"), operand(one_b, " Tf"));
         assert_eq!(tz, pdfa::limits::REAL);

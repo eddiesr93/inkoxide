@@ -1,18 +1,23 @@
 //! Text nodes → `Op::Text` (plus decorations), with alignment,
 //! justification and page-number placeholders.
 
+use super::objects::InlineObject;
 use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
-use super::{baseline_shift, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS};
-use crate::fonts::FontSet;
-use crate::images::ImageSet;
+use super::{
+    baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper,
+    UnicodeMap, WIDTH_EPS,
+};
+use crate::fonts::{FontKey, FontSet};
+use crate::images::{ImageKey, ImageSet, Placement};
 use crate::layout::{Geometry, LineBoxes};
 use crate::paint::{
     span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg, Rect,
     TextGlyph, TextOp, NO_RADII,
 };
 use crate::schema::{
-    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, TextAlign, TextWrap, BLACK,
+    Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, RunAlign, TextAlign, TextRun,
+    TextWrap, BLACK,
 };
 
 /// Page numbers substituted for placeholders on the page being painted.
@@ -38,9 +43,22 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     /// painting a header, footer or overlay laid out for this page.
     pub page: Option<&'c PageText<'c, 's, S>>,
     pub fonts: &'f FontSet<'a>,
-    /// The images of inline objects.
+    /// The images of inline objects and colour glyphs.
     pub images: &'f ImageSet,
+    pub colors: &'f ColorGlyphs,
+    /// The text of each glyph, for the spans of colour glyphs.
+    pub unicode: &'f UnicodeMap,
     pub numbers: PageNumbers,
+}
+
+/// What a line's pieces are drawn with besides their glyphs: page
+/// numbers, and the images of inline objects and colour glyphs.
+#[derive(Clone, Copy)]
+struct Ink<'x> {
+    numbers: PageNumbers,
+    images: &'x ImageSet,
+    colors: &'x ColorGlyphs,
+    unicode: &'x UnicodeMap,
 }
 
 impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
@@ -82,6 +100,12 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             style,
             fonts: self.fonts,
         };
+        let ink = Ink {
+            numbers: self.numbers,
+            images: self.images,
+            colors: self.colors,
+            unicode: self.unicode,
+        };
         for (li, line) in layout.lines.iter().enumerate() {
             let shift = ctx.line_shifts.get(li).copied().unwrap_or(ctx.shift);
             // Line top in paged space; only lines on this page are painted.
@@ -93,16 +117,16 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             // of it the line was broken in.
             let (bx, bw) = layout.boxes.get(li).copied().unwrap_or((0.0, cw));
             let content = Rect::new(cx + ctx.dx + bx, top - line.top + ctx.dy, bw, ch);
-            let painted = paint_line(
-                line,
-                &para,
-                content,
-                (self.numbers, self.images),
-                ctx.opacity,
-                ops,
-            );
+            let first_op = ops.len();
+            let painted = paint_line(line, &para, content, ink, ctx.opacity, ops);
+            // A line taller than the page is sliced across pages; its notes
+            // are on the page it starts on.
+            if ctx.window.is_some_and(|w| !w.starts(top)) {
+                let line_ops = ops.split_off(first_op);
+                ops.extend(line_ops.into_iter().filter(|op| !matches!(op, Op::Icon(_))));
+            }
             if let Some(lines) = outline.as_deref_mut() {
-                lines.push(painted.outline(line, &para));
+                lines.push(painted.outline(line));
             }
         }
     }
@@ -139,34 +163,33 @@ struct Piece {
     width: f32,
 }
 
-/// Where a line was painted: its baseline, and each piece's run, start
-/// and advance, in visual order.
+/// Where a line was painted: its baseline, and each piece's run and box,
+/// in visual order.
 struct PaintedLine {
     top: f32,
     baseline: f32,
-    pieces: Vec<(u16, f32, f32)>,
+    pieces: Vec<(u16, Rect)>,
 }
 
 impl PaintedLine {
     /// The line's `debug` outline: its painted extent, and one box per
-    /// stretch of a run, from its font's ascender to its descender.
-    fn outline(&self, line: &Line, para: &Para<'_>) -> DebugLine {
+    /// stretch of a run, around what its pieces draw.
+    fn outline(&self, line: &Line) -> DebugLine {
         let mut runs: Vec<(Rect, u16)> = Vec::new();
-        for &(run, x, w) in &self.pieces {
+        for &(run, rect) in &self.pieces {
             match runs.last_mut() {
-                // Pieces of one run (fonts, bidi levels) abut: one box.
-                Some((r, last)) if *last == run && (r.x + r.w - x).abs() < WIDTH_EPS => {
-                    r.w = x + w - r.x;
+                // Pieces of one run (fonts, bidi levels, inline objects)
+                // abut: one box around them.
+                Some((r, last)) if *last == run && (r.x + r.w - rect.x).abs() < WIDTH_EPS => {
+                    let top = r.y.min(rect.y);
+                    let bottom = (r.y + r.h).max(rect.y + rect.h);
+                    *r = Rect::new(r.x, top, rect.x + rect.w - r.x, bottom - top);
                 }
-                _ => {
-                    let (above, below) = run_extent(para, run);
-                    let rect = Rect::new(x, self.baseline - above, w, above + below);
-                    runs.push((rect, run));
-                }
+                _ => runs.push((rect, run)),
             }
         }
-        let x0 = self.pieces.first().map_or(0.0, |p| p.1);
-        let x1 = self.pieces.last().map_or(x0, |p| p.1 + p.2);
+        let x0 = self.pieces.first().map_or(0.0, |p| p.1.x);
+        let x1 = self.pieces.last().map_or(x0, |p| p.1.x + p.1.w);
         DebugLine {
             rect: Rect::new(x0, self.top, x1 - x0, line.height),
             baseline: self.baseline,
@@ -175,16 +198,15 @@ impl PaintedLine {
     }
 }
 
-/// Height of run `run`'s glyph box above and below the line's baseline:
+/// Height of run `r`'s glyph box above and below the line's baseline:
 /// its font's ascender and descender at its size, around its own
 /// (shifted) baseline.
-fn run_extent(para: &Para<'_>, run: u16) -> (f32, f32) {
-    let r = &para.runs[usize::from(run)];
-    let shift = baseline_shift(r, para.fonts);
-    let Some(key) = para.fonts.key(&r.font) else {
+fn run_extent(r: &TextRun, fonts: &FontSet<'_>) -> (f32, f32) {
+    let shift = baseline_shift(r, fonts);
+    let Some(key) = fonts.key(&r.font) else {
         return (r.size + shift, -shift);
     };
-    let font = para.fonts.get(key);
+    let font = fonts.get(key);
     let m = &font.data.metrics;
     let scale = font.scale(r.size);
     (m.ascender * scale + shift, -m.descender * scale - shift)
@@ -196,7 +218,7 @@ fn paint_line(
     line: &Line,
     para: &Para<'_>,
     content: Rect,
-    (numbers, images): (PageNumbers, &ImageSet),
+    ink: Ink<'_>,
     opacity: f32,
     ops: &mut Vec<Op>,
 ) -> PaintedLine {
@@ -249,10 +271,14 @@ fn paint_line(
             0.0
         };
 
-    // Segment slices of the line, in visual order.
-    let mut items: Vec<(&super::Segment, usize, usize)> = p
+    // Segment slices of the line, in visual order. Segments are in glyph
+    // order: those on the line follow the first that ends after its start.
+    let from = p
         .segments
+        .partition_point(|seg| seg.glyphs.end as usize <= s);
+    let mut items: Vec<(&super::Segment, usize, usize)> = p.segments[from..]
         .iter()
+        .take_while(|seg| (seg.glyphs.start as usize) < e)
         .filter_map(|seg| {
             let (gs, ge) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
             let (a, b) = (gs.max(s), ge.min(e));
@@ -276,7 +302,7 @@ fn paint_line(
             width: 0.0,
         };
         if let Some(ph) = run.placeholder.filter(|_| p.placeholders) {
-            for (id, advance) in number_glyphs(fonts.get(seg.font), run, numbers.of(ph)) {
+            for (id, advance) in number_glyphs(fonts.get(seg.font), run, ink.numbers.of(ph)) {
                 piece.glyphs.push(TextGlyph {
                     id,
                     x: piece.width,
@@ -338,8 +364,12 @@ fn paint_line(
     };
 
     for piece in pieces {
-        painted.pieces.push((piece.run, x, piece.width));
         let run = &runs[piece.run as usize];
+        if let Some(note) = run.note.as_deref() {
+            // It takes no room: its icon hangs from the line's top.
+            crate::notes::paint_at(note, (x, cy + line.top), ops);
+            continue;
+        }
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
                 Some((_, x1, t)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {
@@ -352,10 +382,15 @@ fn paint_line(
             // An image: no colour of its own, no decorations.
             let object = &p.objects[o as usize];
             let line_box = (cy + line.top, line.height);
-            paint_object(object, run, fonts, images, (x, baseline), line_box, ops);
+            let rect = object_rect(object, run, fonts, (x, baseline), line_box);
+            painted.pieces.push((piece.run, rect));
+            paint_object(object, rect, run, fonts, ink.images, baseline, ops);
             x += piece.width;
             continue;
         }
+        let (above, below) = run_extent(run, fonts);
+        let rect = Rect::new(x, baseline - above, piece.width, above + below);
+        painted.pieces.push((piece.run, rect));
         let color = run.color.unwrap_or(BLACK);
         let alpha = color[3] * opacity;
         // The run's own baseline: raised or lowered by `verticalAlign`.
@@ -366,14 +401,22 @@ fn paint_line(
             ops.push(Op::SetOpacity(alpha));
         }
         if !piece.glyphs.is_empty() && color[3] > 0.0 {
-            ops.push(Op::Text(TextOp {
+            let text = TextOp {
                 font: piece.font,
                 size: run.size,
                 color,
                 x,
                 y: baseline,
                 glyphs: piece.glyphs,
-            }));
+            };
+            // Colour glyphs become images, in spans with a space.
+            let strut = if fonts.get(piece.font).has_color() {
+                space_font(fonts, run)
+            } else {
+                None
+            };
+            ink.colors
+                .push(text, strut, fonts, ink.images, ink.unicode, ops);
         }
         if let Some(dec) = run.decoration.filter(|d| *d != Decoration::None) {
             let font = fonts.get(piece.font);
@@ -409,41 +452,73 @@ fn paint_line(
     painted
 }
 
-/// Draws inline object `object` of run `run` at `x` on a line with its
-/// baseline at `baseline` and its box `(top, height)`, in a span with its
-/// alternative text when it has one.
-fn paint_object(
-    object: &super::objects::InlineObject,
-    run: &crate::schema::TextRun,
+/// Where inline object `object` of run `run` is drawn at `x` on a line
+/// with its baseline at `baseline` and its box `(top, height)`.
+fn object_rect(
+    object: &InlineObject,
+    run: &TextRun,
     fonts: &FontSet<'_>,
-    images: &ImageSet,
     (x, baseline): (f32, f32),
     (top, height): (f32, f32),
-    ops: &mut Vec<Op>,
-) {
+) -> Rect {
     let y = match object.extent(run, fonts) {
         Some((above, _)) => baseline - above,
-        None if run.vertical_align == Some(crate::schema::RunAlign::Top) => top,
+        None if object.align == RunAlign::Top => top,
         None => top + height - object.height,
     };
-    let rect = Rect::new(x, y, object.width, object.height);
-    let draw = |ops: &mut Vec<Op>| {
-        images.paint_in(
-            object.key,
-            rect,
-            object.fit,
-            object.position,
-            &NO_RADII,
-            ops,
-        );
-    };
-    match object.alt.as_deref().filter(|a| !a.is_empty()) {
-        Some(alt) => {
-            let space = fonts.key(&run.font).and_then(|k| {
-                InvisibleGlyph::space(fonts, k, run.size, (x, baseline), object.width)
-            });
-            span(ops, alt, space, draw);
-        }
+    Rect::new(x, y, object.width, object.height)
+}
+
+/// Draws inline object `object` of run `run` in `rect`, on a line with its
+/// baseline at `baseline`, in a span with its alternative text when it has
+/// one.
+fn paint_object(
+    object: &InlineObject,
+    rect: Rect,
+    run: &TextRun,
+    fonts: &FontSet<'_>,
+    images: &ImageSet,
+    baseline: f32,
+    ops: &mut Vec<Op>,
+) {
+    let text = object.alt.as_deref().filter(|a| !a.is_empty()).map(|alt| {
+        let space = space_font(fonts, run).and_then(|k| {
+            InvisibleGlyph::space(fonts, k, run.size, (rect.x, baseline), object.width)
+        });
+        (alt, space)
+    });
+    image_span(images, object.key, rect, object.placement, text, ops);
+}
+
+/// The font of the invisible space in the span of an image drawn in run
+/// `run` (an inline object, a colour glyph): the run's own font, the
+/// paragraph's strut, which the line embeds anyway. When it has no
+/// outlines (it is never embedded) or no space, the first font of the
+/// document that has both, preferring one without colour glyphs.
+fn space_font(fonts: &FontSet<'_>, run: &TextRun) -> Option<FontKey> {
+    let spaced = |k: FontKey| InvisibleGlyph::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
+    let all = || 0..fonts.fonts.len() as FontKey;
+    fonts
+        .key(&run.font)
+        .filter(|&k| spaced(k))
+        .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
+        .or_else(|| all().find(|&k| spaced(k)))
+}
+
+/// Draws image `key` in `rect` as `placement` says. With `text`, inside a
+/// span with that text, along with its invisible glyph (laid over the
+/// image, for extractors that read a span's text only off a glyph).
+pub(super) fn image_span(
+    images: &ImageSet,
+    key: ImageKey,
+    rect: Rect,
+    placement: Placement,
+    text: Option<(&str, Option<InvisibleGlyph>)>,
+    ops: &mut Vec<Op>,
+) {
+    let draw = |ops: &mut Vec<Op>| images.paint_in(key, rect, placement, &NO_RADII, ops);
+    match text {
+        Some((text, glyph)) => span(ops, text, glyph, draw),
         None => draw(ops),
     }
 }

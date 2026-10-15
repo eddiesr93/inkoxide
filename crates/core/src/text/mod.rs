@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
-pub(crate) use color::ColorGlyphs;
+pub(crate) use color::{glyph_transparency as color_glyph_transparency, ColorGlyphs};
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
 pub(crate) use paint::{PageNumbers, TextPainter};
@@ -770,7 +770,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             let p = &e.prepared;
             p.segments
                 .iter()
-                .filter(|s| s.object.is_some() || fonts.get(s.font).data.metrics.color)
+                .filter(|s| s.object.is_some() || fonts.get(s.font).has_color())
                 .map(|s| (s.glyphs.end - s.glyphs.start) as usize)
                 .sum()
         })
@@ -782,7 +782,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         Some(e.prepared.glyphs.len())
     }
 
-    #[cfg(test)]
+    /// Text node `node` shaped, once it is.
     pub fn prepared(&self, node: &Node) -> Option<(&Prepared, &ParaStyle)> {
         self.entries
             .get(&node_key(node))

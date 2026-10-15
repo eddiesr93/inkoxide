@@ -1108,7 +1108,9 @@ fn font_size(s: &mut Src) -> Value {
 
 fn run(s: &mut Src) -> Value {
     let mut m = Map::new();
-    if s.chance(20) {
+    // One byte picks a placeholder, a note or text.
+    let kind = s.byte();
+    if kind < 20 {
         m.insert(
             "placeholder".into(),
             json!(s.pick(&["pageNumber", "totalPages"])),
@@ -1179,6 +1181,19 @@ fn run(s: &mut Src) -> Value {
             im.insert("alt".into(), json!(text(s)));
         }
         m.insert("image".into(), Value::Object(im));
+    }
+    if !image && (20..30).contains(&kind) {
+        // A note in the line, in place of the text.
+        m.remove("text");
+        m.remove("placeholder");
+        if s.chaos && s.chance(20) {
+            m.insert("text".into(), json!("x"));
+        }
+        let mut n = note(s);
+        if s.chance(128) {
+            n["contents"] = json!("In the line");
+        }
+        m.insert("note".into(), n);
     }
     if s.chance(25) {
         let which = s.below(3);
@@ -1980,7 +1995,7 @@ mod tests {
     /// that validate.
     #[test]
     fn document_covers_the_schema() {
-        const FEW: usize = 1000;
+        const FEW: usize = 2000;
         const MOST: usize = 20_000;
         let features = [
             r#""type":"field""#,
@@ -2016,6 +2031,7 @@ mod tests {
             r#""backgroundImage":{"#,
             r#""fallbackFonts":["EmojiTest-CBDT""#,
             r#""image":{"src":"#,
+            r#""contents":"In the line""#,
             r#""emojiImages":{"❤"#,
             r#""😀":"logo""#,
             r#""verticalAlign":"textTop""#,

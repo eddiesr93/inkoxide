@@ -5,6 +5,7 @@ use super::{
     baseline_shift, optimal, BreakKind, BreakPoint, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS,
 };
 use crate::layout::LineBoxes;
+use crate::schema::RunAlign;
 
 /// Shown at the end of a truncated line; three dots in fonts without it.
 pub(super) const ELLIPSIS: char = '\u{2026}';
@@ -460,10 +461,7 @@ fn metrics(line: &mut Line, para: &Para<'_>) {
                     above = above.max(a);
                     below = below.max(b);
                 }
-                None => ends.push((
-                    object.height,
-                    run.vertical_align == Some(crate::schema::RunAlign::Top),
-                )),
+                None => ends.push((object.height, object.align == RunAlign::Top)),
             }
         }
         let font = fonts.get(seg.font);

@@ -123,10 +123,15 @@ fn input_format(format: Option<&str>) -> Result<InputFormat> {
 
 fn pdf_a_level(name: &str) -> Result<PdfALevel> {
     PdfALevel::from_name(name).ok_or_else(|| {
+        let names: Vec<String> = PdfALevel::ALL
+            .iter()
+            .map(|l| format!("\"{}\"", l.as_str()))
+            .collect();
         invalid_arg(
             "options.pdfA",
             &format!(
-                "unsupported PDF/A level `{name}` (expected true, false, \"1b\", \"2b\" or \"3b\")"
+                "unsupported PDF/A level `{name}` (expected true, false or one of {})",
+                names.join(", ")
             ),
         )
     })

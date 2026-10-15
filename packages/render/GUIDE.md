@@ -189,19 +189,21 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   are drawn as images that copy and search as their text. Gradients that sweep around a point
   draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
-  colour glyphs past the first 4096 of a render. Fonts with only `SVG` glyphs are not drawn in
-  colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
-  alpha channel, a layer with an opacity) is drawn without colour, as its outline, or not at all
-  in a font without outlines, instead of failing the render. Inline images and emoji images
-  that need it fail the render with `PDFA_CONFLICT`, at their `src` or `emojiImages` key.
+  colour glyphs past the first 4096 of a render or its first 32 MB of colour glyph images. Fonts
+  with only `SVG` glyphs are not drawn in colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
+  alpha channel, as in every emoji bitmap font, or a layer with an opacity) fails the render with
+  `PDFA_CONFLICT` at the path of its run, and inline images and emoji images that need it fail
+  it at their `src` or `emojiImages` key. Opaque `COLR` glyphs draw in colour there.
 - **Emoji from images.** `Font.registerEmojiSource` draws emoji from an image set instead:
   `{ url, format }` adds each emoji's code points and the format to the URL
   (`https://cdn.example.com/emoji/1f469-200d-1f4bb.png`; `withVariationSelectors: true` keeps
   `fe0f` in them), and `{ builder }` turns the code points into any image `src`. The images load
   like `<Image src>`: a URL must be allowed by `remoteImages` (else the render fails, naming the
-  emoji), a path needs `localImages`, and images fetched from URLs are kept between renders. An
-  emoji image is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies
-  as the emoji. An emoji whose image cannot be loaded is drawn by the fonts, with a warning; a ZWJ
+  emoji), a path needs `localImages`, and images fetched from URLs are kept between renders (16
+  MB of them, each render still holding them to its own `remoteImages.maxBytes`). An emoji image
+  is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies as the
+  emoji. An emoji whose image cannot be loaded, or is not an image the engine can draw (other
+  bytes, an image over the size limits), is drawn by the fonts, with a warning; a ZWJ
   sequence (`👩‍💻`) without an image of its own uses the images of its parts. `null` removes the
   source.
 
@@ -850,9 +852,9 @@ array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkb
 `"radio"`, `"select"`, `"list"`), for forms built from data:
 `<Field kind={q.kind} name={q.name} … />`.
 
-A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
-the name of every field inside it, at any depth. Viewers show and export the fields by those
-full names, and sets nest:
+A `FieldSet` groups fields: it is a `View`, with the same props (`render` too), whose `name`
+goes in front of the name of every field inside it, at any depth. Viewers show and export the
+fields by those full names, and sets nest:
 
 ```tsx
 <FieldSet name="billing" className="gap-2">
@@ -884,19 +886,27 @@ as the user types:
 | `time` | `'18:30'` or `'18:30:05'`, or a date with a time | `pattern` (required) |
 | `zip`, `zipPlus4`, `phone`, `ssn` | 5, 9, 10 or 9 digits | none |
 
-A `pattern` uses `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`, `mmm` (Oct), `mmmm`
-(October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t`
-(a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English. The keys `nDec`,
-`sepComma`, `negStyle`, `currencyPrepend` and `param` are other names for `decimals`,
-`separators`, `negative`, `currencyBefore` and `pattern`. Viewers apply the format with the
-standard form scripts, which some (Preview) do not run; a PDF/A document leaves the scripts out
-and keeps the formatted text.
+A `pattern` is at most 64 characters of `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`,
+`mmm` (Oct), `mmmm` (October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM`
+(minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English.
+A `time` pattern takes only the time letters, `H`, `h`, `M`, `s` and `t`. Viewers apply the
+format with the standard form scripts, which some (Preview) do not run; a PDF/A document leaves
+the scripts out and keeps the formatted text.
+
+The keys `nDec`, `sepComma` (`true` is `'1,234.56'`, `false` `'1234.56'`), `negStyle`
+(`'MinusBlack'`, `'Red'`, `'ParensBlack'`, `'ParensRed'`), `currencyPrepend` and `param` are
+other names for `decimals`, `separators`, `negative`, `currencyBefore` and `pattern`, and
+`zip4` for `zipPlus4`. A number or percent format with any of them defaults to no decimals and
+no thousands separator, so `{ type: 'number', currencyPrepend: true }` shows `'1250'` as
+`1250`; without them, to 2 decimals and `'1,234.56'`. On a `time`, `param` is a style: `0` (`HH:MM`), `1` (`h:MM tt`), `2`
+(`HH:MM:ss`) or `3` (`h:MM:ss tt`).
 
 ## Notes
 
 ```tsx
 <Note author="Ana">Check the totals against the ledger.</Note>
 <Note className="absolute right-0 top-0 bg-blue-500" open>Draft: not for circulation.</Note>
+<Text>Total: 1,250<Note author="Ana">Includes the March refund.</Note> due on 1 May.</Text>
 ```
 
 A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
@@ -905,8 +915,13 @@ when the document opens, and its `backgroundColor` (or a `bg-*` class) is its co
 default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
 its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
 insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
-`fixed` element it is on every page. The icon is drawn into the PDF, so it prints and looks the
-same in every viewer, and the output stays PDF/A-2b. A note cannot go inside a `Text` yet.
+`fixed` element it is on every page. Under a `transform`, the icon stays upright and the same
+size: only its corner moves. The icon is drawn into the PDF, so it prints and looks the same in
+every viewer, and the output stays PDF/A-2b.
+
+Inside a `Text`, a note is part of the line: it takes no room, and its icon hangs from the top of
+the line where it is, on the page of that line. Line breaking keeps it with the word before it,
+or after a space, with the word after it. There it takes `backgroundColor` and no other style.
 
 ## Debugging layout
 

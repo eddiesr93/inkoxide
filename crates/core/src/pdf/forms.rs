@@ -90,17 +90,17 @@ pub(super) fn write_fields(
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
 ) -> Result<Option<Form>, InkoxideError> {
-    // Widgets grouped by field name, in order of first appearance.
+    // Widgets by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
-    let mut groups: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
+    let mut widgets_of: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
     for (i, page) in ctx.pages.iter().enumerate() {
         for f in &page.fields {
             let name = f.field.name.as_str();
-            let g = groups.entry(name).or_default();
-            if g.is_empty() {
+            let w = widgets_of.entry(name).or_default();
+            if w.is_empty() {
                 order.push(name);
             }
-            g.push((i, f));
+            w.push((i, f));
         }
     }
     if order.is_empty() {
@@ -112,8 +112,8 @@ pub(super) fn write_fields(
     };
     let mut tree = Groups::default();
     for full in order {
-        let widgets = &groups[full];
-        let states = on_states(widgets);
+        let widgets = &widgets_of[full];
+        let states = on_states(widgets, out.is_encrypted());
         let first = widgets[0].1;
         if let Some(k) = first.font {
             if ctx.font_refs.contains_key(&k) && !form.fonts.contains(&k) {
@@ -135,7 +135,7 @@ pub(super) fn write_fields(
             if let Some(p) = parent {
                 f.parent(p);
             }
-            field_entries(&mut f, out, name, widgets, &states, ctx.scripts());
+            field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps);
             annot.finish();
@@ -158,7 +158,7 @@ pub(super) fn write_fields(
         if let Some(p) = parent {
             f.parent(p);
         }
-        field_entries(&mut f, out, name, widgets, &states, ctx.scripts());
+        field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
         f.children(kids);
         f.finish();
     }
@@ -185,8 +185,10 @@ struct OnStates {
 /// A checkbox is on in state `Yes`, a radio button in the state named
 /// after its value. A value that cannot name a state (`Off` is the off
 /// state, and a name has at most [`MAX_NAME`] bytes) makes every button of
-/// its group use its position instead, with the values in `/Opt`.
-fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
+/// its group use its position instead, with the values in `/Opt`. So does
+/// encryption (`hidden`): names are not encrypted, the strings of `/Opt`
+/// are.
+fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
     let value = |op: &FieldOp| op.field.value_str().unwrap_or_default().to_string();
     if widgets[0].1.field.kind != FieldKind::Radio {
         return OnStates {
@@ -194,10 +196,11 @@ fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
             positions: false,
         };
     }
-    let positions = widgets.iter().any(|(_, w)| {
-        let v = value(w);
-        v == "Off" || v.len() > MAX_NAME
-    });
+    let positions = hidden
+        || widgets.iter().any(|(_, w)| {
+            let v = value(w);
+            v == "Off" || v.len() > MAX_NAME
+        });
     OnStates {
         names: if positions {
             (0..widgets.len()).map(|i| i.to_string()).collect()
@@ -289,12 +292,11 @@ fn field_entries(
                 }
                 None => {}
             }
-            let selected = crate::forms::selected(spec);
-            if !selected.is_empty() {
-                f.choice_indices(selected.iter().map(|&i| index(i)));
+            if !op.selected.is_empty() {
+                f.choice_indices(op.selected.iter().map(|&i| index(i)));
             }
-            if op.top > 0 {
-                f.choice_top_index(index(op.top));
+            if op.top_index > 0 {
+                f.choice_top_index(index(op.top_index));
             }
         }
         FieldKind::Checkbox => {
@@ -376,13 +378,6 @@ pub(super) struct Ctx<'r, 'f, 'a> {
 type Appearances = Vec<(Option<String>, Ref)>;
 
 impl Ctx<'_, '_, '_> {
-    /// Whether fields may carry scripts: not in PDF/A, at any level, which
-    /// forbids JavaScript actions and `/AA` (ISO 19005-1, 6.6.1; 19005-2,
-    /// 6.6.1). A format keeps its formatted text and value there.
-    fn scripts(&self) -> bool {
-        self.profile.scripts()
-    }
-
     /// The appearance streams of widget `op`, whose on state is `on`
     /// (checkboxes and radio buttons).
     fn appearances(

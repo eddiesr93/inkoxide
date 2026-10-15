@@ -39,9 +39,11 @@ const INTERNAL_VALUES = [
   'ENUMS',
   'Reader',
   'UNITS_UNKNOWN',
+  'VERTICAL_ALIGNS',
   'evalDim',
   'parseFontFamily',
   'substituteVars',
+  'verticalAlignKeyword',
 ];
 
 const sorted = (names: string[]) => [...names].sort();

@@ -5,9 +5,15 @@
 //! Revision 6 asks for a random file key and salts, and the encryption of
 //! each string and stream for a random IV. The engine has no randomness,
 //! and identical input must give identical output, so everything is
-//! derived instead, from a digest `D` of the document and the passwords:
+//! derived instead, from the passwords and a digest `D`: the SHA-256 of
+//! the file the same render writes unencrypted ([`digest`]), so a change
+//! anywhere in the document changes it.
 //!
-//! - the salts: `HMAC(D, "salts")`;
+//! - the salts: `HMAC(S_u ‖ S_o, "salts" ‖ D)`, where `S_u` and `S_o` are
+//!   Algorithm 2.B hashes of the user and the owner password, salted with
+//!   `HMAC(D, "u")` and `HMAC(D, "o")`; without the passwords the salts
+//!   cannot be computed, and checking a guessed password against them
+//!   costs Algorithm 2.B hashes, as checking it against `U` or `O` does;
 //! - the file key: `HMAC(IK_u ‖ IK_o, "key" ‖ D)`, where `IK_u` and
 //!   `IK_o` are the intermediate keys of `UE` and `OE` (each an Algorithm
 //!   2.B hash of a password), so a guess costs one such hash, as it does
@@ -24,8 +30,6 @@ use aes::cipher::{BlockCipherEncrypt, KeyInit};
 use aes::{Aes128, Aes256};
 use pdf_writer::{Chunk, Name, Ref, Str};
 use sha2::{Digest, Sha256, Sha384, Sha512};
-
-use crate::schema::Meta;
 
 /// Passwords and permissions of an encrypted file, checked: printable
 /// ASCII, at most [`MAX_PASSWORD`] bytes each.
@@ -113,10 +117,12 @@ pub(crate) struct Crypt {
 }
 
 impl Crypt {
-    /// The keys of a file encrypted with `params` whose content digests to
-    /// `d` ([`digest`]), and its `Encrypt` dictionary.
+    /// The keys of a file encrypted with `params` whose unencrypted bytes
+    /// digest to `d` ([`digest`]), and its `Encrypt` dictionary.
     pub fn new(params: &Params, d: &[u8; 32]) -> (Self, Dict) {
-        let salts = hmac(d, &[b"salts"]);
+        let pre = |password: &[u8], label: &[u8]| hash_2b(password, &hmac(d, &[label])[..8], &[]);
+        let (s_u, s_o) = (pre(&params.user, b"u"), pre(&params.owner, b"o"));
+        let salts = hmac(&[s_u, s_o].concat(), &[b"salts", d]);
         let (uvs, uks, ovs, oks) = (&salts[..8], &salts[8..16], &salts[16..24], &salts[24..]);
         let mut u = [0; 48];
         u[..32].copy_from_slice(&hash_2b(&params.user, uvs, &[]));
@@ -189,34 +195,12 @@ impl Crypt {
     }
 }
 
-/// What the keys are derived from: a SHA-256 of the page content streams
-/// and the metadata. Neither depends on the input format or the thread
+/// What the keys are derived from: the SHA-256 of `plain`, the file as
+/// it is written unencrypted. It covers everything the document puts in
+/// the file, and depends on neither the input format nor the thread
 /// count.
-pub(crate) fn digest<'p>(pages: impl IntoIterator<Item = &'p [u8]>, meta: &Meta) -> [u8; 32] {
-    let mut h = Sha256::new();
-    let field = |h: &mut Sha256, bytes: &[u8]| {
-        h.update((bytes.len() as u64).to_be_bytes());
-        h.update(bytes);
-    };
-    for page in pages {
-        field(&mut h, page);
-    }
-    for v in [
-        &meta.title,
-        &meta.author,
-        &meta.subject,
-        &meta.keywords,
-        &meta.creator,
-        &meta.producer,
-        &meta.lang,
-        &meta.creation_date,
-    ] {
-        match v {
-            Some(v) => field(&mut h, v.as_bytes()),
-            None => h.update([0xFF]),
-        }
-    }
-    h.finalize().into()
+pub(crate) fn digest(plain: &[u8]) -> [u8; 32] {
+    Sha256::digest(plain).into()
 }
 
 /// HMAC-SHA256 (RFC 2104) of the concatenation of `parts`.
@@ -397,6 +381,87 @@ mod tests {
         let (_, other) = Crypt::new(&params, &[8; 32]);
         assert_ne!(other.ue, dict.ue);
         assert_ne!(other.id, dict.id);
+    }
+
+    /// Files qpdf 12.4.2 encrypted with `--encrypt USER OWNER 256`: their
+    /// `U`, `O`, `UE`, `OE` and `Perms`, and the file key qpdf reports
+    /// (`--show-encryption-key`). `hash_2b` must check both passwords and
+    /// give the intermediate keys that wrap the file key as qpdf did.
+    #[test]
+    fn hash_2b_matches_qpdf() {
+        let long_user = "x".repeat(127);
+        let long_owner = "y".repeat(127);
+        let vectors = [
+            (
+                "user",
+                "owner",
+                -4,
+                "001d809d04ab4c0ad6e9eaa30e0ac507f6320980a977c589e557b56cd49133ebbbf214ef90e3b49b9679a92942da463b",
+                "858b182724a28c4af552ad97de87092dd6c28a9fdecedd23b1a8ba86cb291148f6721dab639d00ec6ad16495fee3430d",
+                "e54fcdb128e87bc97582c7c63dedf1cda63cd71c821afa069db46e640fc9f936",
+                "ee146a894c9e2c10c4ff6fed95128d63f7072f0e06c17e8fd03c23cedb0904a3",
+                "3b97e9e0dab0fb96ea57c3b88af34517",
+                "805f5f724919bf807c04b994e2aac64cfccd390663db5700e8b3bf567dfd51b0",
+            ),
+            (
+                "",
+                "Owner (pass) \\word!",
+                -4,
+                "d19c917292bd4c6903391049fa91e9bd8b6eb071a9f902c815d6f800b7e8c753a7fc3a8c27e01f9b7245b4ae495ed5b7",
+                "9deac62c4aa893ce4f04c29da39e5577298b5142d43db64a80dee14577a693ffbc19b6d79b77df2d841d56fbc86c791d",
+                "ffafcc5cf77dfdea3e623f0059a7e134262d64ac4a8f52f5f748c1798f67b859",
+                "231ec1174344b709bafc5c8450bcffdc787433a5dc098394c921655e87d10e9f",
+                "5f4728cb25b8a11cf97f3d0f6cefa632",
+                "a2281621cc52f3d6f5cbb339c6fb1b19f130201bbd4ae7662ea59e11c8ebad91",
+            ),
+            (
+                &long_user,
+                &long_owner,
+                -4,
+                "aeb155406754180145378cf364d22bb5b2006860edb064d6b69783bd58954ce5325732178882919a86ddb7e9d3b33820",
+                "f5f0ebf036321937ef525beca55afdb69ab3c63d8e4c265f27880023c82eb1c783a697d231527bc2f6d6061a88b88dab",
+                "9f6158d50b518cca6ff72334668423216b69e5b688b708c1e7a77d277b02e97e",
+                "96e232fc9f6b3e9ac140576623287311267753fbca047d7bdf93985f221c33d8",
+                "0842bebcf1996151f39df6c787abe136",
+                "c80496a8e647efe6061cdaf25d069aaebcea967418a23e957c30eb2387a655d9",
+            ),
+        ];
+        for (user, owner, p, u, o, ue, oe, perms, key) in vectors {
+            let (u, o, ue, oe, key) = (hex(u), hex(o), hex(ue), hex(oe), hex(key));
+            let (user, owner) = (user.as_bytes(), owner.as_bytes());
+            assert_eq!(hash_2b(user, &u[32..40], &[]), u[..32], "U: {user:?}");
+            assert_eq!(hash_2b(owner, &o[32..40], &u), o[..32], "O: {owner:?}");
+            let ik_u = hash_2b(user, &u[40..], &[]);
+            let ik_o = hash_2b(owner, &o[40..], &u);
+            let wrap = |ik: &[u8; 32]| cbc_encrypt(&Aes256::new(&(*ik).into()), &[0; 16], &key);
+            assert_eq!(wrap(&ik_u), ue, "UE: {user:?}");
+            assert_eq!(wrap(&ik_o), oe, "OE: {owner:?}");
+            let perms = decrypt(&key, &hex(perms));
+            assert_eq!(perms[..4], i32::to_le_bytes(p));
+            assert_eq!(&perms[8..12], b"Tadb");
+        }
+    }
+
+    #[test]
+    fn the_salts_need_the_passwords() {
+        let salts = |user: &[u8], owner: &[u8]| {
+            let params = Params {
+                user: user.to_vec(),
+                owner: owner.to_vec(),
+                p: -4,
+            };
+            let (_, dict) = Crypt::new(&params, &[7; 32]);
+            (dict.u[32..].to_vec(), dict.o[32..].to_vec())
+        };
+        let base = salts(b"user", b"owner");
+        // The same document: another password, other salts.
+        assert_ne!(salts(b"user2", b"owner").0, base.0);
+        assert_ne!(salts(b"user", b"owner2").0, base.0);
+        assert_ne!(salts(b"user2", b"owner").1, base.1);
+        assert_ne!(salts(b"user", b"owner2").1, base.1);
+        assert_eq!(salts(b"user", b"owner"), base);
+        // They are not the HMAC of the digest alone.
+        assert_ne!(base.0, hmac(&[7; 32], &[b"salts"])[..16]);
     }
 
     #[test]

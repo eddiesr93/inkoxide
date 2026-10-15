@@ -63,6 +63,7 @@ pub(crate) struct SvgImage {
     /// The box it fills, from its place before rotation and stretch, y
     /// down.
     pub rect: Rect,
+    pub placement: crate::images::Placement,
     /// What text extraction gets for it, through an invisible space of
     /// `font` at `size`, as wide as the image.
     pub text: Option<Box<str>>,
@@ -259,6 +260,7 @@ fn shape<S: TextShaper>(
                 vertical_align: None,
                 font_features: None,
                 image: None,
+                note: None,
             });
             run_span.push(span);
         }
@@ -476,6 +478,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                     rotate: ch.rotate,
                     scale_x: c.scale_x,
                     rect: Rect::new(0.0, -above, o.width, o.height),
+                    placement: o.placement,
                     text: o.alt.clone(),
                     font: c.font,
                     size: span.size,
