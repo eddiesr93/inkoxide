@@ -2,10 +2,24 @@
 
 All notable changes to the packages in this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every package follows
-[Semantic Versioning](https://semver.org/). The document schema has its own
+[Semantic Versioning](https://semver.org/). Since 0.7.0, `inkoxide`, `@inkoxide/render`,
+`@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style` share one version and are released
+together. The document schema has its own version and
 [changelog](packages/schema/CHANGELOG.md).
 
 ## Unreleased
+
+## 0.7.0 - 2026-10-15
+
+`inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style`
+0.7.0, and `@inkoxide/schema` 2.4.0. From this release on, the five share one version number and
+are released together; the schema package keeps its own, since it versions the document format.
+New: floats, optimal line breaking, inline images, colour emoji, text in SVG and Canvas, PDF/A-1b
+and 3b, encryption, field groups, list boxes, number and date formats, and notes. Upgrading:
+Canvas miter joins, `em` lengths in SVG images and font family case changed (see **Changed**), and
+SVG text and field options have new limits (see **Security**). Encryption derives its keys
+deterministically; that derivation has had an internal review but no independent one yet (see
+[SECURITY.md](SECURITY.md#encryption)).
 
 ### Added
 

@@ -7,6 +7,8 @@ version 2.
 
 ## Unreleased
 
+## 2.4.0 - 2026-10-15
+
 Still document schema version 1.
 
 ### Added

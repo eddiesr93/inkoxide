@@ -63,8 +63,11 @@ scripts/ci.sh              # everything, including clippy and the visual diff
 
 Maintainers release from `main`:
 
-1. Bump the versions of the packages that changed, and move the "Unreleased" entries in
-   [CHANGELOG.md](CHANGELOG.md) under the new versions.
+1. Bump the version of `inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind`
+   and `@inkoxide/style` together (the Cargo workspace and the five `package.json` files), since
+   they share one version. Bump `@inkoxide/schema` only if the schema changed; it has its own
+   version. Move the "Unreleased" entries in [CHANGELOG.md](CHANGELOG.md) and
+   [packages/schema/CHANGELOG.md](packages/schema/CHANGELOG.md) under the new versions.
 2. Dispatch the `release` workflow, first with `dry_run` on. It builds the native bindings on
    every platform and publishes every package whose version is not on npm yet, in dependency
    order. npm trusts the workflow (trusted publishing), so no token is involved and every
