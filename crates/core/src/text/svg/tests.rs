@@ -25,7 +25,7 @@ fn laid_with(fonts: &str, body: &str) -> LaidText {
     let src =
         format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">{body}</svg>"#);
     let xml = usvg::roxmltree::Document::parse(&src).unwrap();
-    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let text = extract(&xml, usize::MAX).unwrap().0.texts.remove(0);
     let store = store();
     let doc = document(fonts);
     let set = FontSet::load(&doc, &store).unwrap();
@@ -213,7 +213,7 @@ fn records_glyphs_for_the_text_layer() {
     // Shaping through the render's shaper maps each glyph to its text.
     let src = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Hi</text></svg>"#;
     let xml = usvg::roxmltree::Document::parse(src).unwrap();
-    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let text = extract(&xml, usize::MAX).unwrap().0.texts.remove(0);
     let store = store();
     let doc = document(FONTS);
     let set = FontSet::load(&doc, &store).unwrap();
@@ -223,6 +223,37 @@ fn records_glyphs_for_the_text_layer() {
     let map = &unicode.fonts[&0];
     let text: String = laid.glyphs.iter().map(|g| map[&g.id].as_str()).collect();
     assert_eq!(text, "Hi");
+}
+
+/// Each `textLength` finds the clusters inside it without going through
+/// the others: many spans with their own lay out in linear time. Four
+/// times the spans take well under the sixteen times a quadratic layout
+/// would; a ratio, not a wall-clock limit, so a busy machine does not fail
+/// it.
+#[test]
+fn fits_many_text_lengths_in_linear_time() {
+    let a = advance('a', 10.0);
+    let lay_out = |n: usize| {
+        let mut body = String::from(r#"<text font-size="10">"#);
+        for _ in 0..n {
+            body.push_str(r#"<tspan textLength="5" lengthAdjust="spacingAndGlyphs">a</tspan>"#);
+        }
+        body.push_str("</text>");
+        let t = std::time::Instant::now();
+        let laid = laid(&body);
+        let took = t.elapsed();
+        assert_eq!(laid.glyphs.len(), n);
+        assert!(laid.glyphs.iter().all(|g| close(g.scale_x, 5.0 / a)));
+        assert!(close(laid.glyphs[n - 1].x, 5.0 * (n - 1) as f32));
+        took
+    };
+    let n = 8_000;
+    let (small, big) = (lay_out(n), lay_out(4 * n));
+    assert!(
+        big < small * 8 + std::time::Duration::from_millis(500),
+        "{n} took {small:?}, {} took {big:?}",
+        4 * n
+    );
 }
 
 /// Each decoration finds its font without a search: thousands of
@@ -253,7 +284,7 @@ fn decorates_and_sorts_many_spans_in_linear_time() {
 fn lays_out_emoji_images_as_images() {
     let src = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text x="10" y="50" font-size="20" fill="red">a😀b</text></svg>"#;
     let xml = usvg::roxmltree::Document::parse(src).unwrap();
-    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let text = extract(&xml, usize::MAX).unwrap().0.texts.remove(0);
     let store = store();
     let doc = document(FONTS);
     let set = FontSet::load(&doc, &store).unwrap();
