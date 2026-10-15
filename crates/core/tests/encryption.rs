@@ -654,6 +654,13 @@ fn bad_encryption_options_name_the_option_and_never_the_password() {
                 .with_permissions(Permissions::new()),
             "options.encryption.permissions",
         ),
+        (
+            Encryption::new()
+                .with_user_password(secret)
+                .with_owner_password(secret)
+                .with_permissions(Permissions::new()),
+            "options.encryption.permissions",
+        ),
     ] {
         let options = RenderOptions::default().with_encryption(e);
         assert_eq!(render(options), ("INVALID_VALUE", path.into()));

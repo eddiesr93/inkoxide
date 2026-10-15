@@ -120,9 +120,9 @@ password lifts the permissions.
 
 - At least one password is needed. Passwords are printable ASCII, at most
   127 bytes.
-- `permissions` need an owner password: without one, the user password is
-  also the owner password and lifts them. Readers, not the file, enforce
-  the permissions.
+- `permissions` need an owner password other than the user password:
+  without one, or with the same one, the user password lifts them. Readers,
+  not the file, enforce the permissions.
 - With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` in
   Rust and `INVALID_ARGUMENT` in Node (PDF/A forbids it).
 - A bad value is `INVALID_VALUE` at its path (`options.encryption.userPassword`,

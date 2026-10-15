@@ -605,7 +605,7 @@ reader without it may do:
 
 - Passwords are printable ASCII, at most 127 bytes. With only `ownerPassword`, anyone opens the
   file and the permissions apply; with only `userPassword`, it is also the owner password, so
-  `permissions` need `ownerPassword`.
+  `permissions` need an `ownerPassword` other than `userPassword`.
 - The `encryption` render option (`{ userPassword, ownerPassword, permissions }`) replaces the
   three props as a whole, for passwords that come from the request rather than the template.
 - Encryption and PDF/A do not go together: PDF/A forbids encryption.

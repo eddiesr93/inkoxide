@@ -387,7 +387,7 @@ export interface DocumentProps {
   userPassword?: string;
   /** The password that lifts `permissions`. Default: the user password. */
   ownerPassword?: string;
-  /** What a reader without the owner password may do; needs `ownerPassword`. */
+  /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
   children?: ReactNode;
 }

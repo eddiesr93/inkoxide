@@ -60,8 +60,8 @@ subject of this review.**
   - At least one of the two is non-empty.
   - An empty owner password is replaced by the user password, so there is never a file whose owner
     password is empty while the user password is not.
-  - Permissions without an owner password are refused, since the user password would then lift
-    them.
+  - Permissions without an owner password, or with one equal to the user password, are refused,
+    since the user password would then lift them.
 - **P**: the permission bits, a 32-bit integer: bits 1–2 clear, 7–8 and 13–32 set, the others from
   the options.
 - **D**: SHA-256 of the complete file that the same render would write **unencrypted**: every
@@ -156,7 +156,8 @@ A reader with the user password computes `IK_u`, decrypts `UE`, gets `file_key` 
 everything. It can usually rebuild the plain file, and so `D`: that is the decrypted file with the
 plain subset tags and the widths of the glyphs used only, both of which come from the glyph set
 that the decrypted content shows. It still cannot compute `M` or the other keys
-without the owner password, unless the two passwords are the same.
+without the owner password, unless the two passwords are the same (allowed only without
+permissions, when there is nothing for the owner password to guard).
 
 ## Accepted limitations (documented in SECURITY.md)
 
