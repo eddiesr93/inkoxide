@@ -64,9 +64,17 @@ function checkOptions(options) {
   if (options === undefined || options === null) return;
   checkObject(options, 'options');
   checkTypes(options, OPTION_TYPES, 'options');
-  const { pdfA, images, encryption } = options;
+  const { pdfA, images, encryption, lazyFonts } = options;
   if (pdfA !== undefined && typeof pdfA !== 'boolean' && typeof pdfA !== 'string') {
     throw engineError('INVALID_ARGUMENT', 'options.pdfA', 'must be a boolean or a string');
+  }
+  if (lazyFonts !== undefined) {
+    checkObject(lazyFonts, 'options.lazyFonts');
+    for (const [id, url] of Object.entries(lazyFonts)) {
+      if (typeof url !== 'string' && !(url instanceof URL)) {
+        throw engineError('INVALID_ARGUMENT', `options.lazyFonts.${id}`, 'must be a URL');
+      }
+    }
   }
   if (images !== undefined) {
     checkObject(images, 'options.images');
@@ -91,20 +99,26 @@ let exports = null;
 let starting = null;
 const fonts = new Map();
 const patterns = new Map();
+// The built-in hyphenation patterns loaded, by file (`de`), and where they come from.
+const builtins = new Map();
+let hyphenationBase = null;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+/** A `file:` URL's bytes, in Node, where fetch does not read files; otherwise the URL. */
+async function fromFile(url) {
+  if (!(url instanceof URL) || url.protocol !== 'file:') return url;
+  const fs = globalThis.process?.getBuiltinModule?.('node:fs/promises');
+  return fs ? fs.readFile(url) : url;
+}
 
 async function compile(source) {
   if (source instanceof WebAssembly.Module) return source;
   source = await source;
   if (source === undefined) source = new URL('./inkoxide.wasm', import.meta.url);
   if (typeof source === 'string') source = new URL(source, import.meta.url);
-  if (source instanceof URL && source.protocol === 'file:') {
-    // Node: fetch does not read files.
-    const fs = globalThis.process?.getBuiltinModule?.('node:fs/promises');
-    if (fs) source = await fs.readFile(source);
-  }
+  source = await fromFile(source);
   if (source instanceof URL) source = await fetch(source);
   if (typeof Response !== 'undefined' && source instanceof Response) {
     if (!source.ok) throw new Error(`@inkoxide/wasm: ${source.url}: HTTP ${source.status}`);
@@ -119,9 +133,17 @@ async function compile(source) {
 
 /**
  * Compiles and instantiates the engine once; later calls wait for the first and ignore their
- * `source`.
+ * arguments. `options.hyphenation` is the folder of the built-in hyphenation patterns
+ * (`<file>.bin`), by default the package's `hyphenation/`.
  */
-export function init(source) {
+export function init(source, options) {
+  if (options?.hyphenation !== undefined) {
+    const base = String(options.hyphenation);
+    hyphenationBase = new URL(
+      base.endsWith('/') ? base : `${base}/`,
+      globalThis.location?.href ?? import.meta.url,
+    );
+  }
   starting ??= (async () => {
     const module = await compile(source);
     const instance = await WebAssembly.instantiate(module, {});
@@ -142,6 +164,9 @@ function engine() {
   for (const [id, data] of fonts) callIn(e, () => registerIn(e, 'ink_register_font', id, data));
   for (const [lang, data] of patterns) {
     callIn(e, () => registerIn(e, 'ink_register_hyphenation_patterns', lang, data));
+  }
+  for (const [file, data] of builtins) {
+    callIn(e, () => registerIn(e, 'ink_register_builtin_hyphenation', file, data));
   }
   exports = e;
   return e;
@@ -271,17 +296,113 @@ export function validate(doc, format, images) {
   });
 }
 
-export function renderSync(doc, options) {
-  const bytes = bytesOf(doc);
-  checkOptions(options);
-  const { images, ...rest } = options ?? {};
-  const json = encoder.encode(JSON.stringify(rest, finiteOrString));
-  const buf = images === undefined ? new Uint8Array() : imagesBuffer(images);
-  return call((e) => outcome(e, e.ink_render(...put(e, bytes), ...put(e, json), ...put(e, buf))));
+// The URL of the built-in hyphenation patterns in `file`. Written as a template next to
+// import.meta.url, so that bundlers copy the folder.
+function hyphenationUrl(file) {
+  if (hyphenationBase) return new URL(`${file}.bin`, hyphenationBase);
+  return new URL(`./hyphenation/${file}.bin`, import.meta.url);
 }
 
-/** Renders on the calling thread: in a page, call it from a worker. */
-export const render = async (doc, options) => renderSync(doc, options);
+// The bytes at `url`; a failure is a NOT_LOADED error saying `what` could not be fetched.
+async function fetchBytes(url, what) {
+  try {
+    const res = await fromFile(url);
+    if (!(res instanceof URL)) return new Uint8Array(res);
+    const r = await fetch(res);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+  } catch (e) {
+    throw engineError('NOT_LOADED', '', `${what} could not be fetched from ${url.href}: ${e.message}`, e);
+  }
+}
+
+// Fetches and registers the built-in hyphenation patterns of `files` not loaded yet.
+async function loadFiles(files) {
+  await Promise.all(
+    files
+      .filter((file) => !builtins.has(file))
+      .map(async (file) => {
+        const bytes = await fetchBytes(hyphenationUrl(file), `the built-in hyphenation patterns ${file}`);
+        call((e) => registerIn(e, 'ink_register_builtin_hyphenation', file, bytes));
+        builtins.set(file, bytes);
+      }),
+  );
+}
+
+// Fetches and registers the fonts of `ids` from `lazyFonts`.
+async function loadFonts(ids, lazyFonts) {
+  await Promise.all(
+    ids.map(async (id) => {
+      const url = new URL(String(lazyFonts?.[id] ?? ''), globalThis.location?.href ?? import.meta.url);
+      const bytes = await fetchBytes(url, `the font ${id}`);
+      registerFont(id, bytes);
+    }),
+  );
+}
+
+/**
+ * Fetches the built-in hyphenation patterns of `langs` (BCP-47 tags) that are not loaded, so
+ * that `renderSync` can hyphenate text in them; `render` loads what a document needs itself.
+ */
+export async function loadHyphenation(langs) {
+  if (!Array.isArray(langs) || langs.some((l) => typeof l !== 'string')) {
+    throw argumentError('expected an array of language tags');
+  }
+  const files = langs
+    .map((lang) =>
+      call((e) => decoder.decode(outcome(e, e.ink_hyphenation_file(...put(e, encoder.encode(lang)))))),
+    )
+    .filter(Boolean);
+  await loadFiles([...new Set(files)]);
+}
+
+// One render: `{ pdf }`, or `{ needs }`: `{ fonts, hyphenation }` it needs and has not been given.
+function renderOnce(doc, options) {
+  const bytes = bytesOf(doc);
+  checkOptions(options);
+  const { images, lazyFonts, ...rest } = options ?? {};
+  // The engine renders without them until a render needs them.
+  if (lazyFonts !== undefined) rest.deferredFonts = Object.keys(lazyFonts);
+  const json = encoder.encode(JSON.stringify(rest, finiteOrString));
+  const buf = images === undefined ? new Uint8Array() : imagesBuffer(images);
+  return call((e) => {
+    const status = e.ink_render(...put(e, bytes), ...put(e, json), ...put(e, buf));
+    if (status === 2) return { needs: JSON.parse(decoder.decode(result(e))) };
+    return { pdf: outcome(e, status) };
+  });
+}
+
+function notLoaded({ fonts, hyphenation }) {
+  const parts = [];
+  if (fonts.length > 0) parts.push(`the fonts ${fonts.join(', ')}`);
+  if (hyphenation.length > 0) parts.push(`the built-in hyphenation patterns ${hyphenation.join(', ')}`);
+  const message = `not loaded: ${parts.join(' and ')}; render with render(), which loads them`;
+  return engineError('NOT_LOADED', '', message);
+}
+
+/**
+ * Renders on the calling thread, with what was loaded: a document that needs one of its
+ * `lazyFonts`, or built-in hyphenation patterns not loaded (`loadHyphenation`), fails with
+ * `NOT_LOADED`.
+ */
+export function renderSync(doc, options) {
+  const { pdf, needs } = renderOnce(doc, options);
+  if (needs) throw notLoaded(needs);
+  return pdf;
+}
+
+/**
+ * Renders on the calling thread (in a page, call it from a worker), after fetching what the
+ * document needs: those of its `lazyFonts` it draws with, and built-in hyphenation patterns.
+ */
+export async function render(doc, options) {
+  const first = renderOnce(doc, options);
+  if (!first.needs) return first.pdf;
+  await Promise.all([loadFonts(first.needs.fonts, options?.lazyFonts), loadFiles(first.needs.hyphenation)]);
+  const { pdf, needs } = renderOnce(doc, options);
+  if (needs) throw notLoaded(needs);
+  return pdf;
+}
 
 export const version = () => call((e) => JSON.parse(decoder.decode(outcome(e, e.ink_version()))));
 

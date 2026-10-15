@@ -59,13 +59,13 @@ The same documents, rendered by both libraries with the same font, page size and
 | Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.3 ms | 21.2 ms |
 | Invoice (react-pdf with `StyleSheet`) | 1 | 1.6 ms | 19.2 ms |
 | Report: 40 sections, 1,000 table rows | 43 | 56 ms | 2,331 ms |
-| In Chromium: invoice | 1 | 2.4 ms | 16.2 ms |
-| In Chromium: report | 43 | 56 ms | 1,913 ms |
+| In Chromium: invoice | 1 | 2.3 ms | 16.0 ms |
+| In Chromium: report | 43 | 56 ms | 1,901 ms |
 
 <sub>Apple M4 Pro, Node 24.14 and Chromium 153, median of 20 warm renders (10 for the report).
 On all cores the report takes 43 ms. In a new process, the first render including loading the
 library takes 177 ms for the invoice against 226 ms, and 217 ms for the report against
 2,398 ms. In the browser, Inkoxide renders in a Web Worker, and react-pdf on the main thread,
-which a report blocks for about two seconds; the engine is a 1.97 MB download with brotli.
+which a report blocks for about two seconds; the engine is a 1.18 MB download with brotli.
 [docs/BENCHMARKS.md](https://github.com/eddiesr93/inkoxide/blob/main/docs/BENCHMARKS.md) has
 the rest.</sub>

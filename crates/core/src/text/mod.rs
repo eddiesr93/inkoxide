@@ -6,12 +6,13 @@
 //! it, only `prepare.rs` uses rustybuzz; it builds its shaping faces from
 //! the font bytes, and takes glyph lookups and advances from `fonts`.
 
+mod builtin;
 mod color;
 mod emoji;
 mod hyphen;
 mod objects;
-pub use hyphen::HyphenationStore;
 pub(crate) use hyphen::ResolvedHyphenator;
+pub use hyphen::{builtin_hyphenation_file, HyphenationStore};
 mod lines;
 mod optimal;
 mod paint;
@@ -392,6 +393,10 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
         // placeholder digits.
         for key in 0..fonts.fonts.len() as FontKey {
             let f = fonts.get(key);
+            // A deferred font has no glyphs until it is registered.
+            if f.is_deferred() {
+                continue;
+            }
             let extras = [lines::HYPHEN, '-', lines::ELLIPSIS, '.'];
             for c in extras.into_iter().chain('0'..='9') {
                 if let Some(g) = f.glyph(c) {
@@ -408,7 +413,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
         Self {
             fonts,
             unicode,
-            hyphenator: &hyphen::HypherHyphenator,
+            hyphenator: &hyphen::BuiltinHyphenator,
             shapes,
             objects: Arc::default(),
         }

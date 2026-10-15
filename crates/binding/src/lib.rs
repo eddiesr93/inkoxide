@@ -158,6 +158,9 @@ pub struct Options {
     pub subset_fonts: Option<bool>,
     pub pdf_a: Option<PdfA>,
     pub encryption: Option<EncryptionOptions>,
+    /// Font ids the caller gives when a render needs them
+    /// (`RenderOptions::deferred_fonts`).
+    pub deferred_fonts: Vec<String>,
 }
 
 /// `options.encryption`: mirrors Rust `Encryption`.
@@ -213,6 +216,7 @@ impl Options {
         if let Some(e) = self.encryption {
             core = core.with_encryption(encryption(e)?);
         }
+        core.deferred_fonts = self.deferred_fonts;
         Ok((format, core))
     }
 }

@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 workspace = true
 
 [dependencies]
-inkoxide = { workspace = true, features = ["msgpack"] }
+inkoxide = { workspace = true, features = ["msgpack", "embedded-hyphenation"] }
 inkoxide-binding.workspace = true
 napi.workspace = true
 napi-derive.workspace = true

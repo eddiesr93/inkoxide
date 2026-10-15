@@ -23,7 +23,6 @@ ttf-parser.workspace = true
 unicode-linebreak.workspace = true
 unicode-bidi.workspace = true
 unicode-properties.workspace = true
-hypher.workspace = true
 flate2.workspace = true
 image.workspace = true
 xxhash-rust.workspace = true
@@ -39,12 +38,17 @@ rmp-serde = { workspace = true, optional = true }
 wuff.workspace = true
 
 [features]
-default = ["msgpack"]
+default = ["msgpack", "embedded-hyphenation"]
+# The built-in hyphenation patterns in the binary (1.2 MB). Without it,
+# `HyphenationStore::register_builtin` gives them at run time.
+embedded-hyphenation = []
 # `InputFormat::MessagePack`. Without it, MessagePack input is a parse error.
 msgpack = ["dep:rmp-serde"]
 
 [dev-dependencies]
 criterion.workspace = true
+# The matching of `text/builtin.rs` is tested against it.
+hypher.workspace = true
 rmp-serde.workspace = true
 
 [[bench]]

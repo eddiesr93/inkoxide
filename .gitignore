@@ -14,6 +14,7 @@ dist/
 
 # The WebAssembly engine, built by scripts/build-wasm.sh
 /packages/wasm/inkoxide.wasm
+/packages/wasm/hyphenation/
 
 # Playwright, in examples/browser
 /examples/browser/test-results/

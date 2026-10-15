@@ -37,6 +37,11 @@ How it differs from `inkoxide`:
 - **One thread.** Renders run on the calling thread, `render` included: in a
   page, render in a Web Worker. `threads` may only be `1`.
 - **JSON only.** `format: 'msgpack'` is a `PARSE_ERROR`.
+- **Downloads on demand.** The module (about 1.2 MB with brotli) leaves out the built-in
+  hyphenation patterns: `render` fetches a language's from `hyphenation/` next to the module the
+  first time a document hyphenates text in it, and the fonts of its `lazyFonts` option (id →
+  URL) that a document draws with, or needs as a fallback. `renderSync` cannot fetch, and fails
+  with `NOT_LOADED`: call `loadHyphenation(['de'])` first, or use `render`.
 - **`init(source?)`** takes a URL, a `Response`, the bytes or a compiled
   `WebAssembly.Module`. It needs no cross-origin isolation; a Content Security
   Policy needs `script-src 'wasm-unsafe-eval'`.

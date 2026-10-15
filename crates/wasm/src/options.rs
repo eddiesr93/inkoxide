@@ -4,7 +4,9 @@
 //! `INVALID_ARGUMENT` at its path, without the value. JSON has no NaN or
 //! infinities: the wrapper sends them as the strings `"NaN"`,
 //! `"Infinity"` and `"-Infinity"`, so that the range checks report them.
-//! Keys this does not know are ignored, as napi ignores them.
+//! Keys this does not know are ignored, as napi ignores them. `deferredFonts`
+//! (font ids, `RenderOptions::deferred_fonts`) is the wrapper's own: it
+//! sends the ids of its `lazyFonts`.
 
 use inkoxide_binding::{EncryptionOptions, Failure, Options, PdfA, PermissionOptions};
 use serde_json::{Map, Value};
@@ -40,6 +42,15 @@ pub(crate) fn parse(json: &[u8]) -> Result<Options, Failure> {
         encryption: object(&o, at, "encryption")?
             .map(|e| encryption(e, "options.encryption"))
             .transpose()?,
+        deferred_fonts: match o.get("deferredFonts") {
+            None => Vec::new(),
+            Some(Value::Array(ids)) => ids
+                .iter()
+                .map(|id| id.as_str().map(str::to_string))
+                .collect::<Option<_>>()
+                .ok_or_else(|| wrong(at, "deferredFonts", "an array of font ids"))?,
+            Some(_) => return Err(wrong(at, "deferredFonts", "an array of font ids")),
+        },
     })
 }
 

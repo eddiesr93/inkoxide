@@ -251,10 +251,7 @@ fn itemize(
                 Some((f, _)) if neutral => f,
                 _ if fonts.get(primary).glyph(c).is_some() || neutral => primary,
                 _ => fonts
-                    .fallbacks
-                    .iter()
-                    .copied()
-                    .find(|&f| fonts.get(f).glyph(c).is_some())
+                    .fallback(|f| fonts.get(f).glyph(c).is_some())
                     .unwrap_or(primary),
             };
             match current {
@@ -922,7 +919,7 @@ fn bidi_levels(text: &str, direction: Direction) -> (Option<Vec<u8>>, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::hyphen::{HypherHyphenator, NoHyphenation};
+    use super::super::hyphen::{BuiltinHyphenator, NoHyphenation};
     use super::*;
 
     fn run(text: &str) -> TextRun {
@@ -1027,7 +1024,7 @@ mod tests {
 
     #[test]
     fn soft_hyphens_in_long_words_only() {
-        let out = insert_soft_hyphens("a documentation hyphenation", &HypherHyphenator, "en");
+        let out = insert_soft_hyphens("a documentation hyphenation", &BuiltinHyphenator, "en");
         assert!(out.starts_with("a "));
         assert!(
             out.contains("doc\u{AD}u\u{AD}men\u{AD}ta\u{AD}tion"),
@@ -1044,7 +1041,7 @@ mod tests {
                 direction: Direction::Ltr,
                 hyphenate,
                 lang: Some("en"),
-                hyphenator: &HypherHyphenator,
+                hyphenator: &BuiltinHyphenator,
                 objects: &super::super::InlineObjects::default(),
                 runs,
             })
@@ -1068,8 +1065,8 @@ mod tests {
 
     #[test]
     fn built_in_languages() {
-        assert!(HypherHyphenator.supports("de"));
+        assert!(BuiltinHyphenator.supports("de"));
         // Languages without built-in patterns.
-        assert!(!HypherHyphenator.supports("ja"));
+        assert!(!BuiltinHyphenator.supports("ja"));
     }
 }

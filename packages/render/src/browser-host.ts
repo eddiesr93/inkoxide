@@ -225,8 +225,17 @@ const browserHost: EngineHost = {
   registerHyphenationPatterns: async (lang, bytes) =>
     void (await current().call('registerHyphenationPatterns', [lang, bytes])),
   validate: async (doc, images) => (await current().call('validate', [doc, 'json', images])) as EngineIssue[],
-  render: async (doc, options, signal) =>
-    (await current().call('render', [doc, options], signal)) as Uint8Array,
+  render: async (doc, options, signal, lazyFonts = {}) => {
+    // As URLs, which the engine fetches only if the document needs them.
+    const urls = Object.fromEntries(
+      Object.entries(lazyFonts).flatMap(([id, path]) => {
+        const url = assetUrl(path);
+        return url ? [[id, url.href]] : [];
+      }),
+    );
+    const withLazy = Object.keys(urls).length > 0 ? { ...options, lazyFonts: urls } : options;
+    return (await current().call('render', [doc, withLazy], signal)) as Uint8Array;
+  },
   isEngineError: (e): e is Error & EngineIssue =>
     e instanceof Error &&
     e.name === 'InkoxideError' &&

@@ -16,6 +16,15 @@ fn register_fonts() {
     }
 }
 
+/// The failure of a render that should fail.
+fn failed(r: Result<Vec<u8>, NotRendered>) -> Failure {
+    match r {
+        Err(NotRendered::Failed(f)) => f,
+        Err(NotRendered::Needs(missing)) => panic!("needs {missing}"),
+        Ok(_) => panic!("rendered"),
+    }
+}
+
 fn images_buffer(images: &[(&str, &[u8])]) -> Vec<u8> {
     let mut buf = (images.len() as u32).to_le_bytes().to_vec();
     for (id, bytes) in images {
@@ -92,7 +101,7 @@ const EMPTY: &[u8] =
 
 #[test]
 fn options_are_checked_at_their_path() {
-    let path = |json: &str| render(EMPTY, json.as_bytes(), b"").map(|_| ()).unwrap_err();
+    let path = |json: &str| failed(render(EMPTY, json.as_bytes(), b""));
     for (json, at) in [
         ("[]", "options"),
         (r#"{"threads":"4"}"#, "options.threads"),
@@ -130,7 +139,7 @@ fn options_are_checked_at_their_path() {
 
 #[test]
 fn msgpack_is_a_parse_error() {
-    let f = render(&[0x80], br#"{"format":"msgpack"}"#, b"").unwrap_err();
+    let f = failed(render(&[0x80], br#"{"format":"msgpack"}"#, b""));
     assert_eq!(f.code, "PARSE_ERROR");
     let errors: serde_json::Value =
         serde_json::from_str(&validate(&[0x80], b"msgpack", None).unwrap()).unwrap();
@@ -160,4 +169,40 @@ fn version_is_json() {
     let v: serde_json::Value = serde_json::from_str(&version()).unwrap();
     assert_eq!(v["schema"], 1);
     assert_eq!(v["engine"], inkoxide::ENGINE_VERSION);
+}
+
+/// A render that needs built-in hyphenation patterns names their files with
+/// status 2, and renders once they are registered. (In a workspace build the
+/// engine may embed them, and render at once.)
+#[test]
+fn hyphenation_patterns_come_when_a_render_needs_them() {
+    register_fonts();
+    let doc = br#"{"version":1,"meta":{"lang":"de"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+      "pages":[{"size":{"width":200,"height":400},"children":[{"type":"text","style":{"width":80,"hyphenate":true},
+      "runs":[{"text":"Donaudampfschifffahrtsgesellschaft","font":"Inter-Regular","size":10}]}]}]}"#;
+    let call_render = || {
+        call(|alloc| {
+            let (d, dl) = alloc(doc);
+            let (o, ol) = alloc(b"");
+            let (i, il) = alloc(b"");
+            // SAFETY: buffers from `ink_alloc`, each passed once.
+            unsafe { ink_render(d, dl, o, ol, i, il) }
+        })
+    };
+    let (status, result) = call_render();
+    if status == 2 {
+        assert_eq!(result, br#"{"fonts":[],"hyphenation":["de"]}"#);
+        assert_eq!(hyphenation_file(b"de-AT"), "de");
+        let automaton = fixture("../crates/core/hyphenation/de.bin");
+        let (status, _) = call(|alloc| {
+            let (f, fl) = alloc(b"de");
+            let (a, al) = alloc(&automaton);
+            // SAFETY: buffers from `ink_alloc`, each passed once.
+            unsafe { ink_register_builtin_hyphenation(f, fl, a, al) }
+        });
+        assert_eq!(status, 0);
+        assert_eq!(call_render().0, 0);
+    } else {
+        assert_eq!(status, 0, "{}", String::from_utf8_lossy(&result));
+    }
 }

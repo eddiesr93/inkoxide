@@ -16,8 +16,8 @@ mod color;
 mod layout;
 mod woff;
 
-use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
@@ -412,15 +412,34 @@ impl FontStore {
 /// order); also its PDF resource number.
 pub(crate) type FontKey = u16;
 
+/// The deferred fonts ([`crate::RenderOptions::deferred_fonts`]) a render
+/// drew with, or tried.
+type Needed = Arc<Mutex<BTreeSet<String>>>;
+
 /// A registered font parsed for one render: its `cmap` and advances.
 pub(crate) struct LoadedFont<'a> {
     /// The id the document declares it under.
     pub id: &'a str,
     pub data: &'a FontData,
     face: ttf_parser::Face<'a>,
+    /// For a deferred font that is not registered: another font's data
+    /// stands in, it has no glyph, and asking for one notes it here.
+    deferred: Option<Needed>,
 }
 
 impl LoadedFont<'_> {
+    /// Whether it stands in for a deferred font that is not registered.
+    pub fn is_deferred(&self) -> bool {
+        self.deferred.is_some()
+    }
+
+    /// Notes that the render needs the deferred font this stands in for.
+    fn note_needed(&self) {
+        if let Some(Ok(mut needed)) = self.deferred.as_ref().map(|n| n.lock()) {
+            needed.insert(self.id.to_string());
+        }
+    }
+
     /// See [`FontData::has_color`].
     pub fn has_color(&self) -> bool {
         self.data.has_color()
@@ -437,6 +456,10 @@ impl LoadedFont<'_> {
     }
 
     pub fn glyph(&self, c: char) -> Option<u16> {
+        if self.is_deferred() {
+            self.note_needed();
+            return None;
+        }
         self.face.glyph_index(c).map(|g| g.0)
     }
 
@@ -526,20 +549,54 @@ fn nearest_weight(pool: &[usize], weight_of: impl Fn(usize) -> u16, w: u16) -> O
 pub(crate) struct FontSet<'a> {
     pub fonts: Vec<LoadedFont<'a>>,
     by_id: BTreeMap<&'a str, FontKey>,
-    pub fallbacks: Vec<FontKey>,
+    fallbacks: Vec<FontKey>,
     /// The declarations, by key: family, weight and style for `select`.
     decls: &'a [FontDecl],
+    needed: Needed,
 }
 
 impl<'a> FontSet<'a> {
     /// Assumes the document passed validation (every font is registered).
+    #[cfg(test)]
     pub fn load(doc: &'a Document, store: &'a FontStore) -> Result<Self, InkoxideError> {
+        Self::load_with(doc, store, &[])
+    }
+
+    /// The fonts of `doc`, where those of `deferred` that are not
+    /// registered stand in ([`LoadedFont::is_deferred`]) with another font's
+    /// data, so that keys, and the PDF resource names they give, stay those
+    /// of the declarations. Assumes the document passed validation (every
+    /// other font is registered).
+    pub fn load_with(
+        doc: &'a Document,
+        store: &'a FontStore,
+        deferred: &[String],
+    ) -> Result<Self, InkoxideError> {
+        let needed = Needed::default();
+        let missing = |id: &str| store.get(id).is_none() && deferred.iter().any(|d| d == id);
+        // Any registered font of the document can stand in.
+        let stand_in = doc.fonts.iter().find_map(|d| store.get(&d.id));
         let mut fonts = Vec::with_capacity(doc.fonts.len());
         let mut by_id = BTreeMap::new();
         for decl in &doc.fonts {
-            let data = store.get(&decl.id).ok_or_else(|| {
-                InkoxideError::Internal(format!("font `{}` vanished after validation", decl.id))
-            })?;
+            let is_deferred = missing(&decl.id);
+            let data = if is_deferred {
+                stand_in.ok_or_else(|| {
+                    InkoxideError::NotLoaded(crate::NotLoaded {
+                        fonts: doc
+                            .fonts
+                            .iter()
+                            .map(|d| d.id.clone())
+                            .filter(|id| missing(id))
+                            .collect(),
+                        hyphenation: Vec::new(),
+                    })
+                })?
+            } else {
+                store.get(&decl.id).ok_or_else(|| {
+                    InkoxideError::Internal(format!("font `{}` vanished after validation", decl.id))
+                })?
+            };
             let face = ttf_parser::Face::parse(&data.bytes, 0)
                 .map_err(|_| InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id)))?;
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
@@ -547,6 +604,7 @@ impl<'a> FontSet<'a> {
                 id: &decl.id,
                 data,
                 face,
+                deferred: is_deferred.then(|| needed.clone()),
             });
         }
         // Each font once, where it is first listed: a font that lacks a
@@ -564,7 +622,30 @@ impl<'a> FontSet<'a> {
             by_id,
             fallbacks,
             decls: &doc.fonts,
+            needed,
         })
+    }
+
+    /// The first fallback font, in the listed order, that `want` accepts. A
+    /// deferred one on the way is noted as needed and passed over: with it
+    /// registered, the render tries it.
+    pub fn fallback(&self, want: impl Fn(FontKey) -> bool) -> Option<FontKey> {
+        self.fallbacks.iter().copied().find(|&f| {
+            let font = self.get(f);
+            if font.is_deferred() {
+                font.note_needed();
+                return false;
+            }
+            want(f)
+        })
+    }
+
+    /// The deferred fonts the render drew with, or tried.
+    pub fn not_loaded(&self) -> Vec<String> {
+        self.needed
+            .lock()
+            .map(|n| n.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     pub fn key(&self, id: &str) -> Option<FontKey> {

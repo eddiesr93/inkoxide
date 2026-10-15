@@ -1278,8 +1278,10 @@ cross-origin isolation (COOP and COEP).
 
 - Renders run in one worker, one at a time, on one thread: `threads` may only be `1`.
 - `renderToFile`, `renderToStream` and image files are not available.
-- The engine module is about 2 MB to download with brotli, once; a bundled font is 65 to 245 KB
-  with brotli.
+- The engine module is about 1.2 MB to download with brotli, once. A bundled font (65 to
+  245 KB with brotli) is downloaded when a document first draws with it: Noto Sans, the
+  fallback, only for a character Inter lacks. A language's hyphenation patterns (1 to 350 KB)
+  are downloaded when a document first hyphenates text in it.
 - The PDF has the bytes Node renders, except where SVG markers are rotated: their numbers can
   differ in the last digits, since the browser's math library rounds differently.
 - A bug in the engine fails the render with `INTERNAL`; the next render runs in a new instance.

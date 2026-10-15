@@ -354,7 +354,7 @@ test('an error has only the documented own enumerable properties', () => {
 });
 
 test('the module exports only the public API', () => {
-  const extra = wasm ? ['clearCaches', 'init'] : [];
+  const extra = wasm ? ['clearCaches', 'init', 'loadHyphenation'] : [];
   assert.deepStrictEqual(
     Object.keys(ink).sort(),
     [
@@ -422,4 +422,67 @@ test('registered hyphenation patterns win over the built-in ones', () => {
     name: 'InkoxideError',
     code: 'HYPHENATION_ERROR',
   });
+});
+
+test(
+  'the WebAssembly engine fetches the hyphenation patterns a document needs',
+  { skip: !wasm },
+  async () => {
+    const doc = JSON.stringify({
+      version: 1,
+      meta: { lang: 'de' },
+      fonts: [{ id: 'Inter-Regular', family: 'Inter' }],
+      pages: [
+        {
+          size: { width: 200, height: 400 },
+          children: [
+            {
+              type: 'text',
+              style: { width: 80, hyphenate: true },
+              runs: [{ text: 'Donaudampfschifffahrtsgesellschaft', font: 'Inter-Regular', size: 10 }],
+            },
+          ],
+        },
+      ],
+    });
+    assert.throws(
+      () => ink.renderSync(doc),
+      (e) => e instanceof ink.InkoxideError && e.code === 'NOT_LOADED' && /\bde\b/.test(e.message),
+    );
+    const pdf = await ink.render(doc);
+    assert.deepStrictEqual(ink.renderSync(doc), pdf);
+    // After a trap, a new instance has them too.
+    assert.throws(() => ink.InkoxideError.__testPanic());
+    assert.deepStrictEqual(ink.renderSync(doc), pdf);
+  },
+);
+
+test('the WebAssembly engine fetches the lazy fonts a document needs', { skip: !wasm }, async () => {
+  const noto = new URL('../../../fixtures/fonts/NotoSans-Regular.ttf', import.meta.url);
+  const doc = (text) =>
+    JSON.stringify({
+      version: 1,
+      fonts: [
+        { id: 'Inter-Regular', family: 'Inter' },
+        { id: 'Lazy-Noto', family: 'Noto Sans' },
+      ],
+      fallbackFonts: ['Lazy-Noto'],
+      pages: [
+        {
+          size: { width: 200, height: 200 },
+          children: [{ type: 'text', runs: [{ text, font: 'Inter-Regular', size: 10 }] }],
+        },
+      ],
+    });
+  const lazyFonts = { 'Lazy-Noto': noto };
+  // Not needed: renders without it.
+  assert.ok(ink.renderSync(doc('Hello'), { lazyFonts }).length > 0);
+  // Inter has no U+01C4: the fallback is needed.
+  assert.throws(
+    () => ink.renderSync(doc('\u01C4'), { lazyFonts }),
+    (e) => e.code === 'NOT_LOADED' && /Lazy-Noto/.test(e.message),
+  );
+  const pdf = await ink.render(doc('\u01C4'), { lazyFonts });
+  assert.deepStrictEqual(ink.renderSync(doc('\u01C4'), { lazyFonts }), pdf);
+  assert.strictEqual(ink.unregisterFont('Lazy-Noto'), true);
 });

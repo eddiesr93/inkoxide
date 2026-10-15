@@ -114,15 +114,36 @@ async function startEngine(): Promise<EngineStatus> {
   return status;
 }
 
+/** The font ids `value` names under a `font` key, at any depth: those its text is drawn in. */
+function namedFonts(value: unknown, into = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const v of value) namedFonts(v, into);
+  } else if (value !== null && typeof value === 'object') {
+    for (const [key, v] of Object.entries(value)) {
+      if (key === 'font' && typeof v === 'string') into.add(v);
+      else namedFonts(v, into);
+    }
+  }
+  return into;
+}
+
 /**
- * Hands the engine the bundled fonts that `doc` declares and it does not have yet (a host with
- * `lazyFonts`). A font that cannot be read fails the render with an `INTERNAL` RenderError.
+ * Hands the engine the bundled fonts that `doc` draws its text in and it does not have yet (a
+ * host with `lazyFonts`), and returns the other bundled fonts it declares and the engine does not
+ * have, by their asset paths: the fallbacks, which the engine fetches only when a character needs
+ * one. A font that cannot be read fails the render with an `INTERNAL` RenderError.
  */
-async function loadDocumentFonts(doc: Pick<Document, 'fonts'>): Promise<void> {
+async function loadDocumentFonts(doc: Pick<Document, 'fonts' | 'pages'>): Promise<Record<string, string>> {
+  const named = namedFonts(doc.pages);
+  const deferred: Record<string, string> = {};
   const loads: Promise<void>[] = [];
   for (const { id } of doc.fonts ?? []) {
     const file = lazyFaces.get(id);
     if (file === undefined) continue;
+    if (!named.has(id)) {
+      deferred[id] = `fonts/${file}`;
+      continue;
+    }
     let load = lazyLoads.get(id);
     if (!load) {
       const host = engineHost();
@@ -146,6 +167,7 @@ async function loadDocumentFonts(doc: Pick<Document, 'fonts'>): Promise<void> {
     loads.push(load);
   }
   await Promise.all(loads);
+  return deferred;
 }
 
 /** Registers one more font with the engine, after `initEngine` (fonts added with `Font.register`). */
@@ -191,7 +213,7 @@ export function toRenderError(e: unknown): RenderError {
  * Sequence → why.
  */
 export async function refusedEmoji(
-  doc: Pick<Document, 'emojiImages' | 'fonts'>,
+  doc: Pick<Document, 'emojiImages' | 'fonts' | 'pages'>,
   images: Record<string, Uint8Array>,
 ): Promise<Record<string, string>> {
   const emojiImages = doc.emojiImages ?? {};
@@ -249,9 +271,9 @@ export async function renderPdf(
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
   opts.signal?.throwIfAborted();
-  await loadDocumentFonts(doc);
+  const lazyFonts = await loadDocumentFonts(doc);
   try {
-    return await engineHost().render(JSON.stringify(doc), options, opts.signal);
+    return await engineHost().render(JSON.stringify(doc), options, opts.signal, lazyFonts);
   } catch (e) {
     if (opts.signal?.aborted && e === opts.signal.reason) throw e;
     throw toRenderError(e);

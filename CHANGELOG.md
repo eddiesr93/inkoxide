@@ -16,13 +16,21 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   of SVG marker angles): `renderToBuffer` and `renderToBlob`, whose `signal` stops a render,
   `generate`, and the React helpers `usePdf`, `<PdfDownloadLink>` and `<PdfViewer>`. It needs no
   cross-origin isolation, and a Content Security Policy needs only `'wasm-unsafe-eval'`. The
-  bundled fonts download when a document first uses them. See GUIDE.md, "In the browser".
-- `@inkoxide/wasm`, the engine as WebAssembly, with the functions of `inkoxide` and `init` and
-  `clearCaches`; it is released with the other packages, at their version.
+  engine is about 1.2 MB to download with brotli; a bundled font downloads when a document first
+  draws with it (Noto Sans, the fallback, only for a character Inter lacks), and a language's
+  hyphenation patterns when a document first hyphenates text in it. See GUIDE.md, "In the
+  browser".
+- `@inkoxide/wasm`, the engine as WebAssembly, with the functions of `inkoxide`, and `init`,
+  `clearCaches` and `loadHyphenation`; its `render` fetches the hyphenation patterns and the
+  `lazyFonts` a document needs. It is released with the other packages, at their version.
 - `@inkoxide/tailwind` has a browser entry, chosen through the `browser` export condition, with
   Tailwind's theme bundled.
-- Rust: `inkoxide::clear_caches()`, and a `msgpack` cargo feature, on by default, for
-  `InputFormat::MessagePack`.
+- Rust: `inkoxide::clear_caches()`; the cargo features `msgpack`, for
+  `InputFormat::MessagePack`, and `embedded-hyphenation`, for the built-in hyphenation
+  patterns, both on by default; without the latter, `HyphenationStore::register_builtin` gives
+  a language's patterns (`builtin_hyphenation_file` names its file). `RenderOptions::deferred_fonts`
+  lists declared fonts that may be missing until a render needs one. A render that needs what
+  it was not given fails with `InkoxideError::NotLoaded` (`NOT_LOADED`), naming it.
 - A text node with `hyphenate` on and no `lang` (nor `meta.lang`) logs a warning, and the
   `warnings` of an `@inkoxide/render` result say so, since such text is not hyphenated.
 
@@ -30,6 +38,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 - `@inkoxide/react` validates trees in development with code generated from the schema, which
   compiles nothing at run time: it no longer depends on `ajv`.
+- The engine matches words against the built-in hyphenation patterns itself, with hypher's
+  patterns and algorithm, so that they can also come at run time; it hyphenates as before.
 
 ### Fixed
 
