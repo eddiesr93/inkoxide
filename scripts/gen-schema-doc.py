@@ -30,6 +30,12 @@ INTRO = """# Document schema v1
   padding and horizontal properties, as in CSS). Gaps resolve against the
   box's own content box, and a percentage height needs a containing block
   with a set height: the page content box, for a child of the page.
+- **Numbers.** An integer may be written with a zero fraction (`400.0`),
+  as JSON Schema reads it. Other numbers are read as 32-bit floats, so a
+  number past a bound by less than a float's precision there is read as
+  the bound and accepted (`1000000.01` where the maximum is `1000000`).
+  Percentages and `fr` sizes are bounded as written: `"10000.0001%"` is
+  out of range.
 - **Colours.** `[r, g, b, a]` floats in `[0, 1]`, DeviceRGB.
 - **Strictness.** Unknown properties are errors (`UNKNOWN_FIELD`), as are
   properties on the wrong node type (e.g. `runs` on a `box`) and text-only
@@ -77,7 +83,7 @@ INTRO = """# Document schema v1
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100

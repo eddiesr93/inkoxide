@@ -25,7 +25,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   of its level, except the fixtures that need transparency, which PDF/A-1b
   must reject with `PDFA_CONFLICT` at a given path (`NOT_PDF_A_1B`);
   `pdfa-1b` is a document 1b accepts, with fonts, forms, links,
-  bookmarks and images. With `VERAPDF` pointing at a veraPDF command
+  bookmarks and images; `pdfa-edge` holds the smallest page PDF/A
+  allows, 3 × 3 points. With `VERAPDF` pointing at a veraPDF command
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
   output must pass veraPDF's profile for its level.
 - `crates/core/tests/encryption.rs`: every fixture, encrypted, renders

@@ -19,6 +19,25 @@ version 2.
 - An `emojiImages` image in a run with `verticalAlign` `super` or `sub` is raised or lowered
   with the run's glyphs, its bottom 0.1em below the run's moved baseline. It stayed on the
   line's baseline.
+- A page with a side under 3 points renders as PDF/A no more: the render fails with
+  `PDFA_CONFLICT` at the page's `size`, at every level. Such a file was not PDF/A. The `Size`
+  description says so.
+- The schema and the engine agree on more values:
+  - `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, `flexBasis`, `gap`,
+    `rowGap`, `columnGap` and `padding`, percentage grid tracks and `fitContent` are not
+    negative in the schema either (new `NonNegativePercent`, `NonNegativeLength` and
+    `NonNegativeLengthPercent`). The engine already rejected negative ones with `OUT_OF_RANGE`.
+  - An integer written with a zero fraction (`"weight": 400.0`, `"version": 1.0`,
+    `"colSpan": 1.0`) is read as the integer, as JSON Schema reads it. It was `INVALID_TYPE`.
+  - `"options": []` is `INVALID_VALUE` on every field kind, as the schema's `minItems` says. On
+    a text or checkbox field the engine accepted it.
+  - A percentage or `fr` size past its bound by digits a 32-bit float drops (`"10000.0001%"`,
+    `"1000000.01fr"`) is `OUT_OF_RANGE`, as the schema's pattern says, and a negative
+    percentage too small for a float stays negative. Other numbers are read as 32-bit floats,
+    which `docs/SCHEMA.md` now says.
+  - `TableCell.style` lists `float` and `clear` among the properties a cell does not take, and
+    `float`, `Break.before` and `PageBreakNode` say that a float takes no forced page break,
+    on it or inside it.
 
 ## 2.4.1 - 2026-10-15
 

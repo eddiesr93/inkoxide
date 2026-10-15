@@ -13,6 +13,12 @@
   padding and horizontal properties, as in CSS). Gaps resolve against the
   box's own content box, and a percentage height needs a containing block
   with a set height: the page content box, for a child of the page.
+- **Numbers.** An integer may be written with a zero fraction (`400.0`),
+  as JSON Schema reads it. Other numbers are read as 32-bit floats, so a
+  number past a bound by less than a float's precision there is read as
+  the bound and accepted (`1000000.01` where the maximum is `1000000`).
+  Percentages and `fr` sizes are bounded as written: `"10000.0001%"` is
+  out of range.
 - **Colours.** `[r, g, b, a]` floats in `[0, 1]`, DeviceRGB.
 - **Strictness.** Unknown properties are errors (`UNKNOWN_FIELD`), as are
   properties on the wrong node type (e.g. `runs` on a `box`) and text-only
@@ -60,7 +66,7 @@
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -145,6 +151,12 @@ A percentage within ±10000%, like `"50%"`.
 
 Type: `string` matching `^-?0*([0-9]{1,4}(\.[0-9]+)?|10000(\.0+)?)%$`
 
+### NonNegativePercent
+
+A percentage within [0%, 10000%], like `"50%"`.
+
+Type: `string` matching `^(0*([0-9]{1,4}(\.[0-9]+)?|10000(\.0+)?)|-0+(\.0+)?)%$`
+
 ### Fr
 
 A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
@@ -163,6 +175,18 @@ Points (within ±1000000) or a percentage of the containing block's width (withi
 
 Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent)
 
+### NonNegativeLength
+
+A `Length` that is not negative: points (at most 1000000), a percentage of the containing block (at most 10000%), or "auto". A percentage height needs a containing block with a definite height, as for `Length`.
+
+Type: `number` (≥ 0, ≤ 1000000) or [`NonNegativePercent`](#nonnegativepercent) or `"auto"`
+
+### NonNegativeLengthPercent
+
+A `LengthPercent` that is not negative: points (at most 1000000) or a percentage (at most 10000%), of what `LengthPercent` says.
+
+Type: `number` (≥ 0, ≤ 1000000) or [`NonNegativePercent`](#nonnegativepercent)
+
 ### Color
 
 [r, g, b, a], each in [0, 1].
@@ -170,6 +194,8 @@ Type: `number` (≥ -1000000, ≤ 1000000) or [`Percent`](#percent)
 Type: array of `number` (each ≥ 0, ≤ 1) (exactly 4 items)
 
 ### Size
+
+Page size in points. PDF/A, at any level, takes sides of 3 points or more: a render of a smaller page as PDF/A fails with `PDFA_CONFLICT` at the page's `size`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
@@ -187,12 +213,14 @@ Type: array of `number` (each ≥ 0, ≤ 1) (exactly 4 items)
 
 ### EdgesLengthPercent
 
+Padding: a `NonNegativeLengthPercent` per side.
+
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `top` | [`LengthPercent`](#lengthpercent) |  |  |
-| `right` | [`LengthPercent`](#lengthpercent) |  |  |
-| `bottom` | [`LengthPercent`](#lengthpercent) |  |  |
-| `left` | [`LengthPercent`](#lengthpercent) |  |  |
+| `top` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  |  |
+| `right` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  |  |
+| `bottom` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  |  |
+| `left` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  |  |
 
 ### EdgesLength
 
@@ -232,7 +260,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `before` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, or on an absolutely positioned node: there it would do nothing. |
+| `before` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing. |
 | `after` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page after the node when in-flow content follows it: a break at the end of the flow adds no page. Allowed where `before` is. |
 | `inside` | `"auto"` \| `"avoid"` |  | default `"auto"`; `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole. |
 | `minPresenceAhead` | [`NonNegative`](#nonnegative) |  | Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: "page"` on a first child moves the box the same way. |
@@ -252,7 +280,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 
 Grid track: a breadth, `{min, max}` (CSS `minmax()`; `min` cannot be fr) or `{fitContent}` (CSS `fit-content()`).
 
-Type: [`TrackBreadth`](#trackbreadth) or `{min, max}` (`min`: [`TrackBreadth`](#trackbreadth); `max`: [`TrackBreadth`](#trackbreadth)) or `{fitContent}` (`fitContent`: [`LengthPercent`](#lengthpercent))
+Type: [`TrackBreadth`](#trackbreadth) or `{min, max}` (`min`: [`TrackBreadth`](#trackbreadth); `max`: [`TrackBreadth`](#trackbreadth)) or `{fitContent}` (`fitContent`: [`NonNegativeLengthPercent`](#nonnegativelengthpercent))
 
 ### BorderRadius
 
@@ -285,16 +313,16 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `alignContent` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"space-between"` \| `"space-around"` \| `"space-evenly"` \| `"stretch"` \| `"start"` \| `"end"` |  |  |
 | `flexGrow` | [`NonNegative`](#nonnegative) |  |  |
 | `flexShrink` | [`NonNegative`](#nonnegative) |  |  |
-| `flexBasis` | [`Length`](#length) |  |  |
-| `gap` | [`LengthPercent`](#lengthpercent) |  | Sets both rowGap and columnGap; either of those, when present, wins. |
-| `rowGap` | [`LengthPercent`](#lengthpercent) |  | A percentage is of the box's own content height, as in CSS. In a box whose height is not set, it is of the height of the content without the gaps, so it adds little: use points. |
-| `columnGap` | [`LengthPercent`](#lengthpercent) |  |  |
-| `width` | [`Length`](#length) |  |  |
-| `height` | [`Length`](#length) |  |  |
-| `minWidth` | [`Length`](#length) |  |  |
-| `minHeight` | [`Length`](#length) |  |  |
-| `maxWidth` | [`Length`](#length) |  |  |
-| `maxHeight` | [`Length`](#length) |  |  |
+| `flexBasis` | [`NonNegativeLength`](#nonnegativelength) |  |  |
+| `gap` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  | Sets both rowGap and columnGap; either of those, when present, wins. |
+| `rowGap` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  | A percentage is of the box's own content height, as in CSS. In a box whose height is not set, it is of the height of the content without the gaps, so it adds little: use points. |
+| `columnGap` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  |  |
+| `width` | [`NonNegativeLength`](#nonnegativelength) |  |  |
+| `height` | [`NonNegativeLength`](#nonnegativelength) |  |  |
+| `minWidth` | [`NonNegativeLength`](#nonnegativelength) |  |  |
+| `minHeight` | [`NonNegativeLength`](#nonnegativelength) |  |  |
+| `maxWidth` | [`NonNegativeLength`](#nonnegativelength) |  |  |
+| `maxHeight` | [`NonNegativeLength`](#nonnegativelength) |  |  |
 | `aspectRatio` | `number` |  | ≥ 0.000001, ≤ 1000000; Width divided by height. |
 | `padding` | [`EdgesLengthPercent`](#edgeslengthpercent) |  |  |
 | `margin` | [`EdgesLength`](#edgeslength) |  |  |
@@ -312,7 +340,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
-| `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
+| `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
 | `clear` | `"left"` \| `"right"` \| `"both"` \| `"none"` |  | default `"none"`; Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides. |
 | `backgroundColor` | [`Color`](#color) |  |  |
 | `opacity` | `number` |  | ≥ 0, ≤ 1 |
@@ -389,7 +417,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `debug` | [`Debug`](#debug) |  |  |
 | `colSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
 | `rowSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
-| `style` | [`Style`](#style) |  | The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`. |
+| `style` | [`Style`](#style) |  | The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin`, `zIndex`, `float` and `clear`. |
 | `children` | array of [`Node`](#node) |  |  |
 
 ### TableRow
@@ -492,7 +520,7 @@ An image painted behind the box's children and over its `backgroundColor`, under
 
 ### PageBreakNode
 
-Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, it is `INVALID_NODE`.
+Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
@@ -589,7 +617,7 @@ A text annotation: a sticky-note icon that opens its text in the viewer. It take
 
 Grid track breadth: points, a percentage, "<n>fr", "auto", "min-content" or "max-content". Points and fr are at most 1000000.
 
-Type: `number` (≥ 0, ≤ 1000000) or [`Percent`](#percent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
+Type: `number` (≥ 0, ≤ 1000000) or [`NonNegativePercent`](#nonnegativepercent) or [`Fr`](#fr) or `"auto"` \| `"min-content"` \| `"max-content"`
 
 ### TemplateTrack
 

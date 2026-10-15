@@ -30,7 +30,7 @@ use crate::InkoxideError;
 pub(crate) use image::transparency as image_transparency;
 pub(crate) use out::written_text_len;
 use out::Out;
-pub(crate) use pdfa::Profile;
+pub(crate) use pdfa::{Profile, MIN_PAGE_EDGE as PDF_A_MIN_PAGE_EDGE};
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 const PAGE_TREE_FANOUT: usize = 50;

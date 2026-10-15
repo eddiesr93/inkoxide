@@ -10,7 +10,7 @@ use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::forms::format;
 use crate::images::{ContentKey, ImageCrateDecoder, ImageData};
-use crate::pdf::Profile;
+use crate::pdf::{Profile, PDF_A_MIN_PAGE_EDGE};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldFormat, FieldKind, FieldValue, FontFeature, FormatKind,
@@ -83,9 +83,10 @@ impl From<TrackBreadth> for Len {
 }
 
 /// Checks `doc` for a render with `profile`. Without `images`, image ids
-/// are not looked up (inline `data` is still checked). Where `profile`
-/// forbids transparency (PDF/A-1b), a valid document that needs it gets
-/// one error: `PDFA_CONFLICT` at the first thing that does.
+/// are not looked up (inline `data` is still checked). Under PDF/A, a
+/// valid document that the level does not allow gets one error:
+/// `PDFA_CONFLICT` at the first thing it does not allow (a page under
+/// [`PDF_A_MIN_PAGE_EDGE`] at any level; transparency at PDF/A-1b).
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
@@ -102,6 +103,7 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
+        pdf_a: profile.is_pdf_a(),
         opaque: !profile.transparency(),
         conflict: None,
         image_transparency: HashMap::new(),
@@ -152,9 +154,11 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
+    /// Rendering PDF/A, at any level: record a page that is too small.
+    pdf_a: bool,
     /// Rendering PDF/A-1b: record the first use of transparency.
     opaque: bool,
-    /// The first use of transparency, under `opaque`.
+    /// The first thing the PDF/A level does not allow, under `pdf_a`.
     conflict: Option<ValidationError>,
     /// What needs transparency in each image checked (by content), under
     /// `opaque`: an image used many times is scanned once.
@@ -444,6 +448,16 @@ impl<'a> Checker<'a> {
                     );
                 });
             }
+        }
+        if self.pdf_a && self.conflict.is_none() && s.width.min(s.height) < PDF_A_MIN_PAGE_EDGE {
+            self.conflict = Some(ValidationError {
+                code: Code::PdfaConflict,
+                path: format!("{}.size", self.path),
+                message: format!(
+                    "PDF/A does not allow a page side under {PDF_A_MIN_PAGE_EDGE} points, and the page is {} × {}",
+                    s.width, s.height
+                ),
+            });
         }
         let m = page.margin;
         for (name, v) in [

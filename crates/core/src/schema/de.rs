@@ -82,6 +82,12 @@ pub struct GridLine(pub i16);
 /// The number of a percentage (`"-12.5%"`) or a flexible size (`"2fr"`),
 /// written as the schema's `Percent` and `Fr` patterns allow: digits, then
 /// optionally `.` and more digits; a percentage may start with `-`.
+///
+/// The patterns bound the digits as written, so the number keeps where it
+/// stands against a bound: digits past a whole number (`"10000.0001"`,
+/// which is `10000` as an `f32`) read as the next `f32` away from zero,
+/// past a bound of `10000`, and digits that are not all zero never read
+/// as 0, so a tiny negative stays negative.
 fn parse_suffixed(s: &str, suffix: &str) -> Option<f32> {
     let n = s.strip_suffix(suffix)?;
     let unsigned = match suffix {
@@ -93,7 +99,41 @@ fn parse_suffixed(s: &str, suffix: &str) -> Option<f32> {
     if !(digits(int) && digits(frac)) {
         return None;
     }
-    n.parse::<f32>().ok().filter(|v| v.is_finite())
+    let v = n.parse::<f32>().ok().filter(|v| v.is_finite())?;
+    let away = |v: f32| {
+        if n.starts_with('-') {
+            v.next_down()
+        } else {
+            v.next_up()
+        }
+    };
+    // Below 2^24 every whole number is an `f32`, and the bounds are there.
+    if v.fract() == 0.0 && v.abs() < 16_777_216.0 {
+        let whole = int.trim_start_matches('0');
+        let written = if whole.len() > 8 {
+            u32::MAX
+        } else {
+            whole.parse().unwrap_or(0)
+        };
+        let fraction = frac.bytes().any(|b| b != b'0');
+        let at = v.abs() as u32;
+        if written > at || (written == at && fraction) {
+            return Some(away(v));
+        }
+    }
+    Some(v)
+}
+
+/// A percentage (`"50%"`) as a fraction, as [`parse_suffixed`] reads it:
+/// one that is not 0 does not become 0.
+fn percent(s: &str) -> Option<f32> {
+    let p = parse_suffixed(s, "%")?;
+    let f = p / 100.0;
+    Some(if f == 0.0 && p != 0.0 {
+        f32::from_bits(1).copysign(p)
+    } else {
+        f
+    })
 }
 
 macro_rules! num_or_str_visitor {
@@ -148,7 +188,7 @@ num_or_str_visitor!(
     |s| if s == "auto" {
         Some(Length::Auto)
     } else {
-        parse_suffixed(s, "%").map(|p| Length::Percent(p / 100.0))
+        percent(s).map(Length::Percent)
     }
 );
 
@@ -156,7 +196,7 @@ num_or_str_visitor!(
     LengthPercent,
     "a number of points or a percentage like \"50%\"",
     |v| finite(v).map(LengthPercent::Points),
-    |s| parse_suffixed(s, "%").map(|p| LengthPercent::Percent(p / 100.0))
+    |s| percent(s).map(LengthPercent::Percent)
 );
 
 /// One axis of an [`ObjectPosition`]: a percentage, or that axis's keywords
@@ -166,7 +206,7 @@ fn position_axis(s: &str, start: &str, end: &str) -> Option<LengthPercent> {
         "center" => 0.5,
         _ if s == start => 0.0,
         _ if s == end => 1.0,
-        _ => parse_suffixed(s, "%")? / 100.0,
+        _ => percent(s)?,
     };
     Some(LengthPercent::Percent(fraction))
 }
@@ -338,7 +378,7 @@ fn breadth_str(s: &str) -> Option<TrackBreadth> {
         "max-content" => Some(TrackBreadth::MaxContent),
         _ => parse_suffixed(s, "fr")
             .map(TrackBreadth::Fr)
-            .or_else(|| parse_suffixed(s, "%").map(|p| TrackBreadth::Percent(p / 100.0))),
+            .or_else(|| percent(s).map(TrackBreadth::Percent)),
     }
 }
 
@@ -475,8 +515,8 @@ impl<'de> Deserialize<'de> for GridTrack {
 
 impl<'de> Deserialize<'de> for GridLine {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let v = i64::deserialize(d)?;
-        if v == 0 || v.unsigned_abs() > i16::MAX as u64 {
+        let Int(v) = Int::<i128>::deserialize(d)?;
+        if v == 0 || v.unsigned_abs() > i16::MAX as u128 {
             return Err(de::Error::custom(
                 "[OUT_OF_RANGE] grid line must be a non-zero integer within ±32767",
             ));
@@ -504,6 +544,16 @@ impl<'de, T: TryFrom<i128>> Deserialize<'de> for Int<T> {
             }
             fn visit_u64<E: de::Error>(self, v: u64) -> Result<i128, E> {
                 Ok(v.into())
+            }
+            /// An integer written as a float (`400.0`), as JSON Schema
+            /// reads it; a whole number past `i128` saturates, and is out
+            /// of range as `T`.
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<i128, E> {
+                if v.fract() == 0.0 {
+                    Ok(v as i128)
+                } else {
+                    Err(E::invalid_type(de::Unexpected::Float(v), &self))
+                }
             }
         }
         let v = d.deserialize_i64(V)?;
@@ -554,9 +604,23 @@ pub(super) fn font_features<'de, D: Deserializer<'de>>(
     Option::<Features>::deserialize(d).map(|o| o.map(|f| f.0))
 }
 
+/// `deserialize_with` for a list that, when present, has at least one item
+/// (the schema's `minItems: 1`), whatever its owner.
+pub(super) fn non_empty<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Vec<T>, D::Error> {
+    let v = Vec::<T>::deserialize(d)?;
+    if v.is_empty() {
+        return Err(de::Error::custom(
+            "[INVALID_VALUE] the list needs at least one item",
+        ));
+    }
+    Ok(v)
+}
+
 /// `deserialize_with` for [`super::GridPlacement::span`]: at least one track.
 pub(super) fn grid_span<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u16>, D::Error> {
-    let Some(v) = Option::<i64>::deserialize(d)? else {
+    let Some(Int(v)) = Option::<Int<i128>>::deserialize(d)? else {
         return Ok(None);
     };
     match u16::try_from(v) {
