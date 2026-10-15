@@ -87,7 +87,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `fixtures/fonts/EmojiTest-COLR.ttf`, `EmojiTest-CBDT.ttf` and
   `EmojiTest-sbix.ttf`: small colour emoji fonts written from scratch by
   `scripts/fixtures/emoji_fonts.py` (outlines with `COLR` v0 and v1
-  glyphs, and PNG bitmaps without outlines), with ligatures for a ZWJ
+  glyphs, and PNG bitmaps without outlines, the sbix ones in two strikes
+  so that the largest is the one drawn), with ligatures for a ZWJ
   sequence, a flag, a keycap and a skin tone. The script also writes
   `fixtures/fonts/limits/colr-fanout.ttf`, a `COLR` glyph whose layers
   paint the next level 255 times, eight levels deep, for the colour glyph

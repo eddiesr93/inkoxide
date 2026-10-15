@@ -524,7 +524,10 @@ mod tests {
                     panic!("no bitmap in {}", font.id);
                 };
                 assert!(png.starts_with(b"\x89PNG"));
-                // 64 px at 64 ppem in a 1000-unit em, from (3, -10) px.
+                // 64 px at 64 ppem in a 1000-unit em, from (3, -10) px: the
+                // largest strike, also in the sbix font, whose first strike
+                // is 32 ppem.
+                assert_eq!(&png[16..20], 64u32.to_be_bytes(), "{}", font.id);
                 assert_eq!(bbox, [46.875, -156.25, 1046.875, 843.75], "{}", font.id);
                 assert_eq!(font.color_glyph(font.glyph(' ').unwrap()), None);
             }
