@@ -6,6 +6,8 @@ import {
   type ColorValue,
   type DecorationStyle,
   type Len,
+  type LetterSpacing,
+  type LineHeight,
   type LenPercent,
   OBJECT_FITS,
   type ObjectFit,
@@ -175,6 +177,26 @@ export class Reader {
       if (!(e instanceof ValueError)) throw e;
       throw this.error(`${this.prop}: ${value} (${e.message})`);
     }
+  }
+
+  /**
+   * A line height: a multiplier of the text's size (`1.5`, `150%`, `1.5em`), or a length in
+   * points (`14pt`, `5mm`). `em` is the size of the text it applies to.
+   */
+  lineHeight(value: string): LineHeight {
+    const d = this.dim(value);
+    if (d.u === '' || d.u === 'em') return { mult: round(d.v) };
+    if (d.u === '%') return { mult: round(d.v / 100) };
+    if (d.u === 'pt') return { pt: round(d.v) };
+    throw this.error(`${this.prop}: ${value}`);
+  }
+
+  /** A letter spacing: a length, `em` being the size of the text it applies to. */
+  letterSpacing(value: string): LetterSpacing {
+    const d = this.dim(value);
+    if (d.u === 'em') return { em: round(d.v) };
+    if (d.u === 'pt' || (d.u === '' && d.v === 0)) return { pt: round(d.v) };
+    throw this.error(`${this.prop}: ${value}`);
   }
 
   num(value: string): number {

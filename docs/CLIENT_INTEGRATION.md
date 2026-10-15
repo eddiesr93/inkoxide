@@ -58,7 +58,8 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
   in `CBDT` or `sbix` are drawn in colour, as images that copy as their
   text. A font with colour bitmaps and no outlines (Noto Color Emoji's
   CBDT build) registers as a colour-only font: it is never embedded, its
-  glyphs without colour are not drawn, and a form field cannot use it.
+  glyphs without colour are not drawn (they still copy as their text),
+  and a form field cannot use it.
   List an emoji font in the document's `fallbackFonts`: emoji go to the
   first colour fallback that has them. `SVG` glyph tables are not read.
 

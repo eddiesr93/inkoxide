@@ -30,6 +30,7 @@ pub const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Document {
+    #[serde(deserialize_with = "de::int")]
     pub version: u32,
     #[serde(default)]
     pub meta: Meta,
@@ -389,11 +390,12 @@ pub struct Field {
     /// options: a list with `multi_select`). Radio: the value this button
     /// exports when selected.
     pub value: Option<FieldValue>,
-    /// Checkbox and radio: initially on.
+    /// Checkbox and radio: initially on. At most one button of a radio
+    /// group; buttons of the group with the same value are on together.
     #[serde(default)]
     pub checked: bool,
-    /// Select and list: the choices.
-    #[serde(default)]
+    /// Select and list: the choices. Set, it holds at least one.
+    #[serde(default, deserialize_with = "de::non_empty")]
     pub options: Vec<String>,
     /// List: several options can be selected.
     #[serde(default)]

@@ -31,6 +31,12 @@ jobs:
         with:
           node-version: '22.22.0'
           package-manager-cache: false
+      - name: Install pnpm
+        # The version comes from packageManager in package.json.
+        run: corepack enable
+      - name: Install dependencies
+        # schema-parity.test.js imports ajv. Only the binding's package and the workspace root.
+        run: pnpm install --frozen-lockfile --filter inkoxide
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bindings-windows

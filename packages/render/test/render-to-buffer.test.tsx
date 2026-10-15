@@ -498,6 +498,61 @@ describe('renderToBuffer', () => {
     expect(countPages(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { threads: 256 }))).toBe(1);
   });
 
+  it('rejects a render option of the wrong type with a 400 at its path, in no component', async () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ threads: '4' }, 'options.threads'],
+      [{ pdfA: 5 }, 'options.pdfA'],
+      [{ compress: 'no' }, 'options.compress'],
+      [{ subsetFonts: 1 }, 'options.subsetFonts'],
+      [{ creationDate: 20260101 }, 'options.creationDate'],
+      [{ images: { logo: 'logo.png' } }, 'options.images.logo'],
+      [
+        { encryption: { userPassword: 'u', ownerPassword: 'o', permissions: { copying: 'yes' } } },
+        'options.encryption.permissions.copying',
+      ],
+      [{ localImages: {} }, 'options.localImages.root'],
+      [{ localImages: { root: [1] } }, 'options.localImages.root'],
+      [{ remoteImages: { allow: 'cdn.example.com' } }, 'options.remoteImages.allow'],
+    ];
+    for (const [opts, path] of cases) {
+      const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, opts).catch((e: unknown) => e);
+      expect(err, JSON.stringify(opts)).toBeInstanceOf(RenderError);
+      expect(err).toMatchObject({ code: 'ENGINE_REJECTED', status: 400, path, component: undefined });
+      expect((err as RenderError).message).toContain(path.slice('options.'.length));
+      expect((err as RenderError).message).not.toContain('<Document>');
+    }
+    // null is an option left out.
+    const nulls = {
+      threads: null,
+      compress: null,
+      pdfA: null,
+      images: null,
+    } as unknown as RenderToBufferOptions;
+    expect(countPages(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, nulls))).toBe(1);
+    // A <Document> permission of the wrong type, from JavaScript, is the same.
+    const props = { userPassword: 'u', ownerPassword: 'o', permissions: { copying: 'yes' } };
+    const fromProps = await renderToBuffer(
+      <Document {...(props as unknown as DocumentProps)}>
+        <Page>
+          <Text>Locked</Text>
+        </Page>
+      </Document>,
+    ).catch((e: unknown) => e);
+    expect(fromProps).toMatchObject({
+      code: 'ENGINE_REJECTED',
+      path: 'options.encryption.permissions.copying',
+      component: undefined,
+    });
+  });
+
+  it('names no component for a render option the engine refuses', async () => {
+    const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { threads: 0 }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ code: 'ENGINE_REJECTED', path: 'options.threads', component: undefined });
+    expect((err as RenderError).message).not.toMatch(/ in </);
+  });
+
   it('writes the PDF/A level asked for', async () => {
     const part = async (pdfA: RenderToBufferOptions['pdfA']) => {
       const pdf = Buffer.from(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, { pdfA })).toString(
@@ -560,6 +615,11 @@ describe('renderToBuffer', () => {
     // A bad value names its path and never the password.
     for (const [p, opts, path] of [
       [{ userPassword: secret, permissions: {} }, {}, 'options.encryption.permissions'],
+      [
+        { userPassword: secret, ownerPassword: secret, permissions: {} },
+        {},
+        'options.encryption.permissions',
+      ],
       [{ userPassword: `${secret}é` }, {}, 'options.encryption.userPassword'],
       [{}, { encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
     ] as const) {
@@ -578,7 +638,6 @@ describe('renderToBuffer', () => {
     }).catch((e: unknown) => e);
     expect(typed).toMatchObject({
       code: 'ENGINE_REJECTED',
-      engineCode: 'INVALID_ARGUMENT',
       path: 'options.encryption.userPassword',
     });
     expect(JSON.stringify(typed)).not.toMatch(/1234|s3cret/);

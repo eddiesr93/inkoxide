@@ -412,12 +412,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
         delete s.lineHeight;
         return;
       }
-      const d = r.dim(v);
-      if (d.u === '') s.lineHeight = { mult: round(d.v) };
-      else if (d.u === '%') s.lineHeight = { mult: round(d.v / 100) };
-      else if (d.u === 'em') s.lineHeight = { mult: round(d.v) };
-      else if (d.u === 'pt') s.lineHeight = { pt: round(d.v) };
-      else throw r.error(`line-height: ${v}`);
+      s.lineHeight = r.lineHeight(v);
       return;
     }
     case 'letter-spacing': {
@@ -425,10 +420,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
         s.letterSpacing = { pt: 0 };
         return;
       }
-      const d = r.dim(v);
-      if (d.u === 'em') s.letterSpacing = { em: round(d.v) };
-      else if (d.u === 'pt' || (d.u === '' && d.v === 0)) s.letterSpacing = { pt: round(d.v) };
-      else throw r.error(`letter-spacing: ${v}`);
+      s.letterSpacing = r.letterSpacing(v);
       return;
     }
     case 'text-align':

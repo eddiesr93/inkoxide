@@ -561,6 +561,35 @@ fn a_repeated_header_is_painted_once_per_page() {
 }
 
 #[test]
+fn a_nested_table_repeats_its_header_below_the_outer_one() {
+    // An outer row taller than a page holds an inner table: on every page,
+    // the inner header row (red) sits below the outer one (green, 20pt).
+    let cell = |h: f32| format!(r#"{{"children":[{{"type":"box","style":{{"height":{h}}}}}]}}"#);
+    let rows = vec![format!(r#"{{"cells":[{}]}}"#, cell(10.0)); 20].join(",");
+    let inner = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[1,0,0,1],"cells":[{}]}},{rows}]}}"#,
+        cell(10.0)
+    );
+    let outer = format!(
+        r#"{{"type":"table","headerRows":1,"columns":[{{"width":"1fr"}}],"rows":[
+            {{"backgroundColor":[0,1,0,1],"cells":[{}]}},
+            {{"cells":[{{"children":[{inner}]}}]}}]}}"#,
+        cell(20.0)
+    );
+    let boxes = red_boxes(&with_fixed(1, &outer));
+    let on_table = boxes.iter().take_while(|page| !page.is_empty()).count();
+    assert!(on_table >= 3, "{boxes:?}");
+    for (k, page) in boxes.iter().take(on_table).enumerate() {
+        assert!(
+            page.len() == 1 && close(page[0].1, M + 20.0),
+            "page {}: {page:?}",
+            k + 1
+        );
+    }
+}
+
+#[test]
 fn overlays_take_no_space() {
     // Below the content box: painted off the page, without adding pages.
     let low = red_box(
@@ -635,6 +664,62 @@ fn fills(json: &str) -> Vec<Vec<f32>> {
             })
             .collect()
     })
+}
+
+#[test]
+fn fixed_nodes_in_the_flow_are_painted_in_paint_order() {
+    // Boxes told apart by their red component; `{F}` is where `fixed` goes.
+    let shade = |red: f32, f: &str, style: &str, children: &str| {
+        format!(
+            r#"{{"type":"box"{f},"style":{{"backgroundColor":[{red},0,0,1],"height":10{style}}}{children}}}"#
+        )
+    };
+    let plain = |red: f32, style: &str| shade(red, "", style, "");
+    let fixed = |red: f32, style: &str| shade(red, "{F}", style, "");
+    let around = |red: f32, style: &str, child: &str| {
+        shade(red, "", style, &format!(r#","children":[{child}]"#))
+    };
+    let cases = [
+        // First in document order.
+        vec![fixed(0.1, ""), plain(0.2, "")],
+        // Over its next sibling.
+        vec![fixed(0.1, r#","zIndex":1"#), plain(0.2, "")],
+        // Under its previous sibling.
+        vec![plain(0.2, ""), fixed(0.1, r#","zIndex":-1"#)],
+        // Nested: after its parent, before the parent's next sibling.
+        vec![around(0.3, "", &fixed(0.1, "")), plain(0.2, "")],
+        // In a parent painted over its next sibling.
+        vec![
+            around(0.3, r#","zIndex":1"#, &fixed(0.1, "")),
+            plain(0.2, ""),
+        ],
+    ];
+    for case in cases {
+        let children = case.join(",");
+        let with = fills(&with_fixed(2, &children.replace("{F}", FIXED)));
+        let without = fills(&with_fixed(2, &children.replace("{F}", "")));
+        assert_eq!(with[0], without[0], "{children}");
+        // On later pages, alone, even where its parent is not.
+        assert_eq!(with[1], [0.1], "{children}");
+    }
+    // Not cut to the content band, unlike the flow around it.
+    let children = format!("{},{}", fixed(0.1, ""), plain(0.2, "")).replace("{F}", FIXED);
+    let clipped = render_doc(&with_fixed(1, &children), |pages, _| {
+        // Per fill, whether a clip is in effect.
+        let mut stack = vec![false];
+        let mut out = Vec::new();
+        for op in &pages[0].ops {
+            match op {
+                Op::Save => stack.push(*stack.last().unwrap()),
+                Op::Restore => drop(stack.pop()),
+                Op::ClipRect(_) | Op::ClipPath { .. } => *stack.last_mut().unwrap() = true,
+                Op::FillPath { color, .. } => out.push((color[0], *stack.last().unwrap())),
+                _ => {}
+            }
+        }
+        out
+    });
+    assert_eq!(clipped, [(0.1, false), (0.2, true)]);
 }
 
 #[test]
@@ -819,6 +904,51 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
     pages.into_iter().map(|p| p.ops).collect()
 }
 
+/// An SVG without a size is laid out at the size of what it draws, its
+/// text left out: the size its form has, the same with any fonts.
+#[test]
+fn an_svg_without_a_size_is_laid_out_without_its_text() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"image","src":"svg","style":{{"alignSelf":"flex-start"}}}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let store = store();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut images = ImageStore::new();
+    images.insert(
+        "svg",
+        br#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="40" height="20" fill="red"/>
+            <text x="10" y="60" font-size="40">Hello wide text</text></svg>"#
+            .to_vec(),
+    );
+    let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    images.lay_out_text(text.shaper()).unwrap();
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
+    let matrix = pages[0]
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            Op::Image { matrix, .. } => Some(*matrix),
+            _ => None,
+        })
+        .unwrap();
+    // 40 × 20 px is 30 × 15 pt.
+    assert!(close(matrix[0].abs(), 30.0), "{matrix:?}");
+    assert!(close(matrix[3].abs(), 15.0), "{matrix:?}");
+}
+
 #[test]
 fn a_background_image_fills_the_padding_box_under_the_borders() {
     // 150 pt high on 100 pt pages: split over two.
@@ -942,6 +1072,65 @@ fn emoji_ops_in(
     (pages.into_iter().map(|p| p.ops).collect(), ids)
 }
 
+/// A colour glyph with a layer in the foreground colour is drawn in its
+/// run's colour: one image per colour. One without is the same image in
+/// every colour.
+#[test]
+fn colour_glyphs_take_the_colour_of_their_run() {
+    let mut store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+    let bytes = crate::test_fixtures::fixture("fonts/EmojiTest-COLR.ttf");
+    store.register("EmojiTest-COLR", bytes).unwrap();
+    let span = |text: &str, color: &str| {
+        format!(r#"{{"text":"{text}","font":"EmojiTest-COLR","size":20,"color":{color}}}"#)
+    };
+    let runs = [
+        span("\u{2B50}", "[1,0,0,1]"),
+        span("\u{2B50}", "[0,0,1,0.5]"),
+        span("\u{2B50}", "[1,0,0,1]"),
+        span("\u{1F600}", "[1,0,0,1]"),
+        span("\u{1F600}", "[0,0,1,1]"),
+    ]
+    .join(",");
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"EmojiTest-COLR","family":"Emoji"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","runs":[{runs}]}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
+    let keys: Vec<_> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Image { key, .. } => Some(key),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(keys.len(), 5, "{keys:?}");
+    // The star in red, in blue, and in red again; the grin in both.
+    assert_ne!(keys[0], keys[1]);
+    assert_eq!(keys[0], keys[2]);
+    assert_eq!(keys[3], keys[4]);
+    // Three images: two stars and a grin.
+    let mut distinct = keys.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(distinct.len(), 3);
+}
+
 /// With `debug`, colour glyphs are still images: the outlined paragraph is
 /// painted as any other.
 #[test]
@@ -1011,17 +1200,34 @@ fn colour_glyphs_are_images_in_spans_with_their_text() {
                 _ => None,
             })
             .collect();
-        assert_eq!(spans, ["\u{1F600}", "\u{1F1EB}\u{1F1F7}"], "{fallback}");
+        // The space after the flag is the colour font's: without outlines
+        // (CBDT), nothing draws it, but it keeps its text.
+        let space: &[&str] = if fallback == "EmojiTest-CBDT" {
+            &[" "]
+        } else {
+            &[]
+        };
+        assert_eq!(
+            spans,
+            [&["\u{1F600}", "\u{1F1EB}\u{1F1F7}"][..], space].concat(),
+            "{fallback}"
+        );
         let images = ops
             .iter()
             .filter(|op| matches!(op, Op::Image { .. }))
             .count();
         assert_eq!(images, 2, "{fallback}");
-        for op in ops {
-            if let Op::InvisibleText(g) = op {
-                assert_eq!(ids[g.font as usize], "Inter-Regular");
-                assert!(close(g.width, 22.0), "{}", g.width);
-            }
+        let spaces: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::InvisibleText(g) => Some(g),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces.len(), 2 + space.len());
+        for g in &spaces[..2] {
+            assert_eq!(ids[g.font as usize], "Inter-Regular");
+            assert!(close(g.width, 22.0), "{}", g.width);
         }
         let at = |want: fn(&Op) -> bool| ops.iter().position(want).unwrap();
         let (span, image) = (

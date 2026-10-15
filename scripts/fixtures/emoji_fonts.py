@@ -5,8 +5,8 @@ tools, no third-party artwork), so they are small and free of licences:
 - fixtures/fonts/EmojiTest-COLR.ttf: TrueType outlines plus COLR v0 and v1
   colour glyphs (solid fills, linear, radial and sweep gradients,
   transforms, a composite, a glyph reused through PaintColrGlyph, clip
-  boxes), and GSUB ligatures for a ZWJ sequence, a flag, a keycap and a
-  skin tone;
+  boxes, a layer in the foreground colour), and GSUB ligatures for a ZWJ
+  sequence, a flag, a keycap and a skin tone;
 - fixtures/fonts/EmojiTest-CBDT.ttf: no outlines, PNG bitmaps in CBDT, and
   the same ligatures for the flag;
 - fixtures/fonts/EmojiTest-sbix.ttf: no outlines, PNG bitmaps in sbix, in
@@ -495,6 +495,11 @@ def colr_font():
     l_screen = add("l_screen", [rect(200, 150, 900, 750)])
     l_base = add("l_base", [rect(100, -50, 1000, 150)])
     l_shine = add("l_shine", [circle(450, 600, 120)])
+    # Takes the text colour: a star in the foreground colour (palette
+    # index 0xFFFF) with a dot in the palette's yellow.
+    star = add("star", [diamond(550, 350, 450, 450)])
+    l_star = add("l_star", [diamond(550, 350, 450, 450)])
+    l_dot = add("l_dot", [circle(550, 350, 120)])
 
     palette = [
         (255, 200, 40, 255),   # 0 yellow
@@ -514,6 +519,7 @@ def colr_font():
         heart_g: [(l_heart_l, 3), (l_heart_r, 3), (l_heart_b, 3)],
         tone: [(l_tone, 5)],
         flag_fr: [(l_stripe[0], 6), (l_stripe[1], 7), (l_stripe[2], 3)],
+        star: [(l_star, 0xFFFF), (l_dot, 0)],
     }
     layers = []
 
@@ -553,7 +559,7 @@ def colr_font():
     mapping = {
         0x20: space, 0x31: one, 0x200D: zwj, 0x20E3: keycap_mark, 0xFE0F: vs16,
         0x2764: heart_g, 0x1F1EB: ri_f, 0x1F1F7: ri_r, 0x1F3FD: tone, 0x1F44D: thumbs,
-        0x1F469: woman, 0x1F4BB: laptop, 0x1F600: grin,
+        0x1F469: woman, 0x1F4BB: laptop, 0x1F600: grin, 0x2B50: star,
     }
     ligatures = [
         ([ri_f, ri_r], flag_fr),

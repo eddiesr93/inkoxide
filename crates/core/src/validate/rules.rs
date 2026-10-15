@@ -10,7 +10,7 @@ use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::forms::format;
 use crate::images::{ContentKey, ImageCrateDecoder, ImageData};
-use crate::pdf::Profile;
+use crate::pdf::{Profile, PDF_A_MIN_PAGE_EDGE};
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldFormat, FieldKind, FieldValue, FontFeature, FormatKind,
@@ -83,9 +83,10 @@ impl From<TrackBreadth> for Len {
 }
 
 /// Checks `doc` for a render with `profile`. Without `images`, image ids
-/// are not looked up (inline `data` is still checked). Where `profile`
-/// forbids transparency (PDF/A-1b), a valid document that needs it gets
-/// one error: `PDFA_CONFLICT` at the first thing that does.
+/// are not looked up (inline `data` is still checked). Under PDF/A, a
+/// valid document that the level does not allow gets one error:
+/// `PDFA_CONFLICT` at the first thing it does not allow (a page under
+/// [`PDF_A_MIN_PAGE_EDGE`] at any level; transparency at PDF/A-1b).
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
@@ -102,10 +103,12 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
+        pdf_a: profile.is_pdf_a(),
         opaque: !profile.transparency(),
         conflict: None,
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
+        checked_radios: HashSet::new(),
         feature_sets: HashSet::new(),
         table_slots: 0,
     };
@@ -151,9 +154,11 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
+    /// Rendering PDF/A, at any level: record a page that is too small.
+    pdf_a: bool,
     /// Rendering PDF/A-1b: record the first use of transparency.
     opaque: bool,
-    /// The first use of transparency, under `opaque`.
+    /// The first thing the PDF/A level does not allow, under `pdf_a`.
     conflict: Option<ValidationError>,
     /// What needs transparency in each image checked (by content), under
     /// `opaque`: an image used many times is scanned once.
@@ -161,6 +166,8 @@ struct Checker<'a> {
     /// The groups field names make: every name before one of its dots
     /// (`a` and `a.b` for `a.b.c`).
     field_groups: HashSet<String>,
+    /// The radio groups that have a checked button so far.
+    checked_radios: HashSet<String>,
     /// The different `fontFeatures` of runs seen so far, sorted by tag.
     feature_sets: HashSet<Vec<FontFeature>>,
     /// Grid slots (rows times columns) of the tables seen so far.
@@ -441,6 +448,16 @@ impl<'a> Checker<'a> {
                     );
                 });
             }
+        }
+        if self.pdf_a && self.conflict.is_none() && s.width.min(s.height) < PDF_A_MIN_PAGE_EDGE {
+            self.conflict = Some(ValidationError {
+                code: Code::PdfaConflict,
+                path: format!("{}.size", self.path),
+                message: format!(
+                    "PDF/A does not allow a page side under {PDF_A_MIN_PAGE_EDGE} points, and the page is {} × {}",
+                    s.width, s.height
+                ),
+            });
         }
         let m = page.margin;
         for (name, v) in [
@@ -873,6 +890,7 @@ impl<'a> Checker<'a> {
     }
 
     fn field(&mut self, f: &Field) {
+        let errors = self.errors.len();
         let parts = f.name.split('.').count();
         if f.name.chars().count() > MAX_FIELD_NAME
             || parts > MAX_FIELD_PARTS
@@ -887,6 +905,16 @@ impl<'a> Checker<'a> {
             );
         } else {
             self.field_name(f);
+        }
+        if f.kind == FieldKind::Radio && f.checked && !self.checked_radios.insert(f.name.clone()) {
+            self.err(
+                Code::InvalidValue,
+                Some("checked"),
+                format!(
+                    "radio group `{}` already has a checked button; at most one is selected",
+                    f.name
+                ),
+            );
         }
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {
@@ -1066,6 +1094,50 @@ impl<'a> Checker<'a> {
                 _ => {}
             },
             _ => {}
+        }
+        if self.errors.len() == errors {
+            self.field_glyphs(f);
+        }
+    }
+
+    /// Checks that the font of valid field `f` has a glyph for every
+    /// character its appearance shows: the text a text field shows, and
+    /// the options of a select or list. Fields are drawn with their own
+    /// font only, without fallback fonts.
+    fn field_glyphs(&mut self, f: &Field) {
+        let Some((font, data)) = f
+            .font
+            .as_deref()
+            .and_then(|id| Some((id, Arc::clone(self.fonts.get(id)?))))
+        else {
+            return;
+        };
+        let lacks = |c: &mut Self, at: Option<&str>, text: &str| {
+            let Some(ch) = data.lacks(text) else {
+                return false;
+            };
+            c.err(
+                Code::InvalidValue,
+                at,
+                format!(
+                    "font `{font}` has no glyph for `{ch}` (U+{:04X}); a field is drawn with its own font only, without fallback fonts",
+                    u32::from(ch)
+                ),
+            );
+            true
+        };
+        if f.kind == FieldKind::Text && !f.password {
+            if let Some(v) = f.value_str() {
+                if !lacks(self, Some("value"), v) {
+                    let shown = f.format.as_deref().and_then(|fmt| format::display(fmt, v));
+                    if let Some(shown) = shown {
+                        lacks(self, Some("value"), &shown.text);
+                    }
+                }
+            }
+        }
+        for (i, o) in f.options.iter().enumerate() {
+            self.at("options", |c| c.at_index(i, |c| lacks(c, None, o)));
         }
     }
 

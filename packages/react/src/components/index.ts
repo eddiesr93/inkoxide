@@ -129,8 +129,12 @@ export interface StyleProp extends Omit<
   fontSize?: Length;
   color?: string | Color;
   backgroundColor?: string | Color;
-  /** Multiplier of the text size. */
-  lineHeight?: number;
+  /**
+   * A multiplier of the text size (`1.5`, `'150%'`, `'1.5em'`) or a length (`'14pt'`). `em` is
+   * the size of the text it applies to, as in `leading-[1.5em]`.
+   */
+  lineHeight?: number | `${number}` | `${number}%` | Length;
+  /** Points, or a length; `em` is the size of the text it applies to, as in `tracking-[0.1em]`. */
   letterSpacing?: Length;
   width?: LengthAuto;
   height?: LengthAuto;
@@ -387,7 +391,7 @@ export interface DocumentProps {
   userPassword?: string;
   /** The password that lifts `permissions`. Default: the user password. */
   ownerPassword?: string;
-  /** What a reader without the owner password may do; needs `ownerPassword`. */
+  /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
   children?: ReactNode;
 }
@@ -653,6 +657,7 @@ export interface CheckboxProps extends FieldCommon {
 export interface RadioProps extends FieldCommon {
   /** The value the group exports when this button is selected. */
   value: string;
+  /** Initially selected; at most one button of a group. */
   checked?: boolean;
 }
 

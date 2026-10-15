@@ -75,10 +75,13 @@ pub(crate) trait ContentPainter {
 pub(crate) enum FlowPart<'p> {
     /// Everything, unpaginated (headers, footers).
     All,
-    /// Page `page` of a paginated flow, without its fixed nodes.
-    Page { placement: &'p Placement, page: u32 },
-    /// The flow's fixed nodes, repeated on page `page`.
-    Fixed { placement: &'p Placement, page: u32 },
+    /// Page `page` of a paginated flow, clipped to `band` (page
+    /// coordinates), with its fixed nodes, which are not clipped.
+    Page {
+        placement: &'p Placement,
+        page: u32,
+        band: Rect,
+    },
 }
 
 /// Paints part of `tree`. `dx`/`dy` translate flow (or paged) coordinates
@@ -93,10 +96,13 @@ pub(crate) fn paint_flow(
     ops: &mut Vec<Op>,
     debug: &mut DebugBoxes,
 ) {
-    let mode = match part {
-        FlowPart::All => Mode::Unpaged,
-        FlowPart::Page { placement, page } => Mode::Paged { placement, page },
-        FlowPart::Fixed { placement, page } => Mode::Fixed { placement, page },
+    let (mode, band) = match part {
+        FlowPart::All => (Mode::Unpaged, None),
+        FlowPart::Page {
+            placement,
+            page,
+            band,
+        } => (Mode::Paged { placement, page }, Some(band)),
     };
     let mut p = BoxPainter {
         tree,
@@ -105,25 +111,21 @@ pub(crate) fn paint_flow(
         dy,
         opacity: 1.0,
         ctm: None,
+        states: Vec::new(),
         content,
         ops,
         debug,
     };
-    match mode {
-        Mode::Fixed { placement, page } => {
-            // Fixed nodes keep their position relative to their first page.
-            let h = placement.page_h;
-            for &i in &placement.fixed {
-                let first = placement.first_page(i);
-                p.dy = dy + (page as f32 - first as f32) * h;
-                p.node(i);
-            }
-        }
-        _ => {
-            for c in paint_order(tree, 0) {
-                p.node(c);
-            }
-        }
+    // Split boxes are sliced, like CSS `box-decoration-break: slice`.
+    if let Some(band) = band {
+        p.save();
+        p.state(Op::ClipRect(band));
+    }
+    for c in paint_order(tree, 0) {
+        p.node(c);
+    }
+    if band.is_some() {
+        p.restore();
     }
 }
 
@@ -133,10 +135,11 @@ enum Mode<'p> {
     /// Unpaginated (headers, footers, overlays): every node, unshifted.
     Unpaged,
     /// Page `page` of a paginated flow: the nodes on it, shifted into paged
-    /// space, without the fixed nodes.
+    /// space, and its fixed nodes (in [`Mode::Fixed`]) where they are in
+    /// paint order.
     Paged { placement: &'p Placement, page: u32 },
-    /// The fixed nodes of a paginated flow, repeated on page `page`:
-    /// shifted as on their first page, and not cut to the page.
+    /// A fixed node of a paginated flow, repeated on page `page`: shifted
+    /// as on its first page, and not cut to the page.
     Fixed { placement: &'p Placement, page: u32 },
     /// The header rows of a table, repeated at `shift` (paged space),
     /// ignoring pagination.
@@ -159,6 +162,15 @@ impl<'p> Mode<'p> {
         match self {
             Mode::Paged { placement, page } => placement.on_page(i, page),
             _ => true,
+        }
+    }
+
+    /// Whether node `i` holds a fixed node painted on this page even when
+    /// `i` is not on it.
+    fn holds_fixed(self, i: NodeIdx) -> bool {
+        match self {
+            Mode::Paged { placement, .. } => placement.holds_fixed(i),
+            _ => false,
         }
     }
 
@@ -200,6 +212,10 @@ struct BoxPainter<'t, 'a, 'c, 'p> {
     opacity: f32,
     /// Transform in effect (`None`: identity), for `debug` outlines.
     ctm: Option<[f32; 6]>,
+    /// Per graphics state saved and not yet restored, the ops that set it
+    /// up (the band clip, the opacity, transform and clip of the
+    /// ancestors): a fixed node of a paged flow is painted without them.
+    states: Vec<Vec<Op>>,
     content: &'c mut dyn ContentPainter,
     ops: &'c mut Vec<Op>,
     debug: &'c mut DebugBoxes,
@@ -211,6 +227,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         let Some(node) = ln.node() else {
             // Rows and cells: the table paints their backgrounds and borders.
             if !self.mode.shows(i) {
+                self.fixed_inside(i);
                 return;
             }
             let debug = match ln.part {
@@ -227,19 +244,18 @@ impl BoxPainter<'_, '_, '_, '_> {
             }
             return;
         };
-        let s = &node.style;
-        if s.display == Some(Display::None) {
+        if node.brk.fixed && matches!(self.mode, Mode::Paged { .. }) {
+            self.fixed(i);
             return;
         }
-        if let Some(f) = &node.pages {
-            let n = self.content.numbers();
-            if !f.shows(n.current, n.total) {
-                return;
-            }
-        }
-        // Fixed nodes are painted by the fixed pass on every page.
-        let fixed_here = node.brk.fixed && matches!(self.mode, Mode::Paged { .. });
-        if fixed_here || !self.mode.shows(i) {
+        let s = &node.style;
+        let hidden = s.display == Some(Display::None)
+            || node.pages.as_ref().is_some_and(|f| {
+                let n = self.content.numbers();
+                !f.shows(n.current, n.total)
+            });
+        if hidden || !self.mode.shows(i) {
+            self.fixed_inside(i);
             return;
         }
         let window = self.mode.window();
@@ -279,6 +295,7 @@ impl BoxPainter<'_, '_, '_, '_> {
 
         let opacity = s.opacity.unwrap_or(1.0);
         if opacity <= 0.0 {
+            self.fixed_inside(i);
             return;
         }
         let clip = s.overflow == Some(Overflow::Hidden);
@@ -286,14 +303,14 @@ impl BoxPainter<'_, '_, '_, '_> {
         let outer_opacity = self.opacity;
         let outer_ctm = self.ctm;
         if saved {
-            self.ops.push(Op::Save);
+            self.save();
         }
         if opacity < 1.0 {
             self.opacity *= opacity;
-            self.ops.push(Op::SetOpacity(self.opacity));
+            self.state(Op::SetOpacity(self.opacity));
         }
         if let Some(m) = own {
-            self.ops.push(Op::Transform(m));
+            self.state(Op::Transform(m));
             self.ctm = Some(self.ctm.map_or(m, |c| mul(c, m)));
         }
 
@@ -310,7 +327,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         self.borders(s, g.border, border_box, &radii);
 
         if clip {
-            self.ops.push(Op::ClipPath {
+            self.state(Op::ClipPath {
                 path: rounded_rect(padding_box, &inner),
                 rule: FillRule::NonZero,
             });
@@ -353,10 +370,75 @@ impl BoxPainter<'_, '_, '_, '_> {
         }
 
         if saved {
-            self.ops.push(Op::Restore);
+            self.restore();
         }
         self.opacity = outer_opacity;
         self.ctm = outer_ctm;
+    }
+
+    /// Saves the graphics state, for [`BoxPainter::state`] ops.
+    fn save(&mut self) {
+        self.ops.push(Op::Save);
+        self.states.push(Vec::new());
+    }
+
+    /// Sets up part of the graphics state saved last.
+    fn state(&mut self, op: Op) {
+        if let Some(s) = self.states.last_mut() {
+            s.push(op.clone());
+        }
+        self.ops.push(op);
+    }
+
+    fn restore(&mut self) {
+        self.ops.push(Op::Restore);
+        self.states.pop();
+    }
+
+    /// Paints fixed node `i` of a paged flow, where it is in paint order:
+    /// at its place on its first page, without the band clip and the
+    /// effects of its ancestors (as on its first page), which are set up
+    /// again after it.
+    fn fixed(&mut self, i: NodeIdx) {
+        let Mode::Paged { placement, page } = self.mode else {
+            return;
+        };
+        let states = std::mem::take(&mut self.states);
+        self.ops.extend(states.iter().map(|_| Op::Restore));
+        let outer = (self.mode, self.dy, self.opacity, self.ctm);
+        self.mode = Mode::Fixed { placement, page };
+        let first = placement.first_page(i);
+        self.dy += (page as f32 - first as f32) * placement.page_h;
+        (self.opacity, self.ctm) = (1.0, None);
+        // Its `debug` outlines are not sliced like the flow's.
+        let k = self.debug.boxes.len();
+        self.node(i);
+        let fixed: Vec<DebugBox> = self.debug.boxes.drain(k..).collect();
+        self.debug.fixed.extend(fixed);
+        (self.mode, self.dy, self.opacity, self.ctm) = outer;
+        for s in &states {
+            self.ops.push(Op::Save);
+            self.ops.extend(s.iter().cloned());
+        }
+        self.states = states;
+    }
+
+    /// Paints the fixed nodes inside node `i` of a paged flow, which is not
+    /// painted on this page (they are on every page).
+    fn fixed_inside(&mut self, i: NodeIdx) {
+        if !self.mode.holds_fixed(i) {
+            return;
+        }
+        for c in paint_order(self.tree, i) {
+            let fixed = self.tree.nodes[c as usize]
+                .node()
+                .is_some_and(|n| n.brk.fixed);
+            if fixed {
+                self.node(c);
+            } else {
+                self.fixed_inside(c);
+            }
+        }
     }
 
     /// Records the boxes of a node for its `debug` outline. `window` is the
@@ -566,7 +648,8 @@ impl BoxPainter<'_, '_, '_, '_> {
     }
 
     /// On continuation pages, repaints the header rows at the top of the
-    /// page, above the first body row (which pagination pushed down).
+    /// page (below those of the tables around it), above the first body row
+    /// (which pagination pushed down).
     fn repeat_header(&mut self, i: NodeIdx, g: &Geometry, t: &TableLayout) {
         let Some((pl, page)) = self.mode.paged() else {
             return;
@@ -579,7 +662,8 @@ impl BoxPainter<'_, '_, '_, '_> {
         if pl.on_page(rows[0], page) {
             return;
         }
-        let page_top = pl.page_top(page);
+        // Below the repeated header rows of the tables around it.
+        let page_top = pl.page_top(page) + pl.header_above.get(&i).copied().unwrap_or(0.0);
         // First body row on this page, if it starts below a reserved header.
         let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], page)) else {
             return;

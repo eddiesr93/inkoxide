@@ -9,8 +9,15 @@ use pdf_writer::Limits;
 use crate::schema::Meta;
 use crate::{InkoxideError, PdfALevel};
 
+/// Shortest page side PDF/A allows, in points, at every level: PDF/A-1
+/// keeps PDF 1.4's implementation limits (ISO 19005-1, 6.1.12), PDF/A-2
+/// and -3 state them (ISO 19005-2, 6.1.13). Plain PDF takes any size
+/// above 0; the longest side, 14400, holds for every file here.
+pub(crate) const MIN_PAGE_EDGE: f32 = 3.0;
+
 /// What a PDF/A-1 file may hold (ISO 19005-1, 6.1.12, table 1), beyond
-/// the integer and page size limits every file here keeps.
+/// the integer limits and the largest page size every file here keeps
+/// (and [`MIN_PAGE_EDGE`]).
 pub(crate) mod limits {
     /// Largest magnitude of a real number.
     pub const REAL: f32 = 32_767.0;

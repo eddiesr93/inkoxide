@@ -27,7 +27,7 @@ import {
 import { fontsPending, loadRegisteredFonts } from './font.ts';
 import { type ImagePolicies, loadEmojiImages, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
-import { checkImageLimits, DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
+import { checkImageLimits, checkOptionTypes, DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
 import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
@@ -144,10 +144,11 @@ function templateTree<S extends z.ZodType>(
 }
 
 /**
- * The image policies of a render: its options, else the environment variables and defaults. A
- * limit that is not a number from 0 throws.
+ * The image policies of a render: its options, else the environment variables and defaults. An
+ * option of the wrong type, or a limit that is not a number from 0, throws.
  */
 function imagePolicies(opts: RenderOpts): ImagePolicies {
+  checkOptionTypes(opts);
   checkImageLimits(opts);
   return {
     remote: remotePolicy(opts.remoteImages),
@@ -397,9 +398,13 @@ function notIn<T>(from: Record<string, T>, have: Record<string, unknown>): Recor
   return Object.fromEntries(Object.entries(from).filter(([id]) => !Object.hasOwn(have, id)));
 }
 
-/** Adds the component that produced the node at the engine's error path. */
+/**
+ * Adds the component that produced the node at the engine's error path. A render option's path
+ * (`options.threads`) is in no component.
+ */
 function locateEngineError(e: unknown, tree: TreeResult): unknown {
-  if (!(e instanceof RenderError) || !e.path) return e;
+  if (!(e instanceof RenderError) || !e.path || e.path === 'options' || e.path.startsWith('options.'))
+    return e;
   const at = tree.locate(e.path);
   if (!at) return e;
   return new RenderError(e.code, `${e.message} in <${at.component}>`, {

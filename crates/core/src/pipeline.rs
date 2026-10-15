@@ -105,6 +105,13 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
         }
     }
 
+    fn first_baseline(&mut self, node: &Node, width: f32) -> Option<f32> {
+        match node.kind {
+            NodeKind::Text { .. } => self.text.first_baseline(node, width),
+            _ => None,
+        }
+    }
+
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
         self.text.measure_lines(node, boxes)
     }
@@ -256,11 +263,16 @@ pub(crate) fn run<'d, T: Send>(
         }
     }
     text.prepare_all(&texts, parallel);
-    drop(texts);
     let color = |k| fonts.get(k).has_color();
-    let mut used = text.glyphs_of(color);
+    let mut used = text.glyph_colors(&texts, color);
+    drop(texts);
+    // SVG text draws colour glyphs in black.
     for (k, glyphs) in images.svg_text_glyphs(color) {
-        used.entry(k).or_default().extend(glyphs);
+        for g in glyphs {
+            used.entry((k, g))
+                .or_default()
+                .insert(crate::fonts::BLACK_TEXT);
+        }
     }
     let colors = ColorGlyphs::load(fonts, &used, images, parallel);
     if !profile.transparency() {
@@ -957,17 +969,15 @@ fn paint_page(
     let under_boxes = std::mem::take(&mut debug.boxes);
 
     // Flow: paged space [k·H, (k+1)·H) mapped onto the content band,
-    // clipped vertically (split boxes are sliced, like CSS
-    // `box-decoration-break: slice`).
+    // clipped vertically; its fixed nodes, in paint order, are not.
     let dy = m.top - k as f32 * h;
     let band = Rect::new(0.0, m.top, pw, h);
-    page.ops.push(Op::Save);
-    page.ops.push(Op::ClipRect(band));
     paint::paint_flow(
         &l.flow,
         FlowPart::Page {
             placement: &l.placement,
             page: k,
+            band,
         },
         m.left,
         dy,
@@ -975,22 +985,8 @@ fn paint_page(
         &mut page.ops,
         &mut debug,
     );
-    page.ops.push(Op::Restore);
     let flow_boxes = std::mem::take(&mut debug.boxes);
-    if !l.placement.fixed.is_empty() {
-        paint::paint_flow(
-            &l.flow,
-            FlowPart::Fixed {
-                placement: &l.placement,
-                page: k,
-            },
-            m.left,
-            dy,
-            &mut painter,
-            &mut page.ops,
-            &mut debug,
-        );
-    }
+    debug.boxes = std::mem::take(&mut debug.fixed);
     painter.text.page = Some(&page_text);
     paint_overlays(over, &mut painter, &mut page.ops, &mut debug);
     if let Some(header) = header {

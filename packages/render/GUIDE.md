@@ -66,8 +66,10 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 
 - **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px`
   (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
-  `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
-  percentage. `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
+  `fontSize`, the inherited one; in `lineHeight` and `letterSpacing`, the size of the text they
+  apply to, so they scale with each run), `vw` and `vh` (1% of the page's width and height), or a
+  percentage. `lineHeight` is a multiplier of the text size (`1.4`, `'140%'`, `'1.4em'`) or a
+  length (`'14pt'`). `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
   other. A class's arbitrary value (`w-[…]`) takes the same syntax and reads the same. A page's
   `size` takes the units that do not depend on the font or the page.
   Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
@@ -167,7 +169,12 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   (`.ttc`) are not supported either: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
-  registered with it still load, and later renders can use them. A URL is fetched with a
+  registered with it still load, and later renders can use them. The face that failed is then
+  dropped, and is not tried again: later renders succeed, and text in it falls back as for a
+  face never registered (to the nearest face of its family, else to `Inter`), with only a
+  warning in the `warnings` of `generate`. Register it again, from the same source or another,
+  to try once more. To refuse to render without it, load your fonts at startup with
+  `await init()` and stop when it throws. A URL is fetched with a
   30-second limit for the whole download and a 50 MiB size limit, and redirects are followed;
   renders wait for it, so for a font over that size or from a slow host, read the bytes
   yourself and register them.
@@ -188,10 +195,15 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   (`❤`, `©`), it is text like any other. Colour glyphs come from the font's `COLR` table
   (versions 0 and 1) or its PNG bitmaps (`CBDT`, as in Noto Color Emoji's bitmap build, or
   `sbix`); a font with bitmaps and no outlines works too, but cannot be a form field's font. They
-  are drawn as images that copy and search as their text. Gradients that sweep around a point
+  are drawn as images that copy and search as their text. `COLR` layers in the foreground colour
+  take the run's `color`, as in browsers (in the text of an SVG image, black); the colour's alpha
+  fades the whole glyph. Gradients that sweep around a point
   draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
-  colour glyphs past the first 4096 of a render or its first 32 MB of colour glyph images. Fonts
+  colour glyphs past the first 4096 of a render (one that takes the run's colour counts once per
+  colour) or its first 32 MB of colour glyph images. In a
+  font with bitmaps and no outlines, which has nothing else to draw them with, such glyphs are
+  not drawn, but they still copy and search as their text. Fonts
   with only `SVG` glyphs are not drawn in colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
   alpha channel, as in every emoji bitmap font, or a layer with an opacity) fails the render with
   `PDFA_CONFLICT` at the path of its run (at the `src` of an SVG whose text has it), and inline
@@ -203,8 +215,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   like `<Image src>`: a URL must be allowed by `remoteImages` (else the render fails, naming the
   emoji), a path needs `localImages`, and images fetched from URLs are kept between renders (16
   MB of them, each render still holding them to its own `remoteImages.maxBytes`). An emoji image
-  is 1em high with its aspect ratio, its bottom 0.1em below the baseline, and copies as the
-  emoji. An emoji whose image cannot be loaded, or is not an image the engine can draw (other
+  is 1em high with its aspect ratio, its bottom 0.1em below the baseline (raised or lowered
+  with the text by `verticalAlign: 'super'` or `'sub'`), and copies as the emoji. An emoji whose image cannot be loaded, or is not an image the engine can draw (other
   bytes, an image over the size limits), is drawn by the fonts, with a warning; a ZWJ
   sequence (`👩‍💻`) without an image of its own uses the images of its parts. `null` removes the
   source.
@@ -217,7 +229,9 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   source (the same path, URL or bytes) does nothing, and from another source throws. A face the
   bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
   name. You can add the faces they lack, such as `Inter` bold italic. Two family names that
-  differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) cannot both be registered.
+  differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) give the same font id to faces of
+  the same weight and style, so such a face cannot be registered under both: `Brand Two` 400 and
+  `Brand-Two` 400 throw, `Brand Two` 400 and `Brand-Two` 700 do not.
 
 ## Images
 
@@ -605,7 +619,7 @@ reader without it may do:
 
 - Passwords are printable ASCII, at most 127 bytes. With only `ownerPassword`, anyone opens the
   file and the permissions apply; with only `userPassword`, it is also the owner password, so
-  `permissions` need `ownerPassword`.
+  `permissions` need an `ownerPassword` other than `userPassword`.
 - The `encryption` render option (`{ userPassword, ownerPassword, permissions }`) replaces the
   three props as a whole, for passwords that come from the request rather than the template.
 - Encryption and PDF/A do not go together: PDF/A forbids encryption.
@@ -858,6 +872,12 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 `maxLength` and `password`; size, border, background and text style come from the classes.
 `TextInput` is another name for `TextField`.
 
+A field's text, its value and the options of a `Select` or `List`, is drawn with the field's own
+font only, a glyph per character, as viewers redraw it while the user types: no fallback fonts,
+no shaping and no right-to-left ordering. A character the font lacks fails the render
+(`INVALID_VALUE` at the value or the option), so give the field a font that covers its script.
+Arabic, Hebrew and the scripts of India show their letters unjoined, in typed order.
+
 `Select` is a drop-down list and `List` a list box, which shows several options at once (four
 rows without a height) and starts at the first selected one. Both take their choices as
 `options`, or `select`, and the selected one as `value`; a `List` with `multiSelect` takes an
@@ -993,7 +1013,8 @@ All three take the same options:
 A bad option fails the render with `ENGINE_REJECTED` at its path (`options.threads`,
 `options.remoteImages.timeoutMs`): a `creationDate` that is not RFC 3339, a `threads` that is
 not an integer from 1 to 256, or a timeout or `maxBytes` that is not a number from 0 (NaN, a
-negative number, a string). A fractional timeout is rounded up to a whole millisecond.
+negative number, a string), or an option of the wrong type (`threads: '4'`, `localImages`
+without `root`). A fractional timeout is rounded up to a whole millisecond.
 
 **`Font.register({ family, src })`** adds a font family, from a path, a URL or bytes. See
 [Fonts](#fonts).
@@ -1045,7 +1066,10 @@ Node's `UV_THREADPOOL_SIZE` (default 4) caps how many renders run at the same ti
 
 ## Errors
 
-Mistakes fail loudly, with the component that caused them. A `View` inside a `Text`:
+Mistakes fail loudly, with the component that caused them: a style key or value an element
+cannot use, and a prop it would ignore (`<Page wrap={false}>`, `href` on a `Cell` or a
+`Header`, `className` on an SVG shape, `render` on an `Image`). An error inside a `render` prop
+names the components around it too. A `View` inside a `Text`:
 
 ```tsx
 <Text>Total: <View /></Text>

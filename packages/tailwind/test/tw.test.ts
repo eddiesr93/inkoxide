@@ -8,7 +8,7 @@ import {
   tw,
   UnsupportedUtilityError,
 } from '../src/index.ts';
-import { SUPPORTED, UNSUPPORTED } from '../src/supported.ts';
+import { A4_UNITS, SUPPORTED, UNSUPPORTED } from '../src/supported.ts';
 
 beforeAll(async () => {
   await initTailwind();
@@ -20,7 +20,7 @@ describe('supported utilities (every SUPPORTED example)', () => {
     describe(`${family.group}: ${family.utilities}`, () => {
       for (const [cls, expected] of Object.entries(family.examples)) {
         it(cls, () => {
-          expect(tw(cls)).toEqual(expected);
+          expect(tw(cls, family.units)).toEqual(expected);
         });
       }
     });
@@ -31,6 +31,8 @@ describe('unsupported utilities throw in strict mode', () => {
   for (const { example } of UNSUPPORTED) {
     it(example, () => {
       expect(() => tw(`p-2 ${example}`)).toThrow(UnsupportedUtilityError);
+      // Not only for want of the units a render has.
+      expect(() => tw(`p-2 ${example}`, A4_UNITS)).toThrow(UnsupportedUtilityError);
     });
   }
 

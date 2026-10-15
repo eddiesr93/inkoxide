@@ -19,7 +19,7 @@ mod prepare;
 mod svg;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -785,17 +785,31 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         Some(e.paragraph(self.shaper.fonts(), runs, boxes))
     }
 
-    /// The glyphs of the fonts `wanted` that the paragraphs shaped so far
-    /// use, by font.
-    pub fn glyphs_of(&self, wanted: impl Fn(FontKey) -> bool) -> BTreeMap<FontKey, BTreeSet<u16>> {
-        let mut out: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
-        for e in self.entries.values() {
+    /// The glyphs of the fonts `wanted` that text nodes `nodes` use, once
+    /// shaped, each with the text colours of the runs that draw it.
+    pub fn glyph_colors(
+        &self,
+        nodes: &[&Node],
+        wanted: impl Fn(FontKey) -> bool,
+    ) -> color::UsedGlyphs {
+        let mut out = color::UsedGlyphs::new();
+        for node in nodes {
+            let NodeKind::Text { runs } = &node.kind else {
+                continue;
+            };
+            let Some(e) = self.entries.get(&node_key(node)) else {
+                continue;
+            };
             let p = &e.prepared;
             for seg in p.segments.iter().filter(|s| wanted(s.font)) {
+                let Some(run) = runs.get(usize::from(seg.run)) else {
+                    continue;
+                };
+                let color = color::text_color(run.color.unwrap_or(crate::schema::BLACK));
                 let glyphs = &p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize];
-                out.entry(seg.font)
-                    .or_default()
-                    .extend(glyphs.iter().map(|g| g.id));
+                for g in glyphs {
+                    out.entry((seg.font, g.id)).or_default().insert(color);
+                }
             }
         }
         out
@@ -843,10 +857,19 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
         entry.measure(fonts, runs, known, available)
     }
 
+    fn first_baseline(&mut self, node: &Node, width: f32) -> Option<f32> {
+        first_baseline(&*self.layout_in(node, &LineBoxes::plain(width))?)
+    }
+
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
         self.layout_in(node, boxes)
             .map_or_else(Wrapped::default, |l| wrapped(&l, boxes))
     }
+}
+
+/// The baseline of the first of lines `l`, from the top of the content box.
+fn first_baseline(l: &LineLayout) -> Option<f32> {
+    l.lines.first().map(|line| line.top + line.ascent)
 }
 
 /// What text laid out in `boxes` reports to a float container: its height,
@@ -937,6 +960,11 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
     ) -> Size<f32> {
         self.lines(node, |e| LineBoxes::plain(e.width_in(available.width)))
             .map_or(Size::ZERO, |(l, boxes)| leaf_size(&l, known, boxes.width))
+    }
+
+    fn first_baseline(&mut self, node: &Node, width: f32) -> Option<f32> {
+        let (l, _) = self.lines(node, |_| LineBoxes::plain(width))?;
+        first_baseline(&l)
     }
 
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {

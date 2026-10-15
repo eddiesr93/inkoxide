@@ -80,6 +80,9 @@ pub(crate) struct DebugBoxes {
     /// Outline every element (`debug` on the page).
     pub all: bool,
     pub boxes: Vec<DebugBox>,
+    /// Boxes of the fixed nodes of a paged flow, which are not sliced like
+    /// the flow.
+    pub fixed: Vec<DebugBox>,
 }
 
 impl DebugBoxes {
@@ -87,6 +90,7 @@ impl DebugBoxes {
         Self {
             all,
             boxes: Vec::new(),
+            fixed: Vec::new(),
         }
     }
 }

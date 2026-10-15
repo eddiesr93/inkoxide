@@ -37,6 +37,27 @@ export type Debug = boolean;
 export type Node =
   BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode | NoteNode;
 /**
+ * A `Length` that is not negative: points (at most 1000000), a percentage of the containing block (at most 10000%), or "auto". A percentage height needs a containing block with a definite height, as for `Length`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "NonNegativeLength".
+ */
+export type NonNegativeLength = number | NonNegativePercent | 'auto';
+/**
+ * A percentage within [0%, 10000%], like `"50%"`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "NonNegativePercent".
+ */
+export type NonNegativePercent = string;
+/**
+ * A `LengthPercent` that is not negative: points (at most 1000000) or a percentage (at most 10000%), of what `LengthPercent` says.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "NonNegativeLengthPercent".
+ */
+export type NonNegativeLengthPercent = number | NonNegativePercent;
+/**
  * Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto". A percentage height needs a containing block with a definite height, as in CSS: a child of the page takes it of the page content height; in a header or footer, or in a box whose height is not set, it is `auto`.
  *
  * This interface was referenced by `Document`'s JSON-Schema
@@ -50,13 +71,6 @@ export type Length = number | Percent | 'auto';
  * via the `definition` "Percent".
  */
 export type Percent = string;
-/**
- * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%). In `gap`, `rowGap` and `columnGap`, a percentage is of the box's own content box instead, as in CSS: a column gap of its width, a row gap of its height.
- *
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "LengthPercent".
- */
-export type LengthPercent = number | Percent;
 /**
  * Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
  *
@@ -73,7 +87,7 @@ export type TemplateTrack =
       tracks?: never;
     }
   | {
-      fitContent: LengthPercent;
+      fitContent: NonNegativeLengthPercent;
       min?: never;
       max?: never;
       repeat?: never;
@@ -95,7 +109,8 @@ export type TemplateTrack =
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TrackBreadth".
  */
-export type TrackBreadth = number | Percent | Fr | ('auto' | 'min-content' | 'max-content');
+export type TrackBreadth =
+  number | NonNegativePercent | Fr | ('auto' | 'min-content' | 'max-content');
 /**
  * A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
  *
@@ -117,7 +132,7 @@ export type TrackSize =
       fitContent?: never;
     }
   | {
-      fitContent: LengthPercent;
+      fitContent: NonNegativeLengthPercent;
       min?: never;
       max?: never;
     };
@@ -208,6 +223,13 @@ export type TransformOp =
       skew?: never;
     };
 /**
+ * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%). In `gap`, `rowGap` and `columnGap`, a percentage is of the box's own content box instead, as in CSS: a column gap of its width, a row gap of its height.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "LengthPercent".
+ */
+export type LengthPercent = number | Percent;
+/**
  * Link target. `#id` jumps to the top of the first node with that `id` in the page body (the flow or an overlay): a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
  *
  * This interface was referenced by `Document`'s JSON-Schema
@@ -244,7 +266,7 @@ export interface Document {
    */
   fallbackFonts?: Id[];
   /**
-   * Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.
+   * Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the run's baseline (which its `verticalAlign` raises or lowers), and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.
    */
   emojiImages?: {
     [k: string]: Id | undefined;
@@ -338,6 +360,8 @@ export interface PageSpec {
   children?: Node[];
 }
 /**
+ * Page size in points. PDF/A, at any level, takes sides of 3 points or more: a render of a smaller page as PDF/A fails with `PDFA_CONFLICT` at the page's `size`.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Size".
  */
@@ -404,22 +428,22 @@ export interface Style {
     | 'end';
   flexGrow?: NonNegative;
   flexShrink?: NonNegative;
-  flexBasis?: Length;
+  flexBasis?: NonNegativeLength;
   /**
    * Sets both rowGap and columnGap; either of those, when present, wins.
    */
-  gap?: LengthPercent;
+  gap?: NonNegativeLengthPercent;
   /**
    * A percentage is of the box's own content height, as in CSS. In a box whose height is not set, it is of the height of the content without the gaps, so it adds little: use points.
    */
-  rowGap?: LengthPercent;
-  columnGap?: LengthPercent;
-  width?: Length;
-  height?: Length;
-  minWidth?: Length;
-  minHeight?: Length;
-  maxWidth?: Length;
-  maxHeight?: Length;
+  rowGap?: NonNegativeLengthPercent;
+  columnGap?: NonNegativeLengthPercent;
+  width?: NonNegativeLength;
+  height?: NonNegativeLength;
+  minWidth?: NonNegativeLength;
+  minHeight?: NonNegativeLength;
+  maxWidth?: NonNegativeLength;
+  maxHeight?: NonNegativeLength;
   /**
    * Width divided by height.
    */
@@ -459,7 +483,7 @@ export interface Style {
     'auto' | 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch' | 'start' | 'end';
   overflow?: 'visible' | 'hidden';
   /**
-   * Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page.
+   * Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page.
    */
   float?: 'left' | 'right' | 'none';
   /**
@@ -556,14 +580,16 @@ export interface Style {
   borderSpacing?: NonNegative;
 }
 /**
+ * Padding: a `NonNegativeLengthPercent` per side.
+ *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "EdgesLengthPercent".
  */
 export interface EdgesLengthPercent {
-  top?: LengthPercent;
-  right?: LengthPercent;
-  bottom?: LengthPercent;
-  left?: LengthPercent;
+  top?: NonNegativeLengthPercent;
+  right?: NonNegativeLengthPercent;
+  bottom?: NonNegativeLengthPercent;
+  left?: NonNegativeLengthPercent;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -604,7 +630,7 @@ export interface EdgesColor {
  */
 export interface Break {
   /**
-   * `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, or on an absolutely positioned node: there it would do nothing.
+   * `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing.
    */
   before?: 'auto' | 'page';
   /**
@@ -854,13 +880,13 @@ export interface TableCell {
   colSpan?: number;
   rowSpan?: number;
   /**
-   * The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin` and `zIndex`.
+   * The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin`, `zIndex`, `float` and `clear`.
    */
   style?: Style;
   children?: Node[];
 }
 /**
- * Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node, it is `INVALID_NODE`.
+ * Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "PageBreakNode".
@@ -918,7 +944,7 @@ export interface Field {
    */
   value?: string | string[];
   /**
-   * checkbox and radio: initially selected
+   * checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together
    */
   checked?: boolean;
   /**
@@ -947,7 +973,7 @@ export interface Field {
   readOnly?: boolean;
   required?: boolean;
   /**
-   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display.
+   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option.
    */
   font?: Id;
   /**

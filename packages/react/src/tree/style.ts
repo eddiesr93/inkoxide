@@ -710,9 +710,19 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     const c = toColor(decoColor);
     if (c !== 'currentColor') out.decorationColor = c;
   }
-  if (lineHeight !== undefined) out.lineHeight = { mult: lineHeight };
-  if (letterSpacing !== undefined)
-    out.letterSpacing = { pt: lengthOf('points', 'letterSpacing', letterSpacing, units) };
+  // As the classes read them: `em` is the size of the text they apply to, not the element's.
+  if (lineHeight !== undefined) {
+    out.lineHeight =
+      typeof lineHeight === 'number'
+        ? { mult: lineHeight }
+        : new Reader('lineHeight', units).lineHeight(String(lineHeight));
+  }
+  if (letterSpacing !== undefined) {
+    out.letterSpacing =
+      typeof letterSpacing === 'number'
+        ? { pt: letterSpacing }
+        : new Reader('letterSpacing', units).letterSpacing(String(letterSpacing));
+  }
   if (fontFamily !== undefined) out.fontFamily = typeof fontFamily === 'string' ? [fontFamily] : fontFamily;
   setEdges(out, 'padding', '', padding, (v) => lengthOf('lenPercent', 'padding', v, units));
   setEdges(out, 'margin', '', margin, (v) => lengthOf('len', 'margin', v, units));

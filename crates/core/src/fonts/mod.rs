@@ -19,7 +19,7 @@ mod woff;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-pub(crate) use color::ColorGlyph;
+pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
 use crate::schema::{Document, FontDecl, FontStyle};
 use crate::InkoxideError;
@@ -128,6 +128,14 @@ impl FontData {
     /// never embedded, and its glyphs without colour are not drawn.
     pub(crate) fn has_outlines(&self) -> bool {
         !self.metrics.color_only
+    }
+
+    /// The first character of `text` the font has no glyph for, control
+    /// characters aside.
+    pub(crate) fn lacks(&self, text: &str) -> Option<char> {
+        let face = ttf_parser::Face::parse(&self.bytes, 0).ok()?;
+        text.chars()
+            .find(|&c| !c.is_control() && face.glyph_index(c).is_none())
     }
 
     fn parse(id: &str, bytes: Arc<[u8]>) -> Result<Self, InkoxideError> {

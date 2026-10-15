@@ -1,7 +1,7 @@
 import { parseFontFamily } from '@inkoxide/style';
 
 import { type DrawingFont, escapeXml, quotedFamily } from '../canvas.ts';
-import { HOST, type SvgPresentation, type SvgProps } from '../components/index.ts';
+import { HOST, HOST_NAME, type SvgPresentation, type SvgProps } from '../components/index.ts';
 import type { Instance, Node } from '../reconciler/instance.ts';
 import { weightOf } from './style.ts';
 
@@ -62,7 +62,18 @@ const BOX_KEYS: Record<SvgBoxProp, true> = {
   fixed: true,
   debug: true,
 };
-const BOX_PROPS: ReadonlySet<string> = new Set([...Object.keys(BOX_KEYS), 'children']);
+/**
+ * Props the builder reads from `<Svg>` for its node, beyond `SvgProps`: the aliases of `break`,
+ * and `bookmark`, as on a `View`.
+ */
+const FLOW_ALIASES = ['bookmark', 'wrap', 'minPresenceAhead'];
+const BOX_PROPS: ReadonlySet<string> = new Set([...Object.keys(BOX_KEYS), ...FLOW_ALIASES, 'children']);
+
+/**
+ * Props of an element in the layout, which an element inside an `<Svg>` has not: written as SVG
+ * attributes, they would do nothing. `href` is left to SVG, where a gradient takes it.
+ */
+const LAYOUT_ONLY = ['pages', 'break', 'fixed', 'debug', 'render', ...FLOW_ALIASES];
 
 const attrName = (k: string): string =>
   CAMEL_ATTRS.has(k) ? k : k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
@@ -116,16 +127,24 @@ function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean
   } catch (e) {
     return text.fail(n, (e as Error).message);
   }
+  const name = HOST_NAME[n.type];
+  for (const key of ['style', 'className'] as const) {
+    if (n.props[key] !== undefined) {
+      text.fail(
+        n,
+        isText
+          ? `${key} applies to <Text> outside <Svg>; SVG text takes SVG attributes (fill, fontSize, …).`
+          : `<${name}> inside <Svg> does not take ${key}: it takes SVG attributes (fill, stroke, strokeWidth, …).`,
+      );
+    }
+  }
+  const layout = LAYOUT_ONLY.find((k) => n.props[k] !== undefined);
+  if (layout !== undefined) {
+    const where = layout === 'render' ? 'a <View> around the <Svg>' : 'the <Svg>';
+    text.fail(n, `<${name}> inside <Svg> does not take \`${layout}\`: put it on ${where}.`);
+  }
   let a: string;
   if (isText) {
-    for (const key of ['style', 'className'] as const) {
-      if (n.props[key] !== undefined) {
-        text.fail(
-          n,
-          `${key} applies to <Text> outside <Svg>; SVG text takes SVG attributes (fill, fontSize, …).`,
-        );
-      }
-    }
     const face = text.face(inner, n);
     a = attrs(n.props, TEXT_SKIP);
     a += ` font-family="${escapeXml(quotedFamily(face.family[0] ?? ''))}" font-weight="${face.weight}"`;

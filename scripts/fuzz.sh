@@ -10,13 +10,14 @@
 #
 # Without a sanitizer: the core crate has no unsafe code, and what the
 # targets look for (panics, hangs, memory use) is what AddressSanitizer's
-# own memory and time would blur. FUZZ_TOOLCHAIN picks the nightly
-# toolchain (default: nightly).
+# own memory and time would blur. The nightly toolchain is a dated one,
+# the same here and in the fuzz workflow (FUZZ_TOOLCHAIN overrides it).
 #
 #   scripts/fuzz.sh                       # every target, 60 s
 #   scripts/fuzz.sh 3600                  # a one-hour run
 #   scripts/fuzz.sh 600 render_svg_tree   # one target
 #   scripts/fuzz.sh --list                # the targets, one per line
+#   scripts/fuzz.sh --toolchain           # the nightly toolchain it runs
 set -euo pipefail
 cd "$(dirname "$0")/../fuzz"
 
@@ -24,6 +25,13 @@ cd "$(dirname "$0")/../fuzz"
 all=(render_tree render_json render_svg render_svg_tree register_font)
 if [[ "${1:-}" == "--list" ]]; then
   printf '%s\n' "${all[@]}"
+  exit 0
+fi
+# A dated nightly keeps the runs comparable; the fuzz workflow installs
+# the one --toolchain prints.
+toolchain="${FUZZ_TOOLCHAIN:-nightly-2026-10-11}"
+if [[ "${1:-}" == "--toolchain" ]]; then
+  echo "$toolchain"
   exit 0
 fi
 
@@ -38,7 +46,7 @@ limits=(-timeout=10 -rss_limit_mb=2048)
 # limits (100 000 pages, the content repeated on every page) renders in
 # about 2 s, and each input renders twice, under coverage instrumentation.
 documents=(-timeout=30 -report_slow_units=30)
-fuzz=(cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz)
+fuzz=(cargo "+$toolchain" fuzz)
 build=(-O --sanitizer none)
 
 # Seeds a target's corpus and prints its libFuzzer flags.
@@ -56,7 +64,8 @@ flags() {
     render_svg_tree)
       echo -fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 -max_len=4096 ;;
     register_font)
-      cp ../fixtures/fonts/*.ttf ../fixtures/fonts/*.otf ../fixtures/fonts/woff/* corpus/register_font/
+      cp ../fixtures/fonts/*.ttf ../fixtures/fonts/*.otf ../fixtures/fonts/woff/* \
+        ../fixtures/fonts/malformed/* ../fixtures/fonts/limits/* corpus/register_font/
       echo -max_len=1048576 ;;
     *)
       echo "unknown fuzz target: $1" >&2

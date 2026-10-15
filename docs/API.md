@@ -80,6 +80,9 @@ are left out. Every level is "b": the pages look the same in every reader.
 | PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b that may carry embedded files |
 | PDF/A-1b | `'1b'` | `PdfALevel::A1b` | Based on PDF 1.4, for archives that require it. Font subsets list their glyphs (`CIDSet`) |
 
+Every level takes page sides of 3 points or more: a render of a smaller
+page as PDF/A fails with `PDFA_CONFLICT` at the page's `size`.
+
 PDF/A-1b has no transparency. A render at 1b fails with `PDFA_CONFLICT`
 at the path of the first thing that needs it: a colour with alpha below
 1 (a `backgroundColor` of alpha 0 draws nothing and is accepted), an
@@ -120,9 +123,9 @@ password lifts the permissions.
 
 - At least one password is needed. Passwords are printable ASCII, at most
   127 bytes.
-- `permissions` need an owner password: without one, the user password is
-  also the owner password and lifts them. Readers, not the file, enforce
-  the permissions.
+- `permissions` need an owner password other than the user password:
+  without one, or with the same one, the user password lifts them. Readers,
+  not the file, enforce the permissions.
 - With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` in
   Rust and `INVALID_ARGUMENT` in Node (PDF/A forbids it).
 - A bad value is `INVALID_VALUE` at its path (`options.encryption.userPassword`,
@@ -262,7 +265,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
-| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: transparency under PDF/A-1b. The path names the first such use. Only `render` reports it: `validate` does not know the level |
+| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, or transparency under PDF/A-1b. The path names the first such use. Only `render` reports it: `validate` does not know the level |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit or the limit on content repeated on every page was exceeded |
@@ -331,15 +334,21 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   (`OUT_OF_RANGE`).
 - `float` applies to the children of a column box, not with `position:
   absolute` nor with a forced break (`INVALID_VALUE`), and not to table
-  cells (`STYLE_NOT_APPLICABLE`); a box holds at most 1000 floated
-  children (`OUT_OF_RANGE`). A box with floats takes no `justifyContent`
-  or `alignContent`, and its children no `flexGrow` or `flexBasis`
-  (`STYLE_NOT_APPLICABLE`).
+  cells (`STYLE_NOT_APPLICABLE`, as `clear`). Inside a float, a forced
+  break is `INVALID_VALUE` and a `pageBreak` `INVALID_NODE`. A box holds
+  at most 1000 floated children (`OUT_OF_RANGE`). A box with floats
+  takes no `justifyContent` or `alignContent`, and its children no
+  `flexGrow` or `flexBasis` (`STYLE_NOT_APPLICABLE`).
 - `transform`, `transformOrigin` and `zIndex` do not apply to table
   cells (`STYLE_NOT_APPLICABLE`).
 - The tables of a document have at most 1000000 grid slots in all, a
   slot being one row of one column, however the cells span them
   (`OUT_OF_RANGE` at the table's `rows`).
+
+The other way, the engine reads a number as a 32-bit float: one past a
+bound by less than a float's precision there is read as the bound and
+accepted (`flexGrow: 1000000.01`). Integers (also written as `400.0`),
+percentages and `fr` sizes are bounded as written.
 
 ## Not part of the API
 

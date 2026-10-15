@@ -11,7 +11,7 @@ over by changing the import. This page lists what has another name, and what is 
 | `Font.register({ family, src })` | The same, see [Fonts](GUIDE.md#fonts) | Works as is; Inter is built in |
 | `Font.registerHyphenationCallback(fn)` | The same, see [hyphenation](GUIDE.md#text-hyphenation-and-direction); a `Text` can also take its own `hyphenationCallback` | Works as is |
 | `renderToStream(element)` | The same, see [API](GUIDE.md#api) | Works as is |
-| `wrap={false}`, `break` | The same, or `break="avoid"`, `break="page-before"` | Works as is |
+| `wrap={false}`, `break` | The same, or `break="avoid"`, `break="page-before"` | Works as is on the elements in a page. `<Page wrap={false}>` throws: a page's content always flows onto more pages |
 | `minPresenceAhead={80}` | The same, or `break={{ minPresenceAhead: 80 }}` | Works, measured from the element's top: the room asked for includes the element's own height, where react-pdf counts it below the element. Add the element's height to keep as much room below it |
 | `<Text render={({ pageNumber, totalPages }) => …} />` | The same, or `<PageNumber />` and `<TotalPages />` | Works as is |
 | `fontWeight: 'bold'`, `flex: 1`, `paddingHorizontal`, `borderBottomColor` | The same | Works as is |
@@ -46,7 +46,8 @@ over by changing the import. This page lists what has another name, and what is 
 
 A unitless `lineHeight` spaces lines further apart in react-pdf than here, so a long document
 can break onto a different number of pages. Any style key that is not supported throws, naming
-the key, instead of being ignored.
+the key, instead of being ignored, and so do the props above and a prop the element does not
+take (`href` or `bookmark` on a `Cell` or a `Header`, `className` or `style` on an SVG shape).
 
 ## Performance
 

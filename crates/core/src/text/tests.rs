@@ -1066,6 +1066,41 @@ fn emoji_with_images_are_objects_and_zwj_sequences_try_their_parts() {
     );
 }
 
+#[test]
+fn emoji_images_follow_the_baseline_shift_of_their_run() {
+    let mut emoji = std::collections::HashMap::new();
+    let source = objects::Source {
+        key: 0,
+        intrinsic: (20.0, 20.0),
+    };
+    emoji.insert("😀".to_string(), source);
+    let objects = InlineObjects::new(std::collections::HashMap::new(), emoji);
+    let store = store();
+    let extent = |align: &str| {
+        let d = doc(&format!(
+            r#"{{"type":"text","runs":[{{"text":"😀","font":"Inter-Regular","size":10{align}}}]}}"#
+        ));
+        let fonts = FontSet::load(&d, &store).unwrap();
+        let crate::schema::NodeKind::Text { runs } = &d.pages[0].children[0].kind else {
+            unreachable!()
+        };
+        let run = &runs[0];
+        let (_, object) = objects.emoji_in("😀", run).pop().unwrap();
+        let shift = baseline_shift(run, &fonts);
+        (object.extent(run, &fonts).unwrap(), shift)
+    };
+    // 1em high, its bottom 0.1em below the baseline.
+    let ((above, below), _) = extent("");
+    assert!((above - 9.0).abs() < 1e-4 && (below - 1.0).abs() < 1e-4);
+    // Raised or lowered with the run's glyphs.
+    for align in ["super", "sub"] {
+        let ((a, b), shift) = extent(&format!(r#","verticalAlign":"{align}""#));
+        assert!(shift.abs() > 1.0, "{align}: {shift}");
+        assert!((a - (9.0 + shift)).abs() < 1e-4, "{align}: {a}");
+        assert!((b - (1.0 - shift)).abs() < 1e-4, "{align}: {b}");
+    }
+}
+
 /// How first fit or `pretty` broke each chunk of the document's first
 /// node in `boxes`.
 fn chunks(

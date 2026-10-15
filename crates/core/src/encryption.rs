@@ -11,9 +11,9 @@ use crate::pdf::crypt::{Params, MAX_PASSWORD};
 /// At least one password is needed. Passwords are printable ASCII, at
 /// most 127 bytes. Without an owner password, the user password is also
 /// the owner password, so whoever opens the file has every permission;
-/// `permissions` therefore need an owner password. Without a user
-/// password, anyone opens the file, and the permissions hold for whoever
-/// lacks the owner password.
+/// `permissions` therefore need an owner password that differs from the
+/// user password. Without a user password, anyone opens the file, and the
+/// permissions hold for whoever lacks the owner password.
 ///
 /// `Debug` prints `<redacted>` for the passwords.
 ///
@@ -35,7 +35,8 @@ pub struct Encryption {
     /// password.
     pub owner_password: Option<String>,
     /// What a reader without the owner password may do; `None`:
-    /// [`Permissions::default`].
+    /// [`Permissions::default`]. Needs an owner password other than the
+    /// user password.
     pub permissions: Option<Permissions>,
 }
 
@@ -110,10 +111,10 @@ impl Encryption {
         if user.is_empty() && owner.is_empty() {
             return Err(invalid("", "encryption needs a user or an owner password"));
         }
-        if owner.is_empty() && self.permissions.is_some() {
+        if self.permissions.is_some() && (owner.is_empty() || owner == user) {
             return Err(invalid(
                 ".permissions",
-                "permissions need an owner password: without one, the user password lifts them",
+                "permissions need an owner password other than the user password, which would lift them",
             ));
         }
         let owner = if owner.is_empty() {
@@ -304,6 +305,13 @@ mod tests {
             (
                 Encryption::new()
                     .with_user_password(secret)
+                    .with_permissions(Permissions::new()),
+                "options.encryption.permissions",
+            ),
+            (
+                Encryption::new()
+                    .with_user_password(secret)
+                    .with_owner_password(secret)
                     .with_permissions(Permissions::new()),
                 "options.encryption.permissions",
             ),
