@@ -66,6 +66,16 @@ impl Out {
         self.crypt.is_some()
     }
 
+    /// The tag of a font subset as written: `tag` itself, or when
+    /// encrypted one keyed by the file's keys, since font names are not
+    /// encrypted. An empty tag (a whole font) stays empty.
+    pub fn subset_tag(&self, tag: &str, font: &str) -> String {
+        match &self.crypt {
+            Some(c) if !tag.is_empty() => c.subset_tag(tag, font),
+            _ => tag.to_string(),
+        }
+    }
+
     /// A text string, to write as a `Str`: see [`text_bytes`].
     pub fn text(&mut self, s: &str) -> Vec<u8> {
         self.bytes(&text_bytes(s))

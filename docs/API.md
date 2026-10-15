@@ -129,8 +129,10 @@ password lifts the permissions.
   …) in Rust and `INVALID_ARGUMENT` in Node. No error and no `Debug` output
   shows a password: Rust's `Encryption` prints them as `<redacted>`.
 - Every string and stream is encrypted. The object structure is not: page
-  count, page sizes, font names and widths, link rectangles and the other
-  dictionary entries stay readable. Radio buttons, whose states are
+  count, page sizes, font names and widths, link rectangles, stream
+  lengths and the other dictionary entries stay readable. Font subset tags
+  (`ABCDEF+` in a font name) are keyed by the file's keys, so they do not
+  tell which glyphs the file uses. Radio buttons, whose states are
   otherwise named after their values, are named by their position in the
   group instead, with the values in `/Opt`, so the values are encrypted
   too.
@@ -235,8 +237,11 @@ revision 6 makes random are derived from the passwords and the whole
 file as it would be written unencrypted, so identical input gives
 identical bytes, and documents whose files differ anywhere (text,
 images, links, form fields, notes, bookmarks, metadata) get different
-keys. The derivation is not the standard's random one and has not had a
-cryptography review yet.
+keys. The same input with the same passwords gives the same bytes, so
+equal files can be told apart from different ones. The derivation is not
+the standard's random one; it has been reviewed internally but has not had
+an independent cryptography review yet. What encryption does and does not
+protect is in [SECURITY.md](../SECURITY.md#encryption).
 
 ## Errors
 

@@ -176,7 +176,8 @@ pub(crate) fn write_font(
 
     let m = &font.data.metrics;
     let to_1000 = 1000.0 / m.units_per_em;
-    let full_name = format!("{}{}", program.tag, m.post_script_name);
+    let tag = out.subset_tag(&program.tag, &m.post_script_name);
+    let full_name = format!("{tag}{}", m.post_script_name);
     let name = full_name.as_bytes();
 
     pdf.type0_font(type0)

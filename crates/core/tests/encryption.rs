@@ -97,7 +97,35 @@ fn objects(file: &Path, password: Option<&str>) -> serde_json::Map<String, serde
         }
     }
     radios_by_position(&mut objects);
+    for v in objects.values_mut() {
+        for key in ["/BaseFont", "/FontName"] {
+            if let Some(name) = v["value"].get_mut(key) {
+                *name = untagged(name.as_str().unwrap()).into();
+            }
+        }
+    }
     objects
+}
+
+/// Font name `name` without its subset tag (`/ABCDEF+Name`): an
+/// encrypted file keys the tag, so it differs from the plain one.
+fn untagged(name: &str) -> String {
+    match name.as_bytes() {
+        [b'/', tag @ ..]
+            if tag.len() > 7 && tag[..6].iter().all(u8::is_ascii_uppercase) && tag[6] == b'+' =>
+        {
+            format!("/TAG+{}", &name[8..])
+        }
+        _ => name.to_string(),
+    }
+}
+
+/// The subset tags of font names in `pdf`'s bytes.
+fn subset_tags(pdf: &[u8]) -> Vec<Vec<u8>> {
+    pdf.windows(8)
+        .filter(|w| w[0] == b'/' && w[1..7].iter().all(u8::is_ascii_uppercase) && w[7] == b'+')
+        .map(|w| w[1..7].to_vec())
+        .collect()
 }
 
 /// Rewrites every radio button field of qpdf's JSON view `objects` the
@@ -206,6 +234,14 @@ fn encrypted_fixtures_decrypt_to_the_plain_render() {
             encrypted == render(&options(Some(both())).with_threads(1)),
             "{name}: encrypted output is not deterministic"
         );
+        // Font names are not encrypted, so their subset tags must not be
+        // the plain ones, made from the glyph set.
+        for tag in subset_tags(&plain) {
+            assert!(
+                !subset_tags(&encrypted).contains(&tag),
+                "{name}: an encrypted font name keeps its plain subset tag"
+            );
+        }
         if !with_qpdf {
             continue;
         }
