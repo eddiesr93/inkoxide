@@ -13,7 +13,10 @@ tools, no third-party artwork), so they are small and free of licences:
   two strikes (32 and 64 ppem);
 - fixtures/fonts/limits/colr-fanout.ttf: one COLR v1 glyph whose layers
   each paint the next level's glyph, 255 times per level, eight levels
-  deep (about 10^19 paints): the painter's work budget must stop it.
+  deep (about 10^19 paints): the painter's work budget must stop it;
+- fixtures/fonts/limits/colr-fanout-empty.ttf: the same, but the last
+  level paints nothing, so the painter is never called: counting the paint
+  graph before painting must stop it.
 
 The output is committed; scripts/check-generated.sh regenerates it and
 fails when it differs, so edit this script, not the fonts.
@@ -641,7 +644,7 @@ def sbix_font():
     return bitmap_font("Emoji Test sbix", glyphs, mapping, {"sbix": sbix, "GSUB": gsub_table})
 
 
-def fanout_font():
+def fanout_font(empty=False):
     levels = 8
     width = 255
     g = [Glyph(".notdef", [rect(50, 0, 550, 700)], 600), Glyph("bomb", [circle(550, 350, 450)])]
@@ -660,6 +663,8 @@ def fanout_font():
             first = len(layers)
             layers.extend([child] * width)
             v1[gid] = ("layers", first, width)
+        elif empty:
+            v1[gid] = ("layers", len(layers), 0)
         else:
             v1[gid] = ("glyph", leaf, solid(0))
     extra = {"COLR": colrv1({}, v1, {}, layers), "CPAL": cpal([(200, 30, 30, 255)])}
@@ -672,6 +677,7 @@ def main():
         FONTS / "EmojiTest-CBDT.ttf": cbdt_font(),
         FONTS / "EmojiTest-sbix.ttf": sbix_font(),
         FONTS / "limits" / "colr-fanout.ttf": fanout_font(),
+        FONTS / "limits" / "colr-fanout-empty.ttf": fanout_font(empty=True),
     }
     for path, data in outputs.items():
         path.write_bytes(data)

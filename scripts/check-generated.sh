@@ -32,6 +32,7 @@ generated=(
   fixtures/fonts/EmojiTest-CBDT.ttf
   fixtures/fonts/EmojiTest-sbix.ttf
   fixtures/fonts/limits/colr-fanout.ttf
+  fixtures/fonts/limits/colr-fanout-empty.ttf
 )
 
 if [[ $python_only == 0 ]]; then
