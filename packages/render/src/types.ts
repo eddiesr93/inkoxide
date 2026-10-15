@@ -66,7 +66,9 @@ export interface LocalImageOptions {
 export interface RemoteImageOptions {
   /**
    * URLs (`'https://cdn.example.com/img/'`: that origin, and that path or one under it) or host
-   * names (`'*.example.com'`, https only).
+   * names (`'*.example.com'`, https only). Ports must match: an entry without a port allows only
+   * its scheme's default port (443 for `https:`, 80 for `http:`), and `'cdn.example.com:8443'`
+   * or `'https://cdn.example.com:8443'` only port 8443.
    */
   allow: readonly string[];
   /**
