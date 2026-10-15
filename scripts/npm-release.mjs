@@ -6,14 +6,17 @@
 //   node scripts/npm-release.mjs <bin-dir> <staging-dir> --publish
 //   node scripts/npm-release.mjs <bin-dir> <staging-dir> --publish --dry-run
 //
-// <bin-dir> must hold inkoxide.<triple>.node for every supported triple.
+// <bin-dir> must hold inkoxide.<triple>.node for every supported triple, and
+// inkoxide.wasm (scripts/build-wasm.sh).
 // <staging-dir> receives one directory per package:
 //   @inkoxide/<triple>  one per platform, the binary only
 //   inkoxide            the loader and types; optionalDependencies pin
 //                       every platform package to the same version
 //   @inkoxide/schema    a copy of packages/schema/
+//   @inkoxide/wasm      packages/wasm/ with the module, made public
 // --publish publishes platform packages first, then inkoxide, then
-// @inkoxide/schema, skipping any name@version already on the registry.
+// @inkoxide/schema and @inkoxide/wasm, skipping any name@version already on
+// the registry.
 
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -116,6 +119,22 @@ function stageSchema(stageDir) {
   return { name: pkg.name, version: pkg.version, dir };
 }
 
+function stageWasm(stageDir, binDir, version) {
+  const src = join(ROOT, 'packages', 'wasm');
+  const pkg = readJson(join(src, 'package.json'));
+  if (pkg.version !== version)
+    fail(`@inkoxide/wasm is ${pkg.version}, inkoxide ${version}: they are released together`);
+  const dir = join(stageDir, SCOPE, 'wasm');
+  mkdirSync(dir, { recursive: true });
+  for (const f of ['index.js', 'index.d.ts', 'README.md']) copyFileSync(join(src, f), join(dir, f));
+  copyFileSync(join(binDir, 'inkoxide.wasm'), join(dir, 'inkoxide.wasm'));
+  copyFileSync(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'));
+  // Private in the workspace until a release publishes it; its scripts and test dependencies stay.
+  const { private: _, scripts: __, devDependencies: ___, ...published } = pkg;
+  writeJson(join(dir, 'package.json'), published);
+  return { name: pkg.name, version: pkg.version, dir };
+}
+
 // The registry check, with npm-release's error handling.
 function published(name, version) {
   try {
@@ -143,15 +162,19 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const mainPkg = readJson(join(ROOT, 'packages', 'inkoxide', 'package.json'));
   const { version, repository } = mainPkg;
-  for (const pkg of [mainPkg, readJson(join(ROOT, 'packages', 'schema', 'package.json'))]) {
+  for (const pkg of [
+    mainPkg,
+    readJson(join(ROOT, 'packages', 'schema', 'package.json')),
+    readJson(join(ROOT, 'packages', 'wasm', 'package.json')),
+  ]) {
     if (pkg.repository?.url !== REPOSITORY_GIT_URL) {
       fail(`${pkg.name}: repository.url is not ${REPOSITORY_GIT_URL}, the repository of Cargo.toml`);
     }
   }
 
-  const missing = Object.keys(PLATFORMS)
-    .map((t) => `inkoxide.${t}.node`)
-    .filter((f) => !existsSync(join(args.binDir, f)));
+  const missing = [...Object.keys(PLATFORMS).map((t) => `inkoxide.${t}.node`), 'inkoxide.wasm'].filter(
+    (f) => !existsSync(join(args.binDir, f)),
+  );
   if (missing.length) fail(`refusing to stage, missing in ${args.binDir}: ${missing.join(', ')}`);
 
   // The staging dir is wiped; never let that be the repo or the binaries.
@@ -166,7 +189,8 @@ function main() {
   );
   const loader = stageMain(args.stageDir, version, mainPkg);
   const schema = stageSchema(args.stageDir);
-  const all = [...platforms, loader, schema];
+  const wasm = stageWasm(args.stageDir, args.binDir, version);
+  const all = [...platforms, loader, schema, wasm];
   for (const p of all) console.log(`staged ${p.name}@${p.version} in ${p.dir}`);
 
   if (!args.publish) return;

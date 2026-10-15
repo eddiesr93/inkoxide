@@ -1,6 +1,7 @@
-# Builds the native Node bindings on every platform and publishes every npm
-# package: the platform binaries, `inkoxide` and `@inkoxide/schema`, then
-# `@inkoxide/style`, `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
+# Builds the native Node bindings on every platform and the WebAssembly engine,
+# and publishes every npm package: the platform binaries, `inkoxide`,
+# `@inkoxide/schema` and `@inkoxide/wasm`, then `@inkoxide/style`,
+# `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
 # already on the registry are skipped. npm trusts this workflow (trusted
 # publishing), so no token is stored and every package gets provenance.
 # Finally it tags the commit and creates the GitHub release from the newest
@@ -183,9 +184,37 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  wasm:
+    name: build wasm
+    needs: ci-passed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain and target
+        uses: ./.github/actions/install-rust
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build
+        # As the ci workflow builds the module it tests: no wasm-opt, which made it no smaller
+        # with brotli and no faster.
+        run: |
+          scripts/build-wasm.sh
+          node scripts/wasm-size.mjs
+          mkdir -p out
+          cp packages/wasm/inkoxide.wasm out/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bindings-wasm
+          path: out/inkoxide.wasm
+          if-no-files-found: error
+          retention-days: 3
+
   publish:
     name: publish to npm
-    needs: [linux, macos, windows]
+    needs: [linux, macos, windows, wasm]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # A real release runs in the `release` environment: its deployment branch rule admits only

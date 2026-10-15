@@ -64,19 +64,26 @@ scripts/ci.sh              # everything, including clippy and the visual diff
 
 Maintainers release from `main`:
 
-1. Bump the version of `inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind`
-   and `@inkoxide/style` together (the Cargo workspace and the five `package.json` files), since
-   they share one version. Bump `@inkoxide/schema` only if the schema changed; it has its own
+1. Bump the version of `inkoxide`, `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/react`,
+   `@inkoxide/tailwind` and `@inkoxide/style` together (the Cargo workspace, the six
+   `package.json` files and `packages/react/src/version.ts`; `scripts/check-versions.py` checks
+   them), since they share one version. Bump `@inkoxide/schema` only if the schema changed; it has its own
    version. Move the "Unreleased" entries in [CHANGELOG.md](CHANGELOG.md) and
    [packages/schema/CHANGELOG.md](packages/schema/CHANGELOG.md) under the new versions.
 2. Dispatch the `release` workflow, first with `dry_run` on. It stops unless the `ci` workflow
    passed for the commit (a dry run only warns). It builds the native bindings on every platform
-   and publishes every package whose version is not on npm yet, in dependency order. npm trusts
+   and the WebAssembly engine, and publishes every package whose version is not on npm yet, in
+   dependency order: `@inkoxide/wasm` with the engine packages, before `@inkoxide/render`. npm trusts
    the workflow (trusted publishing), so no token is involved and every package is published
    with provenance. A real release publishes from the `release` environment, which admits only
    `main`; npm trusts that environment alone. Then it tags the commit and creates the GitHub
    release from the newest changelog section: `v0.2.0` for a heading `## 0.2.0 - <date>`,
    `@inkoxide/render@0.1.1` for `## @inkoxide/render 0.1.1 - <date>`.
+
+A new package needs its trusted publisher on npm (the `release.yml` workflow and the `release`
+environment) before the workflow can publish it. Where npm lets that be set only on a package
+that exists, the maintainer publishes its first version by hand, from the staged copy
+(`node scripts/npm-release.mjs <bin-dir> <staging-dir>`), then sets the trusted publisher.
 
 ## Licence
 
