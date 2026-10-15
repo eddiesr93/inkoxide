@@ -312,6 +312,7 @@ fn painted_ops(node: &str) -> Vec<crate::paint::Op> {
         window: None,
         opacity: 1.0,
         line_boxes: None,
+        ctm: None,
     };
     let mut ops = Vec::new();
     set.paint(&doc.pages[0].children[0], &geo, &ctx, &mut ops);

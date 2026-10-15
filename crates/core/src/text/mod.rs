@@ -28,7 +28,7 @@ use rayon::prelude::*;
 pub(crate) use color::{glyph_transparency as color_glyph_transparency, ColorGlyphs};
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
-pub(crate) use paint::{PageNumbers, TextPainter};
+pub(crate) use paint::{PageNumbers, TextPainter, WAVES_PER_GLYPH};
 #[cfg(test)]
 pub(crate) use svg::SvgGlyph;
 pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};

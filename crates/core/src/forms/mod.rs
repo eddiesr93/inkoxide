@@ -300,6 +300,7 @@ mod tests {
             window: None,
             opacity: 1.0,
             line_boxes: None,
+            ctm: None,
         };
         let mut ops = Vec::new();
         paint(f, &geo, &ctx, &fonts, &mut ops);

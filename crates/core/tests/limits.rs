@@ -147,6 +147,28 @@ fn runaway_repeated_content_is_an_error() {
     render(&once, Some(1)).unwrap();
 }
 
+/// A `wavy` decoration repeated on every page counts its waves.
+#[test]
+fn wavy_decorations_repeated_on_every_page_are_counted() {
+    let fixed = |pages: &str| {
+        let text = "x".repeat(100);
+        format!(
+            r#"{{"type":"text","break":{{"fixed":true}},{pages}
+                "runs":[{{"text":"{text}","font":"Inter-Regular","size":10,"letterSpacing":1000,
+                "decoration":"underline","decorationStyle":"wavy","decorationThickness":0.1}}]}}"#
+        )
+    };
+    // About 2400 pages.
+    let tall = [r#"{"type":"box","style":{"height":1000000}}"#; 2].join(",");
+    let t = std::time::Instant::now();
+    let err = render(&doc(&format!("{},{tall}", fixed(""))), Some(1)).unwrap_err();
+    assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+    assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
+    assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+    let once = doc(&format!("{},{tall}", fixed(r#""pages":"first","#)));
+    render(&once, Some(1)).unwrap();
+}
+
 /// A note's text counts as the file holds it: anything but printable
 /// ASCII makes it UTF-16 in hex, four bytes a character.
 #[test]
@@ -166,6 +188,38 @@ fn runaway_notes_repeated_on_every_page_are_an_error() {
     assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
     let once = doc(&format!("{},{tall}", note(r#""pages":"first","#)));
     render(&once, Some(1)).unwrap();
+}
+
+/// A `wavy` decoration is drawn only where the page shows it, and with
+/// a bounded number of waves per glyph however wide its text is set.
+#[test]
+fn wavy_decorations_are_drawn_where_the_page_shows_them() {
+    let wide = |style: &str| {
+        let text = "x".repeat(1000);
+        format!(
+            r#"{{"type":"text","style":{{"width":500{style}}},"runs":[{{"text":"{text}",
+                "font":"Inter-Regular","size":10,"letterSpacing":1000,"decoration":"underline",
+                "decorationStyle":"wavy","decorationThickness":0.1}}]}}"#
+        )
+    };
+    for (what, style) in [
+        ("a line wider than the page", ""),
+        (
+            "a line scaled down onto the page",
+            r#","transform":[{"scale":[0.0001,0.0001]}]"#,
+        ),
+        (
+            "a line beside the page",
+            r#","transform":[{"translate":[-1000000,0]}]"#,
+        ),
+    ] {
+        let page = doc(&[wide(style), wide(style), wide(style)].join(","));
+        let (out, took, peak) = measure(|| render(&page, Some(1)));
+        let pdf = out.unwrap();
+        assert!(pdf.len() < 4 << 20, "{what}: {} KiB", pdf.len() >> 10);
+        assert!(peak < 64 << 20, "{what}: {} MiB", peak >> 20);
+        assert!(took.as_secs() < 5, "{what}: took {took:?}");
+    }
 }
 
 /// A form field taller than a page is sliced across pages like any atomic
