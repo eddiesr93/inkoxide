@@ -20,11 +20,13 @@
 //!   through `U` or `O`;
 //! - each IV: `HMAC(K_iv, where ‖ plaintext)`, a synthetic IV, so one key
 //!   and IV never encrypt two different plaintexts;
-//! - the file identifier and the four free bytes of `Perms`: HMACs keyed
-//!   by the file key.
+//! - the HMAC key of the IVs, the file identifier, the four free bytes of
+//!   `Perms` and the key of the font subset tags: each
+//!   `HMAC(IK_u ‖ IK_o, label ‖ D)` with its own label, like the file key,
+//!   so the AES key is never also an HMAC key.
 //!
-//! The derivation is not the standard's random one and needs a
-//! cryptography review before release.
+//! The derivation is not the standard's random one. It has been reviewed
+//! internally; it still needs an independent cryptography review.
 
 use aes::cipher::{BlockCipherEncrypt, KeyInit};
 use aes::{Aes128, Aes256};
@@ -112,6 +114,8 @@ pub(crate) struct Crypt {
     cipher: Aes256,
     /// HMAC key of the IVs.
     iv_key: [u8; 32],
+    /// HMAC key of the font subset tags.
+    tag_key: [u8; 32],
     /// Strings encrypted so far: where the next one is.
     strings: u64,
 }
@@ -134,7 +138,9 @@ impl Crypt {
         o[32..40].copy_from_slice(ovs);
         o[40..].copy_from_slice(oks);
         let ik_o = hash_2b(&params.owner, oks, &u);
-        let key = hmac(&[ik_u, ik_o].concat(), &[b"key", d]);
+        // Every key from the same secret, each with its own label.
+        let derive = |label: &[u8]| hmac(&[ik_u, ik_o].concat(), &[label, d]);
+        let key = derive(b"key");
 
         let wrap = |ik: &[u8; 32]| {
             let mut out = [0; 32];
@@ -147,11 +153,11 @@ impl Crypt {
         perms[4..8].fill(0xFF);
         // `EncryptMetadata` is true.
         perms[8..12].copy_from_slice(b"Tadb");
-        perms[12..].copy_from_slice(&hmac(&key, &[b"perms"])[..4]);
+        perms[12..].copy_from_slice(&derive(b"perms")[..4]);
         let mut block = aes::Block::from(perms);
         cipher.encrypt_block(&mut block);
         let mut id = [0; 16];
-        id.copy_from_slice(&hmac(&key, &[b"id"])[..16]);
+        id.copy_from_slice(&derive(b"id")[..16]);
         let dict = Dict {
             o,
             u,
@@ -163,7 +169,8 @@ impl Crypt {
         };
         let crypt = Self {
             cipher,
-            iv_key: hmac(&key, &[b"iv"]),
+            iv_key: derive(b"iv"),
+            tag_key: derive(b"tag"),
             strings: 0,
         };
         (crypt, dict)
@@ -173,6 +180,21 @@ impl Crypt {
     pub fn string(&mut self, plain: &[u8]) -> Vec<u8> {
         self.strings += 1;
         self.seal(&[b"string", &self.strings.to_be_bytes()], plain)
+    }
+
+    /// The six-letter tag of a font subset, in place of `tag` (made from
+    /// the glyph set, see `font::subset_tag`): font names are not
+    /// encrypted, so the tag must not tell which glyphs the file uses.
+    pub fn subset_tag(&self, tag: &str, font: &str) -> String {
+        let mac = hmac(&self.tag_key, &[font.as_bytes(), b"\0", tag.as_bytes()]);
+        let mut v = u64::from_be_bytes(mac[..8].try_into().unwrap_or_default());
+        let mut out = String::with_capacity(7);
+        for _ in 0..6 {
+            out.push(char::from(b'A' + (v % 26) as u8));
+            v /= 26;
+        }
+        out.push('+');
+        out
     }
 
     /// The data of stream object `r`, encrypted.
