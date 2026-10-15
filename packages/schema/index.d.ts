@@ -541,7 +541,7 @@ export interface Style {
    */
   ellipsis?: boolean;
   /**
-   * text nodes only
+   * text nodes only. Hyphenates the words in the language of the node (`lang`, or `meta.lang`); with no language, nothing is hyphenated and the render logs a warning. A word wider than its line breaks between any two characters, hyphenated or not.
    */
   hyphenate?: boolean;
   /**

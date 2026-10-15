@@ -649,14 +649,20 @@ reader without it may do:
 ```
 
 - **Hyphenation** is off by default. Turn it on per `Text` with `hyphenate` (or the class
-  `hyphens-auto`); it follows the `lang` of the text or the document. US English patterns ship
+  `hyphens-auto`); it follows the `lang` of the text or the document. With neither, nothing is
+  hyphenated, and the `warnings` of `generate` say so. US English patterns ship
   with the package and serve every English `lang`; other languages use the engine's built-in
   patterns. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
   `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
   `hyphenationCallback`. A soft hyphen
   (`\u00AD`) in the text is always a possible break.
+- **Words wider than the line.** A word that does not fit its line is broken between any two
+  characters, hyphenated or not, as CSS does with `overflow-wrap: anywhere` (never inside a
+  grapheme cluster, such as a letter with its accent or an emoji). `[word]` from a hyphenation
+  callback keeps a word from being hyphenated, but not from being broken this way. Text with
+  `whitespace-nowrap` or `whitespace-pre` is never broken: a long word overflows the line.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
-  word into the parts a line may break between, for every `Text`; `[word]` keeps a word whole.
+  word into the parts a line may break between, for every `Text`; `[word]` keeps a word from being hyphenated.
   It replaces the built-in patterns, so `hyphenate` is not needed with it.
 
   ```ts
@@ -1177,8 +1183,8 @@ options under the same id replaces the template's.
   `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, images, schemaVersion,
   engineVersion }`. `timings` has the milliseconds of each stage, each counted once: `reactMs`,
   `treeMs` (with the rebuilds for the page count), `validateMs` (0 when `validate` is off),
-  `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks and `render`
-  props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,
+  `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks, `hyphenate` with no
+  language, and `render` props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,
   and `images` the images it was rendered with, by id: the tree names an image given as bytes,
   a file, a URL or a function by an id it made up (`image-0`, `remote-0`), and `images` has the
   bytes behind those ids. The options are those of `renderToBuffer`.

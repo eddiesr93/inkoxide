@@ -283,8 +283,9 @@ export type BookmarkProp = string | { title: string; level?: number };
 
 /**
  * Splits a word into the parts a line may break between: `'hyphenation'` →
- * `['hy', 'phen', 'ation']`. `[word]` keeps the word whole. The word is as displayed, after
- * `textTransform` (`uppercase` gives `'HYPHENATION'`).
+ * `['hy', 'phen', 'ation']`. `[word]` keeps the word from being hyphenated; a word wider than its
+ * line still breaks between any two characters. The word is as displayed, after `textTransform`
+ * (`uppercase` gives `'HYPHENATION'`).
  */
 export type HyphenationCallback = (word: string) => string[];
 
@@ -466,7 +467,8 @@ export interface ViewProps extends Flow {
 
 export interface TextProps extends Flow {
   /**
-   * Hyphenate this text (same as `hyphens-auto`). Needs patterns for its language. `false`
+   * Hyphenate this text (same as `hyphens-auto`). Needs patterns for its language, so set `lang` on
+   * the text or the Document: without one, nothing is hyphenated and a warning says so. `false`
    * (`hyphens-none`) also turns off the registered `hyphenationCallback`.
    */
   hyphenate?: boolean;

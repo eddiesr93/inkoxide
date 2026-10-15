@@ -164,8 +164,10 @@ let options = RenderOptions::default().with_encryption(
 ## Hyphenation patterns
 
 A text node with `hyphenate: true` is hyphenated in its `lang` (or
-`meta.lang`). A run's own `hyphenate` overrides the node's for that run's
-words, in the node's language. The patterns are chosen in this order:
+`meta.lang`). With neither, nothing is hyphenated, and the render logs a
+`tracing` warning that names the node's `id`. A run's own `hyphenate`
+overrides the node's for that run's words, in the node's language. The
+patterns are chosen in this order:
 
 1. patterns registered for the tag, then for each less specific tag
    (`en-GB`, then `en`);
@@ -174,6 +176,11 @@ words, in the node's language. The patterns are chosen in this order:
 3. none.
 
 Soft hyphens (U+00AD) in the text are always honoured.
+
+A word wider than its line is broken between any two characters, hyphenated
+or not, as CSS does with `overflow-wrap: anywhere`; a grapheme cluster is
+never split. Text with `whiteSpace` `nowrap` or `pre` is not broken: a long
+word overflows the line.
 
 Patterns are registered for a BCP-47 tag with a two- or three-letter
 language (`en`, `en-GB`, `haw`), in any case and with `-` or `_`.
