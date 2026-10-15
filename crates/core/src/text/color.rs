@@ -2,9 +2,9 @@
 //! uses from colour fonts are turned into images once per render
 //! ([`ColorGlyphs::load`]); the painter then draws each as an image in
 //! place of the glyph ([`ColorGlyphs::push`]), inside a span whose
-//! `ActualText` is the glyph's text, with an invisible space of the run's
-//! font as wide as the glyph so text extraction and selection still find
-//! it.
+//! `ActualText` is the glyph's text, with an invisible space as wide as
+//! the glyph (of the run's font, or another with outlines) so text
+//! extraction and selection still find it.
 //!
 //! A glyph whose colour data is missing, malformed or over the limits
 //! draws as text when its font has outlines, and not at all otherwise.
@@ -45,11 +45,9 @@ pub(crate) struct ColorGlyphs {
     glyphs: HashMap<(FontKey, u16), Placed>,
 }
 
-/// Glyph `gid` of `font` as an image, and the box it fills: its colour
-/// data through the checks of an image in a document (its header first, a
-/// bitmap's size, then the decode, through the process-wide cache, with
-/// the SVG limits). `None` for a glyph without colour, or whose colour
-/// data is malformed or over the limits.
+/// The image bytes of glyph `gid` of `font` (SVG or PNG), and the box they
+/// fill. `None` for a glyph without colour, or whose colour data is
+/// malformed or over the limits of one glyph.
 fn glyph_bytes(font: &LoadedFont<'_>, gid: u16) -> Option<(Vec<u8>, [f32; 4])> {
     Some(match font.color_glyph(gid)? {
         ColorGlyph::Svg { svg, bbox } => (svg.into_bytes(), bbox),
@@ -57,6 +55,9 @@ fn glyph_bytes(font: &LoadedFont<'_>, gid: u16) -> Option<(Vec<u8>, [f32; 4])> {
     })
 }
 
+/// A colour glyph's image, through the checks of an image in a document:
+/// its header first (a bitmap's size), then the decode, through the
+/// process-wide cache, with the SVG limits.
 fn decode(bytes: Vec<u8>) -> Option<Arc<DecodedImage>> {
     crate::images::probe(&bytes).ok()?;
     ImageData::new(bytes.into())
