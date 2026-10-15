@@ -202,7 +202,9 @@ jobs:
           [[ "$DRY_RUN" == "true" ]] && flags+=(--dry-run)
           node scripts/npm-release.mjs bindings "$RUNNER_TEMP/npm-staging" "${flags[@]}"
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # No install scripts in the job that can mint a publishing token. Staging needs only
+        # TypeScript's tsc, which has none; the native bindings were built by the jobs above.
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Publish the React packages
         env:
           DRY_RUN: ${{ inputs.dry_run }}
