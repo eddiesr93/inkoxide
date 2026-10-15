@@ -919,7 +919,7 @@ export interface Field {
   readOnly?: boolean;
   required?: boolean;
   /**
-   * text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display.
+   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display.
    */
   font?: Id;
   /**

@@ -542,7 +542,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
-| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
+| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
