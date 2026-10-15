@@ -57,7 +57,8 @@ Still document schema version 1.
   `type` (`number`, `percent`, `date`, `time`, `zip`, `zipPlus4`, `phone`, `ssn`) with
   `decimals` (0 to 10), `separators`, `negative`, `currency` (at most 8 characters, no control
   characters, quotes or backslashes) and `currencyBefore` for numbers, and `pattern` (required,
-  at most 64 characters) for dates and times. `value` must fit the format.
+  at most 64 characters; a time's shows only `H`, `h`, `M`, `s` and `t`) for dates and times.
+  `value` must fit the format; a time is `HH:MM[:SS]`, or a date with a time.
 - A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
   `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
   at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or

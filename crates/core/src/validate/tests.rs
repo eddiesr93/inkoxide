@@ -1098,9 +1098,29 @@ fn form_fields() {
         ),
         (r#"{"type":"zip"}"#, r#","value":"02134""#),
         (r#"{"type":"ssn"}"#, ""),
+        // A time value is a time of day, or a date with a time.
+        (
+            r#"{"type":"time","pattern":"HH:MM:ss"}"#,
+            r#","value":"2026-10-14T18:30:05""#,
+        ),
     ] {
         assert_eq!(run(&text(format, value)), vec![], "{format}");
     }
+    // A pattern is at most 64 characters.
+    let pattern = |n: usize| format!(r#"{{"type":"date","pattern":"{}"}}"#, "d/".repeat(n / 2));
+    assert_eq!(run(&text(&pattern(64), "")), vec![]);
+    assert_eq!(
+        one(&text(&pattern(66), "")),
+        (C::InvalidValue, format!("{f}.format.pattern"))
+    );
+    // A date value has no time of its own.
+    assert_eq!(
+        one(&text(
+            r#"{"type":"date","pattern":"dd"}"#,
+            r#","value":"18:30""#
+        )),
+        (C::InvalidValue, format!("{f}.value"))
+    );
     for (format, value, code, path) in [
         (
             r#"{"type":"number"}"#,
