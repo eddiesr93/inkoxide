@@ -115,6 +115,14 @@ jobs:
       - name: Parity with the native build
         # Fixtures, fuzz seeds and documents at the limits (scripts/wasm-parity.mjs).
         run: node scripts/wasm-parity.mjs
+      - name: Install the browsers
+        working-directory: examples/browser
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Browser tests
+        # examples/browser, built with Vite: a render in a worker, in each browser, gives the bytes
+        # Node gives, under a strict Content Security Policy and without cross-origin isolation.
+        working-directory: examples/browser
+        run: pnpm test
 
   schema:
     name: Schema

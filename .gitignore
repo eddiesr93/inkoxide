@@ -15,6 +15,10 @@ dist/
 # The WebAssembly engine, built by scripts/build-wasm.sh
 /packages/wasm/inkoxide.wasm
 
+# Playwright, in examples/browser
+/examples/browser/test-results/
+/examples/browser/playwright-report/
+
 # Fuzzing
 /fuzz/target/
 /fuzz/corpus/

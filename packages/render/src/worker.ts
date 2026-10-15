@@ -1,6 +1,6 @@
 /**
  * The Web Worker the browser entry renders in (browser-host.ts): it runs `@inkoxide/wasm` and
- * answers the host's calls, one message each. A request is `{ id, op, args }`; the answer is
+ * answers the host's calls, one message each, in order. A request is `{ id, op, args }`; the answer is
  * `{ id, value }`, or `{ id, error }` with the error's name, code, path and message. A PDF is
  * transferred, not copied.
  */
@@ -33,7 +33,8 @@ const scope = globalThis as unknown as {
   postMessage(message: Response, transfer?: Transferable[]): void;
 };
 
-scope.onmessage = async ({ data: { id, op, args } }) => {
+/** Answers one request. */
+async function answer({ id, op, args }: Request): Promise<void> {
   try {
     const f = OPS[op] as (...a: unknown[]) => unknown;
     const value = await f(...args);
@@ -47,4 +48,11 @@ scope.onmessage = async ({ data: { id, op, args } }) => {
     } = (e ?? {}) as Record<string, string | undefined>;
     scope.postMessage({ id, error: { name, code, path, message } });
   }
+}
+
+// One request at a time, in the order they came: a new worker is set up (`init`, then the fonts)
+// before it renders.
+let queue = Promise.resolve();
+scope.onmessage = ({ data }) => {
+  queue = queue.then(() => answer(data));
 };
