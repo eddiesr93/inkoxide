@@ -1072,6 +1072,65 @@ fn emoji_ops_in(
     (pages.into_iter().map(|p| p.ops).collect(), ids)
 }
 
+/// A colour glyph with a layer in the foreground colour is drawn in its
+/// run's colour: one image per colour. One without is the same image in
+/// every colour.
+#[test]
+fn colour_glyphs_take_the_colour_of_their_run() {
+    let mut store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+    let bytes = crate::test_fixtures::fixture("fonts/EmojiTest-COLR.ttf");
+    store.register("EmojiTest-COLR", bytes).unwrap();
+    let span = |text: &str, color: &str| {
+        format!(r#"{{"text":"{text}","font":"EmojiTest-COLR","size":20,"color":{color}}}"#)
+    };
+    let runs = [
+        span("\u{2B50}", "[1,0,0,1]"),
+        span("\u{2B50}", "[0,0,1,0.5]"),
+        span("\u{2B50}", "[1,0,0,1]"),
+        span("\u{1F600}", "[1,0,0,1]"),
+        span("\u{1F600}", "[0,0,1,1]"),
+    ]
+    .join(",");
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"EmojiTest-COLR","family":"Emoji"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","runs":[{runs}]}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
+    let keys: Vec<_> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Image { key, .. } => Some(key),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(keys.len(), 5, "{keys:?}");
+    // The star in red, in blue, and in red again; the grin in both.
+    assert_ne!(keys[0], keys[1]);
+    assert_eq!(keys[0], keys[2]);
+    assert_eq!(keys[3], keys[4]);
+    // Three images: two stars and a grin.
+    let mut distinct = keys.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(distinct.len(), 3);
+}
+
 /// With `debug`, colour glyphs are still images: the outlined paragraph is
 /// painted as any other.
 #[test]
@@ -1141,17 +1200,34 @@ fn colour_glyphs_are_images_in_spans_with_their_text() {
                 _ => None,
             })
             .collect();
-        assert_eq!(spans, ["\u{1F600}", "\u{1F1EB}\u{1F1F7}"], "{fallback}");
+        // The space after the flag is the colour font's: without outlines
+        // (CBDT), nothing draws it, but it keeps its text.
+        let space: &[&str] = if fallback == "EmojiTest-CBDT" {
+            &[" "]
+        } else {
+            &[]
+        };
+        assert_eq!(
+            spans,
+            [&["\u{1F600}", "\u{1F1EB}\u{1F1F7}"][..], space].concat(),
+            "{fallback}"
+        );
         let images = ops
             .iter()
             .filter(|op| matches!(op, Op::Image { .. }))
             .count();
         assert_eq!(images, 2, "{fallback}");
-        for op in ops {
-            if let Op::InvisibleText(g) = op {
-                assert_eq!(ids[g.font as usize], "Inter-Regular");
-                assert!(close(g.width, 22.0), "{}", g.width);
-            }
+        let spaces: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::InvisibleText(g) => Some(g),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces.len(), 2 + space.len());
+        for g in &spaces[..2] {
+            assert_eq!(ids[g.font as usize], "Inter-Regular");
+            assert!(close(g.width, 22.0), "{}", g.width);
         }
         let at = |want: fn(&Op) -> bool| ops.iter().position(want).unwrap();
         let (span, image) = (

@@ -148,9 +148,11 @@ describe('Font.register', () => {
     );
     const text = Buffer.from(pdf).toString('latin1');
     // Each emoji is an image (and its alpha mask), in a span with its text;
-    // the font is not embedded.
+    // the font is not embedded. The space after the thumbs is the colour
+    // font's, which cannot draw it: it keeps its text in a span too.
     expect(text.match(/\/Subtype \/Image/g)).toHaveLength(4);
-    expect(text.match(/\/ActualText/g)).toHaveLength(2);
+    expect(text.match(/\/ActualText/g)).toHaveLength(3);
+    expect(text).toContain('/ActualText ( )');
     expect(text).not.toContain('EmojiTestCBDT');
   });
 

@@ -19,7 +19,7 @@ mod woff;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-pub(crate) use color::ColorGlyph;
+pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
 use crate::schema::{Document, FontDecl, FontStyle};
 use crate::InkoxideError;

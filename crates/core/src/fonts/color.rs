@@ -9,6 +9,10 @@
 //! (a layer can paint another colour glyph, whose layers paint others),
 //! so the work per glyph is bounded: past [`MAX_PAINT_OPS`] painter calls
 //! or [`MAX_SVG_BYTES`] of markup, the glyph has no colour.
+//!
+//! Layers in the foreground colour (palette index 0xFFFF) take the text
+//! colour, as in browsers: such a glyph is painted once per text colour
+//! it is drawn in.
 
 use std::fmt::Write;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
@@ -33,17 +37,50 @@ pub(crate) enum ColorGlyph {
     Png { png: Vec<u8>, bbox: [f32; 4] },
 }
 
+/// A text colour, `[r, g, b]`: what the layers of a `COLR` glyph in the
+/// foreground colour are painted in. Its alpha is the text's opacity, which
+/// the painter applies to the whole glyph.
+pub(crate) type TextColor = [u8; 3];
+
+/// The text colour of colour glyphs drawn without one (black).
+pub(crate) const BLACK_TEXT: TextColor = [0, 0, 0];
+
 impl LoadedFont<'_> {
-    /// Glyph `gid` in colour: its `COLR` layers, else its largest PNG
-    /// bitmap. `None` for a glyph without colour, or whose colour data is
-    /// malformed or over the limits.
+    /// Glyph `gid` in colour: its `COLR` layers (those in the foreground
+    /// colour black), else its largest PNG bitmap. `None` for a glyph
+    /// without colour, or whose colour data is malformed or over the
+    /// limits.
     pub fn color_glyph(&self, gid: u16) -> Option<ColorGlyph> {
+        self.color_glyph_in(gid, BLACK_TEXT)
+    }
+
+    /// Glyph `gid` in colour, as [`Self::color_glyph`], with its layers in
+    /// the foreground colour in text colour `text`.
+    pub fn color_glyph_in(&self, gid: u16, text: TextColor) -> Option<ColorGlyph> {
+        self.painted(gid, text).map(|(glyph, _)| glyph)
+    }
+
+    /// Glyph `gid` in colour, as [`Self::color_glyph`], and whether it
+    /// takes the text colour: whether it has layers in the foreground
+    /// colour.
+    pub fn color_glyph_tinted(&self, gid: u16) -> Option<(ColorGlyph, bool)> {
+        let (black, maybe) = self.painted(gid, BLACK_TEXT)?;
+        // Painted black somewhere: the foreground, or the palette's own
+        // black, which white tells apart.
+        let tinted = maybe && self.color_glyph_in(gid, [255, 255, 255]).as_ref() != Some(&black);
+        Some((black, tinted))
+    }
+
+    /// Glyph `gid` in colour with text colour `text`, and whether it paints
+    /// in that colour anywhere (a `COLR` layer in the foreground colour, or
+    /// one of the palette's that happens to match).
+    fn painted(&self, gid: u16, text: TextColor) -> Option<(ColorGlyph, bool)> {
         if !self.has_color() {
             return None;
         }
         let id = GlyphId(gid);
         if self.face.is_color_glyph(id) {
-            return colr_svg(&self.face, id);
+            return colr_svg(&self.face, id, text);
         }
         let img = self.face.glyph_raster_image(id, u16::MAX)?;
         if img.format != RasterImageFormat::PNG
@@ -55,7 +92,7 @@ impl LoadedFont<'_> {
         }
         let s = self.data.metrics.units_per_em / f32::from(img.pixels_per_em);
         let (x, y) = (f32::from(img.x) * s, f32::from(img.y) * s);
-        Some(ColorGlyph::Png {
+        let png = ColorGlyph::Png {
             png: img.data.to_vec(),
             bbox: [
                 x,
@@ -63,7 +100,8 @@ impl LoadedFont<'_> {
                 x + f32::from(img.width) * s,
                 y + f32::from(img.height) * s,
             ],
-        })
+        };
+        Some((png, false))
     }
 }
 
@@ -71,14 +109,24 @@ impl LoadedFont<'_> {
 /// stop a painter, and caught in [`colr_svg`].
 struct OverBudget;
 
-fn colr_svg(face: &ttf_parser::Face<'_>, id: GlyphId) -> Option<ColorGlyph> {
-    let mut painter = SvgPainter::new(face);
-    let black = RgbaColor::new(0, 0, 0, 255);
+/// Glyph `id` of `face` as SVG, its layers in the foreground colour in
+/// `text`, and whether anything was painted in `text`.
+fn colr_svg(
+    face: &ttf_parser::Face<'_>,
+    id: GlyphId,
+    text: TextColor,
+) -> Option<(ColorGlyph, bool)> {
+    let mut painter = SvgPainter::new(face, text);
+    let [r, g, b] = text;
+    let foreground = RgbaColor::new(r, g, b, 255);
     let painted = catch_unwind(AssertUnwindSafe(|| {
-        face.paint_color_glyph(id, 0, black, &mut painter)
+        face.paint_color_glyph(id, 0, foreground, &mut painter)
     }));
     match painted {
-        Ok(Some(())) => painter.finish(),
+        Ok(Some(())) => {
+            let seen = painter.text_seen;
+            painter.finish().map(|glyph| (glyph, seen))
+        }
         Ok(None) => None,
         Err(payload) if payload.is::<OverBudget>() => None,
         Err(payload) => resume_unwind(payload),
@@ -134,12 +182,15 @@ struct SvgPainter<'a, 'f> {
     bounds: Option<[f32; 4]>,
     ids: usize,
     ops: usize,
+    /// The text colour, and whether a fill or a stop was in it.
+    text: TextColor,
+    text_seen: bool,
 }
 
 const IDENTITY: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
 impl<'a, 'f> SvgPainter<'a, 'f> {
-    fn new(face: &'f ttf_parser::Face<'a>) -> Self {
+    fn new(face: &'f ttf_parser::Face<'a>, text: TextColor) -> Self {
         Self {
             face,
             body: String::new(),
@@ -152,7 +203,15 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
             bounds: None,
             ids: 0,
             ops: 0,
+            text,
+            text_seen: false,
         }
+    }
+
+    /// `c` as an SVG colour, noting whether it is the text colour.
+    fn rgb(&mut self, c: RgbaColor) -> String {
+        self.text_seen |= [c.red, c.green, c.blue] == self.text;
+        format!("rgb({},{},{})", c.red, c.green, c.blue)
     }
 
     /// Counts one call against the budget, and unwinds past it.
@@ -204,13 +263,11 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
         stops.sort_by(|a, b| a.stop_offset.total_cmp(&b.stop_offset));
         for s in stops {
             let c = s.color;
+            let color = self.rgb(c);
             let _ = write!(
                 self.body,
-                r#"<stop offset="{}" stop-color="rgb({},{},{})" stop-opacity="{}"/>"#,
+                r#"<stop offset="{}" stop-color="{color}" stop-opacity="{}"/>"#,
                 s.stop_offset,
-                c.red,
-                c.green,
-                c.blue,
                 f32::from(c.alpha) / 255.0
             );
         }
@@ -283,7 +340,7 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
         self.spend();
         match paint {
             Paint::Solid(c) => {
-                let fill = format!("rgb({},{},{})", c.red, c.green, c.blue);
+                let fill = self.rgb(c);
                 self.fill_path(&fill, f32::from(c.alpha) / 255.0);
             }
             Paint::LinearGradient(g) => {
@@ -343,7 +400,7 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
                     .min_by(|a, b| a.stop_offset.total_cmp(&b.stop_offset));
                 if let Some(s) = first {
                     let c = s.color;
-                    let fill = format!("rgb({},{},{})", c.red, c.green, c.blue);
+                    let fill = self.rgb(c);
                     self.fill_path(&fill, f32::from(c.alpha) / 255.0);
                 }
             }
@@ -475,6 +532,39 @@ mod tests {
                 "{coder}"
             );
             assert!(coder.contains(r#"fill="rgb(150,155,165)""#), "{coder}");
+        });
+    }
+
+    /// Layers in the foreground colour take the text colour; the others
+    /// keep the palette's.
+    #[test]
+    fn foreground_layers_take_the_text_colour() {
+        with_fonts(|fonts| {
+            let colr = fonts.get(0);
+            let star = colr.glyph('\u{2B50}').unwrap();
+            let Some(ColorGlyph::Svg { svg: red, .. }) = colr.color_glyph_in(star, [255, 0, 0])
+            else {
+                panic!("no colour")
+            };
+            assert!(red.contains(r#"fill="rgb(255,0,0)""#), "{red}");
+            assert!(red.contains(r#"fill="rgb(255,200,40)""#), "{red}");
+            let (black, _) = svg_of(colr, star);
+            assert!(black.contains(r#"fill="rgb(0,0,0)""#), "{black}");
+            assert!(colr.color_glyph_tinted(star).unwrap().1);
+            // Glyphs with no layer in the foreground colour, bitmaps.
+            for c in ['😀', '\u{2764}', '👩'] {
+                assert!(!colr.color_glyph_tinted(colr.glyph(c).unwrap()).unwrap().1);
+            }
+            for g in [WOMAN_LAPTOP, LAPTOP, KEYCAP_ONE] {
+                assert!(!colr.color_glyph_tinted(g).unwrap().1);
+            }
+            let cbdt = fonts.get(1);
+            assert!(
+                !cbdt
+                    .color_glyph_tinted(cbdt.glyph('😀').unwrap())
+                    .unwrap()
+                    .1
+            );
         });
     }
 

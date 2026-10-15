@@ -16,6 +16,9 @@ version 2.
   valid before, with both buttons drawn on but only the first one's value as the group's.
   Buttons of a group with the same value are now on together, as viewers show them, encrypted
   or not.
+- An `emojiImages` image in a run with `verticalAlign` `super` or `sub` is raised or lowered
+  with the run's glyphs, its bottom 0.1em below the run's moved baseline. It stayed on the
+  line's baseline.
 
 ## 2.4.1 - 2026-10-15
 

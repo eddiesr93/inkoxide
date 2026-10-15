@@ -135,7 +135,10 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
         None => (&text.glyphs[..], &text.images[..]),
     };
     let mut out = Vec::new();
-    let colored = glyphs.iter().filter(|g| res.colors.draws(g.font, g.id));
+    // And the other glyphs of a font without outlines: their text.
+    let colored = glyphs
+        .iter()
+        .filter(|g| res.colors.draws(g.font, g.id) || !res.fonts.get(g.font).has_outlines());
     for g in colored {
         let op = TextOp {
             font: g.font,
@@ -1769,6 +1772,16 @@ mod tests {
             let embedded = out.contains(&font.replace('-', ""));
             assert_eq!(embedded, font == "EmojiTest-COLR", "{font}");
         }
+    }
+
+    /// A glyph of a font without outlines that is not drawn in colour (a
+    /// space of CBDT) keeps its text in SVG text, as in page text.
+    #[test]
+    fn glyphs_of_a_font_without_outlines_keep_their_text_in_svg_text() {
+        let body = svg(r#"<text x="5" y="20" font-size="10" font-family="E">😀 😀</text>"#);
+        let out = rendered_emoji(&body, Some("EmojiTest-CBDT"), None).unwrap();
+        assert_eq!(out.matches(&actual_text("😀")).count(), 2, "{out}");
+        assert!(out.contains("/ActualText ( )"), "{out}");
     }
 
     /// Emoji the document maps to images are those images in SVG text, in
