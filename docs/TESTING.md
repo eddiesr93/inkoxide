@@ -106,7 +106,9 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   sequence, a flag, a keycap and a skin tone. The script also writes
   `fixtures/fonts/limits/colr-fanout.ttf`, a `COLR` glyph whose layers
   paint the next level 255 times, eight levels deep, for the colour glyph
-  work budget in `limits.rs`.
+  work budget in `limits.rs`, and `colr-fanout-empty.ttf`, the same with a
+  last level that paints nothing, so that only counting the paint graph
+  stops it.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,

@@ -9,6 +9,13 @@ together. The document schema has its own version and
 
 ## Unreleased
 
+### Security
+
+- The work budget of a `COLR` colour glyph also counts the paint tables its paint graph reaches,
+  each as often as it is reached, before the glyph is painted: past 10000 the glyph draws
+  without colour, whether or not those paints draw anything. So does a glyph whose paint graph
+  has a cycle or nests more than 64 deep, which the `COLR` specification does not allow.
+
 ## 0.8.0 - 2026-10-15
 
 `inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style`
