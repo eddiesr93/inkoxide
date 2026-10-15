@@ -67,6 +67,7 @@ pub(crate) struct DocumentOut<'a> {
     pub fonts: &'a FontSet<'a>,
     pub unicode: &'a UnicodeMap,
     pub images: &'a ImageSet,
+    pub colors: &'a crate::text::ColorGlyphs,
     pub marks: &'a Marks<'a>,
 }
 
@@ -334,18 +335,22 @@ impl PdfSink for PdfWriterSink {
                 .extend(crate::forms::edit_glyphs(font));
         }
         // The glyphs of SVG text laid out for the images painted: every
-        // text, drawn or not, so a superset of what the forms show.
+        // text, drawn or not, so a superset of what the forms show; and
+        // the images that text draws.
         let painted: BTreeSet<ImageKey> =
             doc.pages.iter().flat_map(|p| &p.images).copied().collect();
+        let mut text_images: BTreeSet<ImageKey> = BTreeSet::new();
         for &key in &painted {
             if let crate::images::ImageBody::Svg {
                 probed: Some(probed),
                 ..
             } = &doc.images.get(key).body
             {
-                for g in probed.texts.iter().flat_map(|t| &t.glyphs) {
-                    used.entry(g.font).or_default().insert(g.id);
+                let (glyphs, images) = svg::text_uses(probed, doc.fonts, doc.colors, doc.images);
+                for (font, glyph) in glyphs {
+                    used.entry(font).or_default().insert(glyph);
                 }
+                text_images.extend(images);
             }
         }
         // Subsetting and compression are independent per font.
@@ -369,26 +374,32 @@ impl PdfSink for PdfWriterSink {
             font_refs.insert(*key, r);
         }
 
-        // Images: one XObject per unique image actually painted.
+        // Images: one XObject per unique image actually painted, those
+        // SVG text draws first, for the forms of the SVGs to name them.
         let mut image_refs: BTreeMap<ImageKey, Ref> = BTreeMap::new();
-        for page in doc.pages {
-            for &key in &page.images {
-                image_refs.entry(key).or_insert(Ref::new(1));
-            }
-        }
-        for (key, r) in &mut image_refs {
-            let fonts = svg::TextFonts {
+        let on_pages: BTreeSet<ImageKey> = painted
+            .iter()
+            .copied()
+            .filter(|k| !text_images.contains(k))
+            .collect();
+        for key in text_images.into_iter().chain(on_pages) {
+            let res = svg::TextResources {
                 fonts: doc.fonts,
                 refs: &font_refs,
+                colors: doc.colors,
+                unicode: doc.unicode,
+                images: doc.images,
+                image_refs: &image_refs,
             };
-            *r = image::write_image(
+            let r = image::write_image(
                 &mut pdf,
                 &mut alloc,
                 &mut out,
-                doc.images.get(*key),
+                doc.images.get(key),
                 self.profile,
-                Some(fonts),
+                Some(res),
             )?;
+            image_refs.insert(key, r);
         }
 
         // Link annotations, numbered in page order.
@@ -1051,17 +1062,25 @@ pub(crate) fn content_stream(
             Op::EndSpan => {
                 c.end_marked_content();
             }
-            Op::InvisibleText(g) => invisible_glyph(&mut c, g, fonts, profile),
+            Op::InvisibleText(g) => {
+                invisible_glyph(&mut c, g, font_name(g.font).as_bytes(), fonts, profile);
+            }
         }
     }
     content_bytes(c, profile)
 }
 
-/// An invisible glyph (`3 Tr`), horizontally scaled (`Tz`) to its width,
-/// in its own save level: text state outlives `ET`. Where `profile`
-/// bounds real numbers (PDF/A-1), a scaling past the bound is moved into
-/// the font size, which draws the same width.
-fn invisible_glyph(c: &mut Content, g: &InvisibleGlyph, fonts: &FontSet<'_>, profile: Profile) {
+/// An invisible glyph (`3 Tr`) in the font named `name`, horizontally
+/// scaled (`Tz`) to its width, in its own save level: text state outlives
+/// `ET`. Where `profile` bounds real numbers (PDF/A-1), a scaling past the
+/// bound is moved into the font size, which draws the same width.
+fn invisible_glyph(
+    c: &mut Content,
+    g: &InvisibleGlyph,
+    name: &[u8],
+    fonts: &FontSet<'_>,
+    profile: Profile,
+) {
     let font = fonts.get(g.font);
     let advance = font.advance(g.glyph) * font.scale(g.size);
     let mut scaling = 100.0 * g.width / advance;
@@ -1076,7 +1095,7 @@ fn invisible_glyph(c: &mut Content, g: &InvisibleGlyph, fonts: &FontSet<'_>, pro
     }
     c.save_state();
     c.begin_text();
-    c.set_font(Name(font_name(g.font).as_bytes()), q(size));
+    c.set_font(Name(name), q(size));
     c.set_text_rendering_mode(TextRenderingMode::Invisible);
     c.set_horizontal_scaling(q(scaling));
     c.set_text_matrix([1.0, 0.0, 0.0, -1.0, q(g.x), q(g.y)]);
@@ -1439,6 +1458,7 @@ mod tests {
                 fonts: &fonts,
                 unicode: &UnicodeMap::default(),
                 images: &images,
+                colors: &crate::text::ColorGlyphs::default(),
                 marks: &Marks::default(),
             })
             .unwrap();

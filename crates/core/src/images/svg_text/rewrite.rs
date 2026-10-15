@@ -190,6 +190,7 @@ fn paints_of(laid: &LaidText) -> Vec<u32> {
         .iter()
         .map(|g| g.paint)
         .chain(laid.decorations.iter().map(|d| d.paint))
+        .chain(laid.images.iter().map(|i| i.paint))
         .collect();
     paints.sort_unstable();
     paints.dedup();
@@ -307,6 +308,7 @@ mod tests {
             LaidText {
                 glyphs: vec![glyph],
                 decorations: Vec::new(),
+                images: Vec::new(),
                 ink: Some([0.0, 0.0, 1.0, 1.0]),
             };
             n

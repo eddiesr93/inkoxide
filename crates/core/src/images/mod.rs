@@ -19,7 +19,7 @@ pub(crate) mod svg_text;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
@@ -343,6 +343,30 @@ impl ImageSet {
             });
         }
         Ok(())
+    }
+
+    /// The glyphs the text of this render's SVGs uses, of the fonts
+    /// `wanted` picks.
+    pub fn svg_text_glyphs(
+        &self,
+        wanted: impl Fn(crate::fonts::FontKey) -> bool,
+    ) -> BTreeMap<crate::fonts::FontKey, BTreeSet<u16>> {
+        let mut out: BTreeMap<_, BTreeSet<u16>> = BTreeMap::new();
+        for image in &self.images {
+            let ImageBody::Svg {
+                probed: Some(probed),
+                ..
+            } = &image.body
+            else {
+                continue;
+            };
+            for g in probed.texts.iter().flat_map(|t| &t.glyphs) {
+                if wanted(g.font) {
+                    out.entry(g.font).or_default().insert(g.id);
+                }
+            }
+        }
+        out
     }
 
     /// The images of the document's image runs, for the shaper.

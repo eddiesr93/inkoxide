@@ -104,6 +104,7 @@ fn stub(text: &SvgText) -> LaidText {
             })
             .collect(),
         decorations: Vec::new(),
+        images: Vec::new(),
         ink: Some([1.5, -8.25, 30.125, 2.0]),
     }
 }

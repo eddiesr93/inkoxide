@@ -234,7 +234,8 @@ fn layout_fixed<'a>(
 /// handing each to `encode` as soon as it is painted. With `parallel`,
 /// shaping and painting run on the current rayon pool; without it, on the
 /// calling thread alone. With `opaque` (PDF/A-1b), colour glyphs whose
-/// images need transparency are drawn without colour.
+/// images need transparency are drawn without colour. Returns the pages,
+/// the marks and the colour glyphs, which SVG text draws too.
 pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
@@ -242,7 +243,7 @@ pub(crate) fn run<'d, T: Send>(
     images: &mut ImageSet,
     (parallel, opaque): (bool, bool),
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
-) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
+) -> Result<(Vec<T>, Marks<'d>, ColorGlyphs), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
     // up front, in parallel.
     let mut texts = Vec::new();
@@ -254,12 +255,12 @@ pub(crate) fn run<'d, T: Send>(
     }
     text.prepare_all(&texts, parallel);
     drop(texts);
-    let colors = ColorGlyphs::load(
-        fonts,
-        &text.glyphs_of(|k| fonts.get(k).data.metrics.color),
-        images,
-        (parallel, opaque),
-    );
+    let color = |k| fonts.get(k).data.metrics.color;
+    let mut used = text.glyphs_of(color);
+    for (k, glyphs) in images.svg_text_glyphs(color) {
+        used.entry(k).or_default().extend(glyphs);
+    }
+    let colors = ColorGlyphs::load(fonts, &used, images, (parallel, opaque));
     let images: &ImageSet = images;
 
     let mut laid = Vec::with_capacity(doc.pages.len());
@@ -330,7 +331,7 @@ pub(crate) fn run<'d, T: Send>(
             .map(page)
             .collect::<Result<_, _>>()?
     };
-    Ok((pages, marks))
+    Ok((pages, marks, colors))
 }
 
 /// Lays out and paginates the flow of page template `spec`: its children

@@ -86,7 +86,7 @@ pub(super) fn render_with<R>(
     let fonts = FontSet::load(&doc, store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(&doc, &fonts, &mut text, &mut images, (true, false), Ok).unwrap();
+    let (pages, marks, _) = run(&doc, &fonts, &mut text, &mut images, (true, false), Ok).unwrap();
     f(pages, &marks, &fonts)
 }
 
@@ -797,7 +797,7 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
         .unwrap()
         .with_objects(std::sync::Arc::new(images.inline_objects()));
     let mut text = TextCache::new(shaper, None);
-    let (pages, _) = run(&doc, &fonts, &mut text, &mut images, (false, false), Ok).unwrap();
+    let (pages, _, _) = run(&doc, &fonts, &mut text, &mut images, (false, false), Ok).unwrap();
     pages.into_iter().map(|p| p.ops).collect()
 }
 
@@ -896,7 +896,7 @@ fn emoji_ops(text: &str, fallback: &str) -> (Vec<Vec<Op>>, Vec<String>) {
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, _) = run(&doc, &fonts, &mut text, &mut images, (false, false), Ok).unwrap();
+    let (pages, _, _) = run(&doc, &fonts, &mut text, &mut images, (false, false), Ok).unwrap();
     let ids = (0..fonts.fonts.len())
         .map(|k| fonts.get(k as u16).id.to_string())
         .collect();

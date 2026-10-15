@@ -7,12 +7,20 @@
 //! `textLength`, relative shifts and rotations per character, the anchor
 //! per chunk and baselines from the font's metrics. Positions are in the
 //! text's user space, y down.
+//!
+//! The glyphs of colour fonts stay glyphs: the PDF writer draws those
+//! that have a colour image (`ColorGlyphs`, loaded after layout) as
+//! images, as page text does. Emoji the document maps to images
+//! (`emojiImages`) are laid out as the images ([`SvgImage`]).
 
 use std::collections::HashMap;
 
+use super::objects::InlineObject;
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::images::svg_text::{Anchor, Baseline, Shift, SvgSpan, SvgText};
+use crate::images::ImageKey;
+use crate::paint::Rect;
 use crate::schema::{Direction, FontStyle, TextAlign, TextRun, TextWrap, WhiteSpace};
 
 /// A glyph of SVG text.
@@ -43,6 +51,26 @@ pub(crate) struct SvgDecoration {
     pub over: bool,
 }
 
+/// An image in SVG text: an emoji the document maps to an image.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SvgImage {
+    pub key: ImageKey,
+    /// Its place on the baseline, as a glyph's.
+    pub x: f32,
+    pub y: f32,
+    pub rotate: f32,
+    pub scale_x: f32,
+    /// The box it fills, from its place before rotation and stretch, y
+    /// down.
+    pub rect: Rect,
+    /// What text extraction gets for it, through an invisible space of
+    /// `font` at `size`, as wide as the image.
+    pub text: Option<Box<str>>,
+    pub font: FontKey,
+    pub size: f32,
+    pub paint: u32,
+}
+
 /// A text laid out.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct LaidText {
@@ -50,6 +78,8 @@ pub(crate) struct LaidText {
     pub glyphs: Vec<SvgGlyph>,
     /// In paint style order, then in the order they are drawn.
     pub decorations: Vec<SvgDecoration>,
+    /// In paint style order, then in the order they are drawn.
+    pub images: Vec<SvgImage>,
     /// The box of the glyph outlines and decorations, `[x0, y0, x1, y1]`;
     /// `None` when nothing has ink.
     pub ink: Option<[f32; 4]>,
@@ -68,6 +98,34 @@ impl LaidText {
         let start = self.decorations.partition_point(|d| d.paint < paint);
         let end = self.decorations.partition_point(|d| d.paint <= paint);
         &self.decorations[start..end]
+    }
+
+    /// A layout without fonts: a glyph of each of `paints` paint styles
+    /// on the unit square, for what a check needs of the text (its paint).
+    pub fn unit(paints: usize) -> Self {
+        let glyph = |paint| SvgGlyph {
+            font: 0,
+            id: 0,
+            size: 1.0,
+            x: 0.0,
+            y: 0.0,
+            rotate: 0.0,
+            scale_x: 1.0,
+            paint,
+        };
+        Self {
+            glyphs: (0..paints as u32).map(glyph).collect(),
+            decorations: Vec::new(),
+            images: Vec::new(),
+            ink: Some([0.0, 0.0, 1.0, 1.0]),
+        }
+    }
+
+    /// The images drawn in paint style `paint`.
+    pub fn images_of(&self, paint: u32) -> &[SvgImage] {
+        let start = self.images.partition_point(|i| i.paint < paint);
+        let end = self.images.partition_point(|i| i.paint <= paint);
+        &self.images[start..end]
     }
 }
 
@@ -92,6 +150,9 @@ struct Cluster {
     advance: f32,
     scale_x: f32,
     space: bool,
+    /// An image in place of its one glyph, and how far it reaches above
+    /// the baseline.
+    object: Option<(InlineObject, f32)>,
 }
 
 /// A chunk: clusters placed from one absolute position.
@@ -251,8 +312,19 @@ fn shape<S: TextShaper>(
             y_offset: glyph.y_offset,
             advance: glyph.advance,
         };
+        let object = seg.object.and_then(|o| prepared.objects.get(o as usize));
+        let object = object.map(|o| {
+            let run = &runs[usize::from(seg.run)];
+            let above = o.extent(run, shaper.fonts()).map_or(o.height, |e| e.0);
+            (o.clone(), above)
+        });
         match clusters.last_mut() {
-            Some(c) if c.char == char && c.font == seg.font => {
+            Some(c)
+                if c.char == char
+                    && c.font == seg.font
+                    && object.is_none()
+                    && c.object.is_none() =>
+            {
                 c.glyphs.push(item);
                 c.advance += glyph.advance;
             }
@@ -264,6 +336,7 @@ fn shape<S: TextShaper>(
                 advance: glyph.advance,
                 scale_x: 1.0,
                 space: glyph.is_space(),
+                object,
             }),
         }
     }
@@ -395,12 +468,46 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             let (ox, oy) = (x0 + x, y0 + y + down);
             let scale = font.scale(span.size);
             let mut pen = 0.0;
+            if let Some((o, above)) = &c.object {
+                let image = SvgImage {
+                    key: o.key,
+                    x: ox,
+                    y: oy,
+                    rotate: ch.rotate,
+                    scale_x: c.scale_x,
+                    rect: Rect::new(0.0, -above, o.width, o.height),
+                    text: o.alt.clone(),
+                    font: c.font,
+                    size: span.size,
+                    paint: span.paint,
+                };
+                let r = image.rect;
+                let corners = [
+                    (r.x, r.y),
+                    (r.x + r.w, r.y),
+                    (r.x + r.w, r.y + r.h),
+                    (r.x, r.y + r.h),
+                ];
+                grow(
+                    &mut out.ink,
+                    corners.map(|(u, v)| {
+                        let (px, py) = turn((u * c.scale_x, v), ch.rotate);
+                        (ox + px, oy + py)
+                    }),
+                );
+                out.images.push(image);
+            }
+            let glyphs = if c.object.is_some() {
+                &[][..]
+            } else {
+                &c.glyphs[..]
+            };
             for &ShapedGlyph {
                 id,
                 x_offset,
                 y_offset,
                 advance,
-            } in &c.glyphs
+            } in glyphs
             {
                 let (gx, gy) = turn(((pen + x_offset) * c.scale_x, -y_offset), ch.rotate);
                 let g = SvgGlyph {
@@ -415,7 +522,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                 };
                 let bbox = *boxes
                     .entry((c.font, id))
-                    .or_insert_with(|| font.glyph_bbox(id));
+                    .or_insert_with(|| ink_box(font, id));
                 if let Some([bx0, by0, bx1, by1]) = bbox {
                     let corners = [(bx0, by0), (bx1, by0), (bx1, by1), (bx0, by1)];
                     grow(
@@ -426,12 +533,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                         }),
                     );
                 }
-                // A font without outlines is never embedded: its glyphs
-                // keep their place but draw nothing (colour glyphs are
-                // drawn in one colour, from outlines, in SVG text).
-                if !font.data.metrics.color_only {
-                    out.glyphs.push(g);
-                }
+                out.glyphs.push(g);
                 pen += advance;
             }
             match runs.last_mut() {
@@ -481,7 +583,18 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
     // Each probe draws one paint style: stable sorts keep the order.
     out.glyphs.sort_by_key(|g| g.paint);
     out.decorations.sort_by_key(|d| d.paint);
+    out.images.sort_by_key(|i| i.paint);
     out
+}
+
+/// The box of glyph `id`'s ink, in font units, y up: its outline, or the
+/// em box of a colour glyph without one.
+fn ink_box(font: &LoadedFont<'_>, id: u16) -> Option<[f32; 4]> {
+    let m = &font.data.metrics;
+    font.glyph_bbox(id).or_else(|| {
+        m.color
+            .then(|| [0.0, m.descender, font.advance(id), m.ascender])
+    })
 }
 
 /// Clusters of one span without a shift between them, which a decoration

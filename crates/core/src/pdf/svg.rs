@@ -17,7 +17,8 @@
 //!   each text is (`images/svg_text`). A probe draws its text, laid out
 //!   with the render's fonts, as PDF text with the probe's paint: fill and
 //!   stroke in its paint order, underlines and overlines under the glyphs
-//!   and line-throughs over them.
+//!   and line-throughs over them. Its colour glyphs and emoji images are
+//!   images, each in a span whose `ActualText` is its text, as on pages.
 //!
 //! Patterns and shadings are positioned relative to the form they are used
 //! in, so the transform from the current form's space is tracked (`ts`)
@@ -38,8 +39,10 @@ use super::{alpha_key, key_alpha, number, Out, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
-use crate::images::ContentKey;
-use crate::text::LaidText;
+use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
+use crate::paint::{InvisibleGlyph, NO_RADII};
+use crate::schema::{ImageFit, ObjectPosition};
+use crate::text::{ColorGlyphs, LaidText, UnicodeMap};
 use crate::{flate, InkoxideError};
 
 /// Most path segments one SVG may emit, copies included.
@@ -51,12 +54,105 @@ const MAX_DEPTH: u32 = 256;
 /// pads. Each is an entry in a stitching function.
 const MAX_PERIODS: f32 = 1000.0;
 
-/// The render's fonts and the font objects written for them, for SVG
-/// text.
+/// What SVG text is drawn with: the render's fonts and the font objects
+/// written for them, its colour glyphs and the text they extract as, and
+/// the images written for colour glyphs and emoji.
 #[derive(Clone, Copy)]
-pub(crate) struct TextFonts<'a, 'f> {
+pub(crate) struct TextResources<'a, 'f> {
     pub fonts: &'a FontSet<'f>,
     pub refs: &'a BTreeMap<FontKey, Ref>,
+    pub colors: &'a ColorGlyphs,
+    pub unicode: &'a UnicodeMap,
+    pub images: &'a ImageSet,
+    pub image_refs: &'a BTreeMap<ImageKey, Ref>,
+}
+
+/// What the text of a render's copy of an SVG draws besides itself: the
+/// glyphs its fonts must embed (those it may draw, and the spaces its
+/// images extract through), and the images it draws (colour glyphs and
+/// emoji). An SVG with text is not drawn inside SVG text, so no form
+/// draws itself.
+pub(crate) fn text_uses(
+    probed: &ProbedText,
+    fonts: &FontSet<'_>,
+    colors: &ColorGlyphs,
+    images: &ImageSet,
+) -> (Vec<(FontKey, u16)>, Vec<ImageKey>) {
+    let mut glyphs = Vec::new();
+    let mut keys = Vec::new();
+    let space = |font: FontKey, glyphs: &mut Vec<(FontKey, u16)>| {
+        if let Some(g) = InvisibleGlyph::space(fonts, font, 1.0, (0.0, 0.0), 1.0) {
+            glyphs.push((g.font, g.glyph));
+        }
+    };
+    for t in &probed.texts {
+        for g in &t.glyphs {
+            // A font without outlines is never embedded.
+            if !fonts.get(g.font).data.metrics.color_only {
+                glyphs.push((g.font, g.id));
+            }
+            if let Some((key, _)) = colors.image(g.font, g.id) {
+                keys.push(key);
+                if let Some(f) = colors.space_font() {
+                    space(f, &mut glyphs);
+                }
+            }
+        }
+        for i in &t.images {
+            if drawable(images, i.key) {
+                keys.push(i.key);
+            }
+            space(i.font, &mut glyphs);
+        }
+    }
+    (glyphs, keys)
+}
+
+/// Whether SVG text may draw image `key`: not an SVG with text of its own.
+fn drawable(images: &ImageSet, key: ImageKey) -> bool {
+    !matches!(
+        images.get(key).body,
+        ImageBody::Svg { text: Some(_), .. }
+            | ImageBody::Svg {
+                probed: Some(_),
+                ..
+            }
+    )
+}
+
+/// Where an image in SVG text goes: the place and turn of its glyph.
+#[derive(Clone, Copy)]
+struct Frame {
+    x: f32,
+    y: f32,
+    rotate: f32,
+    scale_x: f32,
+}
+
+impl Frame {
+    /// From the frame to the text's user space (y down, turned clockwise).
+    fn matrix(self) -> [f32; 6] {
+        let (sin, cos) = if self.rotate == 0.0 {
+            (0.0, 1.0)
+        } else {
+            self.rotate.to_radians().sin_cos()
+        };
+        let k = self.scale_x;
+        [cos * k, sin * k, -sin, cos, self.x, self.y]
+    }
+}
+
+/// An image of SVG text: what it draws, where, and what it extracts as.
+struct TextImage<'t> {
+    key: ImageKey,
+    frame: Frame,
+    /// The box it fills in its frame, y down.
+    rect: crate::paint::Rect,
+    text: Option<&'t str>,
+    /// The font and size of the invisible space its text is on, as wide
+    /// as `width`.
+    space: Option<(FontKey, f32)>,
+    width: f32,
 }
 
 /// Writes `tree` as a Form `XObject` mapping the SVG viewport, of `size`,
@@ -68,7 +164,7 @@ pub(crate) fn write_svg(
     out: &mut Out,
     (tree, size): (&usvg::Tree, usvg::Size),
     profile: Profile,
-    text: Option<(&ProbedText, TextFonts<'_, '_>)>,
+    text: Option<(&ProbedText, TextResources<'_, '_>)>,
 ) -> Result<Ref, InkoxideError> {
     let (w, h) = (size.width(), size.height());
     let mut s = Svg {
@@ -502,7 +598,7 @@ struct Svg<'a> {
     /// left out of text.
     profile: Profile,
     /// The text at the probes, and the fonts to draw it with.
-    text: Option<(&'a ProbedText, TextFonts<'a, 'a>)>,
+    text: Option<(&'a ProbedText, TextResources<'a, 'a>)>,
 }
 
 type Res = Result<(), InkoxideError>;
@@ -884,8 +980,9 @@ impl Svg<'_> {
         }
         let laid = &probed.texts[text];
         if at.clip {
+            // Shapes only: colour glyphs by their outlines, no images.
             if p.fill().is_some() {
-                self.draw_text(cv, laid, paint, fonts, false)?;
+                self.draw_text(cv, laid, paint, fonts, (false, true))?;
             }
             return Ok(());
         }
@@ -895,7 +992,7 @@ impl Svg<'_> {
             let Some(f) = p.fill() else { return Ok(()) };
             cv.c.save_state();
             s.set_paint(cv, f.paint(), f.opacity().get(), false, bbox, at)?;
-            s.draw_text(cv, laid, paint, fonts, false)?;
+            s.draw_text(cv, laid, paint, fonts, (false, false))?;
             cv.c.restore_state();
             Ok(())
         };
@@ -903,35 +1000,161 @@ impl Svg<'_> {
             let Some(st) = p.stroke() else { return Ok(()) };
             cv.c.save_state();
             s.set_stroke(cv, st, bbox, at)?;
-            s.draw_text(cv, laid, paint, fonts, true)?;
+            s.draw_text(cv, laid, paint, fonts, (true, false))?;
             cv.c.restore_state();
             Ok(())
         };
         match p.paint_order() {
             usvg::PaintOrder::FillAndStroke => {
                 fill(self, cv)?;
-                stroke(self, cv)
+                stroke(self, cv)?;
             }
             usvg::PaintOrder::StrokeAndFill => {
                 stroke(self, cv)?;
-                fill(self, cv)
+                fill(self, cv)?;
             }
         }
+        // Images have their own colours.
+        self.text_images(cv, laid, paint, fonts)
+    }
+
+    /// The colour glyphs and emoji images of `laid` in paint style
+    /// `paint`.
+    fn text_images(
+        &mut self,
+        cv: &mut Canvas,
+        laid: &LaidText,
+        paint: u32,
+        res: TextResources<'_, '_>,
+    ) -> Res {
+        for g in laid.glyphs_of(paint) {
+            let Some((key, [x0, y0, x1, y1])) = res.colors.image(g.font, g.id) else {
+                continue;
+            };
+            let font = res.fonts.get(g.font);
+            let scale = font.scale(g.size);
+            let image = TextImage {
+                key,
+                frame: Frame {
+                    x: g.x,
+                    y: g.y,
+                    rotate: g.rotate,
+                    scale_x: g.scale_x,
+                },
+                rect: crate::paint::Rect::new(
+                    x0 * scale,
+                    -y1 * scale,
+                    (x1 - x0) * scale,
+                    (y1 - y0) * scale,
+                ),
+                text: res
+                    .unicode
+                    .fonts
+                    .get(&g.font)
+                    .and_then(|m| m.get(&g.id))
+                    .map(String::as_str),
+                space: res.colors.space_font().map(|k| (k, g.size)),
+                width: font.advance(g.id) * scale,
+            };
+            self.text_image(cv, res, &image)?;
+        }
+        for i in laid.images_of(paint) {
+            let image = TextImage {
+                key: i.key,
+                frame: Frame {
+                    x: i.x,
+                    y: i.y,
+                    rotate: i.rotate,
+                    scale_x: i.scale_x,
+                },
+                rect: i.rect,
+                text: i.text.as_deref().filter(|t| !t.is_empty()),
+                space: Some((i.font, i.size)),
+                width: i.rect.w,
+            };
+            self.text_image(cv, res, &image)?;
+        }
+        Ok(())
+    }
+
+    /// Draws `image` as page text draws an image glyph: the image, in a
+    /// span with its text and an invisible space as wide as the image when
+    /// it has text.
+    fn text_image(
+        &mut self,
+        cv: &mut Canvas,
+        res: TextResources<'_, '_>,
+        image: &TextImage<'_>,
+    ) -> Res {
+        self.segments += 8;
+        if self.segments > MAX_SEGMENTS {
+            return Err(too_complex());
+        }
+        cv.c.save_state();
+        cv.c.transform(image.frame.matrix().map(number));
+        if let Some(text) = image.text {
+            cv.c.begin_marked_content_with_properties(Name(b"Span"))
+                .properties()
+                .pair(Name(b"ActualText"), Str(&super::out::text_bytes(text)));
+        }
+        if let Some(&r) = res.image_refs.get(&image.key) {
+            let mut ops = Vec::new();
+            let (fit, position) = (ImageFit::Fill, ObjectPosition::default());
+            res.images
+                .paint_in(image.key, image.rect, fit, position, &NO_RADII, &mut ops);
+            for op in ops {
+                match op {
+                    crate::paint::Op::Save => {
+                        cv.c.save_state();
+                    }
+                    crate::paint::Op::Restore => {
+                        cv.c.restore_state();
+                    }
+                    crate::paint::Op::ClipRect(b) => {
+                        cv.c.rect(number(b.x), number(b.y), number(b.w), number(b.h));
+                        cv.c.clip_nonzero();
+                        cv.c.end_path();
+                    }
+                    crate::paint::Op::Image { matrix, .. } => {
+                        cv.c.transform(matrix.map(number));
+                        let name = cv.name(ResKind::XObject, r);
+                        cv.c.x_object(Name(name.as_bytes()));
+                    }
+                    // `paint_in` draws nothing else without radii.
+                    _ => {}
+                }
+            }
+        }
+        if image.text.is_some() {
+            let space = image.space.and_then(|(font, size)| {
+                InvisibleGlyph::space(res.fonts, font, size, (0.0, 0.0), image.width)
+            });
+            if let Some(g) = space {
+                if let Some(&r) = res.refs.get(&g.font) {
+                    let name = cv.name(ResKind::Font, r);
+                    super::invisible_glyph(&mut cv.c, &g, name.as_bytes(), res.fonts, self.profile);
+                }
+            }
+            cv.c.end_marked_content();
+        }
+        cv.c.restore_state();
+        Ok(())
     }
 
     /// The glyphs and decorations of `laid` in paint style `paint`, filled
     /// or stroked with the paint set: underlines and overlines first, then
     /// the glyphs, then line-throughs.
+    /// In a clip path (`clip`), colour glyphs are drawn by their outlines.
     fn draw_text(
         &mut self,
         cv: &mut Canvas,
         laid: &LaidText,
         paint: u32,
-        fonts: TextFonts<'_, '_>,
-        stroke: bool,
+        fonts: TextResources<'_, '_>,
+        (stroke, clip): (bool, bool),
     ) -> Res {
         self.decorations(cv, laid, paint, false, stroke)?;
-        self.glyphs(cv, laid, paint, fonts, stroke)?;
+        self.glyphs(cv, laid, paint, fonts, (stroke, clip))?;
         self.decorations(cv, laid, paint, true, stroke)
     }
 
@@ -971,18 +1194,20 @@ impl Svg<'_> {
     /// baseline with the same font and size share a `TJ`, with
     /// adjustments where their positions differ from the font's advances
     /// (as `show_text` writes page text); a turned glyph has its own.
+    /// Colour glyphs with an image are drawn as images, but in a clip path.
     fn glyphs(
         &mut self,
         cv: &mut Canvas,
         laid: &LaidText,
         paint: u32,
-        fonts: TextFonts<'_, '_>,
-        stroke: bool,
+        fonts: TextResources<'_, '_>,
+        (stroke, clip): (bool, bool),
     ) -> Res {
         let glyphs: Vec<_> = laid
             .glyphs_of(paint)
             .iter()
             .filter(|g| !(self.profile.is_pdf_a() && g.id == 0))
+            .filter(|g| clip || fonts.colors.image(g.font, g.id).is_none())
             .filter(|g| fonts.refs.contains_key(&g.font))
             .collect();
         if glyphs.is_empty() {

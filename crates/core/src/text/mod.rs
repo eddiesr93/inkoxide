@@ -29,6 +29,7 @@ pub(crate) use color::ColorGlyphs;
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
 pub(crate) use paint::{PageNumbers, TextPainter};
+#[cfg(test)]
 pub(crate) use svg::SvgGlyph;
 pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};
 

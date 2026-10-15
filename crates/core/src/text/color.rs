@@ -103,6 +103,17 @@ impl ColorGlyphs {
         out
     }
 
+    /// The image of colour glyph `id` of `font` and the box it fills, in
+    /// font units, y up; `None` when it draws as a glyph.
+    pub fn image(&self, font: FontKey, id: u16) -> Option<(ImageKey, [f32; 4])> {
+        self.glyphs.get(&(font, id)).map(|p| (p.key, p.bbox))
+    }
+
+    /// The font whose space the spans of colour glyphs carry.
+    pub fn space_font(&self) -> Option<FontKey> {
+        self.space
+    }
+
     /// Replaces the colour glyphs of the text ops in `ops[from..]` with
     /// their images, each in a span with its text from `unicode`.
     pub fn substitute(

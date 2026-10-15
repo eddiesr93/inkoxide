@@ -40,7 +40,7 @@ pub(crate) fn write_image(
     out: &mut Out,
     img: &DecodedImage,
     profile: Profile,
-    fonts: Option<super::svg::TextFonts<'_, '_>>,
+    fonts: Option<super::svg::TextResources<'_, '_>>,
 ) -> Result<Ref, crate::InkoxideError> {
     if let ImageBody::Svg { tree, probed, .. } = &img.body {
         // A render's copy has the size of the SVG without its text.
