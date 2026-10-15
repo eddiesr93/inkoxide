@@ -9,6 +9,57 @@ together. The document schema has its own version and
 
 ## Unreleased
 
+### Fixed
+
+- An SVG without `width`, `height` or `viewBox` is laid out at the size of what it draws without
+  its text, the size it is drawn at, instead of a box sized by its text that stretched the drawing
+  and clipped the text.
+- `alignItems` and `alignSelf: 'baseline'` align the first baselines of the items' text, as in CSS,
+  instead of their bottom edges.
+- A table nested in a row split across pages continues below the repeated header rows of the table
+  around it, and repeats its own header rows below them; its first row on each new page was hidden
+  under the outer header.
+- Fixed elements in the body are painted in paint order, by `zIndex` then document order, as
+  without `fixed`; they were painted over everything else in the flow. A fixed element inside an
+  element that is not painted on a page (`display: none`, `opacity: 0`, `pages`) is not painted
+  there either.
+- Encryption `permissions` with an owner password equal to the user password are `INVALID_VALUE` at
+  `options.encryption.permissions`, since the user password would lift them.
+- A second checked radio button in a group is `INVALID_VALUE`, and radio buttons of one value share
+  an on state in encrypted files too, so a radio repeated on every page turns on and off as one, as
+  in a plain file.
+- A text, select or list field whose value or options have a character its font lacks is
+  `INVALID_VALUE`, instead of the character being left out silently. Field text is drawn with its
+  own font only, without fallback fonts, shaping or right-to-left ordering, and the docs now say
+  so.
+- `@inkoxide/render` and `inkoxide` reject a render option of the wrong type (`threads: '4'`,
+  `pdfA: 5`, a permission that is not a boolean) with `ENGINE_REJECTED` / `INVALID_ARGUMENT` at its
+  path instead of `INTERNAL`; `localImages` without `root` is a `RenderError`; and option errors no
+  longer name `<Document>`. Options that are not an object now fail.
+- The guide says what happens after a font fails to load (it is dropped, and later renders fall
+  back from it), and that only faces of the same weight and style clash on their family name.
+- `w-screen`, `h-screen`, `min-h-screen` and the other `*-screen` sizing classes are listed and
+  tested as supported.
+- `lineHeight` takes lengths and percentages (`'14pt'`), `letterSpacing` in `em` reads the same in
+  a style and a class, and props an element would ignore (`<Page wrap={false}>`, `href` on a `Cell`
+  or `Header`, `<Document pdfVersion>`, `hyphenationPenalty`, `className` on an SVG shape) now
+  throw a `TemplateError`; errors inside a `render` prop keep the components around it in their
+  stack.
+- An emoji drawn from `emojiImages` in a run with `verticalAlign: 'super'` or `'sub'` is raised or
+  lowered with the run's text; it stayed on the line's baseline.
+- The limit of 4096 colour glyphs per render counts only glyphs drawn in colour, not every glyph of
+  a colour font. Glyphs of a bitmap-only colour font that are not drawn in colour (past the limits,
+  or without colour, such as its space) still copy and search as their text instead of
+  disappearing.
+- `COLR` layers in the foreground colour take the run's `color`, as in browsers, instead of always
+  drawing black. In the text of SVG images they still draw black.
+- A page with a side under 3 points fails a PDF/A render with `PDFA_CONFLICT` at the page's `size`,
+  at every level; such a file was not PDF/A.
+- The engine and the JSON Schema agree on more values: the schema rejects negative sizes, gaps,
+  padding and grid tracks as the engine does, integers may be written as `400.0`, `options: []` is
+  `INVALID_VALUE` on every field, and percentages and `fr` sizes are bounded as written
+  (`"10000.0001%"` is `OUT_OF_RANGE`).
+
 ## 0.7.1 - 2026-10-15
 
 `inkoxide`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style`
