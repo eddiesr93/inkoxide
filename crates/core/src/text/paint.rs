@@ -232,25 +232,28 @@ fn paint_line(
     };
 
     // Justification: spread the free space over the spaces of the line.
-    let spaces = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
-    let justify_extra =
-        if align == TextAlign::Justify && !line.forced && spaces > 0 && line.ellipsis.is_none() {
-            // `pretty` lines may be set a little too wide, for their spaces
-            // to shrink by up to a third.
-            let least = if style.text_wrap == TextWrap::Pretty {
-                let space: f32 = p.glyphs[s..e]
-                    .iter()
-                    .filter(|g| g.is_space())
-                    .map(|g| g.advance)
-                    .sum();
-                -space * SHRINK / spaces as f32
-            } else {
-                0.0
-            };
-            ((cw - line.width) / spaces as f32).max(least)
+    let space_count = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
+    let justify_extra = if align == TextAlign::Justify
+        && !line.forced
+        && space_count > 0
+        && line.ellipsis.is_none()
+    {
+        // `pretty` lines may be set a little too wide, for their spaces
+        // to shrink by up to a third.
+        let least = if style.text_wrap == TextWrap::Pretty {
+            let space: f32 = p.glyphs[s..e]
+                .iter()
+                .filter(|g| g.is_space())
+                .map(|g| g.advance)
+                .sum();
+            -space * SHRINK / space_count as f32
         } else {
             0.0
         };
+        ((cw - line.width) / space_count as f32).max(least)
+    } else {
+        0.0
+    };
 
     // Segment slices of the line, in visual order.
     let mut items: Vec<(&super::Segment, usize, usize)> = p

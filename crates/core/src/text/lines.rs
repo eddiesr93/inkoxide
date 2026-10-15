@@ -15,6 +15,16 @@ pub(super) const HYPHEN: char = '\u{2010}';
 /// (`f32::INFINITY` wide for max-content), each chunk between forced breaks
 /// on its own.
 pub(crate) fn break_lines(para: &Para<'_>, boxes: &LineBoxes) -> LineLayout {
+    break_chunks(para, boxes, |_| {})
+}
+
+/// [`break_lines`], telling `chunk` how each chunk was broken: optimally,
+/// or first fit and why.
+pub(super) fn break_chunks(
+    para: &Para<'_>,
+    boxes: &LineBoxes,
+    mut chunk: impl FnMut(Result<(), optimal::FirstFit>),
+) -> LineLayout {
     let p = para.prepared;
     if p.glyphs.is_empty() {
         return LineLayout::default();
@@ -41,12 +51,16 @@ pub(crate) fn break_lines(para: &Para<'_>, boxes: &LineBoxes) -> LineLayout {
         let inside = &p.breaks[first..last];
         first = (last + 1).min(p.breaks.len());
         match optimal::lines(&b, start, end, inside, &mut budget) {
-            Some(lines) => {
+            Ok(lines) => {
                 for (s, e, kind) in lines {
                     b.push(s, e, kind);
                 }
+                chunk(Ok(()));
             }
-            None => b.greedy(start, end, inside),
+            Err(why) => {
+                b.greedy(start, end, inside);
+                chunk(Err(why));
+            }
         }
         start = end;
     }

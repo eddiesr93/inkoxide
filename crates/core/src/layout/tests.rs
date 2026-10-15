@@ -692,7 +692,9 @@ fn text_with_a_width_or_an_alignment_wraps_line_by_line() {
             assert_eq!(t.y, 0.0, "{style}");
             assert!(tree.wraps.contains_key(&3), "{style}");
             let boxes = tree.line_boxes(3);
-            let layout = cache.layout_in(tree.nodes[3].node().unwrap(), &boxes).unwrap();
+            let layout = cache
+                .layout_in(tree.nodes[3].node().unwrap(), &boxes)
+                .unwrap();
             let (cx, cw) = (t.content_box().x, t.content_box().w);
             for (line, b) in layout.lines.iter().zip(&layout.boxes) {
                 assert!(line.width <= b.width + 1e-3, "{style}: {line:?}");

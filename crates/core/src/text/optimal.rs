@@ -50,6 +50,25 @@ impl Budget {
     }
 }
 
+/// Why a chunk is broken first fit instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FirstFit {
+    /// The paragraph is not `pretty`, or is not broken (`pre`, `nowrap`).
+    NotPretty,
+    /// The chunk fits on its line, or has no break opportunity.
+    OneLine,
+    /// It is justified, with no space to stretch (CJK).
+    NoStretch,
+    /// It has more than [`MAX_BREAKS`] break opportunities.
+    TooManyBreaks,
+    /// More than [`MAX_ACTIVE`] lines could start at once.
+    TooManyActive,
+    /// The paragraph tried [`MAX_EVALUATIONS`] lines.
+    OutOfBudget,
+    /// No lines fit within the tolerances: a word is wider than its line.
+    NoFit,
+}
+
 /// A place a line may start: a break, with the best way found to reach it.
 #[derive(Clone, Copy)]
 struct Node {
@@ -68,34 +87,45 @@ struct Node {
     flagged: bool,
 }
 
-/// The lines of glyphs `start..end`, set optimally: each with its first
-/// and end glyph and the break that ends it. `None` when the paragraph is
-/// not `pretty`, or when first fit is the answer or the fallback.
+/// Lines of a chunk: each with its first and end glyph and the break that
+/// ends it.
+pub(super) type Lines = Vec<(usize, usize, BreakKind)>;
+
+/// The lines of glyphs `start..end`, set optimally, or why they are set
+/// first fit: the paragraph is not `pretty`, first fit is the answer, or
+/// it is the fallback.
 pub(super) fn lines(
     b: &Breaker<'_, '_>,
     start: usize,
     end: usize,
     inside: &[BreakPoint],
     budget: &mut Budget,
-) -> Option<Vec<(usize, usize, BreakKind)>> {
+) -> Result<Lines, FirstFit> {
     let para = b.para;
     let style = para.style;
-    if style.text_wrap != TextWrap::Pretty || !style.wrap() || inside.len() > MAX_BREAKS {
-        return None;
+    if style.text_wrap != TextWrap::Pretty || !style.wrap() {
+        return Err(FirstFit::NotPretty);
+    }
+    if inside.len() > MAX_BREAKS {
+        return Err(FirstFit::TooManyBreaks);
     }
     // A chunk that fits on its line is one line, at no cost.
-    let fits = b.width(start, end) <= b.limit_at(b.count(), b.top()) + WIDTH_EPS;
-    if fits || inside.is_empty() {
-        return None;
+    if inside.is_empty() || b.width(start, end) <= b.limit() + WIDTH_EPS {
+        return Err(FirstFit::OneLine);
     }
     let chunk = Chunk::new(b, start, end);
     // Justified text without spaces (CJK) has nothing to stretch.
     if chunk.justify && chunk.space_prefix.last() == chunk.space_prefix.first() {
-        return None;
+        return Err(FirstFit::NoStretch);
     }
-    TOLERANCES
-        .iter()
-        .find_map(|&tolerance| chunk.pass(b, inside, tolerance, budget))
+    let mut why = FirstFit::NoFit;
+    for tolerance in TOLERANCES {
+        match chunk.pass(b, inside, tolerance, budget) {
+            Ok(lines) => return Ok(lines),
+            Err(e) => why = e,
+        }
+    }
+    Err(why)
 }
 
 /// What a pass over a chunk measures lines with.
@@ -130,7 +160,7 @@ impl Chunk {
     }
 
     /// Advance of the spaces among glyphs `s..e`.
-    fn spaces(&self, s: usize, e: usize) -> f32 {
+    fn space_advance(&self, s: usize, e: usize) -> f32 {
         self.space_prefix[e - self.start] - self.space_prefix[s - self.start]
     }
 
@@ -146,20 +176,29 @@ impl Chunk {
         font.glyph('-') == Some(id) || font.glyph('\u{2010}') == Some(id)
     }
 
-    /// One pass at `tolerance`: the best lines, or `None` when some line
-    /// cannot be set within it or a cap is reached.
+    /// One pass at `tolerance`: the best lines, or why there are none:
+    /// some line cannot be set within it, or a cap is reached.
     fn pass(
         &self,
         b: &Breaker<'_, '_>,
         inside: &[BreakPoint],
         tolerance: f64,
         budget: &mut Budget,
-    ) -> Option<Vec<(usize, usize, BreakKind)>> {
+    ) -> Result<Lines, FirstFit> {
         let p = b.para.prepared;
         let banded = b.banded();
-        // Without bands, every line but the first is as wide as the next:
-        // their breakpoints merge, whatever their line numbers.
-        let line_key = |line: usize| if banded { line } else { line.min(1) };
+        // Lines below every band, after the first, are all as wide: their
+        // breakpoints merge whatever their line numbers (TeX's easy lines).
+        // Above the last band's bottom, a line's width depends on where it
+        // starts, so its number stays.
+        let bands_end = b.bands_end();
+        let line_key = |line: usize, y: f32| {
+            if banded && y < bands_end {
+                line
+            } else {
+                line.min(1)
+            }
+        };
         let mut nodes = vec![Node {
             pos: self.start,
             line: b.count(),
@@ -181,19 +220,19 @@ impl Chunk {
             let flagged = kind == BreakKind::Hyphen || (!forced && Self::after_hyphen(b, pos));
             let penalty = if flagged { HYPHEN_PENALTY } else { 0.0 };
             // Best way to break here, per (line, fitness class).
-            let mut best: Vec<(usize, u8, f64, usize)> = Vec::new();
+            let mut best: Vec<(usize, u8, f64, usize, f32)> = Vec::new();
             let mut done: Vec<usize> = Vec::new();
             for &a in &active {
                 if budget.0 == 0 {
-                    return None;
+                    return Err(FirstFit::OutOfBudget);
                 }
                 budget.0 -= 1;
                 let from = nodes[a];
                 let limit = b.limit_at(from.line, from.y);
                 let width = b.width(from.pos, pos) + b.hyphen_width(pos, kind);
                 let ve = p.visible_end(from.pos, pos);
-                let spaces = self.spaces(from.pos, ve);
-                let ratio = self.ratio(limit, width, spaces, forced);
+                let space_advance = self.space_advance(from.pos, ve);
+                let ratio = self.ratio(limit, width, space_advance, forced);
                 if ratio < -1.0 {
                     // Too wide, and every later break is wider still.
                     done.push(a);
@@ -220,22 +259,23 @@ impl Chunk {
                     demerits += ADJACENT_FITNESS;
                 }
                 let total = from.demerits + demerits;
-                let key = line_key(from.line + 1);
-                match best.iter_mut().find(|c| c.0 == key && c.1 == fitness) {
-                    // Ties go to the earliest start.
-                    Some(c) if total < c.2 => *c = (key, fitness, total, a),
-                    Some(_) => {}
-                    None => best.push((key, fitness, total, a)),
-                }
-            }
-            active.retain(|a| !done.contains(a));
-            for (_, fitness, total, a) in best {
-                let from = nodes[a];
+                // Where the next line starts.
                 let y = if banded {
                     from.y + b.height(from.pos, pos)
                 } else {
                     from.y
                 };
+                let key = line_key(from.line + 1, y);
+                match best.iter_mut().find(|c| c.0 == key && c.1 == fitness) {
+                    // Ties go to the earliest start.
+                    Some(c) if total < c.2 => *c = (key, fitness, total, a, y),
+                    Some(_) => {}
+                    None => best.push((key, fitness, total, a, y)),
+                }
+            }
+            active.retain(|a| !done.contains(a));
+            for (_, fitness, total, a, y) in best {
+                let from = nodes[a];
                 nodes.push(Node {
                     pos,
                     line: from.line + 1,
@@ -248,14 +288,18 @@ impl Chunk {
                 });
                 active.push(nodes.len() - 1);
             }
-            if active.is_empty() || active.len() > MAX_ACTIVE {
-                return None;
+            if active.is_empty() {
+                return Err(FirstFit::NoFit);
+            }
+            if active.len() > MAX_ACTIVE {
+                return Err(FirstFit::TooManyActive);
             }
         }
         // The best way to the end of the chunk; ties go to the first found.
         let last = (0..nodes.len())
             .filter(|&k| nodes[k].pos == self.end)
-            .min_by(|&x, &y| nodes[x].demerits.total_cmp(&nodes[y].demerits))?;
+            .min_by(|&x, &y| nodes[x].demerits.total_cmp(&nodes[y].demerits))
+            .ok_or(FirstFit::NoFit)?;
         let mut out = Vec::new();
         let mut k = last;
         while let Some(prev) = nodes[k].prev {
@@ -263,13 +307,13 @@ impl Chunk {
             k = prev;
         }
         out.reverse();
-        Some(out)
+        Ok(out)
     }
 
     /// How far a line of natural `width` stretches (positive) or shrinks
     /// (negative) to fill `limit`, in units of what it can: below -1, it
     /// does not fit.
-    fn ratio(&self, limit: f32, width: f32, spaces: f32, forced: bool) -> f64 {
+    fn ratio(&self, limit: f32, width: f32, space_advance: f32, forced: bool) -> f64 {
         let slack = f64::from(limit - width);
         if slack.abs() <= f64::from(WIDTH_EPS) {
             return 0.0;
@@ -280,7 +324,7 @@ impl Chunk {
                 return 0.0;
             }
             let stretch = if self.justify {
-                spaces / 2.0
+                space_advance / 2.0
             } else {
                 self.ragged
             };
@@ -293,7 +337,7 @@ impl Chunk {
         // A justified line may also shrink its spaces, but the last line of
         // a chunk is not justified.
         let shrink = if self.justify && !forced {
-            spaces * SHRINK
+            space_advance * SHRINK
         } else {
             0.0
         };
