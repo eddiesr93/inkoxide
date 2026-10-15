@@ -361,32 +361,58 @@ fn spacing(text: &SvgText, clusters: &mut [Cluster]) {
 
 /// `textLength`: spreads the difference over the gaps between clusters
 /// (`spacing`), or stretches them (`spacingAndGlyphs`). Innermost first.
+/// Each finds its clusters by character in an index, so the work is the
+/// clusters inside each, not all of them.
 fn length_adjust(text: &SvgText, chunks: &mut [Chunk]) {
+    if text.adjust.is_empty() {
+        return;
+    }
+    // Every cluster as (chunk, index), in the order they are drawn, and
+    // their positions in that order by first character.
+    let all: Vec<(usize, usize)> = chunks
+        .iter()
+        .enumerate()
+        .flat_map(|(k, c)| (0..c.clusters.len()).map(move |i| (k, i)))
+        .collect();
+    let mut by_char: Vec<(usize, usize)> = all
+        .iter()
+        .enumerate()
+        .map(|(at, &(k, i))| (chunks[k].clusters[i].char, at))
+        .collect();
+    by_char.sort_unstable();
+    let mut order: Vec<usize> = Vec::new();
     for adjust in &text.adjust {
-        let mut inside: Vec<&mut Cluster> = chunks
-            .iter_mut()
-            .flat_map(|c| c.clusters.iter_mut())
-            .filter(|c| adjust.chars.contains(&c.char))
-            .collect();
-        if inside.is_empty() {
+        let start = by_char.partition_point(|e| e.0 < adjust.chars.start);
+        let end = by_char.partition_point(|e| e.0 < adjust.chars.end);
+        // In the order they are drawn, which the sums and the last gap
+        // follow.
+        order.clear();
+        order.extend(by_char[start..end].iter().map(|e| e.1));
+        order.sort_unstable();
+        let inside = order.iter().map(|&at| all[at]);
+        let n = order.len();
+        if n == 0 {
             continue;
         }
-        let width: f32 = inside.iter().map(|c| c.advance).sum();
+        let width: f32 = inside
+            .clone()
+            .map(|(k, i)| chunks[k].clusters[i].advance)
+            .sum();
         if adjust.glyphs {
             let factor = adjust.length / width;
             // Nothing to stretch, or nearly nothing left.
             if !factor.is_finite() || factor < 0.001 {
                 continue;
             }
-            for c in &mut inside {
+            for (k, i) in inside {
+                let c = &mut chunks[k].clusters[i];
                 c.scale_x *= factor;
                 c.advance *= factor;
             }
-        } else if inside.len() > 1 {
-            let extra = (adjust.length - width) / (inside.len() - 1) as f32;
-            let n = inside.len();
-            for c in inside.iter_mut().take(n - 1) {
-                c.advance += extra;
+        } else if n > 1 {
+            let extra = (adjust.length - width) / (n - 1) as f32;
+            for (k, i) in inside.take(n - 1) {
+                chunks[k].clusters[i].advance += extra;
             }
         }
     }
