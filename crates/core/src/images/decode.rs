@@ -60,8 +60,10 @@ impl DecodedImage {
     /// Size as displayed in CSS pixels (orientations 5–8 swap the axes;
     /// SVG keeps its fractional size).
     pub fn display_size(&self) -> (f32, f32) {
-        if let ImageBody::Svg { tree, .. } = &self.body {
-            let s = tree.size();
+        if let ImageBody::Svg { tree, probed, .. } = &self.body {
+            // A render's copy has the size of the SVG without its text,
+            // the size its form has: `tree` was converted with the text.
+            let s = probed.as_ref().map_or(tree.size(), |p| p.size);
             return (s.width(), s.height());
         }
         if self.orientation >= 5 {
