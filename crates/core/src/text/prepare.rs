@@ -382,8 +382,11 @@ impl<'a> ShapeCache<'a> {
             .iter()
             .filter_map(|f| {
                 let tag: [u8; 4] = f.tag.as_bytes().try_into().ok()?;
-                let tag = rustybuzz::ttf_parser::Tag::from_bytes(&tag);
-                Some(rustybuzz::Feature::new(tag, f.value, ..))
+                Some(rustybuzz::Feature::new(
+                    crate::fonts::opentype_tag(tag),
+                    f.value,
+                    ..,
+                ))
             })
             .collect();
         let set = FeatureSet::try_from(self.features.len()).unwrap_or(FeatureSet::MAX);

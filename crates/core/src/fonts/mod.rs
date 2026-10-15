@@ -96,6 +96,12 @@ fn script_shift(offset: f32, size: f32, default_offset: f32) -> f32 {
         .unwrap_or(default_offset / SCRIPT_SIZE)
 }
 
+/// The OpenType tag of `bytes`, such as a feature's (`tnum`): the type
+/// the shaper takes, built here so that only this module names ttf-parser.
+pub(crate) fn opentype_tag(bytes: [u8; 4]) -> ttf_parser::Tag {
+    ttf_parser::Tag::from_bytes(&bytes)
+}
+
 /// A registered font face.
 #[derive(Debug)]
 pub struct FontData {
