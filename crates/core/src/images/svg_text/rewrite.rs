@@ -303,6 +303,7 @@ mod tests {
             rotate: 0.0,
             scale_x: 1.0,
             paint: 0,
+            text: (0, 0),
         };
         let laid = vec![
             LaidText {
@@ -310,6 +311,7 @@ mod tests {
                 decorations: Vec::new(),
                 images: Vec::new(),
                 ink: Some([0.0, 0.0, 1.0, 1.0]),
+                text: String::new(),
             };
             n
         ];

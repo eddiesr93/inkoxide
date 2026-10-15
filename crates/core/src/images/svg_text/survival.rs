@@ -101,11 +101,13 @@ fn stub(text: &SvgText) -> LaidText {
                 rotate: 0.0,
                 scale_x: 1.0,
                 paint,
+                text: (0, 0),
             })
             .collect(),
         decorations: Vec::new(),
         images: Vec::new(),
         ink: Some([1.5, -8.25, 30.125, 2.0]),
+        text: String::new(),
     }
 }
 

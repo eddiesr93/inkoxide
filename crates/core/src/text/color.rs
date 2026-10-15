@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
-use super::UnicodeMap;
 use crate::fonts::{ColorGlyph, FontKey, FontSet, LoadedFont};
 use crate::images::{DecodedImage, ImageCrateDecoder, ImageData, ImageKey, ImageSet, Placement};
 use crate::paint::{InvisibleGlyph, Op, Rect, TextOp};
@@ -160,8 +159,9 @@ impl ColorGlyphs {
     }
 
     /// Pushes text op `t`: as it is, or, in a colour font, with its colour
-    /// glyphs as images, each in a span with its text from `unicode` and
-    /// an invisible space of font `strut` as wide as the glyph. The other
+    /// glyphs as images, each in a span with its text from `texts` (one
+    /// for each glyph of `t`; none past its end) and an invisible space
+    /// of font `strut` as wide as the glyph. The other
     /// glyphs of a font without outlines are left out: it has nothing to
     /// draw them with.
     pub fn push(
@@ -170,7 +170,7 @@ impl ColorGlyphs {
         strut: Option<FontKey>,
         fonts: &FontSet<'_>,
         images: &ImageSet,
-        unicode: &UnicodeMap,
+        texts: &[Option<&str>],
         ops: &mut Vec<Op>,
     ) {
         let font = fonts.get(t.font);
@@ -179,9 +179,8 @@ impl ColorGlyphs {
             return;
         }
         let scale = font.scale(t.size);
-        let texts = unicode.fonts.get(&t.font);
         let mut plain = Vec::new();
-        for g in &t.glyphs {
+        for (i, g) in t.glyphs.iter().enumerate() {
             let Some(p) = self.glyphs.get(&(t.font, g.id)) else {
                 plain.push(*g);
                 continue;
@@ -196,11 +195,11 @@ impl ColorGlyphs {
             );
             // A glyph that carries no text (the rest of a cluster) is only
             // drawn.
-            let text = texts.and_then(|m| m.get(&g.id)).map(|text| {
+            let text = texts.get(i).copied().flatten().map(|text| {
                 let width = font.advance(g.id) * scale;
                 let space =
                     strut.and_then(|k| InvisibleGlyph::space(fonts, k, t.size, (x, y), width));
-                (text.as_str(), space)
+                (text, space)
             });
             super::paint::image_span(images, p.key, rect, Placement::FILL, text, ops);
         }
