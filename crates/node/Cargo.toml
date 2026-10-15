@@ -15,7 +15,8 @@ crate-type = ["cdylib"]
 workspace = true
 
 [dependencies]
-inkoxide.workspace = true
+inkoxide = { workspace = true, features = ["msgpack"] }
+inkoxide-binding.workspace = true
 napi.workspace = true
 napi-derive.workspace = true
 

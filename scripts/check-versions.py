@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Checks the lockstep versions (CHANGELOG.md): inkoxide, @inkoxide/render,
-@inkoxide/react, @inkoxide/tailwind and @inkoxide/style share one version,
+"""Checks the lockstep versions (CHANGELOG.md): inkoxide, @inkoxide/wasm,
+@inkoxide/render, @inkoxide/react, @inkoxide/tailwind and @inkoxide/style
+share one version,
 and so do the Rust crates (the workspace version and its exact pin of the
 inkoxide crate), which the inkoxide package ships. @inkoxide/schema has
 its own version.
@@ -14,7 +15,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-LOCKSTEP = ["inkoxide", "render", "react", "tailwind", "style"]
+LOCKSTEP = ["inkoxide", "wasm", "render", "react", "tailwind", "style"]
 
 
 def main() -> int:

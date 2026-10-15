@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import * as ink from '../index.js';
+import ink, { wasm } from './binding.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = (p) => readFileSync(join(root, 'fixtures', p));
@@ -137,7 +137,8 @@ test('images are passed per render', async () => {
   assert.ok(pdf.length > 10000);
 });
 
-test('render does not block the event loop', async () => {
+// In WebAssembly, render runs on the calling thread, which a page keeps free with a worker.
+test('render does not block the event loop', { skip: wasm }, async () => {
   const doc = fixture('docs/table-split-header-repeat.json');
   let ticks = 0;
   const timer = setInterval(() => ticks++, 0);
@@ -146,7 +147,7 @@ test('render does not block the event loop', async () => {
   assert.ok(ticks > 0, 'the event loop was blocked');
 });
 
-test('threads: 1 renders run side by side', { skip: availableParallelism() < 2 }, async () => {
+test('threads: 1 renders run side by side', { skip: wasm || availableParallelism() < 2 }, async () => {
   const doc = fixture('docs/table-split-header-repeat.json');
   const opts = { threads: 1 };
   await ink.render(doc, opts);
@@ -293,7 +294,9 @@ test('out-of-range numeric options are INVALID_ARGUMENT, not converted', async (
     assert.strictEqual(e.path, `options.${option}`);
     return true;
   };
-  for (const threads of [0, -1, 1.5, 257, 100000, NaN, Infinity, 2 ** 32 + 1]) {
+  // WebAssembly has one thread.
+  const most = wasm ? 1 : 256;
+  for (const threads of [0, -1, 1.5, most + 1, 100000, NaN, Infinity, 2 ** 32 + 1]) {
     assert.throws(() => ink.renderSync(doc, { threads }), rejected('threads'), `threads: ${threads}`);
     await assert.rejects(ink.render(doc, { threads }), rejected('threads'), `threads: ${threads}`);
   }
@@ -304,7 +307,7 @@ test('out-of-range numeric options are INVALID_ARGUMENT, not converted', async (
       `compressionLevel: ${compressionLevel}`,
     );
   }
-  assert.ok(ink.renderSync(doc, { threads: 256, compressionLevel: 0 }).length > 0);
+  assert.ok(ink.renderSync(doc, { threads: most, compressionLevel: 0 }).length > 0);
   // A bad creation date is the caller's argument too, not a document problem.
   assert.throws(() => ink.renderSync(doc, { creationDate: 'yesterday' }), rejected('creationDate'));
 });
@@ -351,17 +354,22 @@ test('an error has only the documented own enumerable properties', () => {
 });
 
 test('the module exports only the public API', () => {
-  assert.deepStrictEqual(Object.keys(ink).sort(), [
-    'InkoxideError',
-    'registerFont',
-    'registerHyphenationPatterns',
-    'render',
-    'renderSync',
-    'unregisterFont',
-    'unregisterHyphenationPatterns',
-    'validate',
-    'version',
-  ]);
+  const extra = wasm ? ['clearCaches', 'init'] : [];
+  assert.deepStrictEqual(
+    Object.keys(ink).sort(),
+    [
+      'InkoxideError',
+      ...extra,
+      'registerFont',
+      'registerHyphenationPatterns',
+      'render',
+      'renderSync',
+      'unregisterFont',
+      'unregisterHyphenationPatterns',
+      'validate',
+      'version',
+    ].sort(),
+  );
   assert.ok(!Object.keys(ink.InkoxideError).includes('__testPanic'));
 });
 
@@ -371,6 +379,9 @@ test('engine failures are coded errors, never a crash', async () => {
     () => ink.InkoxideError.__testPanic(),
     (e) => e instanceof ink.InkoxideError && e.code === 'INTERNAL',
   );
+  // In WebAssembly it ends the instance; the next call has a new one, with the same fonts.
+  const invoice = fixture('docs/invoice.json');
+  assert.ok(ink.renderSync(invoice).length > 0);
   // Hostile input is a structured error.
   const deep = '{"type":"box","children":['.repeat(5000) + ']}'.repeat(5000);
   await assert.rejects(

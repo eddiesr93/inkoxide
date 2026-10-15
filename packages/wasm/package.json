@@ -1,0 +1,36 @@
+{
+  "name": "@inkoxide/wasm",
+  "version": "0.8.0",
+  "private": true,
+  "description": "The Inkoxide PDF engine as WebAssembly, for browsers and other WebAssembly runtimes: declarative document tree in, PDF bytes out.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eddiesr93/inkoxide.git",
+    "directory": "packages/wasm"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./inkoxide.wasm": "./inkoxide.wasm",
+    "./package.json": "./package.json"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "inkoxide.wasm"
+  ],
+  "scripts": {
+    "build": "../../scripts/build-wasm.sh",
+    "test": "INKOXIDE_BINDING=wasm node --test ../inkoxide/test/*.test.js"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0"
+  }
+}

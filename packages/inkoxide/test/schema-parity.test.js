@@ -8,7 +8,7 @@ import test from 'node:test';
 
 import { Ajv2020 } from 'ajv/dist/2020.js';
 
-import * as ink from '../index.js';
+import ink from './binding.js';
 
 const schema = JSON.parse(readFileSync(new URL('../../schema/document.v1.json', import.meta.url), 'utf8'));
 const ajv = new Ajv2020({ discriminator: true, strict: false, validateFormats: false }).compile(schema);
