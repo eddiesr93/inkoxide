@@ -118,8 +118,8 @@ password lifts the permissions.
 - `permissions` need an owner password: without one, the user password is
   also the owner password and lifts them. Readers, not the file, enforce
   the permissions.
-- With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` (PDF/A
-  forbids it).
+- With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` in
+  Rust and `INVALID_ARGUMENT` in Node (PDF/A forbids it).
 - A bad value is `INVALID_VALUE` at its path (`options.encryption.userPassword`,
   …) in Rust and `INVALID_ARGUMENT` in Node. No error and no `Debug` output
   shows a password: Rust's `Encryption` prints them as `<redacted>`.

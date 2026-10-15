@@ -25,7 +25,7 @@ All notable changes to the packages in this repository. The format follows
   Output stays deterministic: the keys are derived from the document and the passwords.
   Radio buttons name their states by position in an encrypted file, with their values in
   `/Opt`, so the values are encrypted too. Encryption with PDF/A is `INVALID_VALUE` at
-  `options.encryption`.
+  `options.encryption` in Rust and `INVALID_ARGUMENT` in Node.
 - PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
   Rust (`with_pdf_a_level`), `pdfA: '1b' | '2b' | '3b'` in the Node binding and in
   `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the CLI, and
