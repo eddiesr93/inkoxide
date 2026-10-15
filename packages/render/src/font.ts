@@ -23,7 +23,7 @@ import { RenderError } from './types.ts';
 
 /**
  * A TrueType, CFF OpenType, WOFF or WOFF2 font: a file path, a `file:`, `https:` or `http:` URL,
- * or its bytes.
+ * or its bytes. In a browser, text is a URL, relative to the page.
  */
 export type FontSrc = string | URL | Uint8Array | ArrayBuffer;
 
@@ -102,7 +102,17 @@ function sameSource(a: FontSrc, b: FontSrc): boolean {
 async function bytesOf(src: FontSrc): Promise<Uint8Array> {
   if (src instanceof Uint8Array) return src;
   if (src instanceof ArrayBuffer) return new Uint8Array(src);
-  const url = src instanceof URL ? src : /^(?:https?|file):/i.test(src) ? new URL(src) : undefined;
+  const files = engineHost().files;
+  // Without files (in a browser), text is a URL, relative to the page.
+  const page = (globalThis as { location?: { href: string } }).location?.href;
+  const url =
+    src instanceof URL
+      ? src
+      : /^(?:https?|file):/i.test(src)
+        ? new URL(src)
+        : !files && page !== undefined
+          ? new URL(src, page)
+          : undefined;
   if (url && (url.protocol === 'http:' || url.protocol === 'https:')) {
     // The URL comes from the developer, not a template, so redirects are followed.
     const limits = { timeoutMs: FONT_TIMEOUT_MS, maxBytes: MAX_FONT_BYTES };
@@ -110,7 +120,6 @@ async function bytesOf(src: FontSrc): Promise<Uint8Array> {
       throw new Error(why, { cause });
     });
   }
-  const files = engineHost().files;
   if (!files) throw new Error(NO_FILES);
   return files.readFile(url ?? src);
 }

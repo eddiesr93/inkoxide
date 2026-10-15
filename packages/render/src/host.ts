@@ -30,7 +30,8 @@ export interface EngineHost {
   registerHyphenationPatterns(lang: string, bytes: Uint8Array): Promise<void>;
   /** The problems of a JSON document, its image references checked against `images`. */
   validate(doc: string, images: Record<string, Uint8Array>): Promise<EngineIssue[]>;
-  render(doc: string, options: RenderOptions): Promise<Uint8Array>;
+  /** The PDF of a JSON document. A host that can stop a render does when `signal` aborts. */
+  render(doc: string, options: RenderOptions, signal?: AbortSignal): Promise<Uint8Array>;
   /** Whether `e` is an error of the engine, with its code and path. */
   isEngineError(e: unknown): e is Error & EngineIssue;
   /** A bundled asset by its path in `assets/` (`fonts/Inter-Regular.ttf`); undefined when missing. */
@@ -39,6 +40,11 @@ export interface EngineHost {
   assetLocation(path: string): string;
   /** Files, where there is a file system: undefined in a browser. */
   files?: FileAccess;
+  /**
+   * Whether the bundled fonts are read when a document uses them, rather than all at start-up
+   * (in a browser, where each is a download).
+   */
+  lazyFonts?: boolean;
 }
 
 /** Files: image files (`localImages`) and fonts registered from a path. */

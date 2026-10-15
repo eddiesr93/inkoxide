@@ -129,6 +129,19 @@ function rewriteDeclarations(dist) {
   }
 }
 
+/**
+ * A module referred to by URL (`new URL('./worker.ts', import.meta.url)`, for a Web Worker) is the
+ * emitted `.js` in the emitted JavaScript too; tsc rewrites only import specifiers.
+ */
+function rewriteModuleUrls(dist) {
+  const spec = /(\bnew URL\(\s*)(['"])(\.{1,2}\/[^'"]*?)\.(ts|tsx)\2(\s*,\s*import\.meta\.url\s*\))/g;
+  for (const file of walk(dist).filter((f) => f.endsWith('.js'))) {
+    const src = readFileSync(file, 'utf8');
+    const out = src.replace(spec, (_, lead, q, path, _e, tail) => `${lead}${q}${path}.js${q}${tail}`);
+    if (out !== src) writeFileSync(file, out);
+  }
+}
+
 /** tsc into packages/<pkg>/dist, then the files tsc does not emit (images, unimported JSON). */
 function build(name) {
   const dir = join(ROOT, 'packages', name);
@@ -145,6 +158,7 @@ function build(name) {
     cpSync(file, target);
   }
   rewriteDeclarations(dist);
+  rewriteModuleUrls(dist);
   if (!existsSync(join(dist, 'index.js')) || !existsSync(join(dist, 'index.d.ts'))) {
     fail(`@inkoxide/${name}: the build produced no dist/index.js and dist/index.d.ts.`);
   }

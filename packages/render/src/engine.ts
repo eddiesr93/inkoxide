@@ -12,7 +12,7 @@ import { DEFAULT_FACES } from './fonts.ts';
 import { engineHost, type EngineVersion } from './host.ts';
 import { HYPHENATION_FILES } from './hyphenation.ts';
 import { checkEncryptionTypes, checkOptionTypes } from './policy.ts';
-import { RenderError, type RenderOpts } from './types.ts';
+import { type Abortable, RenderError, type RenderOpts } from './types.ts';
 
 export type { EngineVersion } from './host.ts';
 
@@ -24,6 +24,13 @@ export interface EngineStatus {
 }
 
 let status: EngineStatus | undefined;
+
+/**
+ * The bundled faces the engine does not have yet, with the files they are in, when the host reads
+ * them as documents use them (`lazyFonts`); each one's load once it has started.
+ */
+const lazyFaces = new Map<string, string>();
+const lazyLoads = new Map<string, Promise<void>>();
 
 /**
  * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Rejects with
@@ -63,6 +70,11 @@ async function startEngine(): Promise<EngineStatus> {
   const missing: string[] = [];
   for (const { file, ...face } of DEFAULT_FACES) {
     if (fonts.has(face.id)) continue;
+    if (host.lazyFonts) {
+      fonts.register(face);
+      lazyFaces.set(face.id, file);
+      continue;
+    }
     const bytes = await host.readAsset(`fonts/${file}`);
     if (bytes === undefined) {
       missing.push(face.id);
@@ -97,8 +109,43 @@ async function startEngine(): Promise<EngineStatus> {
     }
   }
   for (const w of warnings) console.warn(`[inkoxide] ${w}`);
-  status = { version: v, fonts: fonts.ids(), hyphenation, warnings };
+  // The fonts the engine has: not yet the bundled ones a document has not used (`lazyFonts`).
+  status = { version: v, fonts: fonts.ids().filter((id) => !lazyFaces.has(id)), hyphenation, warnings };
   return status;
+}
+
+/**
+ * Hands the engine the bundled fonts that `doc` declares and it does not have yet (a host with
+ * `lazyFonts`). A font that cannot be read fails the render with an `INTERNAL` RenderError.
+ */
+async function loadDocumentFonts(doc: Pick<Document, 'fonts'>): Promise<void> {
+  const loads: Promise<void>[] = [];
+  for (const { id } of doc.fonts ?? []) {
+    const file = lazyFaces.get(id);
+    if (file === undefined) continue;
+    let load = lazyLoads.get(id);
+    if (!load) {
+      const host = engineHost();
+      load = (async () => {
+        const path = `fonts/${file}`;
+        const bytes = await host.readAsset(path);
+        if (bytes === undefined) {
+          throw new RenderError(
+            'INTERNAL',
+            `The bundled font ${id} could not be read from ${host.assetLocation(path)}.`,
+          );
+        }
+        await host.registerFont(id, bytes);
+        lazyFaces.delete(id);
+        status?.fonts.push(id);
+      })();
+      lazyLoads.set(id, load);
+      // A failed load is tried again by the next render.
+      load.catch(() => lazyLoads.delete(id));
+    }
+    loads.push(load);
+  }
+  await Promise.all(loads);
 }
 
 /** Registers one more font with the engine, after `initEngine` (fonts added with `Font.register`). */
@@ -157,6 +204,7 @@ export async function refusedEmoji(
   }
   const refused: Record<string, string> = {};
   const at = 'emojiImages.';
+  await loadDocumentFonts(doc);
   // `validate` returns at most 100 problems: check again without those found until none is left.
   for (;;) {
     // The document's fonts draw the text of SVG images.
@@ -184,7 +232,7 @@ export async function refusedEmoji(
  */
 export async function renderPdf(
   doc: Document,
-  opts: RenderOpts,
+  opts: RenderOpts & Abortable,
   images: Record<string, Uint8Array>,
   output: OutputOptions = {},
 ): Promise<Uint8Array> {
@@ -200,9 +248,12 @@ export async function renderPdf(
   if (pdfA !== undefined) options.pdfA = pdfA;
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
+  opts.signal?.throwIfAborted();
+  await loadDocumentFonts(doc);
   try {
-    return await engineHost().render(JSON.stringify(doc), options);
+    return await engineHost().render(JSON.stringify(doc), options, opts.signal);
   } catch (e) {
+    if (opts.signal?.aborted && e === opts.signal.reason) throw e;
     throw toRenderError(e);
   }
 }

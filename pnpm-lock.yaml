@@ -132,6 +132,9 @@ importers:
       '@inkoxide/tailwind':
         specifier: workspace:*
         version: link:../tailwind
+      '@inkoxide/wasm':
+        specifier: workspace:*
+        version: link:../wasm
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0

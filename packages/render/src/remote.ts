@@ -21,7 +21,8 @@ export function remotePolicy(opts: RemoteImageOptions | undefined): RemoteImageO
  */
 export function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions): Promise<Uint8Array> {
   const url = typeof src === 'string' ? src : src.uri;
-  const init: RequestInit = { redirect: 'manual' };
+  // No cookies or credentials, in a browser as on a server; a redirect is refused.
+  const init: RequestInit = { redirect: 'manual', credentials: 'omit', mode: 'cors' };
   if (typeof src !== 'string') {
     if (src.method !== undefined) init.method = src.method;
     if (src.headers !== undefined) init.headers = src.headers;
@@ -70,8 +71,13 @@ export async function fetchBytes(
   } catch (e) {
     return fail(reason(e), e);
   }
-  if (init.redirect === 'manual' && REDIRECTS.has(res.status)) {
-    return fail(`HTTP ${res.status}, and redirects are not followed`);
+  // A browser hides a redirect it does not follow: an opaque response, of status 0.
+  if (init.redirect === 'manual' && (REDIRECTS.has(res.status) || res.type === 'opaqueredirect')) {
+    return fail(
+      res.status === 0
+        ? 'a redirect, which is not followed'
+        : `HTTP ${res.status}, and redirects are not followed`,
+    );
   }
   if (!res.ok) return fail(`HTTP ${res.status}`);
   const length = Number(res.headers.get('content-length') ?? 0);
