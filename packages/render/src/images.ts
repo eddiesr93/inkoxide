@@ -13,7 +13,7 @@ import {
 } from '@inkoxide/react';
 
 import { readLocalImage } from './local.ts';
-import { timerMs } from './policy.ts';
+import { DEFAULT_MAX_IMAGE_BYTES, timerMs } from './policy.ts';
 import { fetchImage, REMOTE_IMAGES_VARIABLE } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
 
@@ -22,6 +22,24 @@ export interface ImagePolicies {
   remote: RemoteImageOptions | undefined;
   local: LocalImageOptions | undefined;
   timeoutMs: number;
+}
+
+/** The loads of the remote and pending images of a tree, by id; `fetchUrl` fetches a remote one. */
+function loads(
+  tree: Pick<TreeResult, 'remote' | 'pending'>,
+  registered: Record<string, Uint8Array>,
+  policies: ImagePolicies,
+  fetchUrl: (url: string, policy: RemoteImageOptions | undefined) => Promise<Uint8Array>,
+): Array<[string, Promise<Uint8Array>]> {
+  const remote = Object.entries(tree.remote).map(([id, url]): [string, Promise<Uint8Array>] => [
+    id,
+    fetchUrl(url, policies.remote),
+  ]);
+  const pending = Object.entries(tree.pending).map(([id, image]): [string, Promise<Uint8Array>] => [
+    id,
+    loadPending(image, registered, policies),
+  ]);
+  return [...remote, ...pending];
 }
 
 /**
@@ -33,65 +51,103 @@ export async function loadImages(
   registered: Record<string, Uint8Array>,
   policies: ImagePolicies,
 ): Promise<Record<string, Uint8Array>> {
-  const remote = Object.entries(tree.remote).map(async ([id, url]): Promise<[string, Uint8Array]> => [
-    id,
-    await fetchAllowed(url, policies.remote),
-  ]);
-  const pending = Object.entries(tree.pending).map(async ([id, image]): Promise<[string, Uint8Array]> => [
-    id,
-    await loadPending(image, registered, policies),
-  ]);
-  return Object.fromEntries(await Promise.all([...remote, ...pending]));
+  const all = loads(tree, registered, policies, fetchAllowed);
+  const bytes = await Promise.all(all.map(([, load]) => load));
+  return Object.fromEntries(all.map(([id], i) => [id, bytes[i] as Uint8Array]));
+}
+
+/**
+ * Bytes by key, least recently used first out once they take more than `budget` bytes in all.
+ * An entry over a sixteenth of the budget is not kept.
+ */
+export class ByteCache {
+  private readonly entries = new Map<string, Uint8Array>();
+  private total = 0;
+
+  constructor(readonly budget: number) {}
+
+  /** The bytes kept. */
+  get size(): number {
+    return this.total;
+  }
+
+  get(key: string): Uint8Array | undefined {
+    const hit = this.entries.get(key);
+    if (hit) {
+      // A Map iterates in insertion order: a hit moves to the end, the most recently used.
+      this.entries.delete(key);
+      this.entries.set(key, hit);
+    }
+    return hit;
+  }
+
+  set(key: string, bytes: Uint8Array): void {
+    const old = this.entries.get(key);
+    if (old) {
+      this.entries.delete(key);
+      this.total -= old.byteLength;
+    }
+    if (bytes.byteLength > this.budget / 16) return;
+    this.entries.set(key, bytes);
+    this.total += bytes.byteLength;
+    for (const [k, v] of this.entries) {
+      if (this.total <= this.budget) break;
+      this.entries.delete(k);
+      this.total -= v.byteLength;
+    }
+  }
 }
 
 /** Emoji images fetched from URLs, kept across renders: the same few hundred come back. */
-const EMOJI_CACHE_BYTES = 16 << 20;
-const emojiCache = new Map<string, Uint8Array>();
-let emojiCacheSize = 0;
+const emojiCache = new ByteCache(16 << 20);
+/** Emoji downloads under way, shared by the renders that want the same URL meanwhile. */
+const emojiFetches = new Map<string, Promise<Uint8Array>>();
 
-function cacheEmoji(url: string, bytes: Uint8Array): void {
-  if (bytes.byteLength > EMOJI_CACHE_BYTES / 16) return;
-  emojiCache.set(url, bytes);
-  emojiCacheSize += bytes.byteLength;
-  // Least recently used first: a Map iterates in insertion order, and a hit is moved to the end.
-  for (const [k, v] of emojiCache) {
-    if (emojiCacheSize <= EMOJI_CACHE_BYTES) break;
-    emojiCache.delete(k);
-    emojiCacheSize -= v.byteLength;
+/**
+ * An emoji image from an allowed URL: kept, or being fetched for another render, or fetched now.
+ * Whichever, it is within this render's size limit.
+ */
+async function fetchEmoji(url: string, policy: RemoteImageOptions | undefined): Promise<Uint8Array> {
+  if (!policy || !remoteAllowed(url, policy)) return fetchAllowed(url, policy);
+  let load = emojiFetches.get(url);
+  const hit = load ? undefined : emojiCache.get(url);
+  if (!load && !hit) {
+    load = fetchImage(url, policy)
+      .then((bytes) => {
+        emojiCache.set(url, bytes);
+        return bytes;
+      })
+      .finally(() => emojiFetches.delete(url));
+    emojiFetches.set(url, load);
   }
+  const bytes = hit ?? (await (load as Promise<Uint8Array>));
+  const max = policy.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+  if (bytes.byteLength > max) {
+    throw new RenderError(
+      'IMAGE_FETCH_FAILED',
+      `Cannot fetch the image ${url}: ${bytes.byteLength} bytes, over the ${max}-byte limit.`,
+    );
+  }
+  return bytes;
 }
 
 /**
  * The emoji images of a tree, like `loadImages`, but an image that cannot be loaded is left out
  * with the reason, instead of failing the render: its emoji are then drawn by the fonts. Images
- * fetched from URLs are cached across renders.
+ * fetched from URLs are kept across renders.
  */
 export async function loadEmojiImages(
   tree: Pick<TreeResult, 'remote' | 'pending'>,
   registered: Record<string, Uint8Array>,
   policies: ImagePolicies,
 ): Promise<{ loaded: Record<string, Uint8Array>; failed: Record<string, string> }> {
-  const remote = Object.entries(tree.remote).map(async ([id, url]): Promise<[string, Uint8Array]> => {
-    const hit = emojiCache.get(url);
-    if (hit) {
-      emojiCache.delete(url);
-      emojiCache.set(url, hit);
-      return [id, hit];
-    }
-    const bytes = await fetchAllowed(url, policies.remote);
-    cacheEmoji(url, bytes);
-    return [id, bytes];
-  });
-  const pending = Object.entries(tree.pending).map(async ([id, image]): Promise<[string, Uint8Array]> => [
-    id,
-    await loadPending(image, registered, policies),
-  ]);
-  const ids = [...Object.keys(tree.remote), ...Object.keys(tree.pending)];
+  const all = loads(tree, registered, policies, fetchEmoji);
   const loaded: Record<string, Uint8Array> = {};
   const failed: Record<string, string> = {};
-  (await Promise.allSettled([...remote, ...pending])).forEach((r, i) => {
-    if (r.status === 'fulfilled') loaded[r.value[0]] = r.value[1];
-    else failed[ids[i] as string] = (r.reason as Error)?.message ?? String(r.reason);
+  (await Promise.allSettled(all.map(([, load]) => load))).forEach((r, i) => {
+    const id = all[i]?.[0] as string;
+    if (r.status === 'fulfilled') loaded[id] = r.value;
+    else failed[id] = (r.reason as Error)?.message ?? String(r.reason);
   });
   return { loaded, failed };
 }

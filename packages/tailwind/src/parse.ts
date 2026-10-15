@@ -12,7 +12,13 @@ import {
   UnsupportedValueError,
   ValueError,
 } from '@inkoxide/style';
-import { parseFontFamily, Reader, substituteVars, UNITS_UNKNOWN } from '@inkoxide/style/internal';
+import {
+  parseFontFamily,
+  Reader,
+  substituteVars,
+  UNITS_UNKNOWN,
+  verticalAlignKeyword,
+} from '@inkoxide/style/internal';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
 
@@ -358,10 +364,9 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     case 'vertical-align': {
       // `top`, `middle` and `bottom` for a cell; `baseline`, `super` and `sub` for text; and
       // `text-top` and `text-bottom` too for an image in text.
-      const camel = { 'text-top': 'textTop', 'text-bottom': 'textBottom' }[v] ?? v;
-      if (!['top', 'middle', 'bottom', 'baseline', 'super', 'sub', 'textTop', 'textBottom'].includes(camel))
-        throw r.error(`vertical-align: ${v}`);
-      s.verticalAlign = camel as NonNullable<FlatStyle['verticalAlign']>;
+      const keyword = verticalAlignKeyword(v);
+      if (keyword === undefined) throw r.error(`vertical-align: ${v}`);
+      s.verticalAlign = keyword;
       return;
     }
     case 'font-feature-settings':

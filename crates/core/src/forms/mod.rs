@@ -10,7 +10,7 @@ use crate::schema::{Color, Field, FieldKind, BLACK};
 
 /// Inner padding between the widget edge and its text, points.
 pub(crate) const PAD: f32 = 2.0;
-/// Default width of text and select fields without one, points.
+/// Default width of text, select and list fields without one, points.
 const DEFAULT_WIDTH: f32 = 150.0;
 /// Visible lines of a multiline field without a height.
 const MULTILINE_ROWS: f32 = 3.0;
@@ -56,8 +56,10 @@ pub(crate) struct FieldOp {
     /// A list box: the rows of its selected options in view, in widget
     /// coordinates (top-left origin), filled behind the text.
     pub highlights: Vec<Rect>,
-    /// A list box: the index of the first option in view.
-    pub top: usize,
+    /// A list box: the indices of its selected options (`/I`).
+    pub selected: Vec<usize>,
+    /// A list box: the index of the first option in view (`/TI`).
+    pub top_index: usize,
     /// The transform in effect where the widget is painted (`None`:
     /// identity); the PDF writer sets it.
     pub ctm: Option<[f32; 6]>,
@@ -66,19 +68,17 @@ pub(crate) struct FieldOp {
 /// Content size of a field without explicit dimensions.
 pub(crate) fn measure(f: &Field, available: Size<AvailableSpace>) -> Size<f32> {
     let line = f.size * LINE_HEIGHT;
+    let width = match available.width {
+        AvailableSpace::Definite(w) => w.min(DEFAULT_WIDTH),
+        _ => DEFAULT_WIDTH,
+    };
     match f.kind {
         FieldKind::List => Size {
-            width: match available.width {
-                AvailableSpace::Definite(w) => w.min(DEFAULT_WIDTH),
-                _ => DEFAULT_WIDTH,
-            },
+            width,
             height: line * f.options.len().clamp(1, LIST_ROWS) as f32 + 2.0 * PAD,
         },
         FieldKind::Text | FieldKind::Select => Size {
-            width: match available.width {
-                AvailableSpace::Definite(w) => w.min(DEFAULT_WIDTH),
-                _ => DEFAULT_WIDTH,
-            },
+            width,
             height: if f.multiline {
                 line * MULTILINE_ROWS + 2.0 * PAD
             } else {
@@ -106,22 +106,24 @@ pub(crate) fn paint(
         w: cw,
         h: ch,
     } = geo.content_box();
-    let top = cy + ctx.shift;
+    let y = cy + ctx.shift;
     // Taller than a page, a field is sliced across pages; one widget, on
     // the page it starts on, is the field.
-    if ctx.window.is_some_and(|w| !w.starts(top)) {
+    if ctx.window.is_some_and(|w| !w.starts(y)) {
         return;
     }
-    let rect = Rect::new(cx + ctx.dx, top + ctx.dy, cw.max(0.0), ch.max(0.0));
+    let rect = Rect::new(cx + ctx.dx, y + ctx.dy, cw.max(0.0), ch.max(0.0));
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
     let mut text = Vec::new();
     let mut option_glyphs = Vec::new();
     let editable = f.is_text_like() && !f.read_only;
     let line_h = f.size * LINE_HEIGHT;
-    let (top, highlights) = if f.kind == FieldKind::List {
-        list_rows(f, ch, line_h, cw)
+    let (selected, top_index, highlights) = if f.kind == FieldKind::List {
+        let selected = selected(f);
+        let (top_index, highlights) = list_rows(f.options.len(), &selected, ch, line_h, cw);
+        (selected, top_index, highlights)
     } else {
-        (0, Vec::new())
+        (Vec::new(), 0, Vec::new())
     };
     if let Some(key) = font {
         let lf = fonts.get(key);
@@ -148,7 +150,7 @@ pub(crate) fn paint(
         let lines: Vec<&str> = if f.kind == FieldKind::List {
             f.options
                 .iter()
-                .skip(top)
+                .skip(top_index)
                 .take(in_view(ch, line_h))
                 .map(|o| o.lines().next().unwrap_or(""))
                 .collect()
@@ -200,7 +202,8 @@ pub(crate) fn paint(
         editable: editable && font.is_some(),
         option_glyphs,
         highlights,
-        top,
+        selected,
+        top_index,
         ctm: None,
     })));
 }
@@ -213,7 +216,7 @@ fn in_view(h: f32, line_h: f32) -> usize {
 
 /// The indices of the selected options of a select or list field, in
 /// order (an option listed twice is selected twice).
-pub(crate) fn selected(f: &Field) -> Vec<usize> {
+fn selected(f: &Field) -> Vec<usize> {
     let values: std::collections::HashSet<&str> = f.values().iter().map(String::as_str).collect();
     if values.is_empty() {
         return Vec::new();
@@ -226,15 +229,20 @@ pub(crate) fn selected(f: &Field) -> Vec<usize> {
         .collect()
 }
 
-/// The index of the first option a list box `h` high shows, chosen so its
-/// first selected option is in view, and the rows of the selected options
-/// in view (`w` wide).
-fn list_rows(f: &Field, h: f32, line_h: f32, w: f32) -> (usize, Vec<Rect>) {
-    let selected = selected(f);
+/// The index of the first option a list box of `options` options and
+/// `h` high shows, chosen so its first `selected` option is in view, and
+/// the rows of the selected options in view (`w` wide).
+fn list_rows(
+    options: usize,
+    selected: &[usize],
+    h: f32,
+    line_h: f32,
+    w: f32,
+) -> (usize, Vec<Rect>) {
     // Rows wholly in view.
-    let fit = (((h - 2.0 * PAD) / line_h).floor().max(1.0) as usize).min(f.options.len());
+    let fit = (((h - 2.0 * PAD) / line_h).floor().max(1.0) as usize).min(options);
     let top = match selected.first() {
-        Some(&first) if first >= fit => first.min(f.options.len() - fit),
+        Some(&first) if first >= fit => first.min(options - fit),
         _ => 0,
     };
     let in_view = in_view(h, line_h);
@@ -254,7 +262,7 @@ fn list_rows(f: &Field, h: f32, line_h: f32, w: f32) -> (usize, Vec<Rect>) {
 }
 
 /// The glyphs of `font` for the characters of `EDIT_RANGES`, embedded for
-/// the editable text and select fields set in it.
+/// the editable text, select and list fields set in it.
 pub(crate) fn edit_glyphs<'f>(font: &'f LoadedFont<'_>) -> impl Iterator<Item = u16> + 'f {
     EDIT_RANGES
         .iter()
@@ -318,6 +326,9 @@ mod tests {
                 r#"{{"name":"l","kind":"list","multiSelect":true,"options":["a","b","c","d","e"],"value":{value}}}"#
             ))
         };
+        let list_rows = |f: &Field, h: f32, line_h: f32, w: f32| {
+            list_rows(f.options.len(), &selected(f), h, line_h, w)
+        };
         // Four rows of 12 pt fit in 52 pt: nothing to scroll for `b`.
         let (top, rows) = list_rows(&list(r#""b""#), 52.0, 12.0, 100.0);
         assert_eq!(top, 0);
@@ -380,7 +391,7 @@ mod tests {
             "",
         );
         // A 20 pt box shows the row of `c` and part of the one after it.
-        assert_eq!(op.top, 2);
+        assert_eq!(op.top_index, 2);
         assert_eq!(op.text.len(), 2);
         assert_eq!(op.highlights.len(), 1);
         assert!(op.editable && !op.option_glyphs.is_empty());

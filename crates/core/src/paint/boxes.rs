@@ -802,6 +802,11 @@ pub(crate) fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
     ]
 }
 
+/// Point `(x, y)` transformed by `m`.
+pub(crate) fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
+    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+}
+
 fn resolve(v: LengthPercent, of: f32) -> f32 {
     match v {
         LengthPercent::Points(p) => p,
@@ -851,10 +856,6 @@ pub(crate) fn box_transform(s: &Style, x: f32, y: f32, w: f32, h: f32) -> [f32; 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
-        (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
-    }
 
     fn style(json: &str) -> Style {
         serde_json::from_str(json).unwrap()

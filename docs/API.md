@@ -83,9 +83,11 @@ are left out. Every level is "b": the pages look the same in every reader.
 PDF/A-1b has no transparency. A render at 1b fails with `PDFA_CONFLICT`
 at the path of the first thing that needs it: a colour with alpha below
 1 (a `backgroundColor` of alpha 0 draws nothing and is accepted), an
-`opacity` between 0 and 1, `debug`, an image or background image with an
-alpha channel, or an SVG drawn with opacity, a mask, a blend mode, an
-isolated group or a clip path other than one path. `validate` does not
+`opacity` between 0 and 1, `debug`, an image, inline image, emoji image
+or background image with an alpha channel, an SVG drawn with opacity, a
+mask, a blend mode, an isolated group or a clip path other than one path,
+or a colour glyph that needs transparency (a bitmap with an alpha channel
+or a layer with an opacity, at the path of its run). `validate` does not
 know the level, so it does not report these. A PDF/A-1b file also keeps
 within the limits of PDF/A-1: real numbers within ±32767, strings of at
 most 65535 bytes, arrays of at most 8191 entries, dictionaries of at
@@ -93,6 +95,9 @@ most 4095, and graphics states nested at most 28 deep. A document that
 would pass one fails with `PDF_ERROR`.
 
 The a and u levels need tagged PDF, which Inkoxide does not write yet.
+
+In the CLI, `--pdf-a` alone writes PDF/A-2b, and a level follows an
+equals sign:
 
 ```sh
 inkoxide render doc.json --fonts fonts/ --pdf-a=1b
@@ -118,14 +123,17 @@ password lifts the permissions.
 - `permissions` need an owner password: without one, the user password is
   also the owner password and lifts them. Readers, not the file, enforce
   the permissions.
-- With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` (PDF/A
-  forbids it).
+- With `pdfA`, encryption is `INVALID_VALUE` at `options.encryption` in
+  Rust and `INVALID_ARGUMENT` in Node (PDF/A forbids it).
 - A bad value is `INVALID_VALUE` at its path (`options.encryption.userPassword`,
   …) in Rust and `INVALID_ARGUMENT` in Node. No error and no `Debug` output
   shows a password: Rust's `Encryption` prints them as `<redacted>`.
 - Every string and stream is encrypted. The object structure is not: page
   count, page sizes, font names and widths, link rectangles and the other
-  dictionary entries stay readable.
+  dictionary entries stay readable. Radio buttons, whose states are
+  otherwise named after their values, are named by their position in the
+  group instead, with the values in `/Opt`, so the values are encrypted
+  too.
 
 ```rust
 use inkoxide::{Encryption, Permissions, Printing, RenderOptions};
@@ -223,10 +231,12 @@ Without any creation date, no date is written, so output is still
 deterministic.
 
 Encrypted output is deterministic too: the keys, salts and IVs that
-revision 6 makes random are derived from the document and the passwords,
-so identical input gives identical bytes, and two different documents
-never share a key. The derivation is not the standard's random one and
-has not had a cryptography review yet.
+revision 6 makes random are derived from the passwords and the whole
+file as it would be written unencrypted, so identical input gives
+identical bytes, and documents whose files differ anywhere (text,
+images, links, form fields, notes, bookmarks, metadata) get different
+keys. The derivation is not the standard's random one and has not had a
+cryptography review yet.
 
 ## Errors
 

@@ -17,6 +17,7 @@ mod error;
 mod flate;
 mod fonts;
 mod forms;
+mod icons;
 mod images;
 mod layout;
 mod lru;
@@ -80,6 +81,9 @@ pub enum PdfALevel {
 }
 
 impl PdfALevel {
+    /// Every level, from the oldest part.
+    pub const ALL: [Self; 3] = [Self::A1b, Self::A2b, Self::A3b];
+
     /// The level's short name, as the Node binding and the CLI take it:
     /// `"1b"`, `"2b"`, `"3b"`.
     #[must_use]
@@ -94,9 +98,7 @@ impl PdfALevel {
     /// The level named `s` ([`as_str`](Self::as_str)).
     #[must_use]
     pub fn from_name(s: &str) -> Option<Self> {
-        [Self::A1b, Self::A2b, Self::A3b]
-            .into_iter()
-            .find(|l| l.as_str() == s)
+        Self::ALL.into_iter().find(|l| l.as_str() == s)
     }
 }
 
@@ -268,7 +270,8 @@ fn validate_with(
     images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
-        Ok(d) => validate::check(&d, fonts, images, false),
+        // No profile: `validate` does not know the level.
+        Ok(d) => validate::check(&d, fonts, images, Profile::default()),
         Err(e) => vec![e],
     }
 }
@@ -342,8 +345,7 @@ fn render_inner(
 ) -> Result<Vec<u8>, InkoxideError> {
     let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
-    let opaque = !profile.transparency();
-    if let Some(first) = validate::check(&document, fonts, Some(images), opaque)
+    if let Some(first) = validate::check(&document, fonts, Some(images), profile)
         .into_iter()
         .next()
     {
@@ -403,7 +405,8 @@ fn render_inner(
         &font_set,
         &mut text,
         &mut image_set,
-        (parallel, opaque),
+        parallel,
+        profile,
         |page| sink.encode_page(&page, &font_set),
     )?;
     let unicode: UnicodeMap = text.into_unicode();

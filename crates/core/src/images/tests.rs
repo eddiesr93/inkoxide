@@ -603,3 +603,25 @@ fn probes_and_decodes_gif_and_webp() {
         .unwrap();
     assert!(matches!(d.body, ImageBody::Raw { alpha: Some(_), .. }));
 }
+
+/// An emoji image the document already shows is the same image, as are
+/// two emoji with the same bytes under two ids.
+#[test]
+fn emoji_images_are_deduplicated_with_the_document_s() {
+    let json = r#"{"version":1,"emojiImages":{"😀":"logo","👍":"copy","❤":"other"},
+        "pages":[{"size":{"width":100,"height":100},"children":[{"type":"image","src":"logo"}]}]}"#;
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let mut store = ImageStore::new();
+    store.insert("logo", fixture("logo.png"));
+    store.insert("copy", fixture("logo.png"));
+    store.insert("other", fixture("palette.png"));
+    let mut set = ImageSet::load(&doc.pages, &store, &ImageCrateDecoder).unwrap();
+    assert_eq!(set.images.len(), 1);
+    set.load_emoji(&doc.emoji_images, &store, &ImageCrateDecoder)
+        .unwrap();
+    assert_eq!(set.images.len(), 2);
+    let node = set.key(&doc.pages[0].children[0]);
+    assert_eq!(set.by_emoji.get("😀").copied(), node);
+    assert_eq!(set.by_emoji.get("👍").copied(), node);
+    assert_eq!(set.by_emoji.get("❤").copied(), Some(1));
+}

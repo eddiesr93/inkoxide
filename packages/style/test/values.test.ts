@@ -12,7 +12,7 @@ import {
   UnsupportedValueError,
   ValueError,
 } from '../src/index.ts';
-import { evalDim, parseFontFamily, Reader, substituteVars } from '../src/internal.ts';
+import { evalDim, parseFontFamily, Reader, substituteVars, verticalAlignKeyword } from '../src/internal.ts';
 
 describe('Reader.placement', () => {
   it('reads both halves of a grid placement', () => {
@@ -328,5 +328,15 @@ describe('parseFontVariantNumeric', () => {
     ]) {
       expect(() => read(bad), bad).toThrow(/^fontVariantNumeric: /);
     }
+  });
+});
+
+describe('verticalAlignKeyword', () => {
+  it("reads the keywords, and CSS's text-top and text-bottom", () => {
+    for (const v of ['top', 'middle', 'bottom', 'baseline', 'super', 'sub', 'textTop', 'textBottom'])
+      expect(verticalAlignKeyword(v)).toBe(v);
+    expect(verticalAlignKeyword('text-top')).toBe('textTop');
+    expect(verticalAlignKeyword('text-bottom')).toBe('textBottom');
+    for (const v of ['center', 'Top', 'length', '']) expect(verticalAlignKeyword(v)).toBeUndefined();
   });
 });

@@ -17,6 +17,7 @@ use ttf_parser::colr::{ClipBox, CompositeMode, GradientExtend, Paint, Painter};
 use ttf_parser::{GlyphId, RasterImageFormat, RgbaColor, Transform};
 
 use super::LoadedFont;
+use crate::paint::mul;
 
 /// Most painter calls (outlines, fills, clips, layers, transforms) for one
 /// colour glyph. Emoji take a few hundred.
@@ -37,7 +38,7 @@ impl LoadedFont<'_> {
     /// bitmap. `None` for a glyph without colour, or whose colour data is
     /// malformed or over the limits.
     pub fn color_glyph(&self, gid: u16) -> Option<ColorGlyph> {
-        if !self.data.metrics.color {
+        if !self.has_color() {
             return None;
         }
         let id = GlyphId(gid);
@@ -105,11 +106,6 @@ fn invert(m: [f32; 6]) -> Option<[f32; 6]> {
         -(inv[1] * e + inv[3] * f),
     ];
     r.iter().all(|v| v.is_finite()).then_some(r)
-}
-
-/// `a · b`: `b` first, then `a`.
-fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
-    crate::paint::mul(a, b)
 }
 
 fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
@@ -524,7 +520,10 @@ mod tests {
                     panic!("no bitmap in {}", font.id);
                 };
                 assert!(png.starts_with(b"\x89PNG"));
-                // 64 px at 64 ppem in a 1000-unit em, from (3, -10) px.
+                // 64 px at 64 ppem in a 1000-unit em, from (3, -10) px: the
+                // largest strike, also in the sbix font, whose first strike
+                // is 32 ppem.
+                assert_eq!(&png[16..20], 64u32.to_be_bytes(), "{}", font.id);
                 assert_eq!(bbox, [46.875, -156.25, 1046.875, 843.75], "{}", font.id);
                 assert_eq!(font.color_glyph(font.glyph(' ').unwrap()), None);
             }

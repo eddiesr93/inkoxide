@@ -61,8 +61,20 @@ fn hyphenation_for(name: &str) -> HyphenationStore {
     store
 }
 
+/// Whether `tool` runs (with `arg`). CI installs every tool these tests
+/// use, so there (`CI` set) a missing one fails the test instead of
+/// skipping its checks.
+fn installed(tool: &str, arg: &str) -> bool {
+    let found = Command::new(tool).arg(arg).output().is_ok();
+    assert!(
+        found || std::env::var_os("CI").is_none(),
+        "{tool} is not installed"
+    );
+    found
+}
+
 fn qpdf_available() -> bool {
-    Command::new("qpdf").arg("--version").output().is_ok()
+    installed("qpdf", "--version")
 }
 
 #[test]
@@ -123,6 +135,7 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
     ),
     ("emoji-images", "emojiImages.❤\u{FE0F}"),
     ("emoji-colr", "pages[0].children[3].runs[1].color"),
+    ("emoji-cbdt", "pages[0].children[1].runs[0]"),
     (
         "background-image",
         "pages[0].children[2].children[0].children[1].backgroundImage.src",
@@ -233,9 +246,14 @@ fn pdf_a_fixtures() {
 }
 
 /// With `VERAPDF` set, every one of `outputs` passes veraPDF's profile
-/// for `flavour` (`1b`, `2b`, `3b`).
+/// for `flavour` (`1b`, `2b`, `3b`). CI installs veraPDF and sets it.
 fn verapdf(flavour: &str, outputs: &[PathBuf]) {
-    if let Ok(vera) = std::env::var("VERAPDF") {
+    let vera = std::env::var("VERAPDF");
+    assert!(
+        vera.is_ok() || std::env::var_os("CI").is_none(),
+        "VERAPDF is not set"
+    );
+    if let Ok(vera) = vera {
         let o = Command::new(vera)
             .args(["--flavour", flavour, "--format", "text"])
             .args(outputs)
@@ -384,11 +402,12 @@ fn msgpack_errors_match_json() {
     }
 }
 
-/// Colour emoji are images, but extract as their text (`ActualText`):
-/// checked with poppler's `pdftotext` when it is installed.
+/// Colour emoji are images, but extract as their text (`ActualText`), and
+/// inline images as their alternative text: checked with poppler's
+/// `pdftotext` when it is installed.
 #[test]
-fn colour_emoji_extract_as_text() {
-    if Command::new("pdftotext").arg("-v").output().is_err() {
+fn colour_emoji_and_inline_images_extract_as_text() {
+    if !installed("pdftotext", "-v") {
         return;
     }
     let (fonts, images) = stores();
@@ -397,13 +416,19 @@ fn colour_emoji_extract_as_text() {
     for (name, want) in [
         (
             "emoji-colr",
-            "thumbs 👍 👍🏽 flag 🇫🇷 keycap 1\u{FE0F}\u{20E3} coder",
+            &["thumbs 👍 👍🏽 flag 🇫🇷 keycap 1\u{FE0F}\u{20E3} coder"][..],
         ),
         (
             "emoji-cbdt",
-            "smile 😀 heart ❤\u{FE0F} thumbs 👍 flag 🇫🇷 end",
+            &[
+                "smile 😀 heart ❤\u{FE0F} thumbs 👍 flag 🇫🇷 end",
+                // In a run whose own font has no outlines.
+                "😀❤\u{FE0F}👍🇫🇷",
+                "😀 ❤\u{FE0F} 👍 🇫🇷",
+            ],
         ),
-        ("emoji-images", "smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"),
+        ("emoji-images", &["smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"]),
+        ("text-inline-images", &["Logo"]),
     ] {
         let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
         let pdf = inkoxide::render(
@@ -423,7 +448,9 @@ fn colour_emoji_extract_as_text() {
             .output()
             .unwrap();
         let text = String::from_utf8_lossy(&out.stdout);
-        assert!(text.contains(want), "{name}: {text}");
+        for want in want {
+            assert!(text.contains(want), "{name}: {want} in {text}");
+        }
     }
 }
 

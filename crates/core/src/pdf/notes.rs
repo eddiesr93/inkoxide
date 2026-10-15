@@ -1,19 +1,19 @@
-//! Text annotations: one per painted note, drawn as a sticky-note icon by
-//! an appearance stream of its own (PDF/A-2b requires one, and it looks the
-//! same in every viewer).
+//! Icon annotations: one per painted icon op. A text note is drawn as a
+//! sticky-note icon by an appearance stream of its own (PDF/A-2b requires
+//! one, and it looks the same in every viewer).
 
 use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::{annot_rect, content_bytes, path, q, set_fill, EncodedPage, Out, Profile, RefAlloc};
-use crate::notes::{NoteOp, ICON};
+use crate::icons::{IconKind, ICON};
 use crate::paint::{rounded_rect, Rect};
-use crate::schema::{Color, NOTE_YELLOW};
+use crate::schema::{Color, Note, NOTE_YELLOW};
 use crate::InkoxideError;
 
-/// Writes the notes of every page, in page order; appends their refs to
-/// `annots` (per page).
-pub(super) fn write_notes(
+/// Writes the icon annotations of every page, in page order; appends
+/// their refs to `annots` (per page).
+pub(super) fn write_icons(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     out: &mut Out,
@@ -22,35 +22,38 @@ pub(super) fn write_notes(
     profile: Profile,
 ) -> Result<(), InkoxideError> {
     for (i, page) in pages.iter().enumerate() {
-        for n in &page.notes {
+        for icon in &page.icons {
             let r = alloc.next();
             let ap = alloc.next();
-            write_note(pdf, out, (r, ap), n, (page, page_refs[i]), profile)?;
+            // Inside the page, where viewers show it.
+            let x = icon.x.min(page.width - ICON).max(0.0);
+            let y = icon.y.min(page.height - ICON).max(0.0);
+            let rect = annot_rect(Rect::new(x, y, ICON, ICON), page.height);
+            match &icon.kind {
+                IconKind::Note(note) => {
+                    write_note(pdf, out, (r, ap), note, (rect, page_refs[i]), profile)?;
+                }
+            }
             annots[i].push(r);
         }
     }
     Ok(())
 }
 
-/// Writes note `n` of `page` as annotation `r`, with appearance `ap`.
+/// Writes `note` as annotation `r` at `rect`, with appearance `ap`.
 fn write_note(
     pdf: &mut Pdf,
     out: &mut Out,
     (r, ap): (Ref, Ref),
-    n: &NoteOp,
-    (page, page_ref): (&EncodedPage, Ref),
+    note: &Note,
+    (rect, page_ref): (PdfRect, Ref),
     profile: Profile,
 ) -> Result<(), InkoxideError> {
-    let color = n.note.color.unwrap_or(NOTE_YELLOW);
-    // Inside the page, where viewers show it.
-    let x = n.x.min(page.width - ICON).max(0.0);
-    let y = n.y.min(page.height - ICON).max(0.0);
-    let contents = out.text(&n.note.contents);
-    let author = n.note.author.as_deref().map(|a| out.text(a));
+    let color = note.color.unwrap_or(NOTE_YELLOW);
+    let contents = out.text(&note.contents);
+    let author = note.author.as_deref().map(|a| out.text(a));
     let mut a = pdf.annotation(r);
-    a.subtype(AnnotationType::Text)
-        .rect(annot_rect(Rect::new(x, y, ICON, ICON), page.height))
-        .page(page_ref);
+    a.subtype(AnnotationType::Text).rect(rect).page(page_ref);
     a.pair(Name(b"Contents"), Str(&contents));
     a.color_rgb(q(color[0]), q(color[1]), q(color[2]))
         .flags(AnnotationFlags::PRINT | AnnotationFlags::NO_ZOOM | AnnotationFlags::NO_ROTATE)
@@ -58,7 +61,7 @@ fn write_note(
     if let Some(author) = &author {
         a.pair(Name(b"T"), Str(author));
     }
-    if n.note.open {
+    if note.open {
         a.pair(Name(b"Open"), true);
     }
     a.appearance().normal().stream(ap);
@@ -258,6 +261,108 @@ mod tests {
         // The top-left corner (0, 0) turns a quarter around (50, 20), then
         // moves by (50, 60): to (120, 30).
         assert_eq!(rects(&pdf), [[120.0, 150.0, 140.0, 170.0]]);
+    }
+
+    /// The PDF (uncompressed, as text) of `pages` pages of 200 × 200 pt in
+    /// Inter, with header `header` and `children`, and its pages' content
+    /// streams.
+    fn render_text(header: &str, children: &str, pages: usize) -> (String, Vec<String>) {
+        let header = if header.is_empty() {
+            String::new()
+        } else {
+            format!(r#""header":{header},"#)
+        };
+        let page =
+            format!(r#"{{"size":{{"width":200,"height":200}},{header}"children":[{children}]}}"#);
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{}]}}"#,
+            vec![page; pages].join(",")
+        );
+        let options = crate::RenderOptions::default().with_compress(false);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &options,
+            &crate::test_fixtures::inter(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        let pdf = String::from_utf8_lossy(&pdf).into_owned();
+        let streams = pdf
+            .split("stream\n")
+            .skip(1)
+            .filter_map(|s| s.split("\nendstream").next())
+            .filter(|s| s.contains(" Tf"))
+            .map(String::from)
+            .collect();
+        (pdf, streams)
+    }
+
+    /// A text node of runs in Inter, 10 pt, `width` wide.
+    fn text(width: u32, runs: &[&str]) -> String {
+        let runs: Vec<String> = runs
+            .iter()
+            .map(|r| match r.strip_prefix('@') {
+                Some(contents) => format!(
+                    r#"{{"note":{{"contents":"{contents}"}},"font":"Inter-Regular","size":10}}"#
+                ),
+                None => format!(r#"{{"text":"{r}","font":"Inter-Regular","size":10}}"#),
+            })
+            .collect();
+        format!(
+            r#"{{"type":"text","style":{{"width":{width}}},"runs":[{}]}}"#,
+            runs.join(",")
+        )
+    }
+
+    #[test]
+    fn a_note_in_text_hangs_from_the_line_where_it_is() {
+        let (pdf, streams) = render_text("", &text(200, &["ab", "@See", "cd"]), 1);
+        assert_eq!(pdf.matches("/Subtype /Text").count(), 1, "{pdf}");
+        assert!(pdf.contains("/Contents (See)"), "{pdf}");
+        let [[x0, y0, x1, y1]] = rects(&pdf)[..] else {
+            panic!("{pdf}");
+        };
+        // After `ab`, at the line's top.
+        assert!(x0 > 5.0 && x0 < 15.0, "{x0}");
+        assert_eq!((x1 - x0, y0, y1), (20.0, 180.0, 200.0));
+        // It takes no room and draws nothing in the text.
+        let (_, plain) = render_text("", &text(200, &["ab", "cd"]), 1);
+        assert_eq!(streams, plain);
+    }
+
+    #[test]
+    fn a_note_in_text_stays_with_its_word() {
+        // `aaaa bbbb` does not fit on one line.
+        let rect = |runs: &[&str]| {
+            let (pdf, _) = render_text("", &text(30, runs), 1);
+            rects(&pdf)[0]
+        };
+        // After a word, it stays at its end on the first line.
+        let [x0, y0, ..] = rect(&["aaaa", "@n", " bbbb"]);
+        assert!(x0 > 15.0 && y0 == 180.0, "{x0} {y0}");
+        // After a space, it goes with the next word, at the start of the
+        // second line.
+        let [x0, y0, ..] = rect(&["aaaa ", "@n", "bbbb"]);
+        assert!(x0 == 0.0 && y0 < 180.0, "{x0} {y0}");
+        // The spaces around it collapse to one.
+        let (_, two) = render_text("", &text(200, &["a ", "@n", " b"]), 1);
+        let (_, one) = render_text("", &text(200, &["a ", "b"]), 1);
+        assert_eq!(two, one);
+    }
+
+    #[test]
+    fn a_note_in_text_is_on_the_page_of_its_line() {
+        let count = |pdf: &str| pdf.matches("/Subtype /Text").count();
+        // In a header, on every page.
+        let (pdf, _) = render_text(&text(200, &["Draft", "@x"]), "", 3);
+        assert_eq!(count(&pdf), 3);
+        // A line on the second page.
+        let full = r#"{"type":"box","style":{"height":195}}"#;
+        let (pdf, _) = render_text("", &format!("{full},{}", text(200, &["a", "@x"])), 1);
+        assert_eq!(pdf.matches("/Type /Page\n").count(), 2, "{pdf}");
+        assert_eq!(count(&pdf), 1);
+        assert_eq!(rects(&pdf)[0][3], 200.0);
     }
 
     #[test]

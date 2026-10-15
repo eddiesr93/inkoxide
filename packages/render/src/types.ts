@@ -1,4 +1,4 @@
-import type { EncryptionOptions } from '@inkoxide/react';
+import type { EncryptionOptions, PdfALevel } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 
 export interface RenderOpts {
@@ -21,7 +21,7 @@ export interface RenderOpts {
    * PDF/A-3b and `'1b'` PDF/A-1b. Another value fails the render with `ENGINE_REJECTED` at
    * `options.pdfA`.
    */
-  pdfA?: boolean | '1b' | '2b' | '3b';
+  pdfA?: boolean | PdfALevel;
   /**
    * Encrypt the PDF with AES-256: `{ userPassword, ownerPassword, permissions }` (see the
    * guide). Replaces `<Document userPassword ownerPassword permissions>` as a whole. Not with

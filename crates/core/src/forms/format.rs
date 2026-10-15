@@ -8,7 +8,7 @@
 
 use std::fmt::Write as _;
 
-use crate::date::{parse_local, parse_local_time, LocalDateTime};
+use crate::date::{is_digits, parse_local, parse_local_time, LocalDateTime};
 use crate::schema::{FieldFormat, FormatKind, NegativeStyle, Separators};
 
 /// Most `decimals`.
@@ -95,21 +95,11 @@ pub(crate) fn stored(f: &FieldFormat, value: &str) -> Option<String> {
 /// The keystroke and format scripts of format `f`: the form scripts that
 /// check what the user types and format it when the field loses focus.
 pub(crate) fn scripts(f: &FieldFormat) -> (String, String) {
-    let decimals = f.decimals.unwrap_or(2).min(MAX_DECIMALS);
-    let separators = match f.separators.unwrap_or_default() {
-        Separators::CommaDot => 0,
-        Separators::Dot => 1,
-        Separators::DotComma => 2,
-        Separators::Comma => 3,
-    };
+    let decimals = decimals(f);
+    let separators = separators(f).style;
     let (name, ex, args) = match f.kind {
         FormatKind::Number => {
-            let negative = match f.negative.unwrap_or_default() {
-                NegativeStyle::Minus => 0,
-                NegativeStyle::Red => 1,
-                NegativeStyle::Parens => 2,
-                NegativeStyle::ParensRed => 3,
-            };
+            let negative = negative(f).style;
             let currency = js_string_literal(f.currency.as_deref().unwrap_or(""));
             let before = f.currency_before.unwrap_or(true);
             (
@@ -269,7 +259,7 @@ fn weekday(t: LocalDateTime) -> usize {
 
 /// `value` when it is exactly `n` ASCII digits.
 fn digits(value: &str, n: usize) -> Option<&str> {
-    (value.len() == n && value.bytes().all(|b| b.is_ascii_digit())).then_some(value)
+    is_digits(value, n).then_some(value)
 }
 
 /// A number value: `-?\d{1,15}(\.\d{1,15})?`, as digits.
@@ -344,20 +334,61 @@ impl Decimal {
     }
 }
 
+/// Digits after the decimal separator of number or percent format `f`.
+fn decimals(f: &FieldFormat) -> u8 {
+    f.decimals.unwrap_or(2).min(MAX_DECIMALS)
+}
+
+/// The separators of a number or percent format.
+struct Seps {
+    /// Their number in the standard form scripts.
+    style: u8,
+    /// Between groups of three digits.
+    group: Option<char>,
+    point: char,
+}
+
+fn separators(f: &FieldFormat) -> Seps {
+    let (style, group, point) = match f.separators.unwrap_or_default() {
+        Separators::CommaDot => (0, Some(','), '.'),
+        Separators::Dot => (1, None, '.'),
+        Separators::DotComma => (2, Some('.'), ','),
+        Separators::Comma => (3, None, ','),
+    };
+    Seps {
+        style,
+        group,
+        point,
+    }
+}
+
+/// How a number format shows negative numbers.
+struct Negative {
+    /// Its number in the standard form scripts.
+    style: u8,
+    parens: bool,
+    red: bool,
+}
+
+fn negative(f: &FieldFormat) -> Negative {
+    let (style, parens, red) = match f.negative.unwrap_or_default() {
+        NegativeStyle::Minus => (0, false, false),
+        NegativeStyle::Red => (1, false, true),
+        NegativeStyle::Parens => (2, true, false),
+        NegativeStyle::ParensRed => (3, true, true),
+    };
+    Negative { style, parens, red }
+}
+
 /// A number or percent value shown under `f`.
 fn number(f: &FieldFormat, value: &str) -> Option<Shown> {
     let mut d = parse_number(value)?;
     if f.kind == FormatKind::Percent {
         d = d.percent();
     }
-    let n = usize::from(f.decimals.unwrap_or(2).min(MAX_DECIMALS));
+    let n = usize::from(decimals(f));
     let d = d.round(n);
-    let (group, point) = match f.separators.unwrap_or_default() {
-        Separators::CommaDot => (Some(','), '.'),
-        Separators::Dot => (None, '.'),
-        Separators::DotComma => (Some('.'), ','),
-        Separators::Comma => (None, ','),
-    };
+    let Seps { group, point, .. } = separators(f);
     let mut text = String::new();
     for (i, &digit) in d.int.iter().enumerate() {
         let left = d.int.len() - i;
@@ -387,15 +418,17 @@ fn number(f: &FieldFormat, value: &str) -> Option<Shown> {
     if !d.negative {
         return Some(Shown { text, red: false });
     }
-    let style = f.negative.unwrap_or_default();
-    let text = match style {
-        NegativeStyle::Minus => format!("-{text}"),
-        NegativeStyle::Red => text,
-        NegativeStyle::Parens | NegativeStyle::ParensRed => format!("({text})"),
+    let style = negative(f);
+    let text = if style.parens {
+        format!("({text})")
+    } else if style.red {
+        text
+    } else {
+        format!("-{text}")
     };
     Some(Shown {
         text,
-        red: matches!(style, NegativeStyle::Red | NegativeStyle::ParensRed),
+        red: style.red,
     })
 }
 
@@ -594,7 +627,12 @@ mod tests {
         ] {
             assert!(check_pattern(p, FormatKind::Date).is_err(), "{p}");
         }
-        assert!(check_pattern("dd HH", FormatKind::Time).is_err());
+        // At most `MAX_PATTERN` characters.
+        assert_eq!(check_pattern(&"d ".repeat(32), FormatKind::Date), Ok(()));
+        // A time shows only the time letters.
+        for p in ["dd HH", "HH mm", "yy", "HH:MM d"] {
+            assert!(check_pattern(p, FormatKind::Time).is_err(), "{p}");
+        }
     }
 
     #[test]
@@ -636,6 +674,12 @@ mod tests {
             r#"AFTime_FormatEx("HH:MM");"#
         );
         assert_eq!(s(r#"{"type":"phone"}"#).1, "AFSpecial_Format(2);");
+        // The defaults React gives a format written with the other key
+        // names: no decimals, no thousands separator.
+        let other = r#"{"type":"number","decimals":0,"separators":"1234.56"}"#;
+        assert_eq!(s(other).1, r#"AFNumber_Format(0, 1, 0, 0, "", true);"#);
+        assert_eq!(shown(other, "1250"), "1250");
+        assert_eq!(shown(other, "-1250.5"), "-1251");
     }
 
     #[test]

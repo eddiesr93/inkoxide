@@ -8,7 +8,8 @@ use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::forms::format;
-use crate::images::ImageCrateDecoder;
+use crate::images::{ImageCrateDecoder, ImageData};
+use crate::pdf::Profile;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldFormat, FieldKind, FieldValue, FontFeature, FormatKind,
@@ -80,15 +81,15 @@ impl From<TrackBreadth> for Len {
     }
 }
 
-/// Checks `doc`. Without `images`, image ids are not looked up (inline
-/// `data` is still checked). With `opaque` (rendering PDF/A-1b), a valid
-/// document that needs transparency gets one error: `PDFA_CONFLICT` at
-/// the first thing that does.
+/// Checks `doc` for a render with `profile`. Without `images`, image ids
+/// are not looked up (inline `data` is still checked). Where `profile`
+/// forbids transparency (PDF/A-1b), a valid document that needs it gets
+/// one error: `PDFA_CONFLICT` at the first thing that does.
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
     images: Option<&ImageStore>,
-    opaque: bool,
+    profile: Profile,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
         path: String::with_capacity(128),
@@ -100,7 +101,7 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
-        opaque,
+        opaque: !profile.transparency(),
         conflict: None,
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
@@ -111,6 +112,16 @@ pub(crate) fn check(
         c.errors.extend(c.conflict);
     }
     c.errors
+}
+
+/// The error of a render at PDF/A-1b, which forbids transparency: `what`,
+/// at `path`, needs it.
+pub(crate) fn transparency_conflict(path: String, what: &str) -> ValidationError {
+    ValidationError {
+        code: Code::PdfaConflict,
+        path,
+        message: format!("PDF/A-1b does not allow transparency, which {what} needs"),
+    }
 }
 
 /// How the painter uses a colour's alpha.
@@ -166,13 +177,13 @@ pub(crate) const MAX_WEIGHT: u16 = 1000;
 /// Longest form field `name`, in characters.
 pub(crate) const MAX_FIELD_NAME: usize = 512;
 /// Longest part of a form field `name` between dots, in characters.
-pub(crate) const MAX_FIELD_PART: usize = 128;
+pub(crate) const MAX_FIELD_PART_LEN: usize = 128;
 /// Most parts of a form field `name`: groups nest at most one less deep.
 pub(crate) const MAX_FIELD_PARTS: usize = 32;
 /// Most `options` of a form field.
 pub(crate) const MAX_FIELD_OPTIONS: usize = 1000;
 /// Longest option of a form field, in characters.
-pub(crate) const MAX_FIELD_OPTION: usize = 1000;
+pub(crate) const MAX_FIELD_OPTION_LEN: usize = 1000;
 /// Longest form field `value`, in characters (PDF/A-2 holds strings to
 /// 32767 bytes; a character is at most 4 of them in UTF-16).
 pub(crate) const MAX_FIELD_VALUE: usize = 8000;
@@ -191,7 +202,8 @@ pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
 pub(crate) const MAX_ALT: usize = 1024;
 /// Most entries of `emojiImages`.
 pub(crate) const MAX_EMOJI_IMAGES: usize = 4096;
-/// Longest key of `emojiImages`, in characters.
+/// Longest key of `emojiImages`, in bytes (UTF-8). The schema's
+/// `maxLength`, in characters, is the looser bound JSON Schema can state.
 pub(crate) const MAX_EMOJI_SEQUENCE: usize = 64;
 /// Thickest `decorationThickness`, in points.
 pub(crate) const MAX_DECORATION_THICKNESS: f32 = 100.0;
@@ -274,11 +286,7 @@ impl<'a> Checker<'a> {
         if let Some(f) = field {
             push_key(&mut path, f);
         }
-        self.conflict = Some(ValidationError {
-            code: Code::PdfaConflict,
-            path,
-            message: format!("PDF/A-1b does not allow transparency, which {what} needs"),
-        });
+        self.conflict = Some(transparency_conflict(path, what));
     }
 
     /// `debug` draws translucent outlines.
@@ -713,62 +721,69 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// An image's source: an id of the images given (when they are), or
+    /// inline `data`.
+    fn image_source(&mut self, source: &ImageSource) {
+        match source {
+            ImageSource::Ref(id) => self.image_ref("src", id),
+            ImageSource::Inline(inline) => match inline.data() {
+                Ok(data) => self.image_data("data", data, None),
+                Err(e) => self.err(Code::InvalidImage, Some("data"), e),
+            },
+        }
+    }
+
+    /// Image `id` at `field`: an id of an image given, when they are.
+    fn image_ref(&mut self, field: &str, id: &str) {
+        if !self.id(Some(field), id) {
+            return; // reported by `id`
+        }
+        let Some(images) = self.images else { return };
+        let Some(data) = images.get(id) else {
+            self.err(
+                Code::UnknownImage,
+                Some(field),
+                format!("image `{id}` was not provided in the render options"),
+            );
+            return;
+        };
+        self.image_data(field, data, Some(id));
+    }
+
     /// An image's bytes must decode: its header first, which is cheap and
     /// tells a too large image apart, then the image itself. The decode is
     /// cached, so the render that follows reuses it.
-    fn image_source(&mut self, source: &ImageSource) {
-        let (field, data, id) = match source {
-            ImageSource::Ref(id) if !self.id(Some("src"), id) => return, // reported by `id`
-            ImageSource::Ref(id) => {
-                let Some(images) = self.images else { return };
-                let Some(data) = images.get(id) else {
-                    self.err(
-                        Code::UnknownImage,
-                        Some("src"),
-                        format!("image `{id}` was not provided in the render options"),
-                    );
-                    return;
-                };
-                ("src", data.clone(), Some(id))
-            }
-            ImageSource::Inline(inline) => match inline.data() {
-                Ok(data) => ("data", data.clone(), None),
-                Err(e) => {
-                    self.err(Code::InvalidImage, Some("data"), e);
-                    return;
-                }
-            },
-        };
+    fn image_data(&mut self, field: &str, data: &ImageData, id: Option<&str>) {
         let message = |e: &dyn std::fmt::Display| match id {
             Some(id) => format!("image `{id}`: {e}"),
             None => e.to_string(),
         };
         if let Err(e) = crate::images::probe(&data.bytes) {
             self.err(probe_code(&e), Some(field), message(&e));
-        } else {
-            match data.decoded(&ImageCrateDecoder) {
-                Err(e) => self.err(Code::InvalidImage, Some(field), message(&e)),
-                // Text is laid out with the document's fonts.
-                Ok(img) if self.doc.fonts.is_empty() && img.has_text() => self.err(
-                    Code::InvalidImage,
-                    Some(field),
-                    message(
-                        &"the SVG has text, and the document declares no fonts to draw it with; \
-                          declare one in `fonts`",
-                    ),
+            return;
+        }
+        match data.decoded(&ImageCrateDecoder) {
+            Err(e) => self.err(Code::InvalidImage, Some(field), message(&e)),
+            // Text is laid out with the document's fonts.
+            Ok(img) if self.doc.fonts.is_empty() && img.has_text() => self.err(
+                Code::InvalidImage,
+                Some(field),
+                message(
+                    &"the SVG has text, and the document declares no fonts to draw it with; \
+                      declare one in `fonts`",
                 ),
-                Ok(img) if self.opaque && self.conflict.is_none() => {
-                    let what = *self
-                        .image_transparency
-                        .entry(data.hash)
-                        .or_insert_with(|| crate::pdf::image_transparency(&img));
-                    if let Some(what) = what {
-                        let image = id.map_or("the image".into(), |id| format!("image `{id}`"));
-                        self.transparent(Some(field), &format!("{image} ({what})"));
-                    }
+            ),
+            Ok(img) if self.opaque && self.conflict.is_none() => {
+                let what = *self
+                    .image_transparency
+                    .entry(data.hash)
+                    .or_insert_with(|| crate::pdf::image_transparency(&img));
+                if let Some(what) = what {
+                    let image = id.map_or("the image".into(), |id| format!("image `{id}`"));
+                    self.transparent(Some(field), &format!("{image} ({what})"));
                 }
-                Ok(_) => {}
             }
+            Ok(_) => {}
         }
     }
 
@@ -803,12 +818,12 @@ impl<'a> Checker<'a> {
             || parts > MAX_FIELD_PARTS
             || f.name
                 .split('.')
-                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART)
+                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
         {
             self.err(
                 Code::InvalidValue,
                 Some("name"),
-                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
+                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
             );
         }
         // The groups the name is in: what comes before each of its dots.
@@ -851,7 +866,7 @@ impl<'a> Checker<'a> {
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {
                 self.font_ref(Some("font"), font);
-                if self.fonts.get(font).is_some_and(|d| d.metrics.color_only) {
+                if self.fonts.get(font).is_some_and(|d| !d.has_outlines()) {
                     self.err(
                         Code::InvalidValue,
                         Some("font"),
@@ -925,13 +940,13 @@ impl<'a> Checker<'a> {
             );
         }
         for (i, o) in f.options.iter().enumerate() {
-            if o.chars().count() > MAX_FIELD_OPTION {
+            if o.chars().count() > MAX_FIELD_OPTION_LEN {
                 self.at("options", |c| {
                     c.at_index(i, |c| {
                         c.err(
                             Code::InvalidValue,
                             None,
-                            format!("an option is at most {MAX_FIELD_OPTION} characters"),
+                            format!("an option is at most {MAX_FIELD_OPTION_LEN} characters"),
                         );
                     });
                 });
@@ -1201,52 +1216,18 @@ impl<'a> Checker<'a> {
     }
 
     /// An `emojiImages` entry: its key is one emoji sequence, of at most
-    /// [`MAX_EMOJI_SEQUENCE`] characters, and its image decodes.
+    /// [`MAX_EMOJI_SEQUENCE`] bytes, and its image decodes.
     fn emoji_image(&mut self, sequence: &str, id: &str) {
         let one = crate::text::emoji_sequences(sequence);
         let whole = matches!(&one[..], [q] if q.range == (0..sequence.len()));
-        if !whole || sequence.chars().count() > MAX_EMOJI_SEQUENCE {
+        if !whole || sequence.len() > MAX_EMOJI_SEQUENCE {
             self.err(
                 Code::InvalidValue,
                 Some(sequence),
-                format!("a key of `emojiImages` is one emoji sequence of at most {MAX_EMOJI_SEQUENCE} characters"),
+                format!("a key of `emojiImages` is one emoji sequence of at most {MAX_EMOJI_SEQUENCE} bytes in UTF-8"),
             );
         }
-        if !self.id(Some(sequence), id) {
-            return;
-        }
-        let Some(images) = self.images else { return };
-        let Some(data) = images.get(id) else {
-            self.err(
-                Code::UnknownImage,
-                Some(sequence),
-                format!("image `{id}` was not provided in the render options"),
-            );
-            return;
-        };
-        if let Err(e) = crate::images::probe(&data.bytes) {
-            self.err(probe_code(&e), Some(sequence), format!("image `{id}`: {e}"));
-        } else {
-            match data.decoded(&ImageCrateDecoder) {
-                Err(e) => {
-                    self.err(
-                        Code::InvalidImage,
-                        Some(sequence),
-                        format!("image `{id}`: {e}"),
-                    );
-                }
-                Ok(img) if self.opaque && self.conflict.is_none() => {
-                    let what = *self
-                        .image_transparency
-                        .entry(data.hash)
-                        .or_insert_with(|| crate::pdf::image_transparency(&img));
-                    if let Some(what) = what {
-                        self.transparent(Some(sequence), &format!("image `{id}` ({what})"));
-                    }
-                }
-                Ok(_) => {}
-            }
-        }
+        self.image_ref(sequence, id);
     }
 
     /// A run's `image`: its source and placement, as an image node's, a
@@ -1291,15 +1272,23 @@ impl<'a> Checker<'a> {
                 Some("image"),
                 "a run takes one of `text`, `placeholder` and `image`",
             ),
-            (None, None, None) => self.err(
+            (None, None, None) if r.note.is_none() => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder` or an `image`)",
+                "a run requires `text` (or a `placeholder`, an `image` or a `note`)",
+            ),
+            (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.note.is_some() => self.err(
+                Code::InvalidValue,
+                Some("note"),
+                "a run takes one of `text`, `placeholder`, `image` and `note`",
             ),
             _ => {}
         }
         if let Some(image) = &r.image {
             self.at("image", |c| c.run_image(image));
+        }
+        if let Some(note) = &r.note {
+            self.at("note", |c| c.note(note));
         }
         match r.vertical_align {
             Some(RunAlign::Points(v)) if !(v.abs() <= MAX_PAGE_EDGE) => self.err(

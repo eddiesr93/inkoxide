@@ -240,6 +240,30 @@
        ]
       }
      ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 12
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "A note can be part of a line of text, where it takes no room: its icon hangs from the top of the line, after the word it is about.",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "note": {
+        "contents": "In the line, after the word it is about.",
+        "author": "Editor"
+       },
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
     }
    ]
   }

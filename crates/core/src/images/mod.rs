@@ -104,16 +104,18 @@ impl ImageData {
     }
 }
 
-/// An image node's inline base64 payload. It is decoded once, on first
+/// The base64 `data` of an image source (an image node, a background or
+/// image run; not to be confused with the schema's `InlineImage`, an image
+/// run). It is decoded once, on first
 /// use: validation decodes it, and the render that follows reuses the
 /// bytes and their decoded image.
 #[derive(Debug, Clone)]
-pub(crate) struct InlineImage {
+pub(crate) struct InlineData {
     b64: String,
     data: OnceLock<Result<Arc<ImageData>, String>>,
 }
 
-impl InlineImage {
+impl InlineData {
     pub fn new(b64: String) -> Self {
         Self {
             b64,
@@ -188,6 +190,25 @@ impl ImageStore {
 /// Index of a unique image within one render.
 pub(crate) type ImageKey = u32;
 
+/// How an image fills its box: its `fit`, and its `objectPosition` there.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Placement {
+    pub fit: ImageFit,
+    pub position: ObjectPosition,
+}
+
+impl Placement {
+    /// Stretched over the box.
+    pub const FILL: Self = Self {
+        fit: ImageFit::Fill,
+        position: ObjectPosition::CENTER,
+    };
+
+    pub fn new(fit: ImageFit, position: ObjectPosition) -> Self {
+        Self { fit, position }
+    }
+}
+
 /// The unique images of one document, decoded, with the image each node
 /// shows and the background image each box paints.
 pub(crate) struct ImageSet {
@@ -200,6 +221,8 @@ pub(crate) struct ImageSet {
     by_run: HashMap<usize, ImageKey>,
     /// Emoji sequence (without U+FE0F) → its image.
     by_emoji: BTreeMap<String, ImageKey>,
+    /// The content hash of each image of the document → its key.
+    by_hash: HashMap<u64, ImageKey>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -277,30 +300,31 @@ impl ImageSet {
             by_background: keys(backgrounds),
             by_run: keys(runs),
             by_emoji: BTreeMap::new(),
+            by_hash: key_of,
         })
     }
 
     /// Adds the images of the document's `emojiImages` (sequence → image
-    /// id), each distinct image once. Assumes the document validated.
+    /// id), each distinct image once, an image the document shows already
+    /// included. Assumes the document validated.
     pub fn load_emoji(
         &mut self,
         emoji: &BTreeMap<String, String>,
         store: &ImageStore,
         decoder: &dyn ImageDecoder,
     ) -> Result<(), InkoxideError> {
-        let mut by_hash: HashMap<u64, ImageKey> = HashMap::new();
         for (sequence, id) in emoji {
             let data = store
                 .get(id)
                 .ok_or_else(|| InkoxideError::Image(format!("image `{id}` is not registered")))?;
-            let key = if let Some(&k) = by_hash.get(&data.hash) {
+            let key = if let Some(&k) = self.by_hash.get(&data.hash) {
                 k
             } else {
                 let img = data
                     .decoded(decoder)
                     .map_err(|e| InkoxideError::Image(e.clone()))?;
                 let k = self.add(img);
-                by_hash.insert(data.hash, k);
+                self.by_hash.insert(data.hash, k);
                 k
             };
             self.by_emoji.insert(crate::text::emoji_key(sequence), key);
@@ -452,17 +476,17 @@ impl ImageSet {
         let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
         // `borderRadius` rounds the image without `overflow: hidden`.
         let radii = crate::paint::content_radii(&node.style, geo);
-        self.paint_in(key, bx, *fit, *object_position, &radii, ops);
+        let placement = Placement::new(*fit, *object_position);
+        self.paint_in(key, bx, placement, &radii, ops);
     }
 
-    /// Paints image `key` into `bx` (page coordinates) according to `fit`
-    /// and `position`, clipped to `bx` rounded by `radii`.
+    /// Paints image `key` into `bx` (page coordinates) as `placement`
+    /// says, clipped to `bx` rounded by `radii`.
     pub fn paint_in(
         &self,
         key: ImageKey,
         bx: Rect,
-        fit: ImageFit,
-        position: ObjectPosition,
+        placement: Placement,
         radii: &crate::paint::Radii,
         ops: &mut Vec<crate::paint::Op>,
     ) {
@@ -472,6 +496,7 @@ impl ImageSet {
         }
         let img = self.get(key);
         let intrinsic = self.intrinsic_of(key);
+        let Placement { fit, position } = placement;
         let (rect, clip) = match (&img.body, fit) {
             // The box is the SVG's viewport, which its `viewBox` fits.
             (

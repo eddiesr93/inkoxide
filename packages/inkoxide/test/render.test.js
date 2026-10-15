@@ -96,6 +96,7 @@ test('encryption encrypts with passwords and permissions, and never echoes them'
     assert.strictEqual(e.code, 'INVALID_ARGUMENT');
     assert.strictEqual(e.path, path);
     assert.ok(!e.message.includes(secret) && !JSON.stringify(e).includes(secret), e.message);
+    assert.ok(!e.message.includes('1234'), e.message);
     return true;
   };
   for (const [options, path] of [
@@ -111,6 +112,16 @@ test('encryption encrypts with passwords and permissions, and never echoes them'
       'options.encryption.permissions.printing',
     ],
     [{ encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
+    // Wrong types are refused before napi, whose message would show the value.
+    [{ encryption: secret }, 'options.encryption'],
+    [{ encryption: [secret] }, 'options.encryption'],
+    [{ encryption: { userPassword: 1234, ownerPassword: secret } }, 'options.encryption.userPassword'],
+    [{ encryption: { userPassword: 'u', ownerPassword: { secret } } }, 'options.encryption.ownerPassword'],
+    [{ encryption: { userPassword: [secret] } }, 'options.encryption.userPassword'],
+    [
+      { encryption: { userPassword: 'u', ownerPassword: secret, permissions: secret } },
+      'options.encryption.permissions',
+    ],
   ]) {
     assert.throws(() => ink.renderSync(doc, options), rejected(path));
     await assert.rejects(ink.render(doc, options), rejected(path));

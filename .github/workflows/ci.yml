@@ -41,8 +41,27 @@ jobs:
           workspaces: |
             . -> target
             fuzz -> target
-      - name: Install qpdf
-        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends qpdf
+      - name: Install qpdf and pdftotext
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends qpdf poppler-utils
+      - name: Install veraPDF
+        # The PDF/A outputs of the fixture tests pass veraPDF (VERAPDF). The installer runs on the
+        # runner's Java.
+        env:
+          VERAPDF_VERSION: 1.30.3
+          VERAPDF_SHA256: b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac86a9559a59
+        run: |
+          dir=$RUNNER_TEMP/verapdf
+          curl -fsSL -o "$RUNNER_TEMP/verapdf.zip" \
+            "https://software.verapdf.org/releases/${VERAPDF_VERSION%.*}/verapdf-greenfield-$VERAPDF_VERSION-installer.zip"
+          echo "$VERAPDF_SHA256  $RUNNER_TEMP/verapdf.zip" | sha256sum --check --quiet
+          unzip -q "$RUNNER_TEMP/verapdf.zip" -d "$RUNNER_TEMP"
+          java -DINSTALL_PATH="$dir" \
+            -jar "$RUNNER_TEMP/verapdf-greenfield-$VERAPDF_VERSION/verapdf-izpack-installer-$VERAPDF_VERSION.jar" \
+            -options-system
+          "$dir/verapdf" --version
+          echo "VERAPDF=$dir/verapdf" >>"$GITHUB_ENV"
       - name: Format
         run: |
           cargo fmt --all -- --check

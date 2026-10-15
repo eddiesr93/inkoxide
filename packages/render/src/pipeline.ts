@@ -19,6 +19,7 @@ import {
   type EngineStatus,
   engineStatus,
   initEngine,
+  refusedEmoji,
   renderPdf,
   startupError,
   version,
@@ -308,7 +309,10 @@ export async function renderSettled(
     ]);
     Object.assign(all, images, emojiImages.loaded);
     fetchMs += performance.now() - f0;
-    dropEmoji(tr, emojiImages.failed);
+    dropEmoji(tr, 'could not be loaded', (_, id) => emojiImages.failed[id]);
+    // So are those whose image the engine refuses: not an image, or one too large.
+    const refused = emoji.size > 0 ? refusedEmoji(tr.document, all) : {};
+    dropEmoji(tr, 'cannot be drawn', (sequence) => refused[sequence]);
     try {
       return await renderPdf(tr.document, opts, all, tr.output);
     } catch (e) {
@@ -369,15 +373,22 @@ function split(
   return { remote: pick(tree.remote), pending: pick(tree.pending) };
 }
 
-/** Takes the emoji whose image could not be loaded out of the document, with a warning each. */
-function dropEmoji(tree: TreeResult, failed: Record<string, string>): void {
+/**
+ * Takes the emoji for which `why` gives a reason (their image `failed`) out of the document, with
+ * a warning each.
+ */
+function dropEmoji(
+  tree: TreeResult,
+  failed: string,
+  why: (sequence: string, id: string) => string | undefined,
+): void {
   const map = tree.document.emojiImages;
   if (!map) return;
   for (const [sequence, id] of Object.entries(map)) {
-    const why = id === undefined ? undefined : failed[id];
-    if (why === undefined) continue;
+    const reason = id === undefined ? undefined : why(sequence, id);
+    if (reason === undefined) continue;
     delete map[sequence];
-    tree.warnings.push(`The image of the emoji ${sequence} could not be loaded, so a font draws it: ${why}`);
+    tree.warnings.push(`The image of the emoji ${sequence} ${failed}, so a font draws it: ${reason}`);
   }
 }
 

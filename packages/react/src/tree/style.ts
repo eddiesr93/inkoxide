@@ -21,7 +21,7 @@ import {
   type FlatStyle,
   type Units,
 } from '@inkoxide/style';
-import { Reader } from '@inkoxide/style/internal';
+import { Reader, verticalAlignKeyword } from '@inkoxide/style/internal';
 
 import type { Edges, HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
 
@@ -132,18 +132,6 @@ export function runAlignOf(s: FlatStyle): RunAlign | undefined {
   const v = s.verticalAlign;
   return typeof v === 'string' && (RUN_ALIGNS as readonly string[]).includes(v) ? (v as RunAlign) : undefined;
 }
-
-/** `verticalAlign`'s values: a cell's, then a run's, then those that place an image in text. */
-const VERTICAL_ALIGNS: readonly string[] = [
-  'top',
-  'middle',
-  'bottom',
-  ...RUN_ALIGNS,
-  'textTop',
-  'textBottom',
-  'text-top',
-  'text-bottom',
-];
 
 /** A colour, with `currentColor` as `current`. */
 export const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
@@ -701,9 +689,8 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     if (typeof v === 'number') {
       if (!Number.isFinite(v)) throw new Error(`verticalAlign ${v} is not a finite number of points`);
       out.verticalAlign = v as FlatStyle['verticalAlign'];
-    } else if (typeof v === 'string' && VERTICAL_ALIGNS.includes(v)) {
-      const camel = { 'text-top': 'textTop', 'text-bottom': 'textBottom' }[v] ?? v;
-      out.verticalAlign = camel as FlatStyle['verticalAlign'];
+    } else if (typeof v === 'string' && verticalAlignKeyword(v) !== undefined) {
+      out.verticalAlign = verticalAlignKeyword(v);
     } else {
       throw new Error(
         `verticalAlign "${String(v)}" is not supported: use 'super', 'sub' or 'baseline' on a Text, 'top', 'middle' or 'bottom' on a Cell, and on an Image in a Text also 'text-top', 'text-bottom' or a number of points`,
