@@ -1142,3 +1142,32 @@ fn inline_images_beside_a_float_sit_in_its_line_boxes() {
     }
     assert!(beside > 0);
 }
+
+#[test]
+fn right_to_left_text_beside_floats_starts_at_the_right_of_each_line_box() {
+    let words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+        tempor incididunt ut labore et dolore magna aliqua.";
+    for (side, left, right) in [("right", 0.0, W - 50.0), ("left", 50.0, W)] {
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+                "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+                  {{"type":"box","style":{{"float":"{side}","width":50,"height":30}}}},
+                  {{"type":"text","style":{{"direction":"rtl"}},
+                    "runs":[{{"text":"{words}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        );
+        let lines = painted_lines(&json);
+        // Baselines, about 10 below their line's top: the lines that start
+        // above the float's bottom.
+        let beside = |y: f32| y < 38.0;
+        assert_eq!(lines[0].iter().filter(|l| beside(l.0)).count(), 3, "{side}");
+        for &(y, x0, x1) in &lines[0] {
+            if beside(y) {
+                // In the box beside the float, against its right edge.
+                assert!(x0 >= left - 1e-3, "{side} {y}: {x0}");
+                assert!((x1 - right).abs() < 0.5, "{side} {y}: {x1}");
+            } else {
+                assert!((x1 - W).abs() < 0.5, "{side} {y}: {x1}");
+            }
+        }
+    }
+}
