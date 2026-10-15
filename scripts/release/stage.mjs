@@ -204,15 +204,29 @@ function manifest({ name, sideEffects, assets, extras = [] }, pkg, dist) {
     deps[used] = resolveVersion(used, dev);
   }
   // Each workspace entry `./src/<file>.ts` (`.` and subpaths such as `./templates`) is
-  // `./dist/<file>.js` with its declarations.
+  // `./dist/<file>.js` with its declarations. An entry with conditions (`{ browser, default }`)
+  // keeps them, with the declarations of its default.
   const exports = {};
-  for (const [key, target] of Object.entries(pkg.exports ?? {})) {
-    if (key === './*') continue;
+  const built = (key, target) => {
     const m = typeof target === 'string' ? /^\.\/src\/(.+)\.tsx?$/.exec(target) : null;
     if (!m) fail(`${pkg.name}: the export "${key}" is not a ./src/*.ts file.`);
     const file = join(dist, `${m[1]}.js`);
     if (!existsSync(file)) fail(`${pkg.name}: the export "${key}" has no ${relative(ROOT, file)}.`);
-    exports[key] = { types: `./dist/${m[1]}.d.ts`, default: `./dist/${m[1]}.js` };
+    return m[1];
+  };
+  for (const [key, target] of Object.entries(pkg.exports ?? {})) {
+    if (key === './*') continue;
+    if (typeof target === 'object' && target !== null) {
+      const conditions = Object.entries(target);
+      if (conditions.at(-1)?.[0] !== 'default')
+        fail(`${pkg.name}: the export "${key}" needs a default last.`);
+      const entry = { types: `./dist/${built(key, target.default)}.d.ts` };
+      for (const [condition, path] of conditions) entry[condition] = `./dist/${built(key, path)}.js`;
+      exports[key] = entry;
+      continue;
+    }
+    const file = built(key, target);
+    exports[key] = { types: `./dist/${file}.d.ts`, default: `./dist/${file}.js` };
   }
   exports['./package.json'] = './package.json';
   if (pkg.exports?.['./*']) exports['./*'] = './dist/*';
