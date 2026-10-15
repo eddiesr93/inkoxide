@@ -56,7 +56,9 @@ fn qpdf(args: &[&str], file: &Path) -> Output {
 
 /// qpdf's JSON view of `file` (decrypted with `password`): its objects,
 /// streams decoded, without the `Encrypt` dictionary and the trailer, and
-/// without the catalog's `/Extensions`, which encryption adds.
+/// without the catalog's `/Extensions`, which encryption adds. Radio
+/// buttons are seen by position ([`radios_by_position`]), as encryption
+/// writes them.
 fn objects(file: &Path, password: Option<&str>) -> serde_json::Map<String, serde_json::Value> {
     let mut args = vec!["--json=2", "--json-stream-data=inline"];
     let pw;
@@ -82,7 +84,71 @@ fn objects(file: &Path, password: Option<&str>) -> serde_json::Map<String, serde
             v["value"].as_object_mut().unwrap().remove("/Extensions");
         }
     }
+    radios_by_position(&mut objects);
     objects
+}
+
+/// Rewrites every radio button field of qpdf's JSON view `objects` the
+/// way an encrypted file writes it: each button's on state is its
+/// position among the kids, and `/Opt` holds the values, which plain
+/// output may give as the state names instead.
+fn radios_by_position(objects: &mut serde_json::Map<String, serde_json::Value>) {
+    use serde_json::Value;
+    const RADIO: u64 = 1 << 15;
+    let radios: Vec<String> = objects
+        .iter()
+        .filter(|(_, o)| {
+            o["value"]["/FT"] == "/Btn" && o["value"]["/Ff"].as_u64().unwrap_or(0) & RADIO != 0
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
+    for radio in radios {
+        let kids: Vec<String> = objects[&radio]["value"]["/Kids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| format!("obj:{}", k.as_str().unwrap()))
+            .collect();
+        let mut renamed = std::collections::HashMap::new();
+        let mut values = Vec::new();
+        for (i, kid) in kids.iter().enumerate() {
+            let value = &mut objects.get_mut(kid).unwrap()["value"];
+            let normal = value["/AP"]["/N"].as_object_mut().unwrap();
+            let on = normal.keys().find(|k| *k != "/Off").unwrap().clone();
+            let appearance = normal.remove(&on).unwrap();
+            let position = format!("/{i}");
+            normal.insert(position.clone(), appearance);
+            if value["/AS"] == on.as_str() {
+                value["/AS"] = Value::from(position.clone());
+            }
+            values.push(Value::from(format!("u:{}", name_text(&on))));
+            renamed.insert(on, position);
+        }
+        let field = objects.get_mut(&radio).unwrap()["value"]
+            .as_object_mut()
+            .unwrap();
+        if let Some(on) = field["/V"].as_str().and_then(|v| renamed.get(v)) {
+            field["/V"] = Value::from(on.clone());
+        }
+        field.entry("/Opt").or_insert(Value::from(values));
+    }
+}
+
+/// The text of PDF name `name` as qpdf's JSON writes it (`/a#20b`).
+fn name_text(name: &str) -> String {
+    let mut bytes = Vec::new();
+    let mut rest = name.strip_prefix('/').unwrap().as_bytes();
+    while let Some((&b, tail)) = rest.split_first() {
+        if b == b'#' && tail.len() >= 2 {
+            let hex = std::str::from_utf8(&tail[..2]).unwrap();
+            bytes.push(u8::from_str_radix(hex, 16).unwrap());
+            rest = &tail[2..];
+        } else {
+            bytes.push(b);
+            rest = tail;
+        }
+    }
+    String::from_utf8(bytes).unwrap()
 }
 
 /// The options of these tests, encrypted with `encryption`.
@@ -262,7 +328,9 @@ fn encrypted_text_is_not_in_plain_sight() {
         "pages":[{"size":{"width":200,"height":200},"children":[
           {"type":"text","link":"https://canary-link.example","bookmark":{"title":"CANARY-BOOKMARK"},
            "runs":[{"text":"CANARY","font":"Inter-Regular","size":10}]},
-          {"type":"field","field":{"name":"canary_field","kind":"text","font":"Inter-Regular","value":"CANARY-VALUE"}}]}]}"#;
+          {"type":"field","field":{"name":"canary_field","kind":"text","font":"Inter-Regular","value":"CANARY-VALUE"}},
+          {"type":"field","field":{"name":"r","kind":"radio","value":"CANARY-RADIO-A","checked":true}},
+          {"type":"field","field":{"name":"r","kind":"radio","value":"CANARY-RADIO-B"}}]}]}"#;
     let render = |options: &RenderOptions| {
         inkoxide::render(doc, InputFormat::Json, options, &fonts, &images).unwrap()
     };
@@ -275,6 +343,9 @@ fn encrypted_text_is_not_in_plain_sight() {
         b"CANARY-BOOKMARK",
         b"canary_field",
         b"CANARY-VALUE",
+        // Radio buttons' values, which name their states in plain output.
+        b"CANARY-RADIO-A",
+        b"CANARY-RADIO-B",
         // Content streams, written uncompressed here.
         b"\nBT\n",
     ] {
@@ -428,5 +499,54 @@ fn every_part_of_the_document_changes_the_key() {
     ] {
         assert_ne!(other.0, base.0, "{what}: the same /ID");
         assert_ne!(other.1, base.1, "{what}: the same salts and keys");
+    }
+}
+
+/// Encrypted, radio buttons name their states by position, and their
+/// values are the strings of `/Opt`, which qpdf decrypts.
+#[test]
+fn encrypted_radio_values_are_strings() {
+    if !qpdf_available() {
+        return;
+    }
+    let (fonts, images) = stores();
+    let doc = br#"{"version":1,"pages":[{"size":{"width":200,"height":200},"children":[
+          {"type":"field","field":{"name":"size","kind":"radio","value":"small"}},
+          {"type":"field","field":{"name":"size","kind":"radio","value":"Grande (L)","checked":true}}]}]}"#;
+    let out_dir = root().join("target/fixtures-encrypted");
+    fs::create_dir_all(&out_dir).unwrap();
+    let pdf = inkoxide::render(
+        doc,
+        InputFormat::Json,
+        &options(Some(both())),
+        &fonts,
+        &images,
+    )
+    .unwrap();
+    let path = out_dir.join("radio.pdf");
+    fs::write(&path, pdf).unwrap();
+    assert!(qpdf(&["--check", &format!("--password={USER}")], &path)
+        .status
+        .success());
+    let o = qpdf(
+        &["--json=2", "--json-key=qpdf", &format!("--password={USER}")],
+        &path,
+    );
+    let json: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    let objects = json["qpdf"][1].as_object().unwrap();
+    let field = objects
+        .values()
+        .map(|o| &o["value"])
+        .find(|v| v["/T"] == "u:size")
+        .unwrap();
+    assert_eq!(field["/V"], "/1");
+    assert_eq!(
+        field["/Opt"],
+        serde_json::json!(["u:small", "u:Grande (L)"])
+    );
+    for (i, kid) in field["/Kids"].as_array().unwrap().iter().enumerate() {
+        let kid = &objects[&format!("obj:{}", kid.as_str().unwrap())]["value"];
+        let states: Vec<&String> = kid["/AP"]["/N"].as_object().unwrap().keys().collect();
+        assert_eq!(states, [&format!("/{i}"), &"/Off".to_string()]);
     }
 }

@@ -125,7 +125,10 @@ password lifts the permissions.
   shows a password: Rust's `Encryption` prints them as `<redacted>`.
 - Every string and stream is encrypted. The object structure is not: page
   count, page sizes, font names and widths, link rectangles and the other
-  dictionary entries stay readable.
+  dictionary entries stay readable. Radio buttons, whose states are
+  otherwise named after their values, are named by their position in the
+  group instead, with the values in `/Opt`, so the values are encrypted
+  too.
 
 ```rust
 use inkoxide::{Encryption, Permissions, Printing, RenderOptions};

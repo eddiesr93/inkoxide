@@ -29,7 +29,8 @@ Inkoxide is designed to render documents built from untrusted data:
 ## Encryption
 
 An encrypted PDF (the `encryption` option, or `<Document userPassword>`) keeps its strings and
-streams, so its text and images, from whoever lacks a password. It does not hide the structure
+streams, so its text, images and form field values, radio buttons' included, from whoever lacks
+a password. It does not hide the structure
 of the file: the page count and sizes, font names and glyph widths, and where links are. The
 permissions are honoured by readers, not enforced by the file. The keys are derived from the
 document and the passwords rather than drawn at random, so the same input gives the same file;
