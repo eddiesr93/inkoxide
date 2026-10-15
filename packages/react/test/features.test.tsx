@@ -1742,6 +1742,23 @@ describe('remote images', () => {
     expect(remoteAllowed('https://user:pw@cdn.example.com/a.png', policy)).toBe(false);
   });
 
+  it('matches a host entry on the https port, or on the port it names', () => {
+    const allowed = (url: string, entry: string) => remoteAllowed(url, { allow: [entry] });
+    for (const entry of ['cdn.example.com', 'CDN.example.com:443']) {
+      expect(allowed('https://cdn.example.com/a.png', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com:443/a.png', entry)).toBe(true);
+      expect(allowed('https://cdn.example.com:8443/a.png', entry)).toBe(false);
+      expect(allowed('https://cdn.example.com:80/a.png', entry)).toBe(false);
+    }
+    expect(allowed('https://cdn.example.com:8443/a.png', 'cdn.example.com:8443')).toBe(true);
+    expect(allowed('https://cdn.example.com/a.png', 'cdn.example.com:8443')).toBe(false);
+    expect(allowed('https://cdn.example.com:8444/a.png', 'cdn.example.com:8443')).toBe(false);
+    expect(allowed('https://a.example.org/x.jpg', '*.example.org')).toBe(true);
+    expect(allowed('https://a.example.org:9000/x.jpg', '*.example.org')).toBe(false);
+    expect(allowed('https://a.example.org:9000/x.jpg', '*.example.org:9000')).toBe(true);
+    expect(allowed('https://example.org:9000/x.jpg', '*.example.org:9000')).toBe(false);
+  });
+
   it('matches a URL entry by origin, and by path at a slash', () => {
     const allowed = (url: string, entry: string) => remoteAllowed(url, { allow: [entry] });
     for (const entry of [
@@ -1765,6 +1782,8 @@ describe('remote images', () => {
     expect(allowed('https://cdn.example.com/img', 'https://cdn.example.com/img')).toBe(true);
     expect(allowed('http://localhost:8080/a.png', 'http://localhost:8080')).toBe(true);
     expect(allowed('http://localhost:8081/a.png', 'http://localhost:8080')).toBe(false);
+    expect(allowed('http://cdn.example.com:80/a.png', 'http://cdn.example.com')).toBe(true);
+    expect(allowed('http://cdn.example.com:8080/a.png', 'http://cdn.example.com')).toBe(false);
     expect(allowed('ftp://cdn.example.com/a.png', 'ftp://cdn.example.com/')).toBe(false);
     expect(allowed('https://cdn.example.com/a.png', 'https://')).toBe(false);
   });
