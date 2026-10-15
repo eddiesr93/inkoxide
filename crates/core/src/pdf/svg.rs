@@ -347,6 +347,49 @@ fn simple_clip(
     Some((path, rule))
 }
 
+/// How the writer draws a clip path: as a plain clip, not at all (it
+/// holds nothing, so neither does what it clips), or as soft masks.
+enum Clip {
+    Simple(tiny_skia_path::Path, usvg::FillRule),
+    Empty,
+    Masks,
+}
+
+/// How [`Svg::group`] draws clip path `cp`; [`scan_group`] follows it.
+fn clip_kind(cp: &usvg::ClipPath, is_probe: impl Fn(&usvg::Path) -> bool) -> Clip {
+    match simple_clip(cp, is_probe) {
+        Some((path, rule)) => Clip::Simple(path, rule),
+        None if cp.root().children().is_empty() && cp.clip_path().is_none() => Clip::Empty,
+        None => Clip::Masks,
+    }
+}
+
+/// What group `g`'s own settings draw with transparency (a transparency
+/// group, a soft mask, a constant alpha or a blend mode), if anything.
+/// Inside a clip path (`clip`) none of them apply. [`Svg::group`] draws
+/// `g` in layers exactly when this or its clip path asks for it.
+fn group_transparency(g: &Group, clip: bool) -> Option<&'static str> {
+    if clip {
+        None
+    } else if g.mask().is_some() {
+        Some("a mask")
+    } else if g.opacity().get() < 1.0 {
+        Some("group opacity")
+    } else if g.blend_mode() != usvg::BlendMode::Normal {
+        Some("a blend mode")
+    } else if g.isolate() {
+        Some("an isolated group")
+    } else {
+        None
+    }
+}
+
+/// Whether a gradient's stops vary in opacity, which [`Svg::set_paint`]
+/// draws with a soft mask.
+fn translucent_stops(stops: &[usvg::Stop]) -> bool {
+    stops.iter().any(|s| s.opacity().get() < 1.0)
+}
+
 /// The text and paint style a probe in `probes` stands for: a path of
 /// exactly the four sides of a rectangle whose corners they list.
 fn probe_of(p: &usvg::Path, probes: &Probes) -> Option<(usize, u32)> {
@@ -393,26 +436,14 @@ fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'st
         return None;
     }
     if let Some(cp) = g.clip_path() {
-        if simple_clip(cp, |p| probe_of(p, probes).is_some()).is_none() {
-            if cp.root().children().is_empty() && cp.clip_path().is_none() {
-                return None;
-            }
-            return Some("a clip path other than a single path");
+        match clip_kind(cp, |p| probe_of(p, probes).is_some()) {
+            Clip::Simple(..) => {}
+            Clip::Empty => return None,
+            Clip::Masks => return Some("a clip path other than a single path"),
         }
     }
-    if !clip {
-        if g.mask().is_some() {
-            return Some("a mask");
-        }
-        if g.opacity().get() < 1.0 {
-            return Some("group opacity");
-        }
-        if g.blend_mode() != usvg::BlendMode::Normal {
-            return Some("a blend mode");
-        }
-        if g.isolate() {
-            return Some("an isolated group");
-        }
+    if let Some(what) = group_transparency(g, clip) {
+        return Some(what);
     }
     g.children().iter().find_map(|n| match n {
         Node::Group(child) => scan_group(child, depth + 1, clip, probes),
@@ -452,7 +483,7 @@ fn scan_paint(paint: &Paint, opacity: f32, depth: u32, probes: &Probes) -> Optio
             &[][..]
         }
     };
-    if stops.iter().any(|s| s.opacity().get() < 1.0) {
+    if translucent_stops(stops) {
         Some("a gradient with stop opacity")
     } else if opacity < 1.0 {
         Some("fill or stroke opacity")
@@ -658,8 +689,8 @@ impl Svg<'_> {
         // Soft masks, outermost first.
         let mut masks: Vec<Ref> = Vec::new();
         if let Some(cp) = g.clip_path() {
-            match simple_clip(cp, |p| self.probe(p).is_some()) {
-                Some((path, rule)) => {
+            match clip_kind(cp, |p| self.probe(p).is_some()) {
+                Clip::Simple(path, rule) => {
                     self.emit_path(&mut cv.c, &path)?;
                     match rule {
                         usvg::FillRule::NonZero => cv.c.clip_nonzero(),
@@ -667,12 +698,11 @@ impl Svg<'_> {
                     };
                     cv.c.end_path();
                 }
-                None if cp.root().children().is_empty() && cp.clip_path().is_none() => {
-                    // Nothing is inside the clip.
+                Clip::Empty => {
                     cv.c.restore_state();
                     return Ok(());
                 }
-                None => self.clip_masks(cp, bbox, depth, &mut masks)?,
+                Clip::Masks => self.clip_masks(cp, bbox, depth, &mut masks)?,
             }
         }
         let (opacity, blend) = if clip {
@@ -688,7 +718,7 @@ impl Svg<'_> {
         } else {
             None
         };
-        if masks.is_empty() && last.is_none() && (clip || !g.isolate()) {
+        if masks.is_empty() && group_transparency(g, clip).is_none() {
             self.children(cv, g, at)?;
         } else {
             self.layered(cv, &masks, last, bbox, g, at)?;
@@ -1122,7 +1152,7 @@ impl Svg<'_> {
                     .shading_ref(shading)
                     .matrix(matrix(at.ts.pre_concat(gt)));
                 cv.set_pattern(pattern, stroke);
-                if stops.iter().any(|s| s.opacity().get() < 1.0) {
+                if translucent_stops(stops) {
                     let alpha = self.shading(stops, &kind, periods, true);
                     let form = self.sub_form(bbox, |_, inner| {
                         inner.c.transform(matrix(gt));
