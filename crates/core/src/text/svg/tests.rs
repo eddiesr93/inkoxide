@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::*;
 use crate::fonts::FontSet;
 use crate::images::svg_text::extract;
@@ -221,4 +223,26 @@ fn records_glyphs_for_the_text_layer() {
     let map = &unicode.fonts[&0];
     let text: String = laid.glyphs.iter().map(|g| map[&g.id].as_str()).collect();
     assert_eq!(text, "Hi");
+}
+
+/// Each decoration finds its font without a search: thousands of
+/// decorated runs (a `dx` starts each) lay out in linear time, and each
+/// paint style's glyphs are found in one step.
+#[test]
+fn decorates_and_sorts_many_spans_in_linear_time() {
+    let mut body = String::from(r#"<text text-decoration="underline">"#);
+    for i in 0..20_000 {
+        let fill = if i % 2 == 0 { "red" } else { "blue" };
+        let _ = write!(body, r#"<tspan dx="1" fill="{fill}">a</tspan>"#);
+    }
+    body.push_str("</text>");
+    let t = std::time::Instant::now();
+    let laid = laid(&body);
+    assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
+    assert_eq!(laid.decorations.len(), 20_000);
+    assert_eq!(laid.glyphs_of(0).len(), 10_000);
+    assert!(laid.glyphs_of(1).iter().all(|g| g.paint == 1));
+    assert_eq!(laid.decorations_of(1).len(), 10_000);
+    // In each paint style, in the order they are drawn.
+    assert!(laid.glyphs_of(0).windows(2).all(|w| w[0].x < w[1].x));
 }

@@ -1,9 +1,72 @@
 //! Memory and stack guards: hostile sizes fail fast with an error,
 //! the deepest nesting the parser accepts renders on a small stack.
 
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::fmt::Write as _;
+use std::time::{Duration, Instant};
 
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
+use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions};
+
+/// Counts the heap each thread holds, for tests that bound a render's
+/// memory: one-thread renders run on the calling thread.
+struct Counting;
+
+thread_local! {
+    static LIVE: Cell<usize> = const { Cell::new(0) };
+    static PEAK: Cell<usize> = const { Cell::new(0) };
+}
+
+fn grow(n: usize) {
+    let _ = LIVE.try_with(|live| {
+        let v = live.get() + n;
+        live.set(v);
+        let _ = PEAK.try_with(|peak| peak.set(peak.get().max(v)));
+    });
+}
+
+fn shrink(n: usize) {
+    let _ = LIVE.try_with(|live| live.set(live.get().saturating_sub(n)));
+}
+
+// SAFETY: every call is passed on to the system allocator unchanged.
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let p = unsafe { System.alloc(layout) };
+        if !p.is_null() {
+            grow(layout.size());
+        }
+        p
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(p, layout) };
+        shrink(layout.size());
+    }
+
+    unsafe fn realloc(&self, p: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        let q = unsafe { System.realloc(p, layout, size) };
+        if !q.is_null() {
+            shrink(layout.size());
+            grow(size);
+        }
+        q
+    }
+}
+
+#[global_allocator]
+static COUNTING: Counting = Counting;
+
+/// What `f` returns, how long it took, and the most heap this thread
+/// held above what it held before.
+fn measure<T>(f: impl FnOnce() -> T) -> (T, Duration, usize) {
+    let base = LIVE.with(Cell::get);
+    PEAK.with(|p| p.set(base));
+    let t = Instant::now();
+    let out = f();
+    let took = t.elapsed();
+    (out, took, PEAK.with(Cell::get) - base)
+}
 
 fn fonts() -> FontStore {
     let mut f = FontStore::new();
@@ -300,4 +363,124 @@ fn the_largest_svg_text_renders_quickly() {
     let t = std::time::Instant::now();
     render_svg(inter, &svg).unwrap();
     assert!(t.elapsed().as_secs() < 30, "took {:?}", t.elapsed());
+}
+
+/// SVG text at scale: thousands of texts on one point, of spans with
+/// their own paint, of text nodes split by comments. Each takes time and
+/// memory in proportion to its size (the unit tests of `svg_text` and
+/// `text/svg.rs` push each step further).
+#[test]
+fn svg_text_at_scale_renders_quickly() {
+    let inter = r#"{"id":"Inter-Regular","family":"Inter"}"#;
+    let svg = |body: &str| {
+        format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">{body}</svg>"#)
+    };
+    let same_point = svg(&"<text>a</text>".repeat(5_000));
+    let mut spans = String::from(r#"<text text-decoration="underline">"#);
+    for i in 0..5_000 {
+        let _ = write!(spans, r##"<tspan fill="#{i:06x}" dx="1">a</tspan>"##);
+    }
+    spans.push_str("</text>");
+    let spans = svg(&spans);
+    let comments = svg(&format!("<text>{}</text>", "a<!---->".repeat(50_000)));
+    let one_b = RenderOptions::default()
+        .with_threads(1)
+        .with_pdf_a(true)
+        .with_pdf_a_level(PdfALevel::A1b);
+    for (what, svg, options) in [
+        ("texts on one point", &same_point, RenderOptions::default()),
+        ("texts on one point, PDF/A-1b", &same_point, one_b),
+        (
+            "spans with their own paint",
+            &spans,
+            RenderOptions::default(),
+        ),
+        (
+            "text nodes between comments",
+            &comments,
+            RenderOptions::default(),
+        ),
+    ] {
+        let (doc, images) = svg_doc(inter, svg);
+        let options = options.with_threads(1);
+        let render = || {
+            let f = fonts();
+            inkoxide::render(doc.as_bytes(), InputFormat::Json, &options, &f, &images)
+        };
+        let (out, took, peak) = measure(render);
+        out.unwrap();
+        assert!(took.as_secs() < 15, "{what}: took {took:?}");
+        assert!(peak < 256 << 20, "{what}: {} MiB", peak >> 20);
+    }
+    // Text nodes count as elements.
+    let comments = svg(&format!("<text>{}</text>", "a<!---->".repeat(300_000)));
+    let (out, took, _) = measure(|| render_svg(inter, &comments));
+    let err = out.unwrap_err();
+    assert!(
+        err.to_string().contains("more than 250000 elements"),
+        "{err}"
+    );
+    assert!(took.as_secs() < 10, "took {took:?}");
+}
+
+/// The placeholders of SVG text are counted before they are written: a
+/// long effect in a clip path is repeated for each paint style.
+#[test]
+fn svg_text_placeholders_are_bounded_before_they_are_written() {
+    let inter = r#"{"id":"Inter-Regular","family":"Inter"}"#;
+    let transform = "translate(0 0)".repeat(70_000);
+    let mut spans = String::new();
+    for i in 0..300 {
+        let _ = write!(spans, r##"<tspan fill="#{i:06x}">a</tspan>"##);
+    }
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">
+             <clipPath id="c"><text transform="{transform}">{spans}</text></clipPath>
+             <rect width="10" height="10" clip-path="url(#c)"/></svg>"#
+    );
+    let (out, took, peak) = measure(|| render_svg(inter, &svg));
+    let err = out.unwrap_err();
+    assert_eq!(err.code(), "INVALID_IMAGE", "{err}");
+    assert!(
+        err.to_string().contains("its text takes more than"),
+        "{err}"
+    );
+    assert!(took.as_secs() < 10, "took {took:?}");
+    assert!(peak < 64 << 20, "{} MiB", peak >> 20);
+}
+
+/// What a render converts with its fonts costs the SVG checks no more
+/// than what validation checks: probes declare what a style sheet could
+/// change, which is work for the CSS parser, on every copy.
+#[test]
+fn validation_and_render_agree_on_svg_text() {
+    let inter = r#"{"id":"Inter-Regular","family":"Inter"}"#;
+    let sheet = "path { fill: none; fill-opacity: 1; fill-rule: nonzero; stroke: none; \
+        stroke-width: 1; stroke-opacity: 1; stroke-linecap: butt; stroke-linejoin: miter; \
+        stroke-miterlimit: 4; stroke-dasharray: none; stroke-dashoffset: 0; paint-order: normal; \
+        visibility: visible; color: black; transform: none; opacity: 1; clip-path: none; \
+        mask: none; filter: none; display: inline; mix-blend-mode: normal; isolation: auto }";
+    // `copies` copies of a text, by `use`s of `use`s.
+    let svg = |copies: usize| {
+        let mut defs = String::from(r#"<text id="l0">a</text>"#);
+        let mut left = copies;
+        let mut level = 0;
+        while left > 1 {
+            let k = left.min(40);
+            let refs = format!(r##"<use href="#l{level}"/>"##).repeat(k);
+            level += 1;
+            let _ = write!(defs, r#"<g id="l{level}">{refs}</g>"#);
+            left = left.div_ceil(k);
+        }
+        format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><style>{sheet}</style><defs>{defs}</defs><use href="#l{level}"/></svg>"##
+        )
+    };
+    for (copies, valid) in [(1_600, true), (40_000, false)] {
+        let (doc, images) = svg_doc(inter, &svg(copies));
+        let errors = inkoxide::validate(doc.as_bytes(), InputFormat::Json, &fonts(), &images);
+        assert_eq!(errors.is_empty(), valid, "{copies} copies: {errors:?}");
+        let rendered = render_svg(inter, &svg(copies));
+        assert_eq!(rendered.is_ok(), valid, "{copies} copies: {rendered:?}");
+    }
 }

@@ -310,13 +310,15 @@ impl ImageSet {
 
     /// Converts the SVGs with text again, each text laid out with this
     /// render's fonts through `shaper` (in image order, so glyph mappings
-    /// do not depend on threads). Each becomes this render's own copy.
+    /// do not depend on threads). Each becomes this render's own copy, of
+    /// the size it has without its text.
     pub fn lay_out_text<S: crate::text::TextShaper>(
         &mut self,
         shaper: &mut S,
     ) -> Result<(), InkoxideError> {
         for image in &mut self.images {
             let ImageBody::Svg {
+                tree,
                 text: Some(source),
                 view_box,
                 ..
@@ -324,13 +326,13 @@ impl ImageSet {
             else {
                 continue;
             };
-            let (tree, probed) =
-                svg::parse_with_text(source, &mut |t| crate::text::lay_out_svg_text(t, shaper))
-                    .map_err(InkoxideError::Image)?;
-            let s = tree.size();
+            let (tree, probed) = svg::parse_with_text(source, tree.size(), &mut |t| {
+                crate::text::lay_out_svg_text(t, shaper)
+            })
+            .map_err(InkoxideError::Image)?;
             *image = Arc::new(DecodedImage {
-                width: s.width().ceil() as u32,
-                height: s.height().ceil() as u32,
+                width: image.width,
+                height: image.height,
                 orientation: 1,
                 body: ImageBody::Svg {
                     tree,

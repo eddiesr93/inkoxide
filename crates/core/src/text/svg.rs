@@ -46,11 +46,39 @@ pub(crate) struct SvgDecoration {
 /// A text laid out.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct LaidText {
+    /// In paint style order, then in the order they are drawn.
     pub glyphs: Vec<SvgGlyph>,
+    /// In paint style order, then in the order they are drawn.
     pub decorations: Vec<SvgDecoration>,
     /// The box of the glyph outlines and decorations, `[x0, y0, x1, y1]`;
     /// `None` when nothing has ink.
     pub ink: Option<[f32; 4]>,
+}
+
+impl LaidText {
+    /// The glyphs drawn in paint style `paint`.
+    pub fn glyphs_of(&self, paint: u32) -> &[SvgGlyph] {
+        let start = self.glyphs.partition_point(|g| g.paint < paint);
+        let end = self.glyphs.partition_point(|g| g.paint <= paint);
+        &self.glyphs[start..end]
+    }
+
+    /// The decorations drawn in paint style `paint`.
+    pub fn decorations_of(&self, paint: u32) -> &[SvgDecoration] {
+        let start = self.decorations.partition_point(|d| d.paint < paint);
+        let end = self.decorations.partition_point(|d| d.paint <= paint);
+        &self.decorations[start..end]
+    }
+}
+
+/// A glyph of a cluster, as shaped.
+#[derive(Debug, Clone, Copy)]
+struct ShapedGlyph {
+    id: u16,
+    /// Offsets from the pen, in user units, y up.
+    x_offset: f32,
+    y_offset: f32,
+    advance: f32,
 }
 
 /// A cluster: glyphs drawn for one or more characters, in visual order.
@@ -60,8 +88,7 @@ struct Cluster {
     char: usize,
     span: usize,
     font: FontKey,
-    /// Glyph id, offset (points, y up) and advance.
-    glyphs: Vec<(u16, f32, f32, f32)>,
+    glyphs: Vec<ShapedGlyph>,
     advance: f32,
     scale_x: f32,
     space: bool,
@@ -218,7 +245,12 @@ fn shape<S: TextShaper>(
         };
         let char = char_at(glyph.cluster);
         let span = text.chars[char].span as usize;
-        let item = (glyph.id, glyph.x_offset, glyph.y_offset, glyph.advance);
+        let item = ShapedGlyph {
+            id: glyph.id,
+            x_offset: glyph.x_offset,
+            y_offset: glyph.y_offset,
+            advance: glyph.advance,
+        };
         match clusters.last_mut() {
             Some(c) if c.char == char && c.font == seg.font => {
                 c.glyphs.push(item);
@@ -351,9 +383,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             (Anchor::End, false) | (Anchor::Start, true) => -width,
         };
         let mut y = 0.0;
-        // Decoration runs: clusters of one span without a shift between
-        // them, as `collect_decoration_spans` groups them.
-        let mut runs: Vec<(usize, f32, f32, f32, f32)> = Vec::new();
+        let mut runs: Vec<DecorationRun> = Vec::new();
         for c in &chunk.clusters {
             let ch = text.chars[c.char];
             x += ch.dx;
@@ -365,8 +395,14 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             let (ox, oy) = (x0 + x, y0 + y + down);
             let scale = font.scale(span.size);
             let mut pen = 0.0;
-            for &(id, xo, yo, adv) in &c.glyphs {
-                let (gx, gy) = turn(((pen + xo) * c.scale_x, -yo), ch.rotate);
+            for &ShapedGlyph {
+                id,
+                x_offset,
+                y_offset,
+                advance,
+            } in &c.glyphs
+            {
+                let (gx, gy) = turn(((pen + x_offset) * c.scale_x, -y_offset), ch.rotate);
                 let g = SvgGlyph {
                     font: c.font,
                     id,
@@ -396,22 +432,25 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
                 if !font.data.metrics.color_only {
                     out.glyphs.push(g);
                 }
-                pen += adv;
+                pen += advance;
             }
             match runs.last_mut() {
-                Some(r) if r.0 == c.span && !shifted => r.4 += c.advance,
-                _ => runs.push((c.span, ox, oy, ch.rotate, c.advance)),
+                Some(r) if r.span == c.span && !shifted => r.width += c.advance,
+                _ => runs.push(DecorationRun {
+                    span: c.span,
+                    font: c.font,
+                    origin: (ox, oy),
+                    rotate: ch.rotate,
+                    width: c.advance,
+                }),
             }
             x += c.advance;
         }
-        for (span_index, rx, ry, rotate, w) in runs {
-            let span = &text.spans[span_index];
-            let font = chunk
-                .clusters
-                .iter()
-                .find(|c| c.span == span_index)
-                .map(|c| fonts.get(c.font));
-            let Some(font) = font else { continue };
+        for run in runs {
+            let span = &text.spans[run.span];
+            let font = fonts.get(run.font);
+            let (rx, ry) = run.origin;
+            let (rotate, w) = (run.rotate, run.width);
             let m = &font.data.metrics;
             let scale = font.scale(span.size);
             let thick = m.underline_thickness * scale;
@@ -439,7 +478,22 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
         last_x = x0 + x;
         last_y = y0 + y;
     }
+    // Each probe draws one paint style: stable sorts keep the order.
+    out.glyphs.sort_by_key(|g| g.paint);
+    out.decorations.sort_by_key(|d| d.paint);
     out
+}
+
+/// Clusters of one span without a shift between them, which a decoration
+/// spans (as `collect_decoration_spans` groups them).
+struct DecorationRun {
+    span: usize,
+    /// The font of its first cluster, whose metrics place the lines.
+    font: FontKey,
+    /// Where it starts, on the baseline.
+    origin: (f32, f32),
+    rotate: f32,
+    width: f32,
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 //! `svgtree/parse.rs`, `svgtree/text.rs`, `parser/text.rs` and
 //! `parser/units.rs`, version 0.48.1), on the XML instead of its tree.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::str::FromStr;
 
@@ -11,9 +11,12 @@ use simplecss::{Declaration, DeclarationTokenizer, Element, StyleSheet};
 use svgtypes::{FontFamily, FontShorthand, Length, LengthUnit};
 use usvg::roxmltree::{Document, Node, NodeId};
 
-use super::{Anchor, Baseline, LengthAdjust, Shift, SvgChar, SvgSpan, SvgText, SvgTextDoc};
+use super::{
+    Anchor, Baseline, LengthAdjust, ProbeForm, ProbeShape, Shift, SvgChar, SvgSpan, SvgText,
+    SvgTextDoc,
+};
+use crate::images::svg::SVG_NS;
 
-const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
 /// The font size where nothing sets one, as in browsers (`medium`). The
@@ -50,7 +53,8 @@ const PAINT: &[&str] = &[
 ];
 
 /// Effects of the text element itself, which the placeholder takes, with
-/// their initial values (none: left out when not declared).
+/// the initial values it declares when a style sheet declares the property
+/// (none: left out when not declared).
 const EFFECTS: &[(&str, Option<&str>)] = &[
     ("transform", Some("matrix(1 0 0 1 0 0)")),
     ("transform-origin", None),
@@ -86,6 +90,19 @@ const NOT_ATTRIBUTES: &[&str] = &["mix-blend-mode", "isolation"];
 /// Attributes that decide which child of a `switch` is drawn.
 const CONDITIONS: &[&str] = &["systemLanguage", "requiredFeatures", "requiredExtensions"];
 
+/// Properties a placeholder sets so that markers are not drawn on it.
+const MARKERS: &[&str] = &["marker-start", "marker-mid", "marker-end"];
+
+/// The static name of a property a placeholder may declare.
+fn placed(name: &str) -> Option<&'static str> {
+    PAINT
+        .iter()
+        .copied()
+        .chain(EFFECTS.iter().map(|e| e.0))
+        .chain(MARKERS.iter().copied())
+        .find(|k| *k == name)
+}
+
 /// The static name of a property this module reads.
 fn known(name: &str) -> Option<&'static str> {
     PAINT
@@ -102,6 +119,7 @@ fn known(name: &str) -> Option<&'static str> {
 pub(crate) fn extract(doc: &Document<'_>) -> Result<(SvgTextDoc, Work), TextError> {
     let root = doc.root_element();
     let mut cascade = Cascade::new(doc);
+    let form = cascade.form();
     let viewport = viewport(root);
     let mut texts: Vec<SvgText> = Vec::new();
     for n in root.descendants().filter(|n| is_svg(*n, "text")) {
@@ -120,7 +138,7 @@ pub(crate) fn extract(doc: &Document<'_>) -> Result<(SvgTextDoc, Work), TextErro
         texts.push(read_text(n, &mut cascade, viewport)?);
     }
     let work = cascade.work;
-    Ok((SvgTextDoc { texts }, work))
+    Ok((SvgTextDoc { texts, form }, work))
 }
 
 /// What reading the text cost.
@@ -160,6 +178,10 @@ type Decls = HashMap<&'static str, (String, bool)>;
 /// elements read so far.
 struct Cascade<'a, 'i> {
     sheet: StyleSheet<'a>,
+    /// The properties of [`PAINT`] and [`EFFECTS`] some rule of the sheets
+    /// declares: a placeholder declares the others only where the text
+    /// does.
+    ruled: HashSet<&'static str>,
     decls: HashMap<NodeId, Decls>,
     work: Work,
     _doc: std::marker::PhantomData<&'i ()>,
@@ -177,8 +199,13 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
                 sheet.parse_more(text);
             }
         }
+        let mut ruled = HashSet::new();
+        for decl in sheet.rules.iter().flat_map(|r| &r.declarations) {
+            ruled.extend(placed(decl.name));
+        }
         Self {
             sheet,
+            ruled,
             decls: HashMap::new(),
             work: Work::default(),
             _doc: std::marker::PhantomData,
@@ -238,6 +265,44 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
     fn own_or_parent(&mut self, n: Node<'a, 'i>, prop: &str) -> Option<String> {
         self.own(n, prop)
             .or_else(|| n.parent_element().and_then(|p| self.own(p, prop)))
+    }
+
+    /// How this document's placeholders are written: as elements no
+    /// `!important` rule names by their type (see [`ProbeForm`]), with
+    /// `inherit` on a group for the paint the sheets declare.
+    fn form(&self) -> ProbeForm {
+        // A rule `usvg` applies over a placeholder's `style`: it declares
+        // something a placeholder sets, `!important`.
+        let overrides = |rule: &simplecss::Rule<'_>| {
+            rule.declarations
+                .iter()
+                .any(|d| d.important && (placed(d.name).is_some() || d.name == "marker"))
+        };
+        let rules: Vec<_> = self.sheet.rules.iter().filter(|r| overrides(r)).collect();
+        // A rule that names element `tag`, not one any element would match.
+        let names = |tag: &'static str, attrs: &'static [&'static str]| {
+            rules.iter().any(|r| {
+                r.selector.matches(&Placeholder::Element(tag, attrs))
+                    && !r.selector.matches(&Placeholder::Element("", &[]))
+            })
+        };
+        let shape = [ProbeShape::Path, ProbeShape::Polygon]
+            .into_iter()
+            .find(|s| !names(s.tag(), s.attributes()))
+            .unwrap_or(ProbeShape::Path);
+        let group = ["a", "g"]
+            .into_iter()
+            .find(|&g| !names(g, &[]))
+            .unwrap_or("a");
+        let mut group_paint = String::new();
+        for &prop in PAINT.iter().filter(|p| self.ruled.contains(*p)) {
+            let _ = write!(group_paint, "{prop}:inherit;");
+        }
+        ProbeForm {
+            shape,
+            group,
+            group_paint,
+        }
     }
 
     /// `n`'s font size in user units (`usvg`'s `resolve_font_size`).
@@ -368,6 +433,47 @@ impl Element for XmlNode<'_, '_> {
 
     fn pseudo_class_matches(&self, class: simplecss::PseudoClass) -> bool {
         matches!(class, simplecss::PseudoClass::FirstChild) && self.prev_sibling_element().is_none()
+    }
+}
+
+/// A placeholder as a selector sees it, wherever it is: an element named
+/// `tag` with attributes `attrs` (and those every placeholder may have),
+/// among ancestors and siblings that match anything.
+#[derive(Clone, Copy)]
+enum Placeholder {
+    Element(&'static str, &'static [&'static str]),
+    Any,
+}
+
+impl Element for Placeholder {
+    fn parent_element(&self) -> Option<Self> {
+        Some(Placeholder::Any)
+    }
+
+    fn prev_sibling_element(&self) -> Option<Self> {
+        Some(Placeholder::Any)
+    }
+
+    fn has_local_name(&self, local_name: &str) -> bool {
+        match self {
+            Placeholder::Element(tag, _) => *tag == local_name,
+            Placeholder::Any => true,
+        }
+    }
+
+    fn attribute_matches(&self, local_name: &str, _: simplecss::AttributeOperator) -> bool {
+        match self {
+            Placeholder::Element(_, attrs) => {
+                ["id", "style"].contains(&local_name)
+                    || CONDITIONS.contains(&local_name)
+                    || attrs.contains(&local_name)
+            }
+            Placeholder::Any => true,
+        }
+    }
+
+    fn pseudo_class_matches(&self, _: simplecss::PseudoClass) -> bool {
+        true
     }
 }
 
@@ -537,11 +643,6 @@ fn trim_text_nodes(nodes: &mut [Chars<'_, '_>], space: Space) {
     }
 }
 
-/// Characters of text nodes `range`.
-fn count(nodes: &[Chars<'_, '_>], range: std::ops::Range<usize>) -> usize {
-    nodes[range].iter().map(|n| n.text.chars().count()).sum()
-}
-
 /// A value that may go into a placeholder's `style` as it is: one
 /// declaration's worth, nothing that ends it or starts another.
 fn safe(v: &str) -> Option<&str> {
@@ -551,17 +652,9 @@ fn safe(v: &str) -> Option<&str> {
 }
 
 /// `v` for an XML attribute in double quotes.
-pub(crate) fn escape(v: &str) -> String {
+fn escape(v: &str) -> String {
     let mut out = String::with_capacity(v.len());
-    for c in v.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            c => out.push(c),
-        }
-    }
+    super::push_escaped(&mut out, v);
     out
 }
 
@@ -590,7 +683,11 @@ fn read_text<'a, 'i>(
     trim_text_nodes(&mut nodes, space);
 
     // Character ranges of the elements.
-    let starts: Vec<usize> = (0..=nodes.len()).map(|i| count(&nodes, 0..i)).collect();
+    let mut starts = Vec::with_capacity(nodes.len() + 1);
+    starts.push(0);
+    for n in &nodes {
+        starts.push(starts[starts.len() - 1] + n.text.chars().count());
+    }
     let range = |e: &Elem<'_, '_>| starts[e.nodes.start]..starts[e.nodes.end];
     let total = starts[nodes.len()];
 
@@ -664,6 +761,7 @@ fn read_text<'a, 'i>(
     // Spans: the elements that hold text, with their properties.
     let mut spans: Vec<SvgSpan> = Vec::new();
     let mut paints: Vec<String> = Vec::new();
+    let mut paint_of: HashMap<String, u32> = HashMap::new();
     let mut span_of: HashMap<NodeId, (u32, bool)> = HashMap::new();
     let mut chars = Vec::with_capacity(total);
     for (i, n) in nodes.iter().enumerate() {
@@ -672,14 +770,11 @@ fn read_text<'a, 'i>(
         } else {
             let props = span_props(n.parent, text, cascade, vw.hypot(vh) / 2f32.sqrt());
             let paint = paint_style(n.parent, text, cascade);
-            let p = paints.iter().position(|q| *q == paint).unwrap_or_else(|| {
-                paints.push(paint);
-                paints.len() - 1
+            let p = *paint_of.entry(paint).or_insert_with_key(|paint| {
+                paints.push(paint.clone());
+                (paints.len() - 1) as u32
             });
-            spans.push(SvgSpan {
-                paint: p as u32,
-                ..props
-            });
+            spans.push(SvgSpan { paint: p, ..props });
             let hidden = cascade.own(n.parent, "display").as_deref() == Some("none");
             let s = ((spans.len() - 1) as u32, hidden);
             span_of.insert(n.parent.id(), s);
@@ -713,6 +808,7 @@ fn read_text<'a, 'i>(
             .decls(text)
             .get(prop)
             .and_then(|v| safe(&v.0).map(str::to_string));
+        let initial = initial.filter(|_| cascade.ruled.contains(prop));
         if let Some(v) = declared.as_deref().or(initial) {
             let _ = write!(effects, "{prop}:{v};");
         }
@@ -836,8 +932,9 @@ fn baseline(v: Option<&str>) -> Baseline {
 
 /// The paint declarations for the spans of element `n`: for each paint
 /// property, the value the nearest element from `n` up to `text`
-/// declares, or `inherit`, so that it inherits through the placeholder
-/// (and `use` copies) whatever an author rule says about paths.
+/// declares, or `inherit` when a style sheet declares the property, so
+/// that it inherits through the placeholder (and `use` copies) whatever
+/// an author rule says about its element.
 fn paint_style<'a, 'i>(
     n: Node<'a, 'i>,
     text: Node<'a, 'i>,
@@ -853,7 +950,16 @@ fn paint_style<'a, 'i>(
         let v = chain
             .iter()
             .find_map(|a| cascade.own(*a, prop).filter(|v| safe(v).is_some()));
-        let _ = write!(out, "{prop}:{};", v.as_deref().map_or("inherit", str::trim));
+        match v {
+            Some(v) => {
+                let _ = write!(out, "{prop}:{};", v.trim());
+            }
+            // Inherited anyway, unless a rule says otherwise.
+            None if cascade.ruled.contains(prop) => {
+                let _ = write!(out, "{prop}:inherit;");
+            }
+            None => {}
+        }
     }
     out
 }

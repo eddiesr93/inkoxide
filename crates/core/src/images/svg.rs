@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use usvg::roxmltree::{self, Document, Node, NodeId};
 
 use super::probe::{sniff, ImageFormat};
-use super::svg_text::{Probes, SvgText};
+use super::svg_text::{Probes, SvgText, SvgTextDoc};
 use super::ContentKey;
 use crate::lru::SharedLru;
 use crate::paint::Rect;
@@ -64,6 +64,10 @@ const MAX_RULE_MATCHES: usize = 50_000_000;
 /// Most characters of SVG text, counting every copy (`use`, markers,
 /// patterns) and nested SVG images.
 const MAX_TEXT_CHARS: usize = 1_000_000;
+/// Most bytes the placeholders of one SVG document's text may take
+/// (`svg_text/rewrite.rs`), each counted once: they are parsed again, so
+/// the same as [`MAX_PARSED_BYTES`], but counted before they are written.
+const MAX_PROBE_BYTES: usize = MAX_PARSED_BYTES;
 /// Most pixels of distinct raster images in one SVG, nested SVGs included
 /// (the PDF writer decodes each once).
 const MAX_RASTER_PIXELS: u64 = 4 * super::MAX_PIXELS;
@@ -85,7 +89,7 @@ const MAX_SIDE: f32 = 100_000.0;
 /// 1e10) to numbers PDF readers parse.
 const MIN_SIDE: f32 = 1e-5;
 
-const SVG_NS: &str = "http://www.w3.org/2000/svg";
+pub(crate) const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 
 /// Looks like SVG: optional BOM and whitespace, then `<`.
@@ -367,17 +371,41 @@ pub(crate) fn parse_text(bytes: &[u8]) -> Result<Parsed, String> {
 #[derive(Debug)]
 pub(crate) struct TextSource {
     pub bytes: Arc<Vec<u8>>,
-    pub texts: Vec<SvgText>,
+    pub text: SvgTextDoc,
     pub nested: Vec<TextSource>,
+}
+
+impl TextSource {
+    /// What converting `bytes`, checked as `checked`, needs; `None` when
+    /// neither it nor its nested SVGs have text.
+    fn new(bytes: Arc<Vec<u8>>, checked: Checked) -> Option<Self> {
+        let some = !checked.text.texts.is_empty() || !checked.nested.is_empty();
+        some.then_some(Self {
+            bytes,
+            text: checked.text,
+            nested: checked.nested,
+        })
+    }
+
+    /// The most probes its placeholders and its nested SVGs' hold.
+    fn most_probes(&self) -> usize {
+        self.nested
+            .iter()
+            .map(Self::most_probes)
+            .fold(self.text.most_probes(), usize::saturating_add)
+    }
 }
 
 /// The text of an SVG converted with a render's fonts: each text laid
 /// out, in the order of [`TextSource`] (its own texts, then its nested
 /// SVGs' in turn), and the probe that stands for each text and paint.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ProbedText {
     pub texts: Vec<LaidText>,
     pub probes: Probes,
+    /// The size of the SVG without its text: an SVG without a size takes
+    /// it from what it draws, which would otherwise depend on the fonts.
+    pub size: usvg::Size,
 }
 
 /// Rewritten nested SVGs, by their original bytes.
@@ -397,12 +425,25 @@ static TEXT_TREES: SharedLru<ContentKey<Arc<[u8]>>, Arc<usvg::Tree>> =
 /// reused, from this render or another.
 pub(crate) fn parse_with_text(
     source: &TextSource,
+    size: usvg::Size,
     lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
 ) -> Result<(Arc<usvg::Tree>, ProbedText), String> {
-    let mut probed = ProbedText::default();
+    let mut probed = ProbedText {
+        texts: Vec::new(),
+        probes: Probes::new(),
+        size,
+    };
     let mut rewrites = Rewrites::new();
     let mut order = Vec::new();
-    let top = rewrite_all(source, lay_out, &mut probed, &mut rewrites, &mut order);
+    let bits = super::svg_text::index_bits(source.most_probes());
+    let mut rewriting = Rewriting {
+        lay_out,
+        probed: &mut probed,
+        bits,
+        rewrites: &mut rewrites,
+        order: &mut order,
+    };
+    let top = rewriting.all(source).map_err(Reject::message)?;
     // The key: the rewritten SVG, then each rewritten nested SVG after a
     // byte UTF-8 never has.
     let mut key = top.clone().into_bytes();
@@ -436,8 +477,11 @@ pub(crate) fn parse_with_text(
 /// The SVG of `source` converted with a probe for each text and each of
 /// its paint styles, without fonts: what its text is painted with, for
 /// checks that do not lay it out (PDF/A-1's transparency check).
-pub(crate) fn probe_tree(source: &TextSource) -> Result<(Arc<usvg::Tree>, ProbedText), String> {
-    parse_with_text(source, &mut |text: &SvgText| LaidText {
+pub(crate) fn probe_tree(
+    source: &TextSource,
+    size: usvg::Size,
+) -> Result<(Arc<usvg::Tree>, ProbedText), String> {
+    parse_with_text(source, size, &mut |text: &SvgText| LaidText {
         glyphs: (0..text.paints.len() as u32)
             .map(|paint| crate::text::SvgGlyph {
                 font: 0,
@@ -455,27 +499,66 @@ pub(crate) fn probe_tree(source: &TextSource) -> Result<(Arc<usvg::Tree>, Probed
     })
 }
 
-/// `source`'s SVG with its texts replaced, its nested ones rewritten into
-/// `rewrites`.
-fn rewrite_all(
-    source: &TextSource,
-    lay_out: &mut dyn FnMut(&SvgText) -> LaidText,
-    probed: &mut ProbedText,
-    rewrites: &mut Rewrites,
-    order: &mut Vec<Arc<Vec<u8>>>,
-) -> String {
-    let text = std::str::from_utf8(&source.bytes).unwrap_or_default();
-    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
-    let laid: Vec<LaidText> = source.texts.iter().map(&mut *lay_out).collect();
-    let first = probed.texts.len() as u32;
-    let out = super::svg_text::rewrite(text, &source.texts, &laid, first, &mut probed.probes);
-    probed.texts.extend(laid);
-    for nested in &source.nested {
-        let r = Arc::new(rewrite_all(nested, lay_out, probed, rewrites, order).into_bytes());
-        order.push(r.clone());
-        rewrites.insert(ContentKey::new(nested.bytes.clone()), r);
+/// The SVGs of a [`TextSource`] being rewritten for a render.
+struct Rewriting<'a> {
+    lay_out: &'a mut dyn FnMut(&SvgText) -> LaidText,
+    probed: &'a mut ProbedText,
+    /// Bits of each probe corner that carry its number.
+    bits: u32,
+    /// The nested SVGs rewritten, by their original bytes, and in order.
+    rewrites: &'a mut Rewrites,
+    order: &'a mut Vec<Arc<Vec<u8>>>,
+}
+
+impl Rewriting<'_> {
+    /// `source`'s SVG with its texts replaced, its nested ones rewritten
+    /// into `rewrites`.
+    fn all(&mut self, source: &TextSource) -> Result<String, Reject> {
+        let text = source_text(&source.bytes);
+        probe_bytes(&source.text)?;
+        let laid: Vec<LaidText> = source.text.texts.iter().map(&mut *self.lay_out).collect();
+        let first = self.probed.texts.len() as u32;
+        let probes = (&mut self.probed.probes, self.bits);
+        let out = super::svg_text::rewrite(text, &source.text, &laid, first, probes);
+        self.probed.texts.extend(laid);
+        for nested in &source.nested {
+            let r = Arc::new(self.all(nested)?.into_bytes());
+            self.order.push(r.clone());
+            self.rewrites
+                .insert(ContentKey::new(nested.bytes.clone()), r);
+        }
+        Ok(out)
     }
-    out
+}
+
+/// An SVG's text, without its byte order mark; empty when it is not
+/// UTF-8 (it has passed [`parse_xml`] before).
+fn source_text(bytes: &[u8]) -> &str {
+    let text = std::str::from_utf8(bytes).unwrap_or_default();
+    text.strip_prefix('\u{FEFF}').unwrap_or(text)
+}
+
+/// Refuses text whose placeholders would take more than
+/// [`MAX_PROBE_BYTES`], before they are written.
+fn probe_bytes(text: &SvgTextDoc) -> Result<(), Reject> {
+    if super::svg_text::most_bytes(text) > MAX_PROBE_BYTES {
+        return Err(too_complex(&format!(
+            "its text takes more than {} MiB once laid out",
+            MAX_PROBE_BYTES >> 20
+        )));
+    }
+    Ok(())
+}
+
+/// Checks the document `bytes` becomes once its text is replaced, with
+/// the placeholders that cost most (`svg_text::worst_case`): what any
+/// render converts costs the checks no more, so a render fails a limit
+/// only where the decode does.
+fn check_placeholders(bytes: &[u8], text: &SvgTextDoc, at: Nesting<'_>) -> Result<(), Reject> {
+    probe_bytes(text)?;
+    let worst = super::svg_text::worst_case(source_text(bytes), text);
+    let doc = parse_xml(worst.as_bytes())?;
+    check(&doc, at.level, at.depth).map(drop)
 }
 
 /// Where an SVG sits inside the outermost one.
@@ -559,6 +642,9 @@ pub(crate) type Parsed = (usvg::Tree, Option<ViewBox>, Option<TextSource>);
 fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
     let doc = parse_xml(bytes)?;
     let checked = check(&doc, at.level, at.depth)?;
+    if !checked.text.texts.is_empty() {
+        check_placeholders(bytes, &checked.text, at)?;
+    }
     at.meter.charge(checked.own, 0)?;
     // Nested SVGs start below the deepest image, wherever they are.
     let inner = Nesting {
@@ -602,11 +688,7 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
             )));
         }
     }
-    let text = (!checked.texts.is_empty() || !checked.nested.is_empty()).then(|| TextSource {
-        bytes: Arc::new(bytes.to_vec()),
-        texts: checked.texts,
-        nested: checked.nested,
-    });
+    let text = TextSource::new(Arc::new(bytes.to_vec()), checked);
     Ok((tree, view_box, text))
 }
 
@@ -704,7 +786,7 @@ struct Checked {
     /// Depth of the deepest image with a `data:` URL.
     images: usize,
     /// Its text elements.
-    texts: Vec<SvgText>,
+    text: SvgTextDoc,
     /// Its nested SVG images with text, once each.
     nested: Vec<TextSource>,
 }
@@ -783,6 +865,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         images: 0,
         nested: HashMap::new(),
         nested_text: Vec::new(),
+        nested_seen: HashSet::new(),
         painted: HashSet::new(),
         active: Vec::new(),
     };
@@ -796,7 +879,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         shared: false,
     };
     walk.visit(root, &mut Vec::new(), at)?;
-    let mut texts = Vec::new();
+    let mut text = SvgTextDoc::default();
     if text_found {
         // Reading the text matches its elements against the sheets once
         // more.
@@ -807,13 +890,13 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
             rule_matches: work.matched.saturating_mul(rule_matches),
             ..Cost::default()
         })?;
-        texts = read.texts;
+        text = read;
     }
     Ok(Checked {
         cost: walk.cost,
         own: walk.own,
         images: walk.images,
-        texts,
+        text,
         nested: walk.nested_text,
     })
 }
@@ -897,13 +980,8 @@ fn nested_cost(
     }
     match parse_xml(&data).and_then(|doc| check(&doc, level, depth)) {
         Ok(checked) => {
-            let text =
-                (!checked.texts.is_empty() || !checked.nested.is_empty()).then(|| TextSource {
-                    bytes: Arc::new(data),
-                    texts: checked.texts,
-                    nested: checked.nested,
-                });
-            Ok((checked.cost, text))
+            let cost = checked.cost;
+            Ok((cost, TextSource::new(Arc::new(data), checked)))
         }
         // Left out by the resolver too.
         Err(Reject::Invalid(_)) => Ok((Cost::default(), None)),
@@ -1139,6 +1217,9 @@ struct Info<'d> {
     vertices: Option<usize>,
     /// A `text`: the characters in it.
     text_chars: usize,
+    /// A `text`: the text nodes in it, which comments and other markup
+    /// split; each is read like an element.
+    text_nodes: usize,
 }
 
 impl<'d> Info<'d> {
@@ -1214,11 +1295,13 @@ impl<'d> Info<'d> {
         info.refs.retain(|r| ids.contains_key(r));
         info.vertices = marker_vertices(tag, vertices);
         if tag == "text" && is_svg_ns(n) {
-            info.text_chars = n
+            for t in n
                 .descendants()
                 .filter_map(|d| d.text().filter(|_| d.is_text()))
-                .map(|t| t.chars().count())
-                .sum();
+            {
+                info.text_chars += t.chars().count();
+                info.text_nodes += 1;
+            }
         }
         Ok(info)
     }
@@ -1284,6 +1367,7 @@ struct Walk<'d, 'i, 'w> {
     nested: HashMap<NodeId, Cost>,
     /// The nested SVG images with text, once each.
     nested_text: Vec<TextSource>,
+    nested_seen: HashSet<ContentKey<Arc<Vec<u8>>>>,
     /// Paint servers drawn so far: `usvg` converts each once, and copies
     /// share its images and path data.
     painted: HashSet<NodeId>,
@@ -1342,6 +1426,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         }
         // Every copy of a text is laid out and drawn.
         self.cost.add(Cost {
+            elements: info.text_nodes,
             text_chars: info.text_chars,
             ..Cost::default()
         })?;
@@ -1454,7 +1539,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         }
         let (cost, text) = nested_cost(url, self.level + 1, depth + 1)?;
         if let Some(text) = text {
-            if !self.nested_text.iter().any(|t| t.bytes == text.bytes) {
+            if self.nested_seen.insert(ContentKey::new(text.bytes.clone())) {
                 self.nested_text.push(text);
             }
         }
@@ -1522,7 +1607,7 @@ mod tests {
     fn reads_text_and_rejects_garbage() {
         // The tree leaves text out; it comes with what drawing it needs.
         let (_, _, text) = parse_text(svg("<text x='1' y='5'>Hi</text>").as_bytes()).unwrap();
-        assert_eq!(text.unwrap().texts.len(), 1);
+        assert_eq!(text.unwrap().text.texts.len(), 1);
         // Empty text elements are no text.
         let (_, _, text) = parse_text(svg("<text x='1' y='5'> </text>").as_bytes()).unwrap();
         assert!(text.is_none());
@@ -1533,8 +1618,8 @@ mod tests {
         let outer = image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0);
         let (_, _, text) = parse_text(outer.as_bytes()).unwrap();
         let text = text.unwrap();
-        assert!(text.texts.is_empty());
-        assert_eq!(text.nested[0].texts.len(), 1);
+        assert!(text.text.texts.is_empty());
+        assert_eq!(text.nested[0].text.texts.len(), 1);
         // Text on a path and vertical text say so.
         let e = rejected(&svg(
             "<path id='p' d='M0 0H9'/><text><textPath href='#p'>Hi</textPath></text>",

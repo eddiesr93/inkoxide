@@ -19,13 +19,87 @@ mod survival;
 
 use std::ops::Range;
 
-pub(crate) use extract::{escape, extract, TextError, DEFAULT_FONT_SIZE};
-pub(crate) use rewrite::{rewrite, Probes};
+pub(crate) use extract::{extract, TextError, DEFAULT_FONT_SIZE};
+pub(crate) use rewrite::{index_bits, most_bytes, rewrite, worst_case, Probes};
+
+/// `v` escaped for an XML attribute in double quotes, onto `out`.
+fn push_escaped(out: &mut String, v: &str) {
+    for c in v.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            c => out.push(c),
+        }
+    }
+}
 
 /// The text elements of one SVG document.
 #[derive(Debug, Default)]
 pub(crate) struct SvgTextDoc {
     pub texts: Vec<SvgText>,
+    pub form: ProbeForm,
+}
+
+impl SvgTextDoc {
+    /// The most probes the placeholders of these texts may hold: one per
+    /// paint style.
+    pub fn most_probes(&self) -> usize {
+        self.texts.iter().map(|t| t.paints.len()).sum()
+    }
+}
+
+/// How the placeholders of one document are written. `usvg` applies an
+/// `!important` rule over a placeholder's `style` (the first `!important`
+/// declaration it meets wins), so a probe is an element no such rule names
+/// by type, when there is one: a rule that matches any element applies to
+/// the text in a browser too.
+#[derive(Debug, Clone)]
+pub(crate) struct ProbeForm {
+    pub shape: ProbeShape,
+    /// The element that groups the probes of a text with several paint
+    /// styles: `a`, or `g`.
+    pub group: &'static str,
+    /// `inherit` for each paint property a style sheet declares, which a
+    /// group holds so that a rule about its element does not reach the
+    /// probes inside it.
+    pub group_paint: String,
+}
+
+impl Default for ProbeForm {
+    fn default() -> Self {
+        Self {
+            shape: ProbeShape::Path,
+            group: "a",
+            group_paint: String::new(),
+        }
+    }
+}
+
+/// The element a probe is. Both convert to the same four sides.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ProbeShape {
+    #[default]
+    Path,
+    Polygon,
+}
+
+impl ProbeShape {
+    pub fn tag(self) -> &'static str {
+        match self {
+            ProbeShape::Path => "path",
+            ProbeShape::Polygon => "polygon",
+        }
+    }
+
+    /// The attribute that holds its geometry.
+    pub fn attributes(self) -> &'static [&'static str] {
+        match self {
+            ProbeShape::Path => &["d"],
+            ProbeShape::Polygon => &["points"],
+        }
+    }
 }
 
 /// One `<text>` element, ready to lay out.

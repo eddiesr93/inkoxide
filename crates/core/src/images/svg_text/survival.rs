@@ -108,6 +108,11 @@ fn stub(text: &SvgText) -> LaidText {
     }
 }
 
+/// The size of the SVG without its text; the probes do not depend on it.
+fn size() -> usvg::Size {
+    usvg::Size::from_wh(100.0, 100.0).unwrap()
+}
+
 /// The probes `body` converts to, in tree order.
 fn probes_of(body: &str) -> Vec<Found> {
     let svg =
@@ -116,7 +121,7 @@ fn probes_of(body: &str) -> Vec<Found> {
         .unwrap()
         .2
         .expect("no text found");
-    let (tree, probed) = parse_with_text(&source, &mut stub).unwrap();
+    let (tree, probed) = parse_with_text(&source, size(), &mut stub).unwrap();
     let mut out = Vec::new();
     find(tree.root(), &probed.probes, &mut out);
     out
@@ -225,6 +230,28 @@ fn author_rules_about_paths_and_links_do_not_reach_probes() {
     );
 }
 
+/// `usvg` applies the first `!important` declaration it meets, and a
+/// sheet comes before `style`: probes are elements those rules do not
+/// name.
+#[test]
+fn important_rules_about_paths_and_links_do_not_reach_probes() {
+    assert_eq!(
+        probes_of(
+            r##"<style>path { fill: none !important; stroke: red !important; opacity: 0 !important }
+                 a { fill: green !important; transform: scale(0) !important }</style>
+               <g fill="blue"><text>a<tspan fill="#ff0000">b</tspan></text><text>c</text></g>
+               <clipPath id="c"><text>d</text></clipPath>
+               <rect width="5" height="5" clip-path="url(#c)"/>"##
+        ),
+        [
+            found(0, 0, BLUE, None),
+            found(0, 1, RED, None),
+            found(1, 0, BLUE, None),
+            found(2, 0, BLACK, None),
+        ]
+    );
+}
+
 #[test]
 fn nested_svgs_have_their_own_probes() {
     let inner = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text fill="red">a</text></svg>"#;
@@ -242,11 +269,11 @@ fn nested_svgs_have_their_own_probes() {
 fn reuses_a_conversion_of_the_same_layout() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>reused</text></svg>"#;
     let source = parse_text(svg.as_bytes()).unwrap().2.unwrap();
-    let (a, _) = parse_with_text(&source, &mut stub).unwrap();
-    let (b, _) = parse_with_text(&source, &mut stub).unwrap();
+    let (a, _) = parse_with_text(&source, size(), &mut stub).unwrap();
+    let (b, _) = parse_with_text(&source, size(), &mut stub).unwrap();
     assert!(std::sync::Arc::ptr_eq(&a, &b));
     // Another layout is another conversion.
-    let (c, _) = parse_with_text(&source, &mut |t| LaidText {
+    let (c, _) = parse_with_text(&source, size(), &mut |t| LaidText {
         ink: Some([0.0, 0.0, 1.0, 1.0]),
         ..stub(t)
     })

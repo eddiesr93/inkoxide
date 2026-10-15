@@ -22,8 +22,10 @@ pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
         // Its text is drawn with the paint of its probes: scan a conversion
         // with a probe for each text and paint style, whatever the fonts.
         ImageBody::Svg {
-            text: Some(source), ..
-        } => crate::images::svg::probe_tree(source)
+            text: Some(source),
+            tree,
+            ..
+        } => crate::images::svg::probe_tree(source, tree.size())
             .ok()
             .and_then(|(tree, probed)| super::svg::transparency(&tree, Some(&probed.probes))),
         ImageBody::Svg { tree, .. } => super::svg::transparency(tree, None),
@@ -41,8 +43,10 @@ pub(crate) fn write_image(
     fonts: Option<super::svg::TextFonts<'_, '_>>,
 ) -> Result<Ref, crate::InkoxideError> {
     if let ImageBody::Svg { tree, probed, .. } = &img.body {
+        // A render's copy has the size of the SVG without its text.
+        let size = probed.as_ref().map_or(tree.size(), |p| p.size);
         let text = probed.as_deref().zip(fonts);
-        return super::svg::write_svg(pdf, alloc, out, tree, profile, text);
+        return super::svg::write_svg(pdf, alloc, out, (tree, size), profile, text);
     }
     let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);

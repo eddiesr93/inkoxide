@@ -59,18 +59,17 @@ pub(crate) struct TextFonts<'a, 'f> {
     pub refs: &'a BTreeMap<FontKey, Ref>,
 }
 
-/// Writes `tree` as a Form `XObject` mapping the SVG viewport onto the unit
-/// square (y up), like an image `XObject`. `text` draws the text of a
-/// render's copy of an SVG at its probes.
+/// Writes `tree` as a Form `XObject` mapping the SVG viewport, of `size`,
+/// onto the unit square (y up), like an image `XObject`. `text` draws the
+/// text of a render's copy of an SVG at its probes.
 pub(crate) fn write_svg(
     pdf: &mut Pdf,
     alloc: &mut RefAlloc,
     out: &mut Out,
-    tree: &usvg::Tree,
+    (tree, size): (&usvg::Tree, usvg::Size),
     profile: Profile,
     text: Option<(&ProbedText, TextFonts<'_, '_>)>,
 ) -> Result<Ref, InkoxideError> {
-    let size = tree.size();
     let (w, h) = (size.width(), size.height());
     let mut s = Svg {
         pdf,
@@ -945,11 +944,7 @@ impl Svg<'_> {
         stroke: bool,
     ) -> Res {
         let mut any = false;
-        for d in laid
-            .decorations
-            .iter()
-            .filter(|d| d.paint == paint && d.over == over)
-        {
+        for d in laid.decorations_of(paint).iter().filter(|d| d.over == over) {
             self.segments += 5;
             if self.segments > MAX_SEGMENTS {
                 return Err(too_complex());
@@ -985,9 +980,9 @@ impl Svg<'_> {
         stroke: bool,
     ) -> Res {
         let glyphs: Vec<_> = laid
-            .glyphs
+            .glyphs_of(paint)
             .iter()
-            .filter(|g| g.paint == paint && !(self.profile.is_pdf_a() && g.id == 0))
+            .filter(|g| !(self.profile.is_pdf_a() && g.id == 0))
             .filter(|g| fonts.refs.contains_key(&g.font))
             .collect();
         if glyphs.is_empty() {
@@ -1357,7 +1352,7 @@ mod tests {
             &mut pdf,
             &mut RefAlloc(0),
             &mut Out::plain(),
-            &tree,
+            (&tree, tree.size()),
             Profile::default(),
             None,
         )
@@ -1463,6 +1458,20 @@ mod tests {
         assert!(out.contains("<0048>") && out.contains("<0069>"), "{out}");
         // The probe itself draws nothing.
         assert!(!out.contains(" re\nf"), "{out}");
+    }
+
+    /// An SVG without a size takes it from what it draws, which leaves its
+    /// text out: the same with any fonts, and the size the layout gave it.
+    #[test]
+    fn an_svg_without_a_size_keeps_it_with_its_text() {
+        let out = rendered(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/>
+                 <text x="0" y="50" font-size="40">wide text</text></svg>"#,
+            false,
+        );
+        assert!(out.contains("/BBox [0 0 10 10]"), "{out}");
+        assert!(out.contains("/Matrix [0.1 0 0 -0.1 0 1]"), "{out}");
+        assert!(out.contains("] TJ"), "{out}");
     }
 
     #[test]
@@ -1591,7 +1600,7 @@ mod tests {
                 &mut Pdf::new(),
                 &mut RefAlloc(0),
                 &mut Out::plain(),
-                &tree,
+                (&tree, tree.size()),
                 one_b,
                 None,
             );
@@ -1600,7 +1609,7 @@ mod tests {
                 &mut Pdf::new(),
                 &mut RefAlloc(0),
                 &mut Out::plain(),
-                &tree,
+                (&tree, tree.size()),
                 Profile::default(),
                 None,
             )
