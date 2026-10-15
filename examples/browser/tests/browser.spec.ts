@@ -3,6 +3,8 @@
  * Security Policy and without cross-origin isolation, the same PDF as Node.
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { expect, type Page, test } from '@playwright/test';
@@ -28,7 +30,9 @@ async function open(page: Page): Promise<string[]> {
   page.on('pageerror', (e) => violations.push(`page error: ${e.message}`));
   const response = await page.goto('/');
   expect(response?.headers()['content-security-policy']).toBe(CSP);
-  await expect(page.locator('#status')).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
+  await expect(page.locator('#download [data-state]')).toHaveAttribute('data-state', 'ready', {
+    timeout: 30_000,
+  });
   return violations;
 }
 
@@ -39,6 +43,17 @@ test('renders in a worker the bytes Node renders', async ({ page }) => {
   const violations = await open(page);
   expect(await call(page, 'invoiceDigest')).toBe(expected);
   expect(violations).toEqual([]);
+});
+
+test('PdfDownloadLink downloads the PDF PdfViewer shows', async ({ page }) => {
+  await open(page);
+  const link = page.locator('#download');
+  await expect(link).toHaveAttribute('href', /^blob:/);
+  const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
+  expect(download.suggestedFilename()).toBe('invoice.pdf');
+  const file = readFileSync((await download.path()) ?? '');
+  expect(createHash('sha256').update(file).digest('hex')).toBe(expected);
+  await expect(page.locator('iframe#viewer')).toHaveAttribute('src', /^blob:/);
 });
 
 test('needs no cross-origin isolation', async ({ page }) => {
@@ -66,8 +81,8 @@ test('a signal ends the worker of a render, and the next one renders', async ({ 
   });
   await open(page);
   const workers = () => page.evaluate(() => (globalThis as unknown as { workers: number }).workers);
-  expect(await workers()).toBe(1);
+  const before = await workers();
   expect(await call(page, 'abortedRender')).toBe('stopped');
   expect(await call(page, 'invoiceDigest')).toBe(expected);
-  expect(await workers()).toBe(2);
+  expect(await workers()).toBe(before + 1);
 });

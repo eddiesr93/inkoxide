@@ -162,17 +162,23 @@ const TEMPLATES_TYPES = [
 const BROWSER_VALUES = [
   ...MAIN_VALUES.filter((n) => n !== 'renderToFile' && n !== 'renderToStream'),
   'generate',
+  'PdfDownloadLink',
+  'PdfViewer',
   'renderToBlob',
+  'usePdf',
 ];
 const BROWSER_TYPES = [
   ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions'),
   'BrowserOptions',
   'BrowserRenderOptions',
   'GenerateOptions',
+  'PdfDownloadLinkProps',
+  'PdfViewerProps',
   'RenderOpts',
   'RenderResult',
   'TemplateLike',
   'Timings',
+  'UsePdfResult',
 ];
 
 const sorted = (names: Iterable<string>) => [...names].sort();
@@ -186,7 +192,7 @@ function declared(file: string): string[] {
   const src = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   const code = src.replace(/^\s*\/\/.*$/gm, '');
   const names: string[] = [];
-  for (const m of code.matchAll(/^export \* from '\.\/([a-z-]+\.ts)';$/gm))
+  for (const m of code.matchAll(/^export \* from '\.\/([a-z-]+\.tsx?)';$/gm))
     names.push(...declared(m[1] ?? ''));
   for (const m of code.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'[^']+';/g)) {
     for (const part of (m[1] ?? '').split(',')) {

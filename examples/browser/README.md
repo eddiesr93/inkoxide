@@ -1,7 +1,8 @@
 # Inkoxide in the browser
 
 A Vite page that renders an invoice with `@inkoxide/render/browser`: the engine is WebAssembly
-(`@inkoxide/wasm`), in a Web Worker, and the PDF opens in the page.
+(`@inkoxide/wasm`), in a Web Worker. `<PdfViewer>` shows the PDF in the page and
+`<PdfDownloadLink>` downloads it.
 
 ```sh
 scripts/build-wasm.sh           # packages/wasm/inkoxide.wasm
@@ -22,6 +23,7 @@ at the browser entry.
 `pnpm test` builds the page, serves it with `vite preview`, and checks in Chromium, Firefox and
 WebKit (`pnpm exec playwright install` first) that:
 
-- the PDF rendered in the worker has the bytes the same invoice renders to in Node;
+- the PDF rendered in the worker, and the file the download link saves, have the bytes the same
+  invoice renders to in Node;
 - the page is not cross-origin isolated, and logs no Content Security Policy violation;
 - a render's `signal` ends its worker, and the next render runs in a new one.
