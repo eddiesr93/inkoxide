@@ -45,9 +45,7 @@
 
 use crate::layout::{LineBoxes, NodeIdx, Tree};
 use crate::paint::Rect;
-use crate::schema::{
-    BreakMode, Display, FlexDirection, FlexWrap, InsideMode, Node, NodeKind, Position,
-};
+use crate::schema::{BreakMode, Display, InsideMode, Node, NodeKind, Position};
 use crate::text::{LineLayout, TextCache, TextShaper};
 
 /// Float tolerance in paged space, points. Paged coordinates of long
@@ -309,13 +307,19 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
 /// Whether a node lays its children out side by side (row, grid, wrapping)
 /// or in reverse: as a box taller than a page, it splits band by band.
 pub(crate) fn banded(node: &Node) -> bool {
+    !node.style.column()
+}
+
+/// Whether node `node` always moves to another page whole, wherever it
+/// is: fixed, floated, absolutely positioned, rotated or transformed.
+/// Forced breaks inside it do nothing.
+pub(crate) fn moves_whole(node: &Node) -> bool {
     let s = &node.style;
-    s.display == Some(Display::Grid)
-        || matches!(
-            s.flex_direction,
-            Some(FlexDirection::Row | FlexDirection::RowReverse | FlexDirection::ColumnReverse)
-        )
-        || matches!(s.flex_wrap, Some(FlexWrap::Wrap | FlexWrap::WrapReverse))
+    node.brk.fixed
+        || s.floats().is_some()
+        || s.position == Some(Position::Absolute)
+        || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
+        || s.transform.as_ref().is_some_and(|t| !t.is_empty())
 }
 
 /// Whether node `c` takes part in pagination (not absolutely positioned,
@@ -395,13 +399,7 @@ impl Paginator<'_, '_, '_> {
 
     /// Whether node `i` must move as one piece.
     fn atomic(&self, i: NodeIdx, node: &Node) -> bool {
-        let s = &node.style;
-        if node.brk.fixed
-            || s.floats().is_some()
-            || s.position == Some(Position::Absolute)
-            || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
-            || s.transform.as_ref().is_some_and(|t| !t.is_empty())
-        {
+        if moves_whole(node) {
             return true;
         }
         // Kept together only while that is possible.

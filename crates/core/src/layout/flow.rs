@@ -141,13 +141,7 @@ fn clamp(v: f32, min: Option<f32>, max: Option<f32>) -> f32 {
 /// Whether node `idx` of `tree` holds floats: the root, a box or a cell
 /// with a displayed, floated child.
 pub(super) fn holds_floats(tree: &Tree<'_>, idx: usize) -> bool {
-    let ln = &tree.nodes[idx];
-    let holds = match ln.part {
-        super::Part::Root | super::Part::Cell(_) => true,
-        super::Part::Node(n) => matches!(n.kind, NodeKind::Box { .. }),
-        super::Part::Row(_) => false,
-    };
-    holds
+    tree.nodes[idx].holds_children()
         && tree.children(idx as NodeIdx).any(|c| {
             tree.nodes[c as usize].node().is_some_and(|n| {
                 n.style.floats().is_some() && n.style.display != Some(Display::None)
@@ -792,18 +786,8 @@ pub(super) fn intrinsic_width(
 #[cfg(test)]
 pub(super) fn column_box(tree: &Tree<'_>, idx: NodeIdx) -> bool {
     let ln = &tree.nodes[idx as usize];
-    let s = ln.style();
-    let kind_ok = match ln.part {
-        super::Part::Root | super::Part::Cell(_) => true,
-        super::Part::Node(n) => matches!(n.kind, NodeKind::Box { .. }),
-        super::Part::Row(_) => false,
-    };
-    kind_ok
+    ln.holds_children()
         && !ln.children.is_empty()
-        && matches!(s.display, None | Some(Display::Flex))
-        && matches!(
-            s.flex_direction,
-            None | Some(crate::schema::FlexDirection::Column)
-        )
-        && matches!(s.flex_wrap, None | Some(crate::schema::FlexWrap::NoWrap))
+        && ln.style().display != Some(Display::None)
+        && ln.style().column()
 }

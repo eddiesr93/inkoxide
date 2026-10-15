@@ -178,6 +178,16 @@ impl<'a> LNode<'a> {
     pub fn is_table(&self) -> bool {
         matches!(self.node().map(|n| &n.kind), Some(NodeKind::Table(_)))
     }
+
+    /// Whether it lays out children as a box does: the root, a box or a
+    /// table cell (not a row, nor a leaf).
+    pub fn holds_children(&self) -> bool {
+        match self.part {
+            Part::Root | Part::Cell(_) => true,
+            Part::Node(n) => matches!(n.kind, NodeKind::Box { .. }),
+            Part::Row(_) => false,
+        }
+    }
 }
 
 /// Arena of layout nodes. Index 0 is the root.
