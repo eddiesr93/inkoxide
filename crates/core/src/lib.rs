@@ -400,7 +400,7 @@ fn render_inner(
         encryption,
         parallel,
     };
-    let (pages, marks) = pipeline::run(
+    let (pages, marks, colors) = pipeline::run(
         &document,
         &font_set,
         &mut text,
@@ -418,6 +418,7 @@ fn render_inner(
         fonts: &font_set,
         unicode: &unicode,
         images: &image_set,
+        colors: &colors,
         marks: &marks,
     })
 }

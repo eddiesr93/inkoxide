@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use rayon::prelude::*;
 
 use crate::fonts::{FontKey, FontSet};
-use crate::images::ImageSet;
+use crate::images::{ImageBody, ImageKey, ImageSet};
 use crate::layout::{
     AvailableSpace, Geometry, LayoutEngine, LeafMeasure, LineBoxes, NodeIdx, Part, Size,
     TaffyLayout, Tree, Wrapped,
@@ -230,7 +230,9 @@ fn layout_fixed<'a>(
 /// handing each to `encode` as soon as it is painted. With `parallel`,
 /// shaping and painting run on the current rayon pool; without it, on the
 /// calling thread alone. When `profile` forbids transparency (PDF/A-1b),
-/// a colour glyph that needs it fails the render, at the path of its run.
+/// a colour glyph that needs it fails the render, at the path of its run
+/// or SVG image. Returns the pages, the marks and the colour glyphs, which
+/// SVG text draws too.
 pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
@@ -239,7 +241,7 @@ pub(crate) fn run<'d, T: Send>(
     parallel: bool,
     profile: Profile,
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
-) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
+) -> Result<(Vec<T>, Marks<'d>, ColorGlyphs), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
     // up front, in parallel.
     let mut texts = Vec::new();
@@ -251,14 +253,16 @@ pub(crate) fn run<'d, T: Send>(
     }
     text.prepare_all(&texts, parallel);
     drop(texts);
-    let colors = ColorGlyphs::load(
-        fonts,
-        &text.glyphs_of(|k| fonts.get(k).has_color()),
-        images,
-        parallel,
-    );
+    let color = |k| fonts.get(k).has_color();
+    let mut used = text.glyphs_of(color);
+    for (k, glyphs) in images.svg_text_glyphs(color) {
+        used.entry(k).or_default().extend(glyphs);
+    }
+    let colors = ColorGlyphs::load(fonts, &used, images, parallel);
     if !profile.transparency() {
-        if let Some(conflict) = transparent_color_glyph(doc, fonts, text, &colors) {
+        let conflict = transparent_color_glyph(doc, fonts, text, &colors)
+            .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors));
+        if let Some(conflict) = conflict {
             return Err(conflict.into());
         }
     }
@@ -332,7 +336,7 @@ pub(crate) fn run<'d, T: Send>(
             .map(page)
             .collect::<Result<_, _>>()?
     };
-    Ok((pages, marks))
+    Ok((pages, marks, colors))
 }
 
 /// The first run, in document order, that draws a colour glyph needing
@@ -367,6 +371,66 @@ fn transparent_color_glyph(
         }
         None
     })
+}
+
+/// The first SVG image, in document order, whose text draws a colour
+/// glyph needing transparency, as the error of a render that forbids it.
+fn transparent_svg_color_glyph(
+    doc: &Document,
+    fonts: &FontSet<'_>,
+    images: &ImageSet,
+    colors: &ColorGlyphs,
+) -> Option<ValidationError> {
+    let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
+    let mut need = |key: ImageKey| -> Option<String> {
+        let ImageBody::Svg {
+            probed: Some(probed),
+            ..
+        } = &images.get(key).body
+        else {
+            return None;
+        };
+        let glyphs = probed.texts.iter().flat_map(|t| &t.glyphs);
+        for g in glyphs.filter(|g| colors.draws(g.font, g.id)) {
+            let font = fonts.get(g.font);
+            let need = *seen
+                .entry((g.font, g.id))
+                .or_insert_with(|| color_glyph_transparency(font, g.id));
+            if let Some(need) = need {
+                return Some(format!(
+                    "a colour glyph of font `{}` in the text of the SVG image ({need})",
+                    font.id
+                ));
+            }
+        }
+        None
+    };
+    let found = find_shown(doc, |node, path| {
+        let image = images.key(node).map(|k| (k, format!("{path}.src")));
+        let background = images
+            .background_key(node)
+            .map(|k| (k, format!("{path}.backgroundImage")));
+        let mut runs = Vec::new();
+        if let NodeKind::Text { runs: r } = &node.kind {
+            for (i, run) in r.iter().enumerate() {
+                if let Some(k) = images.run_image_key(run) {
+                    runs.push((k, format!("{path}.runs[{i}].image")));
+                }
+            }
+        }
+        image
+            .into_iter()
+            .chain(background)
+            .chain(runs)
+            .find_map(|(k, path)| Some((path, need(k)?)))
+    });
+    let (path, what) = found.or_else(|| {
+        let emoji = images.emoji_image_keys();
+        emoji
+            .into_iter()
+            .find_map(|k| Some(("emojiImages".to_string(), need(k)?)))
+    })?;
+    Some(crate::validate::transparency_conflict(path, &what))
 }
 
 /// Calls `f` on every displayed node of `doc` with its path

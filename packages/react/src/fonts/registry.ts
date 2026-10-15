@@ -155,9 +155,9 @@ export class FontRegistry {
   }
 }
 
-/** Family names match ignoring ASCII case, as in CSS. */
-const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
-const sameFamily = (a: string, b: string): boolean => a === b || asciiLower(a) === asciiLower(b);
+/** What tells family names apart: they match ignoring ASCII case, as in CSS and in the engine. */
+export const familyKey = (family: string): string => family.replace(/[A-Z]/g, (c) => c.toLowerCase());
+const sameFamily = (a: string, b: string): boolean => a === b || familyKey(a) === familyKey(b);
 
 /** CSS Fonts 4 §5.2 weight matching. */
 function nearestWeight(pool: readonly Face[], w: number): Face {

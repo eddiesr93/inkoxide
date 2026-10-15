@@ -105,9 +105,59 @@ fn inherit_takes_the_parent_value() {
     assert_eq!(t.spans[0].size, 30.0);
     // Paint not declared on the text or its spans inherits through the
     // placeholder.
-    assert!(t.paints[0].starts_with("fill:inherit;"), "{}", t.paints[0]);
-    assert!(t.paints[1].starts_with("fill:red;"), "{}", t.paints[1]);
-    assert!(t.paints[1].contains("stroke:inherit;"), "{}", t.paints[1]);
+    assert_eq!(t.paints, ["", "fill:red;"]);
+    // Where a rule could reach the placeholder, it says so.
+    let t = one(
+        r#"<style>path { stroke: red }</style><g fill="blue"><text fill="inherit">a
+             <tspan fill="red" stroke="inherit">b</tspan></text></g>"#,
+    );
+    assert_eq!(t.paints, ["stroke:inherit;", "fill:red;stroke:inherit;"]);
+}
+
+#[test]
+fn placeholders_avoid_elements_important_rules_name() {
+    let form = |sheet: &str| {
+        let src = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{sheet}</style><text>a</text></svg>"#
+        );
+        let doc = Document::parse(&src).unwrap();
+        let f = extract(&doc).unwrap().0.form;
+        (f.shape, f.group, f.group_paint)
+    };
+    let plain = (ProbeShape::Path, "a", String::new());
+    assert_eq!(form(""), plain);
+    // Rules without `!important` lose to the placeholder's `style`.
+    assert_eq!(
+        form("path, a { fill: none }"),
+        (ProbeShape::Path, "a", "fill:inherit;".into())
+    );
+    assert_eq!(
+        form("path { fill: none !important } a { opacity: 0 !important }"),
+        (ProbeShape::Polygon, "g", "fill:inherit;".into())
+    );
+    assert_eq!(
+        form("svg [d] { marker: url(#m) !important }").0,
+        ProbeShape::Polygon
+    );
+    // Rules that would match the text too, or about something else, stay.
+    let elements = |sheet: &str| {
+        let f = form(sheet);
+        (f.0, f.1)
+    };
+    assert_eq!(
+        elements("* { fill: none !important }"),
+        (ProbeShape::Path, "a")
+    );
+    assert_eq!(
+        elements("#t { fill: none !important }"),
+        (ProbeShape::Path, "a")
+    );
+    assert_eq!(form("path { font-size: 9px !important }"), plain);
+    // Every shape named: the first.
+    assert_eq!(
+        form("path, polygon { fill: none !important }").0,
+        ProbeShape::Path
+    );
 }
 
 #[test]
@@ -127,13 +177,8 @@ fn keeps_out_values_that_would_end_a_declaration() {
     let t = one(
         r#"<text fill="red;stroke:blue" stroke="url(&quot;#g&quot;)" opacity="0.5 !important">a</text>"#,
     );
-    assert!(t.paints[0].starts_with("fill:inherit;"), "{}", t.paints[0]);
-    assert!(
-        t.paints[0].contains(r##"stroke:url("#g");"##),
-        "{}",
-        t.paints[0]
-    );
-    assert!(t.effects.contains("opacity:1;"), "{}", t.effects);
+    assert_eq!(t.paints[0], r##"stroke:url("#g");"##);
+    assert!(!t.effects.contains("opacity"), "{}", t.effects);
 }
 
 #[test]
@@ -144,9 +189,11 @@ fn the_placeholder_takes_the_effects_and_the_id() {
     assert_eq!(t.attrs, r#" id="x&lt;" systemLanguage="en""#);
     assert_eq!(
         t.effects,
-        "transform:rotate(5);opacity:0.5;clip-path:url(#c);mask:none;filter:none;\
-         display:inline;mix-blend-mode:multiply;isolation:auto;"
+        "transform:rotate(5);opacity:0.5;clip-path:url(#c);mix-blend-mode:multiply;"
     );
+    // Initial values where a style sheet could set others.
+    let t = one("<style>a { mask: url(#m); filter: none }</style><text>a</text>");
+    assert_eq!(t.effects, "mask:none;filter:none;");
     assert!(!t.in_clip);
     let c = one(r#"<clipPath id="c"><text>a</text></clipPath>"#);
     assert!(c.in_clip);
@@ -277,4 +324,23 @@ fn refuses_text_from_entities() {
         panic!("accepted text from an entity");
     };
     assert!(e.contains("entity"), "{e}");
+}
+
+/// Spans with their own paint and text nodes split by comments are read
+/// in linear time.
+#[test]
+fn reads_many_spans_and_text_nodes_in_linear_time() {
+    let mut spans = String::from("<text>");
+    for i in 0..100_000 {
+        let _ = write!(spans, r##"<tspan fill="#{i:06x}">a</tspan>"##);
+    }
+    spans.push_str("</text>");
+    let t = std::time::Instant::now();
+    let read = one(&spans);
+    assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
+    assert_eq!(read.paints.len(), 100_000);
+    let comments = format!("<text>{}</text>", "a<!---->".repeat(300_000));
+    let t = std::time::Instant::now();
+    assert_eq!(one(&comments).chars.len(), 300_000);
+    assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
 }

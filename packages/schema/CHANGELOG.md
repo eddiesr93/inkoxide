@@ -72,8 +72,10 @@ Still document schema version 1.
 - SVG images may contain text (`<text>`, `<tspan>`). It is laid out with the document's fonts:
   `FontDecl.family`, `weight` and `style`, which were descriptive until now, are what its
   `font-family`, `font-weight` and `font-style` select a declared font by. A document whose SVG
-  images have text must declare a font; one that declares none fails with `INVALID_IMAGE`.
-  Documents with SVG images without text render as before.
+  images have text must declare a font; one that declares none fails with `INVALID_IMAGE`, and
+  so does text on a path, vertical text and text that an XML entity expands to. The text counts
+  toward the limits of its SVG as it is drawn (its text nodes as elements). Documents with SVG
+  images without text render as before.
 
 ### Changed
 

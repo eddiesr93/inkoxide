@@ -194,8 +194,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   colour glyphs past the first 4096 of a render or its first 32 MB of colour glyph images. Fonts
   with only `SVG` glyphs are not drawn in colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
   alpha channel, as in every emoji bitmap font, or a layer with an opacity) fails the render with
-  `PDFA_CONFLICT` at the path of its run, and inline images and emoji images that need it fail
-  it at their `src` or `emojiImages` key. Opaque `COLR` glyphs draw in colour there.
+  `PDFA_CONFLICT` at the path of its run (at the `src` of an SVG whose text has it), and inline
+  images and emoji images that need it fail it at their `src` or `emojiImages` key. Opaque `COLR` glyphs draw in colour there.
 - **Emoji from images.** `Font.registerEmojiSource` draws emoji from an image set instead:
   `{ url, format }` adds each emoji's code points and the format to the URL
   (`https://cdn.example.com/emoji/1f469-200d-1f4bb.png`; `withVariationSelectors: true` keeps
@@ -735,8 +735,10 @@ copied.
   drawing, as for any `Text`. The font is one registered with `Font.register` (or bundled),
   matched like other text, so a missing family falls back with a warning.
 - **Style**: `fill` and `stroke` with colours, gradients and patterns, `letterSpacing`,
-  `wordSpacing`, `textDecoration` (`underline`, `overline`, `line-through`) and, on a `Tspan`,
-  `baselineShift` (`super`, `sub` or a length). A `Text` in an `<Svg>` takes these SVG props:
+  `wordSpacing`, `textDecoration` (`underline`, `overline`, `line-through`), `direction`
+  (`rtl` sets the base direction of the text and mirrors its anchor) and, on a `Tspan`,
+  `baselineShift` (`super`, `sub` or a length) and `alignmentBaseline`, which places the span
+  on another baseline than the text's `dominantBaseline`. A `Text` in an `<Svg>` takes these SVG props:
   `style` and `className` are for text outside drawings.
 - Strings and `Tspan` go in it; anything else is an error.
 
@@ -793,7 +795,8 @@ back the state and the transforms.
   (`'Inter-Bold'`), a family name, or a pdfkit standard name (`'Helvetica-Bold'`), which picks
   the canvas's family in that weight and style; **`fontSize(n)`** sets the size (12 by
   default). Until `font()` the text is in the font around the canvas. The options
-  (`CanvasTextOptions`) are `width` with `align` (`left`, `center`, `right`), `baseline`
+  (`CanvasTextOptions`) are `width` with `align` (`left`, `center`, `right`; `justify`, as in
+  pdfkit, is `left`, since a line does not wrap), `baseline`
   (`top`, `middle`, `bottom`, `alphabetic`, `hanging`), `characterSpacing`, `wordSpacing`,
   `underline`, `strike`, `fill` (default `true`) and `stroke` (with the stroke colour and line
   style). Text does not wrap: a line break in `str` is an error.
@@ -817,10 +820,16 @@ In an SVG, whether in `<Svg>` or an image file:
   patterns, markers and `use` copies. Text on a path (`<textPath>`) and vertical text (`writing-mode`) fail the
   render with `INVALID_IMAGE`: convert them to outlines in your design tool. `font-variant`,
   `font-stretch`, `font-kerning` and `font-feature-settings` are ignored, and font properties
-  set on a `<use>` do not reach the text it copies (its fill and stroke do). An SVG with text in
-  a document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG holds at
-  most 1,000,000 characters of text, counting every copy. Where nothing sets a font size it is
-  16, as in browsers.
+  set on a `<use>` do not reach the text it copies (its fill and stroke do). Text that an XML
+  entity expands to fails with `INVALID_IMAGE` too: write the text in the SVG itself. Colour
+  emoji fonts draw in colour, and emoji the document maps to images (`emojiImages`) are those
+  images, as in other text; an emoji image that is itself an SVG with text is left out there,
+  but its text still copies. An SVG with text in a document that declares no fonts fails
+  validation with `INVALID_IMAGE`, and an SVG holds at most 1,000,000 characters of text,
+  counting every copy. Its text counts toward the other limits of the SVG too, as it is drawn,
+  so an SVG that fails one fails validation, not only the render. An SVG without `width`,
+  `height` and `viewBox` takes its size from what it draws, its text left out, so the same
+  with any fonts. Where nothing sets a font size it is 16, as in browsers.
 - **Filters** (`filter`: drop shadows, blurs) are not applied: the element is drawn without them.
 - **Images** inside the SVG must be embedded as `data:` URLs (JPEG, PNG, GIF, WebP or SVG).
   Links to files or URLs are left out, and an embedded image over 50 megapixels fails the

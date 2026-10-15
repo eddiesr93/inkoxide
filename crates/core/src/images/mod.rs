@@ -19,7 +19,7 @@ pub(crate) mod svg_text;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
@@ -334,13 +334,15 @@ impl ImageSet {
 
     /// Converts the SVGs with text again, each text laid out with this
     /// render's fonts through `shaper` (in image order, so glyph mappings
-    /// do not depend on threads). Each becomes this render's own copy.
+    /// do not depend on threads). Each becomes this render's own copy, of
+    /// the size it has without its text.
     pub fn lay_out_text<S: crate::text::TextShaper>(
         &mut self,
         shaper: &mut S,
     ) -> Result<(), InkoxideError> {
         for image in &mut self.images {
             let ImageBody::Svg {
+                tree,
                 text: Some(source),
                 view_box,
                 ..
@@ -348,13 +350,13 @@ impl ImageSet {
             else {
                 continue;
             };
-            let (tree, probed) =
-                svg::parse_with_text(source, &mut |t| crate::text::lay_out_svg_text(t, shaper))
-                    .map_err(InkoxideError::Image)?;
-            let s = tree.size();
+            let (tree, probed) = svg::parse_with_text(source, tree.size(), &mut |t| {
+                crate::text::lay_out_svg_text(t, shaper)
+            })
+            .map_err(InkoxideError::Image)?;
             *image = Arc::new(DecodedImage {
-                width: s.width().ceil() as u32,
-                height: s.height().ceil() as u32,
+                width: image.width,
+                height: image.height,
                 orientation: 1,
                 body: ImageBody::Svg {
                     tree,
@@ -365,6 +367,30 @@ impl ImageSet {
             });
         }
         Ok(())
+    }
+
+    /// The glyphs the text of this render's SVGs uses, of the fonts
+    /// `wanted` picks.
+    pub fn svg_text_glyphs(
+        &self,
+        wanted: impl Fn(crate::fonts::FontKey) -> bool,
+    ) -> BTreeMap<crate::fonts::FontKey, BTreeSet<u16>> {
+        let mut out: BTreeMap<_, BTreeSet<u16>> = BTreeMap::new();
+        for image in &self.images {
+            let ImageBody::Svg {
+                probed: Some(probed),
+                ..
+            } = &image.body
+            else {
+                continue;
+            };
+            for g in probed.texts.iter().flat_map(|t| &t.glyphs) {
+                if wanted(g.font) {
+                    out.entry(g.font).or_default().insert(g.id);
+                }
+            }
+        }
+        out
     }
 
     /// The images of the document's image runs, for the shaper.
@@ -391,6 +417,16 @@ impl ImageSet {
 
     pub fn key(&self, node: &Node) -> Option<ImageKey> {
         self.by_node.get(&node_key(node)).copied()
+    }
+
+    /// The image of image run `run`.
+    pub fn run_image_key(&self, run: &crate::schema::TextRun) -> Option<ImageKey> {
+        self.by_run.get(&crate::text::run_key(run)).copied()
+    }
+
+    /// The images of the document's `emojiImages`, each once.
+    pub fn emoji_image_keys(&self) -> BTreeSet<ImageKey> {
+        self.by_emoji.values().copied().collect()
     }
 
     /// The background image of box `node`.

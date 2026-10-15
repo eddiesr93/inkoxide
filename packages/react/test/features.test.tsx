@@ -1490,6 +1490,20 @@ describe('drawings', () => {
     expect(r.validate()).toEqual([]);
   });
 
+  it('writes direction on SVG text and alignmentBaseline on a Tspan', () => {
+    const r = tree(
+      <Svg width={100} height={40}>
+        <Text x={90} y={30} direction="rtl" textAnchor="start">
+          a<Tspan alignmentBaseline="hanging">b</Tspan>
+        </Text>
+      </Svg>,
+    );
+    const svg = decode((first<ImageNode>(r) as ImageNode).data);
+    expect(svg).toContain('<text x="90" y="30" direction="rtl" text-anchor="start"');
+    expect(svg).toContain('<tspan alignment-baseline="hanging"');
+    expect(r.validate()).toEqual([]);
+  });
+
   it('allows only strings and Tspan in SVG text, and Tspan only there', () => {
     const svg = (children: ReactNode) =>
       thrown(() =>
@@ -1672,6 +1686,12 @@ describe('drawings', () => {
     expect(
       thrown(() => tree(<Canvas width={10} height={10} paint={(p) => p.text('two\nlines', 0, 0)} />)).message,
     ).toContain('painter.text draws one line');
+  });
+
+  it("aligns Canvas text with justify as with left: a line doesn't wrap", () => {
+    const svg = paint((p) => p.text('a b', 10, 20, { width: 100, align: 'justify' }));
+    expect(svg).toContain('<text x="10" y="20" xml:space="preserve"');
+    expect(svg).not.toContain('text-anchor');
   });
 
   it('paints with linear and radial gradients, written once each', () => {

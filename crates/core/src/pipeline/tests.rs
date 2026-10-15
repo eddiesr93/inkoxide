@@ -86,7 +86,7 @@ pub(super) fn render_with<R>(
     let fonts = FontSet::load(&doc, store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(
+    let (pages, marks, _) = run(
         &doc,
         &fonts,
         &mut text,
@@ -806,7 +806,7 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
         .unwrap()
         .with_objects(std::sync::Arc::new(images.inline_objects()));
     let mut text = TextCache::new(shaper, None);
-    let (pages, _) = run(
+    let (pages, _, _) = run(
         &doc,
         &fonts,
         &mut text,
@@ -926,7 +926,7 @@ fn emoji_ops_in(
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, _) = run(
+    let (pages, _, _) = run(
         &doc,
         &fonts,
         &mut text,
@@ -1204,7 +1204,7 @@ fn inline_images_follow_the_visual_order_of_right_to_left_text() {
             .unwrap()
             .with_objects(std::sync::Arc::new(images.inline_objects()));
         let mut text = TextCache::new(shaper, None);
-        let (pages, _) = run(
+        let (pages, _, _) = run(
             &doc,
             &fonts,
             &mut text,

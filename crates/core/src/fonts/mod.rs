@@ -453,44 +453,32 @@ impl LoadedFont<'_> {
     }
 }
 
-/// The face [`FontSet::select`] picked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FontMatch {
-    pub key: FontKey,
-    /// The family, style and weight are the ones asked for; otherwise one of
-    /// them fell back.
-    pub exact: bool,
-}
-
 /// CSS font matching (CSS Fonts 4 §5.2) over `faces`, the family, weight
 /// and style of each face in order: the first family of `families` that
 /// has a face (else the first face's family), then the faces of `style`
 /// (else every face of the family), then the nearest weight. Family names
 /// match ignoring ASCII case, as in CSS. The same algorithm as `FontRegistry` in
 /// `@inkoxide/react`; `fixtures/fonts/matching.json` holds the cases both
-/// are tested with. Returns the index of the face, and whether it is exact.
+/// are tested with. Returns the index of the face.
 fn match_face(
     faces: &[(&str, u16, FontStyle)],
     families: &[&str],
     weight: u16,
     style: FontStyle,
-) -> Option<(usize, bool)> {
+) -> Option<usize> {
     let first = faces.first()?;
-    let (family, family_exact) = families
+    let family = families
         .iter()
-        .position(|f| faces.iter().any(|x| x.0.eq_ignore_ascii_case(f)))
-        .map_or((first.0, false), |i| (families[i], i == 0));
+        .find(|f| faces.iter().any(|x| x.0.eq_ignore_ascii_case(f)))
+        .map_or(first.0, |f| *f);
     let in_family = || (0..faces.len()).filter(|&i| faces[i].0.eq_ignore_ascii_case(family));
     let same_style: Vec<usize> = in_family().filter(|&i| faces[i].2 == style).collect();
-    let style_exact = !same_style.is_empty();
-    let pool = if style_exact {
-        same_style
-    } else {
+    let pool = if same_style.is_empty() {
         in_family().collect()
+    } else {
+        same_style
     };
-    let face = nearest_weight(&pool, |i| faces[i].1, weight)?;
-    let exact = family_exact && style_exact && faces[face].1 == weight;
-    Some((face, exact))
+    nearest_weight(&pool, |i| faces[i].1, weight)
 }
 
 /// CSS Fonts 4 §5.2 weight matching: the face of `pool` with weight `w`,
@@ -567,17 +555,13 @@ impl<'a> FontSet<'a> {
     /// The declared font CSS matching picks for `families` (in order of
     /// preference), `weight` and `style`, by the family, weight and style
     /// the document declares for each font; `None` when it declares none.
-    pub fn select(&self, families: &[&str], weight: u16, style: FontStyle) -> Option<FontMatch> {
+    pub fn select(&self, families: &[&str], weight: u16, style: FontStyle) -> Option<FontKey> {
         let faces: Vec<_> = self
             .decls
             .iter()
             .map(|d| (d.family.as_str(), d.weight, d.style))
             .collect();
-        let (i, exact) = match_face(&faces, families, weight, style)?;
-        Some(FontMatch {
-            key: FontKey::try_from(i).ok()?,
-            exact,
-        })
+        FontKey::try_from(match_face(&faces, families, weight, style)?).ok()
     }
 
     pub fn get(&self, key: FontKey) -> &LoadedFont<'a> {
@@ -937,9 +921,10 @@ mod tests {
                 _ => FontStyle::Normal,
             };
             let weight = u16::try_from(case["weight"].as_u64().unwrap()).unwrap();
-            let m = set.select(&families, weight, style).unwrap();
-            assert_eq!(set.get(m.key).id, case["id"].as_str().unwrap(), "{name}");
-            assert_eq!(m.exact, case["exact"].as_bool().unwrap(), "{name}");
+            // `exact` is for the registry, which warns when a face falls
+            // back.
+            let key = set.select(&families, weight, style).unwrap();
+            assert_eq!(set.get(key).id, case["id"].as_str().unwrap(), "{name}");
         }
 
         let doc = crate::validate::parse(

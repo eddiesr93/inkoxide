@@ -34,19 +34,34 @@ the text's ink, or a group of probes, one per paint style of its spans.
   fallback, bidi, the shape cache, the glyph limit and ToUnicode apply as for any text; fonts
   chosen by `FontSet::select`, CSS font matching over the document's declared fonts.
 - **Probes** (`images/svg_text/rewrite.rs`): each probe's `style` holds the text's effects
-  (transform, opacity, clip, mask, filter, display) and the paint its spans declare, or
-  `inherit`, so `usvg` resolves the paint the text would get, through `use` copies too, and an
-  author rule about `path` or `a` cannot reach it. The probe's geometry is the text's ink box,
-  so `objectBoundingBox` paint, clips, masks and group bounds resolve against it.
+  (transform, opacity, clip, mask, filter, display) and the paint its spans declare, so `usvg`
+  resolves the paint the text would get, through `use` copies too. Where a style sheet
+  declares a paint property or an effect, the probe declares it too (`inherit`, or the initial
+  value), so that a rule about the probe's element cannot reach it. `usvg` applies an
+  `!important` rule of a sheet over `style` (the first `!important` declaration it meets
+  wins), so a probe is a `path`, or a `polygon` when an `!important` rule names paths; a group
+  of probes is an `a`, or a `g`. The probe's geometry is the text's ink box, so
+  `objectBoundingBox` paint, clips, masks and group bounds resolve against it.
 - **Recognition**: the PDF writer finds a probe by its geometry, not its id, because `usvg`
-  drops ids in `use` copies and markers. Probe corners are unique within an SVG; a crafted
-  collision can only make an SVG draw its own text in place of one of its own rectangles.
+  drops ids in `use` copies and markers. Each probe's corners carry its number in their last
+  bits (a few units in the last place), so they are unique within an SVG; a crafted collision
+  with a rectangle can only make an SVG draw its own text in place of one of its own
+  rectangles.
 - **Drawing** (`pdf/svg.rs`): a probe draws its text in its place, with its fill and stroke
   (gradients and patterns included) in paint order, as PDF text in the document's embedded
-  fonts.
+  fonts. Colour glyphs and emoji images (`emojiImages`) are images, in spans whose
+  `ActualText` is their text, as page text draws them (`ColorGlyphs::push`). An emoji image
+  that is an SVG with text of its own is left out there, so that no form draws itself.
 - **Per render**: the SVG is converted again with the probes, under the same checks; the result
   is cached by the rewritten source, so renders whose fonts lay the text out the same way
-  reuse it.
+  reuse it. It keeps the size of the SVG without its text: an SVG without a size takes it from
+  what it draws, which would otherwise depend on the fonts.
+- **Limits**: what a text's placeholder is (a probe, a group of them, bare probes in a clip
+  path) depends on the text alone, not on its layout. So the decode builds the placeholders
+  that cost most (every paint style, the widest geometry), counts their bytes before writing
+  them, and runs the SVG checks on that document: a render's conversion costs the checks no
+  more, and fails a limit only where validation does. The text nodes of a text count as
+  elements.
 
 ## Consequences
 
@@ -57,10 +72,12 @@ the text's ink, or a group of probes, one per paint style of its spans.
 - Two cascades exist: ours for text properties, `usvg`'s for the rest. They can drift on edge
   cases; ours is a port of `usvg`'s, with the same `simplecss` and `svgtypes` versions.
 - An SVG with text is converted again on each render that lays its text out differently.
-- Not in this version: text on a path and vertical text (refused, as all text was), font
-  properties passed through `use`, `font-variant`, `font-stretch`, `font-kerning`,
-  `font-feature-settings` and `tref`. An author `!important` rule on `a` or `*` can still
-  override a placeholder's paint.
+- Not in this version: text on a path, vertical text and text that an XML entity expands to
+  (refused, as all text was: the placeholder replaces the element where it is in the source,
+  and an entity's text is somewhere else), font properties passed through `use`,
+  `font-variant`, `font-stretch`, `font-kerning`, `font-feature-settings` and `tref`. An
+  author `!important` rule that matches any element (`*`) applies to the text's paint, as it
+  does in a browser; one that names both `path` and `polygon` reaches the probes.
 
 ## Alternatives
 
