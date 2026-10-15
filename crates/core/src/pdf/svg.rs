@@ -1696,6 +1696,105 @@ mod tests {
         assert!(!out.contains(" re\nf"), "{out}");
     }
 
+    /// Renders `svg` uncompressed after a line of page text, with Inter
+    /// and `fallback` as the fallback font, or with the document's
+    /// `emojiImages` mapping 😀 to a raster image and 🇫🇷 to the SVG itself.
+    fn rendered_emoji(
+        svg: &str,
+        fallback: Option<&str>,
+        profile: Option<crate::PdfALevel>,
+    ) -> Result<String, crate::InkoxideError> {
+        let (font, emoji) = match fallback {
+            Some(f) => (
+                format!(r#",{{"id":"{f}","family":"E"}}],"fallbackFonts":["{f}"]"#),
+                String::new(),
+            ),
+            None => (
+                "]".to_string(),
+                r#","emojiImages":{"😀":"logo","🇫🇷":"svg"}"#.to_string(),
+            ),
+        };
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}{font}{emoji},
+                "pages":[{{"size":{{"width":200,"height":200}},"children":[
+                  {{"type":"text","runs":[{{"text":"Page","font":"Inter-Regular","size":10}}]}},
+                  {{"type":"image","src":"svg"}}]}}]}}"#
+        );
+        let fonts =
+            crate::test_fixtures::fonts(&["Inter-Regular", fallback.unwrap_or("Inter-Bold")]);
+        let mut images = crate::ImageStore::new();
+        images.insert("svg", svg.as_bytes().to_vec());
+        images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+        let mut opts = crate::RenderOptions::default().with_compress(false);
+        if let Some(level) = profile {
+            opts = opts.with_pdf_a_level(level);
+        }
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &opts,
+            &fonts,
+            &images,
+        )?;
+        Ok(inflated(&pdf))
+    }
+
+    /// The `ActualText` of `text`, as the writer encodes it.
+    fn actual_text(text: &str) -> String {
+        let bytes = super::super::out::text_bytes(text);
+        let hex = bytes.iter().fold(String::new(), |mut hex, b| {
+            let _ = write!(hex, "{b:02X}");
+            hex
+        });
+        format!("/ActualText <{hex}>")
+    }
+
+    /// Colour glyphs in SVG text are images, as in page text: in a span
+    /// with their text and an invisible space, inside the SVG's form. A
+    /// font without outlines (CBDT) is never embedded.
+    #[test]
+    fn draws_colour_glyphs_of_svg_text_as_images() {
+        let body = svg(r#"<text x="5" y="20" font-size="10">Hi 😀</text>"#);
+        for font in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+            let out = rendered_emoji(&body, Some(font), None).unwrap();
+            assert!(out.contains(&actual_text("😀")), "{font}: {out}");
+            assert!(out.contains("/Span <<"), "{font}");
+            assert!(out.contains(" Do\n"), "{font}");
+            assert!(out.contains("3 Tr"), "{font}");
+            let embedded = out.contains(&font.replace('-', ""));
+            assert_eq!(embedded, font == "EmojiTest-COLR", "{font}");
+        }
+    }
+
+    /// Emoji the document maps to images are those images in SVG text, in
+    /// spans with their text, where a missing glyph used to be: an SVG with
+    /// text of its own is left out there, so no form draws itself, but its
+    /// text is kept.
+    #[test]
+    fn draws_emoji_images_in_svg_text() {
+        let body = svg(r#"<text x="5" y="20" font-size="10">a😀b🇫🇷</text>"#);
+        let out = rendered_emoji(&body, None, None).unwrap();
+        assert!(out.contains(&actual_text("😀")), "{out}");
+        assert!(out.contains(&actual_text("🇫🇷")), "{out}");
+        // The page draws the SVG, whose form draws the PNG, not itself.
+        assert_eq!(out.matches("/Subtype /Form").count(), 1, "{out}");
+        assert_eq!(out.matches(" Do\n").count(), 2, "{out}");
+    }
+
+    /// Under PDF/A-1b, a colour glyph that needs transparency in the text
+    /// of an SVG fails the render at the image, as in page text.
+    #[test]
+    fn pdf_a_1b_rejects_colour_glyphs_of_svg_text_that_need_transparency() {
+        let body = svg(r#"<text x="5" y="20" font-size="10">a 😀</text>"#);
+        let err = rendered_emoji(&body, Some("EmojiTest-CBDT"), Some(crate::PdfALevel::A1b));
+        let Err(crate::InkoxideError::Validation(e)) = err else {
+            panic!("rendered: {err:?}");
+        };
+        assert_eq!(e.code, crate::ValidationCode::PdfaConflict);
+        assert_eq!(e.path, "pages[0].children[1].src");
+        assert!(e.message.contains("an alpha channel"), "{}", e.message);
+    }
+
     /// An SVG without a size takes it from what it draws, which leaves its
     /// text out: the same with any fonts, and the size the layout gave it.
     #[test]

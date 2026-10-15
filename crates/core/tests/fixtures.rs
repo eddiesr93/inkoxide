@@ -482,11 +482,10 @@ fn svg_text_maps_to_unicode() {
     }
 }
 
-/// SVG text draws a colour font's glyphs in one colour: from outlines
-/// (`COLR`), and not at all from a font without outlines, which is never
-/// embedded.
+/// SVG text draws a colour font's glyphs as images, in spans with their
+/// text, as page text does; a font without outlines is never embedded.
 #[test]
-fn svg_text_never_embeds_a_colour_only_font() {
+fn svg_text_draws_colour_glyphs_as_images() {
     let (fonts, images) = stores();
     for fallback in ["EmojiTest-CBDT", "EmojiTest-COLR"] {
         let doc = format!(
@@ -500,6 +499,13 @@ fn svg_text_never_embeds_a_colour_only_font() {
             .unwrap_or_else(|e| panic!("{fallback}: {e}"));
         let has = |needle: &[u8]| pdf.windows(needle.len()).any(|w| w == needle);
         assert!(!has(b"EmojiTestCBDT"), "{fallback}");
+        // The colour glyphs' images, forms from COLR (the writer's unit
+        // tests read what the SVG's form draws).
+        let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+        assert!(
+            count(b"/Subtype /Image") + count(b"/Subtype /Form") >= 3,
+            "{fallback}"
+        );
         assert_eq!(has(b"EmojiTestCOLR"), fallback == "EmojiTest-COLR");
     }
 }

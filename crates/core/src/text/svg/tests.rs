@@ -246,3 +246,38 @@ fn decorates_and_sorts_many_spans_in_linear_time() {
     // In each paint style, in the order they are drawn.
     assert!(laid.glyphs_of(0).windows(2).all(|w| w[0].x < w[1].x));
 }
+
+/// An emoji the document maps to an image is that image, 1em high and
+/// as wide as its aspect ratio, in the place of a glyph, with its text.
+#[test]
+fn lays_out_emoji_images_as_images() {
+    let src = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text x="10" y="50" font-size="20" fill="red">a😀b</text></svg>"#;
+    let xml = usvg::roxmltree::Document::parse(src).unwrap();
+    let text = extract(&xml).unwrap().0.texts.remove(0);
+    let store = store();
+    let doc = document(FONTS);
+    let set = FontSet::load(&doc, &store).unwrap();
+    let source = crate::text::ObjectSource {
+        key: 7,
+        intrinsic: (40.0, 20.0),
+    };
+    let emoji = std::collections::HashMap::from([("😀".to_string(), source)]);
+    let objects = crate::text::InlineObjects::new(std::collections::HashMap::new(), emoji);
+    let mut shaper = RustybuzzShaper::new(&set)
+        .unwrap()
+        .with_objects(std::sync::Arc::new(objects));
+    let laid = lay_out(&text, &mut shaper);
+    assert_eq!(laid.images.len(), 1);
+    let image = &laid.images[0];
+    assert_eq!(image.key, 7);
+    assert_eq!(image.text.as_deref(), Some("😀"));
+    assert!(close(image.x, 10.0 + advance('a', 20.0)));
+    // 1em high, its bottom 0.1em below the baseline.
+    assert_eq!(image.rect, crate::paint::Rect::new(0.0, -18.0, 40.0, 20.0));
+    // Two glyphs, none missing, the second after the image.
+    assert_eq!(laid.glyphs.len(), 2);
+    assert!(laid.glyphs.iter().all(|g| g.id != 0));
+    assert!(close(laid.glyphs[1].x, image.x + 40.0));
+    let ink = laid.ink.unwrap();
+    assert!(ink[1] <= 50.0 - 18.0 && ink[2] >= image.x + 40.0, "{ink:?}");
+}
