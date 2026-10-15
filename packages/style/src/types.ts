@@ -45,6 +45,7 @@ export type Direction = NonNullable<Style['direction']>;
 /** Where a run sits on its line: `verticalAlign` on a `Text` (on a `Cell`, it is `top`, `middle` or `bottom`). */
 export type RunAlign = NonNullable<TextRun['verticalAlign']>;
 export const RUN_ALIGNS = ['baseline', 'super', 'sub'] as const satisfies readonly RunAlign[];
+
 export type { ObjectPosition, TransformOp };
 
 /**
@@ -137,7 +138,6 @@ export interface FlatStyle {
   zIndex?: number;
   borderCollapse?: Style['borderCollapse'];
   borderSpacing?: number;
-  /** `top`, `middle` or `bottom` on a `Cell`; `baseline`, `super` or `sub` on a `Text` and the runs in it. */
   /**
    * A cell's content (`top`, `middle`, `bottom`), a run on its line (`super`, `sub`), or an image
    * in a line (`textTop`, `textBottom`, a number of points, and the others).
