@@ -106,6 +106,7 @@ pub(crate) fn check(
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
         feature_sets: HashSet::new(),
+        table_slots: 0,
     };
     c.document(doc);
     if c.errors.is_empty() {
@@ -161,6 +162,8 @@ struct Checker<'a> {
     field_groups: HashSet<String>,
     /// The different `fontFeatures` of runs seen so far, sorted by tag.
     feature_sets: HashSet<Vec<FontFeature>>,
+    /// Grid slots (rows times columns) of the tables seen so far.
+    table_slots: usize,
 }
 
 /// Longest link target accepted.
@@ -226,6 +229,10 @@ pub(crate) const MAX_FLOATS: usize = 1000;
 /// Most different sets of `fontFeatures` in a document: each is shaped
 /// with plans and words of its own.
 pub(crate) const MAX_FEATURE_SETS: usize = 64;
+
+/// Most grid slots (rows times columns) of the tables of a document, in
+/// all: table layout keeps a few values per slot, whatever the spans.
+pub(crate) const MAX_TABLE_SLOTS: usize = 1_000_000;
 
 /// Ids of the nodes that get a destination: the page body (flow and
 /// overlays) that is displayed (not headers or footers, not under
@@ -1426,9 +1433,19 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        // Occupancy: how many more rows each column is covered by a rowSpan from above.
-        let mut carry = vec![0u32; ncols];
         let nrows = t.rows.len();
+        self.table_slots = self.table_slots.saturating_add(nrows.saturating_mul(ncols));
+        if self.table_slots > MAX_TABLE_SLOTS {
+            self.err(
+                Code::OutOfRange,
+                Some("rows"),
+                format!("a document's tables have at most {MAX_TABLE_SLOTS} grid slots (rows times columns) in all"),
+            );
+            return;
+        }
+        // Occupancy: the row each column is covered until (exclusive) by a
+        // rowSpan from above.
+        let mut busy = vec![0usize; ncols];
         self.at("rows", |c| {
             for (ri, row) in t.rows.iter().enumerate() {
                 c.at_index(ri, |c| {
@@ -1447,7 +1464,7 @@ impl<'a> Checker<'a> {
                                 if let Some(id) = &cell.id {
                                     c.id(Some("id"), id);
                                 }
-                                while col < ncols && carry[col] > 0 {
+                                while col < ncols && busy[col] > ri {
                                     col += 1;
                                 }
                                 let span = cell.col_span.max(1) as usize;
@@ -1458,7 +1475,9 @@ impl<'a> Checker<'a> {
                                         "colSpan and rowSpan must be at least 1",
                                     );
                                 }
-                                if col + span > ncols || (col..col + span).any(|k| carry[k] > 0) {
+                                if col + span > ncols
+                                    || busy[col..col + span].iter().any(|&b| b > ri)
+                                {
                                     c.err(
                                         Code::InvalidTable,
                                         None,
@@ -1479,7 +1498,7 @@ impl<'a> Checker<'a> {
                                         "a header cell cannot span into body rows",
                                     );
                                 } else {
-                                    carry[col..col + span].fill(cell.row_span);
+                                    busy[col..col + span].fill(ri + cell.row_span as usize);
                                 }
                                 col += span;
                                 c.debug(cell.debug);
@@ -1491,7 +1510,7 @@ impl<'a> Checker<'a> {
                             });
                         });
                     }
-                    while col < ncols && carry[col] > 0 {
+                    while col < ncols && busy[col] > ri {
                         col += 1;
                     }
                     if col < ncols {
@@ -1500,9 +1519,6 @@ impl<'a> Checker<'a> {
                             Some("cells"),
                             format!("row covers {col} of {ncols} columns"),
                         );
-                    }
-                    for v in &mut carry {
-                        *v = v.saturating_sub(1);
                     }
                 });
             }
