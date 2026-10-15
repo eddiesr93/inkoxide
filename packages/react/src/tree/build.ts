@@ -1233,16 +1233,15 @@ class Builder {
         if (p.checked) field.checked = true;
         break;
       case 'select':
-        field.options = (p.options ?? p.select) as [string, ...string[]];
-        if (p.value !== undefined) field.value = p.value;
-        break;
       case 'list':
         field.options = (p.options ?? p.select) as [string, ...string[]];
-        if (p.multiSelect) field.multiSelect = true;
-        if (Array.isArray(p.value) && !p.multiSelect) {
-          this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
-            kind: 'props',
-          });
+        if (p.kind === 'list') {
+          if (p.multiSelect) field.multiSelect = true;
+          if (Array.isArray(p.value) && !p.multiSelect) {
+            this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
+              kind: 'props',
+            });
+          }
         }
         if (p.value !== undefined) field.value = p.value;
         break;
