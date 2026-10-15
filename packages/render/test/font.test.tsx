@@ -160,8 +160,12 @@ describe('Font.register', () => {
     expect(err).toBeInstanceOf(RenderError);
     expect(err.code).toBe('INVALID_FONT');
     expect(err.message).toContain('Font "Missing" 400 (/nowhere/Missing.ttf)');
-    // The failed face is dropped: the next render works and can register it again.
-    await expect(renderToBuffer(<Doc family="Brand" />)).resolves.toBeInstanceOf(Uint8Array);
+    // The failed face is dropped: the next render works, its text in it falls back with a
+    // warning, as the guide says, and it can be registered again.
+    await expect(renderToBuffer(<Doc family="Missing" />)).resolves.toBeInstanceOf(Uint8Array);
+    expect(treeFonts(<Doc family="Missing" />).warnings).toEqual([
+      'Font "Missing 400" is not registered; using Inter-Regular (Text in Page).',
+    ]);
     Font.register({ family: 'Missing', src: file('Inter-Regular.ttf') });
     await expect(renderToBuffer(<Doc family="Missing" />)).resolves.toBeInstanceOf(Uint8Array);
   });
@@ -217,7 +221,9 @@ describe('Font.register', () => {
     expect(() => Font.register({ family: 'Id-Clash', src })).toThrow(
       'Font "Id-Clash" 400 would have the font id Id-Clash-400, which "Id Clash" 400 has. Use another family name.',
     );
+    // Only a face of the same weight and style has the same id.
     expect(() => Font.register({ family: 'Id-Clash', src, fontStyle: 'italic' })).not.toThrow();
+    expect(() => Font.register({ family: 'Id-Clash', src, fontWeight: 700 })).not.toThrow();
   });
 
   it('refuses a face the bundled fonts already have, and adds the faces they lack', async () => {

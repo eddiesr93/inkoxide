@@ -167,7 +167,12 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   (`.ttc`) are not supported either: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
-  registered with it still load, and later renders can use them. A URL is fetched with a
+  registered with it still load, and later renders can use them. The face that failed is then
+  dropped, and is not tried again: later renders succeed, and text in it falls back as for a
+  face never registered (to the nearest face of its family, else to `Inter`), with only a
+  warning in the `warnings` of `generate`. Register it again, from the same source or another,
+  to try once more. To refuse to render without it, load your fonts at startup with
+  `await init()` and stop when it throws. A URL is fetched with a
   30-second limit for the whole download and a 50 MiB size limit, and redirects are followed;
   renders wait for it, so for a font over that size or from a slow host, read the bytes
   yourself and register them.
@@ -217,7 +222,9 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   source (the same path, URL or bytes) does nothing, and from another source throws. A face the
   bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
   name. You can add the faces they lack, such as `Inter` bold italic. Two family names that
-  differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) cannot both be registered.
+  differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) give the same font id to faces of
+  the same weight and style, so such a face cannot be registered under both: `Brand Two` 400 and
+  `Brand-Two` 400 throw, `Brand Two` 400 and `Brand-Two` 700 do not.
 
 ## Images
 
