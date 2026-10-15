@@ -73,8 +73,10 @@ All notable changes to the packages in this repository. The format follows
   or one of pdfkit's standard names such as `Helvetica-Bold`, which picks the canvas's family in
   that weight and style), `fontSize(n)` (12 by default) and `text(str, x, y, options?)`, which
   draws one line with the fill colour or gradient, its top at `y` by default. The options are
-  `width` with `align`, `baseline`, `characterSpacing`, `wordSpacing`, `underline`, `strike`,
-  `fill` and `stroke`; `CanvasTextOptions` is exported. A line break in the text is an error.
+  `width` with `align` (`justify`, as in pdfkit, is `left`: a line does not wrap), `baseline`,
+  `characterSpacing`, `wordSpacing`, `underline`, `strike`, `fill` (whether to fill the text,
+  `true` by default) and `stroke`; `CanvasTextOptions` is exported. A line break in the text is
+  an error.
 - **Text in SVG images**: `<text>`, its `<tspan>`s and `<a>`s are drawn as PDF text with the
   document's fonts, so it can be selected, searched and copied, in SVG files and in SVGs nested
   in them. Each span's font is the declared font that matches its `font-family`, `font-weight`
@@ -82,15 +84,19 @@ All notable changes to the packages in this repository. The format follows
   lacks. Positions (`x`, `y`, `dx`, `dy`, `rotate`), `text-anchor`, `dominant-baseline`,
   `alignment-baseline`, `baseline-shift`, `letter-spacing`, `word-spacing`, `text-decoration`,
   `textLength`, `lengthAdjust`, `xml:space`, style sheets, and fills and strokes with gradients
-  and patterns work, also in clip paths, masks, patterns, markers and `use` copies. Text on a
-  path and vertical text fail with `INVALID_IMAGE`, as all SVG text did. An SVG with text in a
+  and patterns work, also in clip paths, masks, patterns, markers and `use` copies, whatever an
+  author style sheet says about the paths of the SVG. Colour emoji fonts draw in colour there,
+  and emoji the document maps to images are those images, as in other text. Text on a path,
+  vertical text and text that an XML entity expands to fail with `INVALID_IMAGE`, as all SVG
+  text did. An SVG without a size takes it from what it draws without its text, so the same
+  with any fonts. An SVG with text in a
   document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG may hold up
   to 1,000,000 characters of text, counting every copy.
 - **`<Text>` and `<Tspan>` in `<Svg>`**: a `Text` inside an `<Svg>` (or its `G`, `Defs`,
   `ClipPath` or `Marker`) is SVG text, with `x`, `y`, `dx`, `dy`, `rotate`, `textAnchor`,
   `dominantBaseline`, `letterSpacing`, `wordSpacing`, `textDecoration`, `textLength`,
-  `lengthAdjust` and the SVG paint props; a `Tspan` inside it is a span, which also takes
-  `baselineShift`. Its font comes from `fontFamily`, `fontWeight` and `fontStyle` on it or
+  `lengthAdjust`, `direction` and the SVG paint props; a `Tspan` inside it is a span, which also
+  takes `baselineShift` and `alignmentBaseline`. Its font comes from `fontFamily`, `fontWeight` and `fontStyle` on it or
   around it, and from the text style around the drawing, matched against the registered fonts
   like other text, and declared in the document. `Tspan`, `SvgTextProps` and `TspanProps` are
   exported; `SvgPresentation` gains the font props, `textAnchor`, `dominantBaseline` and
@@ -110,8 +116,7 @@ All notable changes to the packages in this repository. The format follows
   render or the first 32 MB of colour glyph images, draws without colour. Under PDF/A-1b, which
   forbids transparency, a colour glyph that needs it (a bitmap with an alpha channel, a layer
   with an opacity) fails the render with `PDFA_CONFLICT` at its run, as an emoji image does at
-  its `emojiImages` key. In SVG text, colour fonts are drawn in one colour, from their outlines;
-  a font without outlines draws nothing there.
+  its `emojiImages` key, or at the `src` of an SVG whose text has it.
 - Emoji from images: `Font.registerEmojiSource({ url, format, withVariationSelectors })` or
   `{ builder }` draws the emoji of every `Text` from an image set, through the document's new
   `emojiImages` (emoji sequence → image id). The images load like `<Image src>` (URLs allowed by
@@ -170,6 +175,11 @@ All notable changes to the packages in this repository. The format follows
 
 ### Security
 
+- The text of SVG images is bounded as the rest of the SVG is: what replaces it for the SVG
+  conversion counts toward the SVG limits as it is drawn, before it is written, and validation
+  checks it as a render does, so an SVG over a limit fails validation with `INVALID_IMAGE`.
+  The text nodes of an SVG text count as elements. Reading, laying out and drawing SVG text
+  takes time in proportion to it.
 - Field options and values are limited to 1000 options of at most 1000 characters each, and a
   `value` of at most 8000 characters. Longer ones are `INVALID_VALUE`.
 

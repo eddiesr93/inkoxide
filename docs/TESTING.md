@@ -37,7 +37,12 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, in SVG text too, copies
   of SVG text, the work budget of one `COLR` glyph, deepest accepted
-  nesting on a small stack). The budgets of a render's colour glyphs
+  nesting on a small stack). SVG text at scale (thousands of texts on
+  one point, of spans with their own paint, of text nodes) renders in
+  bounded time and memory, measured with a counting allocator; its
+  placeholders are bounded before they are written; and validation
+  refuses what a render would. The unit tests of `images/svg_text` and
+  `text/svg.rs` push each step to hundreds of thousands. The budgets of a render's colour glyphs
   (how many, and the bytes of their images) are tested in
   `text/color.rs`, with smaller limits.
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
@@ -51,7 +56,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   suite. SVG text becomes placeholder paths ("probes") that `usvg`
   converts; these check that a probe comes out with the text's paint in
   every context `usvg` copies shapes (`use`, `symbol`, markers, patterns,
-  masks, clip paths, `switch`, nested SVGs, groups, author CSS). They
+  masks, clip paths, `switch`, nested SVGs, groups, author CSS, with
+  `!important` too). They
   depend on `usvg` internals: run them first after a `usvg` upgrade.
 - `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
   the properties the JSON Schema declares, and validation enforces the
