@@ -13,7 +13,7 @@ import {
 } from '@inkoxide/react';
 
 import { readLocalImage } from './local.ts';
-import { DEFAULT_MAX_IMAGE_BYTES, timerMs } from './policy.ts';
+import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, timerMs } from './policy.ts';
 import { fetchImage, REMOTE_IMAGES_VARIABLE } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
 
@@ -105,7 +105,8 @@ const emojiFetches = new Map<string, Promise<Uint8Array>>();
 
 /**
  * An emoji image from an allowed URL: kept, or being fetched for another render, or fetched now.
- * Whichever, it is within this render's size limit.
+ * Whichever, it is within this render's timeout and size limit: a render that joins another's
+ * download stops waiting for it at its own timeout, and the download goes on for the others.
  */
 async function fetchEmoji(url: string, policy: RemoteImageOptions | undefined): Promise<Uint8Array> {
   if (!policy || !remoteAllowed(url, policy)) return fetchAllowed(url, policy);
@@ -120,7 +121,7 @@ async function fetchEmoji(url: string, policy: RemoteImageOptions | undefined): 
       .finally(() => emojiFetches.delete(url));
     emojiFetches.set(url, load);
   }
-  const bytes = hit ?? (await (load as Promise<Uint8Array>));
+  const bytes = hit ?? (await within(load as Promise<Uint8Array>, url, policy));
   const max = policy.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
   if (bytes.byteLength > max) {
     throw new RenderError(
@@ -129,6 +130,37 @@ async function fetchEmoji(url: string, policy: RemoteImageOptions | undefined): 
     );
   }
   return bytes;
+}
+
+/** `load`, or a timeout `IMAGE_FETCH_FAILED` once the policy's timeout has passed. */
+async function within(
+  load: Promise<Uint8Array>,
+  url: string,
+  policy: RemoteImageOptions,
+): Promise<Uint8Array> {
+  const timeoutMs = policy.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
+  const limit = timerMs(timeoutMs);
+  if (limit === undefined) return load;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      load,
+      new Promise<never>((_, fail) => {
+        timer = setTimeout(
+          () =>
+            fail(
+              new RenderError(
+                'IMAGE_FETCH_FAILED',
+                `Cannot fetch the image ${url}: timed out after ${timeoutMs} ms.`,
+              ),
+            ),
+          limit,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
