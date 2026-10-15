@@ -327,20 +327,40 @@ fn refuses_text_from_entities() {
 }
 
 /// Spans with their own paint and text nodes split by comments are read
-/// in linear time.
+/// in linear time: four times the input takes well under the sixteen
+/// times a quadratic read would. A ratio, not a wall-clock limit, so a
+/// slow or busy machine does not fail it.
 #[test]
 fn reads_many_spans_and_text_nodes_in_linear_time() {
-    let mut spans = String::from("<text>");
-    for i in 0..100_000 {
-        let _ = write!(spans, r##"<tspan fill="#{i:06x}">a</tspan>"##);
+    let spans = |n: usize| {
+        let mut s = String::from("<text>");
+        for i in 0..n {
+            let _ = write!(s, r##"<tspan fill="#{i:06x}">a</tspan>"##);
+        }
+        s.push_str("</text>");
+        let t = std::time::Instant::now();
+        assert_eq!(one(&s).paints.len(), n);
+        t.elapsed()
+    };
+    let comments = |n: usize| {
+        let s = format!("<text>{}</text>", "a<!---->".repeat(n));
+        let t = std::time::Instant::now();
+        assert_eq!(one(&s).chars.len(), n);
+        t.elapsed()
+    };
+    for (what, read, n) in [
+        (
+            "spans",
+            &spans as &dyn Fn(usize) -> std::time::Duration,
+            25_000,
+        ),
+        ("comments", &comments, 75_000),
+    ] {
+        let (small, big) = (read(n), read(4 * n));
+        assert!(
+            big < small * 8 + std::time::Duration::from_millis(500),
+            "{what}: {n} took {small:?}, {} took {big:?}",
+            4 * n
+        );
     }
-    spans.push_str("</text>");
-    let t = std::time::Instant::now();
-    let read = one(&spans);
-    assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
-    assert_eq!(read.paints.len(), 100_000);
-    let comments = format!("<text>{}</text>", "a<!---->".repeat(300_000));
-    let t = std::time::Instant::now();
-    assert_eq!(one(&comments).chars.len(), 300_000);
-    assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
 }
