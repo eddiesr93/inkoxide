@@ -29,14 +29,21 @@ Inkoxide is designed to render documents built from untrusted data:
 ## Encryption
 
 An encrypted PDF (the `encryption` option, or `<Document userPassword>`) keeps its strings and
-streams, so its text, images and form field values, radio buttons' included, from whoever lacks
-a password. What it does not do:
+streams, so its text, images and form field values from whoever lacks a password: the text of
+text fields, and the options of select, list and radio fields with the values chosen. What it
+does not do:
 
 - **Hide the structure of the file.** The page count and sizes, font names and glyph widths,
   where links and fields are, and the length of every stream and string stay readable, as in
   any encrypted PDF. Stream lengths are measured after compression, so they say something about
-  the content. The subset tags of font names are keyed, so they do not tell which glyphs the
-  file uses.
+  the content: the length of a font subset, roughly how many glyphs it holds. The subset tags
+  of font names are keyed, and the widths cover every glyph of the font, so neither tells which
+  glyphs the file uses.
+- **Hide which form choices are made.** PDF writes this state as names and numbers, which are
+  never encrypted: whether each checkbox is checked, which radio button of a group is on (by its
+  position in the group, not its value), and which options of a list box are selected and
+  scrolled to (by their positions in the list). Anyone who knows the form's layout, from a blank
+  copy for instance, can read the choices from these.
 - **Protect anything without a user password.** Without one, anyone opens the file; the owner
   password then only guards the permissions, which readers honour and the file cannot enforce.
 - **Resist weak passwords.** Anyone with the file can test password guesses offline, at the

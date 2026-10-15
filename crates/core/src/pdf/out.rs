@@ -2,8 +2,9 @@
 //!
 //! An encrypted file has every string and stream outside the `Encrypt`
 //! dictionary encrypted, so none may reach the file except through here:
-//! `clippy.toml` forbids `TextStr` and pdf-writer's stream writers
-//! elsewhere in the crate. Strings inside content streams are left alone,
+//! `clippy.toml` forbids `TextStr`, pdf-writer's other writers that make
+//! strings of their own (`TextStrWithLang`, `Date`, …) and its stream
+//! writers elsewhere in the crate. Strings inside content streams are left alone,
 //! since the whole stream is encrypted.
 //!
 //! Unencrypted, the bytes are exactly what `TextStr` and the stream
@@ -235,6 +236,39 @@ mod tests {
             b.indirect(Ref::new(1))
                 .primitive(Str(&Out::plain().text(s)));
             assert_eq!(a.as_bytes(), b.as_bytes(), "{s}");
+        }
+    }
+
+    /// `clippy.toml` lists every pdf-writer 0.15 writer of streams, and of
+    /// strings it makes itself, so none is used outside this module.
+    #[test]
+    fn clippy_forbids_the_other_writers_of_strings_and_streams() {
+        let config = include_str!("../../clippy.toml");
+        for path in [
+            "pdf_writer::TextStr",
+            "pdf_writer::TextStrWithLang",
+            "pdf_writer::Date",
+            "pdf_writer::Date::new",
+            "pdf_writer::writers::ColorSpace::indexed",
+            "pdf_writer::writers::SeparationInfo::device_colorant_str",
+            "pdf_writer::writers::FontDescriptor::style",
+            "pdf_writer::writers::MediaPermissions::temp_file",
+            "pdf_writer::Chunk::stream",
+            "pdf_writer::Chunk::image_xobject",
+            "pdf_writer::Chunk::form_xobject",
+            "pdf_writer::Chunk::tiling_pattern",
+            "pdf_writer::Chunk::cmap",
+            "pdf_writer::Chunk::metadata",
+            "pdf_writer::Chunk::icc_profile",
+            "pdf_writer::Chunk::embedded_file",
+            "pdf_writer::Chunk::stream_shading",
+            "pdf_writer::Chunk::sampled_function",
+            "pdf_writer::Chunk::post_script_function",
+        ] {
+            assert!(
+                config.contains(&format!("path = \"{path}\"")),
+                "{path} is not in clippy.toml"
+            );
         }
     }
 
