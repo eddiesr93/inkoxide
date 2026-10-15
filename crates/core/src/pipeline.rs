@@ -105,6 +105,13 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
         }
     }
 
+    fn first_baseline(&mut self, node: &Node, width: f32) -> Option<f32> {
+        match node.kind {
+            NodeKind::Text { .. } => self.text.first_baseline(node, width),
+            _ => None,
+        }
+    }
+
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
         self.text.measure_lines(node, boxes)
     }

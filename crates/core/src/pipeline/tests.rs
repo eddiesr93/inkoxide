@@ -819,6 +819,51 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
     pages.into_iter().map(|p| p.ops).collect()
 }
 
+/// An SVG without a size is laid out at the size of what it draws, its
+/// text left out: the size its form has, the same with any fonts.
+#[test]
+fn an_svg_without_a_size_is_laid_out_without_its_text() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"image","src":"svg","style":{{"alignSelf":"flex-start"}}}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let store = store();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut images = ImageStore::new();
+    images.insert(
+        "svg",
+        br#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="40" height="20" fill="red"/>
+            <text x="10" y="60" font-size="40">Hello wide text</text></svg>"#
+            .to_vec(),
+    );
+    let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    images.lay_out_text(text.shaper()).unwrap();
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
+    let matrix = pages[0]
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            Op::Image { matrix, .. } => Some(*matrix),
+            _ => None,
+        })
+        .unwrap();
+    // 40 × 20 px is 30 × 15 pt.
+    assert!(close(matrix[0].abs(), 30.0), "{matrix:?}");
+    assert!(close(matrix[3].abs(), 15.0), "{matrix:?}");
+}
+
 #[test]
 fn a_background_image_fills_the_padding_box_under_the_borders() {
     // 150 pt high on 100 pt pages: split over two.

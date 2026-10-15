@@ -843,10 +843,19 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
         entry.measure(fonts, runs, known, available)
     }
 
+    fn first_baseline(&mut self, node: &Node, width: f32) -> Option<f32> {
+        first_baseline(&*self.layout_in(node, &LineBoxes::plain(width))?)
+    }
+
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
         self.layout_in(node, boxes)
             .map_or_else(Wrapped::default, |l| wrapped(&l, boxes))
     }
+}
+
+/// The baseline of the first of lines `l`, from the top of the content box.
+fn first_baseline(l: &LineLayout) -> Option<f32> {
+    l.lines.first().map(|line| line.top + line.ascent)
 }
 
 /// What text laid out in `boxes` reports to a float container: its height,
@@ -937,6 +946,11 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
     ) -> Size<f32> {
         self.lines(node, |e| LineBoxes::plain(e.width_in(available.width)))
             .map_or(Size::ZERO, |(l, boxes)| leaf_size(&l, known, boxes.width))
+    }
+
+    fn first_baseline(&mut self, node: &Node, width: f32) -> Option<f32> {
+        let (l, _) = self.lines(node, |_| LineBoxes::plain(width))?;
+        first_baseline(&l)
     }
 
     fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
