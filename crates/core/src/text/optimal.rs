@@ -4,8 +4,8 @@
 //! filling each line in turn.
 //!
 //! It works on the paragraph's break opportunities and the advances of its
-//! glyphs, so anything that shapes to glyphs with advances (text, and
-//! later inline objects) needs no special case. A chunk it cannot set
+//! glyphs, so anything that shapes to glyphs with advances (text and
+//! inline objects) needs no special case. A chunk it cannot set
 //! within its tolerances, or past its caps, is broken first fit instead.
 
 use super::lines::Breaker;

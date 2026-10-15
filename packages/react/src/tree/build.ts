@@ -269,6 +269,7 @@ class Builder {
   private readonly used = new Set<string>();
   readonly warnings: string[] = [];
   private readonly warned = new Set<string>();
+  private warnedHyphenate = false;
   readonly origin: Map<object, Instance> | undefined;
   dynamic = false;
   private docLang: string | undefined;
@@ -380,6 +381,20 @@ class Builder {
       }
     }
     return s;
+  }
+
+  /**
+   * The engine hyphenates by language: `hyphenate` with no `lang` on the text or the document does
+   * nothing, so say so, once (the engine warns for each text).
+   */
+  private checkHyphenateLang(ctx: TextCtx, inst: Instance): void {
+    if (this.warnedHyphenate || !usesPatterns(ctx) || ctx.lang !== undefined) return;
+    this.warnedHyphenate = true;
+    const parent = componentNames(inst)[1];
+    const where = ` (${HOST_NAME[inst.type]}${parent === undefined ? '' : ` in ${parent}`})`;
+    this.warnings.push(
+      `\`hyphenate\` is on but the text has no language, so its words are not hyphenated: set \`lang\` on the text or on the Document${where}.`,
+    );
   }
 
   private font(ctx: TextCtx, inst: Instance | undefined): string {
@@ -940,6 +955,7 @@ class Builder {
       widows: p.widows as number | undefined,
     });
     const node: TextNode = { type: 'text', runs: [] };
+    this.checkHyphenateLang(ctx, inst);
     this.runs(content, ctx, node.runs, inst);
     const style = textNodeStyle(boxStyle(own, ctx.color), own, ctx, this.docLang);
     if (style) node.style = style;
@@ -1024,6 +1040,7 @@ class Builder {
                   hyphenation: n.props.hyphenationCallback as HyphenationCallback | null | undefined,
                 })
               : ctx;
+          this.checkHyphenateLang(inner, n);
           this.runs(n.children, inner, out, n, para);
           break;
         }

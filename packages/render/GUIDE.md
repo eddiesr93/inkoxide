@@ -26,7 +26,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 
 Components take `className`, `style` and `id`, and those with a box also take `debug`
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
-`Page` and `Canvas` have no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
+`Page` has no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
 take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
 `transform`, `id`) instead of `className` and `style`; and a `Text` or `Link` inside a `Text`,
 a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
@@ -52,7 +52,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Note` | A text note: an icon that opens its text in the viewer. |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link`,
-`Image` (an image in the line) and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
+`Image` (an image in the line), `Note` and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
 
 ## Styling
 
@@ -100,6 +100,10 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   the lines beside it. Floats are rectangles (`shapeOutside` is not supported), do not float
   inside rows or grids, and a box with floats lays its children out top to bottom: `flexGrow`,
   `flexBasis`, `justifyContent` and `alignContent` are errors there.
+- **Opacity.** `opacity` applies to each element, not to an element and its children as one
+  group, as CSS does: where children overlap, each shows through the others. `opacity: 0`
+  draws nothing, and leaves out the links, form fields and notes of everything inside the
+  element.
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
@@ -123,7 +127,7 @@ it.
   (`bg-black/5`), borders, per-corner radii, typography, `absolute` positioning with `z-*`,
   and 2D transforms.
 - **Not supported:** variants (`md:`, `hover:`), shadows, gradients and `space-*`/`divide-*`
-  (use `gap-*` and borders). Using one throws during development and names the class.
+  (use `gap-*` and borders). Using one throws and names the class; in production (`NODE_ENV=production`) it is logged once and ignored.
 
 ## Fonts
 
@@ -267,6 +271,9 @@ const logo = readFileSync('logo.png');
   <Image src={logo} className="h-10 w-32 object-contain object-left" />
   ```
 
+- **Size.** An `Image` with no `width` or `height` is as big as the image is (96 dpi), but no
+  wider than the room it has: when the image is wider, it is scaled down to fit, keeping its
+  aspect ratio. CSS would let it overflow. With one of them, the other follows the ratio.
 - **Images in text.** An `Image` inside a `Text` sits in the line, like a character: lines break
   before and after it. With neither `width` nor `height` it is 1em high (the text's size) and as
   wide as its aspect ratio gives; with one of them (in points or em), the other follows the
@@ -578,7 +585,7 @@ wins over it:
 | `conformance` | `pdfA` | Writes |
 |---|---|---|
 | `'PDF/A-2b'` or `'PDF/A-2'` | `true` or `'2b'` | PDF/A-2b |
-| `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, which may also carry embedded files |
+| `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, as 2b; the level allows embedded files, but Inkoxide cannot attach any yet |
 | `'PDF/A-1b'` or `'PDF/A-1'` | `'1b'` | PDF/A-1b, the oldest level, for archives that require it |
 
 PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
@@ -642,14 +649,20 @@ reader without it may do:
 ```
 
 - **Hyphenation** is off by default. Turn it on per `Text` with `hyphenate` (or the class
-  `hyphens-auto`); it follows the `lang` of the text or the document. US English patterns ship
+  `hyphens-auto`); it follows the `lang` of the text or the document. With neither, nothing is
+  hyphenated, and the `warnings` of `generate` say so. US English patterns ship
   with the package and serve every English `lang`; other languages use the engine's built-in
   patterns. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
   `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
   `hyphenationCallback`. A soft hyphen
   (`\u00AD`) in the text is always a possible break.
+- **Words wider than the line.** A word that does not fit its line is broken between any two
+  characters, hyphenated or not, as CSS does with `overflow-wrap: anywhere` (never inside a
+  grapheme cluster, such as a letter with its accent or an emoji). `[word]` from a hyphenation
+  callback keeps a word from being hyphenated, but not from being broken this way. Text with
+  `whitespace-nowrap` or `whitespace-pre` is never broken: a long word overflows the line.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
-  word into the parts a line may break between, for every `Text`; `[word]` keeps a word whole.
+  word into the parts a line may break between, for every `Text`; `[word]` keeps a word from being hyphenated.
   It replaces the built-in patterns, so `hyphenate` is not needed with it.
 
   ```ts
@@ -833,12 +846,15 @@ In an SVG, whether in `<Svg>` or an image file:
   needs goes in `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)), so that the
   document declares it. Style sheets, `xml:space`, positions and rotations, anchors, baselines,
   `baseline-shift`, spacing, `text-decoration` and `textLength` work, also in clip paths, masks,
-  patterns, markers and `use` copies. Text on a path (`<textPath>`) and vertical text (`writing-mode`) fail the
-  render with `INVALID_IMAGE`: convert them to outlines in your design tool. `font-variant`,
-  `font-stretch`, `font-kerning` and `font-feature-settings` are ignored, and font properties
-  set on a `<use>` do not reach the text it copies (its fill and stroke do). Text that an XML
-  entity expands to fails with `INVALID_IMAGE` too: write the text in the SVG itself. Colour
-  emoji fonts draw in colour, and emoji the document maps to images (`emojiImages`) are those
+  patterns, markers and `use` copies. Text on a path (`<textPath>`) and vertical text (`writing-mode` of `tb`, `tb-rl`,
+  `vertical-rl` or `vertical-lr`) fail the render with `INVALID_IMAGE`: convert them to outlines
+  in your design tool. `sideways-rl` and `sideways-lr` are not refused: the text is drawn
+  horizontally. `font-variant`, `font-stretch`, `font-kerning` and `font-feature-settings` are
+  ignored, and font properties set on a `<use>` do not reach the text it copies (its fill and
+  stroke do). A `<text>` element that an XML entity expands to fails with `INVALID_IMAGE` too:
+  write the element in the SVG itself. An entity inside a `<text>` that is in the SVG
+  (`<text>&co; report</text>`) is fine. An `!important` rule that names both `path` and
+  `polygon` also sets the paint of the SVG's text. Colour emoji fonts draw in colour, and emoji the document maps to images (`emojiImages`) are those
   images, as in other text; an emoji image that is itself an SVG with text is left out there,
   but its text still copies. An SVG with text in a document that declares no fonts fails
   validation with `INVALID_IMAGE`, and an SVG holds at most 1,000,000 characters of text,
@@ -1025,7 +1041,7 @@ without `root`). A fractional timeout is rounded up to a whole millisecond.
 **`StyleSheet.create(styles)`** returns the styles unchanged, with their types.
 
 **`init()`** loads Tailwind's compiler (when `@inkoxide/tailwind` is installed), the engine and
-the fonts. The first render does it anyway; call it at server startup so the first request does not wait (about 150 ms). It resolves
+the fonts. The first render does it anyway; call it at server startup so the first request does not wait (about 160 ms). It resolves
 to the same status as `engineStatus()`.
 
 **Health checks.** `version()` returns `{ engine, schema, gitSha }`: the engine's version, the
@@ -1079,7 +1095,7 @@ stops the render with:
 
 ```
 RenderError: <View> cannot be inside <Text>. A Text contains only strings, numbers,
-<Text>, <Link>, <PageNumber> and <TotalPages>.
+<Text>, <Link>, <Image>, <Note>, <PageNumber> and <TotalPages>.
     in View
     in Text
     in Page
@@ -1093,7 +1109,7 @@ apply:
 
 | Code | What happened |
 |---|---|
-| `TEMPLATE_ERROR` | A component used in the wrong place, a prop with an invalid value (a bad `Page` `size`, a `Link` without `href`), an unknown class or style key, a component or `render` prop that throws, or an image `src` that cannot be used: a URL outside `remoteImages`, a path while `localImages` is off (from a function), or a function or promise that fails or does not settle in `imageTimeoutMs` |
+| `TEMPLATE_ERROR` | A component used in the wrong place, a prop with an invalid value (a bad `Page` `size`, a `Link` without `href`), an unknown style key, an unknown Tailwind class (outside production; there it is logged once and ignored), a component or `render` prop that throws, or an image `src` that cannot be used: a URL outside `remoteImages`, a path while `localImages` is off (from a function), or a function or promise that fails or does not settle in `imageTimeoutMs` |
 | `INVALID_TREE` | The document tree does not match the engine's schema. Checked only with `validate`, which is on outside production |
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image, or a render option is out of range (`path` is `options.threads`, `options.creationDate`, …) |
@@ -1167,8 +1183,8 @@ options under the same id replaces the template's.
   `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, images, schemaVersion,
   engineVersion }`. `timings` has the milliseconds of each stage, each counted once: `reactMs`,
   `treeMs` (with the rebuilds for the page count), `validateMs` (0 when `validate` is off),
-  `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks and `render`
-  props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,
+  `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks, `hyphenate` with no
+  language, and `render` props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,
   and `images` the images it was rendered with, by id: the tree names an image given as bytes,
   a file, a URL or a function by an id it made up (`image-0`, `remote-0`), and `images` has the
   bytes behind those ids. The options are those of `renderToBuffer`.
@@ -1253,8 +1269,7 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 - **Server only.** The engine is a native addon: there is no browser rendering, and it does not
   run on edge runtimes such as Cloudflare Workers.
-- **Drawing.** SVG text on a path and vertical SVG text are not supported, and colour emoji in
-  SVG text are drawn in one colour. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
+- **Drawing.** SVG text on a path and vertical SVG text are not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely
   positioned, rotated or transformed element, table rows tied by a `rowSpan`) is cut at the

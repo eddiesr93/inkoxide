@@ -29,7 +29,7 @@
 //!   A forced break inside an `inside: avoid` box wins (as in CSS); the
 //!   part before it moves whole.
 //! - Atomic nodes (images, spacers, form fields, empty boxes, and
-//!   positioned, rotated, transformed, floated or fixed nodes) move whole;
+//!   absolutely positioned, rotated, transformed, floated or fixed nodes) move whole;
 //!   taller than a page, they are sliced (with a warning). A form field's
 //!   widget is on the page it starts on only.
 //! - A float needs room for its group (the floats beside it and the lines

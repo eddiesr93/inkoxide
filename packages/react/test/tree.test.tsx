@@ -644,6 +644,70 @@ describe('hyphenation callback', () => {
   });
 });
 
+describe('hyphenation without a language', () => {
+  const warn = (el: ReactNode) =>
+    renderTemplate(
+      <Document>
+        <Page>{el}</Page>
+      </Document>,
+      { fonts },
+    ).warnings;
+  const message =
+    '`hyphenate` is on but the text has no language, so its words are not hyphenated: set `lang` on the text or on the Document';
+
+  it('warns once when a Text hyphenates with no lang on it or the Document', () => {
+    const w = warn(
+      <View>
+        <Text hyphenate>some words</Text>
+        <Text className="hyphens-auto">more words</Text>
+      </View>,
+    );
+    expect(w).toEqual([`${message} (Text in View).`]);
+  });
+
+  it('warns for a nested Text that turns hyphenate on', () => {
+    expect(
+      warn(
+        <Text>
+          some <Text hyphenate>words</Text>
+        </Text>,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not warn with a language on the Text or the Document, or without hyphenate', () => {
+    expect(
+      warn(
+        <Text hyphenate lang="en">
+          some words
+        </Text>,
+      ),
+    ).toEqual([]);
+    expect(warn(<Text>some words</Text>)).toEqual([]);
+    expect(warn(<Text hyphenate={false}>some words</Text>)).toEqual([]);
+    const r = renderTemplate(
+      <Document lang="en-US">
+        <Page>
+          <Text hyphenate>some words</Text>
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('does not warn when a hyphenation callback replaces the patterns', () => {
+    const thirds = (word: string) => (word.length > 3 ? [word.slice(0, 3), word.slice(3)] : [word]);
+    expect(
+      warn(
+        <Text hyphenate hyphenationCallback={thirds}>
+          some words
+        </Text>,
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe('fonts', () => {
   it('resolves family, weight and style to registered ids', () => {
     const r = render(

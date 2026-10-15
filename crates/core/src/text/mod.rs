@@ -472,6 +472,17 @@ impl Entry {
         lang: Option<&str>,
     ) -> Self {
         let style = ParaStyle::from_style(&node.style, lang);
+        // Patterns are chosen by language: with none, the words stay whole
+        // and a long one breaks between any two clusters instead.
+        if style.lang.is_none()
+            && (style.hyphenate || runs.iter().any(|r| r.hyphenate == Some(true)))
+        {
+            tracing::warn!(
+                node = node.id.as_deref().unwrap_or(""),
+                "`hyphenate` is on but the text has no language, so its words are not \
+                 hyphenated: set `lang` on the node or `meta.lang`"
+            );
+        }
         let prepared = shaper.prepare(runs, &style);
         Self::new(shaper.fonts(), runs, style, prepared)
     }

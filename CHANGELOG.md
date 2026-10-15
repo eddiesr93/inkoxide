@@ -9,6 +9,18 @@ together. The document schema has its own version and
 
 ## Unreleased
 
+### Added
+
+- A text node with `hyphenate` on and no `lang` (nor `meta.lang`) logs a warning, and the
+  `warnings` of an `@inkoxide/render` result say so, since such text is not hyphenated.
+
+### Fixed
+
+- The READMEs, GUIDE.md, MIGRATING.md, docs/API.md, docs/SCHEMA.md, docs/CLIENT_INTEGRATION.md,
+  the schema README and descriptions, and the `--png-dir` help of the CLI no longer contradict
+  the code. They now say that a word wider than its line breaks between any two characters, and
+  that `[word]` from a hyphenation callback keeps a word from being hyphenated, not from breaking.
+
 ### Security
 
 - The work budget of a `COLR` colour glyph also counts the paint tables its paint graph reaches,

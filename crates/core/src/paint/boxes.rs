@@ -41,7 +41,7 @@ pub(crate) struct ContentCtx<'p> {
     pub ctm: Option<[f32; 6]>,
 }
 
-/// Paints leaf content (text, images, tables) inside a node's content box.
+/// Paints leaf content (text, images, form fields, notes) inside a node's content box.
 pub(crate) trait ContentPainter {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>);
 

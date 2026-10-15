@@ -621,7 +621,8 @@ impl PdfWriterSink {
                     .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
                     .filter(Filter::FlateDecode);
             });
-            // Deterministic: a hash of everything that makes the document.
+            // Deterministic: a hash of the page content streams and the XMP
+            // metadata, which mirrors the document information.
             let mut h = xxhash_rust::xxh3::Xxh3::new();
             for page in doc.pages {
                 h.update(&page.stream);

@@ -41,6 +41,7 @@ over by changing the import. This page lists what has another name, and what is 
 - **Document options:** `conformance` at the a and u levels (`PDF/A-2a`, `PDF/A-3u`, …), which need tagged PDF; `conformance` takes `PDF/A-1b`, `PDF/A-2b` and `PDF/A-3b`; `pdfVersion`; `onRender`.
 - **Text:**
   - `hyphenationPenalty` on `Text`.
+- **Fonts:** `Font.clear`, `Font.reset`, `Font.load` and `Font.getRegisteredFonts`. Fonts are loaded when a render needs them, and a registered face stays registered for the process.
 - **Layout:** `shapeOutside`: floats are rectangles.
 - **Companion packages:** `@react-pdf/math`, `@react-pdf/mermaid`, `@react-pdf/svgkit` and `@react-pdf/ui` have no counterpart.
 

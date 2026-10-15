@@ -344,17 +344,20 @@ export interface PageSpec {
    * `left + right` must be less than the page width and `top + bottom` less than its height; margins that leave no room for content are `OUT_OF_RANGE` at `margin`.
    */
   margin?: EdgesNumber;
+  /**
+   * Fills the whole page behind its content. The fill is opaque: the alpha of the colour is ignored, so `[1, 0, 0, 0]` paints solid red.
+   */
   background?: Color;
   /**
    * Draws the boxes of the page (its margins and content area) and of every element on it, the header and footer included.
    */
   debug?: Debug;
   /**
-   * Laid out once at the full page width and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.
+   * Laid out at the full page width, once, or again on every page when it shows page numbers, and painted at the top of every physical page (y = 0). Use padding to inset it. Size the top margin to leave room for it. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.
    */
   header?: Node;
   /**
-   * Laid out once at the full page width and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.
+   * Laid out at the full page width, once, or again on every page when it shows page numbers, and painted with its bottom edge on the bottom of every physical page. `break` (other than its defaults) and `pageBreak` are not allowed in it, at any depth.
    */
   footer?: Node;
   children?: Node[];
@@ -491,6 +494,9 @@ export interface Style {
    */
   clear?: 'left' | 'right' | 'both' | 'none';
   backgroundColor?: Color;
+  /**
+   * Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them.
+   */
   opacity?: number;
   borderWidth?: EdgesNumber;
   borderColor?: EdgesColor;
@@ -535,7 +541,7 @@ export interface Style {
    */
   ellipsis?: boolean;
   /**
-   * text nodes only
+   * text nodes only. Hyphenates the words in the language of the node (`lang`, or `meta.lang`); with no language, nothing is hyphenated and the render logs a warning. A word wider than its line breaks between any two characters, hyphenated or not.
    */
   hyphenate?: boolean;
   /**
@@ -623,14 +629,14 @@ export interface EdgesColor {
   left?: Color;
 }
 /**
- * Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`. A box laid out as a row, a grid, wrapping or reversed moves to the next page whole when it fits on one; taller than a page, it splits between its rows (children whose extents overlap), each child continuing from the row's top. Content that cannot split (an image, a positioned, rotated, transformed or fixed node, table rows tied by a row span) is cut across pages when it is taller than a page.
+ * Pagination controls. They apply to flowing content only: on a header or footer, on a node in a table cell, or on any node inside these, a `break` with a value other than the defaults is `INVALID_VALUE`. For fixed overlays, see `fixed`. A box laid out as a row, a grid, wrapping or reversed moves to the next page whole when it fits on one; taller than a page, it splits between its rows (children whose extents overlap), each child continuing from the row's top. Content that cannot split (an image, an absolutely positioned, rotated, transformed or fixed node, table rows tied by a row span) is cut across pages when it is taller than a page.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Break".
  */
 export interface Break {
   /**
-   * `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing.
+   * `page` starts a new page before the node, unless it is at the top of one already. `INVALID_VALUE` inside a row, grid, wrapping or reversed box, or inside an absolutely positioned, rotated, transformed, floated or fixed node, or on an absolutely positioned or floated node: there it would do nothing.
    */
   before?: 'auto' | 'page';
   /**
@@ -745,7 +751,7 @@ export interface TextRun {
     | ('baseline' | 'super' | 'sub' | 'middle' | 'textTop' | 'textBottom' | 'top' | 'bottom')
     | number;
   /**
-   * OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features.
+   * OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters, and a value is 0 to 65535. A run may have at most 32 features, and a document at most 64 different sets of features.
    */
   fontFeatures?: {
     [k: string]: number | undefined;
@@ -886,7 +892,7 @@ export interface TableCell {
   children?: Node[];
 }
 /**
- * Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
+ * Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside an absolutely positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "PageBreakNode".

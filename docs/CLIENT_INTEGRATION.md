@@ -76,13 +76,16 @@ const pdf = await render(doc, {
   document. A `src` with no matching key is `UNKNOWN_IMAGE`.
 - **Prefer JPEG for photos.** JPEG bytes go into the PDF unchanged:
   nothing is decoded, so the image is fast and stays small. PNG is
-  decoded and recompressed on every render, alpha included. SVG is drawn
+  decoded and recompressed when the engine has not seen the same bytes lately, alpha included. SVG is drawn
   as vectors, which suits logos and charts.
 - **Avoid inline `data` for large images.** A node's inline `data` field
   (base64) also works, but it inflates the document JSON. Use
   `options.images` for anything large.
-- **Images are not cached between renders.** Pass the same `Buffer`
-  each time; keeping the bytes in memory is up to you.
+- **Decoded images are cached between renders.** The engine keeps up to
+  64 MB of decoded images in memory for the whole process, found by the
+  content of the bytes, and drops the least recently used first. The same
+  logo is decoded once, not on every render. Keeping the bytes themselves
+  in memory is up to you: pass the same `Buffer` each time.
 
 ## Documents
 
@@ -156,7 +159,7 @@ try {
 - **Few large documents.** For a 500-page export, keep the default.
 - **Memory.** Peak memory grows with the document: about 210 MB for a
   435-page table (see [BENCHMARKS.md](BENCHMARKS.md)). The engine
-  refuses documents that would exceed its page limit, or whose
+  refuses documents that would exceed its page limit (100,000 pages), or whose
   headers, footers and fixed elements would add more than about 64 MB
   repeated on every page, with `LAYOUT_ERROR`. It also refuses, with
   `FONT_ERROR`, a font whose layout tables shape the text to millions of

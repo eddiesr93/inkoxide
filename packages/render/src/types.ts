@@ -110,7 +110,7 @@ export interface RenderResult {
   /** Font ids the document uses. */
   fonts: string[];
   /**
-   * Non-fatal problems of this document: font fallbacks, and `render` props that did not settle
+   * Non-fatal problems of this document: font fallbacks, `hyphenate` with no language, and `render` props that did not settle
    * on a page count. Start-up problems, such as missing hyphenation patterns, are in
    * `engineStatus().warnings`.
    */

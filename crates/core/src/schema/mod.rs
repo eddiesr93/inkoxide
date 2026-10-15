@@ -2,8 +2,9 @@
 //!
 //! The JSON Schema is the source of truth; these structs are checked against
 //! it in CI (every fixture must pass both). Structural rules that serde can
-//! express (unknown fields, types, enums) are enforced here; semantic rules
-//! (ranges, references, applicability) live in `validate`.
+//! express (unknown fields, types, enums) are enforced here, with a few
+//! ranges that belong to a value's own type (`de`, `areas`); the other
+//! semantic rules (ranges, references, applicability) live in `validate`.
 
 mod areas;
 mod de;

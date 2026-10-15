@@ -30,11 +30,12 @@ types, discriminated by `type`.
 
 Two rules cannot be expressed in TypeScript:
 
-- A text run has exactly one of `text` or `placeholder`.
-- An image has exactly one of `src` or `data`.
+- A text run has exactly one of `text`, `placeholder`, `image` and `note`.
+- An `image` node, a `backgroundImage` and the `image` of a run each have
+  exactly one of `src` or `data`.
 
-Both are optional in the types. The engine and ajv report a document
-that breaks either rule.
+All of them are optional in the types. The engine and ajv report a
+document that breaks either rule.
 
 ## Client-side validation (ajv)
 
@@ -62,7 +63,7 @@ alongside `properties`. `validateFormats: false` skips `date-time`; add
 |---|---|---|
 | Unknown property | `additionalProperties` | yes (`enginePath` appends the property, as the engine does) |
 | Wrong type, bad enum value, bad pattern | `type`, `enum`, `const`, `pattern`, `oneOf` | yes |
-| Number out of range | `minimum`, `maximum`, `exclusiveMinimum`, … | yes |
+| Number out of range | `minimum`, `maximum`, `exclusiveMinimum`, … | yes, except in a colour (the engine reports `….backgroundColor`, ajv `….backgroundColor[2]`) and in `fontFeatures` (the engine reports `….fontFeatures`, ajv the tag) |
 | Missing required field of an object (`size.height`) | `required` | yes |
 | Missing required field of a node (`text` without `runs`) | `required` | no: the engine reports the node's path, ajv the field's |
 | Unsupported `version` | `const` | yes (`version`) |

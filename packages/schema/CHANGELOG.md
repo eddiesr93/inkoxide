@@ -7,6 +7,19 @@ version 2.
 
 ## Unreleased
 
+### Documentation
+
+- **Descriptions:** `opacity` applies to each element, not to a group, and `0` leaves out the
+  links, form fields and notes inside the node; the `background` of a page is opaque, whatever
+  the alpha of its colour; a header or footer that shows page numbers is laid out again on every
+  page; `hyphenate` on a node with no `lang` and no `meta.lang` hyphenates nothing, and the
+  engine logs a warning for it; a word wider than its line breaks between any two characters;
+  `fontFeatures` takes at most 32 features of 0 to 65535 per run; a forced page break is
+  refused inside an *absolutely* positioned node, not inside any positioned node.
+- **SCHEMA.md** shows `minProperties` and `maxProperties` (4096 `emojiImages`), and its error
+  table lists every case of `DUPLICATE_ID` and `PDFA_CONFLICT`, and says that `IMAGE_TOO_LARGE`
+  is for raster images only.
+
 ## 2.5.0 - 2026-10-15
 
 Still document schema version 1. New definitions `NonNegativePercent`, `NonNegativeLength`
@@ -126,13 +139,10 @@ Still document schema version 1.
   toward the limits of its SVG as it is drawn (its text nodes as elements). Documents with SVG
   images without text render as before.
 
-### Changed
+### Fixed
 
 - `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of
   each run on the line.
-
-### Fixed
-
 - `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
   at most 8000 characters; longer ones are `INVALID_VALUE`. Both were unbounded, so a document
   with longer ones was valid before.
