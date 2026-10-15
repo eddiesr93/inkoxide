@@ -8,7 +8,7 @@
 
 use std::fmt::Write as _;
 
-use crate::date::{parse_local, parse_local_time, LocalDateTime};
+use crate::date::{is_digits, parse_local, parse_local_time, LocalDateTime};
 use crate::schema::{FieldFormat, FormatKind, NegativeStyle, Separators};
 
 /// Most `decimals`.
@@ -269,7 +269,7 @@ fn weekday(t: LocalDateTime) -> usize {
 
 /// `value` when it is exactly `n` ASCII digits.
 fn digits(value: &str, n: usize) -> Option<&str> {
-    (value.len() == n && value.bytes().all(|b| b.is_ascii_digit())).then_some(value)
+    is_digits(value, n).then_some(value)
 }
 
 /// A number value: `-?\d{1,15}(\.\d{1,15})?`, as digits.

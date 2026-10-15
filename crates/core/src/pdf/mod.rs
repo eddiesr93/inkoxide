@@ -778,7 +778,7 @@ fn write_outline(
 /// hand: `pdf_writer::Date` takes the offset's sign from its hours, so an
 /// offset under an hour west of UTC (`-00:30`) would come out east of it.
 fn pdf_date(t: Timestamp) -> String {
-    let off = t.offset_minutes;
+    let (d, off) = (t.local, t.offset_minutes);
     let zone = if off == 0 {
         "Z".to_string()
     } else {
@@ -788,7 +788,7 @@ fn pdf_date(t: Timestamp) -> String {
     };
     format!(
         "D:{:04}{:02}{:02}{:02}{:02}{:02}{zone}",
-        t.year, t.month, t.day, t.hour, t.minute, t.second
+        d.year, d.month, d.day, d.hour, d.minute, d.second
     )
 }
 
@@ -1153,12 +1153,14 @@ mod tests {
     #[test]
     fn dates_keep_the_sign_of_offsets_under_an_hour() {
         let t = Timestamp {
-            year: 2026,
-            month: 10,
-            day: 12,
-            hour: 9,
-            minute: 30,
-            second: 0,
+            local: crate::date::LocalDateTime {
+                year: 2026,
+                month: 10,
+                day: 12,
+                hour: 9,
+                minute: 30,
+                second: 0,
+            },
             offset_minutes: -30,
         };
         assert_eq!(pdf_date(t), "D:20261012093000-00'30");
