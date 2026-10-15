@@ -200,6 +200,8 @@ pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
 /// Longest alternative text of an inline image, in characters.
 pub(crate) const MAX_ALT: usize = 1024;
+/// Most entries of `fallbackFonts`.
+pub(crate) const MAX_FALLBACK_FONTS: usize = 256;
 /// Most entries of `emojiImages`.
 pub(crate) const MAX_EMOJI_IMAGES: usize = 4096;
 /// Longest key of `emojiImages`, in bytes (UTF-8). The schema's
@@ -383,10 +385,18 @@ impl<'a> Checker<'a> {
             });
             self.declared.insert(&f.id);
         }
-        for (i, id) in doc.fallback_fonts.iter().enumerate() {
-            self.at("fallbackFonts", |c| {
-                c.at_index(i, |c| c.font_ref(None, id));
-            });
+        if doc.fallback_fonts.len() > MAX_FALLBACK_FONTS {
+            self.err(
+                Code::OutOfRange,
+                Some("fallbackFonts"),
+                format!("at most {MAX_FALLBACK_FONTS} fallback fonts"),
+            );
+        } else {
+            for (i, id) in doc.fallback_fonts.iter().enumerate() {
+                self.at("fallbackFonts", |c| {
+                    c.at_index(i, |c| c.font_ref(None, id));
+                });
+            }
         }
         if doc.emoji_images.len() > MAX_EMOJI_IMAGES {
             self.err(

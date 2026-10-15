@@ -2108,6 +2108,22 @@ fn image_runs_are_checked() {
 }
 
 #[test]
+fn fallback_fonts_are_limited() {
+    let with = |n: usize| {
+        let ids = vec![r#""Inter-Regular""#; n].join(",");
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"fallbackFonts":[{ids}],
+                "pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    assert_eq!(run(&with(256)), vec![]);
+    assert_eq!(
+        one(&with(257)),
+        (C::OutOfRange, "fallbackFonts".to_string())
+    );
+}
+
+#[test]
 fn emoji_images_are_checked() {
     let with = |map: &str| {
         format!(

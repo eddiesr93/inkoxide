@@ -535,11 +535,16 @@ impl<'a> FontSet<'a> {
                 face,
             });
         }
-        let fallbacks = doc
-            .fallback_fonts
-            .iter()
-            .filter_map(|id| by_id.get(id.as_str()).copied())
-            .collect();
+        // Each font once, where it is first listed: a font that lacks a
+        // character lacks it the second time too.
+        let mut fallbacks: Vec<FontKey> = Vec::new();
+        for id in &doc.fallback_fonts {
+            if let Some(&key) = by_id.get(id.as_str()) {
+                if !fallbacks.contains(&key) {
+                    fallbacks.push(key);
+                }
+            }
+        }
         Ok(Self {
             fonts,
             by_id,
@@ -586,6 +591,19 @@ mod tests {
         assert!(m.ascender > 0.0 && m.descender < 0.0);
         assert_eq!(m.post_script_name, "Inter-Regular");
         assert_eq!(m.weight, 400);
+    }
+
+    #[test]
+    fn fallback_fonts_are_tried_once_each_in_listed_order() {
+        let store = crate::test_fixtures::fonts(&["Inter-Regular", "NotoSans-Regular"]);
+        let json = r#"{"version":1,
+            "fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"NotoSans-Regular","family":"Noto Sans"}],
+            "fallbackFonts":["NotoSans-Regular","Inter-Regular","NotoSans-Regular","Inter-Regular"],
+            "pages":[{"size":{"width":10,"height":10}}]}"#;
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let set = FontSet::load(&doc, &store).unwrap();
+        let ids: Vec<_> = set.fallbacks.iter().map(|&k| set.get(k).id).collect();
+        assert_eq!(ids, ["NotoSans-Regular", "Inter-Regular"]);
     }
 
     #[test]

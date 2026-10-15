@@ -365,7 +365,10 @@ export interface DocumentProps {
    * pages side by side (odd pages on the left or the right). Default: the viewer's setting.
    */
   pageLayout?: Meta['pageLayout'];
-  /** Font ids tried for characters missing from a run's font. Default: `['NotoSans-Regular']`. */
+  /**
+   * Font ids tried for characters missing from a run's font, at most 256; an id listed again is
+   * skipped. Default: `['NotoSans-Regular']`.
+   */
   fallbackFonts?: string[];
   /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */
   debug?: boolean;
