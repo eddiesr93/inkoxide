@@ -123,6 +123,7 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
     ),
     ("emoji-images", "emojiImages.❤\u{FE0F}"),
     ("emoji-colr", "pages[0].children[3].runs[1].color"),
+    ("emoji-cbdt", "pages[0].children[1].runs[0]"),
     (
         "background-image",
         "pages[0].children[2].children[0].children[1].backgroundImage.src",

@@ -2050,40 +2050,60 @@ fn emoji_images_are_checked() {
     );
 }
 
-/// Under PDF/A-1b, colour glyphs whose images need transparency (the PNG
-/// strikes of the test fonts have alpha) draw without colour: a font
-/// without outlines then draws nothing, one with outlines its outline.
+/// Under PDF/A-1b, a colour glyph whose image needs transparency (the PNG
+/// strikes of the test fonts have alpha, the COLR grin an opacity) fails
+/// the render at its run, as an image would; an opaque one draws.
 #[test]
-fn pdf_a_1b_draws_transparent_colour_glyphs_without_colour() {
+fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
     let mut fonts = fonts();
     for id in ["EmojiTest-CBDT", "EmojiTest-COLR"] {
         fonts
             .register(id, fixture(&format!("fonts/{id}.ttf")))
             .unwrap();
     }
-    for (font, opaque_images) in [("EmojiTest-CBDT", 0), ("EmojiTest-COLR", 1)] {
+    let render = |font: &str, text: &str| {
         let doc = format!(
             r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"{font}","family":"E"}}],
                 "fallbackFonts":["{font}"],
-                "pages":[{{"size":{{"width":200,"height":100}},"children":[
-                {{"type":"text","runs":[{{"text":"a 😀 🇫🇷 b","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+                "pages":[{{"size":{{"width":200,"height":100}},
+                "header":{{"type":"text","runs":[{{"text":"head","font":"Inter-Regular","size":10}}]}},
+                "children":[
+                {{"type":"text","style":{{"display":"none"}},"runs":[{{"text":"😀","font":"Inter-Regular","size":10}}]}},
+                {{"type":"box","children":[{{"type":"text","runs":[
+                  {{"text":"a ","font":"Inter-Regular","size":10}},{{"text":"{text}","font":"Inter-Regular","size":10}}]}}]}}]}}]}}"#
         );
         let options = crate::RenderOptions::default()
             .with_pdf_a_level(crate::PdfALevel::A1b)
             .with_compress(false);
-        let pdf = crate::render(
+        crate::render(
             doc.as_bytes(),
             InputFormat::Json,
             &options,
             &fonts,
             &ImageStore::new(),
         )
-        .unwrap_or_else(|e| panic!("{font}: {e}"));
-        let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
-        // The COLR flag has solid layers only: it keeps its colour.
-        assert_eq!(count(b"/Subtype /Form"), opaque_images, "{font}");
-        assert_eq!(count(b"/SMask"), 0, "{font}");
+    };
+    for (font, what) in [
+        ("EmojiTest-CBDT", "an alpha channel"),
+        ("EmojiTest-COLR", "(fill or stroke opacity)"),
+    ] {
+        let Err(crate::InkoxideError::Validation(e)) = render(font, "😀 b") else {
+            panic!("{font}: rendered");
+        };
+        assert_eq!(e.code, C::PdfaConflict, "{font}");
+        assert_eq!(e.path, "pages[0].children[1].children[0].runs[1]", "{font}");
+        assert!(
+            e.message.contains(&format!("`😀` of font `{font}`")),
+            "{}",
+            e.message
+        );
+        assert!(e.message.contains(what), "{}", e.message);
     }
+    // The COLR flag has solid layers only: it keeps its colour.
+    let pdf = render("EmojiTest-COLR", "🇫🇷 b").unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert_eq!(count(b"/Subtype /Form"), 1);
+    assert_eq!(count(b"/SMask"), 0);
 }
 
 #[test]

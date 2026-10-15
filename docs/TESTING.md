@@ -33,7 +33,10 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   errors that name the option but never the password.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, in SVG text too, copies
-  of SVG text, deepest accepted nesting on a small stack).
+  of SVG text, the work budget of one `COLR` glyph, deepest accepted
+  nesting on a small stack). The budgets of a render's colour glyphs
+  (how many, and the bytes of their images) are tested in
+  `text/color.rs`, with smaller limits.
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
   finite (one `inf` or `NaN` operand makes a page invalid) and one
   readers parse (an integer within 32 bits or a real within ±10¹¹), with

@@ -86,7 +86,16 @@ pub(super) fn render_with<R>(
     let fonts = FontSet::load(&doc, store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(&doc, &fonts, &mut text, &mut images, (true, false), Ok).unwrap();
+    let (pages, marks) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        true,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
     f(pages, &marks, &fonts)
 }
 
@@ -797,7 +806,16 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
         .unwrap()
         .with_objects(std::sync::Arc::new(images.inline_objects()));
     let mut text = TextCache::new(shaper, None);
-    let (pages, _) = run(&doc, &fonts, &mut text, &mut images, (false, false), Ok).unwrap();
+    let (pages, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
     pages.into_iter().map(|p| p.ops).collect()
 }
 
@@ -880,27 +898,96 @@ fn a_box_without_a_background_image_paints_no_image() {
 /// The ops of each page of `text` in Inter at 20 pt, with the colour test
 /// font `fallback` as fallback.
 fn emoji_ops(text: &str, fallback: &str) -> (Vec<Vec<Op>>, Vec<String>) {
-    let mut store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+    emoji_ops_in(text, fallback, "Inter-Regular", false)
+}
+
+/// [`emoji_ops`] with the run in font `font` (`Inter-Regular` or
+/// `NotoSans-Regular`), the paragraph outlined with `debug`.
+fn emoji_ops_in(
+    text: &str,
+    fallback: &str,
+    font: &str,
+    debug: bool,
+) -> (Vec<Vec<Op>>, Vec<String>) {
+    let mut store = crate::test_fixtures::fonts(&["Inter-Regular", "NotoSans-Regular"]);
     for id in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
         let bytes = crate::test_fixtures::fixture(&format!("fonts/{id}.ttf"));
         store.register(id, bytes).unwrap();
     }
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
-            {{"id":"EmojiTest-COLR","family":"Emoji"}},{{"id":"EmojiTest-CBDT","family":"Emoji Bitmap"}}],
+            {{"id":"EmojiTest-COLR","family":"Emoji"}},{{"id":"EmojiTest-CBDT","family":"Emoji Bitmap"}},
+            {{"id":"NotoSans-Regular","family":"Noto Sans"}}],
             "fallbackFonts":["{fallback}"],
             "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
-            {{"type":"text","runs":[{{"text":"{text}","font":"Inter-Regular","size":20}}]}}]}}]}}"#
+            {{"type":"text","debug":{debug},"runs":[{{"text":"{text}","font":"{font}","size":20}}]}}]}}]}}"#
     );
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, _) = run(&doc, &fonts, &mut text, &mut images, (false, false), Ok).unwrap();
+    let (pages, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
     let ids = (0..fonts.fonts.len())
         .map(|k| fonts.get(k as u16).id.to_string())
         .collect();
     (pages.into_iter().map(|p| p.ops).collect(), ids)
+}
+
+/// With `debug`, colour glyphs are still images: the outlined paragraph is
+/// painted as any other.
+#[test]
+fn outlined_text_draws_its_colour_glyphs_as_images() {
+    for fallback in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        let (plain, _) = emoji_ops_in("a \u{1F600} b", fallback, "Inter-Regular", false);
+        let (outlined, ids) = emoji_ops_in("a \u{1F600} b", fallback, "Inter-Regular", true);
+        let images = |ops: &[Op]| {
+            ops.iter()
+                .filter(|op| matches!(op, Op::Image { .. }))
+                .count()
+        };
+        assert_eq!(images(&plain[0]), 1, "{fallback}");
+        assert_eq!(images(&outlined[0]), 1, "{fallback}");
+        // The same text as without `debug`: none in the colour font draws
+        // the emoji in one colour, or with nothing.
+        let texts = |ops: &[Op]| -> Vec<(String, Vec<u16>)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    Op::Text(t) => Some((
+                        ids[t.font as usize].clone(),
+                        t.glyphs.iter().map(|g| g.id).collect(),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(texts(&outlined[0]), texts(&plain[0]), "{fallback}");
+        // The debug outline is drawn on top.
+        assert!(outlined[0].len() > plain[0].len());
+    }
+}
+
+/// The space in a colour glyph's span is one of its run's font, which is
+/// embedded anyway, not the first font of the document.
+#[test]
+fn colour_glyph_spans_carry_a_space_of_the_run_s_font() {
+    let (pages, ids) = emoji_ops_in("\u{1F600}", "EmojiTest-COLR", "NotoSans-Regular", false);
+    let spaces: Vec<&str> = pages[0]
+        .iter()
+        .filter_map(|op| match op {
+            Op::InvisibleText(g) => Some(ids[g.font as usize].as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(spaces, ["NotoSans-Regular"]);
 }
 
 #[test]
@@ -1081,6 +1168,79 @@ fn inline_images_are_painted_in_their_line_with_their_alternative_text() {
     assert!(ops
         .iter()
         .any(|op| matches!(op, Op::Text(t) if t.glyphs.len() == 2)));
+}
+
+/// A paragraph's `debug` outline boxes each image run around its image,
+/// wherever its alignment puts it: here a tall one on the baseline and a
+/// short one at the top of the line, far above its font's ascender.
+#[test]
+fn debug_outlines_box_inline_images_where_they_are_drawn() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","debug":true,"style":{{"lineHeight":1}},"runs":[
+              {{"text":"ab","font":"Inter-Regular","size":10}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","height":30}}}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","width":4}},"verticalAlign":"top"}}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    let ops = &pages[0];
+    // [w 0 0 -h x y+h] → (x, y, w, h).
+    let images: Vec<(f32, f32, f32, f32)> = ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Image { matrix: m, .. } => Some((m[4], m[5] + m[3], m[0], -m[3])),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 2);
+    // The run boxes, by run: the even runs in one path, the odd in another.
+    let boxes = |color: crate::schema::Color| -> Vec<(f32, f32, f32, f32)> {
+        let Some(Op::FillPath { path, .. }) = ops
+            .iter()
+            .find(|op| matches!(op, Op::FillPath { color: c, .. } if *c == color))
+        else {
+            return Vec::new();
+        };
+        let points: Vec<(f32, f32)> = path
+            .segs
+            .iter()
+            .filter_map(|s| match *s {
+                paint::PathSeg::MoveTo(x, y) | paint::PathSeg::LineTo(x, y) => Some((x, y)),
+                _ => None,
+            })
+            .collect();
+        points
+            .chunks(4)
+            .map(|c| {
+                let xs = c.iter().map(|p| p.0);
+                let ys = c.iter().map(|p| p.1);
+                let (x0, x1) = (
+                    xs.clone().fold(f32::MAX, f32::min),
+                    xs.fold(f32::MIN, f32::max),
+                );
+                let (y0, y1) = (
+                    ys.clone().fold(f32::MAX, f32::min),
+                    ys.fold(f32::MIN, f32::max),
+                );
+                (x0, y0, x1 - x0, y1 - y0)
+            })
+            .collect()
+    };
+    let [even, odd] = paint::debug::RUN;
+    let (even, odd) = (boxes(even), boxes(odd));
+    // Runs 0 and 2 (the text, the top image), then run 1 (the tall image).
+    assert_eq!((even.len(), odd.len()), (2, 1), "{even:?} {odd:?}");
+    for (image, run) in [(images[0], odd[0]), (images[1], even[1])] {
+        assert!(
+            close(image.0, run.0) && close(image.1, run.1),
+            "{image:?} {run:?}"
+        );
+        assert!(
+            close(image.2, run.2) && close(image.3, run.3),
+            "{image:?} {run:?}"
+        );
+    }
 }
 
 #[test]

@@ -188,6 +188,25 @@ impl ImageStore {
 /// Index of a unique image within one render.
 pub(crate) type ImageKey = u32;
 
+/// How an image fills its box: its `fit`, and its `objectPosition` there.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Placement {
+    pub fit: ImageFit,
+    pub position: ObjectPosition,
+}
+
+impl Placement {
+    /// Stretched over the box.
+    pub const FILL: Self = Self {
+        fit: ImageFit::Fill,
+        position: ObjectPosition::CENTER,
+    };
+
+    pub fn new(fit: ImageFit, position: ObjectPosition) -> Self {
+        Self { fit, position }
+    }
+}
+
 /// The unique images of one document, decoded, with the image each node
 /// shows and the background image each box paints.
 pub(crate) struct ImageSet {
@@ -452,17 +471,17 @@ impl ImageSet {
         let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
         // `borderRadius` rounds the image without `overflow: hidden`.
         let radii = crate::paint::content_radii(&node.style, geo);
-        self.paint_in(key, bx, *fit, *object_position, &radii, ops);
+        let placement = Placement::new(*fit, *object_position);
+        self.paint_in(key, bx, placement, &radii, ops);
     }
 
-    /// Paints image `key` into `bx` (page coordinates) according to `fit`
-    /// and `position`, clipped to `bx` rounded by `radii`.
+    /// Paints image `key` into `bx` (page coordinates) as `placement`
+    /// says, clipped to `bx` rounded by `radii`.
     pub fn paint_in(
         &self,
         key: ImageKey,
         bx: Rect,
-        fit: ImageFit,
-        position: ObjectPosition,
+        placement: Placement,
         radii: &crate::paint::Radii,
         ops: &mut Vec<crate::paint::Op>,
     ) {
@@ -472,6 +491,7 @@ impl ImageSet {
         }
         let img = self.get(key);
         let intrinsic = self.intrinsic_of(key);
+        let Placement { fit, position } = placement;
         let (rect, clip) = match (&img.body, fit) {
             // The box is the SVG's viewport, which its `viewBox` fits.
             (

@@ -202,10 +202,10 @@ impl PdfSink for PdfWriterSink {
                 Op::Save => saved.push(ctm),
                 Op::Restore => ctm = saved.pop().flatten(),
                 Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| crate::paint::mul(c, *m))),
-                // A font without outlines is never embedded (see
-                // `content_stream`).
-                Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
                 Op::Text(t) => {
+                    // The painter leaves out the text of a font without
+                    // outlines (`ColorGlyphs::push`): it is never embedded.
+                    debug_assert!(fonts.get(t.font).has_outlines(), "{}", fonts.get(t.font).id);
                     glyphs
                         .entry(t.font)
                         .or_default()
@@ -1034,8 +1034,6 @@ pub(crate) fn content_stream(
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            // Its colour glyphs are images; the others have no ink.
-            Op::Text(t) if fonts.get(t.font).data.metrics.color_only => {}
             Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
             Op::Image { key, matrix } => {
                 c.save_state();

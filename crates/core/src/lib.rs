@@ -403,7 +403,8 @@ fn render_inner(
         &font_set,
         &mut text,
         &mut image_set,
-        (parallel, opaque),
+        parallel,
+        profile,
         |page| sink.encode_page(&page, &font_set),
     )?;
     let unicode: UnicodeMap = text.into_unicode();

@@ -37,7 +37,7 @@ impl LoadedFont<'_> {
     /// bitmap. `None` for a glyph without colour, or whose colour data is
     /// malformed or over the limits.
     pub fn color_glyph(&self, gid: u16) -> Option<ColorGlyph> {
-        if !self.data.metrics.color {
+        if !self.has_color() {
             return None;
         }
         let id = GlyphId(gid);

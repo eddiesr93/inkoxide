@@ -102,8 +102,9 @@ All notable changes to the packages in this repository. The format follows
   `fallbackFonts`: an emoji goes to the first colour fallback font that has it. A font with
   colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
   field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
-  render, draws without colour. Under PDF/A-1b, which forbids transparency, a colour glyph that
-  needs it (alpha, an opacity) draws without colour. In SVG text, colour fonts are drawn in one
+  render or the first 32 MB of colour glyph images, draws without colour. Under PDF/A-1b, which forbids transparency, a colour glyph that
+  needs it (a bitmap with an alpha channel, a layer with an opacity) fails the render with
+  `PDFA_CONFLICT` at its run, as an emoji image does at its `emojiImages` key. In SVG text, colour fonts are drawn in one
   colour, from their outlines; a font without outlines draws nothing there.
 - Emoji from images: `Font.registerEmojiSource({ url, format, withVariationSelectors })` or
   `{ builder }` draws the emoji of every `Text` from an image set, through the document's new

@@ -575,12 +575,17 @@ fn centre() -> LengthPercent {
     LengthPercent::Percent(0.5)
 }
 
+impl ObjectPosition {
+    /// Centred on both axes: the default.
+    pub const CENTER: Self = Self {
+        x: LengthPercent::Percent(0.5),
+        y: LengthPercent::Percent(0.5),
+    };
+}
+
 impl Default for ObjectPosition {
     fn default() -> Self {
-        Self {
-            x: centre(),
-            y: centre(),
-        }
+        Self::CENTER
     }
 }
 

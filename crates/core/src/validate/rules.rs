@@ -113,6 +113,16 @@ pub(crate) fn check(
     c.errors
 }
 
+/// The error of a render at PDF/A-1b, which forbids transparency: `what`,
+/// at `path`, needs it.
+pub(crate) fn transparency_conflict(path: String, what: &str) -> ValidationError {
+    ValidationError {
+        code: Code::PdfaConflict,
+        path,
+        message: format!("PDF/A-1b does not allow transparency, which {what} needs"),
+    }
+}
+
 /// How the painter uses a colour's alpha.
 #[derive(Clone, Copy, PartialEq)]
 enum Alpha {
@@ -274,11 +284,7 @@ impl<'a> Checker<'a> {
         if let Some(f) = field {
             push_key(&mut path, f);
         }
-        self.conflict = Some(ValidationError {
-            code: Code::PdfaConflict,
-            path,
-            message: format!("PDF/A-1b does not allow transparency, which {what} needs"),
-        });
+        self.conflict = Some(transparency_conflict(path, what));
     }
 
     /// `debug` draws translucent outlines.
@@ -863,7 +869,7 @@ impl<'a> Checker<'a> {
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {
                 self.font_ref(Some("font"), font);
-                if self.fonts.get(font).is_some_and(|d| d.metrics.color_only) {
+                if self.fonts.get(font).is_some_and(|d| !d.has_outlines()) {
                     self.err(
                         Code::InvalidValue,
                         Some("font"),

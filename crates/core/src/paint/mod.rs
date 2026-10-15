@@ -162,7 +162,7 @@ impl InvisibleGlyph {
         width: f32,
     ) -> Option<Self> {
         let f = fonts.get(font);
-        if f.data.metrics.color_only {
+        if !f.has_outlines() {
             return None;
         }
         let glyph = f.glyph(' ').filter(|&g| g != 0 && f.advance(g) > 0.0)?;

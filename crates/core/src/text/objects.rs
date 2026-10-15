@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::fonts::FontSet;
-use crate::images::ImageKey;
-use crate::schema::{ImageFit, ObjectPosition, RunAlign, TextRun};
+use crate::images::{ImageKey, Placement};
+use crate::schema::{RunAlign, TextRun};
 
 /// The images available to inline objects: by run, and by emoji sequence
 /// (without U+FE0F).
@@ -83,8 +83,7 @@ impl InlineObjects {
             key: src.key,
             width: w,
             height: h,
-            fit: ImageFit::Fill,
-            position: ObjectPosition::default(),
+            placement: Placement::FILL,
             align: RunAlign::Points(-0.1 * run.size),
             alt: Some(seq.into()),
         })
@@ -99,8 +98,7 @@ impl InlineObjects {
             key: src.key,
             width: w,
             height: h,
-            fit: image.fit,
-            position: image.object_position,
+            placement: Placement::new(image.fit, image.object_position),
             align: run.vertical_align.unwrap_or_default(),
             alt: image.alt.as_deref().map(Box::from),
         })
@@ -125,8 +123,7 @@ pub(crate) struct InlineObject {
     pub key: ImageKey,
     pub width: f32,
     pub height: f32,
-    pub fit: ImageFit,
-    pub position: ObjectPosition,
+    pub placement: Placement,
     pub align: RunAlign,
     /// What text extraction gets for it.
     pub alt: Option<Box<str>>,
