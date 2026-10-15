@@ -1012,7 +1012,7 @@ renderToFile(<Form {...sample} />, 'form.pdf');
 | [Errors](GUIDE.md#errors) | Error codes and what they mean |
 | [Serving templates](GUIDE.md#serving-templates) | Templates by id, with a zod schema for their data: `@inkoxide/render/templates` |
 | [FAQ](GUIDE.md#faq) | Installing on servers and in Docker, hooks, page numbers, determinism |
-| [Migrating from react-pdf](MIGRATING.md) | What has another name, and what is not available |
+| [Migrating from another React PDF library](MIGRATING.md) | What has another name, and what is not available |
 
 ## Performance
 
