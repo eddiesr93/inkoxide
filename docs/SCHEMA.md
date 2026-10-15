@@ -60,6 +60,7 @@
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image with an alpha channel, an SVG drawn with opacity, a mask or a blend mode). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -78,6 +79,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 | `meta` | [`Meta`](#meta) |  |  |
 | `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`. |
+| `emojiImages` | `object` |  | Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
 | `pages` | array of [`PageSpec`](#pagespec) | yes | min items 1 |
 
 ## Definitions
@@ -103,7 +105,7 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 
 ### Debug
 
-A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
+A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. On a text node it also outlines each line: its line box (dashed), its baseline, and the glyphs of each run on it, from the run font's ascender to its descender. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
 
 Type: `boolean` (default `false`)
 
@@ -127,9 +129,9 @@ Type: `boolean` (default `false`)
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) | yes |  |
-| `family` | `string` | yes | min length 1 |
-| `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400` |
-| `style` | `"normal"` \| `"italic"` |  | default `"normal"` |
+| `family` | `string` | yes | min length 1; The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts. |
+| `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400`; The weight SVG text's `font-weight` is matched against. |
+| `style` | `"normal"` \| `"italic"` |  | default `"normal"`; The style SVG text's `font-style` is matched against. |
 
 ### NonNegative
 
@@ -310,6 +312,8 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
+| `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
+| `clear` | `"left"` \| `"right"` \| `"both"` \| `"none"` |  | default `"none"`; Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides. |
 | `backgroundColor` | [`Color`](#color) |  |  |
 | `opacity` | `number` |  | ≥ 0, ≤ 1 |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |
@@ -327,6 +331,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `hyphenate` | `boolean` |  | text nodes only |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
 | `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` advance a tab to the next tab stop (CSS `tab-size: 8`): stops are 8 spaces of the tab's font apart, from the start of the line (a line `pre-wrap` wraps keeps the stops of the line it continues), and a tab narrower than half a `0` goes on to the next stop. |
+| `textWrap` | `"wrap"` \| `"pretty"` |  | default `"wrap"`; text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` is reserved. |
 | `textIndent` | `number` |  | ≥ -10000, ≤ 10000; text nodes only; indent of the first line in points (negative: hanging indent) |
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |
@@ -339,7 +344,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `text` | `string` |  | Required unless `placeholder` is set; forbidden when it is. |
+| `text` | `string` |  | Required unless `placeholder`, `image` or `note` is set; forbidden when one is. |
 | `font` | [`Id`](#id) | yes |  |
 | `size` | `number` | yes | > 0, ≤ 1000 |
 | `color` | [`Color`](#color) |  |  |
@@ -351,6 +356,24 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  |  |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
+| `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |
+| `fontFeatures` | `object` |  | OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features. |
+| `image` | [`InlineImage`](#inlineimage) |  |  |
+| `note` | [`Note`](#note) |  | A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it. |
+
+### InlineImage
+
+An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `src` | [`Id`](#id) |  | Key into the render option `images`. |
+| `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
+| `width` | `number` |  | > 0, ≤ 14400 |
+| `height` | `number` |  | > 0, ≤ 14400 |
+| `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
+| `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
+| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. |
 
 ### ColumnSpec
 
@@ -383,7 +406,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` | yes |  |
+| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` \| `"note"` | yes |  |
 
 ### BoxNode
 
@@ -398,6 +421,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
 | `children` | array of [`Node`](#node) |  |  |
+| `backgroundImage` | [`BackgroundImage`](#backgroundimage) |  |  |
 
 ### TextNode
 
@@ -439,6 +463,17 @@ Position of a fitted image in its box, per axis: a keyword, points from the left
 | `x` | `"left"` \| `"center"` \| `"right"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
 | `y` | `"top"` \| `"center"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) or [`Percent`](#percent) |  | default `"center"` |
 
+### BackgroundImage
+
+An image painted behind the box's children and over its `backgroundColor`, under its borders. It fills the padding box (inside the borders), placed by `fit` and `objectPosition`, and is clipped to that box, rounded by `borderRadius`. A box split across pages is sliced, like its background colour.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `src` | [`Id`](#id) |  | Key into the render option `images`. |
+| `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
+| `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
+| `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in the padding box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
+
 ### TableNode
 
 | Property | Type | Required | Notes |
@@ -479,7 +514,7 @@ Starts a new page when in-flow content follows it: at the end of the flow it add
 
 ### FieldNode
 
-An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text: 150 pt wide, one line, or three when multiline; checkbox and radio: `size` + 2 pt square).
+An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text and select: 150 pt wide, one line, or three when multiline; list: 150 pt wide, one row per option up to four; checkbox and radio: `size` + 2 pt square).
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
@@ -497,19 +532,58 @@ Fields with the same `name` are one field with several widgets (for example a fi
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `string` matching `^[^.]+$` | yes | min length 1, max length 128; Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`. |
-| `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` | yes |  |
-| `value` | `string` |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). |
+| `name` | `string` matching `^[^.]{1,128}(\.[^.]{1,128}){0,31}$` | yes | min length 1, max length 512; Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`. |
+| `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` \| `"list"` | yes | `select` is a drop-down list, `list` a list box that shows several options at once |
+| `value` | `string` (max length 8000) or array of `string` (each max length 1000) (max items 1000) |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
-| `options` | array of `string` |  | min items 1; select only: the choices |
+| `options` | array of `string` (each max length 1000) |  | min items 1, max items 1000; select and list only (required there): the choices, at most 1000 of at most 1000 characters each |
+| `multiSelect` | `boolean` |  | default `false`; list only: several options can be selected at once |
 | `multiline` | `boolean` |  | default `false`; text only |
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
-| `font` | [`Id`](#id) |  | text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display. |
+| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
+| `format` | [`FieldFormat`](#fieldformat) |  |  |
+
+### FieldFormat
+
+Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"number"` \| `"percent"` \| `"date"` \| `"time"` \| `"zip"` \| `"zipPlus4"` \| `"phone"` \| `"ssn"` | yes |  |
+| `decimals` | `integer` |  | ≥ 0, ≤ 10; number and percent: digits after the decimal separator, rounded half away from zero; default 2 |
+| `separators` | `"1,234.56"` \| `"1234.56"` \| `"1.234,56"` \| `"1234,56"` |  | number and percent: the thousands and decimal separators, by example; default `1,234.56` |
+| `negative` | `"minus"` \| `"red"` \| `"parens"` \| `"parensRed"` |  | number: how a negative number shows: `-1.00`, `1.00` in red, `(1.00)` or `(1.00)` in red; default `minus` |
+| `currency` | `string` matching `^[^\u0000-\u001f\u007f-\u009f"'\\\u2028\u2029]*$` |  | max length 8; number: a currency symbol, shown as it is (add a space to separate it); no control characters, quotes or backslashes |
+| `currencyBefore` | `boolean` |  | default `true`; number: the currency goes before the number |
+| `pattern` | `string` |  | min length 1, max length 64; date and time (required there): how the value shows, with `d`, `dd`, `ddd` (Mon), `dddd` (Monday), `m`, `mm`, `mmm` (Jan), `mmmm` (January), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; a time shows only `H`, `h`, `M`, `s` and `t`. Names are English. |
+
+### NoteNode
+
+A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. Under a transform, the icon stays upright and the same size: only its corner moves. In a header, a footer or a fixed element it is on every page.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"note"` | yes |  |
+| `id` | [`Id`](#id) |  |  |
+| `style` | [`Style`](#style) |  |  |
+| `break` | [`Break`](#break) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
+| `note` | [`Note`](#note) | yes |  |
+
+### Note
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `contents` | `string` | yes | min length 1, max length 8000; The text of the note. |
+| `author` | `string` |  | max length 256; Who wrote it; viewers show it as the note's title. |
+| `color` | [`Color`](#color) |  | The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1]. |
+| `open` | `boolean` |  | default `false`; Whether viewers show the text when the document opens. |
 
 ### TrackBreadth
 

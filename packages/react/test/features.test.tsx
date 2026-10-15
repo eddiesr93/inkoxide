@@ -1,10 +1,11 @@
-import type { BoxNode, FieldNode, ImageNode, TableNode, TextNode } from '@inkoxide/schema';
+import type { BoxNode, FieldNode, ImageNode, NoteNode, TableNode, TextNode } from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   Canvas,
+  type CanvasGradient,
   Cell,
   Checkbox,
   Circle,
@@ -14,20 +15,29 @@ import {
   type DefsProps,
   Document,
   Field,
+  FieldSet,
   Footer,
   G,
   Header,
   Image,
+  ImageBackground,
   type ImageSrc,
   imageSource,
   isImagePath,
   LinearGradient,
   Link,
+  List,
+  Marker,
+  type MarkerProps,
+  Note,
   PAGE_SIZES,
   Page,
   PageBreak,
   PageNumber,
+  type Painter,
   Path,
+  Polyline,
+  RadialGradient,
   Radio,
   Rect,
   remoteAllowed,
@@ -41,7 +51,11 @@ import {
   Table,
   Text,
   TextField,
+  TextInput,
+  type TextFormat,
   TotalPages,
+  Tspan,
+  type TspanProps,
   usePage,
   View,
 } from '../src/index.ts';
@@ -493,7 +507,7 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(a?.fit).toBe('cover');
     expect(b?.fit).toBe('contain');
     expect(thrown(() => tree(<View style={{ objectFit: 'cover' }} />)).message).toContain(
-      'objectFit applies to <Image>, not <View>',
+      'objectFit applies to <Image> and <ImageBackground>, not <View>',
     );
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectFit: 'scale-down' as never }} />)).message,
@@ -535,10 +549,10 @@ describe('CSS names and shorthands in the style prop', () => {
 
   it('throws on objectPosition off an Image or in a form the engine cannot place', () => {
     expect(thrown(() => tree(<View style={{ objectPosition: 'left' }} />)).message).toContain(
-      'objectPosition applies to <Image>, not <View>',
+      'objectPosition applies to <Image> and <ImageBackground>, not <View>',
     );
     expect(thrown(() => tree(<Text className="object-top">x</Text>)).message).toContain(
-      'objectPosition applies to <Image>, not <Text>',
+      'objectPosition applies to <Image> and <ImageBackground>, not <Text>',
     );
     for (const bad of ['top 25%', '25% left', 'left right', 'right 10px top', 'middle', '10', 'auto', '']) {
       expect(thrown(() => tree(<Image src="logo" style={{ objectPosition: bad }} />)).message, bad).toContain(
@@ -548,6 +562,75 @@ describe('CSS names and shorthands in the style prop', () => {
     expect(
       thrown(() => tree(<Image src="logo" style={{ objectPosition: ['left', 'top'] as never }} />)).message,
     ).toContain('objectPosition must be a CSS string');
+  });
+});
+
+describe('ImageBackground', () => {
+  it('is a box with a background image, placed by fit, objectFit and objectPosition', () => {
+    const r = tree(
+      <>
+        <ImageBackground src="logo" className="rounded-lg border p-4" style={{ height: 80 }} href="#x">
+          over the image
+        </ImageBackground>
+        <ImageBackground src="logo" fit="contain" className="object-cover object-left-top" />
+        <ImageBackground src="logo" style={{ objectFit: 'none', objectPosition: '25% 75%' }}>
+          <View />
+        </ImageBackground>
+        <ImageBackground src="data:image/png;base64,AAAA" />
+        <ImageBackground src={new Uint8Array([1, 2, 3])} />
+      </>,
+    );
+    const [a, b, c, d, e] = body(r) as BoxNode[];
+    expect(a).toMatchObject({ type: 'box', backgroundImage: { src: 'logo' }, link: '#x' });
+    expect(a?.style).toMatchObject({ height: 80, borderRadius: 6 });
+    expect((a?.children?.[0] as TextNode | undefined)?.runs[0]?.text).toBe('over the image');
+    // The fit prop wins over objectFit; both stay off the box style.
+    expect(b?.backgroundImage).toEqual({
+      src: 'logo',
+      fit: 'contain',
+      objectPosition: { x: 'left', y: 'top' },
+    });
+    expect(c?.backgroundImage).toEqual({ src: 'logo', fit: 'none', objectPosition: { x: '25%', y: '75%' } });
+    expect(c?.children).toHaveLength(1);
+    for (const n of [a, b, c]) expect(n?.style ?? {}).not.toHaveProperty('objectFit');
+    expect(d?.backgroundImage).toEqual({ data: 'data:image/png;base64,AAAA' });
+    expect(e?.backgroundImage?.src).toBeTypeOf('string');
+    expect(r.images[e?.backgroundImage?.src as string]).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('needs a src, and points the props of other libraries to src and style', () => {
+    expect(thrown(() => tree(<ImageBackground {...({} as { src: string })} />)).message).toContain(
+      '<ImageBackground> needs a src',
+    );
+    for (const key of ['source', 'imageStyle', 'srcSet']) {
+      const props = { src: 'logo', [key]: key === 'imageStyle' ? { opacity: 0.5 } : 'logo' };
+      expect(thrown(() => tree(<ImageBackground {...props} />)).message, key).toContain(
+        `<ImageBackground> does not take ${key}: pass the image as src`,
+      );
+    }
+  });
+
+  it('goes where a View goes and takes what a View takes', () => {
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <ImageBackground src="logo" />
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<ImageBackground> cannot be inside <Text>');
+    const r = tree(
+      <Table columns={[100]}>
+        <Row>
+          <Cell>
+            <ImageBackground src="logo" className="h-10" />
+          </Cell>
+        </Row>
+      </Table>,
+    );
+    const cell = (first<TableNode>(r).rows[0]?.cells[0]?.children ?? [])[0] as BoxNode;
+    expect(cell.backgroundImage).toEqual({ src: 'logo' });
   });
 });
 
@@ -970,6 +1053,299 @@ describe('form fields', () => {
     expect(m?.field).toMatchObject({ multiline: true, readOnly: true });
     expect(r.validate()).toEqual([]);
   });
+
+  it('builds list boxes, and takes select for options and TextInput for TextField', () => {
+    const r = tree(
+      <View>
+        <List name="days" options={['Mon', 'Tue', 'Wed']} value="Tue" />
+        <List name="tags" select={['a', 'b', 'c']} multiSelect value={['c', 'a']} className="h-20" />
+        <Select name="plan" select={['Starter', 'Team']} value="Team" />
+        <TextInput name="email" value="a@b.c" />
+        <Field kind="list" name="any" options={['x']} />
+      </View>,
+    );
+    const [days, tags, plan, email, any] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(days?.field).toEqual({
+      name: 'days',
+      kind: 'list',
+      options: ['Mon', 'Tue', 'Wed'],
+      value: 'Tue',
+      font: 'Inter-Regular',
+    });
+    expect(tags?.field).toMatchObject({ options: ['a', 'b', 'c'], multiSelect: true, value: ['c', 'a'] });
+    expect(tags?.style).toEqual({ height: 60 });
+    expect(plan?.field).toMatchObject({ kind: 'select', options: ['Starter', 'Team'], value: 'Team' });
+    expect(email?.field).toMatchObject({ kind: 'text', value: 'a@b.c' });
+    expect(any?.field).toMatchObject({ kind: 'list', options: ['x'] });
+    expect(r.validate()).toEqual([]);
+    const several = thrown(() =>
+      tree(<List name="x" options={['a', 'b']} value={['a', 'b'] as unknown as string} />),
+    );
+    expect(several.message).toContain('need multiSelect');
+  });
+
+  it('takes a format with its readable keys or their other names', () => {
+    const r = tree(
+      <View>
+        <TextField
+          name="fee"
+          value="-1234.5"
+          format={{
+            type: 'number',
+            decimals: 0,
+            separators: '1.234,56',
+            negative: 'parensRed',
+            currency: ' €',
+            currencyBefore: false,
+          }}
+        />
+        <TextInput
+          name="fee2"
+          format={{
+            type: 'number',
+            nDec: 1,
+            sepComma: false,
+            negStyle: 'ParensBlack',
+            currency: '$',
+            currencyPrepend: true,
+          }}
+        />
+        <TextInput name="day" value="2026-10-14" format={{ type: 'date', param: 'dd/mm/yyyy' }} />
+        <TextField name="zip" format={{ type: 'zip' }} />
+      </View>,
+    );
+    const [fee, fee2, day, zip] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(fee?.field.format).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1.234,56',
+      negative: 'parensRed',
+      currency: ' €',
+      currencyBefore: false,
+    });
+    expect(fee2?.field.format).toEqual({
+      type: 'number',
+      decimals: 1,
+      separators: '1234.56',
+      negative: 'parens',
+      currency: '$',
+      currencyBefore: true,
+    });
+    expect(day?.field).toMatchObject({
+      value: '2026-10-14',
+      format: { type: 'date', pattern: 'dd/mm/yyyy' },
+    });
+    expect(zip?.field.format).toEqual({ type: 'zip' });
+    expect(r.validate()).toEqual([]);
+    // The readable key wins.
+    const both = tree(
+      <TextField name="a" format={{ type: 'number', sepComma: true, separators: '1234,56' }} />,
+    );
+    expect(first<FieldNode>(both).field.format).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1234,56',
+    });
+    expect(
+      thrown(() => tree(<TextField name="a" format={'number' as unknown as { type: 'number' }} />)).message,
+    ).toContain('<TextField format> is an object');
+  });
+
+  it('gives a format with the other names their defaults', () => {
+    const format = (f: TextFormat) => first<FieldNode>(tree(<TextInput name="a" format={f} />)).field.format;
+    // With none of them, the readable defaults (2 decimals, `1,234.56`) apply in the engine.
+    expect(format({ type: 'number' })).toEqual({ type: 'number' });
+    expect(format({ type: 'number', currency: '$' })).toEqual({ type: 'number', currency: '$' });
+    // With any of them: no decimals and no thousands separator.
+    for (const f of [
+      { currencyPrepend: true },
+      { negStyle: 'MinusBlack' as const },
+      { nDec: 0 },
+      { sepComma: false },
+    ]) {
+      expect(format({ type: 'number', ...f })).toMatchObject({ decimals: 0, separators: '1234.56' });
+    }
+    expect(format({ type: 'number', negStyle: 'Red' })).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1234.56',
+      negative: 'red',
+    });
+    expect(format({ type: 'percent', nDec: 1 })).toEqual({
+      type: 'percent',
+      decimals: 1,
+      separators: '1234.56',
+    });
+    expect(format({ type: 'percent', sepComma: true })).toEqual({
+      type: 'percent',
+      decimals: 0,
+      separators: '1,234.56',
+    });
+    // The readable keys keep their values.
+    expect(format({ type: 'number', nDec: 1, separators: '1.234,56' })).toEqual({
+      type: 'number',
+      decimals: 1,
+      separators: '1.234,56',
+    });
+    expect(format({ type: 'zip4' })).toEqual({ type: 'zipPlus4' });
+    expect(format({ type: 'date', param: 'yyyy-mm-dd' })).toEqual({ type: 'date', pattern: 'yyyy-mm-dd' });
+  });
+
+  it('takes a time format by the index of its style', () => {
+    const pattern = (param: string | number) =>
+      first<FieldNode>(tree(<TextInput name="a" value="18:05" format={{ type: 'time', param }} />)).field
+        .format?.pattern;
+    expect([0, 1, 2, 3].map(pattern)).toEqual(['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt']);
+    expect(pattern('1')).toBe('h:MM tt');
+    const r = tree(<TextInput name="a" value="18:05" format={{ type: 'time', param: 1 }} />);
+    expect(r.validate()).toEqual([]);
+    for (const bad of [4, -1, 1.5, '', 'HH:MM', ' 1']) {
+      expect(thrown(() => pattern(bad)).message).toContain('param on a time is a style from 0 to 3');
+    }
+    // A pattern still works, and wins.
+    expect(
+      first<FieldNode>(tree(<TextInput name="a" format={{ type: 'time', pattern: 'H:MM', param: 9 }} />))
+        .field.format,
+    ).toEqual({ type: 'time', pattern: 'H:MM' });
+  });
+
+  it('puts the names of field sets in front of the names of their fields', () => {
+    const r = tree(
+      <FieldSet name="applicant" className="p-2" id="who">
+        <TextField name="name" />
+        <View>
+          <FieldSet name="address">
+            <TextField name="street" />
+            <Radio name="kind" value="home" />
+          </FieldSet>
+        </View>
+        <Checkbox name="consent" />
+      </FieldSet>,
+    );
+    const set = first<BoxNode>(r);
+    expect(set).toMatchObject({ type: 'box', id: 'who', style: { padding: { top: 6 } } });
+    const names: string[] = [];
+    const walk = (n: { type: string; field?: { name: string }; children?: unknown[] }) => {
+      if (n.field) names.push(n.field.name);
+      for (const c of (n.children ?? []) as (typeof n)[]) walk(c);
+    };
+    walk(set as never);
+    expect(names).toEqual([
+      'applicant.name',
+      'applicant.address.street',
+      'applicant.address.kind',
+      'applicant.consent',
+    ]);
+    expect(r.validate()).toEqual([]);
+    // Fields outside it keep their name.
+    expect(first<FieldNode>(tree(<TextField name="plain" />)).field.name).toBe('plain');
+    expect(thrown(() => tree(<FieldSet name="">x</FieldSet>)).message).toContain('<FieldSet> needs a name');
+  });
+
+  it('takes a render prop, as a View does, and names the fields it renders', () => {
+    const r = tree(
+      <FieldSet
+        name="page"
+        className="p-2"
+        render={({ pageNumber }) => <TextField name={pageNumber === 1 ? 'first' : 'later'} />}
+      />,
+      { pageCount: 2 },
+    );
+    expect(r.dynamic).toBe(true);
+    const variants = (first<BoxNode>(r).children ?? []) as BoxNode[];
+    expect(variants.map((v) => [v.pages, ((v.children ?? []) as FieldNode[])[0]?.field.name])).toEqual([
+      [[1], 'page.first'],
+      [[2], 'page.later'],
+    ]);
+    // One page: a plain set, with its style.
+    const one = first<BoxNode>(
+      tree(<FieldSet name="s" className="p-2" render={() => <TextField name="a" />} />),
+    );
+    expect(one.style).toEqual({ padding: { top: 6, right: 6, bottom: 6, left: 6 } });
+    expect(((one.children ?? []) as FieldNode[])[0]?.field.name).toBe('s.a');
+  });
+});
+
+describe('notes', () => {
+  it('builds a note from its text, with its background colour as its colour', () => {
+    const r = tree(
+      <View>
+        <Note author="Ana" open className="absolute top-2 bg-blue-500">
+          Check the totals ({3} rows).
+        </Note>
+        <Note style={{ backgroundColor: '#ff0000', marginTop: 4 }}>Plain</Note>
+        <Note>Yellow</Note>
+      </View>,
+    );
+    const [a, b, c] = (first<BoxNode>(r).children ?? []) as NoteNode[];
+    expect(a?.note).toMatchObject({ contents: 'Check the totals (3 rows).', author: 'Ana', open: true });
+    expect(a?.note.color).toHaveLength(4);
+    expect(a?.style).toEqual({ position: 'absolute', inset: { top: 6 } });
+    expect(b).toEqual({
+      type: 'note',
+      note: { contents: 'Plain', color: [1, 0, 0, 1] },
+      style: { margin: { top: 4 } },
+    });
+    expect(c).toEqual({ type: 'note', note: { contents: 'Yellow' } });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('contains only text', () => {
+    expect(
+      thrown(() =>
+        tree(
+          <Note>
+            <Text>x</Text>
+          </Note>,
+        ),
+      ).message,
+    ).toContain('A <Note> contains only text');
+    expect(thrown(() => tree(<Note />)).message).toContain('<Note> needs text');
+    // Fixed on every page, like a watermark.
+    const fixed = tree(
+      <Note fixed className="absolute right-0 top-0">
+        On every page
+      </Note>,
+    );
+    expect(first<NoteNode>(fixed)).toMatchObject({ type: 'note', break: { fixed: true } });
+  });
+
+  it('is a run of its own inside a Text, with its colour', () => {
+    const r = tree(
+      <Text className="text-[12pt]">
+        Total
+        <Note author="Ana" className="bg-blue-500">
+          Check it ({3} rows).
+        </Note>{' '}
+        due
+        <Link href="https://example.com">
+          {' '}
+          now<Note>Linked</Note>
+        </Link>
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs.map((x) => x.text ?? x.note?.contents)).toEqual([
+      'Total',
+      'Check it (3 rows).',
+      ' due',
+      ' now',
+      'Linked',
+    ]);
+    expect(runs[1]).toMatchObject({ note: { contents: 'Check it (3 rows).', author: 'Ana' }, size: 12 });
+    expect(runs[1]?.note?.color).toHaveLength(4);
+    // A note carries no link: it takes no room to click.
+    expect(runs[4]).toEqual({ note: { contents: 'Linked' }, font: runs[0]?.font, size: 12 });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('takes no block props or box styles inside a Text', () => {
+    const inText = (note: ReactNode) => thrown(() => tree(<Text>a {note}</Text>)).message;
+    expect(inText(<Note id="n">b</Note>)).toContain('`id` does not apply to it');
+    expect(inText(<Note fixed>b</Note>)).toContain('`fixed` does not apply to it');
+    expect(inText(<Note className="p-2">b</Note>)).toContain('it takes only backgroundColor');
+    expect(inText(<Note />)).toContain('<Note> needs text');
+  });
 });
 
 describe('drawings', () => {
@@ -1003,7 +1379,7 @@ describe('drawings', () => {
           </Svg>,
         ),
       ).message,
-    ).toContain('Text inside <Svg>');
+    ).toContain('Text inside <Svg> goes in a <Text>');
     expect(thrown(() => tree(<Rect width={1} height={1} />)).message).toContain('goes inside <Svg>');
   });
 
@@ -1021,6 +1397,148 @@ describe('drawings', () => {
       </Svg>,
     );
     expect(decode(first<ImageNode>(r).data)).toContain('<clipPath id="c" clipPathUnits="objectBoundingBox">');
+  });
+
+  it('writes a Marker and the shapes that reference it', () => {
+    const arrow: MarkerProps = {
+      id: 'arrow',
+      viewBox: '0 0 10 10',
+      refX: 10,
+      refY: 5,
+      markerWidth: 6,
+      markerHeight: 6,
+      orient: 'auto-start-reverse',
+      markerUnits: 'strokeWidth',
+    };
+    const r = tree(
+      <Svg width={100} height={40}>
+        <Defs>
+          <Marker {...arrow}>
+            <Path d="M0 0L10 5L0 10Z" fill="context-stroke" />
+          </Marker>
+          <Marker id="dot" markerWidth={4} markerHeight={4} refX={2} refY={2} orient={30}>
+            <Circle cx={2} cy={2} r={2} />
+          </Marker>
+          <RadialGradient id="r" cx={0.5} cy={0.5} r={0.5} fx={0.3} fy={0.3} fr={0.1}>
+            <Stop offset={0} stopColor="white" />
+          </RadialGradient>
+        </Defs>
+        <Polyline
+          points={[10, 30, 50, 10, 90, 30]}
+          fill="none"
+          stroke="black"
+          markerStart="url(#arrow)"
+          markerMid="url(#dot)"
+          markerEnd="url(#arrow)"
+        />
+      </Svg>,
+    );
+    const svg = decode(first<ImageNode>(r).data);
+    expect(svg).toContain(
+      '<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0L10 5L0 10Z" fill="context-stroke"/></marker>',
+    );
+    expect(svg).toContain('<marker id="dot" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="30">');
+    expect(svg).toContain('fx="0.3" fy="0.3" fr="0.1"');
+    expect(svg).toContain('marker-start="url(#arrow)" marker-mid="url(#dot)" marker-end="url(#arrow)"/>');
+    expect(r.validate()).toEqual([]);
+    expect(
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            <Marker id="m">
+              <Stop offset={0} stopColor="red" />
+            </Marker>
+          </Svg>,
+        ),
+      ).message,
+    ).toContain('<Stop>');
+  });
+
+  it('writes Text and Tspan in an Svg as SVG text, with registered faces', () => {
+    const span: TspanProps = { dx: 2, baselineShift: 'super', fontSize: 8, fill: 'red' };
+    const r = tree(
+      <View className="font-[Noto_Sans] text-[11pt]">
+        <Svg width={100} height={40}>
+          <G fontFamily="Missing, Inter">
+            <Text x={[10, 20]} y={30} textAnchor="middle" textLength={50} lengthAdjust="spacingAndGlyphs">
+              a &lt; b {'&'} <Tspan {...span}>2</Tspan>
+              <Tspan fontWeight="bold" fontStyle="italic">
+                c
+              </Tspan>
+            </Text>
+          </G>
+          <Text x={5} y={10}>
+            noto
+          </Text>
+        </Svg>
+      </View>,
+    );
+    const img = first<BoxNode>(r).children?.[0] as ImageNode;
+    const svg = decode(img.data);
+    // The size around the drawing is its text's default.
+    expect(svg).toContain('viewBox="0 0 100 40" font-size="11">');
+    expect(svg).toContain(
+      `<text x="10 20" y="30" text-anchor="middle" textLength="50" lengthAdjust="spacingAndGlyphs" font-family="'Inter'" font-weight="400">a &lt; b &amp; <tspan dx="2" baseline-shift="super" font-size="8" fill="red" font-family="'Inter'" font-weight="400">2</tspan>`,
+    );
+    // Inter has no bold italic: the italic face, the closest it has.
+    expect(svg).toContain(`<tspan font-family="'Inter'" font-weight="400" font-style="italic">c</tspan>`);
+    expect(svg).toContain(`<text x="5" y="10" font-family="'Noto Sans'" font-weight="400">noto</text>`);
+    // Their fonts are declared.
+    expect((r.document.fonts ?? []).map((f) => f.id)).toEqual(
+      expect.arrayContaining(['Inter-Regular', 'Inter-Italic', 'NotoSans-Regular']),
+    );
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('writes direction on SVG text and alignmentBaseline on a Tspan', () => {
+    const r = tree(
+      <Svg width={100} height={40}>
+        <Text x={90} y={30} direction="rtl" textAnchor="start">
+          a<Tspan alignmentBaseline="hanging">b</Tspan>
+        </Text>
+      </Svg>,
+    );
+    const svg = decode((first<ImageNode>(r) as ImageNode).data);
+    expect(svg).toContain('<text x="90" y="30" direction="rtl" text-anchor="start"');
+    expect(svg).toContain('<tspan alignment-baseline="hanging"');
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('allows only strings and Tspan in SVG text, and Tspan only there', () => {
+    const svg = (children: ReactNode) =>
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            {children}
+          </Svg>,
+        ),
+      ).message;
+    expect(
+      svg(
+        <Text>
+          <Rect width={1} height={1} />
+        </Text>,
+      ),
+    ).toContain('cannot be inside SVG text');
+    expect(
+      svg(
+        <Text>
+          <Text>a</Text>
+        </Text>,
+      ),
+    ).toContain('cannot be inside SVG text');
+    expect(svg(<Tspan>a</Tspan>)).toContain('<Tspan> goes inside a <Text> in an <Svg>');
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <Tspan>a</Tspan>
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<Tspan> goes inside a <Text> in an <Svg>');
+    expect(svg(<Text style={{ color: 'red' }}>a</Text>)).toContain('style applies to <Text> outside <Svg>');
+    expect(svg(<Text fontWeight={'heavyish' as never}>a</Text>)).toContain('fontWeight "heavyish"');
   });
 
   it('keeps the layout props of Svg out of the drawing', () => {
@@ -1071,8 +1589,143 @@ describe('drawings', () => {
       '<g transform="translate(40 20)"><path d="M-10 0A10 10 0 1 0 10 0A10 10 0 1 0 -10 0Z" fill="#c00"/></g>',
     );
     expect(svg).toContain(
-      '<path d="M0 0L80 40" fill="none" stroke="blue" stroke-width="2" stroke-dasharray="3 3"/>',
+      '<path d="M0 0L80 40" fill="none" stroke="blue" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="3 3"/>',
     );
+  });
+
+  const paint = (fn: (p: Painter) => void): string =>
+    decode(first<ImageNode>(tree(<Canvas width={100} height={100} paint={fn} />)).data);
+
+  it('sets the miter limit of mitred strokes, 10 by default', () => {
+    const svg = paint((p) => {
+      p.rect(0, 0, 10, 10).stroke();
+      p.miterLimit(2.5).rect(0, 0, 10, 10).stroke();
+      p.lineJoin('round').rect(0, 0, 10, 10).stroke();
+      p.rect(0, 0, 10, 10).fill();
+    });
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-miterlimit="10"/>');
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-miterlimit="2.5"/>');
+    expect(svg).toContain('stroke="black" stroke-width="1" stroke-linejoin="round"/>');
+    expect(svg).toContain('<path d="M0 0h10v10h-10Z" fill="black"/>');
+  });
+
+  it('clips to the current path until restore, nested clips included', () => {
+    const svg = paint((p) => {
+      p.save().circle(50, 50, 40).clip();
+      p.save().rect(0, 0, 50, 100).clip('evenodd');
+      p.rect(0, 0, 100, 100).fill('red');
+      p.restore();
+      p.rect(0, 0, 100, 100).fill('blue');
+      p.restore().rect(0, 0, 10, 10).fill('green');
+      // A clip outside save() lasts to the end of the drawing.
+      p.clip();
+    });
+    expect(svg).toContain(
+      '<clipPath id="ink-c1"><path d="M10 50A40 40 0 1 0 90 50A40 40 0 1 0 10 50Z"/></clipPath><g clip-path="url(#ink-c1)">' +
+        '<clipPath id="ink-c2"><path d="M0 0h50v100h-50Z" clip-rule="evenodd"/></clipPath><g clip-path="url(#ink-c2)">' +
+        '<path d="M0 0h100v100h-100Z" fill="red"/></g>' +
+        '<path d="M0 0h100v100h-100Z" fill="blue"/></g>' +
+        '<path d="M0 0h10v10h-10Z" fill="green"/>' +
+        '<clipPath id="ink-c3"></clipPath><g clip-path="url(#ink-c3)"></g></svg>',
+    );
+  });
+
+  it('writes Canvas text with the canvas font, registered faces and the text options', () => {
+    const r = tree(
+      <View className="font-[Noto_Sans]">
+        <Canvas
+          width={200}
+          height={100}
+          paint={(p) => {
+            p.text('A  & <b>', 10, 20);
+            const g = p.linearGradient(0, 0, 100, 0).stop(0, 'red').stop(1, 'blue');
+            p.font('Inter-Bold', 20).fillColor(g).text('Total', 10, 40, {
+              width: 100,
+              align: 'right',
+              baseline: 'alphabetic',
+              characterSpacing: 2,
+              wordSpacing: 3,
+              underline: true,
+              strike: true,
+            });
+            p.font('Roboto Mono').fontSize(9).strokeColor('#00f').lineWidth(0.5);
+            p.text('mono', 0, 0, {
+              align: 'center',
+              width: 50,
+              baseline: 'middle',
+              fill: false,
+              stroke: true,
+            });
+            p.font('Helvetica-BoldOblique').text('std', 0, 0);
+          }}
+        />
+      </View>,
+    );
+    const img = (first<BoxNode>(r).children ?? [])[0] as ImageNode;
+    const svg = decode(img.data);
+    // The canvas's family, at 12 points, its top at y.
+    expect(svg).toContain(
+      `<text x="10" y="20" xml:space="preserve" font-family="'Noto Sans'" font-weight="400" font-size="12" dominant-baseline="text-before-edge" fill="black">A  &amp; &lt;b&gt;</text>`,
+    );
+    expect(svg).toContain(
+      `<text x="110" y="40" xml:space="preserve" font-family="'Inter'" font-weight="700" font-size="20" text-anchor="end" dominant-baseline="alphabetic" letter-spacing="2" word-spacing="3" text-decoration="underline line-through" fill="url(#ink-g1)">Total</text>`,
+    );
+    expect(svg).toContain(
+      `<text x="25" y="0" xml:space="preserve" font-family="'Roboto Mono'" font-weight="400" font-size="9" text-anchor="middle" dominant-baseline="middle" fill="none" stroke="#00f" stroke-width="0.5" stroke-miterlimit="10">mono</text>`,
+    );
+    // A standard name: the canvas's family in its weight and style (Noto Sans has one face), with
+    // a warning.
+    expect(svg).toContain(`font-family="'Noto Sans'" font-weight="400" font-size="9" dominant-baseline`);
+    expect(r.warnings).toContain(
+      'Font "Helvetica 700 italic" is not registered; using NotoSans-Regular (Canvas in View).',
+    );
+    expect((r.document.fonts ?? []).map((f) => f.id)).toEqual(
+      expect.arrayContaining(['NotoSans-Regular', 'Inter-Bold', 'RobotoMono-Regular']),
+    );
+    expect(r.validate()).toEqual([]);
+    expect(
+      thrown(() => tree(<Canvas width={10} height={10} paint={(p) => p.text('two\nlines', 0, 0)} />)).message,
+    ).toContain('painter.text draws one line');
+  });
+
+  it("aligns Canvas text with justify as with left: a line doesn't wrap", () => {
+    const svg = paint((p) => p.text('a b', 10, 20, { width: 100, align: 'justify' }));
+    expect(svg).toContain('<text x="10" y="20" xml:space="preserve"');
+    expect(svg).not.toContain('text-anchor');
+  });
+
+  it('paints with linear and radial gradients, written once each', () => {
+    let shared: CanvasGradient | undefined;
+    const svg = paint((p) => {
+      const g = p.linearGradient(0, 0, 100, 0).stop(0, 'white').stop(1, '#1e4a99', 0.5);
+      shared = g;
+      p.rect(0, 0, 50, 50).fill(g);
+      p.translate(50, 0).fillColor(g).rect(0, 0, 50, 50).fill();
+      const r = p.radialGradient(30, 30, 5, 50, 50, 40).stop(0, 'red').stop(1, '<"&>');
+      p.lineWidth(4).circle(50, 50, 20).fillAndStroke(r, g);
+      // A stop added after the gradient was used makes a new one.
+      g.stop(0.5, 'red');
+      p.strokeColor(g).moveTo(0, 0).lineTo(10, 10).stroke();
+    });
+    expect(shared).toBeDefined();
+    expect(svg).toContain(
+      '<defs><linearGradient id="ink-g1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="0">' +
+        '<stop offset="0" stop-color="white"/><stop offset="1" stop-color="#1e4a99" stop-opacity="0.5"/></linearGradient></defs>' +
+        '<path d="M0 0h50v50h-50Z" fill="url(#ink-g1)"/>' +
+        '<g transform="translate(50 0)"><path d="M0 0h50v50h-50Z" fill="url(#ink-g1)"/>',
+    );
+    expect(svg).toContain(
+      '<defs><radialGradient id="ink-g2" gradientUnits="userSpaceOnUse" fx="30" fy="30" fr="5" cx="50" cy="50" r="40">' +
+        '<stop offset="0" stop-color="red"/><stop offset="1" stop-color="&lt;&quot;&amp;&gt;"/></radialGradient></defs>',
+    );
+    expect(svg).toContain('fill="url(#ink-g2)" stroke="url(#ink-g1)" stroke-width="4"');
+    expect(svg).toContain(
+      '<stop offset="0.5" stop-color="red"/></linearGradient></defs><path d="M0 0L10 10" fill="none" stroke="url(#ink-g3)"',
+    );
+    expect(svg.match(/<linearGradient /g)).toHaveLength(2);
+    expect(
+      thrown(() => paint((p) => p.rect(0, 0, 1, 1).fill([1, 0, 0] as unknown as string))).message,
+    ).toContain('A paint is a colour string, or a gradient');
   });
 });
 
@@ -1427,5 +2080,74 @@ describe('debug', () => {
     const wrapper = first<BoxNode>(r);
     expect(wrapper.debug).toBe(true);
     expect((wrapper.children as BoxNode[]).map((v) => v.debug)).toEqual([true, true]);
+  });
+});
+
+describe('Image inside Text', () => {
+  it('is a run of its own, sized in points or em and placed by verticalAlign', () => {
+    const r = tree(
+      <Text style={{ fontSize: 12 }}>
+        a <Image src="logo" />
+        <Image src="logo" style={{ height: '2em', verticalAlign: 'middle' }} alt="Logo" />
+        <Image src="logo" style={{ width: 30, height: 10 }} fit="cover" className="object-left" />
+        <Image src="logo" style={{ verticalAlign: 'text-top' }} />
+        <Image src="logo" style={{ verticalAlign: -3 }} />
+        <Text style={{ verticalAlign: 'super' }}>
+          <Image src="logo" />
+        </Text>
+        <Link href="#x">
+          <Image src="data:image/png;base64,AAAA" />
+        </Link>
+        b
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs[0]).toMatchObject({ text: 'a ', size: 12 });
+    const images = runs.filter((run) => run.image);
+    expect(images.map((run) => [run.image, run.verticalAlign, run.size])).toEqual([
+      [{ src: 'logo' }, undefined, 12],
+      [{ src: 'logo', height: 24, alt: 'Logo' }, 'middle', 12],
+      [
+        { src: 'logo', width: 30, height: 10, fit: 'cover', objectPosition: { x: 'left', y: 'center' } },
+        undefined,
+        12,
+      ],
+      [{ src: 'logo' }, 'textTop', 12],
+      [{ src: 'logo' }, -3, 12],
+      [{ src: 'logo' }, 'super', 12],
+      [{ data: 'data:image/png;base64,AAAA' }, undefined, 12],
+    ]);
+    expect(images[6]?.link).toBe('#x');
+    expect(images.every((run) => run.text === undefined && run.font === 'Inter-Regular')).toBe(true);
+    expect(runs[runs.length - 1]).toMatchObject({ text: 'b' });
+  });
+
+  it('takes the Tailwind classes align-text-top and align-text-bottom', () => {
+    const r = tree(
+      <Text>
+        <Image src="logo" className="align-text-top" />
+        <Image src="logo" className="align-text-bottom" />
+      </Text>,
+    );
+    expect(first<TextNode>(r).runs.map((run) => run.verticalAlign)).toEqual(['textTop', 'textBottom']);
+  });
+
+  it('takes no box styles, percentages or block props', () => {
+    const inText = (img: ReactNode) => () => tree(<Text>{img}</Text>);
+    expect(thrown(inText(<Image src="logo" style={{ margin: 4 }} />)).message).toContain(
+      'An <Image> inside <Text> is part of the line: it takes width, height, objectFit, objectPosition and verticalAlign, not "marginTop',
+    );
+    expect(thrown(inText(<Image src="logo" style={{ width: '50%' }} />)).message).toContain(
+      'takes its width in points or em, not 50%',
+    );
+    expect(thrown(inText(<Image src="logo" bookmark="x" />)).message).toContain(
+      '`bookmark` does not apply to it',
+    );
+    expect(thrown(inText(<Image src="logo" href="https://example.com" />)).message).toContain(
+      'Wrap it in a <Link>',
+    );
+    expect(
+      thrown(inText(<Image src="logo" style={{ verticalAlign: 'sideways' as never }} />)).message,
+    ).toContain('verticalAlign "sideways" is not supported');
   });
 });

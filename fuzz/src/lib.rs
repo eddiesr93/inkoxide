@@ -5,7 +5,10 @@ use std::sync::LazyLock;
 
 pub mod svg;
 
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, RenderOptions};
+use inkoxide::{
+    Encryption, FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, Permissions,
+    RenderOptions, ValidationCode,
+};
 use serde_json::{json, Map, Value};
 
 /// The fixture fonts: id, family, weight and bytes. Generated documents
@@ -35,6 +38,19 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &[u8])] = &[
         400,
         include_bytes!("../../fixtures/fonts/RobotoMono-Regular.ttf"),
     ),
+    // Colour fonts: COLR layers with outlines, PNG bitmaps without.
+    (
+        "EmojiTest-COLR",
+        "Emoji Test",
+        400,
+        include_bytes!("../../fixtures/fonts/EmojiTest-COLR.ttf"),
+    ),
+    (
+        "EmojiTest-CBDT",
+        "Emoji Test Bitmap",
+        400,
+        include_bytes!("../../fixtures/fonts/EmojiTest-CBDT.ttf"),
+    ),
 ];
 
 pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
@@ -63,10 +79,15 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
         "chart",
         include_bytes!("../../fixtures/images/chart.svg").to_vec(),
     );
+    s.insert(
+        "svgtext",
+        include_bytes!("../../fixtures/images/text.svg").to_vec(),
+    );
     s.insert("bad", b"\x89PNG\r\n\x1a\nnot really".to_vec());
     s.insert(
         "badsvg",
-        b"<svg xmlns='http://www.w3.org/2000/svg'><text>hi</text></svg>".to_vec(),
+        b"<svg xmlns='http://www.w3.org/2000/svg'><text><textPath>hi</textPath></text></svg>"
+            .to_vec(),
     );
     s
 });
@@ -79,10 +100,15 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 ///
 /// On a finding.
 pub fn check(doc: &[u8]) {
-    // Half the inputs also go through the PDF/A writer.
-    let pdf_a = doc.len() % 2 == 1;
+    // Most inputs also go through the PDF/A writer.
+    let pdf_a = pdf_a_level(doc.len());
     let json = render(doc, InputFormat::Json, pdf_a);
-    let Ok(value) = serde_json::from_slice::<serde_json::Value>(doc) else {
+    let value = serde_json::from_slice::<serde_json::Value>(doc).ok();
+    // The plain renders are also rendered encrypted.
+    if pdf_a.is_none() {
+        check_encrypted(doc, &json, value.as_ref());
+    }
+    let Some(value) = value else {
         return;
     };
     let Ok(packed) = rmp_serde::to_vec(&value) else {
@@ -99,8 +125,64 @@ pub fn check(doc: &[u8]) {
     }
 }
 
+/// The `fonts` of a document that declares every fixture font.
+fn fixture_fonts() -> Vec<Value> {
+    FIXTURE_FONTS
+        .iter()
+        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
+        .collect()
+}
+
+/// Renders `doc` encrypted: it must render exactly when `plain`, its
+/// unencrypted render, did, fail with the same code otherwise, and keep
+/// the title out of plain sight.
+fn check_encrypted(doc: &[u8], plain: &Result<Vec<u8>, InkoxideError>, value: Option<&Value>) {
+    let options = RenderOptions::default()
+        .with_compress(false)
+        .with_threads(1)
+        .with_encryption(
+            Encryption::new()
+                .with_user_password("fuzz user")
+                .with_owner_password("fuzz owner")
+                .with_permissions(Permissions::new().with_copying(true)),
+        );
+    let encrypted = inkoxide::render(doc, InputFormat::Json, &options, &FONTS, &IMAGES);
+    let (plain, encrypted) = match (plain, &encrypted) {
+        (Ok(p), Ok(e)) => (p, e),
+        (Err(a), Err(b)) => {
+            assert_eq!(a.code(), b.code(), "encrypted: {b}; plain: {a}");
+            return;
+        }
+        (p, e) => panic!(
+            "plain {:?}, encrypted {:?}",
+            p.as_ref().map(|_| ()),
+            e.as_ref().map(|_| ())
+        ),
+    };
+    assert!(encrypted.starts_with(b"%PDF-") && encrypted.trim_ascii_end().ends_with(b"%%EOF"));
+    // Encrypted streams are binary: only the object syntax is scanned.
+    assert_finite_objects(encrypted);
+    // A title the plain file shows as a literal string is encrypted.
+    let title = value
+        .and_then(|v| v.pointer("/meta/title"))
+        .and_then(Value::as_str)
+        .filter(|t| {
+            t.len() >= 4
+                && t.bytes()
+                    .all(|b| b.is_ascii_graphic() && !b"()\\".contains(&b))
+        });
+    if let Some(t) = title {
+        let literal = format!("({t})");
+        let has = |pdf: &[u8]| pdf.windows(literal.len()).any(|w| w == literal.as_bytes());
+        if has(plain) {
+            assert!(!has(encrypted), "the title {literal} is in plain text");
+        }
+    }
+}
+
 /// Renders arbitrary bytes registered as an image (SVG or raster), drawn
-/// twice at different sizes; same oracle as [`check`].
+/// twice at different sizes, in a document that declares the fixture
+/// fonts (SVG text is laid out with them); same oracle as [`check`].
 ///
 /// # Errors
 ///
@@ -108,15 +190,21 @@ pub fn check(doc: &[u8]) {
 pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
     let mut images = ImageStore::new();
     images.insert("fz", bytes.to_vec());
-    let doc = br#"{"version":1,"fonts":[],"pages":[{"size":{"width":300,"height":400},"children":[
-        {"type":"image","src":"fz"},
-        {"type":"image","src":"fz","fit":"cover","style":{"width":40,"height":90}}]}]}"#;
+    let doc = json!({
+        "version": 1,
+        "fonts": fixture_fonts(),
+        "pages": [{"size": {"width": 300, "height": 400}, "children": [
+            {"type": "image", "src": "fz"},
+            {"type": "image", "src": "fz", "fit": "cover", "style": {"width": 40, "height": 90}}
+        ]}]
+    })
+    .to_string();
     render_with(
-        doc,
+        doc.as_bytes(),
         InputFormat::Json,
         &FONTS,
         &images,
-        bytes.len() % 2 == 1,
+        pdf_a_level(bytes.len()),
     )
     .map(|_| ())
 }
@@ -124,7 +212,13 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
 /// Registers arbitrary bytes as a font, as they are and with the WOFF and
 /// WOFF2 signatures in place of their first four bytes, so the decoders
 /// are reached from any input. Each font that registers sets a line of
-/// text; same oracle as [`check`]. Returns how many registered.
+/// text, and is the fallback of a line in Inter with emoji sequences (a
+/// colour font's glyphs are drawn from its colour tables); same oracle as
+/// [`check`]. Returns how many registered.
+///
+/// # Panics
+///
+/// On a finding.
 pub fn check_font(bytes: &[u8]) -> usize {
     let mut variants = vec![bytes.to_vec()];
     if let Some(rest) = bytes.get(4..) {
@@ -132,20 +226,177 @@ pub fn check_font(bytes: &[u8]) -> usize {
             variants.push([&signature[..], rest].concat());
         }
     }
-    let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"}],"pages":[{"size":{"width":300,"height":200},"children":[
-        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]}]}]}"#;
+    let doc = r#"{"version":1,"fonts":[{"id":"fz","family":"Fz"},{"id":"Inter-Regular","family":"Inter"}],
+        "fallbackFonts":["fz"],"pages":[{"size":{"width":300,"height":200},"children":[
+        {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]},
+        {"type":"text","runs":[{"text":"😀 👩‍💻 🇫🇷 1️⃣ #⃣ 👍🏽 ❤️ ☺︎ 🏴󠁧󠁢󠁥󠁮󠁧󠁿","font":"Inter-Regular","size":12}]}]}]}"#;
     let mut registered = 0;
     for v in variants {
         let mut fonts = FontStore::new();
+        let (_, _, _, inter) = FIXTURE_FONTS[0];
+        fonts.register("Inter-Regular", inter.to_vec()).unwrap();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
-            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, false);
+            let _ = render_with(doc.as_bytes(), InputFormat::Json, &fonts, &IMAGES, None);
         }
     }
     registered
 }
 
-fn render(doc: &[u8], format: InputFormat, pdf_a: bool) -> Result<Vec<u8>, InkoxideError> {
+/// Every script of `pdf` (uncompressed) is a call of a standard form
+/// function with plain arguments: integers, booleans and string literals
+/// that cannot end early. PDF/A output has no scripts and no `/AA`.
+fn check_scripts(pdf: &[u8], pdf_a: bool) {
+    let text = String::from_utf8_lossy(pdf);
+    if pdf_a {
+        assert!(
+            !text.contains("/AA <<") && !text.contains("/S /JavaScript") && !text.contains("/JS ("),
+            "PDF/A output with a script"
+        );
+    }
+    for part in text.split("/JS (").skip(1) {
+        let script = pdf_literal(part).expect("an unterminated /JS string");
+        assert!(
+            form_call(&script),
+            "a script that is not a form function call: {script:?}"
+        );
+    }
+}
+
+/// The text of the PDF literal string that `s` starts with, after its
+/// opening parenthesis.
+fn pdf_literal(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut depth = 1;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                d @ '0'..='7' => {
+                    // Up to three octal digits; scripts are ASCII.
+                    let mut v = d.to_digit(8)?;
+                    let rest = chars.as_str();
+                    let more = rest.chars().take(2).take_while(|c| c.is_digit(8)).count();
+                    for c in rest.chars().take(more) {
+                        v = v * 8 + c.to_digit(8)?;
+                    }
+                    chars = rest[more..].chars();
+                    out.push(char::from_u32(v)?);
+                }
+                c => out.push(c),
+            },
+            '(' => {
+                depth += 1;
+                out.push(c);
+            }
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(out);
+                }
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    None
+}
+
+/// Whether `script` is one call of a standard form function, ending with
+/// `;`, whose arguments are integers, booleans or string literals.
+fn form_call(script: &str) -> bool {
+    const FUNCTIONS: &[&str] = &[
+        "AFNumber_Keystroke",
+        "AFNumber_Format",
+        "AFPercent_Keystroke",
+        "AFPercent_Format",
+        "AFDate_KeystrokeEx",
+        "AFDate_FormatEx",
+        "AFTime_KeystrokeEx",
+        "AFTime_FormatEx",
+        "AFSpecial_Keystroke",
+        "AFSpecial_Format",
+    ];
+    let Some((name, mut rest)) = script.split_once('(') else {
+        return false;
+    };
+    if !FUNCTIONS.contains(&name) {
+        return false;
+    }
+    loop {
+        let arg_end = if let Some(string) = rest.strip_prefix('"') {
+            // A string literal: printable ASCII, with quotes and
+            // backslashes escaped.
+            let mut chars = string.char_indices();
+            let mut end = None;
+            while let Some((i, c)) = chars.next() {
+                match c {
+                    '"' => {
+                        end = Some(i + 2);
+                        break;
+                    }
+                    '\\' => match chars.next() {
+                        Some((_, '\\' | '"' | '\'')) => {}
+                        Some((_, 'u')) => {
+                            let hex = (0..4)
+                                .filter_map(|_| chars.next())
+                                .filter(|(_, c)| c.is_ascii_hexdigit());
+                            if hex.count() != 4 {
+                                return false;
+                            }
+                        }
+                        _ => return false,
+                    },
+                    '\'' => return false,
+                    ' '..='~' => {}
+                    _ => return false,
+                }
+            }
+            let Some(end) = end else { return false };
+            end
+        } else {
+            let end = rest.find([',', ')']).unwrap_or(rest.len());
+            let arg = &rest[..end];
+            if !(arg == "true"
+                || arg == "false"
+                || (!arg.is_empty() && arg.bytes().all(|b| b.is_ascii_digit())))
+            {
+                return false;
+            }
+            end
+        };
+        rest = &rest[arg_end..];
+        if rest == ");" {
+            return true;
+        }
+        let Some(next) = rest.strip_prefix(", ") else {
+            return false;
+        };
+        rest = next;
+    }
+}
+
+/// The PDF/A level an input of `len` bytes is rendered at: none, or one
+/// of the three, a quarter of the inputs each.
+fn pdf_a_level(len: usize) -> Option<PdfALevel> {
+    match len % 4 {
+        1 => Some(PdfALevel::A1b),
+        2 => Some(PdfALevel::A2b),
+        3 => Some(PdfALevel::A3b),
+        _ => None,
+    }
+}
+
+fn render(
+    doc: &[u8],
+    format: InputFormat,
+    pdf_a: Option<PdfALevel>,
+) -> Result<Vec<u8>, InkoxideError> {
     render_with(doc, format, &FONTS, &IMAGES, pdf_a)
 }
 
@@ -154,13 +405,15 @@ fn render_with(
     format: InputFormat,
     fonts: &FontStore,
     images: &ImageStore,
-    pdf_a: bool,
+    pdf_a: Option<PdfALevel>,
 ) -> Result<Vec<u8>, InkoxideError> {
     let errors = inkoxide::validate(doc, format, fonts, images);
-    let options = RenderOptions::default()
+    let mut options = RenderOptions::default()
         .with_compress(false)
-        .with_threads(1)
-        .with_pdf_a(pdf_a);
+        .with_threads(1);
+    if let Some(level) = pdf_a {
+        options = options.with_pdf_a_level(level);
+    }
     let result = inkoxide::render(doc, format, &options, fonts, images);
     match &result {
         Ok(pdf) => {
@@ -170,6 +423,14 @@ fn render_with(
             );
             assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
             assert_finite_numbers(pdf, true);
+            check_scripts(pdf, pdf_a.is_some());
+        }
+        // `validate` does not know the PDF/A level: PDF/A-1b rejects valid
+        // documents that need transparency.
+        Err(InkoxideError::Validation(e))
+            if e.code == ValidationCode::PdfaConflict && errors.is_empty() =>
+        {
+            assert_eq!(pdf_a, Some(PdfALevel::A1b), "PDFA_CONFLICT at {pdf_a:?}");
         }
         Err(InkoxideError::Validation(e)) => {
             assert!(
@@ -177,6 +438,12 @@ fn render_with(
                 "render rejected a valid document: {e:?}"
             );
         }
+        // The writer's backstop: PDF/A-1b validation must have rejected
+        // the document first.
+        Err(InkoxideError::Pdf(m)) => assert!(
+            !m.contains("does not allow transparency"),
+            "validation missed transparency: {m}"
+        ),
         Err(_) => {}
     }
     result
@@ -195,6 +462,18 @@ fn delimiter(b: u8) -> bool {
 /// XMP metadata are skipped, and so are strings and names, which hold
 /// document text (`(inf)`, `/NaN`) rather than numbers.
 fn assert_finite_numbers(data: &[u8], objects: bool) {
+    scan_numbers(data, objects, true);
+}
+
+/// [`assert_finite_numbers`] over the object syntax of `pdf` only, not
+/// its streams.
+fn assert_finite_objects(pdf: &[u8]) {
+    scan_numbers(pdf, true, false);
+}
+
+/// The scan of [`assert_finite_numbers`]; streams are followed only with
+/// `streams`.
+fn scan_numbers(data: &[u8], objects: bool, streams: bool) {
     let mut i = 0;
     // Since the last `obj`: the `/Length` and whether the stream is
     // compressed or metadata.
@@ -260,8 +539,8 @@ fn assert_finite_numbers(data: &[u8], objects: bool) {
                 } else if token == b"stream" {
                     let body = i + if data[i..].starts_with(b"\r\n") { 2 } else { 1 };
                     let end = length.map_or(data.len(), |n: usize| (body + n).min(data.len()));
-                    if !skip {
-                        assert_finite_numbers(&data[body.min(end)..end], false);
+                    if streams && !skip {
+                        scan_numbers(&data[body.min(end)..end], false, true);
                     }
                     i = end;
                 }
@@ -519,6 +798,7 @@ const TEXT_ONLY: &[&str] = &[
     "hyphenate",
     "lang",
     "whiteSpace",
+    "textWrap",
     "textIndent",
     "orphans",
     "widows",
@@ -550,6 +830,8 @@ const BOX_PROPS: &[&str] = &[
     "margin",
     "position",
     "inset",
+    "float",
+    "clear",
     "gridTemplateColumns",
     "gridTemplateRows",
     "gridAutoFlow",
@@ -650,6 +932,8 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "gridAutoFlow" => e(s, &["row", "column", "row dense", "column dense"]),
         "gridColumn" | "gridRow" => placement(s),
         "overflow" => e(s, &["visible", "hidden"]),
+        "float" => e(s, &["left", "right", "none"]),
+        "clear" => e(s, &["left", "right", "both", "none"]),
         "backgroundColor" => color(s),
         "opacity" => json!(s.below(5) as f64 / 4.0),
         "borderWidth" => edges(s, nonneg),
@@ -661,6 +945,8 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "ellipsis" | "hyphenate" => json!(s.chance(128)),
         "lang" => e(s, &["fr", "en", "en-US", "de", "xx", ""]),
         "whiteSpace" => e(s, &["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),
+        "textWrap" if s.chaos && s.chance(10) => json!("balance"),
+        "textWrap" => e(s, &["wrap", "pretty", "pretty"]),
         "orphans" | "widows" => match s.below(8) {
             0 => json!(100),
             1 if s.chaos => json!(s.pick(&[0, 101, -1])),
@@ -764,12 +1050,24 @@ const WORDS: &[&str] = &[
     "مرحبا",
     "日本語",
     "😀",
+    "👩\u{200D}💻",
+    "🇫🇷",
+    "1\u{FE0F}\u{20E3}",
+    "👍🏽",
+    "❤\u{FE0F}",
+    "❤\u{FE0E}",
+    "\u{200D}",
     "fi",
     "AV",
     "-",
     "\u{feff}",
     "",
 ];
+
+/// A sentence of plain words, repeated into long paragraphs: one chunk
+/// with a break opportunity at every space, for `textWrap: pretty`.
+const PROSE: &str = "In olden times when wishing still helped one, there lived a king \
+    whose daughters were all beautiful. ";
 
 fn text(s: &mut Src) -> String {
     let mut t = String::new();
@@ -780,7 +1078,12 @@ fn text(s: &mut Src) -> String {
         }
     }
     if s.chance(6) {
-        t = "x".repeat(s.below(5000));
+        // One long word, or a long paragraph.
+        t = if s.chance(128) {
+            "x".repeat(s.below(5000))
+        } else {
+            PROSE.repeat(2 + s.below(200))
+        };
     }
     t
 }
@@ -815,7 +1118,9 @@ fn font_size(s: &mut Src) -> Value {
 
 fn run(s: &mut Src) -> Value {
     let mut m = Map::new();
-    if s.chance(20) {
+    // One byte picks a placeholder, a note or text.
+    let kind = s.byte();
+    if kind < 20 {
         m.insert(
             "placeholder".into(),
             json!(s.pick(&["pageNumber", "totalPages"])),
@@ -861,35 +1166,254 @@ fn run(s: &mut Src) -> Value {
     if s.chance(10) {
         m.insert("hyphenate".into(), json!(s.chance(50)));
     }
+    let image = s.chance(20);
+    if image {
+        // An image in the line, in place of the text.
+        m.remove("text");
+        m.remove("placeholder");
+        if s.chaos && s.chance(20) {
+            m.insert("text".into(), json!("x"));
+        }
+        let mut im = Map::new();
+        image_props(s, &mut im);
+        for side in ["width", "height"] {
+            if s.chance(90) {
+                let v = match s.below(6) {
+                    0 => json!(14_400),
+                    1 => json!(0.01),
+                    2 if s.chaos => json!(s.pick(&[0.0, -1.0, 14_400.5])),
+                    _ => json!(1 + s.below(60)),
+                };
+                im.insert(side.into(), v);
+            }
+        }
+        if s.chance(60) {
+            im.insert("alt".into(), json!(text(s)));
+        }
+        m.insert("image".into(), Value::Object(im));
+    }
+    if !image && (20..30).contains(&kind) {
+        // A note in the line, in place of the text.
+        m.remove("text");
+        m.remove("placeholder");
+        if s.chaos && s.chance(20) {
+            m.insert("text".into(), json!("x"));
+        }
+        let mut n = note(s);
+        if s.chance(128) {
+            n["contents"] = json!("In the line");
+        }
+        m.insert("note".into(), n);
+    }
+    if s.chance(25) {
+        let which = s.below(3);
+        if which != 1 {
+            let align = if image && s.chance(160) {
+                match s.below(8) {
+                    0 => json!(-14_400),
+                    1 => json!(num(s)),
+                    _ => json!(s.pick(&["middle", "textTop", "textBottom", "top", "bottom"])),
+                }
+            } else if s.chaos && s.chance(4) {
+                json!(s.pick(&["middle", "top", ""]))
+            } else {
+                json!(s.pick(&["baseline", "super", "sub"]))
+            };
+            m.insert("verticalAlign".into(), align);
+        }
+        if which != 0 {
+            m.insert("fontFeatures".into(), font_features(s));
+        }
+    }
     Value::Object(m)
 }
 
-/// A form field: names mostly unique, radio buttons in two groups.
+/// OpenType features: tags the fixture fonts have or not, values on and
+/// off, alternates and the bounds; with chaos, now and then one past them.
+fn font_features(s: &mut Src) -> Value {
+    const TAGS: &[&str] = &[
+        "tnum", "pnum", "onum", "lnum", "zero", "frac", "sups", "subs", "smcp", "c2sc", "case",
+        "liga", "dlig", "calt", "kern", "salt", "ss01", "cv05", "aalt", "rlig", "abcd",
+    ];
+    let mut m = Map::new();
+    let broken = s.chaos && s.chance(4);
+    if broken && s.chance(25) {
+        // One feature too many.
+        for k in 0..33 {
+            m.insert(format!("x{k:03}"), json!(1));
+        }
+        return Value::Object(m);
+    }
+    for _ in 0..s.below(5) {
+        let value = match s.below(8) {
+            0 => json!(0),
+            1 => json!(65535),
+            2 => json!(s.below(4)),
+            _ => json!(1),
+        };
+        m.insert(s.pick(TAGS).to_string(), value);
+    }
+    if broken {
+        let (tag, value) = match s.below(4) {
+            0 => ("tnu", json!(1)),
+            1 => ("t\u{e9}m", json!(1)),
+            2 => ("tnum", json!(65536)),
+            _ => ("tnum", json!(-1)),
+        };
+        m.insert(tag.into(), value);
+    }
+    Value::Object(m)
+}
+
+/// Makes box `m` a float container: a column, with floats among its
+/// `kids` and text after them to wrap, and no `flexGrow` or `flexBasis`
+/// on its children (chaos keeps some, and some row parents).
+fn floats(
+    s: &mut Src,
+    m: &mut Map<String, Value>,
+    kids: &mut Vec<Value>,
+    depth: usize,
+    budget: &mut usize,
+) {
+    if !s.chaos {
+        if let Some(Value::Object(st)) = m.get_mut("style") {
+            for k in [
+                "display",
+                "flexDirection",
+                "flexWrap",
+                "justifyContent",
+                "alignContent",
+            ] {
+                st.remove(k);
+            }
+        }
+        for k in kids.iter_mut() {
+            if let Some(Value::Object(st)) = k.get_mut("style") {
+                st.remove("flexGrow");
+                st.remove("flexBasis");
+            }
+        }
+    }
+    let n = if s.chaos && s.chance(4) {
+        40
+    } else {
+        1 + s.below(3)
+    };
+    for _ in 0..n {
+        let mut f = node(s, depth + 1, budget);
+        if let Value::Object(fm) = &mut f {
+            if fm.get("type").and_then(Value::as_str) == Some("pageBreak") {
+                continue;
+            }
+            if !s.chaos {
+                fm.remove("break");
+            }
+            let st = fm
+                .entry("style")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Value::Object(st) = st {
+                if !s.chaos {
+                    st.remove("position");
+                    st.remove("flexGrow");
+                    st.remove("flexBasis");
+                }
+                st.insert("float".into(), json!(s.pick(&["left", "right"])));
+                if s.chance(128) {
+                    st.insert("width".into(), json!(10 + s.below(200)));
+                }
+                if s.chance(128) {
+                    st.insert("height".into(), json!(5 + s.below(150)));
+                }
+            }
+        }
+        let at = s.below(kids.len() + 1);
+        kids.insert(at, f);
+    }
+    let words = (0..=s.below(60))
+        .map(|_| text(s))
+        .collect::<Vec<_>>()
+        .join(" ");
+    kids.push(json!({"type": "text", "runs": [{"text": words, "font": "Inter-Regular", "size": 6 + s.below(14)}]}));
+    if s.chance(64) {
+        kids.push(json!({"type": "box", "style": {"clear": s.pick(&["left", "right", "both"]), "height": 10}}));
+    }
+}
+
+/// A form field: names mostly unique, radio buttons in two groups, some
+/// fields in groups of fields (dotted names).
 fn field(s: &mut Src) -> Value {
     let mut m = Map::new();
-    let kind = s.pick(&["text", "checkbox", "radio", "select"]);
+    let kind = s.pick(&["text", "checkbox", "radio", "select", "list"]);
+    let choice = matches!(kind, "select" | "list");
     m.insert("kind".into(), json!(kind));
+    // A group of fields, nested at most two deep.
+    let set = match s.below(4) {
+        0 => format!("set{}.", s.below(2)),
+        1 => format!("set{}.sub{}.", s.below(2), s.below(2)),
+        _ => String::new(),
+    };
     let name = if s.chaos && s.chance(40) {
-        json!(s.pick(&["", "a.b", "f0", "n".repeat(129).as_str()]))
+        // Malformed names, and a field that is also a group (`a`, `a.b`).
+        json!(s.pick(&[
+            "",
+            "a.b",
+            "a",
+            "a..b",
+            ".a",
+            "a.",
+            "f0",
+            "n".repeat(129).as_str(),
+            vec!["n"; 33].join(".").as_str(),
+        ]))
     } else if kind == "radio" {
-        json!(format!("group{}", s.below(2)))
+        json!(format!("{set}group{}", s.below(2)))
     } else {
-        json!(format!("f{}", s.below(1000)))
+        json!(format!("{set}f{}", s.below(1000)))
     };
     m.insert("name".into(), name);
-    let options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
-    if kind == "select" || (s.chaos && s.chance(20)) {
+    let mut options: Vec<Value> = (0..=s.below(4)).map(|_| json!(text(s))).collect();
+    // The limits on options, and just past them.
+    if s.chance(4) {
+        let past = usize::from(s.chaos);
+        if s.chance(128) {
+            options = vec![json!("o"); 1000 + past];
+        } else {
+            options.push(json!("o".repeat(1000 + past)));
+        }
+    }
+    if choice || (s.chaos && s.chance(20)) {
         m.insert("options".into(), Value::Array(options.clone()));
+    }
+    let multi = (kind == "list" || s.chaos) && s.chance(100);
+    if multi {
+        m.insert("multiSelect".into(), json!(true));
     }
     if s.chance(150) {
         let value = match kind {
-            "select" if !s.chaos => options[s.below(options.len())].clone(),
+            // Some of the options, each once.
+            "list" if multi && !s.chaos && s.chance(160) => {
+                let mut seen = Vec::new();
+                for o in &options {
+                    if !seen.contains(o) && s.chance(100) {
+                        seen.push(o.clone());
+                    }
+                }
+                Value::Array(seen)
+            }
+            "select" | "list" if !s.chaos => options[s.below(options.len())].clone(),
             "radio" => json!(s.pick(&["yes", "no", "maybe"])),
+            // Values not among the options, twice, or on a field that
+            // takes one value.
+            _ if s.chaos && s.chance(20) => {
+                let v = text(s);
+                json!([v.clone(), v, options[0].clone()])
+            }
+            _ if s.chance(4) => json!("v".repeat(8000 + usize::from(s.chaos))),
             _ => json!(text(s)),
         };
         m.insert("value".into(), value);
     }
-    if matches!(kind, "text" | "select") || s.chance(30) {
+    if matches!(kind, "text" | "select" | "list") || s.chance(30) {
         m.insert("font".into(), font(s));
     }
     for (key, of256) in [
@@ -919,6 +1443,153 @@ fn field(s: &mut Src) -> Value {
     }
     if s.chance(50) {
         m.insert("color".into(), color(s));
+    }
+    if (kind == "text" || s.chaos) && s.chance(50) {
+        let (format, value) = field_format(s);
+        m.insert("format".into(), format);
+        if !s.chaos {
+            // Formats take a single line, shown, and a value that fits.
+            for key in ["multiline", "password", "maxLength"] {
+                m.remove(key);
+            }
+        }
+        match value {
+            Some(v) => m.insert("value".into(), v),
+            None => m.remove("value"),
+        };
+    }
+    Value::Object(m)
+}
+
+/// A text field format and a value that fits it, or none. In chaos mode,
+/// values that do not fit, and patterns and currencies that would end a
+/// script string or add a call to it.
+fn field_format(s: &mut Src) -> (Value, Option<Value>) {
+    const BREAKOUTS: &[&str] = &[
+        "\");app.alert(1);//",
+        "'",
+        "\\",
+        "\n",
+        "\u{2028}",
+        "dd\"",
+        "</script>",
+        "123456789",
+    ];
+    let mut m = Map::new();
+    let kind = s.pick(&[
+        "number", "percent", "date", "time", "zip", "zipPlus4", "phone", "ssn",
+    ]);
+    m.insert("type".into(), json!(kind));
+    let value = match kind {
+        "number" | "percent" => {
+            if s.chance(128) {
+                let decimals = if s.chaos {
+                    json!(s.pick(&[11, -1, 255]))
+                } else {
+                    json!(s.below(11))
+                };
+                m.insert("decimals".into(), decimals);
+            }
+            if s.chance(100) {
+                let sep = s.pick(&["1,234.56", "1234.56", "1.234,56", "1234,56"]);
+                m.insert("separators".into(), json!(sep));
+            }
+            if kind == "number" || s.chaos {
+                if s.chance(100) {
+                    let neg = s.pick(&["minus", "red", "parens", "parensRed"]);
+                    m.insert("negative".into(), json!(neg));
+                }
+                if s.chance(128) {
+                    let currency = if s.chaos {
+                        s.pick(BREAKOUTS)
+                    } else {
+                        s.pick(&["$", "€ ", " EUR", "CHF", ""])
+                    };
+                    m.insert("currency".into(), json!(currency));
+                }
+                if s.chance(60) {
+                    m.insert("currencyBefore".into(), json!(s.chance(128)));
+                }
+            }
+            let mut values = vec![
+                "0",
+                "-1234.5",
+                "999.995",
+                "0.125",
+                "-0.004",
+                "123456789012345.123456789012345",
+            ];
+            if s.chaos {
+                values.extend(["1e5", "1,000", "", "1234567890123456"]);
+            }
+            json!(s.pick(&values))
+        }
+        "date" | "time" => {
+            let pattern = if s.chaos && s.chance(100) {
+                s.pick(BREAKOUTS)
+            } else if kind == "date" {
+                s.pick(&[
+                    "dd/mm/yyyy",
+                    "d mmm yy",
+                    "dddd, mmmm d, yyyy",
+                    "yyyy-mm-dd HH:MM tt",
+                ])
+            } else {
+                s.pick(&["HH:MM", "h:MM tt", "HH:MM:ss", "h t"])
+            };
+            if !s.chaos || s.chance(200) {
+                m.insert("pattern".into(), json!(pattern));
+            }
+            let values: &[&str] = match (kind, s.chaos) {
+                ("date", false) => &["2026-10-14", "2024-02-29T23:59:59", "0001-01-01"],
+                ("time", false) => &["18:30", "00:00:00", "2026-10-14T07:05"],
+                _ => &["2026-02-30", "24:00", "2026-10-14T10:00Z", ""],
+            };
+            json!(s.pick(values))
+        }
+        _ => {
+            let n = match kind {
+                "zip" => 5,
+                "phone" => 10,
+                _ => 9,
+            };
+            let n = if s.chaos { n + 1 } else { n };
+            json!((0..n)
+                .map(|i| char::from(b'0' + (i % 10) as u8))
+                .collect::<String>())
+        }
+    };
+    let value = s.chance(200).then_some(value);
+    (Value::Object(m), value)
+}
+
+/// A text note: contents at their limit and past it, control characters,
+/// an author, a colour, open or not.
+fn note(s: &mut Src) -> Value {
+    let mut m = Map::new();
+    let contents = match s.below(8) {
+        0 => json!("n".repeat(8000 + usize::from(s.chaos))),
+        1 if s.chaos => json!(""),
+        2 => json!("line\nbreak\t(paren\\) \u{0} \u{1f} \u{feff}"),
+        _ => json!(format!("N{}", text(s))),
+    };
+    m.insert("contents".into(), contents);
+    if s.chance(100) {
+        let author = if s.chance(20) {
+            "a".repeat(256 + usize::from(s.chaos))
+        } else {
+            text(s)
+        };
+        m.insert("author".into(), json!(author));
+    }
+    if s.chance(100) {
+        m.insert("color".into(), color(s));
+    }
+    if s.chance(80) {
+        m.insert("open".into(), json!(s.chance(128)));
+    }
+    if s.chaos && s.chance(20) {
+        m.insert("icon".into(), json!("Key"));
     }
     Value::Object(m)
 }
@@ -1027,12 +1698,13 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             "image",
             "table",
             "field",
+            "note",
             "pageBreak",
             "spacer",
         ])
     } else {
         s.pick(&[
-            "box", "box", "text", "text", "image", "table", "field", "spacer",
+            "box", "box", "text", "text", "image", "table", "field", "note", "spacer",
         ])
     };
     let mut m = Map::new();
@@ -1046,8 +1718,8 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if kind != "pageBreak" && (s.flow || s.chaos) && s.chance(50) {
         m.insert("break".into(), brk(s));
     }
-    // Fields take no link or bookmark.
-    let linkable = !matches!(kind, "pageBreak" | "field") || s.chaos;
+    // Fields and notes take no link or bookmark.
+    let linkable = !matches!(kind, "pageBreak" | "field" | "note") || s.chaos;
     if linkable && s.chance(20) {
         m.insert("link".into(), link(s));
     }
@@ -1066,6 +1738,11 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     }
     match kind {
         "box" => {
+            if s.chance(24) {
+                let mut bg = Map::new();
+                image_props(s, &mut bg);
+                m.insert("backgroundImage".into(), Value::Object(bg));
+            }
             let n = if s.chance(15) {
                 40 + s.below(200)
             } else {
@@ -1091,6 +1768,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
                     }
                 }
             }
+            if s.chance(40) {
+                floats(s, &mut m, &mut kids, depth, budget);
+            }
             m.insert("children".into(), Value::Array(kids));
         }
         "text" => {
@@ -1100,59 +1780,10 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         "field" => {
             m.insert("field".into(), field(s));
         }
-        "image" => {
-            if s.chaos && s.chance(30) {
-                m.insert(
-                    "data".into(),
-                    json!(s.pick(&[
-                        "",
-                        "iVBORw0KGgo=",
-                        "data:image/png;base64,AAAA",
-                        "!!",
-                        "data:image/svg+xml;base64,PHN2Zy8+",
-                        "PHN2ZyB3aWR0aD0iMCIvPg==",
-                    ])),
-                );
-            } else {
-                m.insert(
-                    "src".into(),
-                    json!(if s.chaos {
-                        s.pick(&["bad", "badsvg", "missing"])
-                    } else {
-                        s.pick(&["logo", "palette", "photo", "chart"])
-                    }),
-                );
-            }
-            if s.chance(128) {
-                m.insert(
-                    "fit".into(),
-                    json!(s.pick(&["fill", "contain", "cover", "none"])),
-                );
-            }
-            if s.chance(96) {
-                let mut axis = |keywords: [&str; 3]| match s.below(4) {
-                    0 => json!(s.pick(&keywords)),
-                    1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1000.5%"])),
-                    // The bounds (±10000 %, ±14400 pt), just past them, and
-                    // values far past them that would overflow f32 if
-                    // validation let them through.
-                    2 => match s.below(8) {
-                        0 => json!("10000%"),
-                        1 => json!("-10000%"),
-                        2 => json!("10000.01%"),
-                        3 => json!("-9999999999999999999999999999999999999%"),
-                        4 => json!(14_400),
-                        5 => json!(-14_400),
-                        6 => json!(14_400.01),
-                        _ => json!(-1e30),
-                    },
-                    _ => num(s),
-                };
-                let x = axis(["left", "center", "right"]);
-                let y = axis(["top", "center", "bottom"]);
-                m.insert("objectPosition".into(), json!({ "x": x, "y": y }));
-            }
+        "note" => {
+            m.insert("note".into(), note(s));
         }
+        "image" => image_props(s, &mut m),
         "table" => {
             m.extend(table(s, depth, budget));
             if s.chance(60) {
@@ -1169,6 +1800,62 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         _ => {}
     }
     Value::Object(m)
+}
+
+/// The image properties shared by `image` nodes and `backgroundImage`:
+/// `src` or `data`, `fit` and `objectPosition`.
+fn image_props(s: &mut Src, m: &mut Map<String, Value>) {
+    if s.chaos && s.chance(30) {
+        m.insert(
+            "data".into(),
+            json!(s.pick(&[
+                "",
+                "iVBORw0KGgo=",
+                "data:image/png;base64,AAAA",
+                "!!",
+                "data:image/svg+xml;base64,PHN2Zy8+",
+                "PHN2ZyB3aWR0aD0iMCIvPg==",
+            ])),
+        );
+    } else {
+        m.insert(
+            "src".into(),
+            json!(if s.chaos {
+                s.pick(&["bad", "badsvg", "missing"])
+            } else {
+                s.pick(&["logo", "palette", "photo", "chart", "svgtext"])
+            }),
+        );
+    }
+    if s.chance(128) {
+        m.insert(
+            "fit".into(),
+            json!(s.pick(&["fill", "contain", "cover", "none"])),
+        );
+    }
+    if s.chance(96) {
+        let mut axis = |keywords: [&str; 3]| match s.below(4) {
+            0 => json!(s.pick(&keywords)),
+            1 => json!(s.pick(&["0%", "25%", "100%", "-50%", "1000.5%"])),
+            // The bounds (±10000 %, ±14400 pt), just past them, and
+            // values far past them that would overflow f32 if
+            // validation let them through.
+            2 => match s.below(8) {
+                0 => json!("10000%"),
+                1 => json!("-10000%"),
+                2 => json!("10000.01%"),
+                3 => json!("-9999999999999999999999999999999999999%"),
+                4 => json!(14_400),
+                5 => json!(-14_400),
+                6 => json!(14_400.01),
+                _ => json!(-1e30),
+            },
+            _ => num(s),
+        };
+        let x = axis(["left", "center", "right"]);
+        let y = axis(["top", "center", "bottom"]);
+        m.insert("objectPosition".into(), json!({ "x": x, "y": y }));
+    }
 }
 
 /// A schema-shaped document driven by `data`: mostly valid, with edge
@@ -1223,14 +1910,24 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             json!(s.pick(&["2026-01-01T00:00:00Z", "2026-13-40T99:00:00Z", "bad"])),
         );
     }
-    let fonts: Vec<Value> = FIXTURE_FONTS
-        .iter()
-        .map(|(id, family, weight, _)| json!({"id": id, "family": family, "weight": weight}))
-        .collect();
+    let fonts = fixture_fonts();
+    let fallbacks: &[&str] = match s.below(4) {
+        0 => &[],
+        1 => &["NotoSans-Regular", "EmojiTest-COLR"],
+        2 => &["EmojiTest-CBDT", "EmojiTest-COLR"],
+        _ => &["Inter-Regular", "EmojiTest-CBDT"],
+    };
+    let emoji = match s.below(6) {
+        0 => json!({"😀": "logo", "🇫🇷": "chart", "👩\u{200D}💻": "palette", "❤\u{FE0F}": "photo"}),
+        1 if s.chaos => json!({"a": "logo", "😀😀": "logo", "😀": "missing", "👍🏽": "bad"}),
+        _ => json!({}),
+    };
     let doc = json!({
         "version": 1,
         "meta": meta,
         "fonts": fonts,
+        "fallbackFonts": fallbacks,
+        "emojiImages": emoji,
         "pages": pages,
     });
     doc.to_string().into_bytes()
@@ -1241,22 +1938,89 @@ mod tests {
     use super::*;
 
     #[test]
+    fn encrypted_renders_follow_plain_ones() {
+        let valid = br#"{"version":1,"meta":{"title":"Canary-Title"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+            "pages":[{"size":{"width":100,"height":100},"children":[{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9}]}]}]}"#;
+        let invalid = br#"{"version":1,"pages":[{"size":{"width":-1,"height":100}}]}"#;
+        for doc in [&valid[..], &invalid[..], b"not json"] {
+            let plain = render(doc, InputFormat::Json, None);
+            let value = serde_json::from_slice::<Value>(doc).ok();
+            check_encrypted(doc, &plain, value.as_ref());
+        }
+        // The plain render shows the title, so the check above looked for it.
+        let plain = render(valid, InputFormat::Json, None).unwrap();
+        assert!(plain.windows(14).any(|w| w == b"(Canary-Title)"));
+    }
+
+    #[test]
+    fn scripts_are_checked_against_the_form_call_grammar() {
+        for ok in [
+            r#"AFNumber_Format(2, 0, 3, 0, "\u20ac ", true);"#,
+            r#"AFDate_FormatEx("dd/mm/yyyy");"#,
+            r#"AFNumber_Keystroke(0, 1, 0, 0, "\"\'\\", false);"#,
+            "AFSpecial_Format(2);",
+        ] {
+            assert!(form_call(ok), "{ok}");
+        }
+        for bad in [
+            r#"AFDate_FormatEx("dd");app.alert(1);//");"#,
+            r#"AFDate_FormatEx("dd" + x);"#,
+            r"app.alert(1);",
+            r"AFSpecial_Format(2)",
+            r"AFSpecial_Format(x);",
+            r#"AFDate_FormatEx("d'd");"#,
+            r#"AFDate_FormatEx("\x41");"#,
+            "AFDate_FormatEx(\"\u{2028}\");",
+        ] {
+            assert!(!form_call(bad), "{bad}");
+        }
+        assert_eq!(
+            pdf_literal(r"AF\(1\) (a) \134 \101b)rest").as_deref(),
+            Some(r"AF(1) (a) \ Ab")
+        );
+        check_scripts(b"/JS (AFSpecial_Format\\(0\\);)", false);
+    }
+
+    #[test]
     fn check_image_says_why_it_did_not_render() {
         let Err(InkoxideError::Validation(e)) = check_image(b"abc") else {
             panic!("rendered an image that is not one");
         };
         assert!(e.message.contains("unsupported image format"), "{e}");
         assert!(check_image(include_bytes!("../../fixtures/images/logo.png")).is_ok());
+        // SVG text is laid out with the fixture fonts.
+        assert!(check_image(include_bytes!("../../fixtures/images/text.svg")).is_ok());
+    }
+
+    /// Colour fonts register, and render as the run's font and as the
+    /// fallback for emoji sequences.
+    #[test]
+    fn check_font_renders_colour_fonts() {
+        for (id, _, _, bytes) in &FIXTURE_FONTS[4..] {
+            assert_eq!(check_font(bytes), 1, "{id}");
+        }
     }
 
     /// The generator reaches the newer parts of the schema with documents
     /// that validate.
     #[test]
     fn document_covers_the_schema() {
+        const FEW: usize = 2000;
+        const MOST: usize = 20_000;
         let features = [
             r#""type":"field""#,
+            r#""type":"note""#,
+            r#""open":true"#,
             r#""kind":"select""#,
+            r#""kind":"list""#,
+            r#""multiSelect":true"#,
+            r#""value":["#,
             r#""kind":"radio""#,
+            r#""name":"set0.sub"#,
+            r#""type":"number""#,
+            r#""currency":"#,
+            r#""pattern":"#,
+            r#""type":"zip"#,
             r#""pages":"odd""#,
             r#""pages":[-"#,
             r#""zIndex":"#,
@@ -1269,12 +2033,31 @@ mod tests {
             r#""decorationColor":"#,
             r#""decorationThickness":"#,
             r#""whiteSpace":"pre-wrap""#,
+            r#""verticalAlign":"super""#,
+            r#""fontFeatures":{""#,
+            r#""textWrap":"pretty""#,
+            "beautiful. In olden",
+            r#""float":"left""#,
+            r#""clear":""#,
+            r#""backgroundImage":{"#,
+            r#""fallbackFonts":["EmojiTest-CBDT""#,
+            r#""image":{"src":"#,
+            r#""contents":"In the line""#,
+            r#""emojiImages":{"❤"#,
+            r#""😀":"logo""#,
+            r#""verticalAlign":"textTop""#,
+            "👩\u{200D}💻",
+            r#""src":"svgtext""#,
         ];
         let mut seen = vec![false; features.len()];
         let mut valid = 0;
         let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
-        for i in 0..1000 {
-            let data: Vec<u8> = (0..64 << (i % 5))
+        // Documents until every feature has shown up in a valid one, and at
+        // least `FEW`; at most `MOST`, so a feature the generator no longer
+        // reaches fails the test instead of hanging it.
+        let mut tried = 0;
+        while tried < MOST && (tried < FEW || seen.contains(&false)) {
+            let data: Vec<u8> = (0..64 << (tried % 5))
                 .map(|_| {
                     // xorshift64
                     x ^= x << 13;
@@ -1283,6 +2066,7 @@ mod tests {
                     x as u8
                 })
                 .collect();
+            tried += 1;
             let doc = document(&data);
             if !inkoxide::validate(&doc, InputFormat::Json, &FONTS, &IMAGES).is_empty() {
                 continue;
@@ -1298,7 +2082,13 @@ mod tests {
             .zip(&seen)
             .filter(|(_, seen)| !**seen)
             .collect();
-        assert!(missing.is_empty(), "no valid document has {missing:?}");
-        assert!(valid >= 100, "{valid} of 1000 documents are valid");
+        assert!(
+            missing.is_empty(),
+            "no valid document of {tried} has {missing:?}"
+        );
+        assert!(
+            valid * 10 >= tried,
+            "{valid} of {tried} documents are valid"
+        );
     }
 }

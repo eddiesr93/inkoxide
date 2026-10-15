@@ -1,21 +1,29 @@
 //! The render pipeline after validation: layout → pagination → paint.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 use rayon::prelude::*;
 
-use crate::fonts::FontSet;
-use crate::images::ImageSet;
+use crate::fonts::{FontKey, FontSet};
+use crate::images::{ImageBody, ImageKey, ImageSet};
 use crate::layout::{
-    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, NodeIdx, Part, Size, TaffyLayout, Tree,
+    AvailableSpace, Geometry, LayoutEngine, LeafMeasure, LineBoxes, NodeIdx, Part, Size,
+    TaffyLayout, Tree, Wrapped,
 };
 use crate::paginate::{paginate, Placement};
-use crate::paint::{self, ContentCtx, ContentPainter, DebugBoxes, FlowPart, Op, PageContent, Rect};
+use crate::paint::{
+    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent, Rect,
+};
+use crate::pdf::Profile;
 use crate::schema::{
     Display, Document, Node, NodeKind, PageFilter, PagePattern, PageSpec, Position,
 };
-use crate::text::{PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter};
-use crate::InkoxideError;
+use crate::text::{
+    color_glyph_transparency, ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache,
+    TextPainter,
+};
+use crate::{InkoxideError, ValidationError};
 
 /// Most pages one render may produce: a memory guard against runaway
 /// sizes (a 10¹¹ pt box), checked before anything is painted. Far above
@@ -33,10 +41,16 @@ pub(crate) const MAX_REPEATED: u64 = 64 << 20;
 /// node, or a character or glyph of text,
 const ITEM_BYTES: u64 = 16;
 /// a link (a linked run at worst puts one on every line, a line per
-/// character),
+/// character) or an image in text (an inline image or a colour glyph, in
+/// a span),
 const LINK_BYTES: u64 = 256;
-/// and a `debug` outline or a form field widget.
+/// a `debug` outline, a form field widget or a background image,
 const BOX_BYTES: u64 = 768;
+/// and a shape of a paragraph's `debug` outline: a line box, a baseline or
+/// a run's box on a line.
+const LINE_SHAPE_BYTES: u64 = 64;
+/// Estimated output of the scripts of a field format, in bytes.
+const SCRIPT_BYTES: u64 = 512;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -81,12 +95,18 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
+            // It takes no space.
+            NodeKind::Note(_) => Size::ZERO,
             _ => self.text.measure(node, known, available),
         }
     }
+
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        self.text.measure_lines(node, boxes)
+    }
 }
 
-/// Leaf painting: text through `T`, images and form fields.
+/// Leaf painting: text through `T`; images and form fields.
 struct Content<'x, T: ContentPainter> {
     text: T,
     images: &'x ImageSet,
@@ -98,7 +118,36 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         match node.kind {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
+            NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),
+        }
+    }
+
+    fn paint_outlined(
+        &mut self,
+        node: &Node,
+        geo: &Geometry,
+        ctx: &ContentCtx<'_>,
+        ops: &mut Vec<Op>,
+        lines: &mut Vec<DebugLine>,
+    ) {
+        match node.kind {
+            NodeKind::Text { .. } => self.text.paint_outlined(node, geo, ctx, ops, lines),
+            _ => self.paint(node, geo, ctx, ops),
+        }
+    }
+
+    fn background(
+        &mut self,
+        node: &Node,
+        padding_box: Rect,
+        radii: &paint::Radii,
+        ops: &mut Vec<Op>,
+    ) {
+        if let (Some(bg), Some(key)) = (&node.background_image, self.images.background_key(node)) {
+            let placement = crate::images::Placement::new(bg.fit, bg.object_position);
+            self.images
+                .paint_in(key, padding_box, placement, radii, ops);
         }
     }
 
@@ -180,15 +229,19 @@ fn layout_fixed<'a>(
 /// Lays out and paginates every page template, then paints the pages,
 /// handing each to `encode` as soon as it is painted. With `parallel`,
 /// shaping and painting run on the current rayon pool; without it, on the
-/// calling thread alone.
+/// calling thread alone. When `profile` forbids transparency (PDF/A-1b),
+/// a colour glyph that needs it fails the render, at the path of its run
+/// or SVG image. Returns the pages, the marks and the colour glyphs, which
+/// SVG text draws too.
 pub(crate) fn run<'d, T: Send>(
     doc: &'d Document,
     fonts: &FontSet<'_>,
     text: &mut Cache<'_, '_, '_>,
-    images: &ImageSet,
+    images: &mut ImageSet,
     parallel: bool,
+    profile: Profile,
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
-) -> Result<(Vec<T>, Marks<'d>), InkoxideError> {
+) -> Result<(Vec<T>, Marks<'d>, ColorGlyphs), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
     // up front, in parallel.
     let mut texts = Vec::new();
@@ -200,6 +253,20 @@ pub(crate) fn run<'d, T: Send>(
     }
     text.prepare_all(&texts, parallel);
     drop(texts);
+    let color = |k| fonts.get(k).has_color();
+    let mut used = text.glyphs_of(color);
+    for (k, glyphs) in images.svg_text_glyphs(color) {
+        used.entry(k).or_default().extend(glyphs);
+    }
+    let colors = ColorGlyphs::load(fonts, &used, images, parallel);
+    if !profile.transparency() {
+        let conflict = transparent_color_glyph(doc, fonts, text, &colors)
+            .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors));
+        if let Some(conflict) = conflict {
+            return Err(conflict.into());
+        }
+    }
+    let images: &ImageSet = images;
 
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
@@ -256,7 +323,7 @@ pub(crate) fn run<'d, T: Send>(
             current: i as u32 + 1,
             total,
         };
-        encode(paint_page(l, k, numbers, fonts, text, images)?)
+        encode(paint_page(l, k, numbers, fonts, text, images, &colors)?)
     };
     let pages = if parallel {
         jobs.par_iter()
@@ -269,7 +336,180 @@ pub(crate) fn run<'d, T: Send>(
             .map(page)
             .collect::<Result<_, _>>()?
     };
-    Ok((pages, marks))
+    Ok((pages, marks, colors))
+}
+
+/// The first run, in document order, that draws a colour glyph needing
+/// transparency, as the error of a render that forbids it.
+fn transparent_color_glyph(
+    doc: &Document,
+    fonts: &FontSet<'_>,
+    text: &Cache<'_, '_, '_>,
+    colors: &ColorGlyphs,
+) -> Option<ValidationError> {
+    let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
+    find_shown(doc, |node, path| {
+        let (p, _) = text.prepared(node)?;
+        for seg in p.segments.iter().filter(|s| s.object.is_none()) {
+            let glyphs = &p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize];
+            for g in glyphs.iter().filter(|g| colors.draws(seg.font, g.id)) {
+                let font = fonts.get(seg.font);
+                let need = *seen
+                    .entry((seg.font, g.id))
+                    .or_insert_with(|| color_glyph_transparency(font, g.id));
+                let Some(need) = need else { continue };
+                let glyph = text
+                    .unicode()
+                    .fonts
+                    .get(&seg.font)
+                    .and_then(|m| m.get(&g.id))
+                    .map_or(String::new(), |t| format!(" `{t}`"));
+                let what = format!("the colour glyph{glyph} of font `{}` ({need})", font.id);
+                let path = format!("{path}.runs[{}]", seg.run);
+                return Some(crate::validate::transparency_conflict(path, &what));
+            }
+        }
+        None
+    })
+}
+
+/// The first SVG image, in document order, whose text draws a colour
+/// glyph needing transparency, as the error of a render that forbids it.
+fn transparent_svg_color_glyph(
+    doc: &Document,
+    fonts: &FontSet<'_>,
+    images: &ImageSet,
+    colors: &ColorGlyphs,
+) -> Option<ValidationError> {
+    let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
+    let mut need = |key: ImageKey| -> Option<String> {
+        let ImageBody::Svg {
+            probed: Some(probed),
+            ..
+        } = &images.get(key).body
+        else {
+            return None;
+        };
+        let glyphs = probed.texts.iter().flat_map(|t| &t.glyphs);
+        for g in glyphs.filter(|g| colors.draws(g.font, g.id)) {
+            let font = fonts.get(g.font);
+            let need = *seen
+                .entry((g.font, g.id))
+                .or_insert_with(|| color_glyph_transparency(font, g.id));
+            if let Some(need) = need {
+                return Some(format!(
+                    "a colour glyph of font `{}` in the text of the SVG image ({need})",
+                    font.id
+                ));
+            }
+        }
+        None
+    };
+    let found = find_shown(doc, |node, path| {
+        let image = images.key(node).map(|k| (k, format!("{path}.src")));
+        let background = images
+            .background_key(node)
+            .map(|k| (k, format!("{path}.backgroundImage")));
+        let mut runs = Vec::new();
+        if let NodeKind::Text { runs: r } = &node.kind {
+            for (i, run) in r.iter().enumerate() {
+                if let Some(k) = images.run_image_key(run) {
+                    runs.push((k, format!("{path}.runs[{i}].image")));
+                }
+            }
+        }
+        image
+            .into_iter()
+            .chain(background)
+            .chain(runs)
+            .find_map(|(k, path)| Some((path, need(k)?)))
+    });
+    let (path, what) = found.or_else(|| {
+        let emoji = images.emoji_image_keys();
+        emoji
+            .into_iter()
+            .find_map(|k| Some(("emojiImages".to_string(), need(k)?)))
+    })?;
+    Some(crate::validate::transparency_conflict(path, &what))
+}
+
+/// Calls `f` on every displayed node of `doc` with its path
+/// (`pages[0].children[2]`), in document order: each page's header,
+/// footer, then children, each before its descendants. Stops at, and
+/// returns, the first `Some`.
+fn find_shown<'d, R>(
+    doc: &'d Document,
+    mut f: impl FnMut(&'d Node, &str) -> Option<R>,
+) -> Option<R> {
+    fn walk<'d, R>(
+        node: &'d Node,
+        path: &mut String,
+        f: &mut dyn FnMut(&'d Node, &str) -> Option<R>,
+    ) -> Option<R> {
+        if node.hidden() {
+            return None;
+        }
+        if let Some(r) = f(node, path) {
+            return Some(r);
+        }
+        let len = path.len();
+        let mut found = None;
+        match &node.kind {
+            NodeKind::Box { children } => {
+                for (i, c) in children.iter().enumerate() {
+                    let _ = write!(path, ".children[{i}]");
+                    found = walk(c, path, f);
+                    path.truncate(len);
+                    if found.is_some() {
+                        break;
+                    }
+                }
+            }
+            NodeKind::Table(t) => {
+                let cells = t.rows.iter().enumerate().flat_map(|(r, row)| {
+                    row.cells
+                        .iter()
+                        .enumerate()
+                        .map(move |(c, cell)| (r, c, cell))
+                });
+                'cells: for (r, c, cell) in cells {
+                    if cell.style.display == Some(Display::None) {
+                        continue;
+                    }
+                    for (i, child) in cell.children.iter().enumerate() {
+                        let _ = write!(path, ".rows[{r}].cells[{c}].children[{i}]");
+                        found = walk(child, path, f);
+                        path.truncate(len);
+                        if found.is_some() {
+                            break 'cells;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        found
+    }
+    let mut path = String::new();
+    for (i, page) in doc.pages.iter().enumerate() {
+        let fixed = [("header", &page.header), ("footer", &page.footer)];
+        let fixed = fixed
+            .into_iter()
+            .filter_map(|(name, n)| Some((name.to_string(), n.as_deref()?)));
+        let children = page
+            .children
+            .iter()
+            .enumerate()
+            .map(|(k, n)| (format!("children[{k}]"), n));
+        for (key, node) in fixed.chain(children) {
+            path.clear();
+            let _ = write!(path, "pages[{i}].{key}");
+            if let Some(r) = walk(node, &mut path, &mut f) {
+                return Some(r);
+            }
+        }
+    }
+    None
 }
 
 /// Lays out and paginates the flow of page template `spec`: its children
@@ -356,10 +596,16 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
             if n.link.is_some() {
                 size += LINK_BYTES;
             }
+            if n.background_image.is_some() {
+                size += BOX_BYTES;
+            }
             match &n.kind {
                 NodeKind::Text { runs } => {
                     let mut bytes: u64 = 0;
                     for r in runs {
+                        if let Some(note) = &r.note {
+                            size = size.saturating_add(note_bytes(note));
+                        }
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
                         let each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
@@ -370,11 +616,30 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // can multiply them.
                     let glyphs = text.glyph_count(n).unwrap_or(0) as u64;
                     size = size.saturating_add(glyphs.saturating_sub(bytes) * ITEM_BYTES);
+                    let colored = text.image_glyph_count(n) as u64;
+                    size = size.saturating_add(colored * LINK_BYTES);
+                    if debug {
+                        // A box and a baseline per line, and a box per
+                        // stretch of a run on a line: at most one per
+                        // segment, plus one per line where a segment wraps
+                        // or a hyphen shows.
+                        if let Some((l, p, _)) = text.paragraph(n, &tree.line_boxes(j)) {
+                            let shapes = 4 * l.lines.len() + p.segments.len();
+                            size = size.saturating_add(shapes as u64 * LINE_SHAPE_BYTES);
+                        }
+                    }
                 }
                 NodeKind::Field(f) => {
-                    let options: usize = f.options.iter().map(String::len).sum();
-                    size = size.saturating_add(BOX_BYTES + options as u64 * ITEM_BYTES);
+                    // Its options and values, in the field and in its
+                    // appearance.
+                    let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
+                    size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
+                    if f.format.is_some() {
+                        // Its two scripts.
+                        size = size.saturating_add(SCRIPT_BYTES);
+                    }
                 }
+                NodeKind::Note(note) => size = size.saturating_add(note_bytes(note)),
                 _ => {}
             }
         }
@@ -382,6 +647,17 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
         stack.extend(tree.children(j).map(|c| (c, pages)));
     }
     total
+}
+
+/// Estimated output of a note, in bytes: its icon, and its text as the
+/// file holds it.
+fn note_bytes(note: &crate::schema::Note) -> u64 {
+    let text = crate::pdf::written_text_len(&note.contents)
+        + note
+            .author
+            .as_deref()
+            .map_or(0, crate::pdf::written_text_len);
+    BOX_BYTES + text as u64
 }
 
 /// Most pages a node with page filter `f` is painted on, when that is a
@@ -462,7 +738,7 @@ fn numbered_text<'a>(l: &Laid<'a>, text: &mut Cache<'_, '_, '_>) -> Vec<(&'a Nod
             continue;
         };
         let content = ln.geo.content_box();
-        let Some(lines) = text.layout(node, content.w) else {
+        let Some(lines) = text.layout_in(node, &tree.line_boxes(i as NodeIdx)) else {
             continue;
         };
         let Some(li) = lines
@@ -577,6 +853,7 @@ fn paint_page(
     fonts: &FontSet<'_>,
     text: &Cache<'_, '_, '_>,
     images: &ImageSet,
+    colors: &ColorGlyphs,
 ) -> Result<PageContent, InkoxideError> {
     let spec = l.spec;
     let (pw, ph) = (spec.size.width, spec.size.height);
@@ -610,6 +887,9 @@ fn paint_page(
             cache: text,
             page: None,
             fonts,
+            images,
+            colors,
+            unicode: text.unicode(),
             numbers,
         },
         images,

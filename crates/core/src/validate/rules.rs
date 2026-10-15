@@ -7,12 +7,15 @@ use std::fmt::Write as _;
 use super::parse::{push_key, unsupported_version};
 use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
-use crate::images::ImageCrateDecoder;
+use crate::forms::format;
+use crate::images::{ImageCrateDecoder, ImageData};
+use crate::pdf::Profile;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
-    ColumnWidth, Document, Field, FieldKind, GridTrack, ImageSource, Length, LengthPercent, Node,
-    NodeKind, ObjectPosition, OptEdges, PageSpec, Position, RepeatCount, Style, Table, TextRun,
-    TrackBreadth, TrackSize, TransformOp, SCHEMA_VERSION,
+    ColumnWidth, Document, Field, FieldFormat, FieldKind, FieldValue, FontFeature, FormatKind,
+    GridTrack, ImageSource, Length, LengthPercent, Node, NodeKind, Note, ObjectPosition, OptEdges,
+    PageSpec, Position, RepeatCount, RunAlign, RunImage, Style, Table, TextRun, TrackBreadth,
+    TrackSize, TransformOp, SCHEMA_VERSION,
 };
 use crate::{FontStore, ImageStore};
 
@@ -78,12 +81,15 @@ impl From<TrackBreadth> for Len {
     }
 }
 
-/// Checks `doc`. Without `images`, image ids are not looked up (inline
-/// `data` is still checked).
+/// Checks `doc` for a render with `profile`. Without `images`, image ids
+/// are not looked up (inline `data` is still checked). Where `profile`
+/// forbids transparency (PDF/A-1b), a valid document that needs it gets
+/// one error: `PDFA_CONFLICT` at the first thing that does.
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
     images: Option<&ImageStore>,
+    profile: Profile,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
         path: String::with_capacity(128),
@@ -95,9 +101,39 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
+        opaque: !profile.transparency(),
+        conflict: None,
+        image_transparency: HashMap::new(),
+        field_groups: HashSet::new(),
+        feature_sets: HashSet::new(),
     };
     c.document(doc);
+    if c.errors.is_empty() {
+        c.errors.extend(c.conflict);
+    }
     c.errors
+}
+
+/// The error of a render at PDF/A-1b, which forbids transparency: `what`,
+/// at `path`, needs it.
+pub(crate) fn transparency_conflict(path: String, what: &str) -> ValidationError {
+    ValidationError {
+        code: Code::PdfaConflict,
+        path,
+        message: format!("PDF/A-1b does not allow transparency, which {what} needs"),
+    }
+}
+
+/// How the painter uses a colour's alpha.
+#[derive(Clone, Copy, PartialEq)]
+enum Alpha {
+    /// Below 1 it is drawn with transparency.
+    Blended,
+    /// 0 draws nothing (backgrounds); between 0 and 1 it is blended.
+    Fill,
+    /// Not used: page backgrounds and form fields draw in the colour
+    /// alone.
+    Ignored,
 }
 
 struct Checker<'a> {
@@ -113,6 +149,18 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
+    /// Rendering PDF/A-1b: record the first use of transparency.
+    opaque: bool,
+    /// The first use of transparency, under `opaque`.
+    conflict: Option<ValidationError>,
+    /// What needs transparency in each image checked (by content hash),
+    /// under `opaque`: an image used many times is scanned once.
+    image_transparency: HashMap<u64, Option<&'static str>>,
+    /// The groups field names make: every name before one of its dots
+    /// (`a` and `a.b` for `a.b.c`).
+    field_groups: HashSet<String>,
+    /// The different `fontFeatures` of runs seen so far, sorted by tag.
+    feature_sets: HashSet<Vec<FontFeature>>,
 }
 
 /// Longest link target accepted.
@@ -127,13 +175,36 @@ const MAX_ID: usize = 256;
 /// Font weights are `1..=MAX_WEIGHT` (`FontDecl.weight`).
 pub(crate) const MAX_WEIGHT: u16 = 1000;
 /// Longest form field `name`, in characters.
-pub(crate) const MAX_FIELD_NAME: usize = 128;
+pub(crate) const MAX_FIELD_NAME: usize = 512;
+/// Longest part of a form field `name` between dots, in characters.
+pub(crate) const MAX_FIELD_PART_LEN: usize = 128;
+/// Most parts of a form field `name`: groups nest at most one less deep.
+pub(crate) const MAX_FIELD_PARTS: usize = 32;
+/// Most `options` of a form field.
+pub(crate) const MAX_FIELD_OPTIONS: usize = 1000;
+/// Longest option of a form field, in characters.
+pub(crate) const MAX_FIELD_OPTION_LEN: usize = 1000;
+/// Longest form field `value`, in characters (PDF/A-2 holds strings to
+/// 32767 bytes; a character is at most 4 of them in UTF-16).
+pub(crate) const MAX_FIELD_VALUE: usize = 8000;
+/// Longest `contents` of a note, in characters (PDF/A-2 holds strings to
+/// 32767 bytes).
+pub(crate) const MAX_NOTE: usize = 8000;
+/// Longest `author` of a note, in characters.
+pub(crate) const MAX_NOTE_AUTHOR: usize = 256;
 /// Largest font size of a text run or a form field, in points.
 pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
 /// Longest bookmark title, in characters.
 pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 /// Deepest bookmark `level`.
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
+/// Longest alternative text of an inline image, in characters.
+pub(crate) const MAX_ALT: usize = 1024;
+/// Most entries of `emojiImages`.
+pub(crate) const MAX_EMOJI_IMAGES: usize = 4096;
+/// Longest key of `emojiImages`, in bytes (UTF-8). The schema's
+/// `maxLength`, in characters, is the looser bound JSON Schema can state.
+pub(crate) const MAX_EMOJI_SEQUENCE: usize = 64;
 /// Thickest `decorationThickness`, in points.
 pub(crate) const MAX_DECORATION_THICKNESS: f32 = 100.0;
 /// Largest `letterSpacing` either way, in points.
@@ -144,6 +215,17 @@ pub(crate) const MAX_LINE_HEIGHT: f32 = 100.0;
 pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
 /// Largest `orphans` and `widows`.
 pub(crate) const MAX_ORPHANS: u32 = 100;
+/// Most `fontFeatures` of a run.
+pub(crate) const MAX_FONT_FEATURES: usize = 32;
+/// Largest value of a font feature.
+pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
+
+/// Most floated children of one box: placing each looks at the others.
+pub(crate) const MAX_FLOATS: usize = 1000;
+
+/// Most different sets of `fontFeatures` in a document: each is shaped
+/// with plans and words of its own.
+pub(crate) const MAX_FEATURE_SETS: usize = 64;
 
 /// Ids of the nodes that get a destination: the page body (flow and
 /// overlays) that is displayed (not headers or footers, not under
@@ -158,7 +240,7 @@ fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
 }
 
 /// Error message for a forced page break in [`Ctx::Whole`].
-const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed or fixed node";
+const WHOLE: &str = "a forced page break does nothing inside a row, grid, wrapping or reversed box, or inside a positioned, rotated, transformed, floated or fixed node";
 
 /// Where a node sits; some node types are only valid in the flow.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -192,6 +274,26 @@ impl<'a> Checker<'a> {
             path,
             message: message.into(),
         });
+    }
+
+    /// Under `opaque`, records `field` (of the current path) as the first
+    /// use of transparency, unless there is one already. `what` needs it.
+    fn transparent(&mut self, field: Option<&str>, what: &str) {
+        if !self.opaque || self.conflict.is_some() {
+            return;
+        }
+        let mut path = self.path.clone();
+        if let Some(f) = field {
+            push_key(&mut path, f);
+        }
+        self.conflict = Some(transparency_conflict(path, what));
+    }
+
+    /// `debug` draws translucent outlines.
+    fn debug(&mut self, debug: bool) {
+        if debug {
+            self.transparent(Some("debug"), "`debug` (its outlines are translucent)");
+        }
     }
 
     /// Checks an `Id`: 1 to [`MAX_ID`] characters. False when it is not one.
@@ -286,6 +388,17 @@ impl<'a> Checker<'a> {
                 c.at_index(i, |c| c.font_ref(None, id));
             });
         }
+        if doc.emoji_images.len() > MAX_EMOJI_IMAGES {
+            self.err(
+                Code::OutOfRange,
+                Some("emojiImages"),
+                format!("at most {MAX_EMOJI_IMAGES} emoji images"),
+            );
+        } else {
+            for (sequence, id) in &doc.emoji_images {
+                self.at("emojiImages", |c| c.emoji_image(sequence, id));
+            }
+        }
         if doc.pages.is_empty() {
             self.err(
                 Code::InvalidValue,
@@ -332,8 +445,9 @@ impl<'a> Checker<'a> {
             );
         }
         if let Some(bg) = &page.background {
-            self.color(Some("background"), bg);
+            self.color_as(Some("background"), bg, Alpha::Ignored);
         }
+        self.debug(page.debug);
         self.in_fixed = true;
         if let Some(h) = &page.header {
             self.at("header", |c| c.node(h, Ctx::Fixed));
@@ -350,6 +464,7 @@ impl<'a> Checker<'a> {
         let areas = parent
             .and_then(|p| p.grid_template_areas.as_deref())
             .and_then(|rows| parse_areas(rows).ok());
+        self.floats(parent, children);
         self.at("children", |c| {
             for (i, n) in children.iter().enumerate() {
                 c.at_index(i, |c| {
@@ -368,6 +483,83 @@ impl<'a> Checker<'a> {
                                 format!("the parent's `gridTemplateAreas` has no area `{name}`"),
                             );
                         });
+                    }
+                });
+            }
+        });
+    }
+
+    /// Checks the floated children of a box with `parent` style (`None`:
+    /// the page): they float in a column only, a box holds at most
+    /// [`MAX_FLOATS`], and a box with floats lays its children out in
+    /// order, so it takes no `justifyContent` or `alignContent` and they
+    /// no `flexGrow` or `flexBasis`.
+    fn floats(&mut self, parent: Option<&Style>, children: &[Node]) {
+        let floated = |n: &Node| {
+            n.style.floats().is_some() && n.style.display != Some(crate::schema::Display::None)
+        };
+        let count = children.iter().filter(|n| floated(n)).count();
+        if count == 0 {
+            return;
+        }
+        if count > MAX_FLOATS {
+            self.err(
+                Code::OutOfRange,
+                Some("children"),
+                format!("a box holds at most {MAX_FLOATS} floated children"),
+            );
+        }
+        let column = parent.is_none_or(Style::column);
+        if let Some(p) = parent.filter(|_| column) {
+            for (name, set) in [
+                ("justifyContent", p.justify_content.is_some()),
+                ("alignContent", p.align_content.is_some()),
+            ] {
+                if set {
+                    self.at("style", |c| {
+                        c.err(
+                            Code::StyleNotApplicable,
+                            Some(name),
+                            format!("`{name}` does not apply to a box with floated children: they stack in order"),
+                        );
+                    });
+                }
+            }
+        }
+        self.at("children", |c| {
+            for (i, n) in children.iter().enumerate() {
+                c.at_index(i, |c| {
+                    let s = &n.style;
+                    if column {
+                        for (name, set) in [
+                            ("flexGrow", s.flex_grow.is_some()),
+                            ("flexBasis", s.flex_basis.is_some()),
+                        ] {
+                            if set {
+                                c.at("style", |c| {
+                                    c.err(
+                                        Code::StyleNotApplicable,
+                                        Some(name),
+                                        format!("`{name}` does not apply in a box with floated children"),
+                                    );
+                                });
+                            }
+                        }
+                    }
+                    if !floated(n) {
+                        return;
+                    }
+                    let problem = if !column {
+                        Some("floats only apply to children of a column box, not of a row, grid, wrapping or reversed box")
+                    } else if s.position == Some(Position::Absolute) {
+                        Some("a float cannot be absolutely positioned")
+                    } else if n.brk.before == BreakMode::Page || n.brk.after == BreakMode::Page {
+                        Some("a float cannot force a page break")
+                    } else {
+                        None
+                    };
+                    if let Some(message) = problem {
+                        c.at("style", |c| c.err(Code::InvalidValue, Some("float"), message));
                     }
                 });
             }
@@ -398,6 +590,7 @@ impl<'a> Checker<'a> {
         if let Some(id) = &node.id {
             self.id(Some("id"), id);
         }
+        self.debug(node.debug);
         let is_text = matches!(node.kind, NodeKind::Text { .. });
         self.at("style", |c| c.style(&node.style, is_text, false));
         let is_table = matches!(node.kind, NodeKind::Table(_));
@@ -456,11 +649,7 @@ impl<'a> Checker<'a> {
         }
         // Inside these, forced breaks would do nothing.
         let inner = if ctx == Ctx::Flow
-            && (absolute
-                || node.brk.fixed
-                || node.style.rotate.is_some_and(|r| r % 360.0 != 0.0)
-                || node.style.transform.as_ref().is_some_and(|t| !t.is_empty())
-                || crate::paginate::banded(node))
+            && (crate::paginate::moves_whole(node) || crate::paginate::banded(node))
         {
             Ctx::Whole
         } else {
@@ -480,6 +669,12 @@ impl<'a> Checker<'a> {
         }
         if let Some(b) = &node.bookmark {
             self.bookmark(b);
+        }
+        if let Some(bg) = &node.background_image {
+            self.at("backgroundImage", |c| {
+                c.object_position(&bg.object_position);
+                c.image_source(&bg.source);
+            });
         }
 
         match &node.kind {
@@ -522,43 +717,73 @@ impl<'a> Checker<'a> {
             }
             NodeKind::Spacer => {}
             NodeKind::Field(f) => self.at("field", |c| c.field(f)),
+            NodeKind::Note(n) => self.at("note", |c| c.note(n)),
         }
+    }
+
+    /// An image's source: an id of the images given (when they are), or
+    /// inline `data`.
+    fn image_source(&mut self, source: &ImageSource) {
+        match source {
+            ImageSource::Ref(id) => self.image_ref("src", id),
+            ImageSource::Inline(inline) => match inline.data() {
+                Ok(data) => self.image_data("data", data, None),
+                Err(e) => self.err(Code::InvalidImage, Some("data"), e),
+            },
+        }
+    }
+
+    /// Image `id` at `field`: an id of an image given, when they are.
+    fn image_ref(&mut self, field: &str, id: &str) {
+        if !self.id(Some(field), id) {
+            return; // reported by `id`
+        }
+        let Some(images) = self.images else { return };
+        let Some(data) = images.get(id) else {
+            self.err(
+                Code::UnknownImage,
+                Some(field),
+                format!("image `{id}` was not provided in the render options"),
+            );
+            return;
+        };
+        self.image_data(field, data, Some(id));
     }
 
     /// An image's bytes must decode: its header first, which is cheap and
     /// tells a too large image apart, then the image itself. The decode is
     /// cached, so the render that follows reuses it.
-    fn image_source(&mut self, source: &ImageSource) {
-        let (field, data, id) = match source {
-            ImageSource::Ref(id) if !self.id(Some("src"), id) => return, // reported by `id`
-            ImageSource::Ref(id) => {
-                let Some(images) = self.images else { return };
-                let Some(data) = images.get(id) else {
-                    self.err(
-                        Code::UnknownImage,
-                        Some("src"),
-                        format!("image `{id}` was not provided in the render options"),
-                    );
-                    return;
-                };
-                ("src", data.clone(), Some(id))
-            }
-            ImageSource::Inline(inline) => match inline.data() {
-                Ok(data) => ("data", data.clone(), None),
-                Err(e) => {
-                    self.err(Code::InvalidImage, Some("data"), e);
-                    return;
-                }
-            },
-        };
+    fn image_data(&mut self, field: &str, data: &ImageData, id: Option<&str>) {
         let message = |e: &dyn std::fmt::Display| match id {
             Some(id) => format!("image `{id}`: {e}"),
             None => e.to_string(),
         };
         if let Err(e) = crate::images::probe(&data.bytes) {
             self.err(probe_code(&e), Some(field), message(&e));
-        } else if let Err(e) = data.decoded(&ImageCrateDecoder) {
-            self.err(Code::InvalidImage, Some(field), message(&e));
+            return;
+        }
+        match data.decoded(&ImageCrateDecoder) {
+            Err(e) => self.err(Code::InvalidImage, Some(field), message(&e)),
+            // Text is laid out with the document's fonts.
+            Ok(img) if self.doc.fonts.is_empty() && img.has_text() => self.err(
+                Code::InvalidImage,
+                Some(field),
+                message(
+                    &"the SVG has text, and the document declares no fonts to draw it with; \
+                      declare one in `fonts`",
+                ),
+            ),
+            Ok(img) if self.opaque && self.conflict.is_none() => {
+                let what = *self
+                    .image_transparency
+                    .entry(data.hash)
+                    .or_insert_with(|| crate::pdf::image_transparency(&img));
+                if let Some(what) = what {
+                    let image = id.map_or("the image".into(), |id| format!("image `{id}`"));
+                    self.transparent(Some(field), &format!("{image} ({what})"));
+                }
+            }
+            Ok(_) => {}
         }
     }
 
@@ -588,39 +813,77 @@ impl<'a> Checker<'a> {
     }
 
     fn field(&mut self, f: &Field) {
-        if f.name.is_empty() || f.name.contains('.') || f.name.chars().count() > MAX_FIELD_NAME {
+        let parts = f.name.split('.').count();
+        if f.name.chars().count() > MAX_FIELD_NAME
+            || parts > MAX_FIELD_PARTS
+            || f.name
+                .split('.')
+                .any(|p| p.is_empty() || p.chars().count() > MAX_FIELD_PART_LEN)
+        {
             self.err(
                 Code::InvalidValue,
                 Some("name"),
-                format!("a field name is 1 to {MAX_FIELD_NAME} characters, without `.`"),
+                format!("a field name is at most {MAX_FIELD_PARTS} parts of 1 to {MAX_FIELD_PART_LEN} characters, separated by `.`, and at most {MAX_FIELD_NAME} characters in all"),
             );
         }
-        match self.fields.get(&f.name) {
-            Some(&k) if k != FieldKind::Radio || f.kind != FieldKind::Radio => self.err(
+        // The groups the name is in: what comes before each of its dots.
+        let groups = f.name.match_indices('.').map(|(i, _)| &f.name[..i]);
+        if let Some(g) = groups.clone().find(|g| self.fields.contains_key(*g)) {
+            self.err(
+                Code::DuplicateId,
+                Some("name"),
+                format!("`{g}` is already the name of a field, so it cannot be a group"),
+            );
+        } else if self.field_groups.contains(&f.name) {
+            self.err(
                 Code::DuplicateId,
                 Some("name"),
                 format!(
-                    "field name `{}` is already used (only radio buttons share a name)",
-                    f.name
+                    "`{}` is already the name of a group of fields (`{}.…`)",
+                    f.name, f.name
                 ),
-            ),
-            _ => {
-                self.fields.insert(f.name.clone(), f.kind);
+            );
+        } else {
+            match self.fields.get(&f.name) {
+                Some(&k) if k != FieldKind::Radio || f.kind != FieldKind::Radio => self.err(
+                    Code::DuplicateId,
+                    Some("name"),
+                    format!(
+                        "field name `{}` is already used (only radio buttons share a name)",
+                        f.name
+                    ),
+                ),
+                _ => {
+                    self.fields.insert(f.name.clone(), f.kind);
+                    for g in groups {
+                        if !self.field_groups.contains(g) {
+                            self.field_groups.insert(g.to_string());
+                        }
+                    }
+                }
             }
         }
-        let text_like = matches!(f.kind, FieldKind::Text | FieldKind::Select);
-        match (&f.font, text_like) {
-            (Some(font), _) => self.font_ref(Some("font"), font),
+        match (&f.font, f.is_text_like()) {
+            (Some(font), _) => {
+                self.font_ref(Some("font"), font);
+                if self.fonts.get(font).is_some_and(|d| !d.has_outlines()) {
+                    self.err(
+                        Code::InvalidValue,
+                        Some("font"),
+                        format!("font `{font}` has colour bitmaps and no outlines; a form field needs a font with outlines"),
+                    );
+                }
+            }
             (None, true) => self.err(
                 Code::MissingField,
                 Some("font"),
-                "text and select fields require `font`",
+                "text, select and list fields require `font`",
             ),
             _ => {}
         }
         self.font_size(f.size);
         if let Some(c) = &f.color {
-            self.color(Some("color"), c);
+            self.color_as(Some("color"), c, Alpha::Ignored);
         }
         let only = |c: &mut Self, set: bool, field: &str, kinds: &str| {
             if set {
@@ -632,6 +895,7 @@ impl<'a> Checker<'a> {
             }
         };
         let is = |k: FieldKind| f.kind == k;
+        let choice = matches!(f.kind, FieldKind::Select | FieldKind::List);
         only(
             self,
             !is(FieldKind::Text) && (f.multiline || f.password || f.max_length.is_some()),
@@ -646,9 +910,15 @@ impl<'a> Checker<'a> {
         );
         only(
             self,
-            !is(FieldKind::Select) && !f.options.is_empty(),
+            !choice && !f.options.is_empty(),
             "options",
-            "select",
+            "select and list",
+        );
+        only(
+            self,
+            !is(FieldKind::List) && f.multi_select,
+            "multiSelect",
+            "list",
         );
         only(
             self,
@@ -660,12 +930,50 @@ impl<'a> Checker<'a> {
             self,
             is(FieldKind::Checkbox) && f.value.is_some(),
             "value",
-            "text, select and radio",
+            "text, select, list and radio",
         );
+        if f.options.len() > MAX_FIELD_OPTIONS {
+            self.err(
+                Code::InvalidValue,
+                Some("options"),
+                format!("a field has at most {MAX_FIELD_OPTIONS} options"),
+            );
+        }
+        for (i, o) in f.options.iter().enumerate() {
+            if o.chars().count() > MAX_FIELD_OPTION_LEN {
+                self.at("options", |c| {
+                    c.at_index(i, |c| {
+                        c.err(
+                            Code::InvalidValue,
+                            None,
+                            format!("an option is at most {MAX_FIELD_OPTION_LEN} characters"),
+                        );
+                    });
+                });
+            }
+        }
+        match &f.value {
+            Some(FieldValue::One(v)) if v.chars().count() > MAX_FIELD_VALUE => self.err(
+                Code::InvalidValue,
+                Some("value"),
+                format!("a field value is at most {MAX_FIELD_VALUE} characters"),
+            ),
+            Some(FieldValue::Many(_)) if !(is(FieldKind::List) && f.multi_select) => self.err(
+                Code::InvalidValue,
+                Some("value"),
+                "an array of values needs a list with `multiSelect`",
+            ),
+            Some(FieldValue::Many(v)) if v.len() > MAX_FIELD_OPTIONS => self.err(
+                Code::InvalidValue,
+                Some("value"),
+                format!("a field has at most {MAX_FIELD_OPTIONS} values"),
+            ),
+            _ => {}
+        }
         if f.max_length == Some(0) {
             self.err(Code::OutOfRange, Some("maxLength"), "must be at least 1");
         }
-        if let (Some(max), Some(v)) = (f.max_length, &f.value) {
+        if let (Some(max), Some(v)) = (f.max_length, f.value_str()) {
             if v.chars().count() > max as usize {
                 self.err(
                     Code::OutOfRange,
@@ -674,26 +982,160 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        match f.kind {
-            FieldKind::Radio if f.value.as_deref().is_none_or(str::is_empty) => self.err(
-                Code::MissingField,
-                Some("value"),
-                "a radio button requires a non-empty `value` (what it exports)",
-            ),
-            FieldKind::Select => {
-                if f.options.is_empty() {
-                    self.err(
-                        Code::MissingField,
-                        Some("options"),
-                        "a select field requires `options`",
-                    );
-                } else if let Some(v) = &f.value {
-                    if !f.options.contains(v) {
-                        self.err(Code::InvalidValue, Some("value"), "is not one of `options`");
+        if let Some(format) = &f.format {
+            if !is(FieldKind::Text) || f.multiline || f.password {
+                self.err(
+                    Code::InvalidValue,
+                    Some("format"),
+                    "`format` only applies to single-line text fields that are not passwords",
+                );
+            } else if self.at("format", |c| c.field_format(format)) {
+                if let Some(v) = f.value_str() {
+                    if format::display(format, v).is_none() {
+                        self.err(
+                            Code::InvalidValue,
+                            Some("value"),
+                            format!("`{v}` does not fit the field's format"),
+                        );
                     }
                 }
             }
+        }
+        match f.kind {
+            FieldKind::Radio if f.value_str().is_none_or(str::is_empty) => {
+                if !matches!(f.value, Some(FieldValue::Many(_))) {
+                    self.err(
+                        Code::MissingField,
+                        Some("value"),
+                        "a radio button requires a non-empty `value` (what it exports)",
+                    );
+                }
+            }
+            FieldKind::Select | FieldKind::List if f.options.is_empty() => self.err(
+                Code::MissingField,
+                Some("options"),
+                "select and list fields require `options`",
+            ),
+            FieldKind::Select | FieldKind::List => match &f.value {
+                Some(FieldValue::One(v)) if !f.options.contains(v) => {
+                    self.err(Code::InvalidValue, Some("value"), "is not one of `options`");
+                }
+                Some(FieldValue::Many(values))
+                    if f.multi_select && values.len() <= MAX_FIELD_OPTIONS =>
+                {
+                    let options: HashSet<&str> = f.options.iter().map(String::as_str).collect();
+                    let mut seen = HashSet::new();
+                    for (i, v) in values.iter().enumerate() {
+                        let message = if !options.contains(v.as_str()) {
+                            "is not one of `options`"
+                        } else if !seen.insert(v.as_str()) {
+                            "is already selected: each option is selected at most once"
+                        } else {
+                            continue;
+                        };
+                        self.at("value", |c| {
+                            c.at_index(i, |c| c.err(Code::InvalidValue, None, message));
+                        });
+                    }
+                }
+                _ => {}
+            },
             _ => {}
+        }
+    }
+
+    /// Checks a text field's format; true when it is valid.
+    fn field_format(&mut self, f: &FieldFormat) -> bool {
+        let errors = self.errors.len();
+        let (number, percent) = (f.kind == FormatKind::Number, f.kind == FormatKind::Percent);
+        let dated = matches!(f.kind, FormatKind::Date | FormatKind::Time);
+        for (key, set, applies, kinds) in [
+            (
+                "decimals",
+                f.decimals.is_some(),
+                number || percent,
+                "number and percent",
+            ),
+            (
+                "separators",
+                f.separators.is_some(),
+                number || percent,
+                "number and percent",
+            ),
+            ("negative", f.negative.is_some(), number, "number"),
+            ("currency", f.currency.is_some(), number, "number"),
+            (
+                "currencyBefore",
+                f.currency_before.is_some(),
+                number,
+                "number",
+            ),
+            ("pattern", f.pattern.is_some(), dated, "date and time"),
+        ] {
+            if set && !applies {
+                self.err(
+                    Code::InvalidValue,
+                    Some(key),
+                    format!("`{key}` only applies to {kinds} formats"),
+                );
+            }
+        }
+        if f.decimals.is_some_and(|d| d > format::MAX_DECIMALS) {
+            self.err(
+                Code::OutOfRange,
+                Some("decimals"),
+                format!("decimals must be within 0..={}", format::MAX_DECIMALS),
+            );
+        }
+        if f.currency
+            .as_deref()
+            .is_some_and(|c| !format::currency_ok(c))
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("currency"),
+                format!(
+                    "a currency is at most {} characters, without control characters, quotes or backslashes",
+                    format::MAX_CURRENCY
+                ),
+            );
+        }
+        match &f.pattern {
+            Some(p) if dated => {
+                if let Err(e) = format::check_pattern(p, f.kind) {
+                    self.err(Code::InvalidValue, Some("pattern"), e);
+                }
+            }
+            None if dated => self.err(
+                Code::MissingField,
+                Some("pattern"),
+                "date and time formats require `pattern`",
+            ),
+            _ => {}
+        }
+        self.errors.len() == errors
+    }
+
+    fn note(&mut self, n: &Note) {
+        if !(1..=MAX_NOTE).contains(&n.contents.chars().count()) {
+            self.err(
+                Code::InvalidValue,
+                Some("contents"),
+                format!("a note's contents are 1 to {MAX_NOTE} characters"),
+            );
+        }
+        if n.author
+            .as_ref()
+            .is_some_and(|a| a.chars().count() > MAX_NOTE_AUTHOR)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("author"),
+                format!("a note's author is at most {MAX_NOTE_AUTHOR} characters"),
+            );
+        }
+        if let Some(c) = &n.color {
+            self.color_as(Some("color"), c, Alpha::Ignored);
         }
     }
 
@@ -773,22 +1215,94 @@ impl<'a> Checker<'a> {
         });
     }
 
+    /// An `emojiImages` entry: its key is one emoji sequence, of at most
+    /// [`MAX_EMOJI_SEQUENCE`] bytes, and its image decodes.
+    fn emoji_image(&mut self, sequence: &str, id: &str) {
+        let one = crate::text::emoji_sequences(sequence);
+        let whole = matches!(&one[..], [q] if q.range == (0..sequence.len()));
+        if !whole || sequence.len() > MAX_EMOJI_SEQUENCE {
+            self.err(
+                Code::InvalidValue,
+                Some(sequence),
+                format!("a key of `emojiImages` is one emoji sequence of at most {MAX_EMOJI_SEQUENCE} bytes in UTF-8"),
+            );
+        }
+        self.image_ref(sequence, id);
+    }
+
+    /// A run's `image`: its source and placement, as an image node's, a
+    /// size within a page edge, and bounded alternative text.
+    fn run_image(&mut self, image: &RunImage) {
+        self.object_position(&image.object_position);
+        self.image_source(&image.source);
+        for (field, v) in [("width", image.width), ("height", image.height)] {
+            if v.is_some_and(|v| !(v > 0.0 && v <= MAX_PAGE_EDGE)) {
+                self.err(
+                    Code::OutOfRange,
+                    Some(field),
+                    format!("must be within (0, {MAX_PAGE_EDGE}] points"),
+                );
+            }
+        }
+        if image
+            .alt
+            .as_ref()
+            .is_some_and(|a| a.chars().count() > MAX_ALT)
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("alt"),
+                format!("alternative text is at most {MAX_ALT} characters"),
+            );
+        }
+    }
+
     fn run(&mut self, r: &TextRun) {
         if let Some(link) = &r.link {
             self.link(link);
         }
-        match (&r.text, &r.placeholder) {
-            (Some(_), Some(_)) => self.err(
+        match (&r.text, &r.placeholder, &r.image) {
+            (Some(_), Some(_), _) => self.err(
                 Code::InvalidValue,
                 Some("placeholder"),
                 "a run takes either `text` or `placeholder`, not both",
             ),
-            (None, None) => self.err(
+            (Some(_), None, Some(_)) | (None, Some(_), Some(_)) => self.err(
+                Code::InvalidValue,
+                Some("image"),
+                "a run takes one of `text`, `placeholder` and `image`",
+            ),
+            (None, None, None) if r.note.is_none() => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder`)",
+                "a run requires `text` (or a `placeholder`, an `image` or a `note`)",
+            ),
+            (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.note.is_some() => self.err(
+                Code::InvalidValue,
+                Some("note"),
+                "a run takes one of `text`, `placeholder`, `image` and `note`",
             ),
             _ => {}
+        }
+        if let Some(image) = &r.image {
+            self.at("image", |c| c.run_image(image));
+        }
+        if let Some(note) = &r.note {
+            self.at("note", |c| c.note(note));
+        }
+        match r.vertical_align {
+            Some(RunAlign::Points(v)) if !(v.abs() <= MAX_PAGE_EDGE) => self.err(
+                Code::OutOfRange,
+                Some("verticalAlign"),
+                format!("points must be within [-{MAX_PAGE_EDGE}, {MAX_PAGE_EDGE}]"),
+            ),
+            Some(RunAlign::Baseline | RunAlign::Super | RunAlign::Sub) | None => {}
+            Some(_) if r.image.is_none() => self.err(
+                Code::InvalidValue,
+                Some("verticalAlign"),
+                "only `baseline`, `super` and `sub` apply to text; the other values place an image run",
+            ),
+            Some(_) => {}
         }
         self.font_ref(Some("font"), &r.font);
         self.font_size(r.size);
@@ -816,6 +1330,69 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+        if let Some(features) = &r.font_features {
+            self.font_features(features);
+        }
+    }
+
+    fn font_features(&mut self, features: &[FontFeature]) {
+        let field = Some("fontFeatures");
+        if features.len() > MAX_FONT_FEATURES {
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!("a run takes at most {MAX_FONT_FEATURES} font features"),
+            );
+            return;
+        }
+        let mut sorted = features.to_vec();
+        sorted.sort_by(|a, b| a.tag.cmp(&b.tag));
+        for (i, f) in sorted.iter().enumerate() {
+            if !(f.tag.len() == 4 && f.tag.bytes().all(|b| (b' '..=b'~').contains(&b))) {
+                self.err(
+                    Code::InvalidValue,
+                    field,
+                    format!(
+                        "{:?} is not a feature tag: four printable ASCII characters, such as \"tnum\"",
+                        f.tag
+                    ),
+                );
+                return;
+            }
+            if f.value > MAX_FEATURE_VALUE {
+                self.err(
+                    Code::OutOfRange,
+                    field,
+                    format!(
+                        "the value of {:?} must be within 0..={MAX_FEATURE_VALUE}",
+                        f.tag
+                    ),
+                );
+                return;
+            }
+            if i > 0 && sorted[i - 1].tag == f.tag {
+                self.err(
+                    Code::InvalidValue,
+                    field,
+                    format!("{:?} is set twice", f.tag),
+                );
+                return;
+            }
+        }
+        if sorted.is_empty() || self.feature_sets.contains(&sorted) {
+            return;
+        }
+        if self.feature_sets.len() >= MAX_FEATURE_SETS {
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!(
+                    "a document uses at most {MAX_FEATURE_SETS} different sets of font features"
+                ),
+            );
+            return;
+        }
+        self.feature_sets.insert(sorted);
     }
 
     fn table(&mut self, t: &Table) {
@@ -859,8 +1436,9 @@ impl<'a> Checker<'a> {
                         c.id(Some("id"), id);
                     }
                     c.non_neg("minHeight", row.min_height);
+                    c.debug(row.debug);
                     if let Some(bg) = &row.background_color {
-                        c.color(Some("backgroundColor"), bg);
+                        c.color_as(Some("backgroundColor"), bg, Alpha::Fill);
                     }
                     let mut col = 0usize;
                     for (ci, cell) in row.cells.iter().enumerate() {
@@ -904,6 +1482,7 @@ impl<'a> Checker<'a> {
                                     carry[col..col + span].fill(cell.row_span);
                                 }
                                 col += span;
+                                c.debug(cell.debug);
                                 c.at("style", |c| {
                                     c.style(&cell.style, false, true);
                                     c.table_only(&cell.style);
@@ -942,12 +1521,19 @@ impl<'a> Checker<'a> {
     }
 
     fn color(&mut self, field: Option<&str>, c: &Color) {
+        self.color_as(field, c, Alpha::Blended);
+    }
+
+    /// A colour whose alpha the painter uses as `alpha` says.
+    fn color_as(&mut self, field: Option<&str>, c: &Color, alpha: Alpha) {
         if c.iter().any(|v| !(0.0..=1.0).contains(v)) {
             self.err(
                 Code::OutOfRange,
                 field,
                 "colour components must be within [0, 1]",
             );
+        } else if c[3] < 1.0 && (alpha == Alpha::Blended || alpha == Alpha::Fill && c[3] > 0.0) {
+            self.transparent(field, "a colour with alpha below 1");
         }
     }
 
@@ -1074,6 +1660,8 @@ impl<'a> Checker<'a> {
                 ("rotate", s.rotate.is_some()),
                 ("opacity", s.opacity.is_some()),
                 ("overflow", s.overflow.is_some()),
+                ("float", s.float.is_some()),
+                ("clear", s.clear.is_some()),
                 ("margin", s.margin.is_some()),
                 ("position", s.position.is_some()),
                 ("inset", s.inset.is_some()),
@@ -1156,11 +1744,14 @@ impl<'a> Checker<'a> {
             }
         }
         if let Some(bg) = &s.background_color {
-            self.color(Some("backgroundColor"), bg);
+            self.color_as(Some("backgroundColor"), bg, Alpha::Fill);
         }
         if let Some(o) = s.opacity {
             if !(0.0..=1.0).contains(&o) {
                 self.err(Code::OutOfRange, Some("opacity"), "must be within [0, 1]");
+            } else if o > 0.0 && o < 1.0 {
+                // 0 draws nothing.
+                self.transparent(Some("opacity"), "an `opacity` below 1");
             }
         }
         if let Some(a) = s.aspect_ratio {

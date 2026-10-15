@@ -262,3 +262,450 @@ fn simple_cell_fast_path_matches_taffy() {
         }
     }
 }
+
+/// xorshift64: deterministic pseudo-random numbers.
+struct Rng(u64);
+
+impl Rng {
+    fn below(&mut self, n: u64) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0 % n
+    }
+
+    fn pick<'s>(&mut self, xs: &[&'s str]) -> &'s str {
+        xs[self.below(xs.len() as u64) as usize]
+    }
+}
+
+/// A random column box, text or spacer, `depth` levels deep at most.
+/// Boxes stretch across their parent: `flow.rs` sizes a box that does not
+/// from its content more simply than Taffy (see the module).
+fn random_node(r: &mut Rng, depth: u32) -> String {
+    let kind = if depth == 0 {
+        1 + r.below(2)
+    } else {
+        r.below(3)
+    };
+    let mut style: Vec<String> = Vec::new();
+    let length = |r: &mut Rng| -> String {
+        match r.below(4) {
+            0 => format!("\"{}%\"", r.below(60)),
+            _ => format!("{}", r.below(40)),
+        }
+    };
+    if r.below(3) == 0 {
+        let side = r.pick(&["top", "right", "bottom", "left"]);
+        let v = if r.below(4) == 0 && kind != 0 && (side == "left" || side == "right") {
+            "\"auto\"".to_string()
+        } else {
+            length(r)
+        };
+        style.push(format!(r#""margin":{{"{side}":{v}}}"#));
+    }
+    if r.below(3) == 0 {
+        style.push(format!(
+            r#""padding":{{"top":{},"left":{}}}"#,
+            r.below(10),
+            r.below(10)
+        ));
+    }
+    if r.below(4) == 0 {
+        style.push(format!(r#""borderWidth":{{"bottom":{}}}"#, r.below(5)));
+    }
+    // A minimum wider than a set width makes Taffy size a box's content
+    // at the set width first: not generated.
+    if r.below(4) == 0 {
+        // Boxes narrower than their padding: not generated either.
+        let w = if kind == 0 {
+            format!("{}", 30 + r.below(200))
+        } else {
+            length(r)
+        };
+        style.push(format!(r#""width":{w}"#));
+    } else if kind != 1 && r.below(5) == 0 {
+        // A text leaf wider than its room is measured in the room by Taffy,
+        // and at its own width here: not generated.
+        style.push(format!(r#""minWidth":{}"#, r.below(80)));
+    }
+    // Taffy sizes the content of a stretched box or text with a maximum
+    // width at another width than the one it ends up with: not generated.
+    if kind == 2 && r.below(6) == 0 {
+        style.push(format!(r#""maxWidth":{}"#, 20 + r.below(200)));
+    }
+    if kind == 0 {
+        style.push(r#""alignSelf":"stretch""#.into());
+    } else if r.below(5) == 0 {
+        let a = r.pick(&[
+            "flex-start",
+            "center",
+            "flex-end",
+            "stretch",
+            "start",
+            "end",
+        ]);
+        style.push(format!(r#""alignSelf":"{a}""#));
+    }
+    if r.below(6) == 0 {
+        style.push(format!(
+            r#""inset":{{"top":{},"left":{}}}"#,
+            r.below(9),
+            r.below(9)
+        ));
+    }
+    match kind {
+        0 => {
+            if r.below(3) == 0 {
+                let a = r.pick(&["flex-start", "center", "flex-end", "stretch"]);
+                style.push(format!(r#""alignItems":"{a}""#));
+            }
+            if r.below(3) == 0 {
+                style.push(format!(r#""rowGap":{}"#, r.below(12)));
+            }
+            // No set height: a column flexbox shrinks its items to fit one,
+            // which a box with floats does not do.
+            if r.below(4) == 0 {
+                style.push(format!(r#""minHeight":{}"#, 50 + r.below(150)));
+            }
+            let n = 1 + r.below(4);
+            let kids: Vec<String> = (0..n).map(|_| random_node(r, depth - 1)).collect();
+            format!(
+                r#"{{"type":"box","style":{{{}}},"children":[{}]}}"#,
+                style.join(","),
+                kids.join(",")
+            )
+        }
+        1 => {
+            let words = [
+                "Lorem",
+                "ipsum",
+                "dolor",
+                "sit",
+                "amet,",
+                "consectetur",
+                "elit",
+            ];
+            let n = 1 + r.below(20);
+            let text: Vec<&str> = (0..n).map(|_| r.pick(&words)).collect();
+            format!(
+                r#"{{"type":"text","style":{{{}}},"runs":[{{"text":"{}","font":"Inter-Regular","size":{}}}]}}"#,
+                style.join(","),
+                text.join(" "),
+                6 + r.below(10)
+            )
+        }
+        _ => {
+            style.push(format!(r#""height":{}"#, r.below(30)));
+            format!(r#"{{"type":"spacer","style":{{{}}}}}"#, style.join(","))
+        }
+    }
+}
+
+/// `flow.rs` lays out column boxes without floats as Taffy does, so that a
+/// box gaining a float changes only what the float touches.
+#[test]
+fn float_free_column_boxes_lay_out_as_taffy_does() {
+    let store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+    let mut r = Rng(0x9E37_79B9_7F4A_7C15);
+    for case in 0..300 {
+        let n = 1 + r.below(4);
+        let kids: Vec<String> = (0..n).map(|_| random_node(&mut r, 3)).collect();
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+                "pages":[{{"size":{{"width":400,"height":800}},"children":[{}]}}]}}"#,
+            kids.join(",")
+        );
+        let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+        let fonts = FontSet::load(&d, &store).unwrap();
+        let min_height = if case % 2 == 0 { 0.0 } else { 700.0 };
+        let run = |flowing: bool| {
+            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+            let mut tree = Tree::build(&d.pages[0].children);
+            if flowing {
+                compute_tree_flowing(&mut tree, 380.0, min_height, &mut cache).unwrap();
+            } else {
+                compute_tree(&mut tree, 380.0, min_height, &mut cache, true).unwrap();
+            }
+            tree.nodes.iter().map(|n| n.geo).collect::<Vec<_>>()
+        };
+        let (taffy, flow) = (run(false), run(true));
+        let close = |x: f32, y: f32| (x - y).abs() < 0.01;
+        let differ: Vec<String> = taffy
+            .iter()
+            .zip(&flow)
+            .enumerate()
+            .filter(|(_, (a, b))| {
+                !(close(a.x, b.x) && close(a.y, b.y) && close(a.w, b.w) && close(a.h, b.h))
+            })
+            .map(|(i, (a, b))| {
+                format!(
+                    "node {i}: taffy ({}, {}, {}, {}) flow ({}, {}, {}, {})",
+                    a.x, a.y, a.w, a.h, b.x, b.y, b.w, b.h
+                )
+            })
+            .collect();
+        assert!(
+            differ.is_empty(),
+            "case {case}:\n{}\n{json}",
+            differ.join("\n")
+        );
+    }
+}
+
+/// Lays out `children` of a page `width` wide with Inter, and runs `f` on
+/// the tree and the text cache.
+fn with_floats<R>(
+    children: &str,
+    width: f32,
+    f: impl FnOnce(&Tree<'_>, &mut TextCache<'_, RustybuzzShaper<'_, '_>>) -> R,
+) -> R {
+    let store = crate::test_fixtures::fonts(&["Inter-Regular"]);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":600,"height":800}},"children":[{children}]}}]}}"#
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut tree = Tree::build(&d.pages[0].children);
+    compute_tree(&mut tree, width, 0.0, &mut cache, true).unwrap();
+    f(&tree, &mut cache)
+}
+
+const WORDS: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+    tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis \
+    nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+
+fn text(style: &str) -> String {
+    format!(
+        r#"{{"type":"text","style":{{{style}}},"runs":[{{"text":"{WORDS}","font":"Inter-Regular","size":10}}]}}"#
+    )
+}
+
+#[test]
+fn text_wraps_beside_a_float_and_the_container_holds_it() {
+    let children = format!(
+        r#"{{"type":"box","children":[
+            {{"type":"box","style":{{"float":"left","width":80,"height":50,"margin":{{"right":10}}}}}},
+            {}]}}"#,
+        text("")
+    );
+    with_floats(&children, 300.0, |tree, cache| {
+        let (b, f, t) = (&tree.nodes[1], &tree.nodes[2], &tree.nodes[3]);
+        assert_eq!((f.geo.x, f.geo.y, f.geo.w, f.geo.h), (0.0, 0.0, 80.0, 50.0));
+        // The paragraph keeps its full width; its lines beside the float
+        // are narrower.
+        assert_eq!((t.geo.x, t.geo.y, t.geo.w), (0.0, 0.0, 300.0));
+        let boxes = tree.line_boxes(3);
+        assert!(boxes.banded());
+        let layout = cache.layout_in(t.node().unwrap(), &boxes).unwrap();
+        for (line, b) in layout.lines.iter().zip(&layout.boxes) {
+            let (left, avail) = (b.left, b.width);
+            if line.top < 50.0 {
+                assert_eq!((left, avail), (90.0, 210.0), "{line:?}");
+            } else {
+                assert_eq!((left, avail), (0.0, 300.0), "{line:?}");
+            }
+            assert!(line.width <= avail + 1e-3);
+        }
+        assert!((t.geo.h - layout.height).abs() < 1e-3);
+        assert!(b.geo.h >= t.geo.h.max(50.0) - 1e-3);
+        // The group: the float and the lines beside it.
+        let end = tree.float_groups[&2];
+        assert!(end > 50.0 && end <= t.geo.h, "{end}");
+    });
+}
+
+#[test]
+fn a_box_beside_a_float_is_narrowed_or_moved_below_it() {
+    let children = r#"{"type":"box","children":[
+        {"type":"box","style":{"float":"right","width":100,"height":40}},
+        {"type":"box","style":{"height":10}},
+        {"type":"box","style":{"width":250,"height":10}},
+        {"type":"box","style":{"height":10,"clear":"right"}}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let g = |i: usize| {
+            let g = tree.nodes[i].geo;
+            (g.x, g.y, g.w, g.h)
+        };
+        assert_eq!(g(2), (200.0, 0.0, 100.0, 40.0));
+        // Narrowed to the room on the left of the float.
+        assert_eq!(g(3), (0.0, 0.0, 200.0, 10.0));
+        // Too wide for that room: below the float.
+        assert_eq!(g(4), (0.0, 40.0, 250.0, 10.0));
+        assert_eq!(g(5), (0.0, 50.0, 300.0, 10.0));
+        assert_eq!(g(1).3, 60.0);
+    });
+}
+
+#[test]
+fn clear_and_the_container_height_count_the_floats() {
+    let children = r#"{"type":"box","children":[
+        {"type":"box","style":{"float":"left","width":50,"height":70}},
+        {"type":"box","style":{"float":"left","width":50,"height":30}},
+        {"type":"box","style":{"height":5,"clear":"left","margin":{"top":4}}}]},
+        {"type":"box","children":[{"type":"box","style":{"float":"left","width":10,"height":90}}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let n = &tree.nodes;
+        assert_eq!((n[4].geo.x, n[4].geo.y), (50.0, 0.0));
+        // Its border box below both floats' margin boxes.
+        assert_eq!(n[5].geo.y, 70.0);
+        assert_eq!(n[1].geo.h, 75.0);
+        // A box with only a float is as tall as the float.
+        assert_eq!(n[2].geo.h, 90.0);
+        assert_eq!(n[2].geo.y, 75.0);
+    });
+}
+
+#[test]
+fn floats_shrink_to_fit_and_work_in_cells_and_the_page() {
+    let children = format!(
+        r#"{{"type":"text","style":{{"float":"right"}},"runs":[{{"text":"Note","font":"Inter-Regular","size":10}}]}},
+           {},
+           {{"type":"table","columns":[{{"width":200}}],"rows":[{{"cells":[{{"children":[
+             {{"type":"box","style":{{"float":"left","width":40,"height":20}}}},{}]}}]}}]}}"#,
+        text(""),
+        text("")
+    );
+    with_floats(&children, 300.0, |tree, _| {
+        let note = tree.nodes[1].geo;
+        assert!(
+            note.w < 40.0 && (note.x + note.w - 300.0).abs() < 1e-3,
+            "{note:?}"
+        );
+        assert!(tree.wraps.contains_key(&2));
+        // In the cell: the text after the float wraps beside it.
+        let wrapped: Vec<_> = tree.wraps.keys().copied().collect();
+        assert_eq!(wrapped.len(), 2, "{wrapped:?}");
+    });
+}
+
+#[test]
+fn a_note_in_a_box_with_floats_is_a_zero_height_leaf() {
+    let children = format!(
+        r#"{{"type":"box","children":[
+            {{"type":"box","style":{{"float":"left","width":40,"height":30}}}},
+            {{"type":"note","note":{{"contents":"Checked"}}}},
+            {}]}}"#,
+        text("")
+    );
+    with_floats(&children, 300.0, |tree, _| {
+        let note = tree.nodes[3].geo;
+        assert_eq!((note.y, note.h), (0.0, 0.0));
+        // The text after it still wraps beside the float.
+        assert_eq!(tree.nodes[4].geo.y, 0.0);
+        assert!(tree.wraps.contains_key(&4));
+    });
+}
+
+#[test]
+fn a_narrowed_box_keeps_clear_of_a_wider_float_lower_down() {
+    // A second, wider float sits below the first; a box 80 tall beside
+    // the first reaches down beside the second too.
+    let floats = r#"{"type":"box","style":{"float":"left","width":100,"height":50}},
+        {"type":"box","style":{"float":"left","width":350,"height":50}}"#;
+    let children = format!(
+        r#"{{"type":"box","children":[{floats},{{"type":"box","style":{{"width":50,"height":80}}}}]}},
+           {{"type":"box","children":[{floats},{{"type":"box","style":{{"height":80}}}}]}},
+           {{"type":"box","children":[{floats},{{"type":"box","style":{{"width":60,"height":80}}}}]}}"#
+    );
+    with_floats(&children, 400.0, |tree, _| {
+        // In its parent's content box.
+        let g = |i: usize| {
+            let g = tree.nodes[i].geo;
+            let p = tree.nodes[tree.nodes[i].parent as usize].geo;
+            (g.x - p.x, g.y - p.y, g.w, g.h)
+        };
+        assert_eq!(g(5), (0.0, 50.0, 350.0, 50.0));
+        // Beside both floats, right of the wider one.
+        assert_eq!(g(6), (350.0, 0.0, 50.0, 80.0));
+        // A box that stretches is narrowed to the room beside both.
+        assert_eq!(g(9), (350.0, 0.0, 50.0, 80.0));
+        // Too wide for that room: below both floats.
+        assert_eq!(g(12), (0.0, 100.0, 60.0, 80.0));
+        for (f, b) in [(4, 6), (5, 6), (7, 9), (8, 9), (10, 12), (11, 12)] {
+            let (f, b) = (tree.nodes[f].geo, tree.nodes[b].geo);
+            let apart = f.x + f.w <= b.x + 1e-3
+                || b.x + b.w <= f.x + 1e-3
+                || f.y + f.h <= b.y + 1e-3
+                || b.y + b.h <= f.y + 1e-3;
+            assert!(apart, "{f:?} meets {b:?}");
+        }
+    });
+}
+
+#[test]
+fn auto_margins_share_the_free_room_beside_floats() {
+    let children = r#"{"type":"box","style":{"height":200},"children":[
+        {"type":"box","style":{"float":"left","width":50,"height":30}},
+        {"type":"box","style":{"height":20}},
+        {"type":"box","style":{"height":20,"margin":{"top":"auto"}}}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let g = |i: usize| {
+            let g = tree.nodes[i].geo;
+            (g.x, g.y, g.w, g.h)
+        };
+        // Pushed to the bottom, as without the float.
+        assert_eq!(g(4), (0.0, 180.0, 300.0, 20.0));
+        assert_eq!(tree.nodes[4].geo.margin.top, 160.0);
+        assert_eq!(g(3), (50.0, 0.0, 250.0, 20.0));
+    });
+}
+
+#[test]
+fn the_max_content_width_counts_the_floats_beside_a_child() {
+    // Floats shrink to fit: to their max-content width here.
+    let children = r#"{"type":"box","children":[{"type":"box","style":{"float":"left"},"children":[
+            {"type":"box","style":{"float":"left","width":50,"height":20}},
+            {"type":"box","style":{"width":30,"height":10}}]}]},
+        {"type":"box","children":[{"type":"box","style":{"float":"left"},"children":[
+            {"type":"box","style":{"float":"left","width":50,"height":20}},
+            {"type":"box","style":{"width":30,"height":10,"clear":"left"}}]}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let n = &tree.nodes;
+        // The box sits beside the float: the floated box holds both.
+        assert_eq!(n[3].geo.w, 80.0);
+        assert_eq!(n[6].geo.x - n[3].geo.x, 50.0);
+        // Below it, after `clear`: as wide as the wider of the two.
+        assert_eq!(n[4].geo.w, 50.0);
+        assert_eq!(n[8].geo.y - n[4].geo.y, 20.0);
+    });
+}
+
+#[test]
+fn text_with_a_width_or_an_alignment_wraps_line_by_line() {
+    for style in [
+        r#""width":250"#,
+        r#""alignSelf":"center""#,
+        r#""margin":{"left":"auto","right":20}"#,
+    ] {
+        let children = format!(
+            r#"{{"type":"box","children":[
+                {{"type":"box","style":{{"float":"left","width":80,"height":50}}}},
+                {}]}}"#,
+            text(style)
+        );
+        with_floats(&children, 300.0, |tree, cache| {
+            let t = tree.nodes[3].geo;
+            // Its own box, beside the float: not moved below it.
+            assert_eq!(t.y, 0.0, "{style}");
+            assert!(tree.wraps.contains_key(&3), "{style}");
+            let boxes = tree.line_boxes(3);
+            let layout = cache
+                .layout_in(tree.nodes[3].node().unwrap(), &boxes)
+                .unwrap();
+            let (cx, cw) = (t.content_box().x, t.content_box().w);
+            for (line, b) in layout.lines.iter().zip(&layout.boxes) {
+                assert!(line.width <= b.width + 1e-3, "{style}: {line:?}");
+                if line.top < 50.0 {
+                    // Right of the float.
+                    assert!(cx + b.left >= 80.0 - 1e-3, "{style}: {b:?}");
+                } else {
+                    assert_eq!((b.left, b.width), (0.0, cw), "{style}");
+                }
+            }
+            assert!(layout.boxes.iter().any(|b| b.left > 0.0), "{style}");
+        });
+    }
+}

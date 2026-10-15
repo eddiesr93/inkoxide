@@ -19,7 +19,10 @@ use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{LazyLock, RwLock};
 
-use inkoxide::{FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat};
+use inkoxide::{
+    Encryption, FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel,
+    Permissions, Printing,
+};
 use napi::bindgen_prelude::{AsyncTask, Buffer, Either, Uint8Array};
 use napi::{Env, Error, Result, Task};
 use napi_derive::napi;
@@ -118,6 +121,22 @@ fn input_format(format: Option<&str>) -> Result<InputFormat> {
     }
 }
 
+fn pdf_a_level(name: &str) -> Result<PdfALevel> {
+    PdfALevel::from_name(name).ok_or_else(|| {
+        let names: Vec<String> = PdfALevel::ALL
+            .iter()
+            .map(|l| format!("\"{}\"", l.as_str()))
+            .collect();
+        invalid_arg(
+            "options.pdfA",
+            &format!(
+                "unsupported PDF/A level `{name}` (expected true, false or one of {})",
+                names.join(", ")
+            ),
+        )
+    })
+}
+
 #[napi(object)]
 pub struct RenderOptions {
     /// `"json"` (default) or `"msgpack"`.
@@ -135,10 +154,70 @@ pub struct RenderOptions {
     pub threads: Option<f64>,
     /// Embed only the glyphs used (default `true`).
     pub subset_fonts: Option<bool>,
-    /// Write PDF/A-2b (default `false`).
-    pub pdf_a: Option<bool>,
+    /// Write PDF/A (default `false`): `true` or a level, `"1b"`, `"2b"` or
+    /// `"3b"`; `true` is `"2b"`.
+    pub pdf_a: Option<Either<bool, String>>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,
+    /// Encrypt the PDF (default: not encrypted).
+    pub encryption: Option<EncryptionOptions>,
+}
+
+/// `options.encryption`: mirrors Rust `Encryption`.
+#[napi(object)]
+pub struct EncryptionOptions {
+    pub user_password: Option<String>,
+    pub owner_password: Option<String>,
+    pub permissions: Option<PermissionOptions>,
+}
+
+/// `options.encryption.permissions`: mirrors Rust `Permissions`; a field
+/// left out keeps its default (all off, `contentAccessibility` on).
+#[napi(object)]
+pub struct PermissionOptions {
+    /// `"lowResolution"` or `"highResolution"`.
+    pub printing: Option<String>,
+    pub modifying: Option<bool>,
+    pub copying: Option<bool>,
+    pub annotating: Option<bool>,
+    pub filling_forms: Option<bool>,
+    pub content_accessibility: Option<bool>,
+    pub document_assembly: Option<bool>,
+}
+
+fn encryption(o: EncryptionOptions) -> Result<Encryption> {
+    let mut e = Encryption::new();
+    e.user_password = o.user_password;
+    e.owner_password = o.owner_password;
+    if let Some(p) = o.permissions {
+        let mut perms = Permissions::new().with_printing(match p.printing.as_deref() {
+            None => None,
+            Some("lowResolution") => Some(Printing::LowResolution),
+            Some("highResolution") => Some(Printing::HighResolution),
+            Some(other) => {
+                return Err(invalid_arg(
+                    "options.encryption.permissions.printing",
+                    &format!(
+                        "unsupported printing `{other}` (expected \"lowResolution\" or \"highResolution\")"
+                    ),
+                ))
+            }
+        });
+        for (set, value) in [
+            (&mut perms.modifying, p.modifying),
+            (&mut perms.copying, p.copying),
+            (&mut perms.annotating, p.annotating),
+            (&mut perms.filling_forms, p.filling_forms),
+            (&mut perms.content_accessibility, p.content_accessibility),
+            (&mut perms.document_assembly, p.document_assembly),
+        ] {
+            if let Some(v) = value {
+                *set = v;
+            }
+        }
+        e = e.with_permissions(perms);
+    }
+    Ok(e)
 }
 
 #[napi(object)]
@@ -188,8 +267,13 @@ impl RenderJob {
             if let Some(s) = o.subset_fonts {
                 core.subset_fonts = s;
             }
-            if let Some(a) = o.pdf_a {
-                core.pdf_a = a;
+            match o.pdf_a {
+                None => {}
+                Some(Either::A(a)) => core.pdf_a = a,
+                Some(Either::B(level)) => core = core.with_pdf_a_level(pdf_a_level(&level)?),
+            }
+            if let Some(e) = o.encryption {
+                core = core.with_encryption(encryption(e)?);
             }
             if let Some(map) = o.images {
                 for (id, bytes) in map {

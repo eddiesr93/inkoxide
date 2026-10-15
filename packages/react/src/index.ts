@@ -11,7 +11,7 @@ import { ImageIds, type ImageTableOptions, type RemoteImagePolicy } from './tree
 import { locate } from './tree/locate.ts';
 import { type SchemaProblem, validateTree } from './tree/validate.ts';
 
-export type { Painter } from './canvas.ts';
+export type { CanvasGradient, CanvasTextOptions, Painter } from './canvas.ts';
 export * from './components/index.ts';
 export { TemplateError, type TemplateErrorKind } from './errors.ts';
 export * from './fonts/index.ts';
@@ -30,6 +30,8 @@ export {
 export { parsePath } from './tree/locate.ts';
 export { PAGE_SIZES } from './tree/page-sizes.ts';
 export { weightOf as fontWeightValue } from './tree/style.ts';
+export { familyKey } from './fonts/registry.ts';
+export type { EncryptionOptions, OutputOptions, PdfALevel } from './tree/build.ts';
 export { type SchemaProblem, validateTree } from './tree/validate.ts';
 
 export interface TreeOptions {
@@ -125,6 +127,7 @@ function fromContainer(
   };
   return {
     document: built.document,
+    output: built.output,
     images: built.images,
     fonts: built.fonts,
     warnings: built.warnings,

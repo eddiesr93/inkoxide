@@ -33,6 +33,21 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Layout',
+    utilities:
+      '`float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none`',
+    maps: '`float`, `clear`',
+    notes:
+      'In a column `View`, a `Page` or a table cell (not in a row or a grid, and not on a cell itself): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported.',
+    examples: {
+      'float-left': { float: 'left' },
+      'float-right': { float: 'right' },
+      'float-none': { float: 'none' },
+      'clear-both': { clear: 'both' },
+      'clear-left': { clear: 'left' },
+    },
+  },
+  {
+    group: 'Layout',
     utilities: '`overflow-hidden`, `overflow-visible`, `overflow-clip`',
     maps: '`overflow`',
     examples: {
@@ -373,7 +388,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     group: 'Visual',
     utilities: '`object-contain`, `object-cover`, `object-fill`, `object-none`',
     maps: 'image `fit`',
-    notes: 'On `Image` only. The `fit` prop wins over it.',
+    notes: 'On `Image` and `ImageBackground` only. The `fit` prop wins over it.',
     examples: {
       'object-contain': { objectFit: 'contain' },
       'object-cover': { objectFit: 'cover' },
@@ -387,7 +402,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       '`object-left`, `object-right`, `object-top`, `object-bottom`, `object-center`, `object-left-top` (and the other corners, either order), `object-[…]`',
     maps: 'image `objectPosition`',
     notes:
-      'On `Image` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported.',
+      'On `Image` and `ImageBackground` only: places a `contain`, `cover` or `none` image in its box. Arbitrary values take one or two keywords, lengths or percentages; edge offsets (`right_1rem_top`) are not supported.',
     examples: {
       'object-left-top': { objectPosition: { x: 'left', y: 'top' } },
       'object-left': { objectPosition: { x: 'left', y: 'center' } },
@@ -497,6 +512,29 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'align-bottom': { verticalAlign: 'bottom' },
     },
   },
+  {
+    group: 'Text',
+    utilities: '`align-super`, `align-sub`, `align-baseline`',
+    maps: 'run `verticalAlign` (on `Text`)',
+    notes:
+      "Raises or lowers the baseline by the font's superscript or subscript offset; the size stays: add a smaller `text-*`.",
+    examples: {
+      'align-super': { verticalAlign: 'super' },
+      'align-sub': { verticalAlign: 'sub' },
+      'align-baseline': { verticalAlign: 'baseline' },
+    },
+  },
+  {
+    group: 'Text',
+    utilities: '`align-text-top`, `align-text-bottom`, and `align-top`, `align-middle`, `align-bottom`',
+    maps: 'run `verticalAlign` (on an `Image` in a `Text`)',
+    notes:
+      "Places an image in its line: its top at the font's ascender, its bottom at the descender, its top or bottom at the line's, or its middle half an x-height above the baseline.",
+    examples: {
+      'align-text-top': { verticalAlign: 'textTop' },
+      'align-text-bottom': { verticalAlign: 'textBottom' },
+    },
+  },
   // Text
   {
     group: 'Text',
@@ -591,6 +629,30 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Text',
+    utilities: '`font-features-[…]`',
+    maps: 'run `fontFeatures`',
+    notes: "CSS `font-feature-settings`, with `_` for spaces: `font-features-['tnum','ss01']`.",
+    examples: {
+      "font-features-['tnum','ss01']": { fontFeatureSettings: { tnum: 1, ss01: 1 } },
+      "font-features-['liga'_0]": { fontFeatureSettings: { liga: 0 } },
+    },
+  },
+  {
+    group: 'Text',
+    utilities:
+      '`tabular-nums`, `proportional-nums`, `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions`, `stacked-fractions`, `normal-nums`',
+    maps: 'run `fontFeatures`',
+    notes:
+      'The OpenType features of CSS `font-variant-numeric` (`tnum`, `pnum`, `lnum`, `onum`, `zero`, `ordn`, `frac`, `afrc`): the font must have them. `font-features-[…]` wins over them.',
+    examples: {
+      'tabular-nums': { fontVariantNumeric: { tnum: 1 } },
+      'oldstyle-nums slashed-zero': { fontVariantNumeric: { onum: 1, zero: 1 } },
+      'diagonal-fractions': { fontVariantNumeric: { frac: 1 } },
+      'normal-nums': { fontVariantNumeric: {} },
+    },
+  },
+  {
+    group: 'Text',
     utilities: '`underline`, `line-through`, `no-underline`',
     maps: 'run `decoration`',
     examples: {
@@ -668,6 +730,18 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Text',
+    utilities: '`text-wrap`, `text-pretty`, `text-nowrap`',
+    maps: '`textWrap`, `whiteSpace`',
+    notes:
+      '`text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`.',
+    examples: {
+      'text-wrap': { textWrap: 'wrap' },
+      'text-pretty': { textWrap: 'pretty' },
+      'text-nowrap': { whiteSpace: 'nowrap' },
+    },
+  },
+  {
+    group: 'Text',
     utilities: '`hyphens-auto`, `hyphens-manual`, `hyphens-none`',
     maps: '`hyphenate`',
     notes: 'The `hyphenate` prop on `Text` does the same. Soft hyphens (U+00AD) always work.',
@@ -702,6 +776,15 @@ export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
   { example: 'overline', why: '`overline` and `underline-offset-*`.' },
   { example: 'whitespace-break-spaces', why: '`break-spaces`.' },
   { example: 'text-ellipsis', why: '`text-overflow` alone; use `truncate` or `line-clamp-N`.' },
+  {
+    example: 'float-start',
+    why: '`float-start` and `float-end`: boxes have no direction; use `float-left` or `float-right`.',
+  },
+  {
+    example: 'clear-end',
+    why: '`clear-start` and `clear-end`; use `clear-left`, `clear-right` or `clear-both`.',
+  },
+  { example: 'text-balance', why: '`text-wrap: balance`; `text-pretty` evens lines.' },
   { example: 'object-scale-down', why: '`object-fit: scale-down`.' },
   { example: 'object-[right_1rem_top]', why: '`object-position` with edge offsets.' },
   { example: 'not-a-class', why: 'Classes Tailwind does not know.' },

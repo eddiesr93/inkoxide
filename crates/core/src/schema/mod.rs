@@ -14,7 +14,7 @@ pub use areas::{is_area_name, parse_areas};
 
 use serde::Deserialize;
 
-use crate::images::InlineImage;
+use crate::images::InlineData;
 
 pub use de::{GridLine, GridTrack, Length, LengthPercent, RepeatCount, TrackBreadth, TrackSize};
 
@@ -37,6 +37,9 @@ pub struct Document {
     pub fonts: Vec<FontDecl>,
     #[serde(default)]
     pub fallback_fonts: Vec<String>,
+    /// Emoji sequences drawn as images: sequence → image id.
+    #[serde(default)]
+    pub emoji_images: std::collections::BTreeMap<String, String>,
     pub pages: Vec<PageSpec>,
 }
 
@@ -92,16 +95,12 @@ pub enum FontStyle {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct FontDecl {
     pub id: String,
-    /// Descriptive only (checked to be non-empty); the engine selects fonts
-    /// by `id`.
+    /// Text runs name fonts by `id`; the family, weight and style are what
+    /// `FontSet::select` matches (checked to be non-empty).
     pub family: String,
     #[serde(default = "default_weight", deserialize_with = "de::int")]
     pub weight: u16,
     #[serde(default)]
-    #[expect(
-        dead_code,
-        reason = "descriptive only; the engine selects fonts by `id`"
-    )]
     pub style: FontStyle,
 }
 
@@ -237,6 +236,8 @@ pub struct Node {
     pub pages: Option<Box<PageFilter>>,
     /// Draws the node's boxes over the page (a development aid).
     pub debug: bool,
+    /// An image behind a box's children (boxed: rare). Only boxes take one.
+    pub background_image: Option<Box<BackgroundImage>>,
     pub kind: NodeKind,
 }
 
@@ -356,24 +357,47 @@ pub enum NodeKind {
     Spacer,
     /// An interactive form field (boxed: large and rare).
     Field(Box<Field>),
+    /// A text annotation: an icon that opens a note (boxed: rare).
+    Note(Box<Note>),
 }
+
+/// A text annotation, shown as a sticky-note icon.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Note {
+    pub contents: String,
+    pub author: Option<String>,
+    /// The icon's colour (its alpha is not used); default [`NOTE_YELLOW`].
+    pub color: Option<Color>,
+    /// Shown open when the document opens.
+    #[serde(default)]
+    pub open: bool,
+}
+
+/// The default colour of a note.
+pub const NOTE_YELLOW: Color = [1.0, 0.82, 0.2, 1.0];
 
 /// An `AcroForm` field. Fields sharing a `name` are one field with several
 /// widgets (radio buttons: one per option).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Field {
+    /// The full name: dots separate the groups it is in (`a.b.c`).
     pub name: String,
     pub kind: FieldKind,
-    /// Text: the initial text. Select: the selected option. Radio: the
-    /// value this button exports when selected.
-    pub value: Option<String>,
+    /// Text: the initial text. Select and list: the selected option (or
+    /// options: a list with `multi_select`). Radio: the value this button
+    /// exports when selected.
+    pub value: Option<FieldValue>,
     /// Checkbox and radio: initially on.
     #[serde(default)]
     pub checked: bool,
-    /// Select: the choices.
+    /// Select and list: the choices.
     #[serde(default)]
     pub options: Vec<String>,
+    /// List: several options can be selected.
+    #[serde(default)]
+    pub multi_select: bool,
     #[serde(default)]
     pub multiline: bool,
     #[serde(default)]
@@ -384,11 +408,48 @@ pub struct Field {
     pub read_only: bool,
     #[serde(default)]
     pub required: bool,
-    /// Text and select: a declared font id.
+    /// Text, select and list: a declared font id.
     pub font: Option<String>,
     #[serde(default = "default_field_size")]
     pub size: f32,
     pub color: Option<Color>,
+    /// Text: how the value shows and is typed (boxed: rare).
+    pub format: Option<Box<FieldFormat>>,
+}
+
+impl Field {
+    /// The value when it is one string.
+    pub fn value_str(&self) -> Option<&str> {
+        match &self.value {
+            Some(FieldValue::One(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Every value: none, the one string, or the strings of an array.
+    pub fn values(&self) -> &[String] {
+        match &self.value {
+            None => &[],
+            Some(FieldValue::One(v)) => std::slice::from_ref(v),
+            Some(FieldValue::Many(v)) => v,
+        }
+    }
+
+    /// Whether the field shows text: a text field, or a choice of options.
+    pub fn is_text_like(&self) -> bool {
+        matches!(
+            self.kind,
+            FieldKind::Text | FieldKind::Select | FieldKind::List
+        )
+    }
+}
+
+/// A field `value`: a string, or the options selected in a list that
+/// takes several (read as a string or an array in `de.rs`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldValue {
+    One(String),
+    Many(Vec<String>),
 }
 
 fn default_field_size() -> f32 {
@@ -402,6 +463,72 @@ pub enum FieldKind {
     Checkbox,
     Radio,
     Select,
+    /// A list box: several options in view, and possibly selected.
+    List,
+}
+
+/// How a text field shows and takes its value: a number, a date, a postal
+/// code… Viewers apply it as the user types, through the standard form
+/// scripts.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct FieldFormat {
+    #[serde(rename = "type")]
+    pub kind: FormatKind,
+    /// Number and percent: digits after the decimal separator (default 2).
+    #[serde(default, deserialize_with = "de::opt_int")]
+    pub decimals: Option<u8>,
+    /// Number and percent: the separators (default `1,234.56`).
+    pub separators: Option<Separators>,
+    /// Number: how negative numbers show (default a minus sign).
+    pub negative: Option<NegativeStyle>,
+    /// Number: a currency symbol.
+    pub currency: Option<String>,
+    /// Number: the currency goes before the number (default `true`).
+    pub currency_before: Option<bool>,
+    /// Date and time: how the value shows (`dd/mm/yyyy`, `HH:MM`).
+    pub pattern: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FormatKind {
+    Number,
+    Percent,
+    Date,
+    Time,
+    Zip,
+    ZipPlus4,
+    Phone,
+    Ssn,
+}
+
+/// The thousands and decimal separators of a number, by example.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+pub enum Separators {
+    #[default]
+    #[serde(rename = "1,234.56")]
+    CommaDot,
+    #[serde(rename = "1234.56")]
+    Dot,
+    #[serde(rename = "1.234,56")]
+    DotComma,
+    #[serde(rename = "1234,56")]
+    Comma,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NegativeStyle {
+    /// `-1,234.56`.
+    #[default]
+    Minus,
+    /// `1,234.56` in red.
+    Red,
+    /// `(1,234.56)`.
+    Parens,
+    /// `(1,234.56)` in red.
+    ParensRed,
 }
 
 #[derive(Debug, Clone)]
@@ -409,7 +536,17 @@ pub enum ImageSource {
     /// Key into the render-time image map.
     Ref(String),
     /// Inline base64 payload, decoded once, when validation first reads it.
-    Inline(InlineImage),
+    Inline(InlineData),
+}
+
+/// A box's `backgroundImage`: painted into its padding box, over its
+/// `backgroundColor` and under its borders and children.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "de::RawBackgroundImage")]
+pub struct BackgroundImage {
+    pub source: ImageSource,
+    pub fit: ImageFit,
+    pub object_position: ObjectPosition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -438,12 +575,17 @@ fn centre() -> LengthPercent {
     LengthPercent::Percent(0.5)
 }
 
+impl ObjectPosition {
+    /// Centred on both axes: the default.
+    pub const CENTER: Self = Self {
+        x: LengthPercent::Percent(0.5),
+        y: LengthPercent::Percent(0.5),
+    };
+}
+
 impl Default for ObjectPosition {
     fn default() -> Self {
-        Self {
-            x: centre(),
-            y: centre(),
-        }
+        Self::CENTER
     }
 }
 
@@ -481,6 +623,66 @@ pub struct TextRun {
     pub link: Option<String>,
     /// Overrides the paragraph's `hyphenate` for this run's words.
     pub hyphenate: Option<bool>,
+    /// Where the run sits on its line; default its baseline on the line's.
+    pub vertical_align: Option<RunAlign>,
+    /// OpenType features to turn on or off, in the order written.
+    #[serde(default, deserialize_with = "de::font_features")]
+    pub font_features: Option<Box<[FontFeature]>>,
+    /// An image in the line, in place of text (boxed: rare).
+    pub image: Option<Box<RunImage>>,
+    /// A note in the line, in place of text (boxed: rare): it takes no
+    /// room, and its icon hangs from the line's top where the run is.
+    pub note: Option<Box<Note>>,
+}
+
+/// A run's `image`: drawn in the line like a glyph, `width` × `height`
+/// points (one of them, or both, from the image's aspect ratio and the
+/// run's size).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "de::RawRunImage")]
+pub struct RunImage {
+    pub source: ImageSource,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub fit: ImageFit,
+    pub object_position: ObjectPosition,
+    /// What text extraction gets for the image.
+    pub alt: Option<String>,
+}
+
+/// Where a run sits on its line (CSS `vertical-align` on an inline box):
+/// its baseline on the line's, or moved up or down. The values after
+/// `Sub` place images (validation keeps them to image runs).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(try_from = "de::RawRunAlign")]
+pub enum RunAlign {
+    #[default]
+    Baseline,
+    /// Raised by the font's superscript offset.
+    Super,
+    /// Lowered by the font's subscript offset.
+    Sub,
+    /// The middle at the baseline plus half the font's x-height.
+    Middle,
+    /// The top at the font's ascender.
+    TextTop,
+    /// The bottom at the font's descender.
+    TextBottom,
+    /// The top at the line's top.
+    Top,
+    /// The bottom at the line's bottom.
+    Bottom,
+    /// The bottom this many points above the baseline (negative: below).
+    Points(f32),
+}
+
+/// An OpenType feature setting (CSS `font-feature-settings`): 0 turns the
+/// feature off, 1 on, and a larger value picks an alternate.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FontFeature {
+    /// Four printable ASCII characters, once validated.
+    pub tag: String,
+    pub value: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -611,6 +813,17 @@ kebab_enum!(GridAutoFlow {
     ColumnDense = "column dense",
 });
 kebab_enum!(Overflow { Visible = "visible", Hidden = "hidden" });
+kebab_enum!(Float {
+    Left = "left",
+    Right = "right",
+    None = "none",
+});
+kebab_enum!(Clear {
+    Left = "left",
+    Right = "right",
+    Both = "both",
+    None = "none",
+});
 kebab_enum!(BorderStyle { Solid = "solid", Dashed = "dashed", Dotted = "dotted" });
 kebab_enum!(TextAlign {
     Left = "left",
@@ -635,6 +848,7 @@ kebab_enum!(WhiteSpace {
     PreWrap = "pre-wrap",
     PreLine = "pre-line",
 });
+kebab_enum!(TextWrap { Wrap = "wrap", Pretty = "pretty" });
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
@@ -827,6 +1041,11 @@ pub struct Style {
     pub justify_items: Option<AlignItems>,
     pub justify_self: Option<AlignSelf>,
     pub overflow: Option<Overflow>,
+    /// Floats the box to a side of its column parent: text beside it wraps,
+    /// boxes beside it are narrowed.
+    pub float: Option<Float>,
+    /// Moves the box below the floats before it on these sides.
+    pub clear: Option<Clear>,
 
     // Visual
     pub background_color: Option<Color>,
@@ -855,6 +1074,9 @@ pub struct Style {
     pub hyphenate: Option<bool>,
     pub lang: Option<String>,
     pub white_space: Option<WhiteSpace>,
+    /// How lines break: first fit (`wrap`), or over the whole paragraph
+    /// (`pretty`).
+    pub text_wrap: Option<TextWrap>,
     /// Indent of the first line, points (negative: hanging).
     pub text_indent: Option<f32>,
     pub direction: Option<Direction>,
@@ -874,6 +1096,19 @@ pub struct Style {
 }
 
 impl Style {
+    /// The side the box floats to, when it floats.
+    pub fn floats(&self) -> Option<Float> {
+        self.float.filter(|f| *f != Float::None)
+    }
+
+    /// Whether a box with this style lays its children out in one column,
+    /// top to bottom: not a grid, nor a row, wrapping or reversed box.
+    pub fn column(&self) -> bool {
+        self.display != Some(Display::Grid)
+            && matches!(self.flex_direction, None | Some(FlexDirection::Column))
+            && matches!(self.flex_wrap, None | Some(FlexWrap::NoWrap))
+    }
+
     /// Names of text-only properties that are set, for applicability checks.
     pub fn text_props_set(&self) -> impl Iterator<Item = &'static str> + '_ {
         [
@@ -884,6 +1119,7 @@ impl Style {
             ("hyphenate", self.hyphenate.is_some()),
             ("lang", self.lang.is_some()),
             ("whiteSpace", self.white_space.is_some()),
+            ("textWrap", self.text_wrap.is_some()),
             ("textIndent", self.text_indent.is_some()),
             ("direction", self.direction.is_some()),
             ("orphans", self.orphans.is_some()),

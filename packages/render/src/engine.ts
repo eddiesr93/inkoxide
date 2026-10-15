@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fonts } from '@inkoxide/react';
+import { fonts, type OutputOptions } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 import { SCHEMA_VERSION } from '@inkoxide/schema';
 import * as ink from 'inkoxide';
@@ -152,18 +152,63 @@ export function toRenderError(e: unknown): RenderError {
   return new RenderError('INTERNAL', e instanceof Error ? e.message : String(e), { cause: e });
 }
 
-/** Renders a document tree to PDF bytes on the libuv pool. */
+/**
+ * The entries of a document's `emojiImages` (sequence → image id) whose image the engine refuses,
+ * as it would refuse the document: bytes that are not an image, or an image over the size limits.
+ * Sequence → why.
+ */
+export function refusedEmoji(
+  doc: Pick<Document, 'emojiImages' | 'fonts'>,
+  images: Record<string, Uint8Array>,
+): Record<string, string> {
+  const emojiImages = doc.emojiImages ?? {};
+  const map: Record<string, string> = {};
+  const own: Record<string, Uint8Array> = {};
+  for (const [sequence, id] of Object.entries(emojiImages)) {
+    if (id === undefined) continue;
+    map[sequence] = id;
+    if (Object.hasOwn(images, id)) own[id] = images[id] as Uint8Array;
+  }
+  const refused: Record<string, string> = {};
+  const at = 'emojiImages.';
+  // `validate` returns at most 100 problems: check again without those found until none is left.
+  for (;;) {
+    // The document's fonts draw the text of SVG images.
+    const check = {
+      version: SCHEMA_VERSION,
+      fonts: doc.fonts ?? [],
+      emojiImages: map,
+      pages: [{ size: { width: 100, height: 100 } }],
+    };
+    const found = ink.validate(JSON.stringify(check), 'json', own).filter((e) => e.path.startsWith(at));
+    for (const e of found) {
+      const sequence = e.path.slice(at.length);
+      refused[sequence] = e.message;
+      delete map[sequence];
+    }
+    if (found.length === 0 || Object.keys(map).length === 0) return refused;
+  }
+}
+
+/**
+ * Renders a document tree to PDF bytes on the libuv pool. `output` holds the render options its
+ * `<Document>` set (`conformance`, the passwords and permissions); `opts` wins over them.
+ */
 export async function renderPdf(
   doc: Document,
   opts: RenderOpts,
   images: Record<string, Uint8Array>,
+  output: OutputOptions = {},
 ): Promise<Uint8Array> {
   const options: ink.RenderOptions = { images };
   if (opts.creationDate !== undefined) options.creationDate = opts.creationDate;
   if (opts.threads !== undefined) options.threads = opts.threads;
   if (opts.compress !== undefined) options.compress = opts.compress;
   if (opts.subsetFonts !== undefined) options.subsetFonts = opts.subsetFonts;
-  if (opts.pdfA !== undefined) options.pdfA = opts.pdfA;
+  const pdfA = opts.pdfA ?? output.pdfA;
+  if (pdfA !== undefined) options.pdfA = pdfA;
+  const encryption = opts.encryption ?? output.encryption;
+  if (encryption !== undefined) options.encryption = encryption;
   try {
     return await ink.render(JSON.stringify(doc), options);
   } catch (e) {

@@ -10,9 +10,10 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::Deserialize;
 
 use super::{
-    Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec, ColumnWidth, Corners,
-    Field, ImageFit, ImageSource, InlineImage, Node, NodeKind, ObjectPosition, OptEdges,
-    PageFilter, PagePattern, Style, Table, TableRow, TextRun, TransformOp,
+    BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
+    ColumnWidth, Corners, Field, FieldValue, FontFeature, ImageFit, ImageSource, InlineData, Node,
+    NodeKind, Note, ObjectPosition, OptEdges, PageFilter, PagePattern, RunAlign, RunImage, Style,
+    Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -267,6 +268,29 @@ impl<'de> Deserialize<'de> for PageFilter {
     }
 }
 
+impl<'de> Deserialize<'de> for FieldValue {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = FieldValue;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string, or an array of strings")
+            }
+            fn visit_str<E: de::Error>(self, s: &str) -> Result<FieldValue, E> {
+                Ok(FieldValue::One(s.to_string()))
+            }
+            fn visit_string<E: de::Error>(self, s: String) -> Result<FieldValue, E> {
+                Ok(FieldValue::One(s))
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<FieldValue, A::Error> {
+                Vec::<String>::deserialize(de::value::SeqAccessDeserializer::new(seq))
+                    .map(|v| FieldValue::Many(shrink(v)))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
 impl<'de> Deserialize<'de> for TransformOp {
     /// An object with exactly one key. serde's externally tagged enum
     /// reports a second key, or none, as malformed input with no path.
@@ -501,6 +525,35 @@ pub(super) fn opt_int<'de, D: Deserializer<'de>, T: TryFrom<i128>>(
     Option::<Int<T>>::deserialize(d).map(|o| o.map(|i| i.0))
 }
 
+/// `deserialize_with` for [`TextRun::font_features`]: an object of feature
+/// tags to integer values, kept in the order written (validation checks
+/// the tags, values and count).
+pub(super) fn font_features<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Box<[FontFeature]>>, D::Error> {
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = Box<[FontFeature]>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("an object of OpenType feature tags to integers")
+        }
+        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut out = Vec::new();
+            while let Some((tag, Int(value))) = map.next_entry::<String, Int<u32>>()? {
+                out.push(FontFeature { tag, value });
+            }
+            Ok(out.into_boxed_slice())
+        }
+    }
+    struct Features(Box<[FontFeature]>);
+    impl<'de> Deserialize<'de> for Features {
+        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            d.deserialize_map(V).map(Features)
+        }
+    }
+    Option::<Features>::deserialize(d).map(|o| o.map(|f| f.0))
+}
+
 /// `deserialize_with` for [`super::GridPlacement::span`]: at least one track.
 pub(super) fn grid_span<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u16>, D::Error> {
     let Some(v) = Option::<i64>::deserialize(d)? else {
@@ -553,6 +606,7 @@ pub(super) enum NodeType {
     PageBreak,
     Spacer,
     Field,
+    Note,
 }
 
 /// Properties that most node types take.
@@ -560,7 +614,7 @@ const COMMON: &[&str] = &["style", "break", "link", "bookmark", "pages", "debug"
 
 impl NodeType {
     #[cfg(test)]
-    pub(super) const ALL: [Self; 7] = [
+    pub(super) const ALL: [Self; 8] = [
         Self::Box,
         Self::Text,
         Self::Image,
@@ -568,6 +622,7 @@ impl NodeType {
         Self::PageBreak,
         Self::Spacer,
         Self::Field,
+        Self::Note,
     ];
 
     /// The `type` value.
@@ -580,19 +635,21 @@ impl NodeType {
             Self::PageBreak => "pageBreak",
             Self::Spacer => "spacer",
             Self::Field => "field",
+            Self::Note => "note",
         }
     }
 
     /// The properties a node of this type takes, besides `type` and `id`.
     pub(super) fn fields(self) -> impl Iterator<Item = &'static str> {
         let (common, own): (&[&str], &[&str]) = match self {
-            Self::Box => (COMMON, &["children"]),
+            Self::Box => (COMMON, &["children", "backgroundImage"]),
             Self::Text => (COMMON, &["runs"]),
             Self::Image => (COMMON, &["src", "data", "fit", "objectPosition"]),
             Self::Table => (COMMON, &["columns", "headerRows", "rows"]),
             Self::PageBreak => (&[], &[]),
             Self::Spacer => (COMMON, &[]),
             Self::Field => (&["style", "break", "pages", "debug"], &["field"]),
+            Self::Note => (&["style", "break", "pages", "debug"], &["note"]),
         };
         common.iter().chain(own).copied()
     }
@@ -625,6 +682,8 @@ pub struct RawNode {
     header_rows: Option<u32>,
     rows: Option<Vec<TableRow>>,
     field: Option<Box<Field>>,
+    note: Option<Box<Note>>,
+    background_image: Option<Box<BackgroundImage>>,
 }
 
 /// Drops the spare capacity serde leaves when growing a `Vec` of unknown
@@ -666,6 +725,8 @@ impl TryFrom<RawNode> for Node {
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
             ("field", r.field.is_some()),
+            ("note", r.note.is_some()),
+            ("backgroundImage", r.background_image.is_some()),
         ];
         if let Some((field, _)) = present
             .iter()
@@ -686,16 +747,7 @@ impl TryFrom<RawNode> for Node {
                 runs: shrink(r.runs.ok_or_else(|| missing("runs"))?),
             },
             NodeType::Image => {
-                let source = match (r.src, r.data) {
-                    (Some(s), None) => ImageSource::Ref(s),
-                    (None, Some(d)) => ImageSource::Inline(InlineImage::new(d)),
-                    (Some(_), Some(_)) => {
-                        return Err("[INVALID_VALUE@data] an `image` node takes either `src` or `data`, not both".into())
-                    }
-                    (None, None) => {
-                        return Err("[MISSING_FIELD] `image` node requires `src` or `data`".into())
-                    }
-                };
+                let source = image_source(r.src, r.data, "an `image` node")?;
                 NodeKind::Image {
                     source,
                     fit: r.fit.unwrap_or_default(),
@@ -710,6 +762,7 @@ impl TryFrom<RawNode> for Node {
             NodeType::PageBreak => NodeKind::PageBreak,
             NodeType::Spacer => NodeKind::Spacer,
             NodeType::Field => NodeKind::Field(r.field.ok_or_else(|| missing("field"))?),
+            NodeType::Note => NodeKind::Note(r.note.ok_or_else(|| missing("note"))?),
         };
         Ok(Node {
             id: r.id,
@@ -719,7 +772,110 @@ impl TryFrom<RawNode> for Node {
             bookmark: r.bookmark,
             pages: r.pages,
             debug: r.debug.unwrap_or(false),
+            background_image: r.background_image,
             kind,
+        })
+    }
+}
+
+/// The source of an image from its `src` and `data`, exactly one of which
+/// `what` (for the message) must set.
+fn image_source(
+    src: Option<String>,
+    data: Option<String>,
+    what: &str,
+) -> Result<ImageSource, String> {
+    match (src, data) {
+        (Some(s), None) => Ok(ImageSource::Ref(s)),
+        (None, Some(d)) => Ok(ImageSource::Inline(InlineData::new(d))),
+        (Some(_), Some(_)) => Err(format!(
+            "[INVALID_VALUE@data] {what} takes either `src` or `data`, not both"
+        )),
+        (None, None) => Err(format!("[MISSING_FIELD] {what} requires `src` or `data`")),
+    }
+}
+
+/// A [`BackgroundImage`] as written: `src` or `data`, checked on conversion.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RawBackgroundImage {
+    src: Option<String>,
+    data: Option<String>,
+    fit: Option<ImageFit>,
+    object_position: Option<ObjectPosition>,
+}
+
+impl TryFrom<RawBackgroundImage> for BackgroundImage {
+    type Error = String;
+
+    fn try_from(r: RawBackgroundImage) -> Result<Self, String> {
+        Ok(Self {
+            source: image_source(r.src, r.data, "`backgroundImage`")?,
+            fit: r.fit.unwrap_or_default(),
+            object_position: r.object_position.unwrap_or_default(),
+        })
+    }
+}
+
+/// A [`RunImage`] as written: `src` or `data`, checked on conversion.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RawRunImage {
+    src: Option<String>,
+    data: Option<String>,
+    width: Option<f32>,
+    height: Option<f32>,
+    fit: Option<ImageFit>,
+    object_position: Option<ObjectPosition>,
+    alt: Option<String>,
+}
+
+impl TryFrom<RawRunImage> for RunImage {
+    type Error = String;
+
+    fn try_from(r: RawRunImage) -> Result<Self, String> {
+        Ok(Self {
+            source: image_source(r.src, r.data, "a run's `image`")?,
+            width: r.width,
+            height: r.height,
+            fit: r.fit.unwrap_or_default(),
+            object_position: r.object_position.unwrap_or_default(),
+            alt: r.alt,
+        })
+    }
+}
+
+/// A run's `verticalAlign` as written: a keyword or a number.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum RawRunAlign {
+    Num(f64),
+    Str(String),
+}
+
+impl TryFrom<RawRunAlign> for RunAlign {
+    type Error = String;
+
+    fn try_from(raw: RawRunAlign) -> Result<Self, String> {
+        Ok(match raw {
+            // Bounded by validation.
+            RawRunAlign::Num(v) => RunAlign::Points(v as f32),
+            RawRunAlign::Str(s) => match s.as_str() {
+                "baseline" => RunAlign::Baseline,
+                "super" => RunAlign::Super,
+                "sub" => RunAlign::Sub,
+                "middle" => RunAlign::Middle,
+                "textTop" => RunAlign::TextTop,
+                "textBottom" => RunAlign::TextBottom,
+                "top" => RunAlign::Top,
+                "bottom" => RunAlign::Bottom,
+                _ => {
+                    return Err(format!(
+                        "[INVALID_VALUE] `verticalAlign` must be baseline, super, sub, middle, \
+                         textTop, textBottom, top, bottom or a number, found \"{s}\""
+                    ))
+                }
+            },
         })
     }
 }

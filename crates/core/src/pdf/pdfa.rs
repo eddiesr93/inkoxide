@@ -1,10 +1,235 @@
-//! PDF/A-2b support: an sRGB output intent, XMP metadata that
-//! mirrors the document information dictionary, and a file identifier.
+//! PDF/A support: an sRGB output intent, XMP metadata that mirrors the
+//! document information dictionary, and a file identifier.
 
 use std::fmt::Write as _;
 
 use crate::date::Timestamp;
+use pdf_writer::Limits;
+
 use crate::schema::Meta;
+use crate::{InkoxideError, PdfALevel};
+
+/// What a PDF/A-1 file may hold (ISO 19005-1, 6.1.12, table 1), beyond
+/// the integer and page size limits every file here keeps.
+pub(crate) mod limits {
+    /// Largest magnitude of a real number.
+    pub const REAL: f32 = 32_767.0;
+    /// Longest string, in bytes.
+    pub const STRING: usize = 65_535;
+    /// Longest name, in bytes.
+    pub const NAME: usize = 127;
+    /// Most entries in an array.
+    pub const ARRAY: usize = 8_191;
+    /// Most entries in a dictionary.
+    pub const DICT: usize = 4_095;
+    /// Deepest nesting of `q` in a content stream.
+    pub const NESTING: usize = 28;
+}
+
+/// What the output's conformance asks of the writer: plain PDF, or
+/// PDF/A. Every part of the writer that differs between them asks this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Profile {
+    level: Option<PdfALevel>,
+}
+
+impl Profile {
+    /// PDF/A at `level`; `None` is plain PDF.
+    pub fn new(level: Option<PdfALevel>) -> Self {
+        Self { level }
+    }
+
+    /// Writing PDF/A: XMP metadata, an output intent, a file identifier,
+    /// annotations that print, no `.notdef` glyphs, no CMYK.
+    pub fn is_pdf_a(self) -> bool {
+        self.level.is_some()
+    }
+
+    /// The PDF/A level written; `None` for plain PDF.
+    pub fn level(self) -> Option<PdfALevel> {
+        self.level
+    }
+
+    /// Writing PDF/A-1b, whose rules differ from the later levels'.
+    fn is_1b(self) -> bool {
+        self.level == Some(PdfALevel::A1b)
+    }
+
+    /// The PDF version in the header, when not pdf-writer's 1.7: PDF/A-1
+    /// is based on PDF 1.4.
+    pub fn version(self) -> Option<(u8, u8)> {
+        self.is_1b().then_some((1, 4))
+    }
+
+    /// Whether the file may carry scripts (form field actions): not under
+    /// PDF/A, at any level, which forbids JavaScript actions and `/AA`
+    /// (ISO 19005-1, 6.6.1; 19005-2, 6.6.1). A format keeps its formatted
+    /// text and value there.
+    pub fn scripts(self) -> bool {
+        self.level.is_none()
+    }
+
+    /// Font subsets list their CIDs in a `CIDSet` (PDF/A-1).
+    pub fn cid_set(self) -> bool {
+        self.is_1b()
+    }
+
+    /// Whether the output may use transparency: constant alpha, soft
+    /// masks, blend modes and transparency groups. PDF/A-1 forbids it.
+    pub fn transparency(self) -> bool {
+        !self.is_1b()
+    }
+
+    /// The largest real number the output may hold.
+    pub fn max_real(self) -> f32 {
+        if self.is_1b() {
+            limits::REAL
+        } else {
+            super::MAX_NUMBER
+        }
+    }
+
+    /// The most entries an array may have (PDF/A-1), if limited.
+    pub fn max_array(self) -> Option<usize> {
+        self.is_1b().then_some(limits::ARRAY)
+    }
+
+    /// Checks what was written against the PDF/A-1 [`limits`]: numbers,
+    /// strings, names, arrays and dictionaries. A file past them is not
+    /// PDF/A-1, so the render fails rather than move or cut what it
+    /// draws.
+    pub fn check_limits(self, l: &Limits) -> Result<(), InkoxideError> {
+        if !self.is_1b() {
+            return Ok(());
+        }
+        let past = |what: String| {
+            Err(InkoxideError::Pdf(format!(
+                "PDF/A-1b does not allow {what}"
+            )))
+        };
+        if l.real() > limits::REAL {
+            return past(format!(
+                "a real number past ±{}, and the document needs {}",
+                limits::REAL,
+                l.real()
+            ));
+        }
+        for (what, value, max) in [
+            ("a string", l.str_len(), limits::STRING),
+            ("a name", l.name_len(), limits::NAME),
+        ] {
+            if value > max {
+                return past(format!(
+                    "{what} longer than {max} bytes, and the document needs {value}"
+                ));
+            }
+        }
+        for (what, value, max) in [
+            ("an array", l.array_len(), limits::ARRAY),
+            ("a dictionary", l.dict_entries(), limits::DICT),
+        ] {
+            if value > max {
+                return past(format!(
+                    "{what} of more than {max} entries, and the document needs {value}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks the `q` nesting of content stream `data` against the PDF/A-1
+    /// limit.
+    pub fn check_nesting(self, data: &[u8]) -> Result<(), InkoxideError> {
+        if !self.is_1b() {
+            return Ok(());
+        }
+        let depth = q_depth(data);
+        if depth > limits::NESTING {
+            return Err(InkoxideError::Pdf(format!(
+                "PDF/A-1b does not allow graphics states nested more than {} deep, and the document needs {depth}",
+                limits::NESTING
+            )));
+        }
+        Ok(())
+    }
+
+    /// `Ok` where transparency is allowed; otherwise the error for `what`,
+    /// which needs it. Validation rejects such a document first, with
+    /// `PDFA_CONFLICT` and its path; this is the writer's backstop.
+    pub fn allow_transparency(self, what: &str) -> Result<(), InkoxideError> {
+        if self.transparency() {
+            Ok(())
+        } else {
+            Err(InkoxideError::Pdf(format!(
+                "PDF/A-1b does not allow transparency, which {what} needs"
+            )))
+        }
+    }
+}
+
+/// The deepest nesting of `q` operators in content stream `data`. Strings,
+/// names and comments are skipped: their bytes are not operators.
+fn q_depth(data: &[u8]) -> usize {
+    let delimiter = |b: u8| b.is_ascii_whitespace() || b"()<>[]{}/%".contains(&b);
+    let (mut depth, mut max, mut i) = (0usize, 0usize, 0usize);
+    while i < data.len() {
+        match data[i] {
+            b'(' => {
+                // A literal string: balanced parentheses, `\` escapes.
+                let mut open = 0;
+                while i < data.len() {
+                    match data[i] {
+                        b'\\' => i += 1,
+                        b'(' => open += 1,
+                        b')' => {
+                            open -= 1;
+                            if open == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'<' if data.get(i + 1) != Some(&b'<') => {
+                // A hex string.
+                while i < data.len() && data[i] != b'>' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'%' => {
+                while i < data.len() && data[i] != b'\n' && data[i] != b'\r' {
+                    i += 1;
+                }
+            }
+            b'/' => {
+                i += 1;
+                while i < data.len() && !delimiter(data[i]) {
+                    i += 1;
+                }
+            }
+            b if delimiter(b) => i += 1,
+            _ => {
+                let start = i;
+                while i < data.len() && !delimiter(data[i]) {
+                    i += 1;
+                }
+                match &data[start..i] {
+                    b"q" => {
+                        depth += 1;
+                        max = max.max(depth);
+                    }
+                    b"Q" => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+        }
+    }
+    max
+}
 
 /// An ICC v2 display profile for sRGB (D50-adapted primaries, the sRGB
 /// tone curve sampled at 1024 points). Built here rather than shipped as a
@@ -96,12 +321,17 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
 
 /// The XMP packet for the catalog `/Metadata` stream. Every entry mirrors
 /// the information dictionary, as PDF/A requires.
-pub(crate) fn xmp(meta: &Meta, producer: &str, created: Option<Timestamp>) -> Vec<u8> {
+pub(crate) fn xmp(
+    meta: &Meta,
+    producer: &str,
+    created: Option<Timestamp>,
+    level: PdfALevel,
+) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
         let _ = writeln!(d, "<{name}>{}</{name}>", escape(value));
     };
-    prop("pdfaid:part", "2");
+    prop("pdfaid:part", part(level));
     prop("pdfaid:conformance", "B");
     prop("dc:format", "application/pdf");
     prop("pdf:Producer", producer);
@@ -150,10 +380,19 @@ pub(crate) fn xmp(meta: &Meta, producer: &str, created: Option<Timestamp>) -> Ve
     .into_bytes()
 }
 
+/// The ISO 19005 part of `level` (`pdfaid:part`).
+fn part(level: PdfALevel) -> &'static str {
+    match level {
+        PdfALevel::A1b => "1",
+        PdfALevel::A2b => "2",
+        PdfALevel::A3b => "3",
+    }
+}
+
 /// `2026-01-31T12:00:00+02:00`, the same instant as the info dictionary's
 /// `CreationDate`.
 fn xmp_date(t: Timestamp) -> String {
-    let off = t.offset_minutes;
+    let (d, off) = (t.local, t.offset_minutes);
     let zone = if off == 0 {
         "Z".to_string()
     } else {
@@ -163,7 +402,7 @@ fn xmp_date(t: Timestamp) -> String {
     };
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{zone}",
-        t.year, t.month, t.day, t.hour, t.minute, t.second
+        d.year, d.month, d.day, d.hour, d.minute, d.second
     )
 }
 
@@ -202,6 +441,119 @@ mod tests {
     use super::*;
 
     #[test]
+    fn q_depth_counts_operators_only() {
+        assert_eq!(q_depth(b""), 0);
+        assert_eq!(q_depth(b"q q Q q\nQ Q"), 2);
+        assert_eq!(q_depth(b"q\n1 0 0 1 0 0 cm\nq\nQ\nQ\nq\nQ"), 2);
+        // Strings, names and comments hold no operators.
+        assert_eq!(q_depth(b"q (q q \\) q) Tj /q gs <71> Tj % q q\nQ"), 1);
+        assert_eq!(q_depth(b"q [(a(q)b) 10 (q)] TJ << /q 1 >> BDC Q"), 1);
+        assert_eq!(q_depth(b"Q Q q"), 1);
+    }
+
+    #[test]
+    fn pdf_a_1_limits() {
+        let one_b = Profile::new(Some(PdfALevel::A1b));
+        let two_b = Profile::new(Some(PdfALevel::A2b));
+        let deep = b"q ".repeat(limits::NESTING + 1);
+        assert!(one_b.check_nesting(&deep).is_err());
+        assert!(one_b.check_nesting(&deep[2..]).is_ok());
+        assert!(two_b.check_nesting(&deep).is_ok());
+
+        let written = |f: &dyn Fn(&mut pdf_writer::Pdf)| {
+            let mut pdf = pdf_writer::Pdf::new();
+            f(&mut pdf);
+            pdf.limits().clone()
+        };
+        let r = pdf_writer::Ref::new(1);
+        let real = written(&|p| {
+            p.indirect(r).primitive(32_767.5_f32);
+        });
+        let string = written(&|p| {
+            p.indirect(r)
+                .primitive(pdf_writer::Str(&vec![b'a'; limits::STRING + 1]));
+        });
+        let name = written(&|p| {
+            p.indirect(r)
+                .primitive(pdf_writer::Name(&[b'a'; limits::NAME + 1]));
+        });
+        let array = written(&|p| {
+            p.indirect(r).array().items(0..=limits::ARRAY as i32);
+        });
+        let dict = written(&|p| {
+            let mut d = p.indirect(r).dict();
+            for i in 0..=limits::DICT {
+                d.pair(pdf_writer::Name(format!("K{i}").as_bytes()), 0);
+            }
+        });
+        for (what, l) in [
+            ("real number", real),
+            ("string", string),
+            ("name", name),
+            ("array", array),
+            ("dictionary", dict),
+        ] {
+            let e = one_b.check_limits(&l).unwrap_err().to_string();
+            assert!(
+                e.contains(&format!(
+                    "does not allow a{} {what}",
+                    if what == "array" { "n" } else { "" }
+                )),
+                "{e}"
+            );
+            assert!(two_b.check_limits(&l).is_ok());
+        }
+        let within = written(&|p| {
+            p.indirect(r).array().items([32_767.0_f32, -32_767.0]);
+        });
+        assert!(one_b.check_limits(&within).is_ok());
+    }
+
+    #[test]
+    fn each_level_asks_its_own_of_the_writer() {
+        let plain = Profile::default();
+        let [one_b, two_b, three_b] =
+            [PdfALevel::A1b, PdfALevel::A2b, PdfALevel::A3b].map(|l| Profile::new(Some(l)));
+        assert_eq!(plain.level(), None);
+        assert_eq!(three_b.level(), Some(PdfALevel::A3b));
+        assert!(!plain.is_pdf_a());
+        // Scripts only outside PDF/A, at every level.
+        assert!(plain.scripts());
+        for p in [one_b, two_b, three_b] {
+            assert!(p.is_pdf_a());
+            assert!(!p.scripts());
+        }
+        // PDF/A-1b alone: PDF 1.4, CIDSets, no transparency, and its
+        // limits on reals and arrays.
+        assert_eq!(one_b.version(), Some((1, 4)));
+        assert!(one_b.cid_set() && !one_b.transparency());
+        assert_eq!(one_b.max_real(), limits::REAL);
+        assert_eq!(one_b.max_array(), Some(limits::ARRAY));
+        for p in [plain, two_b, three_b] {
+            assert_eq!(p.version(), None);
+            assert!(!p.cid_set() && p.transparency());
+            assert_eq!(p.max_real(), super::super::MAX_NUMBER);
+            assert_eq!(p.max_array(), None);
+        }
+    }
+
+    #[test]
+    fn xmp_names_the_part() {
+        for (level, part) in [
+            (PdfALevel::A1b, 1),
+            (PdfALevel::A2b, 2),
+            (PdfALevel::A3b, 3),
+        ] {
+            let x = String::from_utf8(xmp(&Meta::default(), "P", None, level)).unwrap();
+            assert!(
+                x.contains(&format!("<pdfaid:part>{part}</pdfaid:part>")),
+                "{x}"
+            );
+            assert!(x.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
+        }
+    }
+
+    #[test]
     fn icc_layout() {
         let p = srgb_icc();
         assert_eq!(
@@ -227,15 +579,17 @@ mod tests {
             ..Default::default()
         };
         let t = Timestamp {
-            year: 2026,
-            month: 3,
-            day: 4,
-            hour: 5,
-            minute: 6,
-            second: 7,
+            local: crate::date::LocalDateTime {
+                year: 2026,
+                month: 3,
+                day: 4,
+                hour: 5,
+                minute: 6,
+                second: 7,
+            },
             offset_minutes: -150,
         };
-        let x = String::from_utf8(xmp(&meta, "P", Some(t))).unwrap();
+        let x = String::from_utf8(xmp(&meta, "P", Some(t), PdfALevel::A2b)).unwrap();
         assert!(x.contains(">A &amp; &lt;B&gt;</rdf:li>"), "{x}");
         assert!(x.contains("<xmp:CreateDate>2026-03-04T05:06:07-02:30</xmp:CreateDate>"));
         assert_eq!(

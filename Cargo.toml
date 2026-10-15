@@ -23,13 +23,19 @@ taffy = { version = "=0.14.0", default-features = false, features = ["std", "fle
 rustybuzz = "=0.20.1"
 ttf-parser = "=0.25.1"
 unicode-linebreak = "=0.1.5"
+unicode-properties = { version = "=0.1.4", default-features = false, features = ["emoji"] }
 unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data", "std"] }
 hypher = "=0.1.8"
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
+aes = "=0.9.3"
+sha2 = { version = "=0.11.1", default-features = false }
 rayon = "=1.12.0"
 subsetter = { version = "=0.2.6", default-features = false }
 usvg = { version = "=0.48.1", default-features = false }
+# The versions usvg uses: SVG text resolves CSS and values exactly as usvg does.
+simplecss = "=0.2.2"
+svgtypes = "=0.16.1"
 data-url = "=0.3.2"
 flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
 wuff = { version = "=0.2.9", default-features = false, features = ["brotli"] }

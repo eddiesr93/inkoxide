@@ -6,7 +6,14 @@
  */
 import { readFile } from 'node:fs/promises';
 
-import { type FontWeightName, fonts, fontWeightValue, type HyphenationCallback } from '@inkoxide/react';
+import {
+  type EmojiSource,
+  familyKey,
+  type FontWeightName,
+  fonts,
+  fontWeightValue,
+  type HyphenationCallback,
+} from '@inkoxide/react';
 
 import { registerEngineFont } from './engine.ts';
 import { DEFAULT_FACES } from './fonts.ts';
@@ -46,8 +53,8 @@ interface Face {
 
 type FaceName = Pick<Face, 'family' | 'weight' | 'style'>;
 
-/** What tells faces apart: family, weight and style. */
-const faceKey = (f: FaceName): string => JSON.stringify([f.family, f.weight, f.style]);
+/** What tells faces apart: family (ignoring ASCII case), weight and style. */
+const faceKey = (f: FaceName): string => JSON.stringify([familyKey(f.family), f.weight, f.style]);
 
 /** `"Brand" 700 italic`, as messages name a face. */
 const faceLabel = (f: FaceName): string =>
@@ -140,7 +147,8 @@ export const Font = {
       const id = `${family.trim().replace(/\s+/g, '-')}-${weight}${style === 'italic' ? '-italic' : ''}`;
       const f: Face = { family, weight, style, id, src };
       const bundled = DEFAULT_FACES.find(
-        (d) => d.family === family && d.weight === weight && (d.style ?? 'normal') === style,
+        (d) =>
+          familyKey(d.family) === familyKey(family) && d.weight === weight && (d.style ?? 'normal') === style,
       );
       if (bundled) {
         throw new Error(
@@ -179,6 +187,28 @@ export const Font = {
       throw new Error('Font.registerHyphenationCallback needs a function, or null to remove it.');
     }
     fonts.hyphenationCallback = callback ?? undefined;
+  },
+
+  /**
+   * Draws emoji as images, in every `Text` of later renders: `{ url, format = 'png',
+   * withVariationSelectors = false }` adds each emoji's code points (`1f469-200d-1f4bb`, without
+   * `fe0f` unless asked) and `.format` to `url`; `{ builder }` turns those code points into any
+   * image `src`. The images load like `<Image src>`: a URL must be allowed by `remoteImages`, and a
+   * path needs `localImages`. An emoji whose image cannot be loaded is drawn by the fonts, with a
+   * warning. Registering again replaces the source; `null` removes it.
+   */
+  registerEmojiSource(source: EmojiSource | null): void {
+    const ok =
+      source === null ||
+      (typeof source === 'object' &&
+        (('url' in source && typeof source.url === 'string') ||
+          ('builder' in source && typeof source.builder === 'function')));
+    if (!ok) {
+      throw new Error(
+        'Font.registerEmojiSource needs { url, format? } or { builder }, or null to remove it.',
+      );
+    }
+    fonts.emojiSource = source ?? undefined;
   },
 };
 

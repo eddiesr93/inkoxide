@@ -14,10 +14,10 @@ use unicode_linebreak::{linebreaks, BreakOpportunity};
 use super::hyphen::Hyphenator;
 use super::{
     BreakKind, BreakPoint, Glyph, PageNumbers, Para, Prepared, Segment, GLYPH_INVISIBLE,
-    GLYPH_SPACE, GLYPH_TAB,
+    GLYPH_OBJECT, GLYPH_SPACE, GLYPH_TAB,
 };
 use crate::fonts::{FontKey, FontSet, LoadedFont};
-use crate::schema::{Direction, TextRun, WhiteSpace};
+use crate::schema::{Direction, FontFeature, TextRun, WhiteSpace};
 use crate::InkoxideError;
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
@@ -30,6 +30,14 @@ pub(crate) const SHY: char = '\u{00AD}';
 /// (fixed, or in a table's header rows) keeps this width.
 pub(crate) const PLACEHOLDER_TEXT: &str = "999";
 
+/// The text of an image run: U+FFFC OBJECT REPLACEMENT CHARACTER.
+const OBJECT_TEXT: &str = "\u{FFFC}";
+
+/// The text of a note run: U+200D ZERO WIDTH JOINER, which line breaking
+/// keeps with the character before it (or, after a space, the one after
+/// it), so a note never splits a word or stands alone on a line.
+const NOTE_TEXT: &str = "\u{200D}";
+
 pub(crate) struct ParagraphOptions<'a> {
     pub white_space: WhiteSpace,
     pub direction: Direction,
@@ -39,6 +47,8 @@ pub(crate) struct ParagraphOptions<'a> {
     pub lang: Option<&'a str>,
     pub hyphenator: &'a dyn Hyphenator,
     pub runs: &'a [TextRun],
+    /// The images of image runs.
+    pub objects: &'a super::InlineObjects,
 }
 
 /// Combining marks stay in the font of their base character.
@@ -68,9 +78,18 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     let mut last_was_space = true;
     for run in opts.runs {
         let start = text.len();
-        let src: &str = match run.placeholder {
-            Some(_) => PLACEHOLDER_TEXT,
-            None => run.text.as_deref().unwrap_or(""),
+        if run.note.is_some() {
+            // White space collapses across a note as if it were not there.
+            text.push_str(NOTE_TEXT);
+            ranges.push((start, text.len()));
+            continue;
+        }
+        let src: &str = match (run.placeholder, &run.image) {
+            (Some(_), _) => PLACEHOLDER_TEXT,
+            // An image is one object character: it breaks lines like one
+            // (UAX #14 class CB) and is neutral in bidi.
+            (None, Some(_)) => OBJECT_TEXT,
+            (None, None) => run.text.as_deref().unwrap_or(""),
         };
         match opts.white_space {
             WhiteSpace::Pre | WhiteSpace::PreWrap => {
@@ -106,6 +125,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
             if run.hyphenate.unwrap_or(opts.hyphenate)
                 && !matches!(opts.white_space, WhiteSpace::Pre | WhiteSpace::NoWrap)
                 && run.placeholder.is_none()
+                && run.image.is_none()
             {
                 let hyphenated = insert_soft_hyphens(&text[start..], opts.hyphenator, lang);
                 text.truncate(start);
@@ -152,23 +172,71 @@ fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> Stri
 
 /// Chooses a font for every character: the run's font if it has the glyph,
 /// else the first fallback that has it, else the run's font (`.notdef`).
+/// An emoji sequence takes one font for all its characters
+/// ([`super::emoji::font`]).
+/// An image run is a segment of its own, with its object.
 fn itemize(
     text: &str,
     run_ranges: &[(usize, usize)],
     runs: &[TextRun],
     fonts: &FontSet<'_>,
     levels: Option<&[u8]>,
-) -> Vec<Segment> {
+    objects: &super::InlineObjects,
+) -> (Vec<Segment>, Vec<super::objects::InlineObject>) {
     let level_at = |i: usize| levels.map_or(0, |l| l[i]);
     let mut segs: Vec<Segment> = Vec::new();
+    let mut objs = Vec::new();
     for (ri, (&(start, end), run)) in run_ranges.iter().zip(runs).enumerate() {
         let Some(primary) = fonts.key(&run.font) else {
             continue;
         };
+        if run.note.is_some() {
+            // No glyphs: its place in the line (see `prepare`).
+            segs.push(Segment::new(ri, primary, level_at(start), start..end));
+            continue;
+        }
+        if let Some(object) = objects.of_run(run).filter(|_| start < end) {
+            let mut seg = Segment::new(ri, primary, level_at(start), start..end);
+            seg.object = Some(objs.len() as u32);
+            objs.push(object);
+            segs.push(seg);
+            continue;
+        }
         let mut current: Option<(FontKey, usize)> = None;
         let mut level = 0u8;
+        let mut sequences = super::emoji::sequences(&text[start..end])
+            .into_iter()
+            .peekable();
+        // Emoji drawn as images: objects of their own.
+        let mut emoji = objects
+            .emoji_in(&text[start..end], run)
+            .into_iter()
+            .peekable();
+        let mut skip_to = 0;
+        // The end and font of the emoji sequence being itemised.
+        let mut sequence: Option<(usize, FontKey)> = None;
         for (off, c) in text[start..end].char_indices() {
             let i = start + off;
+            if off < skip_to {
+                continue;
+            }
+            if let Some((r, object)) = emoji.next_if(|(r, _)| r.start == off) {
+                if let Some((f, s)) = current.take() {
+                    segs.push(Segment::new(ri, f, level, s..i));
+                }
+                let mut seg = Segment::new(ri, primary, level_at(i), i..start + r.end);
+                seg.object = Some(objs.len() as u32);
+                objs.push(object);
+                segs.push(seg);
+                skip_to = r.end;
+                while sequences.next_if(|q| q.range.start < r.end).is_some() {}
+                sequence = None;
+                continue;
+            }
+            sequence = sequence.filter(|&(e, _)| i < e);
+            if let Some(q) = sequences.next_if(|q| q.range.start == off) {
+                sequence = Some((start + q.range.end, super::emoji::font(&q, primary, fonts)));
+            }
             let neutral = c.is_whitespace() || c == SHY || c.is_control() || is_mark(c);
             let lvl = level_at(i);
             if let Some((f, s)) = current {
@@ -179,6 +247,7 @@ fn itemize(
             }
             level = lvl;
             let font = match current {
+                _ if sequence.is_some() => sequence.map_or(primary, |(_, f)| f),
                 Some((f, _)) if neutral => f,
                 _ if fonts.get(primary).glyph(c).is_some() || neutral => primary,
                 _ => fonts
@@ -201,7 +270,7 @@ fn itemize(
             segs.push(Segment::new(ri, f, level, s..end));
         }
     }
-    segs
+    (segs, objs)
 }
 
 /// A shaped glyph in font units, relative to its word.
@@ -240,8 +309,13 @@ pub(crate) enum ShapingCause {
     TooManyGlyphs,
 }
 
-/// Font, direction and text of a shaped word.
-type WordKey = (FontKey, Option<bool>, Box<str>);
+/// Font, direction, feature set ([`ShapeCache::features`]) and text of a
+/// shaped word.
+type WordKey = (FontKey, Option<bool>, FeatureSet, Box<str>);
+
+/// Index of a run's OpenType features in [`ShapeCache::features`]; 0 is
+/// none. Validation bounds the different sets of a document.
+type FeatureSet = u16;
 
 /// Shaping faces of a render's fonts, indexed by [`FontKey`]: parsed once
 /// per render and shared by every [`ShapeCache`] (one per shaping thread).
@@ -269,8 +343,8 @@ impl<'a> Faces<'a> {
     }
 }
 
-/// Per-thread shaping cache: shape plans per (font, direction, script) and
-/// shaped words per (font, text). Documents repeat words constantly
+/// Per-thread shaping cache: shape plans per (font, features, direction,
+/// script) and shaped words per (font, direction, features, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
 /// reusing results removes most shaping work.
 pub(super) struct ShapeCache<'a> {
@@ -278,11 +352,23 @@ pub(super) struct ShapeCache<'a> {
     /// Glyphs the render's text has shaped to beyond one per byte, shared
     /// by the caches of its threads: against [`MAX_EXTRA_GLYPHS`].
     extra: Arc<AtomicU64>,
-    plans:
-        HashMap<(FontKey, rustybuzz::Direction, Option<rustybuzz::Script>), rustybuzz::ShapePlan>,
+    plans: HashMap<
+        (
+            FontKey,
+            FeatureSet,
+            rustybuzz::Direction,
+            Option<rustybuzz::Script>,
+        ),
+        rustybuzz::ShapePlan,
+    >,
     /// Keyed by font, direction (`Some(true)`: right to left; `None`:
-    /// guessed from the text) and text.
+    /// guessed from the text), features and text.
     words: HashMap<WordKey, Arc<[UnitGlyph]>>,
+    /// The feature sets of the runs shaped so far, by [`FeatureSet`]; the
+    /// first is empty.
+    features: Vec<Box<[rustybuzz::Feature]>>,
+    /// Each run's features, sorted by tag, to their [`FeatureSet`].
+    feature_sets: HashMap<Box<[FontFeature]>, FeatureSet>,
 }
 
 impl<'a> ShapeCache<'a> {
@@ -292,7 +378,37 @@ impl<'a> ShapeCache<'a> {
             extra: Arc::default(),
             plans: HashMap::new(),
             words: HashMap::new(),
+            features: vec![Box::default()],
+            feature_sets: HashMap::new(),
         }
+    }
+
+    /// The [`FeatureSet`] of `run`'s `fontFeatures`.
+    fn feature_set(&mut self, run: &TextRun) -> FeatureSet {
+        let Some(list) = run.font_features.as_deref().filter(|f| !f.is_empty()) else {
+            return 0;
+        };
+        // One set whatever the order: validation rejects a tag set twice.
+        let mut sorted = list.to_vec();
+        sorted.sort_by(|a, b| a.tag.cmp(&b.tag));
+        if let Some(&set) = self.feature_sets.get(sorted.as_slice()) {
+            return set;
+        }
+        let features = sorted
+            .iter()
+            .filter_map(|f| {
+                let tag: [u8; 4] = f.tag.as_bytes().try_into().ok()?;
+                Some(rustybuzz::Feature::new(
+                    crate::fonts::opentype_tag(tag),
+                    f.value,
+                    ..,
+                ))
+            })
+            .collect();
+        let set = FeatureSet::try_from(self.features.len()).unwrap_or(FeatureSet::MAX);
+        self.features.push(features);
+        self.feature_sets.insert(sorted.into(), set);
+        set
     }
 
     /// An empty cache for another thread of the same render: the same
@@ -320,9 +436,10 @@ impl<'a> ShapeCache<'a> {
         key: FontKey,
         word: &str,
         rtl: Option<bool>,
+        set: FeatureSet,
         unicode: &mut super::UnicodeMap,
     ) -> Arc<[UnitGlyph]> {
-        if let Some(g) = self.words.get(&(key, rtl, Box::from(word))) {
+        if let Some(g) = self.words.get(&(key, rtl, set, Box::from(word))) {
             return g.clone();
         }
         let face = &self.faces.0[usize::from(key)];
@@ -337,11 +454,15 @@ impl<'a> ShapeCache<'a> {
             });
         }
         let reversed = buf.direction() == rustybuzz::Direction::RightToLeft && rtl.is_some();
+        let features = self
+            .features
+            .get(usize::from(set))
+            .map_or(&[][..], |f| &f[..]);
         let plan = self
             .plans
-            .entry((key, buf.direction(), Some(buf.script())))
+            .entry((key, set, buf.direction(), Some(buf.script())))
             .or_insert_with(|| {
-                rustybuzz::ShapePlan::new(face, buf.direction(), Some(buf.script()), None, &[])
+                rustybuzz::ShapePlan::new(face, buf.direction(), Some(buf.script()), None, features)
             });
         let shaped = rustybuzz::shape_with_plan(face, plan, buf);
         let infos = shaped.glyph_infos();
@@ -381,7 +502,7 @@ impl<'a> ShapeCache<'a> {
             unicode.record(key, g.id, &word[cluster..end]);
         }
         self.words
-            .insert((key, rtl, Box::from(word)), glyphs.clone());
+            .insert((key, rtl, set, Box::from(word)), glyphs.clone());
         glyphs
     }
 }
@@ -420,11 +541,48 @@ pub(crate) fn prepare(
     let bidi = levels
         .as_ref()
         .is_some_and(|l| l.iter().any(|v| v % 2 == 1));
-    let mut segments = itemize(&text, &run_ranges, opts.runs, fonts, levels.as_deref());
+    let (mut segments, objects) = itemize(
+        &text,
+        &run_ranges,
+        opts.runs,
+        fonts,
+        levels.as_deref(),
+        opts.objects,
+    );
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(text.len());
 
+    let sets: Vec<FeatureSet> = opts.runs.iter().map(|r| cache.feature_set(r)).collect();
     for seg in &mut segments {
+        if let Some(o) = seg.object {
+            // One glyph-like cluster, as wide as the image.
+            let first = glyphs.len() as u32;
+            glyphs.push(Glyph {
+                id: 0,
+                advance: objects[o as usize].width,
+                x_offset: 0.0,
+                y_offset: 0.0,
+                cluster: seg.text.start,
+                flags: GLYPH_OBJECT,
+            });
+            seg.glyphs = first..first + 1;
+            continue;
+        }
         let run = &opts.runs[seg.run as usize];
+        if run.note.is_some() {
+            // A note: an object cluster that takes no room.
+            let first = glyphs.len() as u32;
+            glyphs.push(Glyph {
+                id: 0,
+                advance: 0.0,
+                x_offset: 0.0,
+                y_offset: 0.0,
+                cluster: seg.text.start,
+                flags: GLYPH_OBJECT,
+            });
+            seg.glyphs = first..first + 1;
+            continue;
+        }
+        let set = sets[seg.run as usize];
         let scale = fonts.get(seg.font).scale(run.size);
         let letter_spacing = run.letter_spacing.unwrap_or(0.0);
         let seg_text = &text[seg.text.start as usize..seg.text.end as usize];
@@ -439,7 +597,7 @@ pub(crate) fn prepare(
                 }))
             };
             let shaped = catch_unwind(AssertUnwindSafe(|| {
-                cache.word(seg.font, word, dir, unicode)
+                cache.word(seg.font, word, dir, set, unicode)
             }))
             .unwrap_or_else(|_| fail(ShapingCause::Panicked));
             // Every occurrence counts: each copies its glyphs.
@@ -516,6 +674,7 @@ pub(crate) fn prepare(
         rtl,
         bidi,
         placeholders: opts.runs.iter().any(|r| r.placeholder.is_some()),
+        objects,
     }
 }
 
@@ -700,6 +859,7 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
         rtl: p.rtl,
         bidi: p.bidi,
         placeholders: false,
+        objects: p.objects.clone(),
     }
 }
 
@@ -739,6 +899,8 @@ mod tests {
 
     fn run(text: &str) -> TextRun {
         TextRun {
+            image: None,
+            note: None,
             text: Some(text.into()),
             font: "f".into(),
             size: 10.0,
@@ -751,6 +913,8 @@ mod tests {
             placeholder: None,
             link: None,
             hyphenate: None,
+            vertical_align: None,
+            font_features: None,
         }
     }
 
@@ -761,6 +925,7 @@ mod tests {
             hyphenate: false,
             lang: None,
             hyphenator: &NoHyphenation,
+            objects: &super::super::InlineObjects::default(),
             runs,
         })
         .0
@@ -777,6 +942,7 @@ mod tests {
             hyphenate: false,
             lang: None,
             hyphenator: &NoHyphenation,
+            objects: &super::super::InlineObjects::default(),
             runs: &[run("a "), run(" b")],
         });
         assert_eq!(text, "a b");
@@ -851,6 +1017,7 @@ mod tests {
                 hyphenate,
                 lang: Some("en"),
                 hyphenator: &HypherHyphenator,
+                objects: &super::super::InlineObjects::default(),
                 runs,
             })
             .0

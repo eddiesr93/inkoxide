@@ -43,12 +43,89 @@ test('fonts are subset unless subsetFonts is false', () => {
   assert.match(Buffer.from(sub).toString('latin1'), /\/BaseFont \/[A-Z]{6}\+Inter-Regular/);
 });
 
-test('pdfA writes PDF/A-2b metadata and an output intent', () => {
-  const pdf = Buffer.from(ink.renderSync(fixture('docs/invoice.json'), { pdfA: true })).toString('latin1');
+test('pdfA writes PDF/A metadata and an output intent', () => {
+  const render = (pdfA) =>
+    Buffer.from(ink.renderSync(fixture('docs/invoice.json'), { pdfA })).toString('latin1');
+  const pdf = render(true);
   assert.match(pdf, /<pdfaid:part>2<\/pdfaid:part>/);
   assert.match(pdf, /\/S \/GTS_PDFA1/);
-  const plain = Buffer.from(ink.renderSync(fixture('docs/invoice.json'))).toString('latin1');
-  assert.doesNotMatch(plain, /GTS_PDFA1/);
+  assert.strictEqual(render('2b'), pdf);
+  assert.match(render('3b'), /<pdfaid:part>3<\/pdfaid:part>/);
+  const one = render('1b');
+  assert.match(one, /^%PDF-1\.4/);
+  assert.match(one, /<pdfaid:part>1<\/pdfaid:part>/);
+  assert.match(one, /\/CIDSet/);
+  // PDF/A-1b has no transparency; validate does not know the level.
+  const veiled = JSON.stringify({
+    version: 1,
+    pages: [{ size: { width: 10, height: 10 }, children: [{ type: 'box', style: { opacity: 0.5 } }] }],
+  });
+  assert.deepStrictEqual(ink.validate(veiled), []);
+  assert.throws(
+    () => ink.renderSync(veiled, { pdfA: '1b' }),
+    (e) => e.code === 'PDFA_CONFLICT' && e.path === 'pages[0].children[0].style.opacity',
+  );
+  assert.ok(ink.renderSync(veiled, { pdfA: '2b' }).length > 0);
+  assert.doesNotMatch(render(false), /GTS_PDFA1/);
+  assert.throws(
+    () => render('2a'),
+    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfA' && /2a/.test(e.message),
+  );
+});
+
+test('encryption encrypts with passwords and permissions, and never echoes them', async () => {
+  const doc = fixture('docs/invoice.json');
+  const secret = 's3cret-marker';
+  const encryption = {
+    userPassword: secret,
+    ownerPassword: 'owner',
+    permissions: { printing: 'highResolution', copying: true },
+  };
+  const pdf = Buffer.from(ink.renderSync(doc, { encryption })).toString('latin1');
+  assert.match(pdf, /\/Filter \/Standard/);
+  assert.match(pdf, /\/V 5/);
+  assert.match(pdf, /\/R 6/);
+  assert.match(pdf, /\/CFM \/AESV3/);
+  assert.match(pdf, /\/P -1324\b/);
+  assert.match(pdf, /\/Encrypt \d+ 0 R/);
+  assert.ok(!pdf.includes(secret));
+  // Deterministic.
+  assert.strictEqual(Buffer.from(await ink.render(doc, { encryption })).toString('latin1'), pdf);
+  const rejected = (path) => (e) => {
+    assert.ok(e instanceof ink.InkoxideError, `${e}`);
+    assert.strictEqual(e.code, 'INVALID_ARGUMENT');
+    assert.strictEqual(e.path, path);
+    assert.ok(!e.message.includes(secret) && !JSON.stringify(e).includes(secret), e.message);
+    assert.ok(!e.message.includes('1234'), e.message);
+    return true;
+  };
+  for (const [options, path] of [
+    [{ encryption: {} }, 'options.encryption'],
+    [{ encryption: { userPassword: `${secret}é` } }, 'options.encryption.userPassword'],
+    [
+      { encryption: { userPassword: secret, ownerPassword: 'x'.repeat(128) } },
+      'options.encryption.ownerPassword',
+    ],
+    [{ encryption: { userPassword: secret, permissions: {} } }, 'options.encryption.permissions'],
+    [
+      { encryption: { userPassword: secret, ownerPassword: 'o', permissions: { printing: 'yes' } } },
+      'options.encryption.permissions.printing',
+    ],
+    [{ encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
+    // Wrong types are refused before napi, whose message would show the value.
+    [{ encryption: secret }, 'options.encryption'],
+    [{ encryption: [secret] }, 'options.encryption'],
+    [{ encryption: { userPassword: 1234, ownerPassword: secret } }, 'options.encryption.userPassword'],
+    [{ encryption: { userPassword: 'u', ownerPassword: { secret } } }, 'options.encryption.ownerPassword'],
+    [{ encryption: { userPassword: [secret] } }, 'options.encryption.userPassword'],
+    [
+      { encryption: { userPassword: 'u', ownerPassword: secret, permissions: secret } },
+      'options.encryption.permissions',
+    ],
+  ]) {
+    assert.throws(() => ink.renderSync(doc, options), rejected(path));
+    await assert.rejects(ink.render(doc, options), rejected(path));
+  }
 });
 
 test('images are passed per render', async () => {

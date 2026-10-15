@@ -1,13 +1,13 @@
 //! Box painting: background, borders, clipping, opacity, rotation, then
 //! content and children, in document order.
 
-use super::debug::{DebugBox, DebugBoxes};
+use super::debug::{DebugBox, DebugBoxes, DebugLine};
 use super::shapes::{
     corner_radii, inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII,
 };
 use super::{with_alpha, Dash, FillRule, Op, Path, Rect};
 use crate::layout::table::TableLayout;
-use crate::layout::{Geometry, NodeIdx, Part, Tree};
+use crate::layout::{Geometry, LineBoxes, NodeIdx, Part, Tree};
 use crate::paginate::{PageWindow, Placement, PAGED_EPS};
 use crate::schema::{
     BorderRadius, BorderStyle, BorderStyles, Color, Display, Edges, LengthPercent, Node, Overflow,
@@ -33,11 +33,33 @@ pub(crate) struct ContentCtx<'p> {
     pub window: Option<PageWindow>,
     /// Cumulative opacity in effect; content with its own alpha multiplies it.
     pub opacity: f32,
+    /// The line boxes of text laid out beside floats (`None`: its content
+    /// width).
+    pub line_boxes: Option<&'p LineBoxes>,
 }
 
 /// Paints leaf content (text, images, tables) inside a node's content box.
 pub(crate) trait ContentPainter {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>);
+
+    /// [`paint`](Self::paint) for a node with a `debug` outline, recording
+    /// the lines of a paragraph, and the runs on them, in `lines`.
+    fn paint_outlined(
+        &mut self,
+        node: &Node,
+        geo: &Geometry,
+        ctx: &ContentCtx<'_>,
+        ops: &mut Vec<Op>,
+        lines: &mut Vec<DebugLine>,
+    ) {
+        let _ = lines;
+        self.paint(node, geo, ctx, ops);
+    }
+
+    /// Paints the `backgroundImage` of `node` into `padding_box` (page
+    /// coordinates), clipped to it rounded by `radii`.
+    fn background(&mut self, _node: &Node, _padding_box: Rect, _radii: &Radii, _ops: &mut Vec<Op>) {
+    }
 
     /// The physical page number and the page count of the page painted:
     /// placeholders show them, and nodes shown on some pages only are
@@ -224,7 +246,9 @@ impl BoxPainter<'_, '_, '_, '_> {
         let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
         let transform = s.transform.as_deref().filter(|t| !t.is_empty());
         let own = (transform.is_some() || rotate.is_some()).then(|| box_transform(s, x, y, w, h));
-        if node.debug || self.debug.all {
+        // Its outline, which its content adds lines to.
+        let outlined = (node.debug || self.debug.all).then_some(self.debug.boxes.len());
+        if outlined.is_some() {
             self.outline(&g, shift, extra, window, own);
         }
         if let Some(target) = &node.link {
@@ -275,12 +299,16 @@ impl BoxPainter<'_, '_, '_, '_> {
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
             self.fill(rounded_rect(border_box, &radii), bg);
         }
+        let padding_box = border_box.inset(g.border);
+        let inner = inset_radii(&radii, g.border);
+        if node.background_image.is_some() {
+            self.content.background(node, padding_box, &inner, self.ops);
+        }
         self.borders(s, g.border, border_box, &radii);
 
         if clip {
-            let inner = inset_radii(&radii, g.border);
             self.ops.push(Op::ClipPath {
-                path: rounded_rect(border_box.inset(g.border), &inner),
+                path: rounded_rect(padding_box, &inner),
                 rule: FillRule::NonZero,
             });
         }
@@ -298,10 +326,16 @@ impl BoxPainter<'_, '_, '_, '_> {
             line_shifts: self.mode.line_shifts(i),
             window,
             opacity: self.opacity,
+            line_boxes: self.tree.wraps.get(&i).map(|b| &**b),
         };
-        self.content.paint(node, &g, &ctx, self.ops);
+        match outlined.and_then(|k| self.debug.boxes.get_mut(k)) {
+            Some(b) => self
+                .content
+                .paint_outlined(node, &g, &ctx, self.ops, &mut b.lines),
+            None => self.content.paint(node, &g, &ctx, self.ops),
+        }
         let tree = self.tree;
-        if has_z(tree, i) {
+        if reordered(tree, i) {
             for c in paint_order(tree, i) {
                 self.node(c);
             }
@@ -348,6 +382,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 None => (y, bottom),
             },
             ctm,
+            lines: Vec::new(),
         });
     }
 
@@ -711,15 +746,24 @@ fn z_index(tree: &Tree<'_>, j: NodeIdx) -> i32 {
         .unwrap_or(0)
 }
 
-/// Whether a child of `i` sets a non-zero `zIndex`.
-fn has_z(tree: &Tree<'_>, i: NodeIdx) -> bool {
-    tree.children(i).any(|j| z_index(tree, j) != 0)
+/// Whether the children of `i` paint in another order than the
+/// document's: one sets a non-zero `zIndex`, or `i` holds floats, which
+/// paint after their siblings (see [`paint_order`]).
+fn reordered(tree: &Tree<'_>, i: NodeIdx) -> bool {
+    tree.holds_floats(i) || tree.children(i).any(|j| z_index(tree, j) != 0)
 }
 
-/// The children of `i` in paint order: by `zIndex`, then document order.
+/// The children of `i` in paint order: by `zIndex`, floats after the
+/// other children of their `zIndex` (so that a paragraph's background does
+/// not cover the float it wraps around), then document order.
 fn paint_order(tree: &Tree<'_>, i: NodeIdx) -> Vec<NodeIdx> {
     let mut c: Vec<NodeIdx> = tree.children(i).collect();
-    c.sort_by_key(|&j| z_index(tree, j));
+    let floats = |j: NodeIdx| {
+        tree.nodes[j as usize]
+            .node()
+            .is_some_and(|n| n.style.floats().is_some())
+    };
+    c.sort_by_key(|&j| (z_index(tree, j), floats(j)));
     c
 }
 
@@ -756,6 +800,11 @@ pub(crate) fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
         a[0] * b[4] + a[2] * b[5] + a[4],
         a[1] * b[4] + a[3] * b[5] + a[5],
     ]
+}
+
+/// Point `(x, y)` transformed by `m`.
+pub(crate) fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
+    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
 }
 
 fn resolve(v: LengthPercent, of: f32) -> f32 {
@@ -807,10 +856,6 @@ pub(crate) fn box_transform(s: &Style, x: f32, y: f32, w: f32, h: f32) -> [f32; 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
-        (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
-    }
 
     fn style(json: &str) -> Style {
         serde_json::from_str(json).unwrap()

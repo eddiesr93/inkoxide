@@ -43,14 +43,24 @@ const FLOW = new Set<string>([
   HOST.Text,
   HOST.Link,
   HOST.Image,
+  HOST.ImageBackground,
   HOST.Table,
   HOST.PageBreak,
   HOST.Spacer,
   HOST.Field,
+  HOST.FieldSet,
+  HOST.Note,
   HOST.Svg,
   HOST.Canvas,
 ]);
-const INLINE = new Set<string>([HOST.Text, HOST.Link, HOST.PageNumber, HOST.TotalPages]);
+const INLINE = new Set<string>([
+  HOST.Text,
+  HOST.Link,
+  HOST.Image,
+  HOST.Note,
+  HOST.PageNumber,
+  HOST.TotalPages,
+]);
 const SVG_SHAPES = new Set<string>([
   HOST.Path,
   HOST.Rect,
@@ -60,8 +70,13 @@ const SVG_SHAPES = new Set<string>([
   HOST.Polyline,
   HOST.Polygon,
 ]);
-/** What goes in an `<Svg>`, `<G>`, `<Defs>` or `<ClipPath>`: every SVG primitive but `<Stop>`. */
-const SVG_CONTENT = new Set<string>(Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop));
+/**
+ * What goes in an `<Svg>`, `<G>`, `<Defs>`, `<ClipPath>` or `<Marker>`: every SVG primitive but
+ * `<Stop>` and `<Tspan>`, and `<Text>`.
+ */
+const SVG_CONTENT = new Set<string>(Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop && t !== HOST.Tspan));
+/** The context inside SVG text (a `Text` in an `<Svg>`, or a `Tspan`): strings and `Tspan`. */
+const SVG_TEXT = 'ink-svg-text';
 const LEAF = new Set<string>([
   HOST.Image,
   HOST.PageBreak,
@@ -92,14 +107,19 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
     case HOST.Header:
     case HOST.Footer:
     case HOST.View:
+    case HOST.ImageBackground:
     case HOST.Link:
+    case HOST.FieldSet:
     case HOST.Cell:
       return FLOW.has(child);
     case HOST.Svg:
     case HOST.G:
     case HOST.Defs:
     case HOST.ClipPath:
-      return SVG_CONTENT.has(child);
+    case HOST.Marker:
+      return SVG_CONTENT.has(child) || child === HOST.Text;
+    case SVG_TEXT:
+      return child === HOST.Tspan;
     case HOST.LinearGradient:
     case HOST.RadialGradient:
       return child === HOST.Stop;
@@ -112,7 +132,10 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
 const TEXT_PARENTS = new Set<string>([
   HOST.Text,
   HOST.View,
+  HOST.ImageBackground,
   HOST.Link,
+  HOST.FieldSet,
+  HOST.Note,
   HOST.Cell,
   HOST.Header,
   HOST.Footer,
@@ -144,9 +167,20 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
     );
   }
   if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
+  if (parent === SVG_TEXT) {
+    return new TemplateError(
+      `${name(child)} cannot be inside SVG text; a <Text> in an <Svg> holds strings and <Tspan>.`,
+    );
+  }
+  if (child === HOST.Tspan) {
+    return new TemplateError('<Tspan> goes inside a <Text> in an <Svg>.');
+  }
+  if (parent === HOST.Note) {
+    return new TemplateError(`A <Note> contains only text: ${name(child)} cannot be inside it.`);
+  }
   if (parent === HOST.Text) {
     return new TemplateError(
-      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <PageNumber> and <TotalPages>.`,
+      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <PageNumber> and <TotalPages>.`,
     );
   }
   if (child === HOST.PageNumber || child === HOST.TotalPages) {
@@ -204,9 +238,14 @@ export const hostConfig = {
   // A nested root (a `render` prop's output) starts inside its owner's host type.
   getRootHostContext: (root: Container): HostContext =>
     root.parent ? contextFor(root.parent) : ROOT_CONTEXT,
-  // A Link inside a Text is an inline run: its content follows the rules of Text.
-  getChildHostContext: (parent: HostContext, type: string): HostContext =>
-    contextFor(type === HOST.Link && parent.parent === HOST.Text ? HOST.Text : type),
+  // A Link inside a Text is an inline run: its content follows the rules of Text. A Text in SVG
+  // content is SVG text, and so is a Tspan.
+  getChildHostContext: (parent: HostContext, type: string): HostContext => {
+    if (type === HOST.Link && parent.parent === HOST.Text) return contextFor(HOST.Text);
+    const inSvg = parent.parent === HOST.Svg || SVG_CONTENT.has(parent.parent);
+    if ((type === HOST.Text && inSvg) || type === HOST.Tspan) return contextFor(SVG_TEXT);
+    return contextFor(type);
+  },
   getPublicInstance: (instance: Instance): Instance => instance,
   prepareForCommit: (): null => null,
   resetAfterCommit: (): void => {},
@@ -224,8 +263,9 @@ export const hostConfig = {
     return instance;
   },
   createTextInstance(text: string, _root: Container, ctx: HostContext, fiber: unknown): TextInstance {
+    if (ctx.parent === SVG_TEXT) return { kind: 'text', text, fiber };
     if (ctx.parent === HOST.Svg || SVG_CONTENT.has(ctx.parent)) {
-      throw new TemplateError('Text inside <Svg> is not supported; place a <Text> over the drawing instead.');
+      throw new TemplateError('Text inside <Svg> goes in a <Text>: <Text x={10} y={20}>…</Text>.');
     }
     if (!TEXT_PARENTS.has(ctx.parent)) {
       const shown = `Text "${text.length > 40 ? `${text.slice(0, 40)}…` : text}"`;

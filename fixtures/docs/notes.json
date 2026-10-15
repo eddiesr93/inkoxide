@@ -1,0 +1,271 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Notes",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 595
+   },
+   "margin": {
+    "top": 48,
+    "right": 32,
+    "bottom": 32,
+    "left": 32
+   },
+   "header": {
+    "type": "box",
+    "style": {
+     "flexDirection": "row",
+     "justifyContent": "space-between",
+     "alignItems": "center",
+     "padding": {
+      "top": 16,
+      "left": 32,
+      "right": 32
+     }
+    },
+    "children": [
+     {
+      "type": "text",
+      "runs": [
+       {
+        "text": "Review copy",
+        "font": "Inter-Regular",
+        "size": 9,
+        "color": [
+         0.42,
+         0.44,
+         0.5,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "type": "box",
+      "style": {
+       "width": 20,
+       "height": 20
+      },
+      "children": [
+       {
+        "type": "note",
+        "note": {
+         "contents": "Reviewed on every page.",
+         "author": "Editor",
+         "color": [
+          0.55,
+          0.8,
+          0.45,
+          1
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Quarterly summary",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 8
+     },
+     "children": [
+      {
+       "type": "note",
+       "note": {
+        "contents": "Check the totals against the ledger.",
+        "author": "Ana"
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "margin": {
+         "left": 24
+        },
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Notes take no space: each one is an icon at the top-left corner of its box, which viewers open to show its text. Notes take no space: each one is an icon at the top-left corner of its box, which viewers open to show its text. Notes take no space: each one is an icon at the top-left corner of its box, which viewers open to show its text. ",
+           "font": "Inter-Regular",
+           "size": 10
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 12
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 8
+     },
+     "children": [
+      {
+       "type": "note",
+       "note": {
+        "contents": "Open when the document opens.",
+        "author": "Ben",
+        "color": [
+         0.35,
+         0.6,
+         1,
+         1
+        ],
+        "open": true
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "margin": {
+         "left": 24
+        },
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Notes take no space: each one is an icon at the top-left corner of its box, which viewers open to show its text. Notes take no space: each one is an icon at the top-left corner of its box, which viewers open to show its text. ",
+           "font": "Inter-Regular",
+           "size": 10
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "note",
+     "style": {
+      "position": "absolute",
+      "inset": {
+       "top": 330,
+       "right": 24
+      }
+     },
+     "note": {
+      "contents": "Placed with insets.",
+      "color": [
+       1,
+       0.5,
+       0.4,
+       1
+      ]
+     }
+    },
+    {
+     "type": "pageBreak"
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 8
+     },
+     "children": [
+      {
+       "type": "note",
+       "note": {
+        "contents": "The first thing on the second page."
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "margin": {
+         "left": 24
+        },
+        "flexGrow": 1
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Second page: the note beside this paragraph comes right after a page break.",
+           "font": "Inter-Regular",
+           "size": 10
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "spacer",
+     "style": {
+      "height": 12
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "A note can be part of a line of text, where it takes no room: its icon hangs from the top of the line, after the word it is about.",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "note": {
+        "contents": "In the line, after the word it is about.",
+        "author": "Editor"
+       },
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

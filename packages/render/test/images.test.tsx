@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
@@ -15,7 +15,9 @@ import {
   Document,
   Header,
   type ImageSrc,
+  Font,
   Image,
+  ImageBackground,
   init,
   type LocalImageOptions,
   Page,
@@ -77,6 +79,12 @@ const failure = (src: ImageSrc, opts?: RenderToBufferOptions): Promise<RenderErr
 
 let server: ReturnType<typeof createServer>;
 let base: string;
+/** Requests by path. */
+const hits = new Map<string, number>();
+// A PNG whose header says 100 000 × 100 000 pixels: over the size limit.
+const huge = Buffer.from(logo);
+huge.writeUInt32BE(100_000, 16);
+huge.writeUInt32BE(100_000, 20);
 const seen: Array<{ method?: string; header?: string | string[]; body: string }> = [];
 
 const bodyOf = async (req: IncomingMessage): Promise<string> => {
@@ -91,7 +99,13 @@ beforeAll(async () => {
   server = createServer(async (req, res) => {
     seen.push({ method: req.method, header: req.headers['x-token'], body: await bodyOf(req) });
     const body = seen[seen.length - 1]?.body;
-    if (req.url === '/logo.png') res.end(logo);
+    hits.set(req.url ?? '', (hits.get(req.url ?? '') ?? 0) + 1);
+    if (req.url === '/logo.png' || req.url === '/emoji/1f600.png') res.end(logo);
+    else if (req.url === '/emoji/2764.png') res.end('not an image');
+    else if (req.url === '/emoji/1f389.png') res.end(huge);
+    // Slow enough for two renders to want it at once.
+    else if (req.url === '/slow/1f600.png') setTimeout(() => res.end(logo), 100);
+    else if (req.url === '/emoji/1f1eb-1f1f7.png') res.end(palette);
     else if (req.url === '/palette.png') res.end(palette);
     else if (req.url === '/photo.jpg') res.end(photo);
     else if (req.url === '/image' && req.method === 'POST') res.end(body === 'palette' ? palette : logo);
@@ -519,6 +533,136 @@ describe('images in fixed elements', () => {
       [LOGO, PHOTO],
       [LOGO, PALETTE],
     ]);
+  });
+});
+
+describe('ImageBackground', () => {
+  it('draws its image on every page a split box is on, from bytes, a file or a function', async () => {
+    const files = { localImages: { root: fixtures } } satisfies RenderToBufferOptions;
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page size={[200, 200]}>
+          <ImageBackground src={logo} className="rounded-xl border-2 p-2" style={{ height: 300 }}>
+            <Text>over the logo</Text>
+          </ImageBackground>
+          <ImageBackground src="./palette.png" fit="cover" className="h-10" />
+          <ImageBackground src={() => photo} className="h-10 object-contain object-left" />
+        </Page>
+      </Document>,
+      { ...files, compress: false },
+    );
+    expect(pageImages(pdf)).toEqual([[LOGO], [LOGO, PALETTE, PHOTO]]);
+  });
+});
+
+describe('Font.registerEmojiSource', () => {
+  const emojiTemplate = {
+    meta: { id: 'emoji' },
+    schema: z.object({}),
+    Template: () => (
+      <Document>
+        <Page>
+          <Text>Smile 😀, flag 🇫🇷, thumbs 👍 and ❤︎ as text</Text>
+        </Page>
+      </Document>
+    ),
+  };
+  afterEach(() => Font.registerEmojiSource(null));
+
+  it('draws emoji from images at a URL, and leaves those it cannot load to the fonts', async () => {
+    Font.registerEmojiSource({ url: `${base}/emoji/` });
+    const opts = { ...allowed(), compress: false };
+    const first = renderTree(emojiTemplate, {}, opts);
+    // Each sequence once, without U+FE0F; text presentation is left alone.
+    expect(Object.keys(first.document.emojiImages ?? {})).toEqual(['😀', '🇫🇷', '👍']);
+    const settled = await renderSettled(first, first.images, opts);
+    expect(pageImages(settled.pdf)).toEqual([[PALETTE, LOGO]]);
+    expect(settled.tree.warnings).toEqual([
+      expect.stringMatching(/^The image of the emoji 👍 could not be loaded, so a font draws it: .*404/),
+    ]);
+  });
+
+  it('leaves to the fonts the emoji whose image is not one, or is too large', async () => {
+    Font.registerEmojiSource({ url: `${base}/emoji/` });
+    const pdf = await generate(
+      {
+        ...emojiTemplate,
+        Template: () => (
+          <Document>
+            <Page>
+              <Text>Smile 😀, heart ❤️, party 🎉</Text>
+            </Page>
+          </Document>
+        ),
+      },
+      {},
+      { ...allowed(), compress: false },
+    );
+    expect(pageImages(pdf.pdf)).toEqual([[LOGO]]);
+    expect(pdf.warnings).toEqual([
+      expect.stringMatching(
+        /^The image of the emoji ❤ cannot be drawn, so a font draws it: .*unsupported image format/,
+      ),
+      expect.stringMatching(
+        /^The image of the emoji 🎉 cannot be drawn, so a font draws it: .*the limit is 50 megapixels/,
+      ),
+    ]);
+  });
+
+  it('keeps the images across renders, each render within its own size limit', async () => {
+    Font.registerEmojiSource({ url: `${base}/emoji/` });
+    const tree = () => renderTree(emojiTemplate, {}, allowed());
+    await renderSettled(tree(), {}, allowed());
+    const before = hits.get('/emoji/1f600.png');
+    // Kept: not fetched again.
+    const again = await renderSettled(tree(), {}, allowed());
+    expect(hits.get('/emoji/1f600.png')).toBe(before);
+    expect(again.tree.warnings.some((w) => w.includes('😀'))).toBe(false);
+    // Kept, but over this render's limit.
+    const small = { remoteImages: { allow: [`${base}/`], maxBytes: 100 } };
+    const capped = await renderSettled(renderTree(emojiTemplate, {}, small), {}, small);
+    expect(capped.tree.warnings).toContainEqual(
+      expect.stringMatching(/^The image of the emoji 😀 could not be loaded, .*over the 100-byte limit/),
+    );
+  });
+
+  it('fetches an image once for renders that want it at the same time', async () => {
+    Font.registerEmojiSource({ url: `${base}/slow/` });
+    const opts = { ...allowed(), compress: false };
+    const pdfs = await Promise.all([1, 2, 3].map(() => renderToBuffer(<emojiTemplate.Template />, opts)));
+    expect(hits.get('/slow/1f600.png')).toBe(1);
+    for (const pdf of pdfs) expect(pageImages(pdf)[0]).toContain(LOGO);
+  });
+
+  it('takes a builder, and refuses a URL outside remoteImages', async () => {
+    Font.registerEmojiSource({
+      builder: (points) => (points === '1f600' ? logo : `${base}/emoji/${points}.png`),
+    });
+    const pdf = await renderToBuffer(<emojiTemplate.Template />, { ...allowed(), compress: false });
+    expect(pageImages(pdf)).toEqual([[PALETTE, LOGO]]);
+    Font.registerEmojiSource({ url: 'https://elsewhere.example/emoji/' });
+    const e = await renderToBuffer(<emojiTemplate.Template />).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(RenderError);
+    expect((e as RenderError).message).toContain('Font.registerEmojiSource, for 😀');
+    expect(() => Font.registerEmojiSource({} as never)).toThrow('needs { url, format? } or { builder }');
+  });
+});
+
+describe('Image inside Text', () => {
+  it('draws the image in the line, and copies as its alternative text', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page>
+          <Text>
+            Made by <Image src={logo} alt="Inkoxide" style={{ height: '1.5em', verticalAlign: 'middle' }} />{' '}
+            in 2026
+          </Text>
+        </Page>
+      </Document>,
+      { compress: false },
+    );
+    expect(pageImages(pdf)).toEqual([[LOGO]]);
+    expect(Buffer.from(pdf).toString('latin1')).toContain('/ActualText (Inkoxide)');
   });
 });
 

@@ -1,5 +1,5 @@
 import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { FlatStyle } from '@inkoxide/style';
+import type { FlatStyle, FontFeatureSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 /**
@@ -15,6 +15,7 @@ export const HOST = {
   Text: 'ink-text',
   Link: 'ink-link',
   Image: 'ink-image',
+  ImageBackground: 'ink-image-background',
   Table: 'ink-table',
   Row: 'ink-row',
   Cell: 'ink-cell',
@@ -23,6 +24,8 @@ export const HOST = {
   PageBreak: 'ink-page-break',
   Spacer: 'ink-spacer',
   Field: 'ink-field',
+  FieldSet: 'ink-field-set',
+  Note: 'ink-note',
   Canvas: 'ink-canvas',
   Svg: 'ink-svg',
   G: 'ink-svg-g',
@@ -35,6 +38,8 @@ export const HOST = {
   Polygon: 'ink-svg-polygon',
   Defs: 'ink-svg-defs',
   ClipPath: 'ink-svg-clip-path',
+  Marker: 'ink-svg-marker',
+  Tspan: 'ink-svg-tspan',
   LinearGradient: 'ink-svg-linear-gradient',
   RadialGradient: 'ink-svg-radial-gradient',
   Stop: 'ink-svg-stop',
@@ -113,6 +118,10 @@ export interface StyleProp extends Omit<
   | 'transform'
   | 'transformOrigin'
   | 'objectPosition'
+  | 'fontFeatureSettings'
+  | 'fontVariantNumeric'
+  | 'textWrap'
+  | 'verticalAlign'
 > {
   fontFamily?: string | string[];
   /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
@@ -198,16 +207,36 @@ export interface StyleProp extends Omit<
   textDecorationThickness?: Length;
   /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
   textOverflow?: 'ellipsis' | 'clip';
+  /**
+   * OpenType features: a CSS string (`"'tnum' 1, 'smcp'"`), a list of tags to turn on
+   * (`['tnum', 'smcp']`) or tags with a value (`{ tnum: 1, liga: false }`). Inherited, and a
+   * `Text` that sets its own replaces them.
+   */
+  fontFeatureSettings?: FontFeatureSettings;
+  /** CSS `font-variant-numeric` (`'tabular-nums slashed-zero'`): turns on the features it names. */
+  fontVariantNumeric?: string;
+  /**
+   * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
+   * breaks over the whole paragraph for even lines. Inherited. `'balance'` is not supported yet.
+   */
+  textWrap?: FlatStyle['textWrap'] | 'balance';
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;
   /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
   transformOrigin?: [LengthPercent, LengthPercent] | string;
   /**
-   * `Image` only: where a `contain`, `cover` or `none` image sits in its box, as CSS
-   * `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default centred.
+   * `Image` and `ImageBackground` only: where a `contain`, `cover` or `none` image sits in its
+   * box, as CSS `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default
+   * centred.
    */
   objectPosition?: string;
+  /**
+   * A `Cell`'s content (`top`, `middle`, `bottom`), a run of a `Text` on its line (`super`,
+   * `sub`, `baseline`), or an `Image` in a `Text` (also `text-top`, `text-bottom` and a number of
+   * points its bottom sits above the baseline).
+   */
+  verticalAlign?: FlatStyle['verticalAlign'] | 'text-top' | 'text-bottom';
 }
 
 /** One style object, or a list of them merged left to right (falsy entries are skipped). */
@@ -297,6 +326,23 @@ interface Flow extends Common {
   bookmark?: BookmarkProp;
 }
 
+/**
+ * What a reader who opens an encrypted PDF without the owner password may do. Every permission
+ * is off unless set, except `contentAccessibility`, which is on. Readers enforce them.
+ */
+export interface Permissions {
+  printing?: 'lowResolution' | 'highResolution';
+  modifying?: boolean;
+  copying?: boolean;
+  annotating?: boolean;
+  fillingForms?: boolean;
+  contentAccessibility?: boolean;
+  documentAssembly?: boolean;
+}
+
+/** A PDF/A part and conformance level; a bare part (`'PDF/A-2'`) is level b. */
+export type Conformance = 'PDF/A-1' | 'PDF/A-1b' | 'PDF/A-2' | 'PDF/A-2b' | 'PDF/A-3' | 'PDF/A-3b';
+
 export interface DocumentProps {
   title?: string;
   author?: string;
@@ -323,6 +369,23 @@ export interface DocumentProps {
   fallbackFonts?: string[];
   /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */
   debug?: boolean;
+  /**
+   * Write PDF/A, for archiving: `'PDF/A-2b'` (or `'PDF/A-2'`), `'PDF/A-3b'` or `'PDF/A-1b'`.
+   * PDF/A-1b has no transparency: a render fails with `PDFA_CONFLICT` at the first colour with
+   * alpha, `opacity`, image with an alpha channel or `debug` outline. The render option `pdfA`
+   * wins over this prop. Default: plain PDF.
+   */
+  conformance?: Conformance;
+  /**
+   * Encrypts the PDF (AES-256): the password that opens it. Printable ASCII, at most 127 bytes.
+   * Not part of the document tree, and never in the render result. The render option
+   * `encryption` replaces these three props.
+   */
+  userPassword?: string;
+  /** The password that lifts `permissions`. Default: the user password. */
+  ownerPassword?: string;
+  /** What a reader without the owner password may do; needs `ownerPassword`. */
+  permissions?: Permissions;
   children?: ReactNode;
 }
 
@@ -465,6 +528,21 @@ export interface ImageProps extends Omit<Flow, 'children'> {
    */
   src: ImageSrc;
   fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * Inside a `<Text>`: the text the image copies and searches as (its alternative text, at most
+   * 1024 characters).
+   */
+  alt?: string;
+}
+
+export interface ImageBackgroundProps extends Flow {
+  /** The image, in any form `<Image src>` takes. */
+  src: ImageSrc;
+  /**
+   * How the image fills the padding box: `fill` (default) stretches it, `contain` and `cover`
+   * keep its aspect ratio, `none` keeps its size. Wins over `objectFit`.
+   */
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
 }
 
 export interface TableProps extends Flow {
@@ -508,7 +586,10 @@ export interface PageBreakProps {
 }
 
 interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
-  /** Field name, unique in the document (radio buttons of one group share it). No `.`. */
+  /**
+   * Field name, unique in the document (radio buttons of one group share it). A `<FieldSet>`
+   * puts its name in front; dots make groups the same way (`address.street`).
+   */
   name: string;
   readOnly?: boolean;
   required?: boolean;
@@ -520,6 +601,46 @@ export interface TextFieldProps extends FieldCommon {
   /** The value is neither shown nor stored. */
   password?: boolean;
   maxLength?: number;
+  /** How the value shows and is typed: a number, a date, a phone number… */
+  format?: TextFormat;
+}
+
+/**
+ * The format of a single-line `TextField`. `value` must fit it: a number or percent as digits
+ * (`'-1234.5'`, `'0.125'` for 12.50 %), a date as `'2026-10-14'` (a time may follow,
+ * `T18:30`), a time as `'18:30'` or a date with a time, and a zip code, phone or social security
+ * number as its digits.
+ *
+ * The second key of each pair is its other name. A number or percent format with any of
+ * `nDec`, `sepComma`, `negStyle`, `currencyPrepend` and `param` defaults to no decimals and no
+ * thousands separator (`nDec: 0`, `sepComma: false`); one without them, to 2 decimals and
+ * `'1,234.56'`.
+ */
+export interface TextFormat {
+  /** What the value is; `'zip4'` is another name for `'zipPlus4'`. */
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'zip4' | 'phone' | 'ssn';
+  /** Number and percent: digits after the decimal separator; default 2. */
+  decimals?: number;
+  nDec?: number;
+  /** Number and percent: the separators, by example; default `'1,234.56'`. */
+  separators?: '1,234.56' | '1234.56' | '1.234,56' | '1234,56';
+  /** `true` is `'1,234.56'`, `false` `'1234.56'`. */
+  sepComma?: boolean;
+  /** Number: how negative numbers show; default `'minus'`. */
+  negative?: 'minus' | 'red' | 'parens' | 'parensRed';
+  negStyle?: 'MinusBlack' | 'Red' | 'ParensBlack' | 'ParensRed';
+  /** Number: a currency symbol, as it shows (`'$'`, `' €'`). */
+  currency?: string;
+  /** Number: the currency goes before the number; default `true`. */
+  currencyBefore?: boolean;
+  currencyPrepend?: boolean;
+  /** Date and time: how the value shows, as `'dd/mm/yyyy'` or `'HH:MM'`. */
+  pattern?: string;
+  /**
+   * Date: the pattern. Time: one of four styles, `0` `'HH:MM'`, `1` `'h:MM tt'`, `2`
+   * `'HH:MM:ss'` and `3` `'h:MM:ss tt'`.
+   */
+  param?: string | number;
 }
 
 export interface CheckboxProps extends FieldCommon {
@@ -532,9 +653,43 @@ export interface RadioProps extends FieldCommon {
   checked?: boolean;
 }
 
-export interface SelectProps extends FieldCommon {
-  options: string[];
-  value?: string;
+/** The choices of a `Select` or a `List`: `options`, or its other name `select`. */
+type Choices = { options: string[]; select?: never } | { select: string[]; options?: never };
+
+export type SelectProps = FieldCommon &
+  Choices & {
+    /** The selected option. */
+    value?: string;
+  };
+
+export type ListProps = FieldCommon &
+  Choices &
+  (
+    | {
+        multiSelect?: false;
+        /** The selected option. */
+        value?: string;
+      }
+    | {
+        /** Several options can be selected at once. */
+        multiSelect: true;
+        /** The selected options, or one. */
+        value?: string | string[];
+      }
+  );
+
+export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
+  /** Who wrote the note; viewers show it as its title. */
+  author?: string;
+  /** Shows the note's text when the document opens. */
+  open?: boolean;
+  /** The note's text: strings and numbers only. */
+  children?: ReactNode;
+}
+
+export interface FieldSetProps extends ViewProps {
+  /** The group's name, put in front of the name of every field inside it: `address.street`. */
+  name: string;
 }
 
 /** Any field; `kind` picks the type. The font, size and colour come from the text utilities. */
@@ -542,7 +697,8 @@ export type FieldProps =
   | ({ kind: 'text' } & TextFieldProps)
   | ({ kind: 'checkbox' } & CheckboxProps)
   | ({ kind: 'radio' } & RadioProps)
-  | ({ kind: 'select' } & SelectProps);
+  | ({ kind: 'select' } & SelectProps)
+  | ({ kind: 'list' } & ListProps);
 
 type SvgPaint = string;
 /** SVG presentation attributes, camelCase (`strokeWidth`), as in React DOM. */
@@ -562,8 +718,63 @@ export interface SvgPresentation {
   transform?: string;
   clipPath?: string;
   clipRule?: 'nonzero' | 'evenodd';
+  /** A `<Marker>` drawn at the first vertex of a path, line or poly shape: `url(#id)`. */
+  markerStart?: string;
+  /** A `<Marker>` drawn at every vertex between the first and the last: `url(#id)`. */
+  markerMid?: string;
+  /** A `<Marker>` drawn at the last vertex: `url(#id)`. */
+  markerEnd?: string;
+  visibility?: 'visible' | 'hidden' | 'collapse';
+  /** Text inside: the font, as in CSS. A family list (`"Inter, sans-serif"`) is a stack. */
+  fontFamily?: string;
+  fontSize?: number | string;
+  fontWeight?: number | FontWeightName;
+  fontStyle?: 'normal' | 'italic';
+  /** Text inside: where its position is on the text (`start`, `middle`, `end`). */
+  textAnchor?: 'start' | 'middle' | 'end';
+  /** Text inside: which line of the text sits at its `y`. */
+  dominantBaseline?:
+    | 'auto'
+    | 'alphabetic'
+    | 'middle'
+    | 'central'
+    | 'hanging'
+    | 'mathematical'
+    | 'ideographic'
+    | 'text-before-edge'
+    | 'text-after-edge';
   id?: string;
   children?: ReactNode;
+}
+
+/** Numbers for each character in turn: a number, a list, or SVG list syntax. */
+type SvgNumberList = number | string | readonly number[];
+
+/** A `Text` inside an `<Svg>`: SVG text, positioned in the drawing's coordinates. */
+export interface SvgTextProps extends SvgPresentation {
+  /** Where the text starts (with `textAnchor`); a list positions each character. */
+  x?: SvgNumberList;
+  y?: SvgNumberList;
+  /** Shifts from where each character would be. */
+  dx?: SvgNumberList;
+  dy?: SvgNumberList;
+  /** Degrees each character is turned; the last value repeats. */
+  rotate?: SvgNumberList;
+  letterSpacing?: number | string;
+  wordSpacing?: number | string;
+  /** `underline`, `overline`, `line-through`, or several. */
+  textDecoration?: string;
+  /** The width to fit the text to, by its spacing or (`lengthAdjust`) its glyphs too. */
+  textLength?: number | string;
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs';
+  direction?: 'ltr' | 'rtl';
+}
+
+/** A span of SVG text: a `Tspan` inside a `Text` in an `<Svg>`. */
+export interface TspanProps extends SvgTextProps {
+  /** Raises (positive, `super`) or lowers (`sub`) the span from the baseline. */
+  baselineShift?: number | string;
+  alignmentBaseline?: SvgPresentation['dominantBaseline'];
 }
 
 export interface SvgProps extends SvgPresentation {
@@ -625,6 +836,25 @@ export interface ClipPathProps {
   clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
   children?: ReactNode;
 }
+export interface MarkerProps extends SvgPresentation {
+  /** Referenced as `markerStart="url(#id)"` (or `markerMid`, `markerEnd`). */
+  id: string;
+  viewBox?: string;
+  preserveAspectRatio?: string;
+  /** The point of the marker's contents placed on the vertex, in `viewBox` units. */
+  refX?: number | string;
+  refY?: number | string;
+  /** The size of the marker's viewport; 3 × 3 by default. */
+  markerWidth?: number | string;
+  markerHeight?: number | string;
+  /**
+   * Turns the marker with the path's direction at the vertex (`'auto'`), the same but reversed at
+   * the start (`'auto-start-reverse'`, for arrows at both ends), or by a fixed angle in degrees.
+   */
+  orient?: 'auto' | 'auto-start-reverse' | number | string;
+  /** `strokeWidth` (default) scales the marker by the shape's stroke width; `userSpaceOnUse` does not. */
+  markerUnits?: 'strokeWidth' | 'userSpaceOnUse';
+}
 export interface GradientProps {
   id: string;
   x1?: number | string;
@@ -636,6 +866,8 @@ export interface GradientProps {
   r?: number | string;
   fx?: number | string;
   fy?: number | string;
+  /** Radius of the focal circle of a radial gradient. */
+  fr?: number | string;
   gradientUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
   gradientTransform?: string;
   children?: ReactNode;
@@ -661,13 +893,20 @@ export const Page = host<PageProps>(HOST.Page);
 export const Header = host<HeaderProps>(HOST.Header);
 export const Footer = host<FooterProps>(HOST.Footer);
 export const View = host<ViewProps>(HOST.View);
-export const Text = host<TextProps>(HOST.Text);
+/** A paragraph, or a run inside one; inside an `<Svg>`, SVG text (`SvgTextProps`). */
+export const Text = host<TextProps | SvgTextProps>(HOST.Text);
 /**
  * A link to `href` (`https://…`, `mailto:…` or `#id`; `src` is the same). Inside a `Text` it is
  * an inline run; elsewhere a box, like a `View` with `href`. It adds no colour or underline.
  */
 export const Link = host<LinkProps>(HOST.Link);
 export const Image = host<ImageProps>(HOST.Image);
+/**
+ * A `View` with an image behind its children: the image fills the padding box (inside the
+ * borders), placed by `fit` and `objectPosition`, over the background colour and under the
+ * borders, clipped to the box and its `borderRadius`.
+ */
+export const ImageBackground = host<ImageBackgroundProps>(HOST.ImageBackground);
 export const Table = host<TableProps>(HOST.Table);
 export const Row = host<RowProps>(HOST.Row);
 export const Cell = host<CellProps>(HOST.Cell);
@@ -684,6 +923,18 @@ export const PageBreak = host<PageBreakProps>(HOST.PageBreak);
 export const Spacer = host<SpacerProps>(HOST.Spacer);
 /** An interactive form field (AcroForm). */
 export const Field = host<FieldProps>(HOST.Field);
+/**
+ * A group of form fields: a `View` whose `name` goes in front of the name of every field inside
+ * it, at any depth (`<FieldSet name="address"><TextField name="street" /></FieldSet>` is the
+ * field `address.street`). Sets nest: `a.b.c`.
+ */
+export const FieldSet = host<FieldSetProps>(HOST.FieldSet);
+/**
+ * A text note: a sticky-note icon that viewers open to show its text (the children, which are
+ * strings). It takes no space; the icon sits at the top-left corner of its box. Its colour is its
+ * `backgroundColor` (default yellow).
+ */
+export const Note = host<NoteProps>(HOST.Note);
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
 export const Svg = host<SvgProps>(HOST.Svg);
 export const G = host<SvgPresentation>(HOST.G);
@@ -696,6 +947,13 @@ export const Polyline = host<PolyProps>(HOST.Polyline);
 export const Polygon = host<PolyProps>(HOST.Polygon);
 export const Defs = host<DefsProps>(HOST.Defs);
 export const ClipPath = host<ClipPathProps>(HOST.ClipPath);
+/**
+ * A shape drawn at the vertices of the paths, lines and poly shapes that reference it through
+ * `markerStart`, `markerMid` or `markerEnd`. Defined once, in `Defs`.
+ */
+export const Marker = host<MarkerProps>(HOST.Marker);
+/** A span of SVG text, inside a `Text` in an `<Svg>`: its own position, font or paint. */
+export const Tspan = host<TspanProps>(HOST.Tspan);
 export const LinearGradient = host<GradientProps>(HOST.LinearGradient);
 export const RadialGradient = host<GradientProps>(HOST.RadialGradient);
 export const Stop = host<StopProps>(HOST.Stop);
@@ -709,9 +967,13 @@ function field<P extends object>(kind: FieldProps['kind'], displayName: string):
 }
 /** A text field. */
 export const TextField: FC<TextFieldProps> = field('text', 'TextField');
+/** The same as `TextField`. */
+export const TextInput: FC<TextFieldProps> = field('text', 'TextInput');
 /** A checkbox. */
 export const Checkbox: FC<CheckboxProps> = field('checkbox', 'Checkbox');
 /** One button of a radio group (buttons share `name`). */
 export const Radio: FC<RadioProps> = field('radio', 'Radio');
 /** A drop-down list. */
 export const Select: FC<SelectProps> = field('select', 'Select');
+/** A list box: several options in view (four without a height), one or several selected. */
+export const List: FC<ListProps> = field('list', 'List');

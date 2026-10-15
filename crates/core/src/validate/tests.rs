@@ -446,7 +446,23 @@ fn rejects_corrupt_and_unknown_images() {
             ("INVALID_IMAGE", "pages[0].children[3].data"),
         ]
     );
-    assert!(e[3].message.contains("<text>"), "{}", e[3].message);
+    // SVG text needs a font to be drawn with.
+    assert!(
+        e[3].message.contains("declares no fonts"),
+        "{}",
+        e[3].message
+    );
+    let with_font = doc.replace(
+        r#""fonts":[]"#,
+        r#""fonts":[{"id":"Inter-Regular","family":"Inter"}]"#,
+    );
+    let e = validate(
+        with_font.as_bytes(),
+        InputFormat::Json,
+        &crate::test_fixtures::inter(),
+        &ImageStore::new(),
+    );
+    assert_eq!(e.len(), 3, "{e:?}");
 }
 
 #[test]
@@ -945,7 +961,7 @@ fn form_fields() {
     let f = "pages[0].children[0].field";
     let cases = [
         (
-            r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}}"#,
+            r#"{"type":"field","field":{"name":"a..b","kind":"checkbox"}}"#,
             C::InvalidValue,
             "name",
         ),
@@ -983,6 +999,251 @@ fn form_fields() {
     for (node, code, field) in cases {
         assert_eq!(one(&doc(node)), (code, format!("{f}.{field}")), "{node}");
     }
+    // List boxes: one value, or several with `multiSelect`.
+    let list = |extra: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"l","kind":"list","font":"Inter-Regular","options":["x","y","z"]{extra}}}}}"#
+        ))
+    };
+    for ok in [
+        "",
+        r#","value":"y""#,
+        r#","multiSelect":true"#,
+        r#","multiSelect":true,"value":"y""#,
+        r#","multiSelect":true,"value":["z","x"]"#,
+        r#","multiSelect":true,"value":[]"#,
+    ] {
+        assert_eq!(run(&list(ok)), vec![], "{ok}");
+    }
+    for (extra, code, path) in [
+        (r#","value":"w""#, C::InvalidValue, "value"),
+        (r#","value":["x"]"#, C::InvalidValue, "value"),
+        (
+            r#","multiSelect":true,"value":["x","w"]"#,
+            C::InvalidValue,
+            "value[1]",
+        ),
+        (
+            r#","multiSelect":true,"value":["x","x"]"#,
+            C::InvalidValue,
+            "value[1]",
+        ),
+        (
+            r#","multiSelect":true,"multiline":true"#,
+            C::InvalidValue,
+            "multiline",
+        ),
+    ] {
+        assert_eq!(one(&list(extra)), (code, format!("{f}.{path}")), "{extra}");
+    }
+    for (node, code, path) in [
+        (
+            r#"{"type":"field","field":{"name":"l","kind":"list","font":"Inter-Regular"}}"#,
+            C::MissingField,
+            "options",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"l","kind":"list","options":["x"]}}"#,
+            C::MissingField,
+            "font",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x"],"multiSelect":true}}"#,
+            C::InvalidValue,
+            "multiSelect",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["x"],"value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"t","kind":"text","font":"Inter-Regular","value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"r","kind":"radio","value":["x"]}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"t","kind":"text","font":"Inter-Regular","value":[1]}}"#,
+            C::InvalidType,
+            "value[0]",
+        ),
+    ] {
+        assert_eq!(one(&doc(node)), (code, format!("{f}.{path}")), "{node}");
+    }
+    // Formats: on single-line text fields, with the keys of their type,
+    // and a value that fits.
+    let text = |format: &str, value: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","format":{format}{value}}}}}"#
+        ))
+    };
+    for (format, value) in [
+        (
+            r#"{"type":"number","decimals":0,"separators":"1.234,56","negative":"parensRed","currency":"€","currencyBefore":false}"#,
+            r#","value":"-1234.5""#,
+        ),
+        (r#"{"type":"percent","decimals":1}"#, r#","value":"0.125""#),
+        (
+            r#"{"type":"date","pattern":"dd/mm/yyyy"}"#,
+            r#","value":"2026-10-14""#,
+        ),
+        (
+            r#"{"type":"time","pattern":"hh:MM tt"}"#,
+            r#","value":"18:30""#,
+        ),
+        (r#"{"type":"zip"}"#, r#","value":"02134""#),
+        (r#"{"type":"ssn"}"#, ""),
+        // A time value is a time of day, or a date with a time.
+        (
+            r#"{"type":"time","pattern":"HH:MM:ss"}"#,
+            r#","value":"2026-10-14T18:30:05""#,
+        ),
+    ] {
+        assert_eq!(run(&text(format, value)), vec![], "{format}");
+    }
+    // A pattern is at most 64 characters.
+    let pattern = |n: usize| format!(r#"{{"type":"date","pattern":"{}"}}"#, "d/".repeat(n / 2));
+    assert_eq!(run(&text(&pattern(64), "")), vec![]);
+    assert_eq!(
+        one(&text(&pattern(66), "")),
+        (C::InvalidValue, format!("{f}.format.pattern"))
+    );
+    // A date value has no time of its own.
+    assert_eq!(
+        one(&text(
+            r#"{"type":"date","pattern":"dd"}"#,
+            r#","value":"18:30""#
+        )),
+        (C::InvalidValue, format!("{f}.value"))
+    );
+    for (format, value, code, path) in [
+        (
+            r#"{"type":"number"}"#,
+            r#","value":"1,000""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"date","pattern":"dd"}"#,
+            r#","value":"2026-02-30""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"zip"}"#,
+            r#","value":"1234""#,
+            C::InvalidValue,
+            "value",
+        ),
+        (r#"{"type":"date"}"#, "", C::MissingField, "format.pattern"),
+        (
+            r#"{"type":"date","pattern":"dd\");app.alert(1);//"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"time","pattern":"dd HH"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"number","currency":"\""}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"number","currency":"\n"}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"number","pattern":"dd"}"#,
+            "",
+            C::InvalidValue,
+            "format.pattern",
+        ),
+        (
+            r#"{"type":"percent","currency":"$"}"#,
+            "",
+            C::InvalidValue,
+            "format.currency",
+        ),
+        (
+            r#"{"type":"zip","decimals":2}"#,
+            "",
+            C::InvalidValue,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"number","decimals":11}"#,
+            "",
+            C::OutOfRange,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"number","decimals":-1}"#,
+            "",
+            C::OutOfRange,
+            "format.decimals",
+        ),
+        (
+            r#"{"type":"phone"}"#,
+            r#","multiline":true"#,
+            C::InvalidValue,
+            "format",
+        ),
+        (
+            r#"{"type":"phone"}"#,
+            r#","password":true"#,
+            C::InvalidValue,
+            "format",
+        ),
+        (r#"{"type":"money"}"#, "", C::InvalidValue, "format.type"),
+    ] {
+        assert_eq!(
+            one(&text(format, value)),
+            (code, format!("{f}.{path}")),
+            "{format}"
+        );
+    }
+    assert_eq!(
+        one(&doc(
+            r#"{"type":"field","field":{"name":"s","kind":"select","font":"Inter-Regular","options":["1"],"format":{"type":"zip"}}}"#
+        )),
+        (C::InvalidValue, format!("{f}.format"))
+    );
+    // Options and values are bounded.
+    let select = |options: &[String]| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"s","kind":"select","font":"Inter-Regular","options":{}}}}}"#,
+            serde_json::to_string(options).unwrap()
+        ))
+    };
+    assert_eq!(
+        one(&select(&vec!["o".into(); 1001])),
+        (C::InvalidValue, format!("{f}.options"))
+    );
+    assert_eq!(
+        one(&select(&["o".into(), "x".repeat(1001)])),
+        (C::InvalidValue, format!("{f}.options[1]"))
+    );
+    let text = |n: usize| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"t","kind":"text","font":"Inter-Regular","value":"{}"}}}}"#,
+            "é".repeat(n)
+        ))
+    };
+    assert_eq!(run(&text(8000)), vec![]);
+    assert_eq!(one(&text(8001)), (C::InvalidValue, format!("{f}.value")));
     let dup = doc(
         r#"{"type":"field","field":{"name":"a","kind":"checkbox"}},{"type":"field","field":{"name":"a","kind":"checkbox"}}"#,
     );
@@ -993,6 +1254,34 @@ fn form_fields() {
             "pages[0].children[1].field.name".to_string()
         )
     );
+    // Dots make groups; a name is either a field or a group.
+    let ok = doc(
+        r#"{"type":"field","field":{"name":"a.b","kind":"checkbox"}},
+           {"type":"field","field":{"name":"a.c.d","kind":"checkbox"}},
+           {"type":"field","field":{"name":"a.r","kind":"radio","value":"1"}},
+           {"type":"field","field":{"name":"a.r","kind":"radio","value":"2"}},
+           {"type":"field","field":{"name":"b","kind":"checkbox"}}"#,
+    );
+    assert_eq!(run(&ok), vec![]);
+    for pair in [
+        r#""a","a.b""#,
+        r#""a.b","a""#,
+        r#""a.b","a.b.c""#,
+        r#""a.b.c","a.b""#,
+    ] {
+        let (first, second) = pair.split_once(',').unwrap();
+        let dup = doc(&format!(
+            r#"{{"type":"field","field":{{"name":{first},"kind":"checkbox"}}}},{{"type":"field","field":{{"name":{second},"kind":"checkbox"}}}}"#
+        ));
+        assert_eq!(
+            one(&dup),
+            (
+                C::DuplicateId,
+                "pages[0].children[1].field.name".to_string()
+            ),
+            "{pair}"
+        );
+    }
     let (code, path) = one(&doc(
         r#"{"type":"field","link":"https://x.ro","field":{"name":"a","kind":"checkbox"}}"#,
     ));
@@ -1000,6 +1289,105 @@ fn form_fields() {
         (code, path.as_str()),
         (C::UnknownField, "pages[0].children[0].link")
     );
+}
+
+#[test]
+fn notes() {
+    let ok = doc(r#"{"type":"note","note":{"contents":"x"}},
+           {"type":"note","id":"n","style":{"position":"absolute"},"pages":"first","debug":true,
+            "note":{"contents":"y","author":"Ana","color":[0,0.5,1,1],"open":true}},
+           {"type":"table","columns":[{"width":"auto"}],"headerRows":0,"rows":[
+              {"cells":[{"children":[{"type":"note","note":{"contents":"z"}}]}]}]}"#);
+    assert_eq!(run(&ok), vec![]);
+    let n = "pages[0].children[0]";
+    for (node, code, path) in [
+        (
+            r#"{"type":"note","note":{"contents":""}}"#,
+            C::InvalidValue,
+            "note.contents",
+        ),
+        (
+            r#"{"type":"note","note":{"contents":"x","color":[2,0,0,1]}}"#,
+            C::OutOfRange,
+            "note.color",
+        ),
+        (
+            r#"{"type":"note","note":{}}"#,
+            C::MissingField,
+            "note.contents",
+        ),
+        (r#"{"type":"note"}"#, C::MissingField, ""),
+        (
+            r#"{"type":"note","link":"https://x.ro","note":{"contents":"x"}}"#,
+            C::UnknownField,
+            "link",
+        ),
+        (
+            r#"{"type":"note","note":{"contents":"x","icon":"Key"}}"#,
+            C::UnknownField,
+            "note.icon",
+        ),
+    ] {
+        let want = if path.is_empty() {
+            n.to_string()
+        } else {
+            format!("{n}.{path}")
+        };
+        assert_eq!(one(&doc(node)), (code, want), "{node}");
+    }
+}
+
+#[test]
+fn note_runs_are_checked() {
+    let with_run = |r: &str| {
+        doc(&format!(
+            r#"{{"type":"text","runs":[{{"text":"a","font":"Inter-Regular","size":10}},{{"font":"Inter-Regular","size":10{r}}}]}}"#
+        ))
+    };
+    let p = "pages[0].children[0].runs[1]";
+    for ok in [
+        r#","note":{"contents":"x"}"#,
+        r#","note":{"contents":"x","author":"Ana","color":[0,0,1,1],"open":true},"link":"https://x.ro""#,
+        r#","note":{"contents":"x"},"verticalAlign":"super""#,
+    ] {
+        assert_eq!(run(&with_run(ok)), vec![], "{ok}");
+    }
+    for (bad, code, path) in [
+        (
+            r#","text":"x","note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","placeholder":"pageNumber","note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","image":{"src":"logo"},"note":{"contents":"x"}"#,
+            C::InvalidValue,
+            "note",
+        ),
+        (
+            r#","note":{"contents":""}"#,
+            C::InvalidValue,
+            "note.contents",
+        ),
+        (r#","note":{}"#, C::MissingField, "note.contents"),
+        (
+            r#","note":{"contents":"x","icon":"Key"}"#,
+            C::UnknownField,
+            "note.icon",
+        ),
+        (
+            r#","note":{"contents":"x"},"verticalAlign":"middle""#,
+            C::InvalidValue,
+            "verticalAlign",
+        ),
+    ] {
+        let (c, got) = one(&with_run(bad));
+        assert_eq!((c, got), (code, format!("{p}.{path}")), "{bad}");
+    }
 }
 
 #[test]
@@ -1245,5 +1633,640 @@ fn out_of_range_messages_state_the_range() {
                 "flexible sizes must be within [0fr, 1000000fr]"
             ),
         ]
+    );
+}
+
+/// The images `logo` (alpha), `photo` (opaque) and `veil` (an SVG drawn
+/// at half opacity).
+fn images_1b() -> ImageStore {
+    let mut images = ImageStore::new();
+    images.insert("logo", fixture("images/logo.png"));
+    images.insert("photo", fixture("images/photo.jpg"));
+    images.insert(
+        "veil",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" opacity="0.5"/></svg>"#[..],
+    );
+    // Text is painted like a shape: its fill opacity is transparency.
+    images.insert(
+        "faint",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text y="8">a<tspan fill-opacity="0.5">b</tspan></text></svg>"#[..],
+    );
+    images.insert(
+        "opaque-text",
+        &br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text y="8" fill="red">ab</text></svg>"#[..],
+    );
+    images
+}
+
+/// Renders `doc` as PDF/A-1b with [`images_1b`].
+fn render_1b(doc: &str) -> Result<Vec<u8>, crate::InkoxideError> {
+    let images = images_1b();
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    crate::render(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &options,
+        &fonts(),
+        &images,
+    )
+}
+
+#[test]
+fn pdf_a_1b_rejects_transparency_at_its_path() {
+    let text = |run: &str| {
+        format!(
+            r#"{{"type":"text","runs":[{{"text":"x","font":"Inter-Regular","size":10{run}}}]}}"#
+        )
+    };
+    let cases = [
+        (text(r#","color":[0,0,0,0.5]"#), "children[0].runs[0].color", "a colour with alpha"),
+        (text(r#","color":[0,0,0,0]"#), "children[0].runs[0].color", "a colour with alpha"),
+        (
+            text(r#","decoration":"underline","decorationColor":[1,0,0,0.9]"#),
+            "children[0].runs[0].decorationColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"borderWidth":{"top":1},"borderColor":{"top":[0,0,0,0.5]}}}"#.into(),
+            "children[0].style.borderColor.top",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"backgroundColor":[0,0,0,0.5]}}"#.into(),
+            "children[0].style.backgroundColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"backgroundColor":[0,0,0,0.5],"cells":[{}]}]}"#.into(),
+            "children[0].rows[0].backgroundColor",
+            "a colour with alpha",
+        ),
+        (
+            r#"{"type":"box","style":{"opacity":0.5}}"#.into(),
+            "children[0].style.opacity",
+            "an `opacity`",
+        ),
+        (r#"{"type":"box","debug":true}"#.into(), "children[0].debug", "`debug`"),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"debug":true}]}]}"#.into(),
+            "children[0].rows[0].cells[0].debug",
+            "`debug`",
+        ),
+        (
+            r#"{"type":"image","src":"logo"}"#.into(),
+            "children[0].src",
+            "image `logo` (an alpha channel)",
+        ),
+        (
+            r#"{"type":"image","src":"veil"}"#.into(),
+            "children[0].src",
+            "image `veil` (group opacity)",
+        ),
+        (
+            r#"{"type":"image","src":"faint"}"#.into(),
+            "children[0].src",
+            "image `faint` (fill or stroke opacity)",
+        ),
+        (
+            r#"{"type":"box","backgroundImage":{"src":"logo"},"style":{"width":10,"height":10}}"#
+                .into(),
+            "children[0].backgroundImage.src",
+            "image `logo` (an alpha channel)",
+        ),
+        (
+            r#"{"type":"text","runs":[{"font":"Inter-Regular","size":10,"image":{"src":"logo"}}]}"#
+                .into(),
+            "children[0].runs[0].image.src",
+            "image `logo` (an alpha channel)",
+        ),
+        // The first use is reported.
+        (
+            format!(r#"{{"type":"box","children":[{},{{"type":"box","style":{{"opacity":0.5}}}}]}}"#, text(r#","color":[0,0,0,0.5]"#)),
+            "children[0].children[0].runs[0].color",
+            "a colour with alpha",
+        ),
+    ];
+    for (child, path, what) in cases {
+        // Validation does not know the level.
+        let d = doc(&child);
+        let errors = validate(d.as_bytes(), InputFormat::Json, &fonts(), &images_1b());
+        assert_eq!(errors, [], "{child}");
+        let e = match render_1b(&doc(&child)) {
+            Err(crate::InkoxideError::Validation(e)) => e,
+            other => panic!("{child}: {:?}", other.map(|_| ())),
+        };
+        assert_eq!(e.code, C::PdfaConflict, "{child}");
+        assert_eq!(e.path, format!("pages[0].{path}"), "{child}");
+        assert!(
+            e.message
+                .starts_with("PDF/A-1b does not allow transparency"),
+            "{}",
+            e.message
+        );
+        assert!(e.message.contains(what), "{}", e.message);
+    }
+    let e = render_1b(r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"debug":true}]}"#)
+        .unwrap_err();
+    assert_eq!(
+        (e.code(), e.to_string().contains("pages[0].debug")),
+        ("PDFA_CONFLICT", true)
+    );
+
+    // What draws nothing, or ignores alpha, is opaque.
+    for child in [
+        r#"{"type":"box","style":{"backgroundColor":[0,0,0,0]}}"#,
+        r#"{"type":"box","style":{"opacity":0},"children":[{"type":"image","src":"photo"}]}"#,
+        r#"{"type":"image","src":"photo"}"#,
+        r#"{"type":"image","src":"opaque-text"}"#,
+        r#"{"type":"box","backgroundImage":{"src":"photo"},"style":{"width":10,"height":10}}"#,
+        r#"{"type":"field","field":{"name":"a","kind":"checkbox","color":[0,0,0,0.5]}}"#,
+        r#"{"type":"text","runs":[{"font":"Inter-Regular","size":10,"image":{"src":"photo"}}]}"#,
+    ] {
+        render_1b(&doc(child)).unwrap_or_else(|e| panic!("{child}: {e}"));
+    }
+    // An emoji image with alpha: at its key.
+    let emoji = |id: &str| {
+        format!(
+            r#"{{"version":1,"emojiImages":{{"😀":"{id}"}},"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    let e = render_1b(&emoji("logo")).unwrap_err();
+    assert_eq!(
+        (e.code(), e.to_string().contains("emojiImages.😀")),
+        ("PDFA_CONFLICT", true),
+        "{e}"
+    );
+    render_1b(&emoji("photo")).unwrap();
+    render_1b(
+        r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"background":[1,0,0,0.5]}]}"#,
+    )
+    .unwrap();
+    // Another problem wins over transparency.
+    let e = render_1b(&doc(r#"{"type":"box","debug":true,"style":{"width":-1}}"#)).unwrap_err();
+    assert_eq!(e.code(), "OUT_OF_RANGE");
+}
+
+#[test]
+fn background_images_are_checked_like_images() {
+    let bg = |b: &str| doc(&format!(r#"{{"type":"box","backgroundImage":{b}}}"#));
+    // A 4 × 4 SVG.
+    let data = "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0JyBoZWlnaHQ9JzQnPjxyZWN0IHdpZHRoPSc0JyBoZWlnaHQ9JzQnIGZpbGw9J3JlZCcvPjwvc3ZnPg==";
+    for ok in [
+        r#"{"src":"logo"}"#.to_string(),
+        r#"{"src":"logo","fit":"cover","objectPosition":{"x":"left","y":"25%"}}"#.to_string(),
+        format!(r#"{{"data":"{data}","fit":"contain"}}"#),
+    ] {
+        assert_eq!(run(&bg(&ok)), vec![], "{ok}");
+    }
+    let p = "pages[0].children[0].backgroundImage";
+    for (bad, code, path) in [
+        (r#"{"src":"nope"}"#, C::UnknownImage, format!("{p}.src")),
+        (r#"{"data":"%%%"}"#, C::InvalidImage, format!("{p}.data")),
+        (r#"{"data":"AAAA"}"#, C::InvalidImage, format!("{p}.data")),
+        (
+            r#"{"src":"logo","data":"AAAA"}"#,
+            C::InvalidValue,
+            format!("{p}.data"),
+        ),
+        (r"{}", C::MissingField, p.to_string()),
+        (
+            r#"{"src":"logo","fit":"tile"}"#,
+            C::InvalidValue,
+            format!("{p}.fit"),
+        ),
+        (
+            r#"{"src":"logo","repeat":true}"#,
+            C::UnknownField,
+            format!("{p}.repeat"),
+        ),
+        (
+            r#"{"src":"logo","objectPosition":{"x":20000}}"#,
+            C::OutOfRange,
+            format!("{p}.objectPosition.x"),
+        ),
+        (
+            r#"{"src":"logo","objectPosition":{"y":"-10001%"}}"#,
+            C::OutOfRange,
+            format!("{p}.objectPosition.y"),
+        ),
+    ] {
+        let (c, got) = one(&bg(bad));
+        assert_eq!((c, got.as_str()), (code, path.as_str()), "{bad}");
+    }
+    // Boxes only.
+    for node in [
+        r#"{"type":"text","runs":[],"backgroundImage":{"src":"logo"}}"#,
+        r#"{"type":"image","src":"logo","backgroundImage":{"src":"logo"}}"#,
+        r#"{"type":"spacer","backgroundImage":{"src":"logo"}}"#,
+    ] {
+        let (c, got) = one(&doc(node));
+        assert_eq!(
+            (c, got.as_str()),
+            (C::UnknownField, "pages[0].children[0].backgroundImage"),
+            "{node}"
+        );
+    }
+}
+
+#[test]
+fn form_fields_need_a_font_with_outlines() {
+    let mut fonts = fonts();
+    fonts
+        .register("Emoji", fixture("fonts/EmojiTest-CBDT.ttf"))
+        .unwrap();
+    let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},{"id":"Emoji","family":"Emoji"}],
+        "pages":[{"size":{"width":100,"height":100},"children":[
+          {"type":"text","runs":[{"text":"😀","font":"Emoji","size":10}]},
+          {"type":"field","field":{"name":"a","kind":"text","font":"Emoji"}}]}]}"#;
+    let errs = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &fonts,
+        &ImageStore::new(),
+    );
+    let found: Vec<_> = errs.iter().map(|e| (e.code, e.path.as_str())).collect();
+    assert_eq!(
+        found,
+        [(C::InvalidValue, "pages[0].children[1].field.font")]
+    );
+}
+
+/// A text node whose one run has the extra properties `extra`.
+fn text_run(extra: &str) -> String {
+    doc(&format!(
+        r#"{{"type":"text","runs":[{{"text":"x","font":"Inter-Regular","size":10{extra}}}]}}"#
+    ))
+}
+
+#[test]
+fn vertical_align_of_a_run_is_baseline_super_or_sub() {
+    for v in ["baseline", "super", "sub"] {
+        assert_eq!(
+            run(&text_run(&format!(r#","verticalAlign":"{v}""#))),
+            vec![]
+        );
+    }
+    // The cell values are not run values.
+    for v in ["middle", "top", "Super"] {
+        assert_eq!(
+            one(&text_run(&format!(r#","verticalAlign":"{v}""#))),
+            (
+                C::InvalidValue,
+                "pages[0].children[0].runs[0].verticalAlign".into()
+            ),
+            "{v}"
+        );
+    }
+}
+
+#[test]
+fn font_features_are_tags_with_values() {
+    let path = "pages[0].children[0].runs[0].fontFeatures";
+    let ok = text_run(r#","fontFeatures":{"tnum":1,"liga":0,"salt":3,"ss01":1,"cv 1":65535}"#);
+    assert_eq!(run(&ok), vec![]);
+    assert_eq!(run(&text_run(r#","fontFeatures":{}"#)), vec![]);
+    for (features, code) in [
+        (r#"{"tnu":1}"#, C::InvalidValue),
+        (r#"{"tnums":1}"#, C::InvalidValue),
+        (r#"{"tné":1}"#, C::InvalidValue),
+        (r#"{"tn\u0000m":1}"#, C::InvalidValue),
+        (r#"{"tnum":65536}"#, C::OutOfRange),
+        (r#"{"tnum":1,"tnum":0}"#, C::InvalidValue),
+    ] {
+        assert_eq!(
+            one(&text_run(&format!(r#","fontFeatures":{features}"#))),
+            (code, path.into()),
+            "{features}"
+        );
+    }
+    for features in [r#"{"tnum":-1}"#, r#"{"tnum":5000000000}"#] {
+        let (code, p) = one(&text_run(&format!(r#","fontFeatures":{features}"#)));
+        assert_eq!(code, C::OutOfRange, "{features}");
+        assert!(p.starts_with(path), "{p}");
+    }
+    for features in [
+        r#"{"tnum":true}"#,
+        r#"{"tnum":1.5}"#,
+        r#"["tnum"]"#,
+        r#""tnum""#,
+    ] {
+        let (code, p) = one(&text_run(&format!(r#","fontFeatures":{features}"#)));
+        assert!(
+            matches!(code, C::InvalidType | C::InvalidValue),
+            "{features}: {code:?}"
+        );
+        assert!(p.starts_with(path), "{p}");
+    }
+}
+
+#[test]
+fn a_document_uses_a_bounded_number_of_feature_sets() {
+    use crate::validate::rules::MAX_FEATURE_SETS;
+    let runs = |n: usize| {
+        (0..n)
+            .map(|k| {
+                format!(
+                    r#"{{"text":"x","font":"Inter-Regular","size":10,"fontFeatures":{{"salt":{k}}}}}"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let text = |n: usize| doc(&format!(r#"{{"type":"text","runs":[{}]}}"#, runs(n)));
+    assert_eq!(run(&text(MAX_FEATURE_SETS)), vec![]);
+    // The same sets again, in another node and order, are not new.
+    let again = doc(&format!(
+        r#"{{"type":"text","runs":[{}]}},{{"type":"text","runs":[{}]}}"#,
+        runs(MAX_FEATURE_SETS),
+        runs(MAX_FEATURE_SETS)
+    ));
+    assert_eq!(run(&again), vec![]);
+    assert_eq!(
+        one(&text(MAX_FEATURE_SETS + 1)),
+        (
+            C::OutOfRange,
+            format!("pages[0].children[0].runs[{MAX_FEATURE_SETS}].fontFeatures")
+        )
+    );
+}
+
+#[test]
+fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
+    let text = |v: &str| {
+        doc(&format!(
+            r#"{{"type":"text","style":{{"textWrap":{v}}},"runs":[{{"text":"x","font":"Inter-Regular","size":10}}]}}"#
+        ))
+    };
+    assert_eq!(run(&text(r#""wrap""#)), vec![]);
+    assert_eq!(run(&text(r#""pretty""#)), vec![]);
+    // `balance` is reserved.
+    assert_eq!(
+        one(&text(r#""balance""#)),
+        (
+            C::InvalidValue,
+            "pages[0].children[0].style.textWrap".into()
+        )
+    );
+    assert_eq!(
+        one(&doc(r#"{"type":"box","style":{"textWrap":"pretty"}}"#)),
+        (
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.textWrap".into()
+        )
+    );
+}
+
+#[test]
+fn image_runs_are_checked() {
+    let with_run = |r: &str| {
+        doc(&format!(
+            r#"{{"type":"text","runs":[{{"font":"Inter-Regular","size":10{r}}}]}}"#
+        ))
+    };
+    let p = "pages[0].children[0].runs[0]";
+    for ok in [
+        r#","image":{"src":"logo"}"#,
+        r#","image":{"src":"logo","width":14400,"height":0.5,"fit":"cover","alt":"A logo"}"#,
+        r#","image":{"src":"logo"},"verticalAlign":"middle""#,
+        r#","image":{"src":"logo"},"verticalAlign":-14400"#,
+        r#","image":{"src":"logo"},"verticalAlign":"super""#,
+        r#","text":"x","verticalAlign":"sub""#,
+    ] {
+        assert_eq!(run(&with_run(ok)), vec![], "{ok}");
+    }
+    let alt = "x".repeat(1025);
+    for (bad, code, path) in [
+        (
+            r#","text":"x","image":{"src":"logo"}"#.to_string(),
+            C::InvalidValue,
+            format!("{p}.image"),
+        ),
+        (
+            r#","image":{}"#.into(),
+            C::MissingField,
+            format!("{p}.image"),
+        ),
+        (
+            r#","image":{"src":"nope"}"#.into(),
+            C::UnknownImage,
+            format!("{p}.image.src"),
+        ),
+        (
+            r#","image":{"src":"logo","width":0}"#.into(),
+            C::OutOfRange,
+            format!("{p}.image.width"),
+        ),
+        (
+            r#","image":{"src":"logo","height":14401}"#.into(),
+            C::OutOfRange,
+            format!("{p}.image.height"),
+        ),
+        (
+            format!(r#","image":{{"src":"logo","alt":"{alt}"}}"#),
+            C::InvalidValue,
+            format!("{p}.image.alt"),
+        ),
+        (
+            r#","image":{"src":"logo","objectPosition":{"x":20000}}"#.into(),
+            C::OutOfRange,
+            format!("{p}.image.objectPosition.x"),
+        ),
+        (
+            r#","text":"x","verticalAlign":"middle""#.into(),
+            C::InvalidValue,
+            format!("{p}.verticalAlign"),
+        ),
+        (
+            r#","image":{"src":"logo"},"verticalAlign":14401"#.into(),
+            C::OutOfRange,
+            format!("{p}.verticalAlign"),
+        ),
+        (
+            r#","image":{"src":"logo"},"verticalAlign":"center""#.into(),
+            C::InvalidValue,
+            format!("{p}.verticalAlign"),
+        ),
+    ] {
+        let (c, got) = one(&with_run(&bad));
+        assert_eq!((c, got.as_str()), (code, path.as_str()), "{bad}");
+    }
+}
+
+#[test]
+fn emoji_images_are_checked() {
+    let with = |map: &str| {
+        format!(
+            r#"{{"version":1,"emojiImages":{{{map}}},"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    for ok in [
+        r#""😀":"logo""#,
+        r#""👍🏽":"logo","🇫🇷":"logo","1️⃣":"logo""#,
+        "\"👩\u{200D}💻\":\"logo\",\"❤\u{FE0F}\":\"logo\"",
+    ] {
+        assert_eq!(run(&with(ok)), vec![], "{ok}");
+    }
+    for (bad, code, path) in [
+        (r#""a":"logo""#, C::InvalidValue, "emojiImages.a"),
+        (r#""😀😀":"logo""#, C::InvalidValue, "emojiImages.😀😀"),
+        (r#""😀 ":"logo""#, C::InvalidValue, "emojiImages.😀 "),
+        (r#""😀":"nope""#, C::UnknownImage, "emojiImages.😀"),
+    ] {
+        let (c, got) = one(&with(bad));
+        assert_eq!((c, got.as_str()), (code, path), "{bad}");
+    }
+    // At most 64 bytes: a ZWJ chain of 34 characters is 119.
+    let long = ["👩"; 17].join("\u{200D}");
+    assert!(long.chars().count() < 64 && long.len() > 64);
+    let (c, path) = one(&with(&format!(r#""{long}":"logo""#)));
+    assert_eq!((c, path), (C::InvalidValue, format!("emojiImages.{long}")));
+    let mut images = ImageStore::new();
+    let svg =
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>a</text></svg>"#;
+    images.insert("svg", svg.as_bytes());
+    images.insert("bad", b"not an image".as_slice());
+    let errors = |map: &str| validate(with(map).as_bytes(), InputFormat::Json, &fonts(), &images);
+    // An image is checked as anywhere else: an SVG with text needs fonts.
+    let e = errors(r#""😀":"svg""#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::InvalidImage, "emojiImages.😀")
+    );
+    assert!(
+        e[0].message.contains("declares no fonts"),
+        "{}",
+        e[0].message
+    );
+    let e = errors(r#""😀":"bad""#);
+    assert_eq!(
+        (e[0].code, e[0].path.as_str()),
+        (C::InvalidImage, "emojiImages.😀")
+    );
+    // At most 4096, reported once.
+    let many: Vec<String> = (0..4097).map(|i| format!(r#""k{i}":"logo""#)).collect();
+    assert_eq!(
+        one(&with(&many.join(","))),
+        (C::OutOfRange, "emojiImages".into())
+    );
+}
+
+/// Under PDF/A-1b, a colour glyph whose image needs transparency (the PNG
+/// strikes of the test fonts have alpha, the COLR grin an opacity) fails
+/// the render at its run, as an image would; an opaque one draws.
+#[test]
+fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
+    let mut fonts = fonts();
+    for id in ["EmojiTest-CBDT", "EmojiTest-COLR"] {
+        fonts
+            .register(id, fixture(&format!("fonts/{id}.ttf")))
+            .unwrap();
+    }
+    let render = |font: &str, text: &str| {
+        let doc = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"{font}","family":"E"}}],
+                "fallbackFonts":["{font}"],
+                "pages":[{{"size":{{"width":200,"height":100}},
+                "header":{{"type":"text","runs":[{{"text":"head","font":"Inter-Regular","size":10}}]}},
+                "children":[
+                {{"type":"text","style":{{"display":"none"}},"runs":[{{"text":"😀","font":"Inter-Regular","size":10}}]}},
+                {{"type":"box","children":[{{"type":"text","runs":[
+                  {{"text":"a ","font":"Inter-Regular","size":10}},{{"text":"{text}","font":"Inter-Regular","size":10}}]}}]}}]}}]}}"#
+        );
+        let options = crate::RenderOptions::default()
+            .with_pdf_a_level(crate::PdfALevel::A1b)
+            .with_compress(false);
+        crate::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts,
+            &ImageStore::new(),
+        )
+    };
+    for (font, what) in [
+        ("EmojiTest-CBDT", "an alpha channel"),
+        ("EmojiTest-COLR", "(fill or stroke opacity)"),
+    ] {
+        let Err(crate::InkoxideError::Validation(e)) = render(font, "😀 b") else {
+            panic!("{font}: rendered");
+        };
+        assert_eq!(e.code, C::PdfaConflict, "{font}");
+        assert_eq!(e.path, "pages[0].children[1].children[0].runs[1]", "{font}");
+        assert!(
+            e.message.contains(&format!("`😀` of font `{font}`")),
+            "{}",
+            e.message
+        );
+        assert!(e.message.contains(what), "{}", e.message);
+    }
+    // The COLR flag has solid layers only: it keeps its colour.
+    let pdf = render("EmojiTest-COLR", "🇫🇷 b").unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert_eq!(count(b"/Subtype /Form"), 1);
+    assert_eq!(count(b"/SMask"), 0);
+}
+
+#[test]
+fn floats_go_in_column_boxes_with_children_that_do_not_grow() {
+    let ok = doc(r#"{"type":"box","children":[
+            {"type":"box","style":{"float":"left","width":10,"height":10}},
+            {"type":"text","style":{"clear":"both"},"runs":[{"text":"x","font":"Inter-Regular","size":10}]},
+            {"type":"box","style":{"float":"none","flexShrink":1}}]},
+           {"type":"image","src":"logo","style":{"float":"right","width":20}}"#);
+    assert_eq!(run(&ok), vec![]);
+    let float = r#"{"type":"box","style":{"float":"left"}}"#;
+    for (json, code, path) in [
+        (
+            format!(r#"{{"type":"box","style":{{"flexDirection":"row"}},"children":[{float}]}}"#),
+            C::InvalidValue,
+            "pages[0].children[0].children[0].style.float",
+        ),
+        (
+            format!(r#"{{"type":"box","style":{{"justifyContent":"center"}},"children":[{float}]}}"#),
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.justifyContent",
+        ),
+        (
+            format!(r#"{{"type":"box","children":[{float},{{"type":"box","style":{{"flexBasis":10}}}}]}}"#),
+            C::StyleNotApplicable,
+            "pages[0].children[0].children[1].style.flexBasis",
+        ),
+        (
+            r#"{"type":"box","style":{"float":"left","position":"absolute"}}"#.into(),
+            C::InvalidValue,
+            "pages[0].children[0].style.float",
+        ),
+        (
+            r#"{"type":"box","style":{"float":"left"},"break":{"before":"page"}}"#.into(),
+            C::InvalidValue,
+            "pages[0].children[0].style.float",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":10}],"rows":[{"cells":[{"style":{"float":"left"}}]}]}"#.into(),
+            C::StyleNotApplicable,
+            "pages[0].children[0].rows[0].cells[0].style.float",
+        ),
+    ] {
+        assert_eq!(one(&doc(&json)), (code, path.into()), "{json}");
+    }
+    // A forced break inside a float does nothing.
+    let (code, path) = one(&doc(
+        r#"{"type":"box","style":{"float":"left"},"children":[{"type":"pageBreak"},{"type":"box"}]}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidNode, "pages[0].children[0].children[0]")
+    );
+}
+
+#[test]
+fn a_box_holds_a_bounded_number_of_floats() {
+    use crate::validate::rules::MAX_FLOATS;
+    let floats = |n: usize| vec![r#"{"type":"box","style":{"float":"left"}}"#; n].join(",");
+    let d = |n: usize| doc(&format!(r#"{{"type":"box","children":[{}]}}"#, floats(n)));
+    assert_eq!(run(&d(MAX_FLOATS)), vec![]);
+    assert_eq!(
+        one(&d(MAX_FLOATS + 1)),
+        (C::OutOfRange, "pages[0].children[0].children".into())
     );
 }

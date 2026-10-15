@@ -64,10 +64,46 @@ fn tokens(pdf: &[u8], inflate: bool) -> Vec<String> {
     let delimiter = |b: u8| b.is_ascii_whitespace() || b"[]<>()/{}%".contains(&b);
     texts
         .iter()
+        .map(|t| without_hex_strings(t))
+        .collect::<Vec<_>>()
+        .iter()
         .flat_map(|t| t.split(|&b| delimiter(b)))
         .filter(|t| !t.is_empty())
         .map(|t| String::from_utf8_lossy(t).into_owned())
         .collect()
+}
+
+/// `text` without the contents of hex strings (`<0048>`, glyph ids in
+/// text and character maps), which are not numbers; `<<` and `>>` stay.
+fn without_hex_strings(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        let b = text[i];
+        if b == b'<' && text.get(i + 1) == Some(&b'<') {
+            out.extend_from_slice(b"<<");
+            i += 2;
+        } else if b == b'<' {
+            let end = text[i..]
+                .iter()
+                .position(|&c| c == b'>')
+                .map_or(text.len(), |e| i + e);
+            if text[i + 1..end]
+                .iter()
+                .all(|c| c.is_ascii_hexdigit() || c.is_ascii_whitespace())
+            {
+                out.extend_from_slice(b"<>");
+                i = end + 1;
+            } else {
+                out.push(b);
+                i += 1;
+            }
+        } else {
+            out.push(b);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Asserts that no token is a non-finite number, and that there are
@@ -149,9 +185,17 @@ fn every_property_at_its_bounds_renders_finite_numbers() {
         // Text at its own bounds.
         text(r#""textIndent":-10000,"lineHeight":100"#, r#","letterSpacing":1000"#),
         text(r#""textIndent":10000"#, r#","letterSpacing":-1000,"decoration":"underline""#),
+        text("", r#","size":1000,"verticalAlign":"super","fontFeatures":{"salt":65535}"#)
+            .replace(r#""size":12,"#, ""),
+        text(r#""lineHeight":100"#, r#","verticalAlign":"sub","decoration":"underline""#),
         // Images placed at the objectPosition bounds.
         r#"{"type":"image","src":"photo","fit":"none","objectPosition":{"x":"10000%","y":-14400},"style":{"width":"10000%","height":40}}"#.into(),
         r#"{"type":"image","src":"chart","fit":"cover","objectPosition":{"x":14400,"y":"-10000%"},"style":{"transform":[{"scale":[1000000,1000000]}],"height":40}}"#.into(),
+        r#"{"type":"box","backgroundImage":{"src":"photo","fit":"none","objectPosition":{"x":"-10000%","y":14400}},"style":{"width":"10000%","height":40,"borderRadius":1000000,"borderWidth":{"top":1000000}}}"#.into(),
+        r#"{"type":"box","backgroundImage":{"src":"chart","objectPosition":{"x":-14400,"y":"10000%"}},"style":{"height":40,"padding":{"left":1000000}}}"#.into(),
+        // Images in lines at their bounds.
+        text(r#""lineHeight":100"#, r#"},{"font":"Inter-Regular","size":1000,"image":{"src":"photo","width":14400,"height":0.01,"fit":"cover","objectPosition":{"x":"10000%"}},"verticalAlign":-14400"#),
+        text("", r#"},{"font":"Inter-Regular","size":0.01,"image":{"src":"chart","height":14400},"verticalAlign":"bottom""#),
         // Form fields and tables.
         r#"{"type":"field","style":{"width":"10000%","height":20,"transform":[{"translate":[-1000000,0]}]},"field":{"name":"t","kind":"text","font":"Inter-Regular","value":"x"}}"#.into(),
         r#"{"type":"field","style":{"width":1000000,"height":20},"field":{"name":"c","kind":"checkbox","checked":true}}"#.into(),
@@ -195,6 +239,9 @@ fn svg_numbers_that_overflow_render_finite_numbers() {
         format!("<svg {NS} width='100000' height='100000' viewBox='0 0 1e-5 1e-5'><rect width='1e-6' height='1e-6'/></svg>"),
         format!("<svg {NS} width='100' height='100'><defs><linearGradient id='g' x1='-1e39' x2='1e39' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue' stop-opacity='0.5'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/></svg>"),
         format!("<svg {NS} width='100' height='100'><path d='M0 0 L 50 50' stroke='red' stroke-width='2' stroke-dasharray='1e39 1' stroke-dashoffset='1e39'/></svg>"),
+        // Text whose positions and sizes overflow f32 when laid out.
+        format!("<svg {NS} width='100' height='100'><text x='3e38' dx='3e38' dy='-1e39' font-size='3e38' letter-spacing='1e39' text-decoration='underline'>Hi <tspan font-size='1e39'>there</tspan></text></svg>"),
+        format!("<svg {NS} width='100' height='100'><text x='5' y='50' textLength='3e38' lengthAdjust='spacingAndGlyphs' rotate='1e39 -1e30'>Hi</text></svg>"),
     ];
     let mut images = ImageStore::new();
     let mut children = Vec::new();
@@ -287,15 +334,20 @@ fn assert_parsable_tokens(tokens: &[String]) {
 }
 
 /// Asserts that `qpdf --check` passes `pdf` without warnings (exit status
-/// 0), when qpdf is installed.
+/// 0), when qpdf is installed. CI installs it, so there (`CI` set) a
+/// missing qpdf fails.
 fn assert_qpdf_check(name: &str, pdf: &[u8]) {
     let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.pdf"));
     std::fs::write(&out, pdf).unwrap();
-    if let Ok(o) = std::process::Command::new("qpdf")
+    let o = std::process::Command::new("qpdf")
         .arg("--check")
         .arg(&out)
-        .output()
-    {
+        .output();
+    assert!(
+        o.is_ok() || std::env::var_os("CI").is_none(),
+        "qpdf is not installed"
+    );
+    if let Ok(o) = o {
         assert!(
             o.status.success(),
             "{name}: qpdf --check failed:\n{}{}",
@@ -322,6 +374,9 @@ fn huge_svg_numbers_are_written_within_what_readers_parse() {
         svg("<defs><clipPath id='c' transform='scale(1e30)'><rect width='1' height='1'/></clipPath></defs><rect width='100' height='100' clip-path='url(#c)'/>"),
         svg("<defs><mask id='m' x='-1e30' y='-1e30' width='1e30' height='1e30' maskUnits='userSpaceOnUse'><rect width='1e30' height='100' fill='white'/></mask></defs><rect width='100' height='100' mask='url(#m)'/>"),
         svg("<defs><pattern id='p' width='1e30' height='1e30' patternUnits='userSpaceOnUse'><rect width='1e30' height='1'/></pattern></defs><rect width='100' height='100' fill='url(#p)'/>"),
+        svg("<text x='1e30' y='-1e30' font-size='1e30' text-decoration='line-through'>Hi</text>"),
+        svg("<text x='5' y='50' font-size='1e30' letter-spacing='1e30' textLength='1e30' lengthAdjust='spacingAndGlyphs' rotate='1e30 45'>Hi</text>"),
+        svg("<text x='5' y='50' dx='1e30 -1e30' font-size='20' word-spacing='1e30'>Hi there</text>"),
     ];
     let mut images = ImageStore::new();
     let mut children = Vec::new();

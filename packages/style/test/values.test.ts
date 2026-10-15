@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   parseColor,
   parseFlex,
+  parseFontFeatureSettings,
+  parseFontVariantNumeric,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
@@ -10,7 +12,7 @@ import {
   UnsupportedValueError,
   ValueError,
 } from '../src/index.ts';
-import { evalDim, parseFontFamily, Reader, substituteVars } from '../src/internal.ts';
+import { evalDim, parseFontFamily, Reader, substituteVars, verticalAlignKeyword } from '../src/internal.ts';
 
 describe('Reader.placement', () => {
   it('reads both halves of a grid placement', () => {
@@ -249,5 +251,92 @@ describe('units and fonts', () => {
       'Noto Sans',
       'Roboto Mono',
     ]);
+  });
+});
+
+describe('parseFontFeatureSettings', () => {
+  const read = (v: Parameters<typeof parseFontFeatureSettings>[1]) =>
+    parseFontFeatureSettings('fontFeatureSettings', v);
+
+  it('reads the CSS syntax', () => {
+    expect(read(`'tnum' 1, "smcp", 'liga' off, 'kern' on, 'salt' 3`)).toEqual({
+      tnum: 1,
+      smcp: 1,
+      liga: 0,
+      kern: 1,
+      salt: 3,
+    });
+    expect(read('normal')).toEqual({});
+    // A later setting wins; a tag may hold a comma or a space.
+    expect(read(`'tnum', 'tnum' 0, "a,b " 2`)).toEqual({ tnum: 0, 'a,b ': 2 });
+  });
+
+  it('reads a list of tags and an object of values or switches', () => {
+    expect(read(['tnum', 'smcp'])).toEqual({ tnum: 1, smcp: 1 });
+    expect(read({ tnum: 1, liga: false, kern: true, salt: 2 })).toEqual({
+      tnum: 1,
+      liga: 0,
+      kern: 1,
+      salt: 2,
+    });
+  });
+
+  it('rejects what is not a feature setting, naming the property', () => {
+    for (const bad of [
+      'tnum',
+      `'tnu' 1`,
+      `'tnums'`,
+      `'tnum' -1`,
+      `'tnum' 1.5`,
+      `'tnum' 65536`,
+      `'tnum' maybe`,
+      `'tnum',`,
+      `'tnum',,'smcp'`,
+      ['tnu'],
+      [1 as unknown as string],
+      { tnum: 1.5 },
+      { tnum: 'on' as unknown as number },
+      { 'tné ': 1 },
+      Object.fromEntries(Array.from({ length: 33 }, (_, k) => [`f${String(k).padStart(3, '0')}`, 1])),
+    ]) {
+      expect(() => read(bad), JSON.stringify(bad)).toThrow(UnsupportedValueError);
+      expect(() => read(bad), JSON.stringify(bad)).toThrow(/^fontFeatureSettings: /);
+    }
+  });
+});
+
+describe('parseFontVariantNumeric', () => {
+  const read = (v: string) => parseFontVariantNumeric('fontVariantNumeric', v);
+
+  it('turns the keywords into features', () => {
+    expect(read('tabular-nums')).toEqual({ tnum: 1 });
+    expect(read('oldstyle-nums slashed-zero diagonal-fractions ordinal')).toEqual({
+      onum: 1,
+      zero: 1,
+      frac: 1,
+      ordn: 1,
+    });
+    expect(read('normal')).toEqual({});
+  });
+
+  it('rejects unknown keywords and two of one kind', () => {
+    for (const bad of [
+      'tabular',
+      'tabular-nums proportional-nums',
+      'lining-nums oldstyle-nums',
+      'normal ordinal',
+    ]) {
+      expect(() => read(bad), bad).toThrow(/^fontVariantNumeric: /);
+    }
+  });
+});
+
+describe('verticalAlignKeyword', () => {
+  it("reads the keywords, and CSS's text-top and text-bottom", () => {
+    for (const v of ['top', 'middle', 'bottom', 'baseline', 'super', 'sub', 'textTop', 'textBottom'])
+      expect(verticalAlignKeyword(v)).toBe(v);
+    expect(verticalAlignKeyword('text-top')).toBe('textTop');
+    expect(verticalAlignKeyword('text-bottom')).toBe('textBottom');
+    for (const v of ['center', 'Top', 'length', '']) expect(verticalAlignKeyword(v)).toBeUndefined();
   });
 });

@@ -72,6 +72,13 @@ validation_codes! {
     InvalidNode = "INVALID_NODE",
     /// A `#id` link names no node in the document.
     UnknownAnchor = "UNKNOWN_ANCHOR",
+    /// The document uses something the PDF/A level it is rendered at does
+    /// not allow: transparency under PDF/A-1b (a colour with alpha, an
+    /// `opacity`, `debug` outlines, an image with an alpha channel, or an
+    /// SVG drawn with opacity, a mask or a blend mode). Only
+    /// [`render`](crate::render) reports it: [`validate`](crate::validate)
+    /// does not know the level.
+    PdfaConflict = "PDFA_CONFLICT",
 }
 
 impl fmt::Display for ValidationCode {

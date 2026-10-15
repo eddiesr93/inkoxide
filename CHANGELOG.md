@@ -7,6 +7,183 @@ All notable changes to the packages in this repository. The format follows
 
 ## Unreleased
 
+### Added
+
+- Floats: `float: 'left' | 'right'` and `clear: 'left' | 'right' | 'both'` (Tailwind
+  `float-left`, `float-right`, `clear-*`) on the children of a column `View`, a `Page` or a
+  `Cell`. Text after a float wraps beside it, line by line; a box after it is narrowed to the
+  room beside it, or moved below it; the parent grows to hold its floats; and a float moves to
+  the next page with the lines beside it. A float taller than a page is sliced. `debug` on a
+  paragraph beside a float shows its narrower line boxes.
+- Encryption: user and owner passwords and permissions (printing at low or high resolution,
+  modifying, copying, annotating, filling forms, content accessibility, document assembly),
+  with AES-256 (PDF 2.0, revision 6). `RenderOptions::encryption` with `Encryption`,
+  `Permissions` and `Printing` in Rust, `encryption: { userPassword, ownerPassword,
+  permissions }` in the Node binding and in `@inkoxide/render`, and `<Document userPassword
+  ownerPassword permissions>`, which the option replaces. Passwords are printable ASCII up to
+  127 bytes, never part of the document tree, and never shown in errors or `Debug` output; in
+  Node, a password that is not a string is `INVALID_ARGUMENT` at its path before the engine
+  sees it.
+  Output stays deterministic: the keys are derived from the document and the passwords.
+  Radio buttons name their states by position in an encrypted file, with their values in
+  `/Opt`, so the values are encrypted too. Encryption with PDF/A is `INVALID_VALUE` at
+  `options.encryption` in Rust and `INVALID_ARGUMENT` in Node.
+- PDF/A-1b and PDF/A-3b, next to PDF/A-2b: `RenderOptions::pdf_a_level` with `PdfALevel` in
+  Rust (`with_pdf_a_level`; `PdfALevel::ALL` lists the levels), `pdfA: '1b' | '2b' | '3b'` in
+  the Node binding and in `@inkoxide/render` (`true` is still PDF/A-2b), `--pdf-a=LEVEL` in the
+  CLI (`--pdf-a` alone is still PDF/A-2b, also before the document), and
+  `<Document conformance>` (`'PDF/A-1b'`, `'PDF/A-2b'`, `'PDF/A-3b'`, or the part alone), which
+  the `pdfA` option overrides. The a and u levels, which need tagged PDF, are a
+  `TEMPLATE_ERROR`.
+- PDF/A-1b has no transparency: a render at 1b fails with the new code `PDFA_CONFLICT` at the
+  path of the first colour with alpha below 1, `opacity` between 0 and 1, `debug`, image (or
+  background image) with an alpha channel, or SVG drawn with opacity, a mask or a blend mode
+  (`ENGINE_REJECTED` with the component in `@inkoxide/render`). `validate` does not know the
+  level and does not report it. A PDF/A-1b file also keeps within the limits of PDF/A-1
+  (numbers, strings, arrays, dictionaries, graphics state nesting) or fails with `PDF_ERROR`.
+- `textWrap: 'pretty'` (Tailwind `text-pretty`) breaks a paragraph's lines over the whole
+  paragraph for even lines (Knuth and Plass's total fit), with fewer hyphens; justified
+  `pretty` lines may also shrink their spaces by up to a third. It is inherited. `'wrap'`, the
+  default, keeps first fit and the same output; `'balance'` is reserved. `text-wrap` maps to
+  `wrap` and `text-nowrap` to `whiteSpace: 'nowrap'`.
+- Superscripts and subscripts: `verticalAlign: 'super'` or `'sub'` on a `Text` (the Tailwind
+  classes `align-super` and `align-sub`) raises or lowers its baseline by the font's own
+  superscript and subscript offsets, and the line grows to fit it. `verticalAlign` stays `top`,
+  `middle` or `bottom` on a `Cell`.
+- OpenType features: `fontFeatureSettings` as a CSS string (`"'tnum' 1, 'liga' off"`), a list
+  of tags or an object of tags to values or switches, and `fontVariantNumeric`
+  (`'tabular-nums slashed-zero'`); in Tailwind, `font-features-[…]`, `tabular-nums`,
+  `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions` and the other numeric
+  classes. Both are inherited. A run takes at most 32 features, with values up to 65535, and a
+  document at most 64 different sets of them (`OUT_OF_RANGE`). `@inkoxide/style` exports
+  `parseFontFeatureSettings`, `parseFontVariantNumeric` and `RUN_ALIGNS`.
+- `debug` on a `Text` outlines the paragraph line by line: each line box, its baseline, and the
+  glyphs of every run on the line, so nested `Text` and `Link` elements show where their words
+  landed.
+- **`<Marker>`** in `<Svg>`: a shape drawn at the start, middle or end vertices of a path, line
+  or poly shape, referenced with the new `markerStart`, `markerMid` and `markerEnd` props. It
+  takes `viewBox`, `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `markerUnits`.
+  `Marker` and `MarkerProps` are exported.
+- `fr`, the radius of the focal circle, on `RadialGradient`.
+- The `<Canvas>` painter clips and paints gradients: `clip(rule?)` clips what follows to the
+  current path until `restore()`, and `linearGradient(x1, y1, x2, y2)` and
+  `radialGradient(x1, y1, r1, x2, y2, r2)` return a `CanvasGradient` (exported as a type) that
+  takes colour stops with `stop(offset, color, opacity?)` and paints in place of a colour.
+  `miterLimit(n)` sets how far mitred joins reach.
+- **Text in the `<Canvas>` painter**: `font(name, size?)` (a registered font id, a family name,
+  or one of pdfkit's standard names such as `Helvetica-Bold`, which picks the canvas's family in
+  that weight and style), `fontSize(n)` (12 by default) and `text(str, x, y, options?)`, which
+  draws one line with the fill colour or gradient, its top at `y` by default. The options are
+  `width` with `align` (`justify`, as in pdfkit, is `left`: a line does not wrap), `baseline`,
+  `characterSpacing`, `wordSpacing`, `underline`, `strike`, `fill` (whether to fill the text,
+  `true` by default) and `stroke`; `CanvasTextOptions` is exported. A line break in the text is
+  an error.
+- **Text in SVG images**: `<text>`, its `<tspan>`s and `<a>`s are drawn as PDF text with the
+  document's fonts, so it can be selected, searched and copied, in SVG files and in SVGs nested
+  in them. Each span's font is the declared font that matches its `font-family`, `font-weight`
+  and `font-style` (as CSS matches them), with the document's fallback fonts for characters it
+  lacks. Positions (`x`, `y`, `dx`, `dy`, `rotate`), `text-anchor`, `dominant-baseline`,
+  `alignment-baseline`, `baseline-shift`, `letter-spacing`, `word-spacing`, `text-decoration`,
+  `textLength`, `lengthAdjust`, `xml:space`, style sheets, and fills and strokes with gradients
+  and patterns work, also in clip paths, masks, patterns, markers and `use` copies, whatever an
+  author style sheet says about the paths of the SVG. Colour emoji fonts draw in colour there,
+  and emoji the document maps to images are those images, as in other text. Text on a path,
+  vertical text and text that an XML entity expands to fail with `INVALID_IMAGE`, as all SVG
+  text did. An SVG without a size takes it from what it draws without its text, so the same
+  with any fonts. An SVG with text in a
+  document that declares no fonts fails validation with `INVALID_IMAGE`, and an SVG may hold up
+  to 1,000,000 characters of text, counting every copy.
+- **`<Text>` and `<Tspan>` in `<Svg>`**: a `Text` inside an `<Svg>` (or its `G`, `Defs`,
+  `ClipPath` or `Marker`) is SVG text, with `x`, `y`, `dx`, `dy`, `rotate`, `textAnchor`,
+  `dominantBaseline`, `letterSpacing`, `wordSpacing`, `textDecoration`, `textLength`,
+  `lengthAdjust`, `direction` and the SVG paint props; a `Tspan` inside it is a span, which also
+  takes `baselineShift` and `alignmentBaseline`. Its font comes from `fontFamily`, `fontWeight` and `fontStyle` on it or
+  around it, and from the text style around the drawing, matched against the registered fonts
+  like other text, and declared in the document. `Tspan`, `SvgTextProps` and `TspanProps` are
+  exported; `SvgPresentation` gains the font props, `textAnchor`, `dominantBaseline` and
+  `visibility`.
+- Background images: `<ImageBackground src fit>`, a `View` with an image behind its children,
+  and `backgroundImage` on a box node of the document (`src` or `data`, `fit`, `objectPosition`).
+  The image fills the padding box, over the background colour and under the borders, clipped to
+  it and rounded by `borderRadius`; a box split across pages is sliced with its image, like its
+  background colour. `src` takes every form `<Image src>` takes, and `fit`, `objectFit`,
+  `objectPosition` and the `object-*` classes place it as on an `Image`.
+- Colour emoji from fonts. Glyphs in a font's `COLR` table (versions 0 and 1) and PNG bitmaps in
+  `CBDT` or `sbix` are drawn in colour, as images that copy and search as their text
+  (`ActualText`). Register an emoji font, such as Noto Color Emoji, and list it in
+  `fallbackFonts`: an emoji goes to the first colour fallback font that has it. A font with
+  colour bitmaps and no outlines now registers; it is never embedded and cannot be a form
+  field's font. A colour glyph that takes over 10 000 drawing steps, or past the first 4096 of a
+  render or the first 32 MB of colour glyph images, draws without colour. Under PDF/A-1b, which
+  forbids transparency, a colour glyph that needs it (a bitmap with an alpha channel, a layer
+  with an opacity) fails the render with `PDFA_CONFLICT` at its run, as an emoji image does at
+  its `emojiImages` key, or at the `src` of an SVG whose text has it.
+- Emoji from images: `Font.registerEmojiSource({ url, format, withVariationSelectors })` or
+  `{ builder }` draws the emoji of every `Text` from an image set, through the document's new
+  `emojiImages` (emoji sequence → image id). The images load like `<Image src>` (URLs allowed by
+  `remoteImages`, kept between renders); an emoji image is 1em high with its aspect ratio and
+  copies as the emoji. An emoji whose image cannot be loaded, or is not an image the engine can
+  draw, is drawn by the fonts with a warning, and a ZWJ sequence without an image uses those of
+  its parts. `EmojiSource` is exported.
+- Images in text: an `<Image>` inside a `<Text>` (and `image` on a document's text run) sits in
+  the line, as wide and high as asked in points or em (1em high by default, keeping its aspect
+  ratio), placed by `verticalAlign` (`baseline`, `middle`, `text-top`, `text-bottom`, `top`,
+  `bottom`, `super`, `sub` or points; `align-text-top` and `align-text-bottom` in Tailwind), with
+  `alt` as the text it copies as. Lines break around it like around a character.
+- Groups of form fields: a dot in a field `name` puts the field in a group, as in PDF's own
+  field names. `address.street` and `address.city` are the fields `street` and `city` of the
+  group `address`; a name has at most 32 parts, so groups nest up to 31 deep. The PDF holds
+  them as a field tree, which viewers show and export by their full names.
+- List boxes: a form field of `kind: "list"` shows several of its `options` at once (four rows
+  without a height) and scrolls to the first selected one. With `multiSelect`, `value` is an
+  array and several options can be selected.
+- Formats on text fields: `format` shows a number (decimals, separators, negative style,
+  currency), a percent, a date or a time (with a pattern such as `dd/mm/yyyy`), a postal code, a
+  phone number or a social security number, and viewers format what the user types with the
+  standard form scripts. PDF/A output keeps the formatted text and value but leaves the scripts
+  out, as PDF/A requires.
+- Text notes: a `note` node is a sticky-note icon that viewers open to show its text, with an
+  author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
+  corner of its box, keeps its size at any zoom and stays upright under a transform. It has an
+  appearance stream, so it prints and passes PDF/A-2b. A note can also be part of a line of text
+  (`note` on a text run): it takes no room there, and its icon hangs from the top of the line
+  where it is. Line breaking keeps it with the word before it.
+- `<FieldSet name>` in `@inkoxide/render`: a `View`, with its props and `render`, whose name goes
+  in front of the names of the fields inside it, at any depth (`address.street`); sets nest.
+- `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
+  takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
+  `TextInput` is another name for `TextField`.
+- `format` on `TextField` in `@inkoxide/render`, with the readable keys of the schema, or `param`,
+  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported. A
+  number or percent format with any of those keys defaults to no decimals and no thousands
+  separator; on a `time`, `param` is one of four styles, `0` to `3`; `zip4` is `zipPlus4`.
+- `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
+  its `backgroundColor` as its colour. Inside a `<Text>`, it is part of the line.
+
+### Changed
+
+- Emoji sequences (flags, keycaps, skin tones, tag sequences and ZWJ sequences such as `👩‍💻`) stay
+  in one font, so the font's ligature forms: their selectors, joiners and modifiers could go to
+  another font than their base, which drew them as separate glyphs.
+- Strokes with mitred joins in a `<Canvas>` have a miter limit of 10, PDF's default, as in
+  pdfkit; they had SVG's 4, so joins sharper than about 29 degrees (down to about 11) are now
+  mitred instead of bevelled. `miterLimit(4)` gives the old joins.
+- In SVG images, `em` and `ex` lengths and `font-size` keywords are relative to a font size of
+  16 where nothing sets one, as in browsers; it was 12.
+- Font family names match ignoring ASCII case, as in CSS: `fontFamily: 'inter'` picks Inter
+  instead of falling back with a warning. `Font.register` refuses a family that differs from
+  a registered or bundled one only in case, for the same weight and style.
+
+### Security
+
+- The text of SVG images is bounded as the rest of the SVG is: what replaces it for the SVG
+  conversion counts toward the SVG limits as it is drawn, before it is written, and validation
+  checks it as a render does, so an SVG over a limit fails validation with `INVALID_IMAGE`.
+  The text nodes of an SVG text count as elements. Reading, laying out and drawing SVG text
+  takes time in proportion to it.
+- Field options and values are limited to 1000 options of at most 1000 characters each, and a
+  `value` of at most 8000 characters. Longer ones are `INVALID_VALUE`.
+
 ## 0.6.5 - 2026-10-13
 
 `inkoxide` and `@inkoxide/render` 0.6.5; the other packages are unchanged. Upgrading: text that

@@ -1,0 +1,499 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Inline images"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "NotoSansHebrew-Regular",
+   "family": "Noto Sans Hebrew"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 340
+   },
+   "margin": {
+    "top": 20,
+    "right": 20,
+    "bottom": 20,
+    "left": 20
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Inline images: 1em high by default ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": ", 20 pt high ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "palette",
+        "height": 20
+       }
+      },
+      {
+       "text": ", 40 pt wide ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "chart",
+        "width": 40
+       }
+      },
+      {
+       "text": ", stretched ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "palette",
+        "width": 30,
+        "height": 10,
+        "fit": "fill"
+       }
+      },
+      {
+       "text": ".",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      },
+      "lineHeight": 1.2,
+      "backgroundColor": [
+       0.95,
+       0.96,
+       1,
+       1
+      ]
+     },
+     "runs": [
+      {
+       "text": " baseline: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "baseline"
+      },
+      {
+       "text": " middle: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "middle"
+      },
+      {
+       "text": " textTop: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "textTop"
+      },
+      {
+       "text": " textBottom: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "textBottom"
+      },
+      {
+       "text": " top: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "top"
+      },
+      {
+       "text": " bottom: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "bottom"
+      },
+      {
+       "text": " -4: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": -4
+      },
+      {
+       "text": " super: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "super"
+      },
+      {
+       "text": " sub: x",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 18
+       },
+       "verticalAlign": "sub"
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Contained, at the left: ",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "photo",
+        "height": 24,
+        "width": 48,
+        "fit": "contain",
+        "objectPosition": {
+         "x": "left",
+         "y": "center"
+        }
+       }
+      },
+      {
+       "text": " linked image with alternative text: ",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "link": "https://example.com",
+       "image": {
+        "src": "logo",
+        "height": 16,
+        "alt": "Logo"
+       }
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      },
+      "textAlign": "justify",
+      "width": 300
+     },
+     "runs": [
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      },
+      {
+       "text": " word ",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 11,
+       "image": {
+        "src": "logo"
+       }
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      },
+      "direction": "rtl"
+     },
+     "runs": [
+      {
+       "text": "שלום ",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "font": "Inter-Regular",
+       "size": 12,
+       "image": {
+        "src": "palette",
+        "height": 14
+       }
+      },
+      {
+       "text": " עולם",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "fallbackFonts": [
+  "NotoSansHebrew-Regular"
+ ]
+}

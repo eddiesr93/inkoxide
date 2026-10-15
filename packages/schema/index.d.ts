@@ -24,7 +24,7 @@ export type NonNegative = number;
  */
 export type Color = [number, number, number, number];
 /**
- * A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
+ * A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. On a text node it also outlines each line: its line box (dashed), its baseline, and the glyphs of each run on it, from the run font's ascender to its descender. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Debug".
@@ -35,7 +35,7 @@ export type Debug = boolean;
  * via the `definition` "Node".
  */
 export type Node =
-  BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode;
+  BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode | NoteNode;
 /**
  * Points (within ±1000000), a percentage of the containing block (within ±10000%), or "auto". A percentage height needs a containing block with a definite height, as in CSS: a child of the page takes it of the page content height; in a header or footer, or in a box whose height is not set, it is `auto`.
  *
@@ -242,6 +242,12 @@ export interface Document {
    */
   fallbackFonts?: Id[];
   /**
+   * Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the baseline, and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts.
+   */
+  emojiImages?: {
+    [k: string]: Id | undefined;
+  };
+  /**
    * @minItems 1
    */
   pages: [PageSpec, ...PageSpec[]];
@@ -289,8 +295,17 @@ export interface Meta {
  */
 export interface FontDecl {
   id: Id;
+  /**
+   * The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts.
+   */
   family: string;
+  /**
+   * The weight SVG text's `font-weight` is matched against.
+   */
   weight?: number;
+  /**
+   * The style SVG text's `font-style` is matched against.
+   */
   style?: 'normal' | 'italic';
 }
 /**
@@ -352,6 +367,7 @@ export interface BoxNode {
   pages?: PageFilter;
   debug?: Debug;
   children?: Node[];
+  backgroundImage?: BackgroundImage;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -440,6 +456,14 @@ export interface Style {
   justifySelf?:
     'auto' | 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch' | 'start' | 'end';
   overflow?: 'visible' | 'hidden';
+  /**
+   * Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float moves to the next page with the lines beside it, and is sliced when taller than a page.
+   */
+  float?: 'left' | 'right' | 'none';
+  /**
+   * Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides.
+   */
+  clear?: 'left' | 'right' | 'both' | 'none';
   backgroundColor?: Color;
   opacity?: number;
   borderWidth?: EdgesNumber;
@@ -496,6 +520,10 @@ export interface Style {
    * text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` advance a tab to the next tab stop (CSS `tab-size: 8`): stops are 8 spaces of the tab's font apart, from the start of the line (a line `pre-wrap` wraps keeps the stops of the line it continues), and a tab narrower than half a `0` goes on to the next stop.
    */
   whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
+  /**
+   * text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` is reserved.
+   */
+  textWrap?: 'wrap' | 'pretty';
   /**
    * text nodes only; indent of the first line in points (negative: hanging indent)
    */
@@ -605,6 +633,37 @@ export interface Bookmark {
   level?: number;
 }
 /**
+ * An image painted behind the box's children and over its `backgroundColor`, under its borders. It fills the padding box (inside the borders), placed by `fit` and `objectPosition`, and is clipped to that box, rounded by `borderRadius`. A box split across pages is sliced, like its background colour.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "BackgroundImage".
+ */
+export interface BackgroundImage {
+  /**
+   * Key into the render option `images`.
+   */
+  src?: Id;
+  /**
+   * Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted.
+   */
+  data?: string;
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * Where the image sits in the padding box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
+   */
+  objectPosition?: ObjectPosition;
+}
+/**
+ * Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). Points are within ±14400 and percentages within ±10000%. What falls outside the box is clipped.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "ObjectPosition".
+ */
+export interface ObjectPosition {
+  x?: ('left' | 'center' | 'right') | number | Percent;
+  y?: ('top' | 'center' | 'bottom') | number | Percent;
+}
+/**
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TextNode".
  */
@@ -625,7 +684,7 @@ export interface TextNode {
  */
 export interface TextRun {
   /**
-   * Required unless `placeholder` is set; forbidden when it is.
+   * Required unless `placeholder`, `image` or `note` is set; forbidden when one is.
    */
   text?: string;
   font: Id;
@@ -651,6 +710,72 @@ export interface TextRun {
    * Overrides the text node's `hyphenate` for this run's words, in the node's language.
    */
   hyphenate?: boolean;
+  /**
+   * Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below).
+   */
+  verticalAlign?:
+    | ('baseline' | 'super' | 'sub' | 'middle' | 'textTop' | 'textBottom' | 'top' | 'bottom')
+    | number;
+  /**
+   * OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters. A document may use at most 64 different sets of features.
+   */
+  fontFeatures?: {
+    [k: string]: number | undefined;
+  };
+  image?: InlineImage;
+  /**
+   * A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it.
+   */
+  note?: Note;
+}
+/**
+ * An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "InlineImage".
+ */
+export interface InlineImage {
+  /**
+   * Key into the render option `images`.
+   */
+  src?: Id;
+  /**
+   * Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted.
+   */
+  data?: string;
+  width?: number;
+  height?: number;
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
+   */
+  objectPosition?: ObjectPosition;
+  /**
+   * Alternative text: what copying, searching and screen readers get for the image.
+   */
+  alt?: string;
+}
+/**
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Note".
+ */
+export interface Note {
+  /**
+   * The text of the note.
+   */
+  contents: string;
+  /**
+   * Who wrote it; viewers show it as the note's title.
+   */
+  author?: string;
+  /**
+   * The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1].
+   */
+  color?: Color;
+  /**
+   * Whether viewers show the text when the document opens.
+   */
+  open?: boolean;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -678,16 +803,6 @@ export interface ImageNode {
    * Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
    */
   objectPosition?: ObjectPosition;
-}
-/**
- * Position of a fitted image in its box, per axis: a keyword, points from the left or top edge, or a percentage (that point of the image goes to that point of the box: `"0%"` is the start edge, `"100%"` the end edge). Points are within ±14400 and percentages within ±10000%. What falls outside the box is clipped.
- *
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "ObjectPosition".
- */
-export interface ObjectPosition {
-  x?: ('left' | 'center' | 'right') | number | Percent;
-  y?: ('top' | 'center' | 'bottom') | number | Percent;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -767,7 +882,7 @@ export interface SpacerNode {
   debug?: Debug;
 }
 /**
- * An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text: 150 pt wide, one line, or three when multiline; checkbox and radio: `size` + 2 pt square).
+ * An interactive AcroForm field. `style` sizes and decorates its box (background, border, padding); the widget covers the content box. Without a width or height it takes an intrinsic size (text and select: 150 pt wide, one line, or three when multiline; list: 150 pt wide, one row per option up to four; checkbox and radio: `size` + 2 pt square).
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "FieldNode".
@@ -789,24 +904,32 @@ export interface FieldNode {
  */
 export interface Field {
   /**
-   * Field name (no `.`); unique in the document except for the buttons of one radio group. A name used again is `DUPLICATE_ID`.
+   * Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`.
    */
   name: string;
-  kind: 'text' | 'checkbox' | 'radio' | 'select';
   /**
-   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select: the selected option (one of `options`); radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`).
+   * `select` is a drop-down list, `list` a list box that shows several options at once
    */
-  value?: string;
+  kind: 'text' | 'checkbox' | 'radio' | 'select' | 'list';
+  /**
+   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters.
+   */
+  value?: string | string[];
   /**
    * checkbox and radio: initially selected
    */
   checked?: boolean;
   /**
-   * select only: the choices
+   * select and list only (required there): the choices, at most 1000 of at most 1000 characters each
    *
    * @minItems 1
+   * @maxItems 1000
    */
   options?: [string, ...string[]];
+  /**
+   * list only: several options can be selected at once
+   */
+  multiSelect?: boolean;
   /**
    * text only
    */
@@ -822,7 +945,7 @@ export interface Field {
   readOnly?: boolean;
   required?: boolean;
   /**
-   * text and select (required there): a declared font for the value. Its glyphs for the common Latin range are embedded so edits display.
+   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display.
    */
   font?: Id;
   /**
@@ -833,6 +956,55 @@ export interface Field {
    * text and mark colour; default black
    */
   color?: Color;
+  format?: FieldFormat;
+}
+/**
+ * Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "FieldFormat".
+ */
+export interface FieldFormat {
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'phone' | 'ssn';
+  /**
+   * number and percent: digits after the decimal separator, rounded half away from zero; default 2
+   */
+  decimals?: number;
+  /**
+   * number and percent: the thousands and decimal separators, by example; default `1,234.56`
+   */
+  separators?: '1,234.56' | '1234.56' | '1.234,56' | '1234,56';
+  /**
+   * number: how a negative number shows: `-1.00`, `1.00` in red, `(1.00)` or `(1.00)` in red; default `minus`
+   */
+  negative?: 'minus' | 'red' | 'parens' | 'parensRed';
+  /**
+   * number: a currency symbol, shown as it is (add a space to separate it); no control characters, quotes or backslashes
+   */
+  currency?: string;
+  /**
+   * number: the currency goes before the number
+   */
+  currencyBefore?: boolean;
+  /**
+   * date and time (required there): how the value shows, with `d`, `dd`, `ddd` (Mon), `dddd` (Monday), `m`, `mm`, `mmm` (Jan), `mmmm` (January), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; a time shows only `H`, `h`, `M`, `s` and `t`. Names are English.
+   */
+  pattern?: string;
+}
+/**
+ * A text annotation: a sticky-note icon that opens its text in the viewer. It takes no space; its icon (20 pt square, the same at any zoom) sits at the top-left corner of its box, inside the page, on the page where the box starts. Under a transform, the icon stays upright and the same size: only its corner moves. In a header, a footer or a fixed element it is on every page.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "NoteNode".
+ */
+export interface NoteNode {
+  type: 'note';
+  id?: Id;
+  style?: Style;
+  break?: Break;
+  pages?: PageFilter;
+  debug?: Debug;
+  note: Note;
 }
 
 /** The document `version` this schema describes. */

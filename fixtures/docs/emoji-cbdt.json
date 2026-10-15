@@ -1,0 +1,101 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Colour emoji (CBDT and sbix)"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "EmojiTest-CBDT",
+   "family": "Emoji Test CBDT"
+  },
+  {
+   "id": "EmojiTest-sbix",
+   "family": "Emoji Test sbix"
+  }
+ ],
+ "fallbackFonts": [
+  "EmojiTest-CBDT"
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 240
+   },
+   "margin": {
+    "top": 20,
+    "right": 20,
+    "bottom": 20,
+    "left": 20
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Colour emoji from PNG bitmaps, in fonts without outlines",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "lineHeight": 1.5,
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "CBDT, as a fallback: smile 😀 heart ❤️ thumbs 👍 flag 🇫🇷 end",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "😀❤️👍🇫🇷",
+       "font": "EmojiTest-CBDT",
+       "size": 40
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {},
+     "runs": [
+      {
+       "text": "sbix, as the run's font: ",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "text": "😀 ❤️ 👍 🇫🇷",
+       "font": "EmojiTest-sbix",
+       "size": 24
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

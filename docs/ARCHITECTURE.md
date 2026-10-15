@@ -62,10 +62,11 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
+| Floats | `layout/flow.rs`, `layout/float.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them, boxes narrowed |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
-| PDF | `pdf` | Pages and content streams (encoded in parallel), links, outline, forms, PDF/A-2b |
-| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects |
+| PDF | `pdf` | Pages and content streams (encoded in parallel), links, notes, outline, forms, PDF/A-1b, 2b and 3b, encryption. Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr` and stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
+| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
 
 ## Public API (core)
 
@@ -77,7 +78,8 @@ pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &
 ```
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
-`InputFormat`, `FontStore`, `ImageStore`, `HyphenationStore`, `InkoxideError`,
+`PdfALevel`, `Encryption`, `Permissions`, `Printing`, `InputFormat`,
+`FontStore`, `ImageStore`, `HyphenationStore`, `InkoxideError`,
 `ValidationError`, `ValidationCode`) and the constants `ENGINE_VERSION` and
 `SCHEMA_VERSION`. Every module is private, so nothing else is reachable from
 outside the crate.
@@ -95,9 +97,44 @@ margin offset.
 
 ```
 runs ─▶ prepare (whitespace, soft hyphens, font per char, rustybuzz) ─▶ Prepared   (cached per node)
-Prepared + width ─▶ break_lines (greedy, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per width)
+Prepared + LineBoxes ─▶ break_lines (per chunk: greedy or optimal, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per boxes)
 LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
+Op::Text in a colour font ─▶ ColorGlyphs ─▶ Op::Span + Op::Image + Op::InvisibleText
 ```
+
+`break_lines` breaks each chunk between forced breaks on its own, first
+fit (`lines.rs`) or, for `textWrap: pretty`, with Knuth and Plass's
+total fit (`optimal.rs`), which falls back to first fit past its caps.
+Lines are laid in `LineBoxes` (`layout/float.rs`): the content width,
+and bands where floats take room on a side, where each line finds its
+box at its own top. A float container's layout records the line boxes of
+the text beside its floats (`Tree.wraps`); pagination, page numbers and
+the painter look the lines up in them.
+
+A run's `fontFeatures` go to rustybuzz with its words; shaped words and
+shape plans are cached per feature set too. A run's `verticalAlign` moves
+its baseline (`text::baseline_shift`, from the font's OS/2 superscript and
+subscript metrics): line metrics count the moved glyph boxes, and the
+painter draws the run, its decorations and its `debug` box there.
+
+An image run is an inline object (`text/objects.rs`): one glyph-like
+cluster in a segment of its own (U+FFFC in the text, so UAX #14 breaks
+around it), as wide as the image, so line breaking, `textWrap: pretty` and
+ellipses need no special case. Line metrics add its extent where its
+`verticalAlign` puts it (`top` and `bottom` after the rest of the line),
+and the painter draws its image there, in a span with its `alt`.
+
+Itemisation picks a font per character, except in emoji sequences
+(`text/emoji.rs`, UTS #51: flags, keycaps, skin tones, tag and ZWJ
+sequences), which take one font each so the font's ligature can form; a
+sequence with emoji presentation tries the colour fallback fonts first.
+After shaping, the glyphs text uses from colour fonts become images once
+per render (`text/color.rs`): `fonts/color.rs` writes `COLR` v0 and v1
+glyphs as SVG, under a work budget, and takes PNG bitmaps from `CBDT` and
+`sbix`; they decode through `images` like document images. The painter
+then replaces each colour glyph with its image, in a `/Span` whose
+`/ActualText` is the glyph's text, with an invisible space for text
+extraction. A font with colour bitmaps and no outlines is never embedded.
 
 Two third-party crates stay behind one module each, so replacing them
 touches only that module: ttf-parser (font parsing) is used only in
@@ -109,10 +146,23 @@ subsets font programs and caches the compressed whole program, and the PDF
 writer supplies the compression; the writer and `images` both compress
 through `flate.rs`.
 
+SVG text goes through the same shaper. `images/svg_text` reads each
+`<text>` of an SVG once, when the SVG is decoded: the cascade of its text
+properties (simplecss and svgtypes are used only in its `extract.rs`, at
+the versions usvg uses), white space and character positions. Each render
+lays the text out with its fonts before layout (`text/svg.rs`, one
+`TextShaper::prepare` call per chunk, so fallback fonts, bidi, the glyph
+limit and ToUnicode apply), replaces each `<text>` with a "probe" path
+over its ink, and converts the SVG again (cached by the rewritten source).
+usvg resolves the probes' paint; the PDF writer draws each probe's text in
+its place as PDF text (`pdf/svg.rs`). See
+[ADR 0001](adr/0001-svg-text-probes.md).
+
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks
 for min-content / max-content / definite widths and gets the paragraph's
 size. Glyph → Unicode mappings are collected while shaping and become the
-ToUnicode CMaps, so text is selectable and searchable.
+ToUnicode CMaps, so text is selectable and searchable; colour glyphs carry
+theirs as `ActualText`.
 
 ## Pagination and paint
 
@@ -127,8 +177,9 @@ document order. `FlowPart` tells
 the box painter which part of a flow to paint; leaf painters get a
 `ContentCtx` with the node's shift, per-line shifts and the page window.
 Elements with `debug` have their boxes recorded as they are painted
-(`paint/debug.rs`); the outlines are drawn last, over everything, the
-flow's clipped to its content band.
+(`paint/debug.rs`), a paragraph's with the lines and runs the text painter
+placed (`ContentPainter::paint_outlined`); the outlines are drawn last,
+over everything, the flow's clipped to its content band.
 
 Page-number placeholders are laid out as `999` until the page count is
 known. Then flow text that shows them gets the numbers of the page its

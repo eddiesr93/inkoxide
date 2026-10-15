@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { inspect } from 'node:util';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
 import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
@@ -213,6 +214,194 @@ describe('text inheritance and runs', () => {
       bottom: [1, 0, 0, 1],
       left: [1, 0, 0, 1],
     });
+  });
+});
+
+describe('superscript, subscript and font features', () => {
+  const runs = (r: ReturnType<typeof render>) =>
+    first<TextNode>(r).runs.map(({ text, size, verticalAlign, fontFeatures }) => ({
+      text,
+      size,
+      ...(verticalAlign && { verticalAlign }),
+      ...(fontFeatures && { fontFeatures }),
+    }));
+
+  it('puts a nested Text on a raised or lowered baseline, with what is inside it', () => {
+    const r = render(
+      <Text>
+        x<Text style={{ verticalAlign: 'super', fontSize: 6 }}>2</Text> H
+        <Text className="align-sub text-[6pt]">
+          2<Text className="font-bold">!</Text>
+        </Text>
+        O <Text style={{ verticalAlign: 'baseline' }}>y</Text>
+      </Text>,
+    );
+    expect(runs(r)).toEqual([
+      { text: 'x', size: 10 },
+      { text: '2', size: 6, verticalAlign: 'super' },
+      { text: ' H', size: 10 },
+      { text: '2', size: 6, verticalAlign: 'sub' },
+      { text: '!', size: 6, verticalAlign: 'sub' },
+      { text: 'O y', size: 10 },
+    ]);
+  });
+
+  it('applies verticalAlign on the outer Text to all its runs', () => {
+    const r = render(
+      <Text style={{ verticalAlign: 'super' }}>
+        a<Text style={{ verticalAlign: 'baseline' }}>b</Text>
+      </Text>,
+    );
+    expect(runs(r)).toEqual([
+      { text: 'a', size: 10, verticalAlign: 'super' },
+      { text: 'b', size: 10 },
+    ]);
+  });
+
+  it("keeps a cell's verticalAlign off its text, and a run's off a cell", () => {
+    const r = render(
+      <Table columns={[50]}>
+        <Row>
+          <Cell className="align-middle">
+            <Text>x</Text>
+          </Cell>
+        </Row>
+      </Table>,
+    );
+    const cell = first<TableNode>(r).rows[0]?.cells[0];
+    expect(cell?.style?.verticalAlign).toBe('middle');
+    const text = cell?.children?.[0] as TextNode | undefined;
+    expect(text?.runs[0]).toEqual({ text: 'x', font: 'Inter-Regular', size: 10, color: [0, 0, 0, 1] });
+    const e = thrown(() =>
+      render(
+        <Table columns={[50]}>
+          <Row>
+            <Cell className="align-super" />
+          </Row>
+        </Table>,
+      ),
+    );
+    expect(e.message).toMatch(
+      /<Cell>: verticalAlign "super" \(from className="align-super"\).*top, middle or bottom/,
+    );
+    const nested = thrown(() =>
+      render(
+        <Text>
+          a<Text style={{ verticalAlign: 'middle' }}>b</Text>
+        </Text>,
+      ),
+    );
+    expect(nested.message).toMatch(/inline run: only text styles apply, not "verticalAlign"/);
+    expect(() => render(<Text style={{ verticalAlign: 'sup' as 'super' }}>a</Text>)).toThrow(
+      /verticalAlign "sup" is not supported/,
+    );
+  });
+
+  it('reads fontFeatureSettings in every form, inherited, replaced by a Text that sets its own', () => {
+    const r = render(
+      <View style={{ fontFeatureSettings: "'tnum' 1, 'liga' off" }}>
+        <Text>
+          a<Text style={{ fontFeatureSettings: ['smcp'] }}>b</Text>
+          <Text style={{ fontFeatureSettings: { ss01: true, salt: 2 } }}>c</Text>
+          <Text style={{ fontFeatureSettings: 'normal' }}>d</Text>
+        </Text>
+      </View>,
+    );
+    const text = (first<BoxNode>(r).children?.[0] ?? {}) as TextNode;
+    expect(text.runs.map((x) => [x.text, x.fontFeatures])).toEqual([
+      ['a', { tnum: 1, liga: 0 }],
+      ['b', { smcp: 1 }],
+      ['c', { ss01: 1, salt: 2 }],
+      ['d', undefined],
+    ]);
+  });
+
+  it('combines fontVariantNumeric and Tailwind numeric classes, with fontFeatureSettings winning', () => {
+    const r = render(
+      <Text className="tabular-nums slashed-zero">
+        1<Text style={{ fontFeatureSettings: { tnum: 0 } }}>2</Text>
+        <Text className="font-features-['ss01']">3</Text>
+        <Text style={{ fontVariantNumeric: 'oldstyle-nums' }}>4</Text>
+      </Text>,
+    );
+    expect(first<TextNode>(r).runs.map((x) => [x.text, x.fontFeatures])).toEqual([
+      ['1', { tnum: 1, zero: 1 }],
+      ['2', { tnum: 0, zero: 1 }],
+      ['3', { tnum: 1, zero: 1, ss01: 1 }],
+      ['4', { onum: 1 }],
+    ]);
+  });
+
+  it('merges neighbouring runs with the same features, in any order', () => {
+    const r = render(
+      <Text style={{ fontFeatureSettings: { tnum: 1, zero: 1 } }}>
+        a<Text style={{ fontFeatureSettings: { zero: 1, tnum: 1 } }}>b</Text>
+      </Text>,
+    );
+    expect(runs(r)).toEqual([{ text: 'ab', size: 10, fontFeatures: { tnum: 1, zero: 1 } }]);
+  });
+
+  it('rejects settings that are not features', () => {
+    expect(() => render(<Text style={{ fontFeatureSettings: 'tnum' }}>a</Text>)).toThrow(
+      /fontFeatureSettings: tnum \(expected a quoted tag/,
+    );
+    expect(() => render(<Text style={{ fontFeatureSettings: { tnums: 1 } }}>a</Text>)).toThrow(
+      /"tnums" is not a feature tag/,
+    );
+  });
+});
+
+describe('textWrap', () => {
+  it('cascades from the page to its paragraphs, and a Text sets its own', () => {
+    const r = render(
+      <View>
+        <Text>a</Text>
+        <Text style={{ textWrap: 'wrap' }}>b</Text>
+        <Text className="text-wrap">c</Text>
+      </View>,
+      'text-[10pt] text-pretty',
+    );
+    const texts = (first<BoxNode>(r).children ?? []) as TextNode[];
+    expect(texts.map((t) => t.style?.textWrap)).toEqual(['pretty', undefined, undefined]);
+    const plain = render(<Text>a</Text>);
+    expect(first<TextNode>(plain).style?.textWrap).toBeUndefined();
+  });
+
+  it('rejects balance, which is reserved', () => {
+    expect(() => render(<Text style={{ textWrap: 'balance' }}>a</Text>)).toThrow(
+      /textWrap "balance" is not supported/,
+    );
+    expect(() => render(<Text className="text-balance">a</Text>)).toThrow(/text-balance/);
+  });
+});
+
+describe('floats', () => {
+  it('passes float and clear to the box, from style and classes', () => {
+    const r = render(
+      <View>
+        <Image src="logo" style={{ float: 'left', width: 40 }} />
+        <View className="float-right w-10" />
+        <Text style={{ clear: 'both' }}>after</Text>
+      </View>,
+    );
+    const kids = (first<BoxNode>(r).children ?? []) as BoxNode[];
+    expect(kids.map((k) => [k.style?.float, k.style?.clear])).toEqual([
+      ['left', undefined],
+      ['right', undefined],
+      [undefined, 'both'],
+    ]);
+  });
+
+  it('rejects other values, and float on a run', () => {
+    expect(() => render(<View style={{ float: 'start' as 'left' }} />)).toThrow(/float: start/);
+    expect(() => render(<View className="float-start" />)).toThrow(/float-start/);
+    expect(() =>
+      render(
+        <Text>
+          a<Text style={{ float: 'left' }}>b</Text>
+        </Text>,
+      ),
+    ).toThrow(/inline run: only text styles apply, not "float"/);
   });
 });
 
@@ -567,6 +756,85 @@ describe('pages, images and structure', () => {
       pageMode: 'useThumbs',
       pageLayout: 'twoPageRight',
     });
+  });
+
+  it('moves conformance out of the document, into the output options', () => {
+    const output = (conformance?: unknown) =>
+      renderTemplate(
+        <Document title="A" conformance={conformance as 'PDF/A-2b'}>
+          <Page />
+        </Document>,
+        { fonts },
+      );
+    expect(output().output).toEqual({});
+    for (const [conformance, pdfA] of [
+      ['PDF/A-1', '1b'],
+      ['PDF/A-1b', '1b'],
+      ['PDF/A-2', '2b'],
+      ['PDF/A-2b', '2b'],
+      ['PDF/A-3', '3b'],
+      ['PDF/A-3b', '3b'],
+    ]) {
+      const r = output(conformance);
+      expect(r.output).toEqual({ pdfA });
+      expect(r.document.meta).toEqual({ title: 'A' });
+      // Rebuilds for the page count keep it.
+      expect(r.rebuild(2).output).toEqual({ pdfA });
+    }
+    for (const level of ['PDF/A-2a', 'PDF/A-3u', 'PDF/A-1a']) {
+      expect(() => output(level)).toThrow(/the a and u levels need tagged PDF.*use 'PDF\/A-\db'/);
+    }
+    for (const bad of ['PDF/A-4', 'pdf/a-2b', 'PDF/UA-1', '2b', true]) {
+      expect(() => output(bad)).toThrow(/is not a PDF\/A level: use 'PDF\/A-1b', 'PDF\/A-2b' or 'PDF\/A-3b'/);
+    }
+  });
+
+  it('moves the passwords and permissions into output options that never show them', () => {
+    const secret = 's3cret-marker';
+    const r = renderTemplate(
+      <Document
+        title="A"
+        userPassword={secret}
+        ownerPassword={`${secret}-owner`}
+        permissions={{ copying: true }}
+      >
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(r.output.encryption).toEqual({
+      userPassword: secret,
+      ownerPassword: `${secret}-owner`,
+      permissions: { copying: true },
+    });
+    expect(r.document.meta).toEqual({ title: 'A' });
+    expect(JSON.stringify(r.document)).not.toContain(secret);
+    for (const shown of [JSON.stringify(r), JSON.stringify(r.output), inspect(r), inspect(r.output)]) {
+      expect(shown).not.toContain(secret);
+    }
+    expect(JSON.parse(JSON.stringify(r.output))).toEqual({ encryption: '<redacted>' });
+    expect(r.rebuild(2).output.encryption?.userPassword).toBe(secret);
+    // Without the props there is no encryption.
+    const plain = renderTemplate(
+      <Document>
+        <Page />
+      </Document>,
+      { fonts },
+    );
+    expect(plain.output.encryption).toBeUndefined();
+    // Wrong types fail without showing the value.
+    for (const props of [{ userPassword: 12345 }, { ownerPassword: [secret] }, { permissions: secret }]) {
+      const e = thrown(() =>
+        renderTemplate(
+          <Document {...(props as object)}>
+            <Page />
+          </Document>,
+          { fonts },
+        ),
+      );
+      expect(e.message).toMatch(/<Document (userPassword|ownerPassword|permissions)> must be/);
+      expect(e.message).not.toContain(secret);
+    }
   });
 
   it('maps page size presets, margins, background, header and footer', () => {

@@ -1,0 +1,81 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Emoji images"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "EmojiTest-COLR",
+   "family": "Emoji Test"
+  }
+ ],
+ "fallbackFonts": [
+  "EmojiTest-COLR"
+ ],
+ "emojiImages": {
+  "😀": "emoji-smile",
+  "🇫🇷": "emoji-flag",
+  "❤️": "logo"
+ },
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 220
+   },
+   "margin": {
+    "top": 20,
+    "right": 20,
+    "bottom": 20,
+    "left": 20
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Emoji drawn from images, 1em high, the rest from the colour font",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "lineHeight": 1.5,
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "smile 😀 flag 🇫🇷 heart ❤️ (text ❤︎, 😀︎) thumbs 👍🏽 parts 😀‍🇫🇷 coder 👩‍💻",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "😀🇫🇷❤️👍",
+       "font": "Inter-Regular",
+       "size": 36
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

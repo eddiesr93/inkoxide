@@ -32,6 +32,8 @@ fi
 # Every fixture output passes `qpdf --check` when qpdf is installed
 # (crates/core/tests/fixtures.rs).
 command -v qpdf >/dev/null || echo "qpdf not installed; fixture outputs not checked (apt install qpdf)"
+command -v pdftotext >/dev/null ||
+  echo "pdftotext not installed; extracted text not checked (apt install poppler-utils)"
 cargo test --workspace --locked
 cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 

@@ -1,13 +1,18 @@
 import type {
+  BackgroundImage,
   Bookmark,
   BoxNode,
   Break,
   Color,
   ColumnSpec,
   Document,
+  FieldFormat,
   FieldNode,
+  FontDecl,
   ImageNode,
+  InlineImage,
   Meta,
+  NoteNode,
   PageFilter,
   PageSpec,
   Node as SchemaNode,
@@ -21,7 +26,7 @@ import type {
 import { round, type FlatStyle, type Units } from '@inkoxide/style';
 import { createElement } from 'react';
 
-import { Painter } from '../canvas.ts';
+import { type DrawingFont, Painter } from '../canvas.ts';
 import {
   type AbsoluteLength,
   type BookmarkProp,
@@ -32,8 +37,10 @@ import {
   type HyphenationCallback,
   type Length,
   type PageSize,
+  type Permissions,
   type RenderProp,
   type Style as StyleInput,
+  type TextFormat,
 } from '../components/index.ts';
 import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
@@ -56,6 +63,7 @@ import {
   hasInherited,
   inherit,
   resolveColor,
+  runAlignOf,
   type TextCtx,
   textNodeStyle,
   styleFontSize,
@@ -64,7 +72,7 @@ import {
   usesPatterns,
   withStyleProp,
 } from './style.ts';
-import { svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
+import { type SvgTextFonts, svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
 import { Hyphenator, transformText } from './text.ts';
 import { type FlowKey, stackVariants } from './variants.ts';
 
@@ -79,8 +87,51 @@ export interface BuildOptions {
   images: ImageTableOptions;
 }
 
+/**
+ * Render options a `<Document>` sets that are not part of the document tree, for the caller to
+ * pass to the engine.
+ */
+export interface OutputOptions {
+  /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
+  pdfA?: PdfALevel;
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
+   * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
+   */
+  encryption?: EncryptionOptions;
+}
+
+/** The encryption render option (the `inkoxide` binding's `EncryptionOptions`). */
+export interface EncryptionOptions {
+  userPassword?: string;
+  ownerPassword?: string;
+  permissions?: Permissions;
+}
+
+const REDACTED = '<redacted>';
+
+/** Output options whose JSON and `util.inspect` view hide the passwords. */
+function outputOptions(): OutputOptions {
+  const redacted = function (this: OutputOptions): object {
+    return this.encryption === undefined ? { ...this } : { ...this, encryption: REDACTED };
+  };
+  const out: OutputOptions = {};
+  for (const key of ['toJSON', Symbol.for('nodejs.util.inspect.custom')]) {
+    Object.defineProperty(out, key, { value: redacted, enumerable: false });
+  }
+  return out;
+}
+
+/** The PDF/A parts and conformance levels the engine writes, from the oldest part. */
+const PDF_A_LEVELS = ['1b', '2b', '3b'] as const;
+
+/** A PDF/A part and conformance level the engine writes. */
+export type PdfALevel = (typeof PDF_A_LEVELS)[number];
+
 export interface BuildResult {
   document: Document;
+  /** Render options the `<Document>` sets (`conformance`); not part of `document`. */
+  output: OutputOptions;
   /** Image bytes referenced by generated `src` ids; pass them as the render option `images`. */
   images: Record<string, Uint8Array>;
   /** Font ids used, in registration order. */
@@ -122,6 +173,21 @@ function blockOnly(props: Record<string, unknown>, key: (typeof BLOCK_ONLY)[numb
 
 const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
 
+/** A run's OpenType features: `fontVariantNumeric`'s, then `fontFeatureSettings`, which win. */
+function fontFeatures(ctx: TextCtx): Record<string, number> | undefined {
+  const { fontVariantNumeric: numeric, fontFeatureSettings: settings } = ctx;
+  if (!numeric && !settings) return undefined;
+  const out = { ...numeric, ...settings };
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sameFeatures(a: TextRun['fontFeatures'], b: TextRun['fontFeatures']): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
 function sameColor(a: Color | undefined, b: Color | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -159,8 +225,20 @@ function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
   return typeof b === 'string' ? { title: b } : b;
 }
 
+/** An emoji sequence (Unicode's RGI emoji); the `v` flag is built at run time for the ES2023 target. */
+const EMOJI = new RegExp('\\p{RGI_Emoji}', 'gv');
+
+/** The face a declared font is, as the text of a drawing names it. */
+const faceOf = (d: FontDecl): DrawingFont => ({
+  family: [d.family],
+  weight: d.weight ?? 400,
+  style: d.style ?? 'normal',
+});
+
 class Builder {
   readonly imageTable: ImageTable;
+  /** The document's `emojiImages`: emoji sequence (without U+FE0F) → image id. */
+  readonly emoji: Record<string, string> = {};
   private readonly used = new Set<string>();
   readonly warnings: string[] = [];
   private readonly warned = new Set<string>();
@@ -180,6 +258,8 @@ class Builder {
   private fixedEl: string | undefined;
   /** How many table cells the element being built is in. */
   private inCell = 0;
+  /** The names of the `<FieldSet>`s being built, each followed by `.`: `address.`. */
+  private fieldPrefix = '';
   /** The style of each element's `className`, to tell which keys came from it. */
   private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
@@ -255,10 +335,12 @@ class Builder {
         { kind: 'props' },
       );
     }
-    if (inst.type !== HOST.Image) {
+    if (inst.type !== HOST.Image && inst.type !== HOST.ImageBackground) {
       for (const key of ['objectFit', 'objectPosition'] as const) {
         if (s[key] !== undefined) {
-          this.fail(inst, `${key} applies to <Image>, not <${HOST_NAME[inst.type]}>.`, { kind: 'props' });
+          this.fail(inst, `${key} applies to <Image> and <ImageBackground>, not <${HOST_NAME[inst.type]}>.`, {
+            kind: 'props',
+          });
         }
       }
     }
@@ -314,6 +396,9 @@ class Builder {
     );
   }
 
+  /** What the `<Document>` sets besides the tree; filled by `build`. */
+  readonly output: OutputOptions = outputOptions();
+
   build(container: Container): Document {
     const [root, ...extra] = container.children.filter((c) => !(c.kind === 'text' && c.text.trim() === ''));
     if (!isEl(root, HOST.Document) || extra.length > 0) {
@@ -334,6 +419,9 @@ class Builder {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
+    if (p.conformance !== undefined) this.output.pdfA = this.conformance(root, p.conformance);
+    const encryption = this.encryption(root, p);
+    if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
@@ -363,9 +451,52 @@ class Builder {
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
       fonts: fontIds.map((id) => this.opts.fonts.decl(id)),
       ...(fallbackFonts.length > 0 ? { fallbackFonts } : {}),
+      ...(Object.keys(this.emoji).length > 0 ? { emojiImages: this.emoji } : {}),
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
+  }
+
+  /**
+   * The encryption of `<Document userPassword ownerPassword permissions>`, its types checked;
+   * the engine checks the values. Messages never show a password.
+   */
+  private encryption(root: Instance, p: Record<string, unknown>): EncryptionOptions | undefined {
+    const out: EncryptionOptions = {};
+    for (const key of ['userPassword', 'ownerPassword'] as const) {
+      const v = p[key];
+      if (v === undefined) continue;
+      if (typeof v !== 'string') this.fail(root, `<Document ${key}> must be a string.`);
+      out[key] = v;
+    }
+    if (p.permissions !== undefined) {
+      const perms = p.permissions;
+      if (typeof perms !== 'object' || perms === null || Array.isArray(perms)) {
+        this.fail(root, '<Document permissions> must be an object.');
+      }
+      out.permissions = { ...(perms as Permissions) };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
+  /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
+  private conformance(root: Instance, value: unknown): PdfALevel {
+    const m = typeof value === 'string' ? /^PDF\/A-(\d)([abu]?)$/.exec(value) : null;
+    const level = PDF_A_LEVELS.find((l) => l === `${m?.[1]}b`);
+    if (m && level && (m[2] === '' || m[2] === 'b')) return level;
+    const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
+    if (m && level) {
+      this.fail(
+        root,
+        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${level}'.`,
+      );
+    }
+    const levels = PDF_A_LEVELS.map((l) => `'PDF/A-${l}'`);
+    const parts = PDF_A_LEVELS.map((l) => `'PDF/A-${l.slice(0, -1)}'`);
+    this.fail(
+      root,
+      `<Document conformance=${shown}> is not a PDF/A level: use ${levels.slice(0, -1).join(', ')} or ${levels.at(-1)} (or ${parts.join(', ')}).`,
+    );
   }
 
   fontIds(): string[] {
@@ -635,13 +766,19 @@ class Builder {
 
   /** The node of a block element, built by the method for its type. */
   private nodeForType(inst: Instance, ctx: TextCtx): SchemaNode {
-    if (typeof inst.props.render === 'function' && (inst.type === HOST.View || inst.type === HOST.Text)) {
-      return this.perPage(inst, ctx);
+    if (typeof inst.props.render === 'function') {
+      if (inst.type === HOST.View || inst.type === HOST.Text) return this.perPage(inst, ctx);
+      if (inst.type === HOST.FieldSet) return this.fieldSet(inst, () => this.perPage(inst, ctx));
     }
     switch (inst.type) {
       case HOST.View:
+      case HOST.ImageBackground:
       case HOST.Link:
         return this.box(inst, ctx);
+      case HOST.FieldSet:
+        return this.fieldSet(inst, () => this.box(inst, ctx));
+      case HOST.Note:
+        return this.note(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
       case HOST.Field:
@@ -686,11 +823,18 @@ class Builder {
     const own = { ...defaults, ...this.styleOf(inst, parent) };
     this.noTextOnly(inst, own);
     const ctx = inherit(parent, own);
-    const node: SchemaNode = { type: 'box' };
+    const node: BoxNode = { type: 'box' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    if (inst.type === HOST.View || inst.type === HOST.Link) this.flowProps(node, inst);
-    else {
+    if (inst.type === HOST.ImageBackground) node.backgroundImage = this.backgroundImage(inst, own);
+    if (
+      inst.type === HOST.View ||
+      inst.type === HOST.ImageBackground ||
+      inst.type === HOST.Link ||
+      inst.type === HOST.FieldSet
+    ) {
+      this.flowProps(node, inst);
+    } else {
       // <Header> and <Footer>.
       if (isFixed(inst)) {
         const name = HOST_NAME[inst.type];
@@ -709,6 +853,7 @@ class Builder {
     const own = this.styleOf(inst, parent);
     const p = inst.props;
     const ctx = inherit(parent, own, {
+      verticalAlign: runAlignOf(own),
       lang: p.lang as string | undefined,
       hyphenate: p.hyphenate as boolean | undefined,
       hyphenation: p.hyphenationCallback as HyphenationCallback | null | undefined,
@@ -770,7 +915,11 @@ class Builder {
             );
           }
           const own = this.styleOf(n, ctx);
-          const bad = [...boxKeys(own), ...textOnlyKeys(own)];
+          // `verticalAlign` places the run: only a cell's values are box keys.
+          const align = runAlignOf(own);
+          const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter(
+            (k) => k !== 'verticalAlign' || align === undefined,
+          );
           if (bad[0] !== undefined) {
             const { fromClass, init } = this.source(n, own, bad[0]);
             this.fail(
@@ -784,12 +933,14 @@ class Builder {
           const href = n.type === HOST.Link ? this.target(n) : (n.props.href as string | undefined);
           const inner =
             hasInherited(own) ||
+            align !== undefined ||
             href !== undefined ||
             n.props.lang !== undefined ||
             n.props.hyphenate !== undefined ||
             n.props.hyphenationCallback !== undefined
               ? inherit(ctx, own, {
                   link: href,
+                  verticalAlign: align,
                   lang: n.props.lang as string | undefined,
                   hyphenate: n.props.hyphenate as boolean | undefined,
                   hyphenation: n.props.hyphenationCallback as HyphenationCallback | null | undefined,
@@ -798,6 +949,12 @@ class Builder {
           this.runs(n.children, inner, out, n, para);
           break;
         }
+        case HOST.Image:
+          out.push(this.inlineImage(n, ctx));
+          break;
+        case HOST.Note:
+          out.push(this.inlineNote(n, ctx));
+          break;
         case HOST.PageNumber:
         case HOST.TotalPages:
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
@@ -805,6 +962,118 @@ class Builder {
         default:
           throw new Error(`Internal error: the reconciler let <${n.type}> into a <Text>.`);
       }
+    }
+  }
+
+  /**
+   * An `<Image>` in a `<Text>`: a run of its own with the image in place of text, sized by its
+   * `width` and `height` (points or em; with neither, 1em high), placed by `verticalAlign`.
+   */
+  private inlineImage(n: Instance, ctx: TextCtx): TextRun {
+    const init = { kind: 'props' } as const;
+    const prop =
+      BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
+      (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
+    if (prop) {
+      this.fail(
+        n,
+        `An <Image> inside <Text> is part of the line, so \`${prop}\` does not apply to it.${prop === 'href' ? ' Wrap it in a <Link>.' : ''}`,
+        init,
+      );
+    }
+    const own = this.styleOf(n, ctx);
+    const allowed = new Set(['width', 'height', 'verticalAlign']);
+    const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => !allowed.has(k));
+    if (bad[0] !== undefined) {
+      const { fromClass, init: from } = this.source(n, own, bad[0]);
+      this.fail(
+        n,
+        `An <Image> inside <Text> is part of the line: it takes width, height, objectFit, objectPosition and verticalAlign, not "${bad.join(', ')}" (from ${fromClass ? `className="${from.className}"` : 'its style'}).`,
+        from,
+      );
+    }
+    const image: InlineImage = this.placedImage(n, own, (msg) => this.fail(n, msg, init));
+    for (const side of ['width', 'height'] as const) {
+      const v = own[side];
+      if (v === undefined || v === 'auto') continue;
+      if (typeof v !== 'number') {
+        this.fail(
+          n,
+          `An <Image> inside <Text> takes its ${side} in points or em, not ${String(v)}: a line has no size to take a percentage of.`,
+          init,
+        );
+      }
+      image[side] = v;
+    }
+    if (typeof n.props.alt === 'string' && n.props.alt !== '') image.alt = n.props.alt;
+    const run: TextRun = { image, font: this.font(ctx, n), size: ctx.fontSize };
+    const align = own.verticalAlign ?? ctx.verticalAlign;
+    if (align !== undefined && align !== 'baseline') run.verticalAlign = align as TextRun['verticalAlign'];
+    if (ctx.link !== undefined) run.link = ctx.link;
+    return this.mark(run, n);
+  }
+
+  /**
+   * A `<Note>` in a `<Text>`: a run of its own that takes no room, its icon hanging from the top
+   * of the line where it is. Its `backgroundColor` is its colour.
+   */
+  private inlineNote(n: Instance, ctx: TextCtx): TextRun {
+    const prop =
+      BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
+      (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
+    if (prop) {
+      this.fail(n, `A <Note> inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
+        kind: 'props',
+      });
+    }
+    const own = this.styleOf(n, ctx);
+    const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => k !== 'backgroundColor');
+    if (bad[0] !== undefined) {
+      const { fromClass, init } = this.source(n, own, bad[0]);
+      this.fail(
+        n,
+        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${fromClass ? `className="${init.className}"` : 'its style'}).`,
+        init,
+      );
+    }
+    const note = this.noteOf(n, boxStyle(own, ctx.color)?.backgroundColor);
+    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
+  }
+
+  /**
+   * With an emoji source registered, the image of each emoji sequence in `text` (by its sequence
+   * without U+FE0F) goes to the document's `emojiImages`, resolved like an `<Image src>`.
+   */
+  private emojiOf(text: string, owner: Instance): void {
+    const source = this.opts.fonts.emojiSource;
+    // Every emoji is outside ASCII (a keycap ends in U+20E3).
+    if (!source || !/[\u0080-\u{10FFFF}]/u.test(text)) return;
+    for (const [sequence] of text.matchAll(EMOJI)) {
+      const key = sequence.replaceAll('\uFE0F', '');
+      if (Object.hasOwn(this.emoji, key)) continue;
+      const points = (s: string) => [...s].map((c) => c.codePointAt(0)?.toString(16)).join('-');
+      let src: unknown;
+      if ('builder' in source) {
+        src = source.builder(points(key));
+      } else {
+        const named = source.withVariationSelectors ? sequence : key;
+        src = `${source.url}${points(named)}.${source.format ?? 'png'}`;
+      }
+      const fail = (msg: string): never =>
+        this.fail(owner, `Font.registerEmojiSource, for ${sequence}: ${msg}`, { kind: 'props' });
+      let image = this.imageTable.resolve(src, fail);
+      if ('data' in image) {
+        // `emojiImages` takes image ids: a data: URL becomes bytes with an id of their own.
+        const body = /;base64,(.*)$/s.exec(image.data)?.[1]?.replace(/\s/g, '');
+        if (body === undefined || !/^[A-Za-z0-9+/]*={0,2}$/.test(body)) {
+          return fail('a data: URL that is not valid base64 (`data:<type>;base64,…`)');
+        }
+        image = this.imageTable.resolve(
+          Uint8Array.from(atob(body), (c) => c.charCodeAt(0)),
+          fail,
+        );
+      }
+      if ('src' in image) this.emoji[key] = image.src;
     }
   }
 
@@ -816,6 +1085,7 @@ class Builder {
     placeholder: TextRun['placeholder'],
     hyphenate?: boolean,
   ): void {
+    if (text !== undefined) this.emojiOf(text, owner);
     const font = this.font(ctx, owner);
     const size = ctx.fontSize;
     const ls = ctx.letterSpacing;
@@ -824,6 +1094,8 @@ class Builder {
     const decoColor = decoration ? ctx.decorationColor : undefined;
     const decoThickness = decoration ? ctx.decorationThickness : undefined;
     const decoStyle = decoration && ctx.decorationStyle !== 'solid' ? ctx.decorationStyle : undefined;
+    const verticalAlign = ctx.verticalAlign === 'baseline' ? undefined : ctx.verticalAlign;
+    const features = fontFeatures(ctx);
     const last = out[out.length - 1];
     if (
       text !== undefined &&
@@ -838,7 +1110,9 @@ class Builder {
       last.decorationThickness === decoThickness &&
       last.decorationStyle === decoStyle &&
       last.link === ctx.link &&
-      last.hyphenate === hyphenate
+      last.hyphenate === hyphenate &&
+      last.verticalAlign === verticalAlign &&
+      sameFeatures(last.fontFeatures, features)
     ) {
       last.text += text;
       return;
@@ -852,6 +1126,8 @@ class Builder {
     if (decoStyle) run.decorationStyle = decoStyle;
     if (ctx.link !== undefined) run.link = ctx.link;
     if (hyphenate !== undefined) run.hyphenate = hyphenate;
+    if (verticalAlign !== undefined) run.verticalAlign = verticalAlign;
+    if (features !== undefined) run.fontFeatures = features;
     out.push(this.mark(run, owner));
   }
 
@@ -916,6 +1192,14 @@ class Builder {
     commonProps(cell, inst);
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
+    if (runAlignOf(own) !== undefined) {
+      const { fromClass, init } = this.source(inst, own, 'verticalAlign');
+      this.fail(
+        inst,
+        `<Cell>: verticalAlign "${own.verticalAlign}" (from ${fromClass ? `className="${init.className}"` : 'its style'}) places text on its line; a Cell takes top, middle or bottom.`,
+        init,
+      );
+    }
     let style: Style | undefined = boxStyle(own, ctx.color, true);
     if (typeof p.verticalAlign === 'string')
       style = { ...style, verticalAlign: p.verticalAlign as Style['verticalAlign'] };
@@ -931,18 +1215,47 @@ class Builder {
     return this.mark(cell, inst);
   }
 
+  /** An `<ImageBackground>`'s image: its `src`, with `fit` and `objectPosition` from its props and style. */
+  private backgroundImage(inst: Instance, own: FlatStyle): BackgroundImage {
+    const fail = (msg: string): never => this.fail(inst, msg, { kind: 'props' });
+    for (const key of ['source', 'imageStyle', 'srcSet']) {
+      if (inst.props[key] !== undefined) {
+        fail(
+          `<ImageBackground> does not take ${key}: pass the image as src, and place it with fit and objectPosition (style or object-* classes).`,
+        );
+      }
+    }
+    return this.placedImage(inst, own, fail, 'ImageBackground');
+  }
+
+  /**
+   * An image's source and placement, as an image node, an image run and a background image take
+   * them: its `src` prop (resolved), and `fit` and `objectPosition` from its props and style.
+   */
+  private placedImage(
+    inst: Instance,
+    own: FlatStyle,
+    fail: (message: string) => never,
+    component?: string,
+  ): BackgroundImage {
+    const src = this.imageTable.resolve(inst.props.src, fail, component);
+    const image: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
+    const fit = (inst.props.fit as BackgroundImage['fit']) ?? own.objectFit;
+    if (fit) image.fit = fit;
+    if (own.objectPosition) image.objectPosition = own.objectPosition;
+    return image;
+  }
+
   private image(inst: Instance, ctx: TextCtx): ImageNode {
     const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
     const node: ImageNode = { type: 'image' };
     const style = boxStyle(own, ctx.color);
     if (style) node.style = style;
-    const src = this.imageTable.resolve(inst.props.src, (msg) => this.fail(inst, msg, { kind: 'props' }));
-    if ('data' in src) node.data = src.data;
-    else node.src = src.src;
-    const fit = (inst.props.fit as ImageNode['fit']) ?? own.objectFit;
-    if (fit) node.fit = fit;
-    if (own.objectPosition) node.objectPosition = own.objectPosition;
+    Object.assign(
+      node,
+      this.placedImage(inst, own, (msg) => this.fail(inst, msg, { kind: 'props' })),
+    );
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }
@@ -955,13 +1268,14 @@ class Builder {
     if (typeof p.name !== 'string' || p.name === '') {
       this.fail(inst, '<Field> needs a name.', { kind: 'props' });
     }
-    const field: FieldNode['field'] = { name: p.name, kind: p.kind };
+    const field: FieldNode['field'] = { name: this.fieldPrefix + p.name, kind: p.kind };
     switch (p.kind) {
       case 'text':
         if (p.value !== undefined) field.value = p.value;
         if (p.multiline) field.multiline = true;
         if (p.password) field.password = true;
         if (p.maxLength !== undefined) field.maxLength = p.maxLength;
+        if (p.format !== undefined) field.format = this.textFormat(inst, p.format);
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
@@ -971,13 +1285,22 @@ class Builder {
         if (p.checked) field.checked = true;
         break;
       case 'select':
-        field.options = p.options as [string, ...string[]];
+      case 'list':
+        field.options = (p.options ?? p.select) as [string, ...string[]];
+        if (p.kind === 'list') {
+          if (p.multiSelect) field.multiSelect = true;
+          if (Array.isArray(p.value) && !p.multiSelect) {
+            this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
+              kind: 'props',
+            });
+          }
+        }
         if (p.value !== undefined) field.value = p.value;
         break;
       default:
         this.fail(
           inst,
-          `<Field kind="${String((p as { kind: unknown }).kind)}">: use text, checkbox, radio or select.`,
+          `<Field kind="${String((p as { kind: unknown }).kind)}">: use text, checkbox, radio, select or list.`,
           {
             kind: 'props',
           },
@@ -985,7 +1308,7 @@ class Builder {
     }
     if (p.readOnly) field.readOnly = true;
     if (p.required) field.required = true;
-    if (p.kind === 'text' || p.kind === 'select') field.font = this.font(ctx, inst);
+    if (p.kind === 'text' || p.kind === 'select' || p.kind === 'list') field.font = this.font(ctx, inst);
     if (ctx.fontSize !== 10) field.size = ctx.fontSize;
     if (!sameColor(ctx.color, [0, 0, 0, 1])) field.color = ctx.color;
     const node: FieldNode = { type: 'field', field };
@@ -993,6 +1316,107 @@ class Builder {
     if (style) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  /**
+   * What the text of a drawing in `ctx` needs: the text style around it, and the registered face
+   * for a font, which the document then declares.
+   */
+  private svgText(ctx: TextCtx): SvgTextFonts {
+    return {
+      font: { family: ctx.fontFamily, weight: ctx.fontWeight, style: ctx.fontStyle },
+      size: ctx.fontSize,
+      face: (font, inst) => {
+        const own = { ...ctx, fontFamily: font.family, fontWeight: font.weight, fontStyle: font.style };
+        return faceOf(this.opts.fonts.decl(this.font({ ...own, fontId: undefined }, inst)));
+      },
+      fail: (inst, message) => this.fail(inst, message, { kind: 'props' }),
+    };
+  }
+
+  /** A `<Note>`: its text children are its contents, and its background colour its colour. */
+  private note(inst: Instance, ctx: TextCtx): NoteNode {
+    const own = this.styleOf(inst, ctx);
+    this.noTextOnly(inst, own);
+    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
+    const node: NoteNode = { type: 'note', note: this.noteOf(inst, backgroundColor) };
+    if (Object.keys(style).length > 0) node.style = style;
+    this.flowProps(node, inst);
+    return this.mark(node, inst);
+  }
+
+  /** What a `<Note>` holds: its text children, `author`, `open`, and `color`. */
+  private noteOf(inst: Instance, color: NoteNode['note']['color']): NoteNode['note'] {
+    const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
+    if (contents === '') {
+      this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });
+    }
+    const p = inst.props;
+    const note: NoteNode['note'] = { contents };
+    if (typeof p.author === 'string') note.author = p.author;
+    if (p.open) note.open = true;
+    if (color) note.color = color;
+    return note;
+  }
+
+  /** A `TextField`'s format, from its readable keys or their other names. */
+  private textFormat(inst: Instance, f: TextFormat): FieldFormat {
+    if (typeof f !== 'object' || f === null || Array.isArray(f)) {
+      this.fail(inst, "<TextField format> is an object, as format={{ type: 'number', decimals: 2 }}.", {
+        kind: 'props',
+      });
+    }
+    const type = f.type === 'zip4' ? 'zipPlus4' : f.type;
+    const out: FieldFormat = { type };
+    // The other names come with their own defaults: no decimals and no thousands separator.
+    const aliased = ALIAS_KEYS.some((k) => f[k] !== undefined) && (type === 'number' || type === 'percent');
+    const decimals = f.decimals ?? f.nDec ?? (aliased ? 0 : undefined);
+    if (decimals !== undefined) out.decimals = decimals;
+    const sepComma = f.sepComma ?? (aliased ? false : undefined);
+    const separators =
+      f.separators ?? (sepComma === undefined ? undefined : sepComma ? '1,234.56' : '1234.56');
+    if (separators !== undefined) out.separators = separators;
+    const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
+    if (negative !== undefined) out.negative = negative;
+    if (f.currency !== undefined) out.currency = f.currency;
+    const before = f.currencyBefore ?? f.currencyPrepend;
+    if (before !== undefined) out.currencyBefore = before;
+    const pattern = f.pattern ?? (f.param === undefined ? undefined : this.formatParam(inst, type, f.param));
+    if (pattern !== undefined) out.pattern = pattern;
+    return out;
+  }
+
+  /** A format's `param`: the pattern of a date, or one of the four styles of a time, by index. */
+  private formatParam(inst: Instance, type: FieldFormat['type'], param: string | number): string {
+    if (type !== 'time') return String(param);
+    const style = /^[0-3]$/.test(String(param)) ? TIME_STYLES[Number(param)] : undefined;
+    if (style === undefined) {
+      this.fail(
+        inst,
+        `<TextField format> param on a time is a style from 0 to 3, not ${JSON.stringify(param)}; ` +
+          "give a pattern as pattern: 'HH:MM'.",
+        { kind: 'props' },
+      );
+    }
+    return style;
+  }
+
+  /**
+   * A `<FieldSet>`: a box, made by `build`, whose name goes in front of the names of the fields
+   * inside it.
+   */
+  private fieldSet(inst: Instance, build: () => SchemaNode): SchemaNode {
+    const name = inst.props.name;
+    if (typeof name !== 'string' || name === '') {
+      this.fail(inst, '<FieldSet> needs a name: the group its fields are in.', { kind: 'props' });
+    }
+    const outer = this.fieldPrefix;
+    this.fieldPrefix = `${outer}${name}.`;
+    try {
+      return build();
+    } finally {
+      this.fieldPrefix = outer;
+    }
   }
 
   /** `<Svg>` and `<Canvas>`: an SVG image of the drawing, sized by `width` and `height`. */
@@ -1011,7 +1435,15 @@ class Builder {
     if (inst.type === HOST.Canvas) {
       const paint = p.paint as ((painter: Painter, w: number, h: number) => void) | undefined;
       if (typeof paint !== 'function') this.fail(inst, '<Canvas> needs a paint function.', { kind: 'props' });
-      const painter = new Painter();
+      const text = this.svgText(ctx);
+      const painter = new Painter({
+        font: text.font,
+        byId: (id) => {
+          if (!this.opts.fonts.has(id)) return undefined;
+          return faceOf(this.opts.fonts.decl(id));
+        },
+        face: (font) => text.face(font, inst),
+      });
       try {
         paint(painter, w, h);
       } catch (e) {
@@ -1019,7 +1451,7 @@ class Builder {
       }
       markup = svgDocument(w, h, painter.toSvgBody());
     } else {
-      markup = svgMarkup(inst, w, h);
+      markup = svgMarkup(inst, w, h, this.svgText(ctx));
     }
     const node: ImageNode = { type: 'image', data: svgDataUrl(markup) };
     const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };
@@ -1056,12 +1488,27 @@ class Builder {
   }
 }
 
+/** The other names of format keys, which come with their own defaults. */
+const ALIAS_KEYS = ['nDec', 'sepComma', 'negStyle', 'currencyPrepend', 'param'] as const;
+
+/** The patterns of a time format's `param`: the four styles of `AFTime_Format`. */
+const TIME_STYLES: readonly string[] = ['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt'];
+
+/** The negative styles by their other names (`negStyle`). */
+const NEGATIVE: Record<string, FieldFormat['negative']> = {
+  MinusBlack: 'minus',
+  Red: 'red',
+  ParensBlack: 'parens',
+  ParensRed: 'parensRed',
+};
+
 /** Builds the schema document from rendered host instances. */
 export function buildTree(container: Container, opts: BuildOptions): BuildResult {
   const b = new Builder(opts);
   const document = b.build(container);
   return {
     document,
+    output: b.output,
     images: b.imageTable.images,
     fonts: b.fontIds(),
     warnings: b.warnings,

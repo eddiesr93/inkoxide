@@ -1,0 +1,123 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Colour emoji (COLR)"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "EmojiTest-COLR",
+   "family": "Emoji Test"
+  }
+ ],
+ "fallbackFonts": [
+  "EmojiTest-COLR"
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 300
+   },
+   "margin": {
+    "top": 20,
+    "right": 20,
+    "bottom": 20,
+    "left": 20
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Colour emoji from a COLR font: layers, gradients, clips and transforms",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "lineHeight": 1.5,
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "smile 😀 heart ❤️ (as text ❤︎) thumbs 👍 👍🏽 flag 🇫🇷 keycap 1️⃣ coder 👩‍💻",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "😀👍🏽🇫🇷 1️⃣👩‍💻❤️",
+       "font": "Inter-Regular",
+       "size": 40
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Half opacity, linked, underlined: ",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "text": "😀❤️👍",
+       "font": "Inter-Regular",
+       "size": 20,
+       "color": [
+        0.1,
+        0.2,
+        0.8,
+        0.5
+       ],
+       "link": "https://example.com",
+       "decoration": "underline"
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "textAlign": "justify",
+      "width": 260
+     },
+     "runs": [
+      {
+       "text": "Justified text wraps around emoji: word 😀 word 😀 word 😀 word 😀 word 😀 word 😀 word 😀 word 😀 end.",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

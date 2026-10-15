@@ -3,7 +3,22 @@ import { join } from 'node:path';
 
 import type { FontDecl } from '@inkoxide/schema';
 
-import type { HyphenationCallback } from '../components/index.ts';
+import type { HyphenationCallback, ImageSrcValue } from '../components/index.ts';
+
+/**
+ * Where emoji images come from (`Font.registerEmojiSource`): a base URL to which the code points
+ * of each emoji (`1f469-200d-1f4bb`) and `.format` are added, or a function from those code
+ * points to an image `src`.
+ */
+export type EmojiSource =
+  | {
+      url: string;
+      /** The file extension. Default `png`. */
+      format?: string;
+      /** Keep U+FE0F (`fe0f`) in the code points. Default: left out, as most emoji sets name files. */
+      withVariationSelectors?: boolean;
+    }
+  | { builder: (codePoints: string) => ImageSrcValue };
 
 export interface FontFace {
   /** The engine font id, used in `fonts[].id` and `runs[].font` (`Inter-Bold`). */
@@ -33,7 +48,9 @@ interface Face extends Required<Omit<FontFace, 'file'>> {
 /**
  * Maps family + weight + style to registered font ids, and holds the font bytes until the
  * engine registers them. Matching follows the CSS Fonts 4 algorithm: the first
- * registered family of the stack, then the style, then the nearest weight.
+ * registered family of the stack (ignoring ASCII case), then the style, then the nearest weight. The engine's
+ * `FontSet::select` matches the same way; `fixtures/fonts/matching.json` holds the cases both
+ * are tested with.
  */
 export class FontRegistry {
   private readonly faces: Face[] = [];
@@ -41,6 +58,8 @@ export class FontRegistry {
   private readonly memo = new Map<string, ResolvedFont>();
   /** Splits words into syllables in every `Text` without its own `hyphenationCallback`. */
   hyphenationCallback: HyphenationCallback | undefined;
+  /** Draws the emoji of every `Text` as images from here. */
+  emojiSource: EmojiSource | undefined;
 
   register(face: FontFace, bytes?: Uint8Array): this {
     if (this.byId.has(face.id)) throw new Error(`Font id "${face.id}" is already registered`);
@@ -120,13 +139,14 @@ export class FontRegistry {
   private match(families: readonly string[], weight: number, style: 'normal' | 'italic'): ResolvedFont {
     if (this.faces.length === 0) throw new Error('No fonts are registered');
     const wanted = `${families[0] ?? '(none)'} ${weight}${style === 'italic' ? ' italic' : ''}`;
-    let family = families.find((f) => this.faces.some((x) => x.family === f));
-    let familyExact = family === families[0];
+    const index = families.findIndex((f) => this.faces.some((x) => sameFamily(x.family, f)));
+    let family = families[index];
+    let familyExact = index === 0;
     if (!family) {
       family = this.faces[0]?.family as string;
       familyExact = false;
     }
-    const inFamily = this.faces.filter((f) => f.family === family);
+    const inFamily = this.faces.filter((f) => sameFamily(f.family, family as string));
     const sameStyle = inFamily.filter((f) => f.style === style);
     const pool = sameStyle.length > 0 ? sameStyle : inFamily;
     const face = nearestWeight(pool, weight);
@@ -134,6 +154,10 @@ export class FontRegistry {
     return exact ? { id: face.id, exact } : { id: face.id, exact, wanted };
   }
 }
+
+/** What tells family names apart: they match ignoring ASCII case, as in CSS and in the engine. */
+export const familyKey = (family: string): string => family.replace(/[A-Z]/g, (c) => c.toLowerCase());
+const sameFamily = (a: string, b: string): boolean => a === b || familyKey(a) === familyKey(b);
 
 /** CSS Fonts 4 §5.2 weight matching. */
 function nearestWeight(pool: readonly Face[], w: number): Face {

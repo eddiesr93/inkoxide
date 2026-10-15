@@ -1,6 +1,8 @@
 import {
   type FlatStyle,
   parseFlex,
+  parseFontFeatureSettings,
+  parseFontVariantNumeric,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
@@ -10,7 +12,13 @@ import {
   UnsupportedValueError,
   ValueError,
 } from '@inkoxide/style';
-import { parseFontFamily, Reader, substituteVars, UNITS_UNKNOWN } from '@inkoxide/style/internal';
+import {
+  parseFontFamily,
+  Reader,
+  substituteVars,
+  UNITS_UNKNOWN,
+  verticalAlignKeyword,
+} from '@inkoxide/style/internal';
 
 import type { CandidateProblem, TailwindCompiler } from './compile.ts';
 
@@ -353,9 +361,19 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       s.borderSpacing = r.points(x);
       return;
     }
-    case 'vertical-align':
-      if (v !== 'top' && v !== 'middle' && v !== 'bottom') throw r.error(`vertical-align: ${v}`);
-      s.verticalAlign = v;
+    case 'vertical-align': {
+      // `top`, `middle` and `bottom` for a cell; `baseline`, `super` and `sub` for text; and
+      // `text-top` and `text-bottom` too for an image in text.
+      const keyword = verticalAlignKeyword(v);
+      if (keyword === undefined) throw r.error(`vertical-align: ${v}`);
+      s.verticalAlign = keyword;
+      return;
+    }
+    case 'font-feature-settings':
+      s.fontFeatureSettings = parseFontFeatureSettings(prop, v);
+      return;
+    case 'font-variant-numeric':
+      s.fontVariantNumeric = parseFontVariantNumeric(prop, v);
       return;
     case 'background-image':
       throw r.error('gradients and background images are not supported (use bg-<colour>)');
@@ -426,6 +444,20 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       return;
     case 'white-space':
       s.whiteSpace = r.oneOf('whiteSpace', v);
+      return;
+    case 'float':
+    case 'clear':
+      // `float-start` and `clear-end`: boxes have no direction here.
+      if (v.startsWith('inline-')) throw r.error(`${prop}: ${v} (use left or right)`);
+      if (prop === 'float') s.float = r.oneOf('float', v);
+      else s.clear = r.oneOf('clear', v);
+      return;
+    case 'text-wrap':
+      // `text-nowrap` is white space that does not wrap.
+      if (v === 'nowrap') s.whiteSpace = 'nowrap';
+      else if (v === 'balance')
+        throw r.error('text-wrap: balance (not supported yet; text-pretty evens lines)');
+      else s.textWrap = r.oneOf('textWrap', v);
       return;
     case 'hyphens':
       s.hyphenate = v === 'auto';

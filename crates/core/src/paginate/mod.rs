@@ -29,9 +29,13 @@
 //!   A forced break inside an `inside: avoid` box wins (as in CSS); the
 //!   part before it moves whole.
 //! - Atomic nodes (images, spacers, form fields, empty boxes, and
-//!   positioned, rotated, transformed or fixed nodes) move whole; taller
-//!   than a page, they are sliced (with a warning). A form field's widget
-//!   is on the page it starts on only.
+//!   positioned, rotated, transformed, floated or fixed nodes) move whole;
+//!   taller than a page, they are sliced (with a warning). A form field's
+//!   widget is on the page it starts on only.
+//! - A float needs room for its group (the floats beside it and the lines
+//!   and boxes beside them), which moves to the next page with it; the
+//!   lines of a paragraph beside a float count as its orphans. Lines
+//!   carried to a later page otherwise keep their place beside the float.
 //! - Column boxes split between children; text splits between lines.
 //! - Tables split between row groups (rows tied by row spans). A group
 //!   that does not fit moves to the next page, below room kept for the
@@ -39,11 +43,9 @@
 //!   its cells: each cell's content paginates like a column from the row
 //!   top, and the row ends below the longest cell.
 
-use crate::layout::{NodeIdx, Tree};
+use crate::layout::{LineBoxes, NodeIdx, Tree};
 use crate::paint::Rect;
-use crate::schema::{
-    BreakMode, Display, FlexDirection, FlexWrap, InsideMode, Node, NodeKind, Position,
-};
+use crate::schema::{BreakMode, Display, InsideMode, Node, NodeKind, Position};
 use crate::text::{LineLayout, TextCache, TextShaper};
 
 /// Float tolerance in paged space, points. Paged coordinates of long
@@ -173,6 +175,13 @@ impl PageWindow {
         top >= self.top - HAIR && top < self.bottom - HAIR
     }
 
+    /// Whether something with no height at paged `top` is on the page: it
+    /// starts on it, or sits on its bottom edge (after the last content of
+    /// a flow, which makes no page of its own).
+    pub fn holds(self, top: f32) -> bool {
+        self.starts(top) || (top >= self.bottom - HAIR && top < self.bottom + HAIR)
+    }
+
     /// The part of `top..bottom` (page coordinates) shown on the page, for
     /// a page whose paged y 0 is at page y `dy`.
     pub fn clip(self, top: f32, bottom: f32, dy: f32) -> (f32, f32) {
@@ -182,12 +191,12 @@ impl PageWindow {
 
 /// Supplies line layouts of text nodes at their laid-out width.
 pub(crate) trait LineSource {
-    fn lines(&mut self, node: &Node, width: f32) -> Option<std::sync::Arc<LineLayout>>;
+    fn lines(&mut self, node: &Node, boxes: &LineBoxes) -> Option<std::sync::Arc<LineLayout>>;
 }
 
 impl<S: TextShaper> LineSource for TextCache<'_, S> {
-    fn lines(&mut self, node: &Node, width: f32) -> Option<std::sync::Arc<LineLayout>> {
-        self.layout(node, width)
+    fn lines(&mut self, node: &Node, boxes: &LineBoxes) -> Option<std::sync::Arc<LineLayout>> {
+        self.layout_in(node, boxes)
     }
 }
 
@@ -298,13 +307,19 @@ pub(crate) fn paginate(tree: &Tree<'_>, page_h: f32, lines: &mut dyn LineSource)
 /// Whether a node lays its children out side by side (row, grid, wrapping)
 /// or in reverse: as a box taller than a page, it splits band by band.
 pub(crate) fn banded(node: &Node) -> bool {
+    !node.style.column()
+}
+
+/// Whether node `node` always moves to another page whole, wherever it
+/// is: fixed, floated, absolutely positioned, rotated or transformed.
+/// Forced breaks inside it do nothing.
+pub(crate) fn moves_whole(node: &Node) -> bool {
     let s = &node.style;
-    s.display == Some(Display::Grid)
-        || matches!(
-            s.flex_direction,
-            Some(FlexDirection::Row | FlexDirection::RowReverse | FlexDirection::ColumnReverse)
-        )
-        || matches!(s.flex_wrap, Some(FlexWrap::Wrap | FlexWrap::WrapReverse))
+    node.brk.fixed
+        || s.floats().is_some()
+        || s.position == Some(Position::Absolute)
+        || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
+        || s.transform.as_ref().is_some_and(|t| !t.is_empty())
 }
 
 /// Whether node `c` takes part in pagination (not absolutely positioned,
@@ -384,12 +399,7 @@ impl Paginator<'_, '_, '_> {
 
     /// Whether node `i` must move as one piece.
     fn atomic(&self, i: NodeIdx, node: &Node) -> bool {
-        let s = &node.style;
-        if node.brk.fixed
-            || s.position == Some(Position::Absolute)
-            || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
-            || s.transform.as_ref().is_some_and(|t| !t.is_empty())
-        {
+        if moves_whole(node) {
             return true;
         }
         // Kept together only while that is possible.
@@ -440,16 +450,18 @@ impl Paginator<'_, '_, '_> {
         }
         match &node.kind {
             NodeKind::Text { .. } => {
-                let Rect { y: cy, w: cw, .. } = g.content_box();
-                let (orphans, widows) = Self::orphans_widows(node);
-                match self.lines.lines(node, cw) {
-                    // Too short to leave `orphans` and carry `widows` lines:
-                    // it moves whole.
-                    Some(l) if l.lines.len() >= orphans + widows => {
-                        let last = &l.lines[orphans - 1];
-                        (cy - g.y) + last.top + last.height
-                    }
-                    _ => g.h,
+                let Rect { y: cy, .. } = g.content_box();
+                let Some(l) = self.lines.lines(node, &self.tree.line_boxes(i)) else {
+                    return g.h;
+                };
+                let (orphans, widows) = self.orphans_widows_of(i, node, &l);
+                // Too short to leave `orphans` and carry `widows` lines: it
+                // moves whole.
+                if orphans > 0 && l.lines.len() >= orphans + widows {
+                    let last = &l.lines[orphans - 1];
+                    (cy - g.y) + last.top + last.height
+                } else {
+                    g.h
                 }
             }
             NodeKind::Table(_) => {
@@ -525,12 +537,29 @@ impl Paginator<'_, '_, '_> {
     }
 
     /// Room node `i` needs from its top to stay on the page: its head,
-    /// or its `minPresenceAhead` when taller.
+    /// or its `minPresenceAhead` when taller; for a float, its group (the
+    /// floats beside it and what wraps beside them), which moves with it.
     fn need(&mut self, i: NodeIdx) -> f32 {
         let mpa = self.tree.nodes[i as usize]
             .node()
             .and_then(|n| n.brk.min_presence_ahead);
-        self.head(i).max(mpa.unwrap_or(0.0))
+        let group = self
+            .tree
+            .float_groups
+            .get(&i)
+            .map_or(0.0, |end| end - self.tree.nodes[i as usize].geo.y);
+        self.head(i).max(mpa.unwrap_or(0.0)).max(group)
+    }
+
+    /// `(orphans, widows)` of text node `i` laid out in `l`: lines beside
+    /// a float count as orphans, so they stay on the float's page.
+    fn orphans_widows_of(&self, i: NodeIdx, node: &Node, l: &LineLayout) -> (usize, usize) {
+        let (orphans, widows) = Self::orphans_widows(node);
+        let Some(boxes) = self.tree.wraps.get(&i) else {
+            return (orphans, widows);
+        };
+        let wrapped = l.wrapped_lines(boxes.width);
+        (orphans.max(wrapped).min(l.lines.len()), widows)
     }
 
     fn in_flow(&self, c: NodeIdx) -> bool {
@@ -799,11 +828,11 @@ impl Paginator<'_, '_, '_> {
     /// keeps `orphans` lines (CSS Fragmentation §4.4).
     fn split_text(&mut self, i: NodeIdx, node: &Node) {
         let g = self.tree.nodes[i as usize].geo;
-        let Rect { y: cy, w: cw, .. } = g.content_box();
-        let Some(layout) = self.lines.lines(node, cw) else {
+        let Rect { y: cy, .. } = g.content_box();
+        let Some(layout) = self.lines.lines(node, &self.tree.line_boxes(i)) else {
             return;
         };
-        let (orphans, widows) = Self::orphans_widows(node);
+        let (orphans, widows) = self.orphans_widows_of(i, node, &layout);
         let lines = &layout.lines;
         let n = lines.len();
         let mut shifts: Vec<f32> = Vec::with_capacity(n);

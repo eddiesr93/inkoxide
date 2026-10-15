@@ -1,0 +1,1060 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "PDF/A-1b: Café № 1",
+  "author": "Inkoxide",
+  "subject": "Archival output without transparency",
+  "keywords": "PDF/A-1b, archive",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "InterDisplay-Bold",
+   "family": "Inter Display",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 419.53,
+    "height": 595.28
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "PDF/A-1b archive copy",
+       "font": "InterDisplay-Bold",
+       "size": 20,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "id": "top",
+     "bookmark": {
+      "title": "PDF/A-1b archive copy"
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Everything here is opaque: colours with full alpha, no opacity, and images without an alpha channel. ",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "text": "CFF outlines",
+       "font": "InterDisplay-Bold",
+       "size": 10
+      },
+      {
+       "text": " and ",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "text": "TrueType outlines",
+       "font": "Inter-Bold",
+       "size": 10
+      },
+      {
+       "text": " share a paragraph, with a link to ",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "text": "the specification",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline",
+       "link": "https://www.iso.org/standard/38920.html"
+      },
+      {
+       "text": " and one to ",
+       "font": "Inter-Regular",
+       "size": 10
+      },
+      {
+       "text": "the form below",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline",
+       "link": "#form"
+      },
+      {
+       "text": ".",
+       "font": "Inter-Regular",
+       "size": 10
+      }
+     ],
+     "style": {
+      "textAlign": "justify",
+      "hyphenate": true,
+      "lineHeight": 1.4,
+      "margin": {
+       "top": 8,
+       "bottom": 10
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Images",
+       "font": "Inter-Bold",
+       "size": 12,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "bookmark": {
+      "title": "Images",
+      "level": 2
+     },
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 6,
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "image",
+       "src": "photo",
+       "style": {
+        "width": 60,
+        "height": 45
+       },
+       "fit": "cover"
+      },
+      {
+       "type": "image",
+       "src": "photo-gray",
+       "style": {
+        "width": 60,
+        "height": 45
+       },
+       "fit": "cover"
+      },
+      {
+       "type": "image",
+       "src": "photo-cmyk",
+       "style": {
+        "width": 60,
+        "height": 45
+       },
+       "fit": "cover"
+      },
+      {
+       "type": "image",
+       "src": "palette",
+       "style": {
+        "width": 60,
+        "height": 45
+       },
+       "fit": "cover"
+      },
+      {
+       "type": "image",
+       "src": "photo-lossy",
+       "style": {
+        "width": 60,
+        "height": 45
+       },
+       "fit": "cover"
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Table",
+       "font": "Inter-Bold",
+       "size": 12,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "bookmark": {
+      "title": "Table",
+      "level": 2
+     },
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "table",
+     "columns": [
+      {
+       "width": "1fr"
+      },
+      {
+       "width": "auto"
+      }
+     ],
+     "headerRows": 1,
+     "rows": [
+      {
+       "backgroundColor": [
+        0.93,
+        0.95,
+        0.99,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item",
+             "font": "Inter-Bold",
+             "size": 9
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Amount",
+             "font": "Inter-Bold",
+             "size": 9
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Archival storage",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "120.00",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "backgroundColor": [
+        0.97,
+        0.97,
+        0.97,
+        1
+       ],
+       "cells": [
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Validation",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          },
+          "borderWidth": {
+           "top": 0.75,
+           "right": 0.75,
+           "bottom": 0.75,
+           "left": 0.75
+          },
+          "borderColor": {
+           "top": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "right": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "bottom": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ],
+           "left": [
+            0.7,
+            0.72,
+            0.78,
+            1
+           ]
+          }
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "45.50",
+             "font": "Inter-Regular",
+             "size": 9
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "size": {
+    "width": 419.53,
+    "height": 595.28
+   },
+   "margin": {
+    "top": 36,
+    "right": 36,
+    "bottom": 36,
+    "left": 36
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Form",
+       "font": "InterDisplay-Bold",
+       "size": 16,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "id": "form",
+     "bookmark": {
+      "title": "Form"
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "FULL NAME",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 8,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "field",
+     "style": {
+      "borderWidth": {
+       "top": 0.75,
+       "right": 0.75,
+       "bottom": 0.75,
+       "left": 0.75
+      },
+      "borderColor": {
+       "top": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "right": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "bottom": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "left": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ]
+      },
+      "borderRadius": 3,
+      "padding": {
+       "top": 2,
+       "right": 2,
+       "bottom": 2,
+       "left": 2
+      },
+      "backgroundColor": [
+       0.97,
+       0.98,
+       1,
+       1
+      ]
+     },
+     "field": {
+      "name": "full_name",
+      "kind": "text",
+      "value": "Chloë Dubois-Müller",
+      "font": "Inter-Regular",
+      "size": 11
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "COUNTRY",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 8,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "field",
+     "style": {
+      "borderWidth": {
+       "top": 0.75,
+       "right": 0.75,
+       "bottom": 0.75,
+       "left": 0.75
+      },
+      "borderColor": {
+       "top": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "right": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "bottom": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ],
+       "left": [
+        0.7,
+        0.72,
+        0.78,
+        1
+       ]
+      },
+      "borderRadius": 3,
+      "padding": {
+       "top": 2,
+       "right": 2,
+       "bottom": 2,
+       "left": 2
+      },
+      "backgroundColor": [
+       0.97,
+       0.98,
+       1,
+       1
+      ]
+     },
+     "field": {
+      "name": "country",
+      "kind": "select",
+      "options": [
+       "France",
+       "Germany",
+       "Italy"
+      ],
+      "value": "France",
+      "font": "Inter-Regular",
+      "size": 11
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "REQUEST",
+       "font": "Inter-Bold",
+       "size": 8,
+       "color": [
+        0.42,
+        0.44,
+        0.5,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "top": 8,
+       "bottom": 3
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 8,
+      "alignItems": "center"
+     },
+     "children": [
+      {
+       "type": "field",
+       "style": {
+        "borderWidth": {
+         "top": 0.75,
+         "right": 0.75,
+         "bottom": 0.75,
+         "left": 0.75
+        },
+        "borderColor": {
+         "top": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "right": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "bottom": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "left": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ]
+        },
+        "borderRadius": 6,
+        "padding": {
+         "top": 2,
+         "right": 2,
+         "bottom": 2,
+         "left": 2
+        },
+        "backgroundColor": [
+         0.97,
+         0.98,
+         1,
+         1
+        ],
+        "width": 12,
+        "height": 12
+       },
+       "field": {
+        "name": "request",
+        "kind": "radio",
+        "value": "new",
+        "checked": true
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "New",
+         "font": "Inter-Regular",
+         "size": 10
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "style": {
+        "borderWidth": {
+         "top": 0.75,
+         "right": 0.75,
+         "bottom": 0.75,
+         "left": 0.75
+        },
+        "borderColor": {
+         "top": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "right": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "bottom": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "left": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ]
+        },
+        "borderRadius": 6,
+        "padding": {
+         "top": 2,
+         "right": 2,
+         "bottom": 2,
+         "left": 2
+        },
+        "backgroundColor": [
+         0.97,
+         0.98,
+         1,
+         1
+        ],
+        "width": 12,
+        "height": 12
+       },
+       "field": {
+        "name": "request",
+        "kind": "radio",
+        "value": "renewal"
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Renewal",
+         "font": "Inter-Regular",
+         "size": 10
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "style": {
+        "borderWidth": {
+         "top": 0.75,
+         "right": 0.75,
+         "bottom": 0.75,
+         "left": 0.75
+        },
+        "borderColor": {
+         "top": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "right": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "bottom": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ],
+         "left": [
+          0.7,
+          0.72,
+          0.78,
+          1
+         ]
+        },
+        "borderRadius": 3,
+        "padding": {
+         "top": 2,
+         "right": 2,
+         "bottom": 2,
+         "left": 2
+        },
+        "backgroundColor": [
+         0.97,
+         0.98,
+         1,
+         1
+        ],
+        "width": 12,
+        "height": 12
+       },
+       "field": {
+        "name": "consent",
+        "kind": "checkbox",
+        "checked": true
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "I agree",
+         "font": "Inter-Regular",
+         "size": 10
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Back to the top",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.3,
+        0.8,
+        1
+       ],
+       "decoration": "underline"
+      }
+     ],
+     "link": "#top",
+     "style": {
+      "margin": {
+       "top": 12
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

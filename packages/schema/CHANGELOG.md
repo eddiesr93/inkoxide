@@ -7,6 +7,87 @@ version 2.
 
 ## Unreleased
 
+Still document schema version 1.
+
+### Added
+
+- `Style.float` (`left`, `right`, `none`) and `Style.clear` (`left`, `right`, `both`,
+  `none`): floats in column boxes, the page and cells, with text wrapping beside them and boxes
+  narrowed beside them. Floats go in column boxes only, not on cells, not absolutely positioned
+  and without forced breaks; at most 1000 per box; a box with floats takes no `justifyContent`
+  or `alignContent`, and its children no `flexGrow` or `flexBasis`.
+- `Style.textWrap` on text nodes: `wrap` (the default, first fit, as before) or `pretty`, which
+  sets each stretch between forced breaks as a whole (Knuth and Plass's total fit) and lets the
+  spaces of justified lines shrink by up to a third. Bounded per paragraph (20 000 break
+  opportunities, 512 open breakpoints, 2 097 152 lines tried), past which it breaks first fit.
+- `TextRun.verticalAlign`: `baseline` (the default), `super` or `sub`. A superscript's
+  baseline is raised and a subscript's lowered by the offsets the font gives (OS/2), for text
+  of the run's size, and the line grows to fit them. The run keeps its own `size`.
+- `TextRun.fontFeatures`: OpenType features by tag, as CSS `font-feature-settings`
+  (`{"tnum": 1, "liga": 0}`): 0 turns a feature off, 1 on, and a larger value picks an
+  alternate. At most 32 per run, values up to 65535, and 64 different sets in a document.
+- `BoxNode.backgroundImage` (`$defs/BackgroundImage`): an image painted into the box's padding
+  box, over its `backgroundColor` and under its borders and children, clipped to the padding box
+  rounded by `borderRadius`. It takes `src` or `data` (exactly one, as on an `image` node), `fit`
+  (default `fill`) and `objectPosition`, with the same bounds as on an `image` node. Optional;
+  documents without it render as before.
+- `TextRun.image` (`$defs/InlineImage`): an image in the line in place of the run's text, a run
+  having exactly one of `text`, `placeholder` and `image`. It takes `src` or `data`, `width` and
+  `height` in (0, 14400] points (one from the other by the image's aspect ratio, and 1em high,
+  the run's `size`, with neither), `fit`, `objectPosition`, and `alt` (at most 1024 characters),
+  the text copying and searching give for it. The run's `font` and `size` are the line's strut.
+  It breaks lines like one character.
+- `Document.emojiImages`: emoji sequences drawn as images, sequence → image id (at most 4096,
+  each key one emoji sequence of at most 64 bytes in UTF-8; U+FE0F is ignored). Where text has the
+  sequence with emoji presentation, the image takes its place, 1em high with its aspect ratio,
+  its bottom 0.1em below the baseline, and copies as the sequence. A ZWJ sequence without an
+  image tries its parts; the rest is drawn by the fonts.
+- `TextRun.verticalAlign` places an image run with `middle`, `textTop`, `textBottom`, `top`,
+  `bottom`, or a number: points its bottom sits above the baseline (within ±14400). On a text
+  run they are `INVALID_VALUE`.
+- `Field.name` may contain dots, which make groups of fields: `address.street` is the field
+  `street` in the group `address`. A name has at most 32 parts of 1 to 128 characters, and at
+  most 512 characters in all (it was one part of at most 128). A name that is both a field and a
+  group (`a` and `a.b`) is `DUPLICATE_ID`. Documents without dots render as before.
+- `Field.kind: "list"`, a list box: `options` (required) and `font` (required) as for `select`,
+  and `value`, the selected option. `Field.multiSelect` (list only) lets several options be
+  selected; `value` is then an array of options, each at most once (at most 1000). An array
+  `value` on any other field is `INVALID_VALUE`.
+- `Field.format` (`$defs/FieldFormat`), on single-line text fields that are not passwords:
+  `type` (`number`, `percent`, `date`, `time`, `zip`, `zipPlus4`, `phone`, `ssn`) with
+  `decimals` (0 to 10), `separators`, `negative`, `currency` (at most 8 characters, no control
+  characters, quotes or backslashes) and `currencyBefore` for numbers, and `pattern` (required,
+  at most 64 characters; a time's shows only `H`, `h`, `M`, `s` and `t`) for dates and times.
+  `value` must fit the format; a time is `HH:MM[:SS]`, or a date with a time.
+- A `note` node (`NoteNode`): a text annotation, `{"type":"note","note":{"contents"}}` with
+  `author`, `color` (default yellow) and `open`. `contents` is 1 to 8000 characters and `author`
+  at most 256. It takes `style`, `break`, `pages`, `debug` and `id`, but no `link` or
+  `bookmark`, and no space in the layout. Its icon is 20 pt square at any zoom and stays upright
+  under a transform.
+- `TextRun.note` (`$defs/Note`): a note in the line, in place of the run's text, a run having
+  exactly one of `text`, `placeholder`, `image` and `note`. It takes no room; its icon hangs from
+  the top of the line where the run is, on the page where the line starts. The run's `font` and
+  `size` are the line's strut, and line breaking keeps it with the character before it, or after
+  a space, the one after it.
+- SVG images may contain text (`<text>`, `<tspan>`). It is laid out with the document's fonts:
+  `FontDecl.family`, `weight` and `style`, which were descriptive until now, are what its
+  `font-family`, `font-weight` and `font-style` select a declared font by. A document whose SVG
+  images have text must declare a font; one that declares none fails with `INVALID_IMAGE`, and
+  so does text on a path, vertical text and text that an XML entity expands to. The text counts
+  toward the limits of its SVG as it is drawn (its text nodes as elements). Documents with SVG
+  images without text render as before.
+
+### Changed
+
+- `debug` on a text node also outlines its lines: each line box, its baseline, and the glyphs of
+  each run on the line.
+
+### Fixed
+
+- `Field.options` holds at most 1000 options of at most 1000 characters each, and `Field.value`
+  at most 8000 characters; longer ones are `INVALID_VALUE`. Both were unbounded, so a document
+  with longer ones was valid before.
+
 ## 2.3.0 - 2026-10-13
 
 Still document schema version 1.

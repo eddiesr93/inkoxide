@@ -2,7 +2,10 @@
 
 Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
 clippy, the Rust tests, the schema checks, the Node binding tests and the
-TypeScript packages. `scripts/ci.sh` runs the same checks and more
+TypeScript packages. The Rust tests check the PDFs with qpdf, poppler's
+`pdftotext` and veraPDF, which the workflow installs. Locally a test
+skips the checks of a tool that is not installed; with `CI` set, a
+missing tool fails it. `scripts/ci.sh` runs the same checks and more
 (visual regression, cargo-deny, a fuzz smoke) on your machine:
 
 ```sh
@@ -16,18 +19,46 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 - `crates/core/tests/fixtures.rs`: every `fixtures/docs/*.json`
   validates, renders byte-identically twice (and with one thread), renders
   identically from MessagePack, and passes `qpdf --check`. Each also
-  renders as PDF/A-2b; with `VERAPDF` pointing at a veraPDF command
+  renders as PDF/A-1b, 2b and 3b, with the header, XMP part and `CIDSet`s
+  of its level, except the fixtures that need transparency, which PDF/A-1b
+  must reject with `PDFA_CONFLICT` at a given path (`NOT_PDF_A_1B`);
+  `pdfa-1b` is a document 1b accepts, with fonts, forms, links,
+  bookmarks and images. With `VERAPDF` pointing at a veraPDF command
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
-  output must pass veraPDF's `2b` profile.
+  output must pass veraPDF's profile for its level.
+- `crates/core/tests/encryption.rs`: every fixture, encrypted, renders
+  deterministically and, with `qpdf` installed, passes `qpdf --check`
+  with either password; `qpdf --json` of it, decrypted, equals that of
+  the unencrypted render object for object, minus the `Encrypt`
+  dictionary, so a string or stream left unencrypted fails it. Also the
+  permission flags qpdf reports, wrong passwords, a file with an owner
+  password only, canary strings that must not appear in plain text, and
+  errors that name the option but never the password.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
-  repeated on every page, glyphs from shaping, deepest accepted nesting
-  on a small stack).
+  repeated on every page, glyphs from shaping, in SVG text too, copies
+  of SVG text, the work budget of one `COLR` glyph, deepest accepted
+  nesting on a small stack). SVG text at scale (thousands of texts on
+  one point, of spans with their own paint, of text nodes) renders in
+  bounded time and memory, measured with a counting allocator; its
+  placeholders are bounded before they are written; and validation
+  refuses what a render would. The unit tests of `images/svg_text` and
+  `text/svg.rs` push each step to hundreds of thousands. The budgets of a render's colour glyphs
+  (how many, and the bytes of their images) are tested in
+  `text/color.rs`, with smaller limits.
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
   finite (one `inf` or `NaN` operand makes a page invalid) and one
   readers parse (an integer within 32 bits or a real within ±10¹¹), with
   every property at its validation bound, percentages compounding past
-  `f32`, and SVG numbers that overflow or are huge (`scale(1e30)`); the
-  SVG cases also pass `qpdf --check` without warnings.
+  `f32`, and SVG numbers that overflow or are huge (`scale(1e30)`, text
+  at 1e30 or sized 1e30); the SVG cases also pass `qpdf --check` without
+  warnings.
+- `crates/core/src/images/svg_text/survival.rs`: the probe survival
+  suite. SVG text becomes placeholder paths ("probes") that `usvg`
+  converts; these check that a probe comes out with the text's paint in
+  every context `usvg` copies shapes (`use`, `symbol`, markers, patterns,
+  masks, clip paths, `switch`, nested SVGs, groups, author CSS, with
+  `!important` too). They
+  depend on `usvg` internals: run them first after a `usvg` upgrade.
 - `crates/core/src/schema/parity_tests.rs`: serde structs accept exactly
   the properties the JSON Schema declares, and validation enforces the
   schema's bounds, read from the schema: ids, font families, `pages`,
@@ -56,9 +87,21 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   check that each decodes to the same metrics and outlines as the `.ttf`.
 - `fixtures/fonts/malformed/`: fuzz findings, minimised, that registration
   must reject. Each is a broken copy of a font above, under its licence.
+- `fixtures/fonts/matching.json`: CSS font matching cases (family stacks,
+  style and weight fallbacks), which the engine's `FontSet::select` and
+  `FontRegistry.resolve` in `@inkoxide/react` both pass.
 - `fixtures/fonts/limits/glyph-doubling.ttf`: a font made with fontTools
   for the shaping limit in `limits.rs`. Its GSUB substitutes `A` with
   `AA` in 14 lookups, so `A` shapes to 16 384 glyphs.
+- `fixtures/fonts/EmojiTest-COLR.ttf`, `EmojiTest-CBDT.ttf` and
+  `EmojiTest-sbix.ttf`: small colour emoji fonts written from scratch by
+  `scripts/fixtures/emoji_fonts.py` (outlines with `COLR` v0 and v1
+  glyphs, and PNG bitmaps without outlines, the sbix ones in two strikes
+  so that the largest is the one drawn), with ligatures for a ZWJ
+  sequence, a flag, a keycap and a skin tone. The script also writes
+  `fixtures/fonts/limits/colr-fanout.ttf`, a `COLR` glyph whose layers
+  paint the next level 255 times, eight levels deep, for the colour glyph
+  work budget in `limits.rs`.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
@@ -68,8 +111,8 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   examples and benchmark invoices, each run through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
-  `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict` and the report
-  fixture) and fails when one is stale; `ci.yml` and `scripts/ci.sh` run it.
+  `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the report
+  fixture and the emoji test fonts) and fails when one is stale; `ci.yml` and `scripts/ci.sh` run it.
   With `--python-only` it checks only the files python3 writes, which is
   what `scripts/ci.sh` does where pnpm is not installed.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).
@@ -104,18 +147,33 @@ the `ci` workflow builds them and runs clippy on them):
   with `fixtures/images`, with an SVG dictionary (`fuzz/render_svg.dict`).
 - `render_svg_tree`: a structure-aware SVG generator that combines what
   `usvg` expands (references, markers, patterns, style sheets, entities,
-  nested SVG images), so a timeout or an out-of-memory shows a way past
-  the complexity limits.
+  nested SVG images) with text (spans, position lists, fonts, anchors,
+  baselines, `textLength`), so a timeout or an out-of-memory shows a way
+  past the complexity limits. Images are drawn in a document that
+  declares the fixture fonts, so SVG text is laid out.
 - `register_font`: raw bytes registered as a font, as they are and with
   the WOFF and WOFF2 signatures over its first bytes, so every input reaches both
-  decoders; each font that registers sets a line of text. Seeded with
+  decoders; each font that registers sets a line of text, and is the
+  fallback of a line of emoji sequences (flags, keycaps, skin tones, ZWJ
+  sequences), which a colour font draws from its colour tables. Seeded with
   `fixtures/fonts`.
 
 All share one oracle: no panic; `render` succeeds only when `validate`
-is clean and vice versa for validation errors; the output is a complete
+is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
+which only a PDF/A-1b render reports (by input length, a quarter of the
+inputs render as plain PDF and a quarter at each PDF/A level); the
+writer never refuses transparency at 1b, which would mean validation
+missed it (for SVG, that its scan disagrees with the writer); every
+form script (`/JS`) is a call of a standard form function (`AFNumber_Format`
+and the like) with only integers, booleans and string literals as
+arguments, and PDF/A output has no scripts and no `/AA` (`check_scripts`);
+the output is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
-from MessagePack (`render_json` and `render_tree`). An input that runs
+from MessagePack (`render_json` and `render_tree`), and a document
+rendered as plain PDF also renders encrypted exactly when it renders
+plain, without its title in plain text (only the encrypted file's
+object syntax is scanned for numbers). An input that runs
 longer than 10 seconds is a finding (30 for `render_json` and `render_tree`:
 a document at the engine's limits renders in about 2 seconds, and they
 render it twice).

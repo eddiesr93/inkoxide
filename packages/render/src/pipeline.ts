@@ -19,12 +19,13 @@ import {
   type EngineStatus,
   engineStatus,
   initEngine,
+  refusedEmoji,
   renderPdf,
   startupError,
   version,
 } from './engine.ts';
 import { fontsPending, loadRegisteredFonts } from './font.ts';
-import { type ImagePolicies, loadImages } from './images.ts';
+import { type ImagePolicies, loadEmojiImages, loadImages } from './images.ts';
 import { localPolicy } from './local.ts';
 import { checkImageLimits, DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
 import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
@@ -294,11 +295,26 @@ export async function renderSettled(
     checkIds(tr, registered);
     Object.assign(all, tr.images);
     const missing = { remote: notIn(tr.remote, all), pending: notIn(tr.pending, all) };
+    // Emoji images that cannot be loaded leave their emoji to the fonts, with a warning.
+    const emoji = new Set(Object.values(tr.document.emojiImages ?? {}));
+    const isEmoji = (id: string) => emoji.has(id);
     const f0 = performance.now();
-    Object.assign(all, await loadImages(missing, registered, policies));
+    const [images, emojiImages] = await Promise.all([
+      loadImages(
+        split(missing, (id) => !isEmoji(id)),
+        registered,
+        policies,
+      ),
+      loadEmojiImages(split(missing, isEmoji), registered, policies),
+    ]);
+    Object.assign(all, images, emojiImages.loaded);
     fetchMs += performance.now() - f0;
+    dropEmoji(tr, 'could not be loaded', (_, id) => emojiImages.failed[id]);
+    // So are those whose image the engine refuses: not an image, or one too large.
+    const refused = emoji.size > 0 ? refusedEmoji(tr.document, all) : {};
+    dropEmoji(tr, 'cannot be drawn', (sequence) => refused[sequence]);
     try {
-      return await renderPdf(tr.document, opts, all);
+      return await renderPdf(tr.document, opts, all, tr.output);
     } catch (e) {
       throw locateEngineError(e, tr);
     }
@@ -345,6 +361,35 @@ function checkIds(tree: TreeResult, registered: Record<string, Uint8Array>): voi
     'TEMPLATE_ERROR',
     `The image id "${clash}" is passed in, but the tree gave it to another image. Build the tree with the same images option (renderTree(template, data, options)), or rename the image.`,
   );
+}
+
+/** The remote and pending images of `tree` whose id passes `keep`. */
+function split(
+  tree: Pick<TreeResult, 'remote' | 'pending'>,
+  keep: (id: string) => boolean,
+): Pick<TreeResult, 'remote' | 'pending'> {
+  const pick = <T>(from: Record<string, T>) =>
+    Object.fromEntries(Object.entries(from).filter(([id]) => keep(id)));
+  return { remote: pick(tree.remote), pending: pick(tree.pending) };
+}
+
+/**
+ * Takes the emoji for which `why` gives a reason (their image `failed`) out of the document, with
+ * a warning each.
+ */
+function dropEmoji(
+  tree: TreeResult,
+  failed: string,
+  why: (sequence: string, id: string) => string | undefined,
+): void {
+  const map = tree.document.emojiImages;
+  if (!map) return;
+  for (const [sequence, id] of Object.entries(map)) {
+    const reason = id === undefined ? undefined : why(sequence, id);
+    if (reason === undefined) continue;
+    delete map[sequence];
+    tree.warnings.push(`The image of the emoji ${sequence} ${failed}, so a font draws it: ${reason}`);
+  }
 }
 
 /** The entries of `from` whose id `have` lacks. */

@@ -11,6 +11,8 @@ import type {
   TransformOp,
 } from '@inkoxide/schema';
 
+import type { FontFeatures } from './features.ts';
+
 /** RGBA floats in [0, 1], the engine's colour format. */
 export type Color = SchemaColor;
 /** A colour, or CSS `currentColor` (resolved against the inherited text colour by the tree builder). */
@@ -33,12 +35,17 @@ export type TextDecoration = NonNullable<TextRun['decoration']>;
 /** Not in the schema: the tree builder transforms the text itself. */
 export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export type WhiteSpace = NonNullable<Style['whiteSpace']>;
+export type TextWrap = NonNullable<Style['textWrap']>;
 export type BorderStyle = Extract<BorderStyles, string>;
 export const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const satisfies readonly BorderStyle[];
 export type DecorationStyle = NonNullable<TextRun['decorationStyle']>;
 export type ObjectFit = NonNullable<ImageNode['fit']>;
 export const OBJECT_FITS = ['fill', 'contain', 'cover', 'none'] as const satisfies readonly ObjectFit[];
 export type Direction = NonNullable<Style['direction']>;
+/** Where a run sits on its line: `verticalAlign` on a `Text` (on a `Cell`, it is `top`, `middle` or `bottom`). */
+export type RunAlign = NonNullable<TextRun['verticalAlign']>;
+export const RUN_ALIGNS = ['baseline', 'super', 'sub'] as const satisfies readonly RunAlign[];
+
 export type { ObjectPosition, TransformOp };
 
 /**
@@ -93,6 +100,10 @@ export interface FlatStyle {
   gridColumn?: GridPlacement;
   gridRow?: GridPlacement;
   overflow?: Style['overflow'];
+  /** Floats the element to a side of its column parent; text after it wraps beside it. */
+  float?: Style['float'];
+  /** Moves the element below the floats before it on these sides. */
+  clear?: Style['clear'];
   backgroundColor?: ColorValue;
   opacity?: number;
   borderTopWidth?: number;
@@ -127,10 +138,14 @@ export interface FlatStyle {
   zIndex?: number;
   borderCollapse?: Style['borderCollapse'];
   borderSpacing?: number;
-  verticalAlign?: Style['verticalAlign'];
-  /** How an `Image` fills its box: the image node's `fit`. */
+  /**
+   * A cell's content (`top`, `middle`, `bottom`), a run on its line (`super`, `sub`), or an image
+   * in a line (`textTop`, `textBottom`, a number of points, and the others).
+   */
+  verticalAlign?: Style['verticalAlign'] | RunAlign;
+  /** How an `Image` or `ImageBackground` fills its box: the image's `fit`. */
   objectFit?: ObjectFit;
-  /** Where a fitted `Image` sits in its box: the image node's `objectPosition`. */
+  /** Where a fitted `Image` or `ImageBackground` image sits in its box: the image's `objectPosition`. */
   objectPosition?: ObjectPosition;
 
   // Text, inherited.
@@ -149,12 +164,18 @@ export interface FlatStyle {
   decorationStyle?: DecorationStyle;
   textTransform?: TextTransform;
   whiteSpace?: WhiteSpace;
+  /** How lines break: first fit (`wrap`), or even lines over the paragraph (`pretty`). */
+  textWrap?: TextWrap;
   hyphenate?: boolean;
   /** Points; negative for a hanging indent. */
   textIndent?: number;
   direction?: Direction;
   orphans?: number;
   widows?: number;
+  /** OpenType features (`font-feature-settings`); they win over `fontVariantNumeric`'s. */
+  fontFeatureSettings?: FontFeatures;
+  /** The features `font-variant-numeric` turns on (`tabular-nums`: `tnum`). */
+  fontVariantNumeric?: FontFeatures;
 
   // Text, not inherited (the Text node that carries the class).
   maxLines?: number;
@@ -187,11 +208,14 @@ export const TEXT_INHERITED = [
   'decorationStyle',
   'textTransform',
   'whiteSpace',
+  'textWrap',
   'hyphenate',
   'textIndent',
   'direction',
   'orphans',
   'widows',
+  'fontFeatureSettings',
+  'fontVariantNumeric',
 ] as const satisfies readonly FlatStyleKey[];
 
 /** Keys that only mean something on a `Text` node. */

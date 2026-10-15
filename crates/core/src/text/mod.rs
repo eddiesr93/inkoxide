@@ -6,30 +6,45 @@
 //! it, only `prepare.rs` uses rustybuzz; it builds its shaping faces from
 //! the font bytes, and takes glyph lookups and advances from `fonts`.
 
+mod color;
+mod emoji;
 mod hyphen;
+mod objects;
 pub use hyphen::HyphenationStore;
 pub(crate) use hyphen::ResolvedHyphenator;
 mod lines;
+mod optimal;
 mod paint;
 mod prepare;
+mod svg;
 pub(crate) use prepare::{ShapingCause, ShapingFailure, MAX_EXTRA_GLYPHS};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
 use rayon::prelude::*;
 
+pub(crate) use color::{glyph_transparency as color_glyph_transparency, ColorGlyphs};
+pub(crate) use emoji::sequences as emoji_sequences;
+pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
 pub(crate) use paint::{PageNumbers, TextPainter};
+#[cfg(test)]
+pub(crate) use svg::SvgGlyph;
+pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};
 
 use crate::fonts::{FontKey, FontSet};
-use crate::layout::{width_key, AvailableSpace, LeafMeasure, Size};
-use crate::schema::{Direction, Node, NodeKind, Style, TextAlign, TextRun, WhiteSpace};
+use crate::layout::{AvailableSpace, LeafMeasure, LineBox, LineBoxes, Size, Wrapped};
+use crate::schema::{
+    Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, TextWrap, WhiteSpace,
+};
 use crate::InkoxideError;
 
 const GLYPH_SPACE: u8 = 1;
 const GLYPH_INVISIBLE: u8 = 2;
 const GLYPH_TAB: u8 = 4;
+/// An inline object (an image): the one glyph of its segment.
+const GLYPH_OBJECT: u8 = 8;
 
 /// Tolerance for float noise when comparing widths.
 const WIDTH_EPS: f32 = 1e-3;
@@ -62,6 +77,11 @@ impl Glyph {
     pub fn is_tab(&self) -> bool {
         self.flags & GLYPH_TAB != 0
     }
+
+    /// An inline object's place in the line: no glyph, its advance.
+    pub fn is_object(&self) -> bool {
+        self.flags & GLYPH_OBJECT != 0
+    }
 }
 
 /// A stretch of text in one run and one font.
@@ -73,6 +93,9 @@ pub(crate) struct Segment {
     pub level: u8,
     pub text: Range<u32>,
     pub glyphs: Range<u32>,
+    /// An inline object: its index in [`Prepared::objects`]. Its one
+    /// glyph is the object's place; `font` is the run's (the strut).
+    pub object: Option<u32>,
 }
 
 impl Segment {
@@ -83,6 +106,7 @@ impl Segment {
             level,
             text: text.start as u32..text.end as u32,
             glyphs: 0..0,
+            object: None,
         }
     }
 }
@@ -120,6 +144,8 @@ pub(crate) struct Prepared {
     /// [`prepare::PLACEHOLDER_TEXT`], or the numbers of the page flow text
     /// lands on); the painter draws the page's own numbers in their place.
     pub placeholders: bool,
+    /// The inline objects segments refer to.
+    pub objects: Vec<objects::InlineObject>,
 }
 
 impl Prepared {
@@ -176,9 +202,24 @@ pub(crate) struct Line {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LineLayout {
     pub lines: Vec<Line>,
-    /// Widest line.
+    /// Widest line, from the left of the content box.
     pub width: f32,
     pub height: f32,
+    /// Each line's box, when the boxes the lines were broken in have
+    /// bands; empty when every line is as wide as the content box.
+    pub boxes: Vec<LineBox>,
+}
+
+impl LineLayout {
+    /// How many lines, from the first, it takes to reach the last line set
+    /// beside a float: one whose box is narrower than the content box,
+    /// `width` wide. A float keeps those lines on its page.
+    pub fn wrapped_lines(&self, width: f32) -> usize {
+        self.boxes
+            .iter()
+            .rposition(|b| b.left > 0.0 || b.width < width - WIDTH_EPS)
+            .map_or(0, |k| k + 1)
+    }
 }
 
 /// Paragraph-level settings resolved from the node style.
@@ -189,6 +230,7 @@ pub(crate) struct ParaStyle {
     pub max_lines: Option<u32>,
     pub ellipsis: bool,
     pub white_space: WhiteSpace,
+    pub text_wrap: TextWrap,
     pub indent: f32,
     pub direction: Direction,
     /// Whether the paragraph's words are hyphenated; a run's own
@@ -213,6 +255,7 @@ impl ParaStyle {
             max_lines: s.max_lines,
             ellipsis: s.ellipsis.unwrap_or(false),
             white_space,
+            text_wrap: s.text_wrap.unwrap_or(TextWrap::Wrap),
             indent: s.text_indent.unwrap_or(0.0),
             direction: s.direction.unwrap_or(Direction::Ltr),
             hyphenate: s.hyphenate == Some(true),
@@ -232,6 +275,23 @@ pub(crate) struct Para<'p> {
     pub runs: &'p [TextRun],
     pub style: &'p ParaStyle,
     pub fonts: &'p FontSet<'p>,
+}
+
+/// How far `run`'s baseline sits above the line's, in points (negative:
+/// below): its `verticalAlign`, by its font's superscript or subscript
+/// offset for text of its size.
+pub(crate) fn baseline_shift(run: &TextRun, fonts: &FontSet<'_>) -> f32 {
+    // Validation checks that the run's font is declared.
+    let Some(key) = fonts.key(&run.font) else {
+        return 0.0;
+    };
+    let m = &fonts.get(key).data.metrics;
+    match run.vertical_align.unwrap_or_default() {
+        RunAlign::Super => m.superscript_shift() * run.size,
+        RunAlign::Sub => -m.subscript_shift() * run.size,
+        // The others place image runs (`objects.rs`).
+        _ => 0.0,
+    }
 }
 
 /// Glyph → text mappings per font, for the PDF `ToUnicode` `CMaps`.
@@ -275,6 +335,7 @@ pub(crate) struct RustybuzzShaper<'f, 'a> {
     unicode: UnicodeMap,
     hyphenator: &'f dyn hyphen::Hyphenator,
     shapes: prepare::ShapeCache<'a>,
+    objects: Arc<InlineObjects>,
 }
 
 impl<'f, 'a> RustybuzzShaper<'f, 'a> {
@@ -292,10 +353,17 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
         Self { hyphenator, ..self }
     }
 
+    /// This shaper, placing the images of `objects` in lines.
+    pub fn with_objects(self, objects: Arc<InlineObjects>) -> Self {
+        Self { objects, ..self }
+    }
+
     /// A shaper with the same settings and shaping faces, and glyph
     /// mappings of its own, for another thread.
     fn worker(&self) -> Self {
-        Self::with_shapes(self.fonts, self.shapes.sibling()).with_hyphenator(self.hyphenator)
+        Self::with_shapes(self.fonts, self.shapes.sibling())
+            .with_hyphenator(self.hyphenator)
+            .with_objects(self.objects.clone())
     }
 
     fn with_shapes(fonts: &'f FontSet<'a>, shapes: prepare::ShapeCache<'a>) -> Self {
@@ -322,6 +390,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
             unicode,
             hyphenator: &hyphen::HypherHyphenator,
             shapes,
+            objects: Arc::default(),
         }
     }
 }
@@ -339,6 +408,7 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
             lang,
             hyphenator: self.hyphenator,
             runs,
+            objects: &self.objects,
         };
         prepare::prepare(&opts, self.fonts, &mut self.shapes, &mut self.unicode)
     }
@@ -353,7 +423,8 @@ struct Entry {
     prepared: Prepared,
     /// Widest unbreakable piece (min-content width).
     min_content: f32,
-    layouts: Vec<(u32, Arc<LineLayout>)>,
+    /// Line layouts by the boxes they were broken in.
+    layouts: Vec<(LineBoxes, Arc<LineLayout>)>,
 }
 
 impl Entry {
@@ -400,32 +471,45 @@ impl Entry {
         }
     }
 
-    fn cached(&self, width: f32) -> Option<Arc<LineLayout>> {
-        let key = width_key(width);
+    fn cached(&self, boxes: &LineBoxes) -> Option<Arc<LineLayout>> {
         self.layouts
             .iter()
-            .find(|(k, _)| *k == key)
+            .find(|(k, _)| k.same(boxes))
             .map(|(_, l)| l.clone())
     }
 
-    fn break_lines(&self, fonts: &FontSet<'_>, runs: &[TextRun], width: f32) -> LineLayout {
-        lines::break_lines(&self.para(fonts, runs), width.max(0.0))
+    fn break_lines(&self, fonts: &FontSet<'_>, runs: &[TextRun], boxes: &LineBoxes) -> LineLayout {
+        let boxes = LineBoxes {
+            width: boxes.width.max(0.0),
+            ..boxes.clone()
+        };
+        lines::break_lines(&self.para(fonts, runs), &boxes)
     }
 
-    /// The lines at `width`, cached.
-    fn layout(&mut self, fonts: &FontSet<'_>, runs: &[TextRun], width: f32) -> Arc<LineLayout> {
-        if let Some(l) = self.cached(width) {
+    /// The lines in `boxes`, cached.
+    fn layout(
+        &mut self,
+        fonts: &FontSet<'_>,
+        runs: &[TextRun],
+        boxes: &LineBoxes,
+    ) -> Arc<LineLayout> {
+        if let Some(l) = self.cached(boxes) {
             return l;
         }
-        let layout = Arc::new(self.break_lines(fonts, runs, width));
-        self.layouts.push((width_key(width), layout.clone()));
+        let layout = Arc::new(self.break_lines(fonts, runs, boxes));
+        self.layouts.push((boxes.clone(), layout.clone()));
         layout
     }
 
-    /// The lines at `width`: cached, or computed without caching.
-    fn layout_at(&self, fonts: &FontSet<'_>, runs: &[TextRun], width: f32) -> Arc<LineLayout> {
-        self.cached(width)
-            .unwrap_or_else(|| Arc::new(self.break_lines(fonts, runs, width)))
+    /// The lines in `boxes`: cached, or computed without caching.
+    fn layout_at(
+        &self,
+        fonts: &FontSet<'_>,
+        runs: &[TextRun],
+        boxes: &LineBoxes,
+    ) -> Arc<LineLayout> {
+        self.cached(boxes)
+            .unwrap_or_else(|| Arc::new(self.break_lines(fonts, runs, boxes)))
     }
 
     /// [`layout_at`](Self::layout_at), with the text and style the lines
@@ -434,10 +518,10 @@ impl Entry {
         &self,
         fonts: &FontSet<'_>,
         runs: &[TextRun],
-        width: f32,
+        boxes: &LineBoxes,
     ) -> (Arc<LineLayout>, &Prepared, &ParaStyle) {
         (
-            self.layout_at(fonts, runs, width),
+            self.layout_at(fonts, runs, boxes),
             &self.prepared,
             &self.style,
         )
@@ -463,20 +547,11 @@ impl Entry {
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
         let width = self.width_in(available.width);
-        leaf_size(&self.layout(fonts, runs, width), known, width)
-    }
-
-    /// [`measure`](Self::measure) for an entry only read: its lines are
-    /// not cached.
-    fn measure_at(
-        &self,
-        fonts: &FontSet<'_>,
-        runs: &[TextRun],
-        known: Size<Option<f32>>,
-        available: Size<AvailableSpace>,
-    ) -> Size<f32> {
-        let width = self.width_in(available.width);
-        leaf_size(&self.layout_at(fonts, runs, width), known, width)
+        leaf_size(
+            &self.layout(fonts, runs, &LineBoxes::plain(width)),
+            known,
+            width,
+        )
     }
 }
 
@@ -560,6 +635,11 @@ impl TextCache<'_, RustybuzzShaper<'_, '_>> {
     pub fn into_unicode(self) -> UnicodeMap {
         self.shaper.unicode
     }
+
+    /// The glyph → text mappings of the paragraphs shaped so far.
+    pub fn unicode(&self) -> &UnicodeMap {
+        &self.shaper.unicode
+    }
 }
 
 impl<'s, S: TextShaper> TextCache<'s, S> {
@@ -623,29 +703,71 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         (entry, self.shaper.fonts())
     }
 
+    /// The shaper, for text laid out outside paragraphs (SVG text).
+    pub fn shaper(&mut self) -> &mut S {
+        &mut self.shaper
+    }
+
+    /// The lines of text node `node` at `width`, cached.
+    #[cfg(test)]
     pub fn layout(&mut self, node: &Node, width: f32) -> Option<Arc<LineLayout>> {
+        self.layout_in(node, &LineBoxes::plain(width))
+    }
+
+    /// The lines of text node `node` in `boxes`, cached.
+    pub fn layout_in(&mut self, node: &Node, boxes: &LineBoxes) -> Option<Arc<LineLayout>> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
         let (entry, fonts) = self.entry(node, runs);
-        Some(entry.layout(fonts, runs, width))
+        Some(entry.layout(fonts, runs, boxes))
     }
 
-    /// Read-only [`layout`](Self::layout) for painting (which runs in
-    /// parallel): the cached layout at `width`, or one computed without
+    /// Read-only [`layout_in`](Self::layout_in) for painting (which runs
+    /// in parallel): the cached layout in `boxes`, or one computed without
     /// caching, with the text and style it was broken from. Layout has
-    /// already measured every painted text at its final width, so the
+    /// already measured every painted text in its final boxes, so the
     /// fallback is rare.
     pub fn paragraph(
         &self,
         node: &Node,
-        width: f32,
+        boxes: &LineBoxes,
     ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
         let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.shaper.fonts(), runs, width))
+        Some(e.paragraph(self.shaper.fonts(), runs, boxes))
+    }
+
+    /// The glyphs of the fonts `wanted` that the paragraphs shaped so far
+    /// use, by font.
+    pub fn glyphs_of(&self, wanted: impl Fn(FontKey) -> bool) -> BTreeMap<FontKey, BTreeSet<u16>> {
+        let mut out: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
+        for e in self.entries.values() {
+            let p = &e.prepared;
+            for seg in p.segments.iter().filter(|s| wanted(s.font)) {
+                let glyphs = &p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize];
+                out.entry(seg.font)
+                    .or_default()
+                    .extend(glyphs.iter().map(|g| g.id));
+            }
+        }
+        out
+    }
+
+    /// How many glyphs text node `node` draws as images, once it is
+    /// shaped (at most): its inline objects and its glyphs of colour fonts.
+    pub fn image_glyph_count(&self, node: &Node) -> usize {
+        let fonts = self.shaper.fonts();
+        self.entries.get(&node_key(node)).map_or(0, |e| {
+            let p = &e.prepared;
+            p.segments
+                .iter()
+                .filter(|s| s.object.is_some() || fonts.get(s.font).has_color())
+                .map(|s| (s.glyphs.end - s.glyphs.start) as usize)
+                .sum()
+        })
     }
 
     /// How many glyphs text node `node` shaped to, once it is shaped.
@@ -654,7 +776,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         Some(e.prepared.glyphs.len())
     }
 
-    #[cfg(test)]
+    /// Text node `node` shaped, once it is.
     pub fn prepared(&self, node: &Node) -> Option<(&Prepared, &ParaStyle)> {
         self.entries
             .get(&node_key(node))
@@ -674,6 +796,24 @@ impl<S: TextShaper> LeafMeasure for TextCache<'_, S> {
         };
         let (entry, fonts) = self.entry(node, runs);
         entry.measure(fonts, runs, known, available)
+    }
+
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        self.layout_in(node, boxes)
+            .map_or_else(Wrapped::default, |l| wrapped(&l, boxes))
+    }
+}
+
+/// What text laid out in `boxes` reports to a float container: its height,
+/// and the bottom of its last line set beside a float.
+fn wrapped(l: &LineLayout, boxes: &LineBoxes) -> Wrapped {
+    let wrapped = match l.wrapped_lines(boxes.width) {
+        0 => 0.0,
+        n => l.lines[n - 1].top + l.lines[n - 1].height,
+    };
+    Wrapped {
+        height: l.height,
+        wrapped,
     }
 }
 
@@ -698,18 +838,48 @@ impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
         }
     }
 
+    /// The lines of text node `node` on this page, in the boxes `boxes`
+    /// gives for the entry they are broken from: the shared one, or for a
+    /// paragraph with placeholders, one with this page's numbers, whose
+    /// lines it caches. Also returns those boxes.
+    fn lines(
+        &mut self,
+        node: &Node,
+        boxes: impl FnOnce(&Entry) -> LineBoxes,
+    ) -> Option<(Arc<LineLayout>, LineBoxes)> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return None;
+        };
+        let key = node_key(node);
+        // Every header, footer and overlay paragraph was shaped before
+        // layout.
+        let shared = self.cache.entries.get(&key)?;
+        let fonts = self.cache.shaper.fonts();
+        if !shared.prepared.placeholders {
+            let boxes = boxes(shared);
+            return Some((shared.layout_at(fonts, runs, &boxes), boxes));
+        }
+        let numbers = self.numbers;
+        let own = self
+            .entries
+            .entry(key)
+            .or_insert_with(|| shared.with_numbers(fonts, runs, numbers));
+        let boxes = boxes(own);
+        Some((own.layout(fonts, runs, &boxes), boxes))
+    }
+
     /// For a paragraph with placeholders measured on this page: its lines
-    /// at `width`, and the text and style they were broken from.
+    /// in `boxes`, and the text and style they were broken from.
     pub fn paragraph(
         &self,
         node: &Node,
-        width: f32,
+        boxes: &LineBoxes,
     ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
         let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.cache.shaper.fonts(), runs, width))
+        Some(e.paragraph(self.cache.shaper.fonts(), runs, boxes))
     }
 }
 
@@ -720,24 +890,13 @@ impl<S: TextShaper> LeafMeasure for PageText<'_, '_, S> {
         known: Size<Option<f32>>,
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
-        let NodeKind::Text { runs } = &node.kind else {
-            return Size::ZERO;
-        };
-        let key = node_key(node);
-        // Every header, footer and overlay paragraph was shaped before
-        // layout.
-        let Some(shared) = self.cache.entries.get(&key) else {
-            return Size::ZERO;
-        };
-        let fonts = self.cache.shaper.fonts();
-        if !shared.prepared.placeholders {
-            return shared.measure_at(fonts, runs, known, available);
-        }
-        let numbers = self.numbers;
-        self.entries
-            .entry(key)
-            .or_insert_with(|| shared.with_numbers(fonts, runs, numbers))
-            .measure(fonts, runs, known, available)
+        self.lines(node, |e| LineBoxes::plain(e.width_in(available.width)))
+            .map_or(Size::ZERO, |(l, boxes)| leaf_size(&l, known, boxes.width))
+    }
+
+    fn measure_lines(&mut self, node: &Node, boxes: &LineBoxes) -> Wrapped {
+        self.lines(node, |_| boxes.clone())
+            .map_or_else(Wrapped::default, |(l, _)| wrapped(&l, boxes))
     }
 }
 

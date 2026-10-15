@@ -85,8 +85,17 @@ pub(super) fn render_with<R>(
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, store).unwrap();
     let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
-    let images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let (pages, marks) = run(&doc, &fonts, &mut text, &images, true, Ok).unwrap();
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, marks, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        true,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
     f(pages, &marks, &fonts)
 }
 
@@ -782,5 +791,619 @@ fn repeated_flow_text_shows_each_page_s_numbers() {
     let total = pages.len().to_string();
     for (k, numbers) in pages.iter().enumerate() {
         assert_eq!(numbers, &[(k + 1).to_string(), total.clone()]);
+    }
+}
+
+/// The ops of each page of a document whose store holds image `logo`.
+fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let store = store();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut images = ImageStore::new();
+    images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+    let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+    let shaper = RustybuzzShaper::new(&fonts)
+        .unwrap()
+        .with_objects(std::sync::Arc::new(images.inline_objects()));
+    let mut text = TextCache::new(shaper, None);
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
+    pages.into_iter().map(|p| p.ops).collect()
+}
+
+#[test]
+fn a_background_image_fills_the_padding_box_under_the_borders() {
+    // 150 pt high on 100 pt pages: split over two.
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"height":150,"padding":{{"top":5,"left":5}},
+              "backgroundColor":[0,1,0,1],"borderWidth":{{"top":2,"right":2,"bottom":2,"left":2}},
+              "borderColor":{{"top":[0,0,1,1],"right":[0,0,1,1],"bottom":[0,0,1,1],"left":[0,0,1,1]}},
+              "borderRadius":10}},
+             "backgroundImage":{{"src":"logo","fit":"cover"}},
+             "children":[{{"type":"box","style":{{"height":10,"backgroundColor":[1,0,0,1]}}}}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    assert_eq!(pages.len(), 2);
+    for (k, ops) in pages.iter().enumerate() {
+        // Background colour, then the image clipped to the rounded padding
+        // box, then the border ring, then the child.
+        let fill = |c: [f32; 4]| {
+            ops.iter()
+                .position(|op| matches!(op, Op::FillPath { color, .. } if *color == c))
+                .unwrap_or(usize::MAX)
+        };
+        let image = ops
+            .iter()
+            .position(|op| matches!(op, Op::Image { .. }))
+            .expect("an image op");
+        assert!(fill([0.0, 1.0, 0.0, 1.0]) < image, "page {k}: {ops:#?}");
+        assert!(image < fill([0.0, 0.0, 1.0, 1.0]), "page {k}");
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, Op::Image { .. }))
+                .count(),
+            1
+        );
+        let Op::ClipPath { path, .. } = &ops[image - 1] else {
+            panic!("page {k}: no clip before the image: {:#?}", ops[image - 1]);
+        };
+        assert!(matches!(ops[image - 2], Op::Save) && matches!(ops[image + 1], Op::Restore));
+        // The padding box: inside the 2 pt border, the whole box shifted up
+        // by a page on the second.
+        let top = 2.0 - k as f32 * H;
+        let ys = path.segs.iter().filter_map(|s| match *s {
+            paint::PathSeg::MoveTo(_, y) | paint::PathSeg::LineTo(_, y) => Some(y),
+            _ => None,
+        });
+        let (y0, y1) = ys.fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), y| {
+            (a.min(y), b.max(y))
+        });
+        assert!(
+            close(y0, top) && close(y1, top + 146.0),
+            "page {k}: {y0} {y1}"
+        );
+        assert!(path
+            .segs
+            .iter()
+            .any(|s| matches!(s, paint::PathSeg::CubicTo(..))));
+        // The child, on the first page only, over the image.
+        let child = fill([1.0, 0.0, 0.0, 1.0]);
+        if k == 0 {
+            assert!(image < child && child < usize::MAX);
+        } else {
+            assert_eq!(child, usize::MAX);
+        }
+    }
+}
+
+#[test]
+fn a_box_without_a_background_image_paints_no_image() {
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"height":50,"backgroundColor":[0,1,0,1]}}}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    assert!(!pages[0].iter().any(|op| matches!(op, Op::Image { .. })));
+}
+
+/// The ops of each page of `text` in Inter at 20 pt, with the colour test
+/// font `fallback` as fallback.
+fn emoji_ops(text: &str, fallback: &str) -> (Vec<Vec<Op>>, Vec<String>) {
+    emoji_ops_in(text, fallback, "Inter-Regular", false)
+}
+
+/// [`emoji_ops`] with the run in font `font` (`Inter-Regular` or
+/// `NotoSans-Regular`), the paragraph outlined with `debug`.
+fn emoji_ops_in(
+    text: &str,
+    fallback: &str,
+    font: &str,
+    debug: bool,
+) -> (Vec<Vec<Op>>, Vec<String>) {
+    let mut store = crate::test_fixtures::fonts(&["Inter-Regular", "NotoSans-Regular"]);
+    for id in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        let bytes = crate::test_fixtures::fixture(&format!("fonts/{id}.ttf"));
+        store.register(id, bytes).unwrap();
+    }
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"EmojiTest-COLR","family":"Emoji"}},{{"id":"EmojiTest-CBDT","family":"Emoji Bitmap"}},
+            {{"id":"NotoSans-Regular","family":"Noto Sans"}}],
+            "fallbackFonts":["{fallback}"],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","debug":{debug},"runs":[{{"text":"{text}","font":"{font}","size":20}}]}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        Profile::default(),
+        Ok,
+    )
+    .unwrap();
+    let ids = (0..fonts.fonts.len())
+        .map(|k| fonts.get(k as u16).id.to_string())
+        .collect();
+    (pages.into_iter().map(|p| p.ops).collect(), ids)
+}
+
+/// With `debug`, colour glyphs are still images: the outlined paragraph is
+/// painted as any other.
+#[test]
+fn outlined_text_draws_its_colour_glyphs_as_images() {
+    for fallback in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        let (plain, _) = emoji_ops_in("a \u{1F600} b", fallback, "Inter-Regular", false);
+        let (outlined, ids) = emoji_ops_in("a \u{1F600} b", fallback, "Inter-Regular", true);
+        let images = |ops: &[Op]| {
+            ops.iter()
+                .filter(|op| matches!(op, Op::Image { .. }))
+                .count()
+        };
+        assert_eq!(images(&plain[0]), 1, "{fallback}");
+        assert_eq!(images(&outlined[0]), 1, "{fallback}");
+        // The same text as without `debug`: none in the colour font draws
+        // the emoji in one colour, or with nothing.
+        let texts = |ops: &[Op]| -> Vec<(String, Vec<u16>)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    Op::Text(t) => Some((
+                        ids[t.font as usize].clone(),
+                        t.glyphs.iter().map(|g| g.id).collect(),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(texts(&outlined[0]), texts(&plain[0]), "{fallback}");
+        // The debug outline is drawn on top.
+        assert!(outlined[0].len() > plain[0].len());
+    }
+}
+
+/// The space in a colour glyph's span is one of its run's font, which is
+/// embedded anyway, not the first font of the document; in a run whose
+/// font has no outlines, of the first font without colour.
+#[test]
+fn colour_glyph_spans_carry_a_space_of_the_run_s_font() {
+    for (font, want) in [
+        ("NotoSans-Regular", "NotoSans-Regular"),
+        ("EmojiTest-CBDT", "Inter-Regular"),
+    ] {
+        let (pages, ids) = emoji_ops_in("\u{1F600}", "EmojiTest-COLR", font, false);
+        let spaces: Vec<&str> = pages[0]
+            .iter()
+            .filter_map(|op| match op {
+                Op::InvisibleText(g) => Some(ids[g.font as usize].as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces, [want], "{font}");
+    }
+}
+
+#[test]
+fn colour_glyphs_are_images_in_spans_with_their_text() {
+    for fallback in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
+        let (pages, ids) = emoji_ops("a \u{1F600}\u{1F1EB}\u{1F1F7} b", fallback);
+        let ops = &pages[0];
+        // Each colour glyph: a span with its text, the image, and an
+        // invisible space of Inter as wide as the glyph's advance (22 pt:
+        // 1100 units of a 1000-unit em at 20 pt).
+        let spans: Vec<&str> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Span { actual_text } => Some(&**actual_text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spans, ["\u{1F600}", "\u{1F1EB}\u{1F1F7}"], "{fallback}");
+        let images = ops
+            .iter()
+            .filter(|op| matches!(op, Op::Image { .. }))
+            .count();
+        assert_eq!(images, 2, "{fallback}");
+        for op in ops {
+            if let Op::InvisibleText(g) = op {
+                assert_eq!(ids[g.font as usize], "Inter-Regular");
+                assert!(close(g.width, 22.0), "{}", g.width);
+            }
+        }
+        let at = |want: fn(&Op) -> bool| ops.iter().position(want).unwrap();
+        let (span, image) = (
+            at(|op| matches!(op, Op::Span { .. })),
+            at(|op| matches!(op, Op::Image { .. })),
+        );
+        let (space, end) = (
+            at(|op| matches!(op, Op::InvisibleText(_))),
+            at(|op| matches!(op, Op::EndSpan)),
+        );
+        assert!(span < image && image < space && space < end, "{ops:#?}");
+        // The image fills the glyph's box: 1000 units from x 50 (COLR) or
+        // 46.875 (CBDT), at 20 pt.
+        let Op::Image { matrix, .. } = &ops[image] else {
+            unreachable!()
+        };
+        assert!(close(matrix[0], 20.0), "{fallback}: {matrix:?}");
+        // The letters stay text in Inter; the colour font draws no text
+        // but the spaces next to the emoji.
+        for op in ops {
+            if let Op::Text(t) = op {
+                if ids[t.font as usize] != "Inter-Regular" {
+                    assert_eq!(fallback, "EmojiTest-COLR");
+                    assert_eq!(t.glyphs.len(), 1, "{t:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn text_without_colour_fonts_paints_no_spans() {
+    let (pages, _) = emoji_ops("plain text", "EmojiTest-COLR");
+    assert!(!pages[0].iter().any(|op| matches!(
+        op,
+        Op::Span { .. } | Op::Image { .. } | Op::InvisibleText(_)
+    )));
+}
+
+#[test]
+fn superscripts_and_subscripts_are_painted_off_the_baseline() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+              {{"type":"text","runs":[
+                {{"text":"x","font":"Inter-Regular","size":10}},
+                {{"text":"2","font":"Inter-Regular","size":6,"verticalAlign":"super","decoration":"underline"}},
+                {{"text":"y","font":"Inter-Regular","size":10}},
+                {{"text":"3","font":"Inter-Regular","size":6,"verticalAlign":"sub"}}]}}]}}]}}"#
+    );
+    let pages = render_with(&store(), &json, |pages, _, _| pages);
+    let ys: Vec<f32> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Text(t) => Some(t.y),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ys.len(), 4, "{ys:?}");
+    // Inter's OS/2 offsets for a size of 1229 units: 717 up, 154 down.
+    let (up, down) = (6.0 * 717.0 / 1229.0, 6.0 * 154.0 / 1229.0);
+    assert_eq!(ys[0], ys[2]);
+    assert!((ys[0] - ys[1] - up).abs() < 1e-3, "{ys:?}");
+    assert!((ys[3] - ys[0] - down).abs() < 1e-3, "{ys:?}");
+    // The superscript's underline is drawn under its own baseline.
+    let underline = pages[0]
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            Op::FillRect { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .unwrap();
+    assert!(underline.y > ys[1] && underline.y < ys[0], "{underline:?}");
+}
+
+#[test]
+fn justified_pretty_lines_are_painted_within_their_box() {
+    let prose = "In olden times when wishing still helped one, there lived a king whose \
+        daughters were all beautiful, but the youngest was so beautiful that the sun itself, \
+        which has seen so much, was astonished whenever it shone in her face.";
+    let json = |wrap: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"margin":{{"left":20,"right":20}},"children":[
+              {{"type":"text","style":{{"textAlign":"justify","textWrap":"{wrap}"}},
+                "runs":[{{"text":"{prose}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        )
+    };
+    for wrap in ["wrap", "pretty"] {
+        let lines = painted_lines(&json(wrap));
+        assert!(lines[0].len() > 4, "{wrap}");
+        let n = lines[0].len();
+        for (k, &(_, x0, x1)) in lines[0].iter().enumerate() {
+            assert!(x0 >= 20.0 - 1e-3, "{wrap} {k}: {x0}");
+            // Justified lines but the last end at the right edge, the
+            // spaces of some shrunk to get there.
+            if k + 1 < n {
+                assert!((x1 - (W - 20.0)).abs() < 0.5, "{wrap} {k}: {x1}");
+            } else {
+                assert!(x1 <= W - 20.0, "{wrap} {k}: {x1}");
+            }
+        }
+    }
+    assert_ne!(painted_lines(&json("wrap")), painted_lines(&json("pretty")));
+}
+
+#[test]
+fn inline_images_are_painted_in_their_line_with_their_alternative_text() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","style":{{"lineHeight":1}},"runs":[
+              {{"text":"ab","font":"Inter-Regular","size":10}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","height":16,"alt":"Logo"}}}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","width":4}},"verticalAlign":"top"}}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    let ops = &pages[0];
+    let spans: Vec<&str> = ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Span { actual_text } => Some(&**actual_text),
+            _ => None,
+        })
+        .collect();
+    // Only the image with alternative text has a span.
+    assert_eq!(spans, ["Logo"]);
+    let images: Vec<[f32; 6]> = ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Image { matrix, .. } => Some(*matrix),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 2);
+    // [w 0 0 -h x y+h]: 16 pt square on the baseline (16 pt down, as it
+    // is the tallest), then a 4 pt square at the top of the line.
+    let (first, second) = (images[0], images[1]);
+    assert!(close(first[0], 16.0) && close(-first[3], 16.0), "{first:?}");
+    assert!(close(first[5] + first[3], 0.0), "{first:?}");
+    assert!(
+        close(second[0], 4.0) && close(second[5] + second[3], 0.0),
+        "{second:?}"
+    );
+    // The second follows the first.
+    assert!(close(second[4], first[4] + 16.0), "{first:?} {second:?}");
+    // The letters are text.
+    assert!(ops
+        .iter()
+        .any(|op| matches!(op, Op::Text(t) if t.glyphs.len() == 2)));
+}
+
+/// In right-to-left text, an inline image takes its place in visual
+/// order: between the words before it (on its right) and after it (on its
+/// left), and an image run of its own in a left-to-right paragraph keeps
+/// its logical place among left-to-right words.
+#[test]
+fn inline_images_follow_the_visual_order_of_right_to_left_text() {
+    let paint = |direction: &str, words: [&str; 2]| {
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Hebrew","family":"Hebrew"}}],
+                "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+                {{"type":"text","style":{{"direction":"{direction}"}},"runs":[
+                  {{"text":"{}","font":"Hebrew","size":10}},
+                  {{"font":"Hebrew","size":10,"image":{{"src":"logo","height":8}}}},
+                  {{"text":"{}","font":"Hebrew","size":10}}]}}]}}]}}"#,
+            words[0], words[1]
+        );
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let mut store = FontStore::new();
+        let hebrew = crate::test_fixtures::fixture("fonts/NotoSansHebrew-Regular.ttf");
+        store.register("Hebrew", hebrew).unwrap();
+        let fonts = FontSet::load(&doc, &store).unwrap();
+        let mut images = ImageStore::new();
+        images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+        let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+        let shaper = RustybuzzShaper::new(&fonts)
+            .unwrap()
+            .with_objects(std::sync::Arc::new(images.inline_objects()));
+        let mut text = TextCache::new(shaper, None);
+        let (pages, _, _) = run(
+            &doc,
+            &fonts,
+            &mut text,
+            &mut images,
+            false,
+            Profile::default(),
+            Ok,
+        )
+        .unwrap();
+        // The x of the text ops, in paint order, with their glyph counts,
+        // and of the image.
+        let texts: Vec<(f32, usize)> = pages[0]
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Text(t) => Some((t.x, t.glyphs.len())),
+                _ => None,
+            })
+            .collect();
+        let image = pages[0]
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                Op::Image { matrix, .. } => Some(matrix[4]),
+                _ => None,
+            })
+            .unwrap();
+        // The first word by its length (two letters and a space), then the
+        // second (five and a space).
+        let x = |n: usize| texts.iter().find(|t| t.1 == n).unwrap().0;
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        (x(3), image, x(6))
+    };
+    // Right to left: the first word on the right, the image, the second
+    // word on its left.
+    let (first, image, second) = paint("rtl", ["אב ", " גדהוז"]);
+    assert!(second < image && image < first, "{first} {image} {second}");
+    let (first, image, second) = paint("ltr", ["ab ", " cdefg"]);
+    assert!(first < image && image < second, "{first} {image} {second}");
+}
+
+/// A paragraph's `debug` outline boxes each image run around its image,
+/// wherever its alignment puts it: here a tall one on the baseline and a
+/// short one at the top of the line, far above its font's ascender.
+#[test]
+fn debug_outlines_box_inline_images_where_they_are_drawn() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"text","debug":true,"style":{{"lineHeight":1}},"runs":[
+              {{"text":"ab","font":"Inter-Regular","size":10}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","height":30}}}},
+              {{"font":"Inter-Regular","size":10,"image":{{"src":"logo","width":4}},"verticalAlign":"top"}}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    let ops = &pages[0];
+    // [w 0 0 -h x y+h] → (x, y, w, h).
+    let images: Vec<(f32, f32, f32, f32)> = ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Image { matrix: m, .. } => Some((m[4], m[5] + m[3], m[0], -m[3])),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 2);
+    // The run boxes, by run: the even runs in one path, the odd in another.
+    let boxes = |color: crate::schema::Color| -> Vec<(f32, f32, f32, f32)> {
+        let Some(Op::FillPath { path, .. }) = ops
+            .iter()
+            .find(|op| matches!(op, Op::FillPath { color: c, .. } if *c == color))
+        else {
+            return Vec::new();
+        };
+        let points: Vec<(f32, f32)> = path
+            .segs
+            .iter()
+            .filter_map(|s| match *s {
+                paint::PathSeg::MoveTo(x, y) | paint::PathSeg::LineTo(x, y) => Some((x, y)),
+                _ => None,
+            })
+            .collect();
+        points
+            .chunks(4)
+            .map(|c| {
+                let xs = c.iter().map(|p| p.0);
+                let ys = c.iter().map(|p| p.1);
+                let (x0, x1) = (
+                    xs.clone().fold(f32::MAX, f32::min),
+                    xs.fold(f32::MIN, f32::max),
+                );
+                let (y0, y1) = (
+                    ys.clone().fold(f32::MAX, f32::min),
+                    ys.fold(f32::MIN, f32::max),
+                );
+                (x0, y0, x1 - x0, y1 - y0)
+            })
+            .collect()
+    };
+    let [even, odd] = paint::debug::RUN;
+    let (even, odd) = (boxes(even), boxes(odd));
+    // Runs 0 and 2 (the text, the top image), then run 1 (the tall image).
+    assert_eq!((even.len(), odd.len()), (2, 1), "{even:?} {odd:?}");
+    for (image, run) in [(images[0], odd[0]), (images[1], even[1])] {
+        assert!(
+            close(image.0, run.0) && close(image.1, run.1),
+            "{image:?} {run:?}"
+        );
+        assert!(
+            close(image.2, run.2) && close(image.3, run.3),
+            "{image:?} {run:?}"
+        );
+    }
+}
+
+#[test]
+fn text_beside_a_float_is_painted_beside_it_and_the_float_over_backgrounds() {
+    let words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+        tempor incididunt ut labore et dolore magna aliqua.";
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+              {{"type":"box","style":{{"float":"left","width":60,"height":30,"backgroundColor":[1,0,0,1]}}}},
+              {{"type":"text","style":{{"backgroundColor":[0,0,1,1]}},
+                "runs":[{{"text":"{words}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+    );
+    let lines = painted_lines(&json);
+    assert!(lines[0].len() > 3);
+    for &(y, x0, _) in &lines[0] {
+        if y < 30.0 {
+            assert!(x0 >= 60.0 - 1e-3, "{y}: {x0}");
+        }
+    }
+    assert!(lines[0].iter().any(|&(y, x0, _)| y > 30.0 && x0 < 1.0));
+    // The float is painted after the paragraph's background.
+    let pages = render_with(&store(), &json, |pages, _, _| pages);
+    let fills: Vec<_> = pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::FillPath { color, .. } | Op::FillRect { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    let red = fills.iter().position(|c| *c == [1.0, 0.0, 0.0, 1.0]);
+    let blue = fills.iter().position(|c| *c == [0.0, 0.0, 1.0, 1.0]);
+    assert!(blue < red, "{fills:?}");
+}
+
+#[test]
+fn inline_images_beside_a_float_sit_in_its_line_boxes() {
+    let image = r#"{"font":"Inter-Regular","size":10,"image":{"src":"logo","height":12}}"#;
+    let runs = [image; 12].join(r#",{"text":" word ","font":"Inter-Regular","size":10},"#);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+              {{"type":"box","style":{{"float":"left","width":60,"height":30,"backgroundColor":[1,0,0,1]}}}},
+              {{"type":"text","runs":[{runs}]}}]}}]}}"#
+    );
+    let pages = ops_with_logo(&json);
+    let mut beside = 0;
+    for op in &pages[0] {
+        if let Op::Image { matrix: m, .. } = op {
+            // [w 0 0 -h x y+h]: the image's top is y.
+            let (x, top) = (m[4], m[5] + m[3]);
+            assert!(x + m[0] <= W + 1e-3, "{m:?}");
+            if top < 30.0 {
+                assert!(x >= 60.0 - 1e-3, "{m:?}");
+                beside += 1;
+            }
+        }
+    }
+    assert!(beside > 0);
+}
+
+#[test]
+fn right_to_left_text_beside_floats_starts_at_the_right_of_each_line_box() {
+    let words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+        tempor incididunt ut labore et dolore magna aliqua.";
+    for (side, left, right) in [("right", 0.0, W - 50.0), ("left", 50.0, W)] {
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+                "pages":[{{"size":{{"width":{W},"height":400}},"children":[
+                  {{"type":"box","style":{{"float":"{side}","width":50,"height":30}}}},
+                  {{"type":"text","style":{{"direction":"rtl"}},
+                    "runs":[{{"text":"{words}","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        );
+        let lines = painted_lines(&json);
+        // Baselines, about 10 below their line's top: the lines that start
+        // above the float's bottom.
+        let beside = |y: f32| y < 38.0;
+        assert_eq!(lines[0].iter().filter(|l| beside(l.0)).count(), 3, "{side}");
+        for &(y, x0, x1) in &lines[0] {
+            if beside(y) {
+                // In the box beside the float, against its right edge.
+                assert!(x0 >= left - 1e-3, "{side} {y}: {x0}");
+                assert!((x1 - right).abs() < 0.5, "{side} {y}: {x1}");
+            } else {
+                assert!((x1 - W).abs() < 0.5, "{side} {y}: {x1}");
+            }
+        }
     }
 }
