@@ -108,7 +108,8 @@ pub struct FontData {
     /// The sfnt font (TrueType or CFF OpenType), decoded from WOFF or WOFF2
     /// when it was registered in one of them.
     pub(crate) bytes: Arc<[u8]>,
-    /// xxh3 of `bytes`: the font's identity in process-wide caches.
+    /// xxh3 of `bytes`: process-wide caches find the font by it, and
+    /// compare the bytes on a match.
     pub(crate) hash: u64,
     pub(crate) metrics: FontMetrics,
     /// Compressed whole font program (see [`FontData::compressed_program`]),
@@ -368,6 +369,21 @@ impl FontStore {
         let id = id.into();
         let data = FontData::parse(&id, bytes.into())?;
         self.fonts.insert(id, Arc::new(data));
+        Ok(())
+    }
+
+    /// Registers font `id` with `hash` in place of its xxh3: two different
+    /// fonts with one hash.
+    #[cfg(test)]
+    pub(crate) fn register_with_hash(
+        &mut self,
+        id: &str,
+        bytes: Vec<u8>,
+        hash: u64,
+    ) -> Result<(), InkoxideError> {
+        let mut data = FontData::parse(id, bytes.into())?;
+        data.hash = hash;
+        self.fonts.insert(id.into(), Arc::new(data));
         Ok(())
     }
 
