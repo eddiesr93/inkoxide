@@ -133,8 +133,8 @@ All notable changes to the packages in this repository. The format follows
   author, a colour and whether it starts open. It takes no space; the icon sits at the top-left
   corner of its box and keeps its size at any zoom. It has an appearance stream, so it prints
   and passes PDF/A-2b.
-- `<FieldSet name>` in `@inkoxide/render`: a `View` whose name goes in front of the names of the
-  fields inside it, at any depth (`address.street`); sets nest.
+- `<FieldSet name>` in `@inkoxide/render`: a `View`, with its props and `render`, whose name goes
+  in front of the names of the fields inside it, at any depth (`address.street`); sets nest.
 - `<List>` in `@inkoxide/render`, a list box, with `multiSelect` and an array `value`; `Field`
   takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
   `TextInput` is another name for `TextField`.

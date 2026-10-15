@@ -850,9 +850,9 @@ array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkb
 `"radio"`, `"select"`, `"list"`), for forms built from data:
 `<Field kind={q.kind} name={q.name} … />`.
 
-A `FieldSet` groups fields: it is a `View`, with the same props, whose `name` goes in front of
-the name of every field inside it, at any depth. Viewers show and export the fields by those
-full names, and sets nest:
+A `FieldSet` groups fields: it is a `View`, with the same props (`render` too), whose `name`
+goes in front of the name of every field inside it, at any depth. Viewers show and export the
+fields by those full names, and sets nest:
 
 ```tsx
 <FieldSet name="billing" className="gap-2">

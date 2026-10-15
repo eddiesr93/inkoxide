@@ -1241,6 +1241,29 @@ describe('form fields', () => {
     expect(first<FieldNode>(tree(<TextField name="plain" />)).field.name).toBe('plain');
     expect(thrown(() => tree(<FieldSet name="">x</FieldSet>)).message).toContain('<FieldSet> needs a name');
   });
+
+  it('takes a render prop, as a View does, and names the fields it renders', () => {
+    const r = tree(
+      <FieldSet
+        name="page"
+        className="p-2"
+        render={({ pageNumber }) => <TextField name={pageNumber === 1 ? 'first' : 'later'} />}
+      />,
+      { pageCount: 2 },
+    );
+    expect(r.dynamic).toBe(true);
+    const variants = (first<BoxNode>(r).children ?? []) as BoxNode[];
+    expect(variants.map((v) => [v.pages, ((v.children ?? []) as FieldNode[])[0]?.field.name])).toEqual([
+      [[1], 'page.first'],
+      [[2], 'page.later'],
+    ]);
+    // One page: a plain set, with its style.
+    const one = first<BoxNode>(
+      tree(<FieldSet name="s" className="p-2" render={() => <TextField name="a" />} />),
+    );
+    expect(one.style).toEqual({ padding: { top: 6, right: 6, bottom: 6, left: 6 } });
+    expect(((one.children ?? []) as FieldNode[])[0]?.field.name).toBe('s.a');
+  });
 });
 
 describe('notes', () => {

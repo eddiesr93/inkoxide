@@ -752,8 +752,9 @@ class Builder {
 
   /** The node of a block element, built by the method for its type. */
   private nodeForType(inst: Instance, ctx: TextCtx): SchemaNode {
-    if (typeof inst.props.render === 'function' && (inst.type === HOST.View || inst.type === HOST.Text)) {
-      return this.perPage(inst, ctx);
+    if (typeof inst.props.render === 'function') {
+      if (inst.type === HOST.View || inst.type === HOST.Text) return this.perPage(inst, ctx);
+      if (inst.type === HOST.FieldSet) return this.fieldSet(inst, () => this.perPage(inst, ctx));
     }
     switch (inst.type) {
       case HOST.View:
@@ -761,7 +762,7 @@ class Builder {
       case HOST.Link:
         return this.box(inst, ctx);
       case HOST.FieldSet:
-        return this.fieldSet(inst, ctx);
+        return this.fieldSet(inst, () => this.box(inst, ctx));
       case HOST.Note:
         return this.note(inst, ctx);
       case HOST.Text:
@@ -1345,8 +1346,11 @@ class Builder {
     return style;
   }
 
-  /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
-  private fieldSet(inst: Instance, ctx: TextCtx): SchemaNode {
+  /**
+   * A `<FieldSet>`: a box, made by `build`, whose name goes in front of the names of the fields
+   * inside it.
+   */
+  private fieldSet(inst: Instance, build: () => SchemaNode): SchemaNode {
     const name = inst.props.name;
     if (typeof name !== 'string' || name === '') {
       this.fail(inst, '<FieldSet> needs a name: the group its fields are in.', { kind: 'props' });
@@ -1354,7 +1358,7 @@ class Builder {
     const outer = this.fieldPrefix;
     this.fieldPrefix = `${outer}${name}.`;
     try {
-      return this.box(inst, ctx);
+      return build();
     } finally {
       this.fieldPrefix = outer;
     }

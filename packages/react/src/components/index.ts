@@ -687,7 +687,7 @@ export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
   children?: ReactNode;
 }
 
-export interface FieldSetProps extends Flow {
+export interface FieldSetProps extends ViewProps {
   /** The group's name, put in front of the name of every field inside it: `address.street`. */
   name: string;
 }
