@@ -34,9 +34,9 @@ over by changing the import. This page lists what has another name, and what is 
 | `<FieldSet name="address">` | The same | Works as is, for every kind of field, and sets inside sets nest: `a.b.c` |
 | `<Note>` | The same, see [Notes](GUIDE.md#notes) | Works with text children, `backgroundColor` for the colour, and `author` and `open`. Inside a `<Text>` it is part of the line and takes no room; its icon hangs from the top of the line where it is |
 | `<Image src="./logo.png">`, `<Image src="https://…">` | The same, with the folders or hosts allowed in the render options: `localImages: { root: './assets' }`, `remoteImages: { allow: ['https://cdn.example.com/'] }`; see [Images](GUIDE.md#images) | Allow them first: without that, a path is an image id and a URL is refused |
+| `<PDFViewer>`, `<PDFDownloadLink>`, `usePDF`, `BlobProvider`, `pdf().toBlob()` | `<PdfViewer>`, `<PdfDownloadLink>`, `usePdf` and `renderToBlob`, from `@inkoxide/render/browser` with `@inkoxide/wasm` installed; see [In the browser](GUIDE.md#in-the-browser) | Works, in a Web Worker. `usePdf(element)` returns `{ blob, url, loading, error, update }`, not a pair; for `BlobProvider`, use `usePdf`. `<PdfViewer>` and `<PdfDownloadLink>` render when they mount: give them another `key` to render again |
 
 **Not available:**
-- **Browser rendering:** `<PDFViewer>`, `<PDFDownloadLink>`, `BlobProvider` and `usePDF`. Render on the server and send the bytes.
 - **Other output forms:** `pdf().toBuffer()`. Use `renderToBuffer`.
 - **Document options:** `conformance` at the a and u levels (`PDF/A-2a`, `PDF/A-3u`, …), which need tagged PDF; `conformance` takes `PDF/A-1b`, `PDF/A-2b` and `PDF/A-3b`; `pdfVersion`; `onRender`.
 - **Text:**

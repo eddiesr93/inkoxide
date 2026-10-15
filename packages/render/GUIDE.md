@@ -19,6 +19,7 @@ and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
 - [API](#api)
 - [Errors](#errors)
 - [Serving templates](#serving-templates)
+- [In the browser](#in-the-browser)
 - [FAQ](#faq)
 - [Limitations](#limitations)
 
@@ -1214,6 +1215,75 @@ options of `generate`), `RenderResult` (what `generate` resolves to), `Timings` 
 `TreeResult` (what `renderTree` returns) and `RenderOpts` (the options of `renderSettled` and
 `renderDocument`).
 
+## In the browser
+
+The same templates render in a browser, with the engine as WebAssembly in a Web Worker, so the
+page keeps responding while it renders. Install the module next to the package, and import
+from `@inkoxide/render/browser`:
+
+```sh
+npm install @inkoxide/render @inkoxide/wasm
+```
+
+```tsx
+import { PdfDownloadLink, PdfViewer, usePdf } from '@inkoxide/render/browser';
+
+function InvoicePage({ invoice }: { invoice: InvoiceData }) {
+  const doc = <Invoice invoice={invoice} />;
+  return (
+    <>
+      <PdfDownloadLink document={doc} fileName="invoice.pdf">
+        {({ loading }) => (loading ? 'Rendering…' : 'Download')}
+      </PdfDownloadLink>
+      <PdfViewer document={doc} style={{ width: '100%', height: 800 }} />
+    </>
+  );
+}
+```
+
+- **`usePdf(element, options?)`** renders when the component mounts and returns `{ blob, url,
+  loading, error, update }`; `update(element?)` renders again. A render that starts stops the
+  one still running, and the object URL is revoked when a new one replaces it.
+- **`<PdfDownloadLink>`** is a link that downloads the PDF, and **`<PdfViewer>`** an `<iframe>`
+  with the browser's own viewer. Each renders when it mounts: give it another `key` to render
+  again.
+- **`renderToBuffer`** and **`renderToBlob`** render outside React components, and **`generate`**
+  renders a [template](#serving-templates). A `signal` in their options stops a render: its
+  worker ends, and the next render starts a new one.
+- **`init(options?)`** starts the engine, and every render calls it; only the options of the
+  first call count. `wasm` is where the module comes from (a URL, a `Response`, its bytes or a
+  compiled `WebAssembly.Module`); `assets` is a folder to serve the bundled fonts and
+  hyphenation patterns from, with `fonts/` and `hyphenation/` in it; `worker: false` renders on
+  the calling thread.
+
+**Setting up.** Bundlers copy the module, the worker and the bundled fonts, which the packages
+refer to with `new URL(…, import.meta.url)`. With Vite, set `worker: { format: 'es' }`, and
+leave `@inkoxide/render` and `@inkoxide/wasm` out of `optimizeDeps`, so that those URLs stay
+next to their files.
+[examples/browser](https://github.com/eddiesr93/inkoxide/tree/main/examples/browser) is a page
+set up that way.
+
+**Fonts and images.** A bundled font is downloaded the first time a document uses it, as a
+TrueType file, for the same PDF as on the server. `Font.register` takes a URL (relative to the
+page) or the bytes, not a file path. A WOFF2 font gives other PDF bytes than its TrueType file;
+WOFF gives the same. Images come as bytes in `images`, or from the hosts allowed in
+`remoteImages`: the requests carry no cookies, need CORS, and a redirect is refused.
+`localImages` is not available.
+
+**Content Security Policy.** The engine needs `script-src 'wasm-unsafe-eval'` and a worker of
+the page's origin (`worker-src 'self'`). Nothing needs `'unsafe-eval'`, and the page needs no
+cross-origin isolation (COOP and COEP).
+
+**What differs from Node.**
+
+- Renders run in one worker, one at a time, on one thread: `threads` may only be `1`.
+- `renderToFile`, `renderToStream` and image files are not available.
+- The engine module is about 2 MB to download with brotli, once; a bundled font is 65 to 245 KB
+  with brotli.
+- The PDF has the bytes Node renders, except where SVG markers are rotated: their numbers can
+  differ in the last digits, since the browser's math library rounds differently.
+- A bug in the engine fails the render with `INTERNAL`; the next render runs in a new instance.
+
 ## FAQ
 
 **How is this different from HTML to PDF with Puppeteer or Playwright?**
@@ -1223,8 +1293,8 @@ documents in milliseconds, with print features built in, such as repeating table
 numbers and PDF/A.
 
 **Does it run in the browser?**
-No. The engine is a native Node addon. Render on your server, or in a serverless function on
-Node, and send the bytes to the browser.
+Yes: import from `@inkoxide/render/browser`, and install `@inkoxide/wasm`, the engine as
+WebAssembly. See [In the browser](#in-the-browser).
 
 **The install worked, but the engine does not load.**
 The engine ships as one package per platform: macOS (arm64, x64), Linux x64 (glibc and musl),
@@ -1267,8 +1337,9 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 ## Limitations
 
-- **Server only.** The engine is a native addon: there is no browser rendering, and it does not
-  run on edge runtimes such as Cloudflare Workers.
+- **Browsers.** Renders run on one thread, in a worker (see [In the browser](#in-the-browser)).
+  Other WebAssembly runtimes, such as Deno, Bun and edge runtimes, can load `@inkoxide/wasm`,
+  but they are not tested.
 - **Drawing.** SVG text on a path and vertical SVG text are not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely

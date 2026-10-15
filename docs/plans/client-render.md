@@ -1,7 +1,20 @@
 # Plan: rendering in the browser
 
-This draft is for review. It was written on 2026-10-15 against `main` at `863a355` (0.8.0),
-and line references point to that commit. It covers the [ROADMAP.md](../../ROADMAP.md) "Later"
+Written on 2026-10-15 against `main` at `863a355` (0.8.0); line references point to that
+commit. Implemented on the branch `feat/client-render`, with the recommendation of each open
+decision. Where the implementation differs from this plan:
+
+- **Glyph limit (E1).** The first shaping failure is kept in the shape caches and returned after
+  layout, since shaping runs inside the layout engine's measure callback.
+- **The binding** shares its option checks through a crate, `crates/binding`.
+- **No wasm-opt.** binaryen 133 at `-O3`, `-Os` and `-Oz` made the module no smaller with brotli
+  (1.97 MB) and no faster, so the release ships the module CI tests.
+- **Images** are copied to the worker, since a render may need them again; the PDF is
+  transferred.
+- **`@inkoxide/wasm`** is an optional peer of `@inkoxide/render`, so that Node installs do not
+  download it.
+- **`examples/browser`** has an invoice of its own: the Node examples import Node modules.
+- **Not done:** the browser benchmark in `benchmarks/`, and Deno in CI. It covers the [ROADMAP.md](../../ROADMAP.md) "Later"
 item **Rendering in the browser, through a WebAssembly build of the engine** (ROADMAP.md:8).
 
 ## Summary

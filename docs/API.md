@@ -30,6 +30,33 @@ versions; removing or renaming any of them is a major version.
 `doc` is bytes in Rust; in Node it is a `Uint8Array` (or `Buffer`) or a
 string, which is read as UTF-8 JSON.
 
+## WebAssembly (`@inkoxide/wasm`)
+
+`@inkoxide/wasm` is the engine built for `wasm32-unknown-unknown`, with the functions and types
+of the Node package, and two more:
+
+| Function | Meaning |
+|---|---|
+| `init(source?): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`. Every other function throws until it resolves. |
+| `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text). The memory stays with the instance. |
+
+How it differs from the Node package:
+
+- **One thread.** Every call runs on the calling thread, `render` included; `threads` may only
+  be `1`, and another number is `INVALID_ARGUMENT` at `options.threads`. In a page, call it from
+  a worker, as `@inkoxide/render/browser` does.
+- **JSON only.** It is built without the `msgpack` feature: `format: 'msgpack'` is a
+  `PARSE_ERROR`.
+- **A bug in the engine** (a panic in a dependency) ends the instance, since WebAssembly cannot
+  unwind: the call fails with `INTERNAL`, and the next one runs in a new instance with the fonts
+  and hyphenation patterns registered so far. The engine's own limits return their errors, as
+  in Node.
+- **Memory** grows to at most 4 GiB and is not given back; the process-wide caches keep a quarter
+  of their Node budgets.
+- **Output.** A render has the bytes Node renders, except that numbers computed with
+  trigonometry in a dependency (the angle of an SVG marker) can differ in the last digits.
+  `scripts/wasm-parity.mjs` checks every fixture.
+
 ## Render options
 
 | Rust field / setter | Node option | Default | Meaning |

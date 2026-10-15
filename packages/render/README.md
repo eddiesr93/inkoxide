@@ -1012,6 +1012,7 @@ renderToFile(<Form {...sample} />, 'form.pdf');
 | [API](GUIDE.md#api) | `renderToBuffer`, `renderToFile`, `renderToStream` and their options, `Font.register`, `init`, health checks, concurrency |
 | [Errors](GUIDE.md#errors) | Error codes and what they mean |
 | [Serving templates](GUIDE.md#serving-templates) | Templates by id, with a zod schema for their data: `@inkoxide/render/templates` |
+| [In the browser](GUIDE.md#in-the-browser) | `@inkoxide/render/browser`: `usePdf`, `<PdfViewer>`, `<PdfDownloadLink>`, `renderToBlob`, bundlers and Content Security Policy |
 | [FAQ](GUIDE.md#faq) | Installing on servers and in Docker, hooks, page numbers, determinism |
 | [Migrating from another React PDF library](MIGRATING.md) | What has another name, and what is not available |
 
@@ -1036,8 +1037,9 @@ methodology and comparisons with other libraries.
 
 - **Node.js 22 or later**, ES modules.
 - **Platforms:** macOS (arm64, x64), Linux x64 (glibc, musl), Linux arm64 (glibc) and Windows
-  x64. npm installs the matching prebuilt engine. Rendering runs on the server; there is no
-  browser build.
+  x64. npm installs the matching prebuilt engine.
+- **Browsers:** `@inkoxide/render/browser`, with `@inkoxide/wasm` installed, renders in a Web
+  Worker ([In the browser](GUIDE.md#in-the-browser)).
 
 ## Licence
 
