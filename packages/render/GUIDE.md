@@ -993,7 +993,8 @@ All three take the same options:
 A bad option fails the render with `ENGINE_REJECTED` at its path (`options.threads`,
 `options.remoteImages.timeoutMs`): a `creationDate` that is not RFC 3339, a `threads` that is
 not an integer from 1 to 256, or a timeout or `maxBytes` that is not a number from 0 (NaN, a
-negative number, a string). A fractional timeout is rounded up to a whole millisecond.
+negative number, a string), or an option of the wrong type (`threads: '4'`, `localImages`
+without `root`). A fractional timeout is rounded up to a whole millisecond.
 
 **`Font.register({ family, src })`** adds a font family, from a path, a URL or bytes. See
 [Fonts](#fonts).

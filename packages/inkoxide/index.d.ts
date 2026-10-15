@@ -45,7 +45,11 @@ export type ErrorCode =
 /** A PDF/A part and conformance level (mirrors Rust `PdfALevel`). */
 export type PdfALevel = '1b' | '2b' | '3b';
 
-/** Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. */
+/**
+ * Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. Leave an option out with
+ * `undefined`; `null` or a value of another type is `INVALID_ARGUMENT` at its path
+ * (`options.threads`), without the value in the message.
+ */
 export interface RenderOptions {
   /** Input encoding of `doc`. Default `"json"`. */
   format?: 'json' | 'msgpack';

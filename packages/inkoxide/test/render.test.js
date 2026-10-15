@@ -233,7 +233,6 @@ test('wrong argument types are INVALID_ARGUMENT errors', async () => {
     return true;
   };
   assert.throws(() => ink.renderSync(42), isArgError);
-  assert.throws(() => ink.renderSync('{}', { threads: 'x' }), isArgError);
   assert.throws(() => ink.registerFont(1, 2), isArgError);
   assert.throws(() => ink.validate({}), isArgError);
   await assert.rejects(ink.render(42), isArgError);
@@ -242,6 +241,44 @@ test('wrong argument types are INVALID_ARGUMENT errors', async () => {
     assert.strictEqual(e.path, 'options.compressionLevel');
     return true;
   });
+});
+
+test('render options of the wrong type are INVALID_ARGUMENT at their path', async () => {
+  const doc = fixture('docs/invoice.json');
+  for (const [options, path] of [
+    ['x', 'options'],
+    [{ threads: '4' }, 'options.threads'],
+    [{ compressionLevel: '6' }, 'options.compressionLevel'],
+    [{ compress: 'no' }, 'options.compress'],
+    [{ subsetFonts: 0 }, 'options.subsetFonts'],
+    [{ creationDate: 20260101 }, 'options.creationDate'],
+    [{ format: 1 }, 'options.format'],
+    [{ pdfA: 5 }, 'options.pdfA'],
+    [{ images: [] }, 'options.images'],
+    [{ images: { logo: 'logo.png' } }, 'options.images.logo'],
+    [
+      { encryption: { userPassword: 'u', permissions: { copying: 'yes' } } },
+      'options.encryption.permissions.copying',
+    ],
+    [
+      { encryption: { userPassword: 'u', permissions: { printing: true } } },
+      'options.encryption.permissions.printing',
+    ],
+    // napi refuses null where it takes undefined.
+    [{ threads: null }, 'options.threads'],
+    [{ images: null }, 'options.images'],
+    [{ encryption: null }, 'options.encryption'],
+    [{ encryption: { userPassword: 'u', permissions: null } }, 'options.encryption.permissions'],
+  ]) {
+    const rejected = (e) => {
+      assert.ok(e instanceof ink.InkoxideError, `${e}`);
+      assert.strictEqual(e.code, 'INVALID_ARGUMENT');
+      assert.strictEqual(e.path, path);
+      return true;
+    };
+    assert.throws(() => ink.renderSync(doc, options), rejected, JSON.stringify(options));
+    await assert.rejects(ink.render(doc, options), rejected, JSON.stringify(options));
+  }
 });
 
 test('out-of-range numeric options are INVALID_ARGUMENT, not converted', async () => {

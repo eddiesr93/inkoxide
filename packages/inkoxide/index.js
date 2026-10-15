@@ -92,22 +92,67 @@ function wrapError(e) {
   return engineError(code, '', text, e);
 }
 
-// The types of `options.encryption`, checked before napi converts it: napi's conversion error
-// shows the value, which may be a password. Messages name the option, never the value.
-function checkEncryption(options) {
-  const e = options?.encryption;
-  if (e === undefined || e === null) return;
-  const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
-  if (!isObject(e)) throw engineError('INVALID_ARGUMENT', 'options.encryption', 'must be an object');
-  for (const key of ['userPassword', 'ownerPassword']) {
-    const v = e[key];
-    if (v !== undefined && v !== null && typeof v !== 'string') {
-      throw engineError('INVALID_ARGUMENT', `options.encryption.${key}`, 'must be a string');
+// The types of the render options, checked before napi converts them: napi's conversion error has
+// no path, so a caller's mistake would read as a bug of the engine, and it may show the value,
+// which may be a password. Messages name the option and the type, never the value. napi takes
+// undefined for an option left out, and refuses null.
+const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const OPTION_TYPES = {
+  format: 'string',
+  compress: 'boolean',
+  compressionLevel: 'number',
+  creationDate: 'string',
+  threads: 'number',
+  subsetFonts: 'boolean',
+};
+
+const PERMISSION_TYPES = {
+  printing: 'string',
+  modifying: 'boolean',
+  copying: 'boolean',
+  annotating: 'boolean',
+  fillingForms: 'boolean',
+  contentAccessibility: 'boolean',
+  documentAssembly: 'boolean',
+};
+
+// A value of the wrong type at `at.key`, for each key of `types`.
+function checkTypes(object, types, at) {
+  for (const [key, type] of Object.entries(types)) {
+    const v = object[key];
+    if (v !== undefined && typeof v !== type) {
+      throw engineError('INVALID_ARGUMENT', `${at}.${key}`, `must be a ${type}`);
     }
   }
-  if (e.permissions !== undefined && e.permissions !== null && !isObject(e.permissions)) {
-    throw engineError('INVALID_ARGUMENT', 'options.encryption.permissions', 'must be an object');
+}
+
+function checkObject(v, at) {
+  if (!isObject(v)) throw engineError('INVALID_ARGUMENT', at, 'must be an object');
+}
+
+function checkOptions(options) {
+  if (options === undefined || options === null) return;
+  checkObject(options, 'options');
+  checkTypes(options, OPTION_TYPES, 'options');
+  const { pdfA, images, encryption } = options;
+  if (pdfA !== undefined && typeof pdfA !== 'boolean' && typeof pdfA !== 'string') {
+    throw engineError('INVALID_ARGUMENT', 'options.pdfA', 'must be a boolean or a string');
   }
+  if (images !== undefined) {
+    checkObject(images, 'options.images');
+    for (const [id, bytes] of Object.entries(images)) {
+      if (!(bytes instanceof Uint8Array)) {
+        throw engineError('INVALID_ARGUMENT', `options.images.${id}`, 'must be a Uint8Array');
+      }
+    }
+  }
+  if (encryption === undefined) return;
+  checkObject(encryption, 'options.encryption');
+  checkTypes(encryption, { userPassword: 'string', ownerPassword: 'string' }, 'options.encryption');
+  if (encryption.permissions === undefined) return;
+  checkObject(encryption.permissions, 'options.encryption.permissions');
+  checkTypes(encryption.permissions, PERMISSION_TYPES, 'options.encryption.permissions');
 }
 
 function call(fn, args) {
@@ -132,14 +177,14 @@ export const validate = (doc, format, images) =>
   call(native.validate, [doc, format ?? undefined, images ?? undefined]);
 export const render = async (doc, options) => {
   try {
-    checkEncryption(options);
+    checkOptions(options);
     return toUint8Array(await native.render(doc, options ?? undefined));
   } catch (e) {
     throw wrapError(e);
   }
 };
 export const renderSync = (doc, options) => {
-  checkEncryption(options);
+  checkOptions(options);
   return toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
 };
 export const version = () => call(native.version, []);

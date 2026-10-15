@@ -13,6 +13,7 @@ import * as ink from 'inkoxide';
 
 import { DEFAULT_FACES } from './fonts.ts';
 import { HYPHENATION_FILES } from './hyphenation.ts';
+import { checkEncryptionTypes, checkOptionTypes } from './policy.ts';
 import { RenderError, type RenderOpts } from './types.ts';
 
 /**
@@ -200,11 +201,14 @@ export async function renderPdf(
   images: Record<string, Uint8Array>,
   output: OutputOptions = {},
 ): Promise<Uint8Array> {
+  checkOptionTypes(opts);
+  // The <Document> passwords and permissions, which JavaScript can give any type.
+  checkEncryptionTypes(opts.encryption ?? output.encryption);
   const options: ink.RenderOptions = { images };
-  if (opts.creationDate !== undefined) options.creationDate = opts.creationDate;
-  if (opts.threads !== undefined) options.threads = opts.threads;
-  if (opts.compress !== undefined) options.compress = opts.compress;
-  if (opts.subsetFonts !== undefined) options.subsetFonts = opts.subsetFonts;
+  if (opts.creationDate != null) options.creationDate = opts.creationDate;
+  if (opts.threads != null) options.threads = opts.threads;
+  if (opts.compress != null) options.compress = opts.compress;
+  if (opts.subsetFonts != null) options.subsetFonts = opts.subsetFonts;
   const pdfA = opts.pdfA ?? output.pdfA;
   if (pdfA !== undefined) options.pdfA = pdfA;
   const encryption = opts.encryption ?? output.encryption;
