@@ -2270,3 +2270,54 @@ fn a_box_holds_a_bounded_number_of_floats() {
         (C::OutOfRange, "pages[0].children[0].children".into())
     );
 }
+
+/// A table of `cols` auto columns and `rows` rows of one cell spanning
+/// them all.
+fn spanned_table(cols: usize, rows: usize) -> String {
+    let columns = vec![r#"{"width":"auto"}"#; cols].join(",");
+    let row = format!(r#"{{"cells":[{{"colSpan":{cols}}}]}}"#);
+    let rows = vec![row.as_str(); rows].join(",");
+    format!(r#"{{"type":"table","columns":[{columns}],"rows":[{rows}]}}"#)
+}
+
+#[test]
+fn a_document_holds_a_bounded_number_of_table_slots() {
+    use crate::validate::rules::MAX_TABLE_SLOTS;
+    let cols = 1000;
+    let rows = MAX_TABLE_SLOTS / cols;
+    assert_eq!(run(&doc(&spanned_table(cols, rows))), vec![]);
+    assert_eq!(
+        one(&doc(&spanned_table(cols, rows + 1))),
+        (C::OutOfRange, "pages[0].children[0].rows".into())
+    );
+    // The slots of all the tables count.
+    let two = format!(
+        "{},{}",
+        spanned_table(cols, rows / 2),
+        spanned_table(cols, rows / 2 + 1)
+    );
+    assert_eq!(
+        one(&doc(&two)),
+        (C::OutOfRange, "pages[0].children[1].rows".into())
+    );
+}
+
+/// Four times the rows and columns take well under the sixteen times a
+/// check of every slot would. A ratio, not a wall-clock limit, so a slow
+/// or busy machine does not fail it.
+#[test]
+fn checks_wide_tables_in_linear_time() {
+    let check = |n: usize| {
+        let d = doc(&spanned_table(n, n));
+        let t = std::time::Instant::now();
+        assert_eq!(one(&d).0, C::OutOfRange);
+        t.elapsed()
+    };
+    let n = 4000;
+    let (small, big) = (check(n), check(4 * n));
+    assert!(
+        big < small * 8 + std::time::Duration::from_millis(500),
+        "{n} took {small:?}, {} took {big:?}",
+        4 * n
+    );
+}

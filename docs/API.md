@@ -328,6 +328,9 @@ descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
   (`STYLE_NOT_APPLICABLE`).
 - `transform`, `transformOrigin` and `zIndex` do not apply to table
   cells (`STYLE_NOT_APPLICABLE`).
+- The tables of a document have at most 1000000 grid slots in all, a
+  slot being one row of one column, however the cells span them
+  (`OUT_OF_RANGE` at the table's `rows`).
 
 ## Not part of the API
 
