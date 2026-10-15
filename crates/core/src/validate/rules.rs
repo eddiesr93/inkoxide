@@ -9,6 +9,7 @@ use crate::date::parse_rfc3339;
 use crate::error::{ValidationCode as Code, ValidationError};
 use crate::forms::format;
 use crate::images::ImageCrateDecoder;
+use crate::pdf::Profile;
 use crate::schema::{
     is_area_name, parse_areas, Bookmark, BorderCollapse, BorderRadius, Break, BreakMode, Color,
     ColumnWidth, Document, Field, FieldFormat, FieldKind, FieldValue, FontFeature, FormatKind,
@@ -80,15 +81,15 @@ impl From<TrackBreadth> for Len {
     }
 }
 
-/// Checks `doc`. Without `images`, image ids are not looked up (inline
-/// `data` is still checked). With `opaque` (rendering PDF/A-1b), a valid
-/// document that needs transparency gets one error: `PDFA_CONFLICT` at
-/// the first thing that does.
+/// Checks `doc` for a render with `profile`. Without `images`, image ids
+/// are not looked up (inline `data` is still checked). Where `profile`
+/// forbids transparency (PDF/A-1b), a valid document that needs it gets
+/// one error: `PDFA_CONFLICT` at the first thing that does.
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
     images: Option<&ImageStore>,
-    opaque: bool,
+    profile: Profile,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
         path: String::with_capacity(128),
@@ -100,7 +101,7 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
-        opaque,
+        opaque: !profile.transparency(),
         conflict: None,
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),

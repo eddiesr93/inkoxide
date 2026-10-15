@@ -537,7 +537,7 @@ impl PdfSink for PdfWriterSink {
             .producer
             .as_deref()
             .unwrap_or(concat!("Inkoxide ", env!("CARGO_PKG_VERSION")));
-        if self.profile.is_pdf_a() {
+        if let Some(level) = self.profile.level() {
             let metadata = alloc.next();
             let profile = alloc.next();
             cat.metadata(metadata);
@@ -554,7 +554,7 @@ impl PdfSink for PdfWriterSink {
                 .pair(Name(b"DestOutputProfile"), profile);
             cat.finish();
             // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, self.profile);
+            let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level);
             out.metadata(&mut pdf, metadata, &xmp, |_| {});
             let icc = deflate(&pdfa::srgb_icc(), 9)?;
             out.icc_profile(&mut pdf, profile, &icc, |p| {
@@ -1500,8 +1500,13 @@ mod tests {
                 .parse()
                 .unwrap()
         };
-        // About 1.8 million percent at 1 pt.
+        // About 1.8 million percent at 1 pt, at every level but 1b.
         assert!(operand(Profile::default(), " Tz") > 1e6);
+        for level in [crate::PdfALevel::A2b, crate::PdfALevel::A3b] {
+            let p = Profile::new(Some(level));
+            assert!(operand(p, " Tz") > 1e6);
+            assert_eq!(operand(p, " Tf"), 1.0);
+        }
         let one_b = Profile::new(Some(crate::PdfALevel::A1b));
         let (tz, size) = (operand(one_b, " Tz"), operand(one_b, " Tf"));
         assert_eq!(tz, pdfa::limits::REAL);

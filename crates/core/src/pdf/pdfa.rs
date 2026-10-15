@@ -45,20 +45,20 @@ impl Profile {
         self.level.is_some()
     }
 
-    /// The ISO 19005 part (`pdfaid:part`); 0 for plain PDF.
-    pub fn part(self) -> u8 {
-        match self.level {
-            None => 0,
-            Some(PdfALevel::A1b) => 1,
-            Some(PdfALevel::A2b) => 2,
-            Some(PdfALevel::A3b) => 3,
-        }
+    /// The PDF/A level written; `None` for plain PDF.
+    pub fn level(self) -> Option<PdfALevel> {
+        self.level
+    }
+
+    /// Writing PDF/A-1b, whose rules differ from the later levels'.
+    fn is_1b(self) -> bool {
+        self.level == Some(PdfALevel::A1b)
     }
 
     /// The PDF version in the header, when not pdf-writer's 1.7: PDF/A-1
     /// is based on PDF 1.4.
     pub fn version(self) -> Option<(u8, u8)> {
-        (self.level == Some(PdfALevel::A1b)).then_some((1, 4))
+        self.is_1b().then_some((1, 4))
     }
 
     /// Whether the file may carry scripts (form field actions): not under
@@ -69,18 +69,18 @@ impl Profile {
 
     /// Font subsets list their CIDs in a `CIDSet` (PDF/A-1).
     pub fn cid_set(self) -> bool {
-        self.level == Some(PdfALevel::A1b)
+        self.is_1b()
     }
 
     /// Whether the output may use transparency: constant alpha, soft
     /// masks, blend modes and transparency groups. PDF/A-1 forbids it.
     pub fn transparency(self) -> bool {
-        self.level != Some(PdfALevel::A1b)
+        !self.is_1b()
     }
 
     /// The largest real number the output may hold.
     pub fn max_real(self) -> f32 {
-        if self.level == Some(PdfALevel::A1b) {
+        if self.is_1b() {
             limits::REAL
         } else {
             super::MAX_NUMBER
@@ -89,7 +89,7 @@ impl Profile {
 
     /// The most entries an array may have (PDF/A-1), if limited.
     pub fn max_array(self) -> Option<usize> {
-        (self.level == Some(PdfALevel::A1b)).then_some(limits::ARRAY)
+        self.is_1b().then_some(limits::ARRAY)
     }
 
     /// Checks what was written against the PDF/A-1 [`limits`]: numbers,
@@ -97,7 +97,7 @@ impl Profile {
     /// PDF/A-1, so the render fails rather than move or cut what it
     /// draws.
     pub fn check_limits(self, l: &Limits) -> Result<(), InkoxideError> {
-        if self.level != Some(PdfALevel::A1b) {
+        if !self.is_1b() {
             return Ok(());
         }
         let past = |what: String| {
@@ -138,7 +138,7 @@ impl Profile {
     /// Checks the `q` nesting of content stream `data` against the PDF/A-1
     /// limit.
     pub fn check_nesting(self, data: &[u8]) -> Result<(), InkoxideError> {
-        if self.level != Some(PdfALevel::A1b) {
+        if !self.is_1b() {
             return Ok(());
         }
         let depth = q_depth(data);
@@ -323,13 +323,13 @@ pub(crate) fn xmp(
     meta: &Meta,
     producer: &str,
     created: Option<Timestamp>,
-    profile: Profile,
+    level: PdfALevel,
 ) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
         let _ = writeln!(d, "<{name}>{}</{name}>", escape(value));
     };
-    prop("pdfaid:part", &profile.part().to_string());
+    prop("pdfaid:part", part(level));
     prop("pdfaid:conformance", "B");
     prop("dc:format", "application/pdf");
     prop("pdf:Producer", producer);
@@ -376,6 +376,15 @@ pub(crate) fn xmp(
          <?xpacket end=\"w\"?>"
     )
     .into_bytes()
+}
+
+/// The ISO 19005 part of `level` (`pdfaid:part`).
+fn part(level: PdfALevel) -> &'static str {
+    match level {
+        PdfALevel::A1b => "1",
+        PdfALevel::A2b => "2",
+        PdfALevel::A3b => "3",
+    }
 }
 
 /// `2026-01-31T12:00:00+02:00`, the same instant as the info dictionary's
@@ -499,6 +508,50 @@ mod tests {
     }
 
     #[test]
+    fn each_level_asks_its_own_of_the_writer() {
+        let plain = Profile::default();
+        let [one_b, two_b, three_b] =
+            [PdfALevel::A1b, PdfALevel::A2b, PdfALevel::A3b].map(|l| Profile::new(Some(l)));
+        assert_eq!(plain.level(), None);
+        assert_eq!(three_b.level(), Some(PdfALevel::A3b));
+        assert!(!plain.is_pdf_a());
+        // Scripts only outside PDF/A, at every level.
+        assert!(plain.scripts());
+        for p in [one_b, two_b, three_b] {
+            assert!(p.is_pdf_a());
+            assert!(!p.scripts());
+        }
+        // PDF/A-1b alone: PDF 1.4, CIDSets, no transparency, and its
+        // limits on reals and arrays.
+        assert_eq!(one_b.version(), Some((1, 4)));
+        assert!(one_b.cid_set() && !one_b.transparency());
+        assert_eq!(one_b.max_real(), limits::REAL);
+        assert_eq!(one_b.max_array(), Some(limits::ARRAY));
+        for p in [plain, two_b, three_b] {
+            assert_eq!(p.version(), None);
+            assert!(!p.cid_set() && p.transparency());
+            assert_eq!(p.max_real(), super::super::MAX_NUMBER);
+            assert_eq!(p.max_array(), None);
+        }
+    }
+
+    #[test]
+    fn xmp_names_the_part() {
+        for (level, part) in [
+            (PdfALevel::A1b, 1),
+            (PdfALevel::A2b, 2),
+            (PdfALevel::A3b, 3),
+        ] {
+            let x = String::from_utf8(xmp(&Meta::default(), "P", None, level)).unwrap();
+            assert!(
+                x.contains(&format!("<pdfaid:part>{part}</pdfaid:part>")),
+                "{x}"
+            );
+            assert!(x.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
+        }
+    }
+
+    #[test]
     fn icc_layout() {
         let p = srgb_icc();
         assert_eq!(
@@ -532,8 +585,7 @@ mod tests {
             second: 7,
             offset_minutes: -150,
         };
-        let profile = Profile::new(Some(PdfALevel::A2b));
-        let x = String::from_utf8(xmp(&meta, "P", Some(t), profile)).unwrap();
+        let x = String::from_utf8(xmp(&meta, "P", Some(t), PdfALevel::A2b)).unwrap();
         assert!(x.contains(">A &amp; &lt;B&gt;</rdf:li>"), "{x}");
         assert!(x.contains("<xmp:CreateDate>2026-03-04T05:06:07-02:30</xmp:CreateDate>"));
         assert_eq!(

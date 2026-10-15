@@ -268,7 +268,8 @@ fn validate_with(
     images: Option<&ImageStore>,
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
-        Ok(d) => validate::check(&d, fonts, images, false),
+        // No profile: `validate` does not know the level.
+        Ok(d) => validate::check(&d, fonts, images, Profile::default()),
         Err(e) => vec![e],
     }
 }
@@ -343,7 +344,7 @@ fn render_inner(
     let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
     let opaque = !profile.transparency();
-    if let Some(first) = validate::check(&document, fonts, Some(images), opaque)
+    if let Some(first) = validate::check(&document, fonts, Some(images), profile)
         .into_iter()
         .next()
     {
