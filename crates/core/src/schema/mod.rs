@@ -389,7 +389,8 @@ pub struct Field {
     /// options: a list with `multi_select`). Radio: the value this button
     /// exports when selected.
     pub value: Option<FieldValue>,
-    /// Checkbox and radio: initially on.
+    /// Checkbox and radio: initially on. At most one button of a radio
+    /// group; buttons of the group with the same value are on together.
     #[serde(default)]
     pub checked: bool,
     /// Select and list: the choices.

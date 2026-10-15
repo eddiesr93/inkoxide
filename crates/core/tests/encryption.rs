@@ -131,9 +131,10 @@ fn subset_tags(pdf: &[u8]) -> Vec<Vec<u8>> {
 }
 
 /// Rewrites every radio button field of qpdf's JSON view `objects` the
-/// way an encrypted file writes it: each button's on state is its
-/// position among the kids, and `/Opt` holds the values, which plain
-/// output may give as the state names instead.
+/// way an encrypted file writes it: each button's on state is the
+/// position among the kids of the first button with the same value, and
+/// `/Opt` holds the values, which plain output may give as the state
+/// names instead.
 fn radios_by_position(objects: &mut serde_json::Map<String, serde_json::Value>) {
     use serde_json::Value;
     const RADIO: u64 = 1 << 15;
@@ -158,13 +159,13 @@ fn radios_by_position(objects: &mut serde_json::Map<String, serde_json::Value>) 
             let normal = value["/AP"]["/N"].as_object_mut().unwrap();
             let on = normal.keys().find(|k| *k != "/Off").unwrap().clone();
             let appearance = normal.remove(&on).unwrap();
-            let position = format!("/{i}");
+            let position = renamed.get(&on).cloned().unwrap_or_else(|| format!("/{i}"));
             normal.insert(position.clone(), appearance);
             if value["/AS"] == on.as_str() {
                 value["/AS"] = Value::from(position.clone());
             }
             values.push(Value::from(format!("u:{}", name_text(&on))));
-            renamed.insert(on, position);
+            renamed.entry(on).or_insert(position);
         }
         let field = objects.get_mut(&radio).unwrap()["value"]
             .as_object_mut()
@@ -338,8 +339,9 @@ fn encrypted_fixtures_decrypt_to_the_plain_render() {
     }
 }
 
-/// Form scripts, field groups, list boxes and notes, which the fixtures
-/// do not all have, decrypt to the plain render too.
+/// Form scripts, field groups, list boxes, notes and radio buttons
+/// repeated on every page, which the fixtures do not all have, decrypt to
+/// the plain render too.
 #[test]
 fn encrypted_scripts_groups_lists_and_notes_decrypt_to_the_plain_render() {
     if !qpdf_available() {
@@ -354,7 +356,10 @@ fn encrypted_scripts_groups_lists_and_notes_decrypt_to_the_plain_render() {
            "value":"12.5","format":{"type":"number","currency":"€"}}},
           {"type":"field","style":{"height":60},"field":{"name":"order.items","kind":"list","font":"Inter-Regular",
            "multiSelect":true,"options":["Café","Tea","Water"],"value":["Café","Water"]}},
-          {"type":"note","note":{"contents":"Check (this) — Ünïcode","author":"Ana"}}]}]}"#
+          {"type":"note","note":{"contents":"Check (this) — Ünïcode","author":"Ana"}},
+          {"type":"field","break":{"fixed":true},"field":{"name":"copy","kind":"radio","value":"yes","checked":true}},
+          {"type":"field","field":{"name":"copy","kind":"radio","value":"no"}},
+          {"type":"box","style":{"height":400}}]}]}"#
         .as_bytes();
     let out_dir = root().join("target/fixtures-encrypted");
     fs::create_dir_all(&out_dir).unwrap();
@@ -368,7 +373,7 @@ fn encrypted_scripts_groups_lists_and_notes_decrypt_to_the_plain_render() {
     let plain = write("forms-notes.plain", &options(None));
     let encrypted = write("forms-notes", &options(Some(both())));
     let plain_text = fs::read(&plain).unwrap();
-    for needle in [&b"/JS"[..], b"/Opt", b"/Contents", b"/I ["] {
+    for needle in [&b"/JS"[..], b"/Opt", b"/Contents", b"/I [", b"/AS /yes"] {
         assert!(
             plain_text.windows(needle.len()).any(|w| w == needle),
             "{}",
@@ -376,6 +381,35 @@ fn encrypted_scripts_groups_lists_and_notes_decrypt_to_the_plain_render() {
         );
     }
     assert_decrypts_to(&encrypted, &plain, "forms-notes");
+    // The radio button repeated on both pages is one state, on in both,
+    // as in the plain file.
+    let o = qpdf(
+        &["--json=2", "--json-key=qpdf", &format!("--password={USER}")],
+        &encrypted,
+    );
+    let json: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    let objects = json["qpdf"][1].as_object().unwrap();
+    let field = objects
+        .values()
+        .map(|o| &o["value"])
+        .find(|v| v["/T"] == "u:copy")
+        .unwrap();
+    let mut states: Vec<&str> = field["/Kids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|kid| {
+            objects[&format!("obj:{}", kid.as_str().unwrap())]["value"]["/AS"]
+                .as_str()
+                .unwrap()
+        })
+        .collect();
+    // The repeated button's widgets, then the other button's.
+    states.sort_unstable();
+    let on = field["/V"].as_str().unwrap();
+    assert!(states.len() > 2, "{states:?}");
+    assert!(states[..states.len() - 1].iter().all(|s| *s == on));
+    assert_eq!(states.last(), Some(&"/Off"));
 }
 
 #[test]

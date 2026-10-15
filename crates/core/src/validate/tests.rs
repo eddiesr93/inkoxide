@@ -958,6 +958,19 @@ fn form_fields() {
            {"type":"field","field":{"name":"c","kind":"checkbox","checked":true}}"#,
     );
     assert_eq!(run(&ok), vec![]);
+    // At most one button of a radio group is checked.
+    let two = doc(
+        r#"{"type":"field","field":{"name":"r","kind":"radio","value":"1","checked":true}},
+           {"type":"field","field":{"name":"q","kind":"radio","value":"1","checked":true}},
+           {"type":"field","field":{"name":"r","kind":"radio","value":"2","checked":true}}"#,
+    );
+    assert_eq!(
+        one(&two),
+        (
+            C::InvalidValue,
+            "pages[0].children[2].field.checked".to_string()
+        )
+    );
     let f = "pages[0].children[0].field";
     let cases = [
         (

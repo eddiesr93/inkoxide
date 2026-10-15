@@ -1879,7 +1879,7 @@
         "checked": {
           "type": "boolean",
           "default": false,
-          "description": "checkbox and radio: initially selected"
+          "description": "checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together"
         },
         "options": {
           "type": "array",

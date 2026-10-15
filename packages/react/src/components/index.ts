@@ -653,6 +653,7 @@ export interface CheckboxProps extends FieldCommon {
 export interface RadioProps extends FieldCommon {
   /** The value the group exports when this button is selected. */
   value: string;
+  /** Initially selected; at most one button of a group. */
   checked?: boolean;
 }
 

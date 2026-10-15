@@ -106,6 +106,7 @@ pub(crate) fn check(
         conflict: None,
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
+        checked_radios: HashSet::new(),
         feature_sets: HashSet::new(),
         table_slots: 0,
     };
@@ -161,6 +162,8 @@ struct Checker<'a> {
     /// The groups field names make: every name before one of its dots
     /// (`a` and `a.b` for `a.b.c`).
     field_groups: HashSet<String>,
+    /// The radio groups that have a checked button so far.
+    checked_radios: HashSet<String>,
     /// The different `fontFeatures` of runs seen so far, sorted by tag.
     feature_sets: HashSet<Vec<FontFeature>>,
     /// Grid slots (rows times columns) of the tables seen so far.
@@ -887,6 +890,16 @@ impl<'a> Checker<'a> {
             );
         } else {
             self.field_name(f);
+        }
+        if f.kind == FieldKind::Radio && f.checked && !self.checked_radios.insert(f.name.clone()) {
+            self.err(
+                Code::InvalidValue,
+                Some("checked"),
+                format!(
+                    "radio group `{}` already has a checked button; at most one is selected",
+                    f.name
+                ),
+            );
         }
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {

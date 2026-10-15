@@ -137,19 +137,19 @@ pub(super) fn write_fields(
             }
             field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
             let mut annot = f.into_annotation();
-            ctx.widget(&mut annot, widgets[0], &aps);
+            ctx.widget(&mut annot, widgets[0], &aps, states.on[0]);
             annot.finish();
             annots[widgets[0].0].push(field_ref);
             continue;
         }
         let mut kids = Vec::with_capacity(widgets.len());
-        for (&(page, op), on) in widgets.iter().zip(&states.names) {
+        for (i, (&(page, op), on)) in widgets.iter().zip(&states.names).enumerate() {
             let aps = ctx.appearances(pdf, alloc, out, op, on)?;
             let kid = alloc.next();
             let mut f = pdf.form_field(kid);
             f.parent(field_ref);
             let mut annot = f.into_annotation();
-            ctx.widget(&mut annot, (page, op), &aps);
+            ctx.widget(&mut annot, (page, op), &aps, states.on[i]);
             annot.finish();
             annots[page].push(kid);
             kids.push(kid);
@@ -174,26 +174,37 @@ pub(super) fn write_fields(
     Ok(Some(form))
 }
 
-/// The on-state names of a field's widgets, in order.
+/// The on-state names of a field's widgets, in order, and which are on.
 struct OnStates {
     names: Vec<String>,
-    /// The names are the widgets' positions, and `/Opt` holds their
-    /// values.
+    /// The names are positions, and `/Opt` holds the widgets' values.
     positions: bool,
+    /// A radio group's value (`/V`): the on state of its first checked
+    /// button, `None` when none is.
+    value: Option<String>,
+    /// Whether each widget is on; for radio buttons, those whose on
+    /// state is the group's value.
+    on: Vec<bool>,
 }
 
 /// A checkbox is on in state `Yes`, a radio button in the state named
 /// after its value. A value that cannot name a state (`Off` is the off
 /// state, and a name has at most [`MAX_NAME`] bytes) makes every button of
-/// its group use its position instead, with the values in `/Opt`. So does
+/// its group use a position instead, with the values in `/Opt`. So does
 /// encryption (`hidden`): names are not encrypted, the strings of `/Opt`
-/// are.
+/// are. The position is that of the first button with the same value, so
+/// that buttons of one value share a state, as they do by name: a button
+/// repeated on several pages turns on and off as one.
 fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
-    let value = |op: &FieldOp| op.field.value_str().unwrap_or_default().to_string();
+    fn value(op: &FieldOp) -> &str {
+        op.field.value_str().unwrap_or_default()
+    }
     if widgets[0].1.field.kind != FieldKind::Radio {
         return OnStates {
             names: vec!["Yes".to_string(); widgets.len()],
             positions: false,
+            value: None,
+            on: widgets.iter().map(|(_, w)| w.field.checked).collect(),
         };
     }
     let positions = hidden
@@ -201,13 +212,27 @@ fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
             let v = value(w);
             v == "Off" || v.len() > MAX_NAME
         });
+    let names: Vec<String> = if positions {
+        widgets
+            .iter()
+            .map(|(_, w)| {
+                let first = widgets.iter().position(|(_, o)| value(o) == value(w));
+                first.unwrap_or_default().to_string()
+            })
+            .collect()
+    } else {
+        widgets.iter().map(|(_, w)| value(w).to_string()).collect()
+    };
+    let chosen = widgets
+        .iter()
+        .zip(&names)
+        .find(|((_, w), _)| w.field.checked)
+        .map(|(_, s)| s.clone());
     OnStates {
-        names: if positions {
-            (0..widgets.len()).map(|i| i.to_string()).collect()
-        } else {
-            widgets.iter().map(|(_, w)| value(w)).collect()
-        },
+        on: names.iter().map(|n| chosen.as_ref() == Some(n)).collect(),
+        names,
         positions,
+        value: chosen,
     }
 }
 
@@ -310,11 +335,7 @@ fn field_entries(
         FieldKind::Radio => {
             f.field_type(FieldType::Button);
             flags |= FieldFlags::RADIO | FieldFlags::NO_TOGGLE_TO_OFF;
-            let on = widgets
-                .iter()
-                .zip(&states.names)
-                .find(|((_, w), _)| w.field.checked)
-                .map_or("Off", |(_, s)| s.as_str());
+            let on = states.value.as_deref().unwrap_or("Off");
             f.radio_value(Name(on.as_bytes()));
             if states.positions {
                 let values: Vec<&str> = widgets
@@ -457,11 +478,14 @@ impl Ctx<'_, '_, '_> {
         Ok(aps)
     }
 
+    /// Writes widget `op`'s entries; `checked`: a checkbox or radio
+    /// button is on.
     fn widget(
         &self,
         a: &mut pdf_writer::writers::Annotation<'_>,
         (page, op): (usize, &FieldOp),
         aps: &Appearances,
+        checked: bool,
     ) {
         let r = op.ctm.map_or(op.rect, |m| super::bounds(m, op.rect));
         a.rect(super::annot_rect(r, self.pages[page].height))
@@ -483,7 +507,6 @@ impl Ctx<'_, '_, '_> {
             }
         }
         if let Some((Some(on), _)) = aps.first() {
-            let checked = op.field.checked;
             a.appearance_state(Name(if checked { on.as_bytes() } else { b"Off" }));
         }
     }
@@ -842,5 +865,23 @@ mod tests {
         // Values that are names stay the states.
         let pdf = render(&format!("{},{}", radio("gas", true), radio("oil", false)));
         assert!(pdf.contains("/V /gas") && pdf.contains("/oil") && !pdf.contains("/Opt"));
+    }
+
+    #[test]
+    fn radio_buttons_of_one_value_share_a_state() {
+        let radio = |value: &str, checked: bool| {
+            format!(
+                r#"{{"type":"field","field":{{"name":"heating","kind":"radio","value":"{value}","checked":{checked}}}}}"#
+            )
+        };
+        // By position: the first button of each value names the state.
+        let pdf = render(&[radio("Off", false), radio("gas", true), radio("gas", false)].join(","));
+        assert!(pdf.contains("/Opt [(Off) (gas) (gas)]"), "{pdf}");
+        assert!(pdf.contains("/V /1"), "{pdf}");
+        assert_eq!(pdf.matches("/AS /1").count(), 2, "{pdf}");
+        assert!(!pdf.contains("/2 "), "{pdf}");
+        // By name, every button of the chosen value is on.
+        let pdf = render(&[radio("gas", false), radio("gas", true)].join(","));
+        assert_eq!(pdf.matches("/AS /gas").count(), 2, "{pdf}");
     }
 }

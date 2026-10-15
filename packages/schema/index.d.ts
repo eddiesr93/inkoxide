@@ -918,7 +918,7 @@ export interface Field {
    */
   value?: string | string[];
   /**
-   * checkbox and radio: initially selected
+   * checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together
    */
   checked?: boolean;
   /**

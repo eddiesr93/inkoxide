@@ -40,7 +40,7 @@ does not do:
   of font names are keyed, and the widths cover every glyph of the font, so neither tells which
   glyphs the file uses.
 - **Hide which form choices are made.** PDF writes this state as names and numbers, which are
-  never encrypted: whether each checkbox is checked, which radio button of a group is on (by its
+  never encrypted: whether each checkbox is checked, which radio button of a group is on (by a
   position in the group, not its value), and which options of a list box are selected and
   scrolled to (by their positions in the list). Anyone who knows the form's layout, from a blank
   copy for instance, can read the choices from these.

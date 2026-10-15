@@ -7,6 +7,13 @@ version 2.
 
 ## Unreleased
 
+### Fixed
+
+- A second radio button with `checked` in the same group is `INVALID_VALUE`; such a group was
+  valid before, with both buttons drawn on but only the first one's value as the group's.
+  Buttons of a group with the same value are now on together, as viewers show them, encrypted
+  or not.
+
 ## 2.4.1 - 2026-10-15
 
 Still document schema version 1.
