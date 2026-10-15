@@ -55,8 +55,8 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
    - Splice `/Encrypt n 0 R` into the trailer that `pdf.finish()` writes (mod.rs:509). The trailer comes after the xref table, so no offset moves (pdf-writer lib.rs:307-321). A unit test pins this. Upstream a `Pdf::set_encrypt` to pdf-writer and drop the splice once it is released.
 
 **Determinism.** API.md:112-120 promises identical bytes for identical input, and fixtures.rs:80-93 and fuzz/src/lib.rs:93-98 check it across thread counts and JSON versus MessagePack. R6 asks for a random file key and salts, and random IVs would break all of those checks. Core has no RNG (no I/O, ARCHITECTURE.md:11), so derive everything instead:
-- `D` = SHA-256 of the page streams and `meta`. It does not depend on JSON vs MessagePack and is known when `write()` starts.
-- Salts = HMAC(D, "salts").
+- `D` = SHA-256 of the whole file as it is written unencrypted, so every object (images, links, fields, notes, the outline) feeds it. It does not depend on JSON vs MessagePack. `write()` writes the file twice: plain for `D`, then encrypted.
+- Salts = HMAC(S_u‖S_o, "salts"‖D), with S_u = Hash2B(P_u, HMAC(D, "u")[..8]) and S_o = Hash2B(P_o, HMAC(D, "o")[..8]): they cannot be computed without the passwords, and checking a guess against them costs Algorithm 2.B hashes.
 - `IK_u` = Hash2B(P_u, user key salt); `IK_o` = Hash2B(P_o, owner key salt, U).
 - File key `K` = HMAC(IK_u‖IK_o, "key"‖D). Every guess still costs one R6 hash, the same as guessing through U or O.
 - IV = HMAC(K_iv, position‖plaintext)[..16]. This is a synthetic IV, so a key and IV are never reused for different plaintexts. The position is the stream's object number, or a running counter for strings (`write()` is sequential).

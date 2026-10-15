@@ -2,7 +2,10 @@
 
 Every pull request runs `.github/workflows/ci.yml` on Linux: formatting,
 clippy, the Rust tests, the schema checks, the Node binding tests and the
-TypeScript packages. `scripts/ci.sh` runs the same checks and more
+TypeScript packages. The Rust tests check the PDFs with qpdf, poppler's
+`pdftotext` and veraPDF, which the workflow installs. Locally a test
+skips the checks of a tool that is not installed; with `CI` set, a
+missing tool fails it. `scripts/ci.sh` runs the same checks and more
 (visual regression, cargo-deny, a fuzz smoke) on your machine:
 
 ```sh

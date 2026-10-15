@@ -121,8 +121,11 @@ function outputOptions(): OutputOptions {
   return out;
 }
 
+/** The PDF/A parts and conformance levels the engine writes, from the oldest part. */
+const PDF_A_LEVELS = ['1b', '2b', '3b'] as const;
+
 /** A PDF/A part and conformance level the engine writes. */
-export type PdfALevel = '1b' | '2b' | '3b';
+export type PdfALevel = (typeof PDF_A_LEVELS)[number];
 
 export interface BuildResult {
   document: Document;
@@ -470,18 +473,21 @@ class Builder {
 
   /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
   private conformance(root: Instance, value: unknown): PdfALevel {
-    const m = typeof value === 'string' ? /^PDF\/A-([123])([abu]?)$/.exec(value) : null;
-    if (m && (m[2] === '' || m[2] === 'b')) return `${m[1]}b` as PdfALevel;
+    const m = typeof value === 'string' ? /^PDF\/A-(\d)([abu]?)$/.exec(value) : null;
+    const level = PDF_A_LEVELS.find((l) => l === `${m?.[1]}b`);
+    if (m && level && (m[2] === '' || m[2] === 'b')) return level;
     const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
-    if (m) {
+    if (m && level) {
       this.fail(
         root,
-        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${m[1]}b'.`,
+        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${level}'.`,
       );
     }
+    const levels = PDF_A_LEVELS.map((l) => `'PDF/A-${l}'`);
+    const parts = PDF_A_LEVELS.map((l) => `'PDF/A-${l.slice(0, -1)}'`);
     this.fail(
       root,
-      `<Document conformance=${shown}> is not a PDF/A level: use 'PDF/A-1b', 'PDF/A-2b' or 'PDF/A-3b' (or 'PDF/A-1', 'PDF/A-2', 'PDF/A-3').`,
+      `<Document conformance=${shown}> is not a PDF/A level: use ${levels.slice(0, -1).join(', ')} or ${levels.at(-1)} (or ${parts.join(', ')}).`,
     );
   }
 

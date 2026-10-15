@@ -569,6 +569,20 @@ describe('renderToBuffer', () => {
       expect(JSON.stringify(err)).not.toContain(secret);
       expect((err as Error).message).not.toContain(secret);
     }
+    // A password of another type is refused before the engine converts it, without its value.
+    const typed = await renderToBuffer(doc({}), {
+      encryption: {
+        userPassword: 1234 as unknown as string,
+        ownerPassword: { secret } as unknown as string,
+      },
+    }).catch((e: unknown) => e);
+    expect(typed).toMatchObject({
+      code: 'ENGINE_REJECTED',
+      engineCode: 'INVALID_ARGUMENT',
+      path: 'options.encryption.userPassword',
+    });
+    expect(JSON.stringify(typed)).not.toMatch(/1234|s3cret/);
+    expect((typed as Error).message).not.toMatch(/1234|s3cret/);
   });
 
   it('names the component PDF/A-1b rejects for its transparency', async () => {

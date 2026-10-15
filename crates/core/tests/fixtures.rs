@@ -61,8 +61,20 @@ fn hyphenation_for(name: &str) -> HyphenationStore {
     store
 }
 
+/// Whether `tool` runs (with `arg`). CI installs every tool these tests
+/// use, so there (`CI` set) a missing one fails the test instead of
+/// skipping its checks.
+fn installed(tool: &str, arg: &str) -> bool {
+    let found = Command::new(tool).arg(arg).output().is_ok();
+    assert!(
+        found || std::env::var_os("CI").is_none(),
+        "{tool} is not installed"
+    );
+    found
+}
+
 fn qpdf_available() -> bool {
-    Command::new("qpdf").arg("--version").output().is_ok()
+    installed("qpdf", "--version")
 }
 
 #[test]
@@ -233,9 +245,14 @@ fn pdf_a_fixtures() {
 }
 
 /// With `VERAPDF` set, every one of `outputs` passes veraPDF's profile
-/// for `flavour` (`1b`, `2b`, `3b`).
+/// for `flavour` (`1b`, `2b`, `3b`). CI installs veraPDF and sets it.
 fn verapdf(flavour: &str, outputs: &[PathBuf]) {
-    if let Ok(vera) = std::env::var("VERAPDF") {
+    let vera = std::env::var("VERAPDF");
+    assert!(
+        vera.is_ok() || std::env::var_os("CI").is_none(),
+        "VERAPDF is not set"
+    );
+    if let Ok(vera) = vera {
         let o = Command::new(vera)
             .args(["--flavour", flavour, "--format", "text"])
             .args(outputs)
@@ -388,7 +405,7 @@ fn msgpack_errors_match_json() {
 /// checked with poppler's `pdftotext` when it is installed.
 #[test]
 fn colour_emoji_extract_as_text() {
-    if Command::new("pdftotext").arg("-v").output().is_err() {
+    if !installed("pdftotext", "-v") {
         return;
     }
     let (fonts, images) = stores();

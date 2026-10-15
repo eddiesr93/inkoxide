@@ -92,6 +92,24 @@ function wrapError(e) {
   return engineError(code, '', text, e);
 }
 
+// The types of `options.encryption`, checked before napi converts it: napi's conversion error
+// shows the value, which may be a password. Messages name the option, never the value.
+function checkEncryption(options) {
+  const e = options?.encryption;
+  if (e === undefined || e === null) return;
+  const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (!isObject(e)) throw engineError('INVALID_ARGUMENT', 'options.encryption', 'must be an object');
+  for (const key of ['userPassword', 'ownerPassword']) {
+    const v = e[key];
+    if (v !== undefined && v !== null && typeof v !== 'string') {
+      throw engineError('INVALID_ARGUMENT', `options.encryption.${key}`, 'must be a string');
+    }
+  }
+  if (e.permissions !== undefined && e.permissions !== null && !isObject(e.permissions)) {
+    throw engineError('INVALID_ARGUMENT', 'options.encryption.permissions', 'must be an object');
+  }
+}
+
 function call(fn, args) {
   try {
     return fn(...args);
@@ -114,13 +132,16 @@ export const validate = (doc, format, images) =>
   call(native.validate, [doc, format ?? undefined, images ?? undefined]);
 export const render = async (doc, options) => {
   try {
+    checkEncryption(options);
     return toUint8Array(await native.render(doc, options ?? undefined));
   } catch (e) {
     throw wrapError(e);
   }
 };
-export const renderSync = (doc, options) =>
-  toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
+export const renderSync = (doc, options) => {
+  checkEncryption(options);
+  return toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
+};
 export const version = () => call(native.version, []);
 // Test hook, not public API and not in index.d.ts: a panic behind the native boundary. A
 // non-enumerable property of InkoxideError, so it is not on the module namespace.

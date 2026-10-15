@@ -113,7 +113,7 @@ pub(super) fn write_fields(
     let mut tree = Groups::default();
     for full in order {
         let widgets = &widgets_of[full];
-        let states = on_states(widgets);
+        let states = on_states(widgets, out.is_encrypted());
         let first = widgets[0].1;
         if let Some(k) = first.font {
             if ctx.font_refs.contains_key(&k) && !form.fonts.contains(&k) {
@@ -185,8 +185,10 @@ struct OnStates {
 /// A checkbox is on in state `Yes`, a radio button in the state named
 /// after its value. A value that cannot name a state (`Off` is the off
 /// state, and a name has at most [`MAX_NAME`] bytes) makes every button of
-/// its group use its position instead, with the values in `/Opt`.
-fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
+/// its group use its position instead, with the values in `/Opt`. So does
+/// encryption (`hidden`): names are not encrypted, the strings of `/Opt`
+/// are.
+fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
     let value = |op: &FieldOp| op.field.value_str().unwrap_or_default().to_string();
     if widgets[0].1.field.kind != FieldKind::Radio {
         return OnStates {
@@ -194,10 +196,11 @@ fn on_states(widgets: &[(usize, &FieldOp)]) -> OnStates {
             positions: false,
         };
     }
-    let positions = widgets.iter().any(|(_, w)| {
-        let v = value(w);
-        v == "Off" || v.len() > MAX_NAME
-    });
+    let positions = hidden
+        || widgets.iter().any(|(_, w)| {
+            let v = value(w);
+            v == "Off" || v.len() > MAX_NAME
+        });
     OnStates {
         names: if positions {
             (0..widgets.len()).map(|i| i.to_string()).collect()
