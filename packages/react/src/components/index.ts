@@ -387,7 +387,7 @@ export interface DocumentProps {
   userPassword?: string;
   /** The password that lifts `permissions`. Default: the user password. */
   ownerPassword?: string;
-  /** What a reader without the owner password may do; needs `ownerPassword`. */
+  /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
   children?: ReactNode;
 }
@@ -653,6 +653,7 @@ export interface CheckboxProps extends FieldCommon {
 export interface RadioProps extends FieldCommon {
   /** The value the group exports when this button is selected. */
   value: string;
+  /** Initially selected; at most one button of a group. */
   checked?: boolean;
 }
 

@@ -605,7 +605,7 @@ reader without it may do:
 
 - Passwords are printable ASCII, at most 127 bytes. With only `ownerPassword`, anyone opens the
   file and the permissions apply; with only `userPassword`, it is also the owner password, so
-  `permissions` need `ownerPassword`.
+  `permissions` need an `ownerPassword` other than `userPassword`.
 - The `encryption` render option (`{ userPassword, ownerPassword, permissions }`) replaces the
   three props as a whole, for passwords that come from the request rather than the template.
 - Encryption and PDF/A do not go together: PDF/A forbids encryption.
@@ -857,6 +857,12 @@ These are real AcroForm fields: readers fill them in any PDF viewer and save the
 must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
 `maxLength` and `password`; size, border, background and text style come from the classes.
 `TextInput` is another name for `TextField`.
+
+A field's text, its value and the options of a `Select` or `List`, is drawn with the field's own
+font only, a glyph per character, as viewers redraw it while the user types: no fallback fonts,
+no shaping and no right-to-left ordering. A character the font lacks fails the render
+(`INVALID_VALUE` at the value or the option), so give the field a font that covers its script.
+Arabic, Hebrew and the scripts of India show their letters unjoined, in typed order.
 
 `Select` is a drop-down list and `List` a list box, which shows several options at once (four
 rows without a height) and starts at the first selected one. Both take their choices as

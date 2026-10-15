@@ -108,6 +108,10 @@ test('encryption encrypts with passwords and permissions, and never echoes them'
     ],
     [{ encryption: { userPassword: secret, permissions: {} } }, 'options.encryption.permissions'],
     [
+      { encryption: { userPassword: secret, ownerPassword: secret, permissions: {} } },
+      'options.encryption.permissions',
+    ],
+    [
       { encryption: { userPassword: secret, ownerPassword: 'o', permissions: { printing: 'yes' } } },
       'options.encryption.permissions.printing',
     ],

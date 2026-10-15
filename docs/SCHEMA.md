@@ -535,7 +535,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `name` | `string` matching `^[^.]{1,128}(\.[^.]{1,128}){0,31}$` | yes | min length 1, max length 512; Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` \| `"list"` | yes | `select` is a drop-down list, `list` a list box that shows several options at once |
 | `value` | `string` (max length 8000) or array of `string` (each max length 1000) (max items 1000) |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters. |
-| `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected |
+| `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together |
 | `options` | array of `string` (each max length 1000) |  | min items 1, max items 1000; select and list only (required there): the choices, at most 1000 of at most 1000 characters each |
 | `multiSelect` | `boolean` |  | default `false`; list only: several options can be selected at once |
 | `multiline` | `boolean` |  | default `false`; text only |
@@ -543,7 +543,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
-| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. |
+| `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |

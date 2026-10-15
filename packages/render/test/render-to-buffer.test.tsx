@@ -560,6 +560,11 @@ describe('renderToBuffer', () => {
     // A bad value names its path and never the password.
     for (const [p, opts, path] of [
       [{ userPassword: secret, permissions: {} }, {}, 'options.encryption.permissions'],
+      [
+        { userPassword: secret, ownerPassword: secret, permissions: {} },
+        {},
+        'options.encryption.permissions',
+      ],
       [{ userPassword: `${secret}é` }, {}, 'options.encryption.userPassword'],
       [{}, { encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
     ] as const) {

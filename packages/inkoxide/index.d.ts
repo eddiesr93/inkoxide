@@ -99,7 +99,7 @@ export interface EncryptionOptions {
    * required.
    */
   ownerPassword?: string;
-  /** What a reader without the owner password may do. Needs `ownerPassword`. */
+  /** What a reader without the owner password may do. Needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
 }
 

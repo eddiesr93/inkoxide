@@ -918,7 +918,7 @@ export interface Field {
    */
   value?: string | string[];
   /**
-   * checkbox and radio: initially selected
+   * checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together
    */
   checked?: boolean;
   /**
@@ -947,7 +947,7 @@ export interface Field {
   readOnly?: boolean;
   required?: boolean;
   /**
-   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display.
+   * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option.
    */
   font?: Id;
   /**
