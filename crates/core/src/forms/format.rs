@@ -636,6 +636,12 @@ mod tests {
             r#"AFTime_FormatEx("HH:MM");"#
         );
         assert_eq!(s(r#"{"type":"phone"}"#).1, "AFSpecial_Format(2);");
+        // The defaults React gives a format written with the other key
+        // names: no decimals, no thousands separator.
+        let other = r#"{"type":"number","decimals":0,"separators":"1234.56"}"#;
+        assert_eq!(s(other).1, r#"AFNumber_Format(0, 1, 0, 0, "", true);"#);
+        assert_eq!(shown(other, "1250"), "1250");
+        assert_eq!(shown(other, "-1250.5"), "-1251");
     }
 
     #[test]

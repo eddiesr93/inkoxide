@@ -884,13 +884,20 @@ as the user types:
 | `time` | `'18:30'` or `'18:30:05'`, or a date with a time | `pattern` (required) |
 | `zip`, `zipPlus4`, `phone`, `ssn` | 5, 9, 10 or 9 digits | none |
 
-A `pattern` uses `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`, `mmm` (Oct), `mmmm`
-(October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM` (minutes), `s`, `ss`, `t`
-(a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English. The keys `nDec`,
-`sepComma`, `negStyle`, `currencyPrepend` and `param` are other names for `decimals`,
-`separators`, `negative`, `currencyBefore` and `pattern`. Viewers apply the format with the
-standard form scripts, which some (Preview) do not run; a PDF/A document leaves the scripts out
-and keeps the formatted text.
+A `pattern` is at most 64 characters of `d`, `dd`, `ddd` (Wed), `dddd` (Wednesday), `m`, `mm`,
+`mmm` (Oct), `mmmm` (October), `yy`, `yyyy`, `H`, `HH` (0–23), `h`, `hh` (1–12), `M`, `MM`
+(minutes), `s`, `ss`, `t` (a/p), `tt` (am/pm) and the characters ` .,/:-`; names are English.
+A `time` pattern takes only the time letters, `H`, `h`, `M`, `s` and `t`. Viewers apply the
+format with the standard form scripts, which some (Preview) do not run; a PDF/A document leaves
+the scripts out and keeps the formatted text.
+
+The keys `nDec`, `sepComma` (`true` is `'1,234.56'`, `false` `'1234.56'`), `negStyle`
+(`'MinusBlack'`, `'Red'`, `'ParensBlack'`, `'ParensRed'`), `currencyPrepend` and `param` are
+other names for `decimals`, `separators`, `negative`, `currencyBefore` and `pattern`, and
+`zip4` for `zipPlus4`. A number or percent format with any of them defaults to no decimals and
+no thousands separator, so `{ type: 'number', currencyPrepend: true }` shows `'1250'` as
+`1250`; without them, to 2 decimals and `'1,234.56'`. On a `time`, `param` is a style: `0` (`HH:MM`), `1` (`h:MM tt`), `2`
+(`HH:MM:ss`) or `3` (`h:MM:ss tt`).
 
 ## Notes
 

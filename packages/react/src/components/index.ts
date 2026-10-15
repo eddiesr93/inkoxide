@@ -608,11 +608,17 @@ export interface TextFieldProps extends FieldCommon {
 /**
  * The format of a single-line `TextField`. `value` must fit it: a number or percent as digits
  * (`'-1234.5'`, `'0.125'` for 12.50 %), a date as `'2026-10-14'` (a time may follow,
- * `T18:30`), a time as `'18:30'`, and a zip code, phone or social security number as its digits.
- * The keys in the second group of each pair are their other names.
+ * `T18:30`), a time as `'18:30'` or a date with a time, and a zip code, phone or social security
+ * number as its digits.
+ *
+ * The second key of each pair is its other name. A number or percent format with any of
+ * `nDec`, `sepComma`, `negStyle`, `currencyPrepend` and `param` defaults to no decimals and no
+ * thousands separator (`nDec: 0`, `sepComma: false`); one without them, to 2 decimals and
+ * `'1,234.56'`.
  */
 export interface TextFormat {
-  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'phone' | 'ssn';
+  /** What the value is; `'zip4'` is another name for `'zipPlus4'`. */
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'zip4' | 'phone' | 'ssn';
   /** Number and percent: digits after the decimal separator; default 2. */
   decimals?: number;
   nDec?: number;
@@ -630,7 +636,11 @@ export interface TextFormat {
   currencyPrepend?: boolean;
   /** Date and time: how the value shows, as `'dd/mm/yyyy'` or `'HH:MM'`. */
   pattern?: string;
-  param?: string;
+  /**
+   * Date: the pattern. Time: one of four styles, `0` `'HH:MM'`, `1` `'h:MM tt'`, `2`
+   * `'HH:MM:ss'` and `3` `'h:MM:ss tt'`.
+   */
+  param?: string | number;
 }
 
 export interface CheckboxProps extends FieldCommon {

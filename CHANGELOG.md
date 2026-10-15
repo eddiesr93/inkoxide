@@ -139,7 +139,9 @@ All notable changes to the packages in this repository. The format follows
   takes `kind="list"`. `Select` and `List` take their choices as `options` or `select`, and
   `TextInput` is another name for `TextField`.
 - `format` on `TextField` in `@inkoxide/render`, with the readable keys of the schema, or `param`,
-  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported.
+  `nDec`, `sepComma`, `negStyle` and `currencyPrepend`; the type `TextFormat` is exported. A
+  number or percent format with any of those keys defaults to no decimals and no thousands
+  separator; on a `time`, `param` is one of four styles, `0` to `3`; `zip4` is `zipPlus4`.
 - `<Note>` in `@inkoxide/render`: a text note, with its text as children, `author`, `open`, and
   its `backgroundColor` as its colour.
 

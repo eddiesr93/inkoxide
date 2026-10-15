@@ -52,6 +52,7 @@ import {
   Text,
   TextField,
   TextInput,
+  type TextFormat,
   TotalPages,
   Tspan,
   type TspanProps,
@@ -1140,10 +1141,72 @@ describe('form fields', () => {
     const both = tree(
       <TextField name="a" format={{ type: 'number', sepComma: true, separators: '1234,56' }} />,
     );
-    expect(first<FieldNode>(both).field.format).toEqual({ type: 'number', separators: '1234,56' });
+    expect(first<FieldNode>(both).field.format).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1234,56',
+    });
     expect(
       thrown(() => tree(<TextField name="a" format={'number' as unknown as { type: 'number' }} />)).message,
     ).toContain('<TextField format> is an object');
+  });
+
+  it('gives a format with the other names their defaults', () => {
+    const format = (f: TextFormat) => first<FieldNode>(tree(<TextInput name="a" format={f} />)).field.format;
+    // With none of them, the readable defaults (2 decimals, `1,234.56`) apply in the engine.
+    expect(format({ type: 'number' })).toEqual({ type: 'number' });
+    expect(format({ type: 'number', currency: '$' })).toEqual({ type: 'number', currency: '$' });
+    // With any of them: no decimals and no thousands separator.
+    for (const f of [
+      { currencyPrepend: true },
+      { negStyle: 'MinusBlack' as const },
+      { nDec: 0 },
+      { sepComma: false },
+    ]) {
+      expect(format({ type: 'number', ...f })).toMatchObject({ decimals: 0, separators: '1234.56' });
+    }
+    expect(format({ type: 'number', negStyle: 'Red' })).toEqual({
+      type: 'number',
+      decimals: 0,
+      separators: '1234.56',
+      negative: 'red',
+    });
+    expect(format({ type: 'percent', nDec: 1 })).toEqual({
+      type: 'percent',
+      decimals: 1,
+      separators: '1234.56',
+    });
+    expect(format({ type: 'percent', sepComma: true })).toEqual({
+      type: 'percent',
+      decimals: 0,
+      separators: '1,234.56',
+    });
+    // The readable keys keep their values.
+    expect(format({ type: 'number', nDec: 1, separators: '1.234,56' })).toEqual({
+      type: 'number',
+      decimals: 1,
+      separators: '1.234,56',
+    });
+    expect(format({ type: 'zip4' })).toEqual({ type: 'zipPlus4' });
+    expect(format({ type: 'date', param: 'yyyy-mm-dd' })).toEqual({ type: 'date', pattern: 'yyyy-mm-dd' });
+  });
+
+  it('takes a time format by the index of its style', () => {
+    const pattern = (param: string | number) =>
+      first<FieldNode>(tree(<TextInput name="a" value="18:05" format={{ type: 'time', param }} />)).field
+        .format?.pattern;
+    expect([0, 1, 2, 3].map(pattern)).toEqual(['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt']);
+    expect(pattern('1')).toBe('h:MM tt');
+    const r = tree(<TextInput name="a" value="18:05" format={{ type: 'time', param: 1 }} />);
+    expect(r.validate()).toEqual([]);
+    for (const bad of [4, -1, 1.5, '', 'HH:MM', ' 1']) {
+      expect(thrown(() => pattern(bad)).message).toContain('param on a time is a style from 0 to 3');
+    }
+    // A pattern still works, and wins.
+    expect(
+      first<FieldNode>(tree(<TextInput name="a" format={{ type: 'time', pattern: 'H:MM', param: 9 }} />))
+        .field.format,
+    ).toEqual({ type: 'time', pattern: 'H:MM' });
   });
 
   it('puts the names of field sets in front of the names of their fields', () => {

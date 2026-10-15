@@ -1311,20 +1311,39 @@ class Builder {
         kind: 'props',
       });
     }
-    const out: FieldFormat = { type: f.type };
-    const decimals = f.decimals ?? f.nDec;
+    const type = f.type === 'zip4' ? 'zipPlus4' : f.type;
+    const out: FieldFormat = { type };
+    // The other names come with their own defaults: no decimals and no thousands separator.
+    const aliased = ALIAS_KEYS.some((k) => f[k] !== undefined) && (type === 'number' || type === 'percent');
+    const decimals = f.decimals ?? f.nDec ?? (aliased ? 0 : undefined);
     if (decimals !== undefined) out.decimals = decimals;
+    const sepComma = f.sepComma ?? (aliased ? false : undefined);
     const separators =
-      f.separators ?? (f.sepComma === undefined ? undefined : f.sepComma ? '1,234.56' : '1234.56');
+      f.separators ?? (sepComma === undefined ? undefined : sepComma ? '1,234.56' : '1234.56');
     if (separators !== undefined) out.separators = separators;
     const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
     if (negative !== undefined) out.negative = negative;
     if (f.currency !== undefined) out.currency = f.currency;
     const before = f.currencyBefore ?? f.currencyPrepend;
     if (before !== undefined) out.currencyBefore = before;
-    const pattern = f.pattern ?? f.param;
+    const pattern = f.pattern ?? (f.param === undefined ? undefined : this.formatParam(inst, type, f.param));
     if (pattern !== undefined) out.pattern = pattern;
     return out;
+  }
+
+  /** A format's `param`: the pattern of a date, or one of the four styles of a time, by index. */
+  private formatParam(inst: Instance, type: FieldFormat['type'], param: string | number): string {
+    if (type !== 'time') return String(param);
+    const style = /^[0-3]$/.test(String(param)) ? TIME_STYLES[Number(param)] : undefined;
+    if (style === undefined) {
+      this.fail(
+        inst,
+        `<TextField format> param on a time is a style from 0 to 3, not ${JSON.stringify(param)}; ` +
+          "give a pattern as pattern: 'HH:MM'.",
+        { kind: 'props' },
+      );
+    }
+    return style;
   }
 
   /** A `<FieldSet>`: a box whose name goes in front of the names of the fields inside it. */
@@ -1411,6 +1430,12 @@ class Builder {
     return this.mark(stackVariants(all), inst);
   }
 }
+
+/** The other names of format keys, which come with their own defaults. */
+const ALIAS_KEYS = ['nDec', 'sepComma', 'negStyle', 'currencyPrepend', 'param'] as const;
+
+/** The patterns of a time format's `param`: the four styles of `AFTime_Format`. */
+const TIME_STYLES: readonly string[] = ['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt'];
 
 /** The negative styles by their other names (`negStyle`). */
 const NEGATIVE: Record<string, FieldFormat['negative']> = {
