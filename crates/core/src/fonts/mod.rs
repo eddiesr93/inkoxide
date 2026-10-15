@@ -130,6 +130,14 @@ impl FontData {
         !self.metrics.color_only
     }
 
+    /// The first character of `text` the font has no glyph for, control
+    /// characters aside.
+    pub(crate) fn lacks(&self, text: &str) -> Option<char> {
+        let face = ttf_parser::Face::parse(&self.bytes, 0).ok()?;
+        text.chars()
+            .find(|&c| !c.is_control() && face.glyph_index(c).is_none())
+    }
+
     fn parse(id: &str, bytes: Arc<[u8]>) -> Result<Self, InkoxideError> {
         let err = |msg: &str| InkoxideError::Font(format!("font `{id}`: {msg}"));
         let bytes = match woff::decode(&bytes).map_err(|m| err(&m))? {

@@ -1922,7 +1922,7 @@
         },
         "font": {
           "$ref": "#/$defs/Id",
-          "description": "text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display."
+          "description": "text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option."
         },
         "size": {
           "type": "number",

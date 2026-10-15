@@ -9,6 +9,9 @@ version 2.
 
 ### Fixed
 
+- A character that the font of a text, select or list field has no glyph for, in the shown
+  value or in an option, is `INVALID_VALUE`. Fields are drawn with their own font only, so the
+  character was left out without a word; such a document was valid before.
 - A second radio button with `checked` in the same group is `INVALID_VALUE`; such a group was
   valid before, with both buttons drawn on but only the first one's value as the group's.
   Buttons of a group with the same value are now on together, as viewers show them, encrypted

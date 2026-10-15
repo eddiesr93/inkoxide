@@ -1919,6 +1919,43 @@ fn form_fields_need_a_font_with_outlines() {
     );
 }
 
+/// A field is drawn with its own font only: what it shows must have
+/// glyphs there.
+#[test]
+fn form_fields_show_only_characters_their_font_has() {
+    let field = |extra: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"a","font":"Inter-Regular",{extra}}}}}"#
+        ))
+    };
+    let f = "pages[0].children[0].field";
+    for (extra, at) in [
+        (r#""kind":"text","value":"日本 ok""#, "value"),
+        (
+            r#""kind":"select","options":["ok","日本"],"value":"ok""#,
+            "options[1]",
+        ),
+        (r#""kind":"list","options":["ok","x֐"]"#, "options[1]"),
+    ] {
+        let errs = run(&field(extra));
+        assert_eq!(errs.len(), 1, "{extra}: {errs:?}");
+        assert_eq!(
+            (errs[0].code, errs[0].path.as_str()),
+            (C::InvalidValue, format!("{f}.{at}").as_str()),
+            "{extra}"
+        );
+        assert!(errs[0].message.contains("U+"), "{}", errs[0].message);
+    }
+    // Line breaks are not drawn; a password's value is not shown.
+    for extra in [
+        r#""kind":"text","multiline":true,"value":"Käse\nCafé €""#,
+        r#""kind":"text","password":true,"value":"日本""#,
+        r#""kind":"text","value":"12.5","format":{"type":"number","currency":"€"}"#,
+    ] {
+        assert_eq!(run(&field(extra)), vec![], "{extra}");
+    }
+}
+
 /// A text node whose one run has the extra properties `extra`.
 fn text_run(extra: &str) -> String {
     doc(&format!(

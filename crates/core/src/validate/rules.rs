@@ -876,6 +876,7 @@ impl<'a> Checker<'a> {
     }
 
     fn field(&mut self, f: &Field) {
+        let errors = self.errors.len();
         let parts = f.name.split('.').count();
         if f.name.chars().count() > MAX_FIELD_NAME
             || parts > MAX_FIELD_PARTS
@@ -1079,6 +1080,50 @@ impl<'a> Checker<'a> {
                 _ => {}
             },
             _ => {}
+        }
+        if self.errors.len() == errors {
+            self.field_glyphs(f);
+        }
+    }
+
+    /// Checks that the font of valid field `f` has a glyph for every
+    /// character its appearance shows: the text a text field shows, and
+    /// the options of a select or list. Fields are drawn with their own
+    /// font only, without fallback fonts.
+    fn field_glyphs(&mut self, f: &Field) {
+        let Some((font, data)) = f
+            .font
+            .as_deref()
+            .and_then(|id| Some((id, Arc::clone(self.fonts.get(id)?))))
+        else {
+            return;
+        };
+        let lacks = |c: &mut Self, at: Option<&str>, text: &str| {
+            let Some(ch) = data.lacks(text) else {
+                return false;
+            };
+            c.err(
+                Code::InvalidValue,
+                at,
+                format!(
+                    "font `{font}` has no glyph for `{ch}` (U+{:04X}); a field is drawn with its own font only, without fallback fonts",
+                    u32::from(ch)
+                ),
+            );
+            true
+        };
+        if f.kind == FieldKind::Text && !f.password {
+            if let Some(v) = f.value_str() {
+                if !lacks(self, Some("value"), v) {
+                    let shown = f.format.as_deref().and_then(|fmt| format::display(fmt, v));
+                    if let Some(shown) = shown {
+                        lacks(self, Some("value"), &shown.text);
+                    }
+                }
+            }
+        }
+        for (i, o) in f.options.iter().enumerate() {
+            self.at("options", |c| c.at_index(i, |c| lacks(c, None, o)));
         }
     }
 

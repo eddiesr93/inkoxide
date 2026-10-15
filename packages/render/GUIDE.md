@@ -858,6 +858,12 @@ must be unique, except for radio buttons of one group. `TextField` also takes `m
 `maxLength` and `password`; size, border, background and text style come from the classes.
 `TextInput` is another name for `TextField`.
 
+A field's text, its value and the options of a `Select` or `List`, is drawn with the field's own
+font only, a glyph per character, as viewers redraw it while the user types: no fallback fonts,
+no shaping and no right-to-left ordering. A character the font lacks fails the render
+(`INVALID_VALUE` at the value or the option), so give the field a font that covers its script.
+Arabic, Hebrew and the scripts of India show their letters unjoined, in typed order.
+
 `Select` is a drop-down list and `List` a list box, which shows several options at once (four
 rows without a height) and starts at the first selected one. Both take their choices as
 `options`, or `select`, and the selected one as `value`; a `List` with `multiSelect` takes an
