@@ -1011,17 +1011,34 @@ fn colour_glyphs_are_images_in_spans_with_their_text() {
                 _ => None,
             })
             .collect();
-        assert_eq!(spans, ["\u{1F600}", "\u{1F1EB}\u{1F1F7}"], "{fallback}");
+        // The space after the flag is the colour font's: without outlines
+        // (CBDT), nothing draws it, but it keeps its text.
+        let space: &[&str] = if fallback == "EmojiTest-CBDT" {
+            &[" "]
+        } else {
+            &[]
+        };
+        assert_eq!(
+            spans,
+            [&["\u{1F600}", "\u{1F1EB}\u{1F1F7}"][..], space].concat(),
+            "{fallback}"
+        );
         let images = ops
             .iter()
             .filter(|op| matches!(op, Op::Image { .. }))
             .count();
         assert_eq!(images, 2, "{fallback}");
-        for op in ops {
-            if let Op::InvisibleText(g) = op {
-                assert_eq!(ids[g.font as usize], "Inter-Regular");
-                assert!(close(g.width, 22.0), "{}", g.width);
-            }
+        let spaces: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::InvisibleText(g) => Some(g),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces.len(), 2 + space.len());
+        for g in &spaces[..2] {
+            assert_eq!(ids[g.font as usize], "Inter-Regular");
+            assert!(close(g.width, 22.0), "{}", g.width);
         }
         let at = |want: fn(&Op) -> bool| ops.iter().position(want).unwrap();
         let (span, image) = (

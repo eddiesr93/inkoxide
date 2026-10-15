@@ -7,7 +7,9 @@
 //! extraction and selection still find it.
 //!
 //! A glyph whose colour data is missing, malformed or over the limits
-//! draws as text when its font has outlines, and not at all otherwise.
+//! draws as text when its font has outlines. Otherwise nothing draws it,
+//! but it keeps its text: a span with its `ActualText` and an invisible
+//! space as wide as the glyph, as a drawn colour glyph has.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
@@ -19,7 +21,8 @@ use crate::images::{DecodedImage, ImageCrateDecoder, ImageData, ImageKey, ImageS
 use crate::paint::{InvisibleGlyph, Op, Rect, TextOp};
 
 /// Most distinct colour glyphs one render draws in colour; the others draw
-/// as glyphs without colour (in glyph order, by font).
+/// as glyphs without colour (in glyph order, by font). Glyphs of colour
+/// fonts that have no colour data do not count.
 pub(crate) const MAX_COLOR_GLYPHS: usize = 4096;
 
 /// Most bytes of colour glyph images (`COLR` glyphs written as SVG, PNG
@@ -107,10 +110,10 @@ impl ColorGlyphs {
             .iter()
             .filter(|(&k, _)| fonts.get(k).has_color())
             .flat_map(|(&k, glyphs)| glyphs.iter().map(move |&g| (k, g)))
-            .take(budget.glyphs)
             .collect();
         let mut out = Self::default();
         let mut bytes_left = budget.bytes;
+        let mut glyphs_left = budget.glyphs;
         // In batches, so that at most one batch of images is held before
         // the budget is counted, in glyph order whatever the threads.
         for batch in wanted.chunks(BATCH) {
@@ -123,11 +126,13 @@ impl ColorGlyphs {
             let mut kept = Vec::with_capacity(batch.len());
             let mut over = false;
             for (&glyph, made) in batch.iter().zip(made) {
+                // A glyph without colour data is not a colour glyph.
                 let Some((bytes, bbox)) = made else { continue };
-                if bytes.len() > bytes_left {
+                if glyphs_left == 0 || bytes.len() > bytes_left {
                     over = true;
                     break;
                 }
+                glyphs_left -= 1;
                 bytes_left -= bytes.len();
                 kept.push((glyph, bytes, bbox));
             }
@@ -161,9 +166,9 @@ impl ColorGlyphs {
     /// Pushes text op `t`: as it is, or, in a colour font, with its colour
     /// glyphs as images, each in a span with its text from `texts` (one
     /// for each glyph of `t`; none past its end) and an invisible space
-    /// of font `strut` as wide as the glyph. The other
-    /// glyphs of a font without outlines are left out: it has nothing to
-    /// draw them with.
+    /// of font `strut` as wide as the glyph. The other glyphs of a font
+    /// without outlines, which has nothing to draw them with, keep only
+    /// such a span, with nothing drawn: their text still copies.
     pub fn push(
         &self,
         t: TextOp,
@@ -179,20 +184,10 @@ impl ColorGlyphs {
             return;
         }
         let scale = font.scale(t.size);
+        let outlined = font.has_outlines();
         let mut plain = Vec::new();
         for (i, g) in t.glyphs.iter().enumerate() {
-            let Some(p) = self.glyphs.get(&(t.font, g.id)) else {
-                plain.push(*g);
-                continue;
-            };
             let (x, y) = (t.x + g.x, t.y - g.y_offset);
-            let [x0, y0, x1, y1] = p.bbox;
-            let rect = Rect::new(
-                x + x0 * scale,
-                y - y1 * scale,
-                (x1 - x0) * scale,
-                (y1 - y0) * scale,
-            );
             // A glyph that carries no text (the rest of a cluster) is only
             // drawn.
             let text = texts.get(i).copied().flatten().map(|text| {
@@ -201,9 +196,24 @@ impl ColorGlyphs {
                     strut.and_then(|k| InvisibleGlyph::space(fonts, k, t.size, (x, y), width));
                 (text, space)
             });
+            let Some(p) = self.glyphs.get(&(t.font, g.id)) else {
+                if outlined {
+                    plain.push(*g);
+                } else if let Some((text, space)) = text {
+                    crate::paint::span(ops, text, space, |_| {});
+                }
+                continue;
+            };
+            let [x0, y0, x1, y1] = p.bbox;
+            let rect = Rect::new(
+                x + x0 * scale,
+                y - y1 * scale,
+                (x1 - x0) * scale,
+                (y1 - y0) * scale,
+            );
             super::paint::image_span(images, p.key, rect, Placement::FILL, text, ops);
         }
-        if !plain.is_empty() && font.has_outlines() {
+        if !plain.is_empty() && outlined {
             ops.push(Op::Text(TextOp { glyphs: plain, ..t }));
         }
     }
@@ -253,22 +263,82 @@ mod tests {
         });
     }
 
-    /// Past [`MAX_COLOR_GLYPHS`] glyphs of colour fonts, in glyph order by
-    /// font, the others have no colour.
+    /// Past [`MAX_COLOR_GLYPHS`] colour glyphs, in glyph order by font,
+    /// the others have no colour; glyphs without colour do not count.
     #[test]
     fn colour_glyphs_past_the_most_of_a_render_have_no_colour() {
         with_fonts(|fonts| {
             let all = |n: usize| (0..n as u16).collect::<BTreeSet<u16>>();
+            // The COLR font's ten and the CBDT font's four, however many
+            // glyphs without colour come first.
             let used = BTreeMap::from([(0, all(MAX_COLOR_GLYPHS - 1)), (1, all(64))]);
             let colors = ColorGlyphs::load(fonts, &used, &mut no_images(), false);
             let glyphs = loaded(&colors);
-            // The COLR font's ten, and the CBDT font's glyph 0, which has
-            // no colour.
-            assert_eq!(glyphs.len(), 10, "{glyphs:?}");
-            assert!(glyphs.iter().all(|g| g.0 == 0));
-            let used = BTreeMap::from([(0, all(MAX_COLOR_GLYPHS - 64)), (1, all(64))]);
-            let colors = ColorGlyphs::load(fonts, &used, &mut no_images(), false);
-            assert_eq!(loaded(&colors).len(), 14);
+            assert_eq!(glyphs.len(), 14, "{glyphs:?}");
+            for parallel in [false, true] {
+                let budget = Budget {
+                    glyphs: 12,
+                    bytes: MAX_COLOR_BYTES,
+                };
+                let colors =
+                    ColorGlyphs::load_within(fonts, &used, &mut no_images(), parallel, budget);
+                assert_eq!(loaded(&colors), glyphs[..12], "{parallel}");
+            }
+        });
+    }
+
+    /// The glyphs of a font without outlines that are not drawn in colour
+    /// (past the limits, or without colour) keep their text: a span with
+    /// an invisible space, and nothing drawn.
+    #[test]
+    fn glyphs_of_a_font_without_outlines_keep_their_text() {
+        with_fonts(|fonts| {
+            let cbdt = fonts.get(1);
+            assert!(!cbdt.has_outlines());
+            let ids: Vec<u16> = ['😀', ' ']
+                .iter()
+                .map(|&c| cbdt.glyph(c).unwrap())
+                .collect();
+            let text = TextOp {
+                font: 1,
+                size: 20.0,
+                color: [0.0, 0.0, 0.0, 1.0],
+                x: 10.0,
+                y: 30.0,
+                glyphs: ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &id)| crate::paint::TextGlyph {
+                        id,
+                        x: 20.0 * i as f32,
+                        y_offset: 0.0,
+                    })
+                    .collect(),
+            };
+            // No colour glyphs: as past the limits. The COLR font has
+            // outlines and a space.
+            let mut ops = Vec::new();
+            let texts = [Some("😀"), Some(" ")];
+            let images = no_images();
+            ColorGlyphs::default().push(text, Some(0), fonts, &images, &texts, &mut ops);
+            let spans: Vec<&str> = ops
+                .iter()
+                .filter_map(|op| match op {
+                    Op::Span { actual_text } => Some(&**actual_text),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(spans, ["😀", " "]);
+            let spaces = ops
+                .iter()
+                .filter(|op| matches!(op, Op::InvisibleText(g) if g.font == 0))
+                .count();
+            assert_eq!(spaces, 2);
+            assert!(
+                !ops.iter()
+                    .any(|op| matches!(op, Op::Image { .. } | Op::Text(_))),
+                "{ops:?}"
+            );
         });
     }
 

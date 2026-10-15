@@ -191,7 +191,9 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   are drawn as images that copy and search as their text. Gradients that sweep around a point
   draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
-  colour glyphs past the first 4096 of a render or its first 32 MB of colour glyph images. Fonts
+  colour glyphs past the first 4096 of a render or its first 32 MB of colour glyph images. In a
+  font with bitmaps and no outlines, which has nothing else to draw them with, such glyphs are
+  not drawn, but they still copy and search as their text. Fonts
   with only `SVG` glyphs are not drawn in colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
   alpha channel, as in every emoji bitmap font, or a layer with an opacity) fails the render with
   `PDFA_CONFLICT` at the path of its run (at the `src` of an SVG whose text has it), and inline
