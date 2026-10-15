@@ -23,7 +23,7 @@ that are supported and tested; each example is a unit test.
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
 | `flex`, `grid`, `hidden` | `display` | `flex` → `{"display":"flex"}` | `View` is already `flex` + column. `block`, `inline` and `contents` are not supported. |
-| `float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none` | `float`, `clear` | `float-left` → `{"float":"left"}` | In a column parent (not a row, a grid or a cell): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported. |
+| `float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none` | `float`, `clear` | `float-left` → `{"float":"left"}` | In a column `View`, a `Page` or a table cell (not in a row or a grid, and not on a cell itself): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported. |
 | `overflow-hidden`, `overflow-visible`, `overflow-clip` | `overflow` | `overflow-hidden` → `{"overflow":"hidden"}` |  |
 | `align-top`, `align-middle`, `align-bottom` | `verticalAlign` (on `Cell`) | `align-top` → `{"verticalAlign":"top"}` |  |
 
