@@ -66,8 +66,10 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 
 - **Units.** Numbers are points (1/72 inch). Strings may use `pt`, `mm`, `cm`, `in`, `px`
   (0.75pt), `pc` (12pt), `rem` (12pt, as in Tailwind), `em` (the element's font size; in
-  `fontSize`, the inherited one), `vw` and `vh` (1% of the page's width and height), or a
-  percentage. `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
+  `fontSize`, the inherited one; in `lineHeight` and `letterSpacing`, the size of the text they
+  apply to, so they scale with each run), `vw` and `vh` (1% of the page's width and height), or a
+  percentage. `lineHeight` is a multiplier of the text size (`1.4`, `'140%'`, `'1.4em'`) or a
+  length (`'14pt'`). `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
   other. A class's arbitrary value (`w-[…]`) takes the same syntax and reads the same. A page's
   `size` takes the units that do not depend on the font or the page.
   Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
@@ -1053,7 +1055,10 @@ Node's `UV_THREADPOOL_SIZE` (default 4) caps how many renders run at the same ti
 
 ## Errors
 
-Mistakes fail loudly, with the component that caused them. A `View` inside a `Text`:
+Mistakes fail loudly, with the component that caused them: a style key or value an element
+cannot use, and a prop it would ignore (`<Page wrap={false}>`, `href` on a `Cell` or a
+`Header`, `className` on an SVG shape, `render` on an `Image`). An error inside a `render` prop
+names the components around it too. A `View` inside a `Text`:
 
 ```tsx
 <Text>Total: <View /></Text>

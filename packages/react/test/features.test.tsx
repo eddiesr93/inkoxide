@@ -2174,3 +2174,175 @@ describe('Image inside Text', () => {
     ).toContain('verticalAlign "sideways" is not supported');
   });
 });
+
+describe('props and style values that would do nothing', () => {
+  const doc = (props: Record<string, unknown>, page: Record<string, unknown> = {}) =>
+    renderTemplate(
+      <Document {...props}>
+        <Page {...page}>x</Page>
+      </Document>,
+      { fonts },
+    );
+
+  it('reads a lineHeight with a unit as the class leading-[…] does', () => {
+    const lh = (style: StyleProp, className?: string) =>
+      first<TextNode>(
+        tree(
+          <Text className={className} style={{ fontSize: 10, ...style }}>
+            x
+          </Text>,
+        ),
+      ).style?.lineHeight;
+    expect(lh({ lineHeight: '14pt' })).toBe(1.4);
+    expect(lh({}, 'leading-[14pt]')).toBe(1.4);
+    expect(lh({ lineHeight: '5mm' })).toBeCloseTo(1.417, 3);
+    expect(lh({ lineHeight: '150%' })).toBe(1.5);
+    expect(lh({ lineHeight: '1.5em' })).toBe(1.5);
+    expect(lh({ lineHeight: '1.5' })).toBe(1.5);
+    expect(lh({ lineHeight: 1.5 })).toBe(1.5);
+    expect(thrown(() => lh({ lineHeight: 'tall' as never })).message).toContain('lineHeight: tall');
+  });
+
+  it('reads a letterSpacing in em as the class tracking-[…] does: of the text it applies to', () => {
+    const spacing = (outer: { style?: StyleProp; className?: string }) =>
+      (
+        first<BoxNode>(
+          tree(
+            <View {...outer}>
+              <Text style={{ fontSize: 20 }}>x</Text>
+            </View>,
+          ),
+        ).children?.[0] as TextNode | undefined
+      )?.runs[0]?.letterSpacing;
+    expect(spacing({ className: 'tracking-[0.1em]', style: { fontSize: 10 } })).toBe(2);
+    expect(spacing({ style: { fontSize: 10, letterSpacing: '0.1em' } })).toBe(2);
+    expect(spacing({ style: { fontSize: 10, letterSpacing: '3pt' } })).toBe(3);
+    expect(spacing({ style: { fontSize: 10, letterSpacing: 3 } })).toBe(3);
+  });
+
+  it('rejects <Page wrap={false}> and the other props of an element in the flow on a Page', () => {
+    expect(thrown(() => doc({}, { wrap: false })).message).toBe(
+      '<Page> does not take `wrap={false}`: the content of a page flows onto as many pages as it needs. To keep an element on one page, give it wrap={false} or break="avoid".',
+    );
+    expect(thrown(() => doc({}, { bookmark: 'Intro' })).message).toBe(
+      '<Page> does not take `bookmark`: put it on an element inside it.',
+    );
+    expect(thrown(() => doc({}, { href: '#x' })).kind).toBe('props');
+    expect(() => doc({}, { wrap: true })).not.toThrow();
+  });
+
+  it('rejects the Document options that are not available', () => {
+    expect(thrown(() => doc({ pdfVersion: '1.7' })).message).toBe(
+      '<Document pdfVersion> is not supported: the engine writes the PDF version the document needs.',
+    );
+    expect(thrown(() => doc({ onRender: () => {} })).message).toContain(
+      '<Document onRender> is not supported',
+    );
+  });
+
+  it('rejects hyphenationPenalty on a Text and on a run', () => {
+    const block = thrown(() => tree(<Text {...{ hyphenationPenalty: 100 }}>x</Text>));
+    expect(block.message).toMatch(/^<Text hyphenationPenalty> is not supported/);
+    expect(block.componentStack).toMatch(/^\n {4}in Text\n {4}in Page/);
+    const run = thrown(() =>
+      tree(
+        <Text>
+          a <Text {...{ hyphenationPenalty: 100 }}>b</Text>
+        </Text>,
+      ),
+    );
+    expect(run.message).toMatch(/^<Text hyphenationPenalty> is not supported/);
+  });
+
+  it('rejects the props of an element in the flow on a Header, a Footer, a Row and a Cell', () => {
+    for (const prop of ['pages', 'href', 'bookmark'] as const) {
+      const props = { [prop]: prop === 'pages' ? 'notFirst' : '#x' };
+      const e = thrown(() => tree(<Header {...props}>Top</Header>));
+      expect(e.message).toBe(`<Header> does not take \`${prop}\`: put it on an element inside it.`);
+      expect(e.componentStack).toMatch(/^\n {4}in Header\n {4}in Page/);
+    }
+    expect(thrown(() => tree(<Footer {...{ break: 'page-before' }}>Bottom</Footer>)).message).toBe(
+      '<Footer> does not take `break`: a <Footer> is painted whole on every page. Remove it.',
+    );
+    const table = (row: Record<string, unknown>, cell: Record<string, unknown>) => () =>
+      tree(
+        <Table columns={['1fr']}>
+          <Row {...row}>
+            <Cell {...cell}>x</Cell>
+          </Row>
+        </Table>,
+      );
+    for (const props of [{ href: '#x' }, { bookmark: 'Total' }, { pages: 'first' }]) {
+      const [key] = Object.keys(props);
+      expect(thrown(table({}, props)).message).toBe(
+        `<Cell> does not take \`${key}\`: put it on an element inside it.`,
+      );
+      expect(thrown(table(props, {})).message).toBe(
+        `<Row> does not take \`${key}\`: put it on an element inside it.`,
+      );
+    }
+    expect(() => table({}, { wrap: true, break: false })()).not.toThrow();
+  });
+
+  it('rejects render on an element that does not take it, and a render that is not a function', () => {
+    expect(thrown(() => tree(<Image src="logo" {...{ render: () => null }} />)).message).toBe(
+      '<Image> does not take `render`: it works on <View> and <Text>. Put the <Image> in a <View render={…}>.',
+    );
+    expect(thrown(() => tree(<View render={'x' as never} />)).message).toBe(
+      '<View render> must be a function: render={({ pageNumber, totalPages }) => …}.',
+    );
+  });
+
+  it('rejects style, className and layout props on the shapes of an Svg', () => {
+    const svg = (shape: ReactNode) => () =>
+      tree(
+        <Svg width={20} height={20}>
+          {shape}
+        </Svg>,
+      );
+    expect(thrown(svg(<Rect width={5} height={5} {...{ className: 'fill-red-500' }} />)).message).toBe(
+      '<Rect> inside <Svg> does not take className: it takes SVG attributes (fill, stroke, strokeWidth, …).',
+    );
+    expect(thrown(svg(<Circle r={2} {...{ style: { fill: 'red' } }} />)).message).toContain(
+      '<Circle> inside <Svg> does not take style',
+    );
+    expect(thrown(svg(<Rect width={5} height={5} {...{ bookmark: 'Box' }} />)).message).toBe(
+      '<Rect> inside <Svg> does not take `bookmark`: put it on the <Svg>.',
+    );
+    expect(thrown(svg(<Path d="M0 0L5 5" {...{ minPresenceAhead: 10 }} />)).message).toContain(
+      '`minPresenceAhead`',
+    );
+    // On the Svg they are about its box, and stay out of the drawing.
+    const extra = { bookmark: 'Chart', wrap: false, minPresenceAhead: 10 };
+    const node = first<ImageNode>(
+      tree(
+        <Svg width={20} height={20} {...extra}>
+          <Rect width={5} height={5} />
+        </Svg>,
+      ),
+    );
+    expect(node.bookmark).toEqual({ title: 'Chart' });
+    expect(decode(node.data)).not.toMatch(/bookmark|presence|wrap=/);
+  });
+
+  it('keeps the components around a render prop in the stack of an error inside it', () => {
+    function Broken(): ReactNode {
+      throw new Error('no data');
+    }
+    function Card() {
+      return <View render={() => <Broken />} />;
+    }
+    const thrownIn = thrown(() => tree(<Card />));
+    expect(thrownIn.message).toBe('The template threw: no data');
+    expect(thrownIn.componentStack).toBe(
+      '\n    in Broken\n    in View\n    in Card\n    in Page\n    in Document',
+    );
+    function Stamp() {
+      return <Text render={() => <View />} />;
+    }
+    const misplaced = thrown(() => tree(<Stamp />));
+    expect(misplaced.componentStack).toBe(
+      '\n    in View\n    in Text\n    in Stamp\n    in Page\n    in Document',
+    );
+  });
+});
