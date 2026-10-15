@@ -158,7 +158,8 @@ const sorted = (names: Iterable<string>) => [...names].sort();
 
 /**
  * The names an entry file exports, values and types: it may only re-export, with
- * `export { … } from` and `export type { … } from`.
+ * `export { … } from` and `export type { … } from`, and import its engine host (`import
+ * './node-host.ts';`).
  */
 function declared(file: string): string[] {
   const src = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
@@ -174,7 +175,10 @@ function declared(file: string): string[] {
       if (name) names.push(name);
     }
   }
-  const rest = code.replace(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*'[^']+';/g, '').trim();
+  const rest = code
+    .replace(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*'[^']+';/g, '')
+    .replace(/^import '\.\/[a-z-]+-host\.ts';$/m, '')
+    .trim();
   expect(rest, `${file} only re-exports`).toBe('');
   return sorted(names);
 }

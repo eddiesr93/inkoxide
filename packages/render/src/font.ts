@@ -230,7 +230,7 @@ export function loadRegisteredFonts(): Promise<void> {
         let bytes: Uint8Array;
         try {
           bytes = await bytesOf(f.src);
-          registerEngineFont(f.id, bytes);
+          await registerEngineFont(f.id, bytes);
         } catch (e) {
           known.delete(faceKey(f));
           failed ??= new RenderError(

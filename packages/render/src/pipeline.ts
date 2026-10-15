@@ -312,7 +312,7 @@ export async function renderSettled(
     fetchMs += performance.now() - f0;
     dropEmoji(tr, 'could not be loaded', (_, id) => emojiImages.failed[id]);
     // So are those whose image the engine refuses: not an image, or one too large.
-    const refused = emoji.size > 0 ? refusedEmoji(tr.document, all) : {};
+    const refused = emoji.size > 0 ? await refusedEmoji(tr.document, all) : {};
     dropEmoji(tr, 'cannot be drawn', (sequence) => refused[sequence]);
     try {
       return await renderPdf(tr.document, opts, all, tr.output);

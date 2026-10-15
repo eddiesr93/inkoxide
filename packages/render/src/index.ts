@@ -1,6 +1,9 @@
 // One import for templates and rendering: the components come with the renderer. Every name
 // here is documented in GUIDE.md; test/exports.test.ts pins the list. The template registry
 // is a separate entry, `@inkoxide/render/templates` (templates.ts).
+// In Node: the native binding, and the bundled assets from disk.
+import './node-host.ts';
+
 export {
   type AbsoluteLength,
   type BookmarkProp,

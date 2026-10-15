@@ -1,35 +1,19 @@
 /**
- * The engine boundary: the only module of this package that imports `inkoxide`. Everything else
- * talks to the engine through these functions.
+ * The engine boundary: everything else in this package talks to the engine through these
+ * functions, which go through the entry's `EngineHost` (host.ts).
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { fonts, type OutputOptions } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 import { SCHEMA_VERSION } from '@inkoxide/schema';
-import * as ink from 'inkoxide';
+import type { RenderOptions } from 'inkoxide';
 
 import { DEFAULT_FACES } from './fonts.ts';
+import { engineHost, type EngineVersion } from './host.ts';
 import { HYPHENATION_FILES } from './hyphenation.ts';
 import { checkEncryptionTypes, checkOptionTypes } from './policy.ts';
 import { RenderError, type RenderOpts } from './types.ts';
 
-/**
- * Where the bundled fonts and hyphenation patterns are read from: `INKOXIDE_ASSETS_DIR` when set,
- * otherwise the package's own `assets/`, next to `dist/` (or `src/` in the repository).
- */
-export function assetsDir(): string {
-  if (process.env.INKOXIDE_ASSETS_DIR) return resolve(process.env.INKOXIDE_ASSETS_DIR);
-  return resolve(dirname(fileURLToPath(import.meta.url)), '..', 'assets');
-}
-
-export interface EngineVersion {
-  engine: string;
-  schema: number;
-  gitSha: string;
-}
+export type { EngineVersion } from './host.ts';
 
 export interface EngineStatus {
   version: EngineVersion;
@@ -41,14 +25,14 @@ export interface EngineStatus {
 let status: EngineStatus | undefined;
 
 /**
- * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Throws an
- * `INTERNAL` RenderError with the fix when fonts are missing or the engine speaks another schema
- * version.
+ * Process-wide setup, once: fonts, hyphenation patterns and the schema version check. Rejects with
+ * an `INTERNAL` RenderError with the fix when fonts are missing or the engine speaks another
+ * schema version.
  */
-export function initEngine(): EngineStatus {
+export async function initEngine(): Promise<EngineStatus> {
   if (status) return status;
   try {
-    return startEngine();
+    return await startEngine();
   } catch (e) {
     throw startupError(e);
   }
@@ -59,27 +43,27 @@ export function startupError(e: unknown): RenderError {
   if (e instanceof RenderError) return e;
   const message = `The engine could not start: ${e instanceof Error ? e.message : String(e)}`;
   return new RenderError('INTERNAL', message, {
-    engineCode: e instanceof ink.InkoxideError ? e.code : undefined,
+    engineCode: engineHost().isEngineError(e) ? e.code : undefined,
     cause: e,
   });
 }
 
-function startEngine(): EngineStatus {
-  const v = ink.version();
+async function startEngine(): Promise<EngineStatus> {
+  const host = engineHost();
+  await host.start();
+  const v = host.version();
   if (v.schema !== SCHEMA_VERSION) {
     throw new Error(
       `Schema mismatch: the inkoxide engine speaks schema v${v.schema} but @inkoxide/schema is v${SCHEMA_VERSION}. ` +
         'Install matching versions of inkoxide and @inkoxide/schema.',
     );
   }
-  const fontsDir = join(assetsDir(), 'fonts');
+  const fontsDir = host.assetLocation('fonts');
   const missing: string[] = [];
   for (const { file, ...face } of DEFAULT_FACES) {
     if (fonts.has(face.id)) continue;
-    let bytes: Uint8Array;
-    try {
-      bytes = readFileSync(join(fontsDir, file));
-    } catch {
+    const bytes = await host.readAsset(`fonts/${file}`);
+    if (bytes === undefined) {
       missing.push(face.id);
       continue;
     }
@@ -94,14 +78,14 @@ function startEngine(): EngineStatus {
   if (missing.length > 0) warnings.push(`Fonts missing from ${fontsDir}: ${missing.join(', ')}`);
   for (const id of fonts.ids()) {
     const bytes = fonts.bytes(id);
-    if (bytes) ink.registerFont(id, bytes);
+    if (bytes) await host.registerFont(id, bytes);
   }
   const hyphenation: Record<string, boolean> = {};
-  const hyphDir = join(assetsDir(), 'hyphenation');
   for (const [lang, file] of Object.entries(HYPHENATION_FILES)) {
-    const path = join(hyphDir, file);
-    if (existsSync(path)) {
-      ink.registerHyphenationPatterns(lang, readFileSync(path));
+    const path = host.assetLocation(`hyphenation/${file}`);
+    const bytes = await host.readAsset(`hyphenation/${file}`);
+    if (bytes !== undefined) {
+      await host.registerHyphenationPatterns(lang, bytes);
       hyphenation[lang] = true;
     } else {
       hyphenation[lang] = false;
@@ -117,8 +101,8 @@ function startEngine(): EngineStatus {
 }
 
 /** Registers one more font with the engine, after `initEngine` (fonts added with `Font.register`). */
-export function registerEngineFont(id: string, bytes: Uint8Array): void {
-  ink.registerFont(id, bytes);
+export async function registerEngineFont(id: string, bytes: Uint8Array): Promise<void> {
+  await engineHost().registerFont(id, bytes);
   status?.fonts.push(id);
 }
 
@@ -127,7 +111,7 @@ export function engineStatus(): EngineStatus | undefined {
 }
 
 export function version(): EngineVersion {
-  return ink.version();
+  return engineHost().version();
 }
 
 /**
@@ -136,7 +120,7 @@ export function version(): EngineVersion {
  * caller's to fix, so `ENGINE_REJECTED`; any other `INVALID_ARGUMENT` is a bug of this package.
  */
 export function toRenderError(e: unknown): RenderError {
-  if (e instanceof ink.InkoxideError) {
+  if (engineHost().isEngineError(e)) {
     const badOption = e.code === 'INVALID_ARGUMENT' && e.path.startsWith('options.');
     if (e.code === 'INTERNAL' || (e.code === 'INVALID_ARGUMENT' && !badOption)) {
       return new RenderError('INTERNAL', `Engine error ${e.code}: ${e.message}`, {
@@ -158,10 +142,10 @@ export function toRenderError(e: unknown): RenderError {
  * as it would refuse the document: bytes that are not an image, or an image over the size limits.
  * Sequence → why.
  */
-export function refusedEmoji(
+export async function refusedEmoji(
   doc: Pick<Document, 'emojiImages' | 'fonts'>,
   images: Record<string, Uint8Array>,
-): Record<string, string> {
+): Promise<Record<string, string>> {
   const emojiImages = doc.emojiImages ?? {};
   const map: Record<string, string> = {};
   const own: Record<string, Uint8Array> = {};
@@ -181,7 +165,9 @@ export function refusedEmoji(
       emojiImages: map,
       pages: [{ size: { width: 100, height: 100 } }],
     };
-    const found = ink.validate(JSON.stringify(check), 'json', own).filter((e) => e.path.startsWith(at));
+    const found = (await engineHost().validate(JSON.stringify(check), own)).filter((e) =>
+      e.path.startsWith(at),
+    );
     for (const e of found) {
       const sequence = e.path.slice(at.length);
       refused[sequence] = e.message;
@@ -192,7 +178,7 @@ export function refusedEmoji(
 }
 
 /**
- * Renders a document tree to PDF bytes on the libuv pool. `output` holds the render options its
+ * Renders a document tree to PDF bytes, off the calling thread. `output` holds the render options its
  * `<Document>` set (`conformance`, the passwords and permissions); `opts` wins over them.
  */
 export async function renderPdf(
@@ -204,7 +190,7 @@ export async function renderPdf(
   checkOptionTypes(opts);
   // The <Document> passwords and permissions, which JavaScript can give any type.
   checkEncryptionTypes(opts.encryption ?? output.encryption);
-  const options: ink.RenderOptions = { images };
+  const options: RenderOptions = { images };
   if (opts.creationDate != null) options.creationDate = opts.creationDate;
   if (opts.threads != null) options.threads = opts.threads;
   if (opts.compress != null) options.compress = opts.compress;
@@ -214,7 +200,7 @@ export async function renderPdf(
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
   try {
-    return await ink.render(JSON.stringify(doc), options);
+    return await engineHost().render(JSON.stringify(doc), options);
   } catch (e) {
     throw toRenderError(e);
   }
