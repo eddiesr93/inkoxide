@@ -1170,6 +1170,76 @@ fn inline_images_are_painted_in_their_line_with_their_alternative_text() {
         .any(|op| matches!(op, Op::Text(t) if t.glyphs.len() == 2)));
 }
 
+/// In right-to-left text, an inline image takes its place in visual
+/// order: between the words before it (on its right) and after it (on its
+/// left), and an image run of its own in a left-to-right paragraph keeps
+/// its logical place among left-to-right words.
+#[test]
+fn inline_images_follow_the_visual_order_of_right_to_left_text() {
+    let paint = |direction: &str, words: [&str; 2]| {
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Hebrew","family":"Hebrew"}}],
+                "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+                {{"type":"text","style":{{"direction":"{direction}"}},"runs":[
+                  {{"text":"{}","font":"Hebrew","size":10}},
+                  {{"font":"Hebrew","size":10,"image":{{"src":"logo","height":8}}}},
+                  {{"text":"{}","font":"Hebrew","size":10}}]}}]}}]}}"#,
+            words[0], words[1]
+        );
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let mut store = FontStore::new();
+        let hebrew = crate::test_fixtures::fixture("fonts/NotoSansHebrew-Regular.ttf");
+        store.register("Hebrew", hebrew).unwrap();
+        let fonts = FontSet::load(&doc, &store).unwrap();
+        let mut images = ImageStore::new();
+        images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
+        let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
+        let shaper = RustybuzzShaper::new(&fonts)
+            .unwrap()
+            .with_objects(std::sync::Arc::new(images.inline_objects()));
+        let mut text = TextCache::new(shaper, None);
+        let (pages, _) = run(
+            &doc,
+            &fonts,
+            &mut text,
+            &mut images,
+            false,
+            Profile::default(),
+            Ok,
+        )
+        .unwrap();
+        // The x of the text ops, in paint order, with their glyph counts,
+        // and of the image.
+        let texts: Vec<(f32, usize)> = pages[0]
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Text(t) => Some((t.x, t.glyphs.len())),
+                _ => None,
+            })
+            .collect();
+        let image = pages[0]
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                Op::Image { matrix, .. } => Some(matrix[4]),
+                _ => None,
+            })
+            .unwrap();
+        // The first word by its length (two letters and a space), then the
+        // second (five and a space).
+        let x = |n: usize| texts.iter().find(|t| t.1 == n).unwrap().0;
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        (x(3), image, x(6))
+    };
+    // Right to left: the first word on the right, the image, the second
+    // word on its left.
+    let (first, image, second) = paint("rtl", ["אב ", " גדהוז"]);
+    assert!(second < image && image < first, "{first} {image} {second}");
+    let (first, image, second) = paint("ltr", ["ab ", " cdefg"]);
+    assert!(first < image && image < second, "{first} {image} {second}");
+}
+
 /// A paragraph's `debug` outline boxes each image run around its image,
 /// wherever its alignment puts it: here a tall one on the baseline and a
 /// short one at the top of the line, far above its font's ascender.
