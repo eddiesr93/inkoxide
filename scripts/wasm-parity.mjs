@@ -2,8 +2,9 @@
 // Checks that the WebAssembly build of the engine behaves as the native one:
 // - every fixtures/docs document, and every fixture image alone on a page, renders to the same
 //   bytes. Those listed in fixtures/wasm-parity.json may differ only in numbers, by at most 1e-6
-//   relative, and in the file identifier, compared with their streams decompressed; a listed
-//   one that no longer differs fails too;
+//   relative, and in the file identifier, compared with their streams decompressed. Whether
+//   they differ depends on the platform's math library: on Linux they are identical, on macOS
+//   they differ in the last digits;
 // - the fuzz seeds (the fixture fonts, malformed and limit fonts included, and the fixture
 //   images) register with the same outcome, and those that register render text with the same
 //   outcome and bytes;
@@ -147,7 +148,6 @@ function sameRender(what, name, allow, r) {
     fail(`${what}: native ${outcome(r.native)}; wasm ${outcome(r.wasm)}`);
   } else if (!r.native.ok || sameBytes(r.native.bytes, r.wasm.bytes)) {
     identical++;
-    if (allow.includes(name)) fail(`${what}: identical now; remove it from fixtures/wasm-parity.json`);
   } else if (!allow.includes(name)) {
     fail(`${what}: the bytes differ`);
   } else if (!closeEnough(r.native.bytes, r.wasm.bytes)) {
