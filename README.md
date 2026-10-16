@@ -15,6 +15,12 @@ Typeset documents from React components, or from a JSON document tree.
 
 </div>
 
+<p align="center">
+  <a href="https://inkoxide.dev/playground/invoice"><img src="https://inkoxide.dev/demo/playground.gif" alt="The playground: the invoice's title is edited in the source, the PDF renders again in the browser, and Layout shows the boxes the engine laid out, with their sizes in points." width="860"></a>
+  <br>
+  <sub>Edit a document in the <a href="https://inkoxide.dev/playground/invoice">playground</a>: it renders again in the browser, and Layout shows the boxes the engine laid out.</sub>
+</p>
+
 <table>
 <tr>
 <td align="center" valign="top" width="33%"><img src="packages/render/media/invoice.png" alt="Invoice PDF: logo, sender and client addresses, a four-row line-item table, subtotal, tax and a highlighted total due." width="260"><br><sub><b>Invoice</b></sub></td>
