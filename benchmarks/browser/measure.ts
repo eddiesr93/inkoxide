@@ -1,4 +1,4 @@
-// What both pages measure, the same way: the first invoice from the moment the page started
+// What the page measures: the first invoice from the moment the page started
 // loading (the library, its engine and fonts included), then the median of warm renders of each
 // document, and how long the page's main thread was blocked meanwhile (Chromium reports long
 // tasks; other browsers report none).
@@ -16,7 +16,7 @@ export interface Result {
 
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
 
-/** The page count of a PDF: `/Count` of its page tree root, which both libraries write as text. */
+/** The page count of a PDF: `/Count` of its page tree root, written as text. */
 function pages(pdf: Uint8Array): number {
   const text = new TextDecoder('latin1').decode(pdf);
   const counts = [

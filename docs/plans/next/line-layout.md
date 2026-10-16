@@ -13,15 +13,14 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 - Style properties:
   - `float: "left" | "right" | "none"`, on any child of a column box: Box, Text, Image, Field.
   - `clear: "left" | "right" | "both" | "none"`.
-  - Names and values match the migration guide.
-- `shapeOutside` is **out of scope for v1**. MIGRATING.md keeps listing it. The design leaves room for it: each float contributes an inset per y-range, so circle, ellipse, polygon and inset shapes can plug in later.
+  - Names and values are CSS's.
+- `shapeOutside` is **out of scope for v1**. The design leaves room for it: each float contributes an inset per y-range, so circle, ellipse, polygon and inset shapes can plug in later.
 - Behaviour:
   - A float is shrink-to-fit and sits at the start or end edge, following CSS 2.2 §9.5.1 for rectangles: its top is no higher than the current flow position or any earlier float, and it moves down when it does not fit beside the floats already there.
   - Text siblings wrap line by line.
   - Box siblings (every View is a flex container, which is an independent formatting context in CSS) are narrowed beside floats, or moved below them when their min-content does not fit.
   - `clear` puts the border box below the float's margin box.
   - The container's height includes its floats.
-  - The API MIGRATING.md targets differs here: it lets box siblings and the container overlap floats. MIGRATING.md should say so.
 
 **Engine design**
 1. **Placement: new `crates/core/src/layout/float.rs`, about 200 lines, pure.**
@@ -88,7 +87,6 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 - `docs/API.md` (limit)
 - `docs/TAILWIND_SUPPORT.md` (generated)
 - `packages/render/GUIDE.md` (Styling, Limitations)
-- MIGRATING.md: move float and clear out of "Not available", note the containment difference
 - `docs/ARCHITECTURE.md` (float containers sit next to tables)
 - `ROADMAP.md`, both CHANGELOGs
 
@@ -111,7 +109,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 
 **Open decisions**
 1. Own placement module or `taffy::FloatContext` behind the `float_layout` feature → **own module**: it needs range queries, and Taffy features stay off.
-2. Boxes beside a float: narrowed, overlapping (the MIGRATING.md API), or passing the float context into nested column boxes → **narrowed in v1**. Passing the context down is a follow-up.
+2. Boxes beside a float: narrowed, overlapping, or passing the float context into nested column boxes → **narrowed in v1**. Passing the context down is a follow-up.
 3. Flex grow/justify in float containers → **reject in v1**, possibly support later with a second pass.
 4. Floats taller than a page → **slice, with a warning**.
 5. `shapeOutside` → **follow-up (S–M)**.
@@ -165,7 +163,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 - Fixture `fixtures/docs/text-pretty.json`, justified and ragged, with PNG references; it becomes a bench automatically.
 - A Node test that `text-pretty` is inherited.
 
-**Docs.** SCHEMA.md, `index.d.ts` and TAILWIND_SUPPORT.md (generated), GUIDE.md (Text section), API.md (caps), BENCHMARKS.md (pretty compared with wrap), ARCHITECTURE.md (text pipeline diagram), and MIGRATING.md: remove the "first-fit" bullet (`MIGRATING.md:36`), add a row "optimal breaking → `textWrap: 'pretty'`, opt in", and mention `hyphenationPenalty`. Also both CHANGELOGs and ROADMAP.md.
+**Docs.** SCHEMA.md, `index.d.ts` and TAILWIND_SUPPORT.md (generated), GUIDE.md (Text section), API.md (caps), BENCHMARKS.md (pretty compared with wrap), and ARCHITECTURE.md (text pipeline diagram). Also both CHANGELOGs and ROADMAP.md.
 
 **New dependencies:** none.
 
@@ -177,10 +175,10 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 
 **Open decisions**
 1. Style property, render option, or `lineBreak` name → **`textWrap` style**.
-2. Default `pretty` in `@inkoxide/render`, for parity with MIGRATING.md's API → **no**: keep the default, document the opt-in.
+2. Default `pretty` in `@inkoxide/render` → **no**: keep the default, document the opt-in.
 3. Shrinking spaces → **yes, in pretty + justify only**.
 4. `balance` (bisect the narrowest width that keeps the line count) → **defer**, value reserved.
-5. The `hyphenationPenalty` Text prop from MIGRATING.md's API → **defer** until asked.
+5. A `hyphenationPenalty` Text prop → **defer** until asked.
 6. Expose tolerance or penalties → **no**.
 
 ## Dependencies and order
@@ -202,7 +200,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 7. layout: `flow.rs` float containers, `RootMode::Item`, `Tree.wraps`/`float_groups`, fast-path guard, `#[serde(skip)] float`/`clear`; differential and layout tests.
 8. paint: float paint order; `ContentCtx` carries the line boxes.
 9. paginate: floats atomic, group need, orphans over wrapped lines; tests.
-10. `float`/`clear`: JSON schema, serde, validation (including the 1,000 limit), TS, React, Tailwind, fuzz, fixtures and PNGs, docs, MIGRATING.md, ROADMAP.md, CHANGELOGs.
+10. `float`/`clear`: JSON schema, serde, validation (including the 1,000 limit), TS, React, Tailwind, fuzz, fixtures and PNGs, docs, ROADMAP.md, CHANGELOGs.
 
 ### Critical files for implementation
 - crates/core/src/text/lines.rs

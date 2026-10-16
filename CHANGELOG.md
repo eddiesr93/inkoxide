@@ -9,6 +9,10 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ## Unreleased
 
+### Removed
+
+- `@inkoxide/render` no longer ships MIGRATING.md, and the benchmarks measure Inkoxide alone.
+
 ## 0.9.0 - 2026-10-16
 
 `inkoxide`, `@inkoxide/wasm` (new), `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind`
@@ -586,8 +590,7 @@ work.
   font. Each tab was four spaces.
 - A box sized to the min-content width of hyphenated text leaves room for the hyphen; the
   hyphen was drawn outside it.
-- The docs say how `minPresenceAhead`, percentage gaps and relative `top`/`left` offsets work,
-  and where they differ from react-pdf (`MIGRATING.md`).
+- The docs say how `minPresenceAhead`, percentage gaps and relative `top`/`left` offsets work.
 - A creation date with an offset under an hour west of UTC (`-00:30`) is written with its sign
   in the PDF information dictionary; it was written east of UTC, an hour off the XMP date that
   PDF/A requires it to match.
@@ -997,7 +1000,7 @@ releases above. The `@inkoxide/render` README now shows the project setup the qu
 ## @inkoxide/render 0.1.1 - 2026-10-11
 
 - A new README with examples, and two new guides: [GUIDE.md](packages/render/GUIDE.md) and
-  [MIGRATING.md](packages/render/MIGRATING.md).
+  MIGRATING.md.
 - `INKOXIDE_ASSETS_DIR` replaces `STUDIO_ASSETS_DIR` for loading the bundled fonts from another
   directory.
 - `StudioError` and `StudioErrorCode` are deprecated aliases of `RenderError` and

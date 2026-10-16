@@ -310,7 +310,7 @@ Running out of memory, at the 4 GiB WebAssembly limit or the browser's own, ends
 
 - `usePdf(element, opts)` gives `{ blob, url, loading, error, update }`.
 - `<PdfDownloadLink>` and `<PdfViewer>` (an `<iframe>` of the blob URL) are thin components.
-- They cover the browser APIs that MIGRATING.md:39 lists as not available.
+- They are the browser APIs a React PDF template needs to show and download its PDF.
 
 **Changes to the code Node shares**
 
@@ -421,8 +421,6 @@ Running out of memory, at the 4 GiB WebAssembly limit or the browser's own, ends
     limitation (`GUIDE.md:1254-1255`) change.
   - A new section, "In the browser", covers: installing, `init`, the worker, fonts, images and
     CORS, the Content Security Policy, what is not available, and download sizes.
-- **MIGRATING.md:39:** the browser line maps to `renderToBlob`, `usePdf`, `<PdfDownloadLink>`
-  and `<PdfViewer>`.
 - **docs/API.md and docs/CLIENT_INTEGRATION.md:** `@inkoxide/wasm`, and how it differs from the
   native build:
   - one thread;
@@ -432,8 +430,7 @@ Running out of memory, at the 4 GiB WebAssembly limit or the browser's own, ends
 - **docs/ARCHITECTURE.md:** `crates/wasm`.
 - **docs/TESTING.md:** the parity and browser tests.
 - **ROADMAP.md:** the item leaves "Later".
-- **benchmarks/:** a browser benchmark against the library MIGRATING.md covers, in the same
-  browser, reported in docs/BENCHMARKS.md.
+- **benchmarks/:** a browser benchmark, reported in docs/BENCHMARKS.md.
 
 ## Commits
 

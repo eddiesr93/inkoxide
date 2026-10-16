@@ -63,7 +63,6 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 **Docs**
 - Regenerate `SCHEMA.md` and `index.d.ts`.
 - Schema CHANGELOG "Unreleased", the GUIDE Images section and the ARCHITECTURE text pipeline.
-- MIGRATING: remove "Image inside Text" from "Not available". Add a row noting the default size, and that SVG works too.
 
 **New dependencies:** none.
 
@@ -95,7 +94,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
   - It is built on `unicode_properties::UnicodeEmoji`.
 - **Itemisation.** `itemize` (`prepare.rs:155-205`) becomes sequence-aware: one font per sequence. For emoji presentation it tries the first colour fallback font that has the base, then the run font, then the other fallbacks.
   - Today ZWJ, VS16 and skin tones are itemised one character at a time; the neutral test at `:172` only covers whitespace, controls and marks. A sequence can therefore split across fonts and its ligature never forms. This fix helps monochrome emoji fonts too.
-- **Emoji as images.** A sequence whose key (FE0F stripped) is in `emojiImages` becomes an inline object (item 1): 1em high, aspect ratio kept, bottom 0.1em below the baseline (the offset the API in MIGRATING.md uses), alt = the sequence.
+- **Emoji as images.** A sequence whose key (FE0F stripped) is in `emojiImages` becomes an inline object (item 1): 1em high, aspect ratio kept, bottom 0.1em below the baseline, alt = the sequence.
   - An unmatched ZWJ sequence tries its parts.
 - **Colour fonts.** ttf-parser stays inside `fonts`.
   - Registration (`fonts/mod.rs:85-89`) accepts fonts with CBDT or sbix but no outlines, as colour-only fonts that are never embedded.
@@ -148,7 +147,6 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 
 **Docs**
 - GUIDE: the Fonts section, and the Limitations bullet at `GUIDE.md:840`.
-- MIGRATING: a row for `registerEmojiSource`.
 - CLIENT_INTEGRATION: colour-only fonts.
 - SCHEMA, CHANGELOG and ARCHITECTURE.
 
@@ -213,7 +211,6 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 
 **Docs**
 - GUIDE.
-- MIGRATING: remove `<ImageBackground>` from "Not available", and note that the image fills the padding box, not the content box.
 - SCHEMA and CHANGELOG.
 
 **New dependencies:** none.
@@ -243,7 +240,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 **Suggested commit sequence** (each commit green, with its own docs)
 1. `images`: split `paint` into `paint_in`, with no behaviour change.
 2. The `backgroundImage` field across schema, parsing, validation, `ImageSet` and `BoxPainter`, with generated docs, the fuzz generator and a fixture.
-3. React `<ImageBackground>`, GUIDE and MIGRATING.
+3. React `<ImageBackground>` and GUIDE.
 4. PDF: `Op::Span`/`EndSpan` and invisible text.
 5. Inline objects and `TextRun.image` (baseline and number alignment), with a fixture.
 6. The remaining `verticalAlign` values and `x_height`, after superscript/subscript lands.

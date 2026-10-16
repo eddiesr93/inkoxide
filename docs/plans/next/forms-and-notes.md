@@ -13,7 +13,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
     - `{type:'percent', decimals?, separators?}`
     - `{type:'date'|'time', pattern}`
     - `{type:'zip'|'zipPlus4'|'phone'|'ssn'}`
-  - React also accepts the migration guide's keys (`param`, `nDec`, `sepComma`, `negStyle`, `currencyPrepend`) and its `select` prop for options, and maps them. `Link` already does this kind of aliasing (`src` = `href`, 665-669).
+  - React also accepts short keys (`param`, `nDec`, `sepComma`, `negStyle`, `currencyPrepend`) and a `select` prop for options, and maps them. `Link` already does this kind of aliasing (`src` = `href`, 665-669).
 - Schema (`packages/schema/document.v1.json:1550-1640`)
   - `kind` gains `"list"`; new `multiSelect: boolean`; `value` becomes `string | string[]`; `options` applies to select and list.
   - `name` pattern changes from `^[^.]+$` to `^[^.]+(\.[^.]+)*$`: at most 512 characters in total, each segment 1–128, at most 32 segments.
@@ -75,7 +75,6 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 - Regenerate `SCHEMA.md` and `index.d.ts` (`scripts/check-generated.sh`).
 - Add entries to `packages/schema/CHANGELOG.md` and `CHANGELOG.md`.
 - `GUIDE.md` Forms section (539-552).
-- `MIGRATING.md:38`: remove the line and add a forms row. It should say nested sets nest properly and work for every field kind.
 - `ROADMAP.md:21`; `API.md:41` (PDF/A leaves form scripts out).
 
 **New dependencies**: none. pdf-writer 0.15 already has `choice_top_index`, `choice_indices`, `choice_values`, `additional_actions`, `js_string` and `MULTI_SELECT`.
@@ -92,15 +91,15 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 **Open decisions**
 1. Dotted names, or a group node in the schema? *Recommended: dotted names.*
 2. `value: string|string[]`, or a separate `values`? *Recommended: the union.*
-3. Readable schema keys, with the migration guide's keys accepted as React aliases? *Yes.*
+3. Readable schema keys, with short keys accepted as React aliases? *Yes.*
 4. PDF/A with `format`: drop the scripts, or fail? *Drop them and document it.* `validate()` never sees the options (`lib.rs:176-207`), and other PDF/A changes are already applied silently (`lib.rs:95-98`).
-5. Only `TextField` is exported (`render/src/index.ts:85`), not the migration guide's `TextInput`. *Recommended: exporting a `TextInput` alias and accepting `select`.*
+5. Only `TextField` is exported (`render/src/index.ts:85`), not a `TextInput`. *Recommended: exporting a `TextInput` alias and accepting `select`.*
 6. `sort`, `edit`, `noSpell`, `align`? *Leave them for later.* `sort` is cheap: sort `/Opt` and set the `SORT` flag.
 
 ## Text annotations (`<Note>`)
 
 **Scope and API**
-- React: `<Note author? open?>text</Note>`. Children must be strings, as in the migration guide. The colour comes from the `backgroundColor` style or class, which is where the migration guide reads it.
+- React: `<Note author? open?>text</Note>`. Children must be strings. The colour comes from the `backgroundColor` style or class.
 - A note takes no space in the flow. To put it at a position, use `position:'absolute'` with insets. In headers, footers and overlays it repeats on every page.
 - Schema: a new node type `{"type":"note","note":{"contents" (1–8000), "color"?, "author"? (≤256), "open"?}}`, built like `field`. It takes `style`, `break`, `pages`, `debug` and `id`, but no link or bookmark (same as fields, `de.rs:595`).
 
@@ -132,7 +131,7 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
 - A new `fixtures/docs/notes.json` (in the flow, absolute, in a header) with expected PNGs; `pdftoppm` draws the appearance stream.
 - Vitest for the builder and the exports.
 
-**Docs**: SCHEMA, both changelogs, a new GUIDE section, `MIGRATING.md:39`, `ROADMAP.md:22`.
+**Docs**: SCHEMA, both changelogs, a new GUIDE section, `ROADMAP.md:22`.
 
 **New dependencies**: none.
 
@@ -165,10 +164,10 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
   5. React: `<List>` and the `select` alias.
   6. Engine: `format.rs`, the formatter on its own, unit-tested.
   7. Engine: `format` on text fields, `/AA` (left out in PDF/A), the fuzz script check.
-  8. React: `format` with the migration guide's keys.
+  8. React: `format` with the short keys.
   9. Engine: `note` node and its appearance, fixture, fuzz.
   10. React: `<Note>`.
-  11. Docs: MIGRATING, ROADMAP, GUIDE.
+  11. Docs: ROADMAP, GUIDE.
 
 ### Critical Files for Implementation
 - crates/core/src/pdf/forms.rs

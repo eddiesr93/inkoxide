@@ -16,6 +16,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 4096,
-    rolldownOptions: { input: { inkoxide: page('inkoxide'), 'react-pdf': page('react-pdf') } },
+    rolldownOptions: { input: { inkoxide: page('inkoxide') } },
   },
 });

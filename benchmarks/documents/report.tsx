@@ -1,29 +1,7 @@
-// A 43-page report written once against the primitives both libraries share (Document, Page,
-// View, Text and style objects in points), so both render the same content, font and layout. The
-// server benchmark (bench.tsx) and the browser one (browser/) render it.
-import type { ComponentType, ReactElement, ReactNode } from 'react';
-
-export interface Kit {
-  Document: ComponentType<{ children: ReactNode }>;
-  Page: ComponentType<{ size: 'A4'; style: object; children: ReactNode }>;
-  View: ComponentType<{ style?: object; children?: ReactNode; wrap?: boolean }>;
-  Text: ComponentType<{ style?: object; children?: ReactNode }>;
-}
-
-/**
- * Inter for react-pdf, from `fonts` (paths in Node, URLs in a browser), and no hyphenation, which
- * Inkoxide does not apply by default either.
- */
-export function registerReactPdfFonts(
-  Font: { register(f: object): void; registerHyphenationCallback(cb: (w: string) => string[]): void },
-  fonts: { regular: string; bold: string },
-): void {
-  Font.register({
-    family: 'Inter',
-    fonts: [{ src: fonts.regular }, { src: fonts.bold, fontWeight: 700 }],
-  });
-  Font.registerHyphenationCallback((word) => [word]);
-}
+// A 43-page report: 40 sections of headings, justified paragraphs and tables, in Inter. The server
+// benchmark (bench.tsx) and the browser one (browser/) render it.
+import { Document, Page, Text, View } from '@inkoxide/render';
+import type { ReactElement } from 'react';
 
 const s = {
   page: { paddingTop: 48, paddingBottom: 48, paddingHorizontal: 48, fontSize: 10, fontFamily: 'Inter' },
@@ -48,9 +26,8 @@ const WORDS =
 const sentence = (i: number, n: number) =>
   Array.from({ length: n }, (_, k) => WORDS[(i * 7 + k * 3) % WORDS.length]).join(' ');
 
-/** 40 sections, each with three paragraphs and a 25-row table: 43 pages in both libraries. */
-export function Report({ kit }: { kit: Kit }): ReactElement {
-  const { Document, Page, View, Text } = kit;
+/** 40 sections, each with three paragraphs and a 25-row table: 43 pages. */
+export function Report(): ReactElement {
   return (
     <Document>
       <Page size="A4" style={s.page}>

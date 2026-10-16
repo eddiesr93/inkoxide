@@ -1,7 +1,7 @@
 # @inkoxide/render guide
 
 The reference for @inkoxide/render. The [README](README.md) covers installing, the quick start
-and the examples; [MIGRATING.md](MIGRATING.md) is the migration guide.
+and the examples.
 
 - [Components](#components)
 - [Styling](#styling)

@@ -11,9 +11,9 @@ Part of [Plans for "Next"](README.md). Draft for review; line references point t
   - `Printing::{LowResolution, HighResolution}`
 
   All are `#[non_exhaustive]` with setters. Their `Debug` must be hand-written and print `<redacted>`, because `RenderOptions` derives `Debug` (lib.rs:73).
-- **Node binding** (crates/node/src/lib.rs:121-142, packages/inkoxide/index.d.ts:44-75): `encryption?: { userPassword?, ownerPassword?, permissions?: { printing?: 'lowResolution'|'highResolution', modifying?, copying?, annotating?, fillingForms?, contentAccessibility?, documentAssembly? } }`. These are the names of the migration guide's `Permissions` type.
+- **Node binding** (crates/node/src/lib.rs:121-142, packages/inkoxide/index.d.ts:44-75): `encryption?: { userPassword?, ownerPassword?, permissions?: { printing?: 'lowResolution'|'highResolution', modifying?, copying?, annotating?, fillingForms?, contentAccessibility?, documentAssembly? } }`.
 - **@inkoxide/render:** `RenderOpts.encryption` (types.ts:3-42), passed on in engine.ts:161-166.
-- **React:** `<Document userPassword ownerPassword permissions>` (components/index.ts:300-327), for parity with MIGRATING.md:30. build.ts:317-339 moves these props into a new `BuildResult.output` (build.ts:82-98) whose `toJSON` redacts them. They never go into `document`, which is handed back in `RenderResult.document` (types.ts:104-105) to be stored. If `opts.encryption` is given it replaces the Document props as a whole, the same way `creationDate` overrides `meta.creationDate` (lib.rs:80-82).
+- **React:** `<Document userPassword ownerPassword permissions>` (components/index.ts:300-327). build.ts:317-339 moves these props into a new `BuildResult.output` (build.ts:82-98) whose `toJSON` redacts them. They never go into `document`, which is handed back in `RenderResult.document` (types.ts:104-105) to be stored. If `opts.encryption` is given it replaces the Document props as a whole, the same way `creationDate` overrides `meta.creationDate` (lib.rs:80-82).
 - **Not in the schema:** a document never carries secrets, so packages/schema does not change.
 - **Rules:**
   - At least one password is required; otherwise `INVALID_VALUE` at `options.encryption`.
@@ -89,7 +89,7 @@ Result: identical inputs give identical files, and two different documents never
 
 **Docs:**
 - API.md:32-45 (options table) and 112-120 (Determinism).
-- GUIDE.md:589-601, MIGRATING.md:30, CHANGELOG, ROADMAP.md:14.
+- GUIDE.md:589-601, CHANGELOG, ROADMAP.md:14.
 - ARCHITECTURE.md:67 and 79-83 (public types; the out.rs rule).
 - SECURITY.md: the threat model.
 
@@ -111,7 +111,7 @@ Result: identical inputs give identical files, and two different documents never
 1. **Deterministic derivation or random keys.** Decided (2026-10-13): deterministic. An optional 32-byte `encryption.entropy`, for callers who want unlinkable output, can come later.
 2. **Unicode passwords.** Recommend ASCII-only in v1; full SASLprep later (needs `unicode-normalization`).
 3. **Missing owner password.** Recommend it defaults to the user password, as R2-R4 do; an empty owner password would let anyone get owner rights.
-4. **Default permissions.** Recommend each permission is opt-in, as in the API in MIGRATING.md, except `contentAccessibility`, which defaults to true (PDF 2.0 deprecates that bit and says to always set it).
+4. **Default permissions.** Recommend each permission is opt-in, except `contentAccessibility`, which defaults to true (PDF 2.0 deprecates that bit and says to always set it).
 5. **Where passwords are accepted.** Recommend both the Document props and the render option, with the render option winning.
 
 ## More PDF/A levels (1b, 3b)
@@ -153,7 +153,7 @@ Result: identical inputs give identical files, and two different documents never
 - veraPDF runs only locally (ci.sh:28-31). Recommend adding a CI job for it.
 
 **Docs:**
-- API.md:41, GUIDE.md:432-433 and 597, README.md:47, MIGRATING.md:30.
+- API.md:41, GUIDE.md:432-433 and 597, README.md:47.
 - The codes table in scripts/gen-schema-doc.py:79, then regenerate SCHEMA.md.
 - packages/inkoxide/index.d.ts:26 and 71.
 - TESTING.md:17-21, CHANGELOG, ROADMAP.md:24.

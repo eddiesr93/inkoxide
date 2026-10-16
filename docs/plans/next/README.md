@@ -92,8 +92,7 @@ Taken on 2026-10-13:
 Every plan ends with its own open decisions. These are the ones that change the design, each
 with the recommendation:
 
-1. **Boxes beside a float:** narrowed, like CSS (recommended), or overlapping the float, like
-   the API in MIGRATING.md.
+1. **Boxes beside a float:** narrowed, like CSS (recommended), or overlapping the float.
 2. **Optimal line breaking:** opt-in through `textWrap: 'pretty'` (recommended), or the default.
 3. **Emoji images:** substituted by the engine from a document-level `emojiImages` map, with URLs
    checked against the remote image allowlist (recommended), or split into image runs by React.
