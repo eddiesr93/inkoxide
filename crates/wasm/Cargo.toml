@@ -1,0 +1,20 @@
+[package]
+name = "inkoxide-wasm"
+description = "WebAssembly binding for the Inkoxide PDF engine; published to npm as `@inkoxide/wasm`."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+inkoxide.workspace = true
+inkoxide-binding.workspace = true
+serde_json.workspace = true

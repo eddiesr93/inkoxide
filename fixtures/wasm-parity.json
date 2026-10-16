@@ -1,0 +1,5 @@
+{
+  "//": "Fixtures whose WebAssembly render may differ from the native one in the last digits of numbers (scripts/wasm-parity.mjs): usvg computes marker angles with trigonometry, which on WebAssembly is Rust's port of libm, not the platform's.",
+  "docs": ["svg-markers"],
+  "images": ["markers"]
+}

@@ -15,14 +15,11 @@
 )]
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{LazyLock, RwLock};
 
-use inkoxide::{
-    Encryption, FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel,
-    Permissions, Printing,
-};
+use inkoxide::{FontStore, HyphenationStore, ImageStore, InputFormat};
+use inkoxide_binding::{Failure, PdfA};
 use napi::bindgen_prelude::{AsyncTask, Buffer, Either, Uint8Array};
 use napi::{Env, Error, Result, Task};
 use napi_derive::napi;
@@ -33,71 +30,20 @@ static FONTS: LazyLock<RwLock<FontStore>> = LazyLock::new(Default::default);
 /// renders.
 static HYPHENATION: LazyLock<RwLock<HyphenationStore>> = LazyLock::new(Default::default);
 
-fn engine_error(code: &str, path: &str, message: &str) -> Error {
-    let reason = format!(
-        "{{\"code\":{},\"path\":{},\"message\":{}}}",
-        json_string(code),
-        json_string(path),
-        json_string(message)
-    );
-    Error::from_reason(reason)
-}
-
-fn json_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-fn from_engine(e: InkoxideError) -> Error {
-    match &e {
-        // A bad option (`creationDate`) is the caller's argument, not the
-        // document.
-        InkoxideError::Validation(v) if v.path.starts_with("options.") => {
-            invalid_arg(&v.path, &v.message)
-        }
-        InkoxideError::Validation(v) => engine_error(v.code.as_str(), &v.path, &v.message),
-        other => engine_error(other.code(), "", &other.to_string()),
-    }
+/// `failure` as a JS error, which `index.js` unpacks.
+fn js_error(failure: impl Into<Failure>) -> Error {
+    Error::from_reason(failure.into().to_json())
 }
 
 /// Runs engine code, turning a panic into an `INTERNAL` error instead of
 /// letting it unwind into Node.
 fn catch_panic<T>(f: impl FnOnce() -> T) -> Result<T> {
     catch_unwind(AssertUnwindSafe(f))
-        .map_err(|_| engine_error("INTERNAL", "", "the engine panicked"))
-}
-
-fn invalid_arg(path: &str, message: &str) -> Error {
-    engine_error("INVALID_ARGUMENT", path, message)
+        .map_err(|_| js_error(Failure::internal("the engine panicked")))
 }
 
 /// Largest `threads`: the engine's own cap on a pool size.
 const MAX_THREADS: u32 = 256;
-
-/// A JS number that must be an integer within `min..=max` (NaN, fractions
-/// and infinities are not).
-fn integer(path: &str, v: f64, min: u32, max: u32) -> Result<u32> {
-    if v.fract() == 0.0 && (f64::from(min)..=f64::from(max)).contains(&v) {
-        Ok(v as u32)
-    } else {
-        Err(invalid_arg(
-            path,
-            &format!("must be an integer from {min} to {max}, found {v}"),
-        ))
-    }
-}
 
 fn fonts_snapshot() -> FontStore {
     FONTS.read().map(|f| f.clone()).unwrap_or_default()
@@ -108,33 +54,6 @@ fn doc_bytes(doc: Either<Uint8Array, String>) -> Vec<u8> {
         Either::A(b) => b.to_vec(),
         Either::B(s) => s.into_bytes(),
     }
-}
-
-fn input_format(format: Option<&str>) -> Result<InputFormat> {
-    match format {
-        None | Some("json") => Ok(InputFormat::Json),
-        Some("msgpack") => Ok(InputFormat::MessagePack),
-        Some(other) => Err(invalid_arg(
-            "options.format",
-            &format!("unsupported format `{other}` (expected \"json\" or \"msgpack\")"),
-        )),
-    }
-}
-
-fn pdf_a_level(name: &str) -> Result<PdfALevel> {
-    PdfALevel::from_name(name).ok_or_else(|| {
-        let names: Vec<String> = PdfALevel::ALL
-            .iter()
-            .map(|l| format!("\"{}\"", l.as_str()))
-            .collect();
-        invalid_arg(
-            "options.pdfA",
-            &format!(
-                "unsupported PDF/A level `{name}` (expected true, false or one of {})",
-                names.join(", ")
-            ),
-        )
-    })
 }
 
 #[napi(object)]
@@ -185,41 +104,6 @@ pub struct PermissionOptions {
     pub document_assembly: Option<bool>,
 }
 
-fn encryption(o: EncryptionOptions) -> Result<Encryption> {
-    let mut e = Encryption::new();
-    e.user_password = o.user_password;
-    e.owner_password = o.owner_password;
-    if let Some(p) = o.permissions {
-        let mut perms = Permissions::new().with_printing(match p.printing.as_deref() {
-            None => None,
-            Some("lowResolution") => Some(Printing::LowResolution),
-            Some("highResolution") => Some(Printing::HighResolution),
-            Some(other) => {
-                return Err(invalid_arg(
-                    "options.encryption.permissions.printing",
-                    &format!(
-                        "unsupported printing `{other}` (expected \"lowResolution\" or \"highResolution\")"
-                    ),
-                ))
-            }
-        });
-        for (set, value) in [
-            (&mut perms.modifying, p.modifying),
-            (&mut perms.copying, p.copying),
-            (&mut perms.annotating, p.annotating),
-            (&mut perms.filling_forms, p.filling_forms),
-            (&mut perms.content_accessibility, p.content_accessibility),
-            (&mut perms.document_assembly, p.document_assembly),
-        ] {
-            if let Some(v) = value {
-                *set = v;
-            }
-        }
-        e = e.with_permissions(perms);
-    }
-    Ok(e)
-}
-
 #[napi(object)]
 pub struct ValidationError {
     pub code: String,
@@ -246,41 +130,52 @@ pub struct RenderJob {
     fonts: FontStore,
 }
 
+impl From<PermissionOptions> for inkoxide_binding::PermissionOptions {
+    fn from(p: PermissionOptions) -> Self {
+        Self {
+            printing: p.printing,
+            modifying: p.modifying,
+            copying: p.copying,
+            annotating: p.annotating,
+            filling_forms: p.filling_forms,
+            content_accessibility: p.content_accessibility,
+            document_assembly: p.document_assembly,
+        }
+    }
+}
+
 impl RenderJob {
     fn new(doc: Either<Uint8Array, String>, options: Option<RenderOptions>) -> Result<Self> {
         let mut images = ImageStore::new();
-        let mut core = inkoxide::RenderOptions::default()
-            .with_hyphenation(HYPHENATION.read().map(|h| h.clone()).unwrap_or_default());
-        let mut format = InputFormat::Json;
+        let mut shared = inkoxide_binding::Options::default();
         if let Some(o) = options {
-            format = input_format(o.format.as_deref())?;
-            if let Some(c) = o.compress {
-                core.compress = c;
-            }
-            if let Some(level) = o.compression_level {
-                core.compression_level = integer("options.compressionLevel", level, 0, 9)?;
-            }
-            core.creation_date = o.creation_date;
-            if let Some(t) = o.threads {
-                core.threads = Some(integer("options.threads", t, 1, MAX_THREADS)? as usize);
-            }
-            if let Some(s) = o.subset_fonts {
-                core.subset_fonts = s;
-            }
-            match o.pdf_a {
-                None => {}
-                Some(Either::A(a)) => core.pdf_a = a,
-                Some(Either::B(level)) => core = core.with_pdf_a_level(pdf_a_level(&level)?),
-            }
-            if let Some(e) = o.encryption {
-                core = core.with_encryption(encryption(e)?);
-            }
+            shared = inkoxide_binding::Options {
+                format: o.format,
+                compress: o.compress,
+                compression_level: o.compression_level,
+                creation_date: o.creation_date,
+                threads: o.threads,
+                subset_fonts: o.subset_fonts,
+                pdf_a: o.pdf_a.map(|p| match p {
+                    Either::A(on) => PdfA::On(on),
+                    Either::B(level) => PdfA::Level(level),
+                }),
+                encryption: o.encryption.map(|e| inkoxide_binding::EncryptionOptions {
+                    user_password: e.user_password,
+                    owner_password: e.owner_password,
+                    permissions: e.permissions.map(Into::into),
+                }),
+            };
             if let Some(map) = o.images {
                 for (id, bytes) in map {
                     images.insert(id, bytes.to_vec());
                 }
             }
         }
+        let hyphenation = HYPHENATION.read().map(|h| h.clone()).unwrap_or_default();
+        let (format, core) = shared
+            .into_core(hyphenation, MAX_THREADS)
+            .map_err(js_error)?;
         Ok(Self {
             doc: doc_bytes(doc),
             format,
@@ -300,7 +195,7 @@ impl RenderJob {
                 &self.images,
             )
         })?
-        .map_err(from_engine)
+        .map_err(js_error)
     }
 }
 
@@ -324,10 +219,10 @@ pub fn register_font(id: String, data: Uint8Array) -> Result<()> {
     let bytes = data.to_vec();
     let mut fonts = FONTS
         .write()
-        .map_err(|_| engine_error("INTERNAL", "", "font registry poisoned"))?;
+        .map_err(|_| js_error(Failure::internal("font registry poisoned")))?;
     // The panic is caught while the guard is still held, so it does not
     // poison the registry, and a font is only inserted once it has parsed.
-    catch_panic(|| fonts.register(id, bytes))?.map_err(from_engine)
+    catch_panic(|| fonts.register(id, bytes))?.map_err(js_error)
 }
 
 /// Removes a registered font; returns whether it existed.
@@ -343,8 +238,8 @@ pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, Stri
     let bytes = doc_bytes(data);
     let mut store = HYPHENATION
         .write()
-        .map_err(|_| engine_error("INTERNAL", "", "hyphenation registry poisoned"))?;
-    catch_panic(|| store.register(&lang, &bytes))?.map_err(from_engine)
+        .map_err(|_| js_error(Failure::internal("hyphenation registry poisoned")))?;
+    catch_panic(|| store.register(&lang, &bytes))?.map_err(js_error)
 }
 
 /// Removes the patterns registered for exactly `lang`; returns whether
@@ -363,7 +258,8 @@ pub fn validate(
     format: Option<String>,
     images: Option<HashMap<String, Uint8Array>>,
 ) -> Result<Vec<ValidationError>> {
-    let format = input_format(format.as_deref())?;
+    let format =
+        inkoxide_binding::input_format(format.as_deref(), "options.format").map_err(js_error)?;
     let bytes = doc_bytes(doc);
     let fonts = fonts_snapshot();
     let store = images.map(|images| {

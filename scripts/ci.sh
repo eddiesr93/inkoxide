@@ -55,6 +55,27 @@ else
   echo "node not installed; skipped"
 fi
 
+step "WebAssembly (packages/wasm)"
+# The engine without MessagePack, as the WebAssembly build has it.
+cargo test -p inkoxide --no-default-features --locked --test fixtures msgpack
+if ! rustup target list --installed | grep -qx wasm32-unknown-unknown; then
+  echo "the wasm32-unknown-unknown target is not installed; skipped (rustup target add wasm32-unknown-unknown)"
+elif ! command -v pnpm >/dev/null; then
+  echo "pnpm not installed; skipped"
+else
+  scripts/build-wasm.sh >/dev/null
+  node scripts/wasm-size.mjs
+  # Built above with the same engine: the native binding the parity check compares against.
+  log=$(mktemp)
+  if (cd packages/wasm && INKOXIDE_BINDING=wasm node --test --test-reporter=tap ../inkoxide/test/*.test.js) >"$log" 2>&1; then
+    grep -E '^# (pass|fail)' "$log"
+  else
+    cat "$log"
+    exit 1
+  fi
+  node scripts/wasm-parity.mjs
+fi
+
 step "TypeScript packages (typecheck, lint, tests)"
 if command -v pnpm >/dev/null; then
   pnpm install --frozen-lockfile --silent

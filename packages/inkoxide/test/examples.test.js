@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import * as ink from '../index.js';
+import ink from './binding.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 for (const id of ['Inter-Regular', 'Inter-Bold']) {
