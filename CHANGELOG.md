@@ -9,6 +9,10 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ## Unreleased
 
+- The `inkoxide` and `inkoxide-cli` crates have their crates.io metadata: a README each, the
+  licence, keywords and categories. The packages leave out the tests and benchmarks, which read
+  fixtures outside the crate.
+
 ## 0.9.1 - 2026-10-16
 
 `inkoxide`, `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and

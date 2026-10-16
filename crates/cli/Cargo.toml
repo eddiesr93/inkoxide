@@ -6,6 +6,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["pdf", "typesetting", "layout", "document", "cli"]
+categories = ["command-line-utilities", "text-processing"]
+include = ["src/**", "README.md", "LICENSE"]
 
 [[bin]]
 name = "inkoxide"
