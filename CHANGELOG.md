@@ -9,6 +9,11 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ## Unreleased
 
+## 0.9.1 - 2026-10-16
+
+`inkoxide`, `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and
+`@inkoxide/style` 0.9.1. Output is unchanged.
+
 ### Removed
 
 - `@inkoxide/render` no longer ships MIGRATING.md, and the benchmarks measure Inkoxide alone.
