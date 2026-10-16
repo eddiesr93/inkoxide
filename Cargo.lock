@@ -620,7 +620,7 @@ checksum = "65b27460c2c92b037f3f94c538ed9a3342f3fdf923606781629ccb35f82d042a"
 
 [[package]]
 name = "inkoxide"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "aes",
  "criterion",
@@ -653,14 +653,14 @@ dependencies = [
 
 [[package]]
 name = "inkoxide-binding"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "inkoxide",
 ]
 
 [[package]]
 name = "inkoxide-cli"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "clap",
  "inkoxide",
@@ -669,7 +669,7 @@ dependencies = [
 
 [[package]]
 name = "inkoxide-node"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "inkoxide",
  "inkoxide-binding",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "inkoxide-wasm"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "inkoxide",
  "inkoxide-binding",

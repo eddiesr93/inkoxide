@@ -9,6 +9,12 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ## Unreleased
 
+## 0.9.0 - 2026-10-16
+
+`inkoxide`, `@inkoxide/wasm` (new), `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind`
+and `@inkoxide/style` 0.9.0, and `@inkoxide/schema` 2.5.1. Rendering in the browser, with the
+engine as WebAssembly. Native output is unchanged.
+
 ### Added
 
 - Rendering in the browser. `@inkoxide/render/browser` renders the same templates with the

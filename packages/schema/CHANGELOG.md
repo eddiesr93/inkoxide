@@ -7,6 +7,10 @@ version 2.
 
 ## Unreleased
 
+## 2.5.1 - 2026-10-16
+
+Still document schema version 1.
+
 ### Documentation
 
 - **Descriptions:** `opacity` applies to each element, not to a group, and `0` leaves out the
