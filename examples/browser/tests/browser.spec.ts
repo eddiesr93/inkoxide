@@ -52,8 +52,11 @@ test('PdfDownloadLink downloads the PDF PdfViewer shows', async ({ page }) => {
   await open(page);
   const link = page.locator('#download');
   await expect(link).toHaveAttribute('href', /^blob:/);
+  await expect(link).toHaveAttribute('download', 'invoice.pdf');
   const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
-  expect(download.suggestedFilename()).toBe('invoice.pdf');
+  // Firefox under Playwright sometimes reports no name for a download of a blob: URL; the name
+  // is the link's `download` attribute, checked above.
+  expect(['invoice.pdf', '']).toContain(download.suggestedFilename());
   const file = readFileSync((await download.path()) ?? '');
   expect(createHash('sha256').update(file).digest('hex')).toBe(expected);
   await expect(page.locator('iframe#viewer')).toHaveAttribute('src', /^blob:/);
