@@ -149,9 +149,7 @@ pub(crate) fn sequences(text: &str) -> Vec<Sequence> {
 pub(crate) fn font(seq: &Sequence, primary: FontKey, fonts: &FontSet<'_>) -> FontKey {
     let has = |f: FontKey| fonts.get(f).glyph(seq.base).is_some();
     let color = |f: FontKey| fonts.get(f).has_color();
-    let fallback = |want: &dyn Fn(FontKey) -> bool| {
-        fonts.fallbacks.iter().copied().find(|&f| want(f) && has(f))
-    };
+    let fallback = |want: &dyn Fn(FontKey) -> bool| fonts.fallback(|f| want(f) && has(f));
     let first = if seq.emoji { fallback(&color) } else { None };
     first
         .or_else(|| has(primary).then_some(primary))

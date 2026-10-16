@@ -37,7 +37,8 @@ of the Node package, and two more:
 
 | Function | Meaning |
 |---|---|
-| `init(source?): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`. Every other function throws until it resolves. |
+| `init(source?, { hyphenation? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`. Every other function throws until it resolves. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`) |
+| `loadHyphenation(langs): Promise<void>` | Fetches the built-in hyphenation patterns of BCP-47 tags, for `renderSync` |
 | `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text). The memory stays with the instance. |
 
 How it differs from the Node package:
@@ -47,6 +48,11 @@ How it differs from the Node package:
   a worker, as `@inkoxide/render/browser` does.
 - **JSON only.** It is built without the `msgpack` feature: `format: 'msgpack'` is a
   `PARSE_ERROR`.
+- **Downloads on demand.** It is built without the `embedded-hyphenation` feature: `render`
+  fetches the patterns of a language from `hyphenation/<file>.bin` the first time a document
+  hyphenates text in it, and the fonts of the `lazyFonts` option (id → URL) a render needs.
+  `renderSync` cannot fetch: it fails with `NOT_LOADED` instead (load the patterns first with
+  `loadHyphenation`).
 - **A bug in the engine** (a panic in a dependency) ends the instance, since WebAssembly cannot
   unwind: the call fails with `INTERNAL`, and the next one runs in a new instance with the fonts
   and hyphenation patterns registered so far. The engine's own limits return their errors, as
@@ -68,7 +74,8 @@ How it differs from the Node package:
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A, at `pdf_a_level` (Node: `true` is PDF/A-2b). PDF/A forbids scripts, so text fields with a `format` keep their formatted text and value but not the form scripts that format what the user types |
 | `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '3b'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b or 3b (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
-| `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns |
+| `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
+| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `lazyFonts`) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
 | `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
@@ -199,8 +206,9 @@ patterns are chosen in this order:
 
 1. patterns registered for the tag, then for each less specific tag
    (`en-GB`, then `en`);
-2. hypher's built-in patterns for the language (about 50 languages,
-   English included);
+2. the built-in patterns for the language (48 languages, English
+   included: hypher's, in `crates/core/hyphenation`; `builtin_hyphenation_file`
+   names the file of a tag);
 3. none.
 
 Soft hyphens (U+00AD) in the text are always honoured.
@@ -218,7 +226,7 @@ every English tag without patterns of its own.
 Patterns are TeX files in the hyph-utf8 format: `\patterns{…}`, with
 an optional `\hyphenation{…}` exception list, in UTF-8. English is
 built in; to hyphenate it with another pattern set (or to add a
-language hypher lacks), register a file:
+language that is not built in), register a file:
 
 1. Download a pattern file from hyph-utf8, for example `hyph-en-us.tex` from
    `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`.
@@ -307,6 +315,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed, or a PDF/A-1b file would pass one of the limits of PDF/A-1 |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
+| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only, from `renderSync` | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again (`@inkoxide/wasm`'s `render` does) |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
 | `INVALID_ARGUMENT` | n/a (types are checked at compile time) | Node only | A JS argument has the wrong type or is out of range |
 

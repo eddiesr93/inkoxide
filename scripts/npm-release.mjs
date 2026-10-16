@@ -18,7 +18,7 @@
 // @inkoxide/schema and @inkoxide/wasm, skipping any name@version already on
 // the registry.
 
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 
 import { platforms } from './platforms.mjs';
@@ -128,6 +128,12 @@ function stageWasm(stageDir, binDir, version) {
   mkdirSync(dir, { recursive: true });
   for (const f of ['index.js', 'index.d.ts', 'README.md']) copyFileSync(join(src, f), join(dir, f));
   copyFileSync(join(binDir, 'inkoxide.wasm'), join(dir, 'inkoxide.wasm'));
+  // The built-in hyphenation patterns, fetched as documents need them.
+  const patterns = join(ROOT, 'crates', 'core', 'hyphenation');
+  mkdirSync(join(dir, 'hyphenation'));
+  for (const f of readdirSync(patterns).filter((f) => f.endsWith('.bin'))) {
+    copyFileSync(join(patterns, f), join(dir, 'hyphenation', f));
+  }
   copyFileSync(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'));
   // Private in the workspace until a release publishes it; its scripts and test dependencies stay.
   const { private: _, scripts: __, devDependencies: ___, ...published } = pkg;

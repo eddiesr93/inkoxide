@@ -1,11 +1,12 @@
 //! Hyphenation behind a trait, so pattern sources can change
 //! without touching line layout. Patterns registered at runtime
-//! ([`HyphenationStore`]) win over hypher's built-in ones.
+//! ([`HyphenationStore`]) win over the built-in ones (`builtin.rs`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use super::builtin;
 use crate::InkoxideError;
 
 /// Finds hyphenation points in a word.
@@ -16,38 +17,40 @@ pub(crate) trait Hyphenator: Send + Sync {
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize>;
 }
 
-/// `hypher`: embedded TeX patterns for ~50 languages.
-pub(crate) struct HypherHyphenator;
+/// The built-in patterns embedded in the engine (none without the
+/// `embedded-hyphenation` feature).
+pub(crate) struct BuiltinHyphenator;
 
-/// hypher's language for a normalised tag: its language subtag, when that
-/// is an ISO 639-1 code.
-fn lang_of(tag: &str) -> Option<hypher::Lang> {
-    let b = tag.split('-').next()?.as_bytes();
-    if b.len() != 2 {
-        return None;
-    }
-    hypher::Lang::from_iso([b[0], b[1]])
-}
-
-impl Hyphenator for HypherHyphenator {
+impl Hyphenator for BuiltinHyphenator {
     fn supports(&self, lang: &str) -> bool {
-        lang_of(lang).is_some()
+        builtin::language(lang).is_some_and(|l| embedded(l).is_some())
     }
 
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize> {
-        let Some(l) = lang_of(lang) else {
-            return Vec::new();
-        };
-        let mut offsets = Vec::new();
-        let mut pos = 0;
-        for syllable in hypher::hyphenate(word, l) {
-            pos += syllable.len();
-            if pos < word.len() {
-                offsets.push(pos);
-            }
+        match builtin::language(lang) {
+            Some(l) => embedded(l).map_or_else(Vec::new, |trie| builtin::hyphenate(trie, l, word)),
+            None => Vec::new(),
         }
-        offsets
     }
+}
+
+#[cfg(feature = "embedded-hyphenation")]
+fn embedded(l: &builtin::Language) -> Option<&'static [u8]> {
+    builtin::embedded(l.file)
+}
+
+#[cfg(not(feature = "embedded-hyphenation"))]
+fn embedded(_: &builtin::Language) -> Option<&'static [u8]> {
+    None
+}
+
+/// The file of the built-in patterns that text in `lang` (a BCP-47 tag) is
+/// hyphenated with when no patterns are registered for it: `de` for
+/// `de-AT`, `no` for `nb`. What a build without the `embedded-hyphenation`
+/// feature loads with [`HyphenationStore::register_builtin`].
+#[must_use]
+pub fn builtin_hyphenation_file(lang: &str) -> Option<&'static str> {
+    builtin::language(&paragraph_tag(lang)?).map(|l| l.file)
 }
 
 /// Never hyphenates.
@@ -92,8 +95,8 @@ pub(crate) fn paragraph_tag(tag: &str) -> Option<String> {
 /// `\hyphenation{…}` groups of exception words (`ta-ble`), in UTF-8. When a
 /// paragraph asks for hyphenation, the patterns registered for its tag are
 /// used first, then those of each less specific tag (`en-GB`, then `en`),
-/// then hypher's built-in patterns for the language; soft hyphens in the
-/// text are always honoured.
+/// then the built-in patterns for the language; soft hyphens in the text
+/// are always honoured.
 ///
 /// Cloning is cheap: parsed patterns are shared.
 ///
@@ -109,14 +112,20 @@ pub(crate) fn paragraph_tag(tag: &str) -> Option<String> {
 pub struct HyphenationStore {
     /// By normalised tag (`en`, `en-gb`).
     langs: HashMap<String, Arc<Patterns>>,
+    /// Built-in automata given at run time, by file
+    /// ([`HyphenationStore::register_builtin`]).
+    builtin: HashMap<&'static str, Arc<[u8]>>,
 }
 
 impl fmt::Debug for HyphenationStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut langs: Vec<&String> = self.langs.keys().collect();
         langs.sort();
+        let mut builtin: Vec<&&str> = self.builtin.keys().collect();
+        builtin.sort();
         f.debug_struct("HyphenationStore")
             .field("langs", &langs)
+            .field("builtin", &builtin)
             .finish()
     }
 }
@@ -149,6 +158,32 @@ impl HyphenationStore {
         let parsed = Patterns::parse(patterns)
             .map_err(|e| InkoxideError::Hyphenation(format!("{lang}: {e}")))?;
         self.langs.insert(tag, Arc::new(parsed));
+        Ok(())
+    }
+
+    /// Registers the built-in patterns of file `file`
+    /// ([`builtin_hyphenation_file`]), for a build without the
+    /// `embedded-hyphenation` feature, which has none of its own: the
+    /// engine's automaton for the language, as `@inkoxide/wasm` ships it in
+    /// `hyphenation/<file>.bin`. A build with the feature uses its own.
+    ///
+    /// # Errors
+    ///
+    /// [`InkoxideError::Hyphenation`] for a file that is not built in, or
+    /// bytes that are not an automaton.
+    pub fn register_builtin(&mut self, file: &str, automaton: &[u8]) -> Result<(), InkoxideError> {
+        let language = builtin::LANGUAGES
+            .iter()
+            .find(|l| l.file == file)
+            .ok_or_else(|| {
+                InkoxideError::Hyphenation(format!("`{file}` has no built-in patterns"))
+            })?;
+        if !builtin::is_automaton(automaton) {
+            return Err(InkoxideError::Hyphenation(format!(
+                "{file}: not hyphenation patterns of this engine"
+            )));
+        }
+        self.builtin.insert(language.file, Arc::from(automaton));
         Ok(())
     }
 
@@ -195,21 +230,55 @@ impl HyphenationStore {
     }
 }
 
-/// Registered patterns first, then hypher.
+/// Registered patterns first, then the built-in ones: embedded, or given
+/// to the store. A built-in language a build has no patterns for is noted
+/// in `missing`, and its text is not hyphenated: the render then fails with
+/// [`InkoxideError::NotLoaded`].
 pub(crate) struct ResolvedHyphenator<'a> {
     pub store: &'a HyphenationStore,
+    pub missing: Mutex<BTreeSet<&'static str>>,
+}
+
+impl<'a> ResolvedHyphenator<'a> {
+    pub fn new(store: &'a HyphenationStore) -> Self {
+        Self {
+            store,
+            missing: Mutex::default(),
+        }
+    }
+
+    /// The files of the built-in patterns the text needed and this build
+    /// does not have.
+    pub fn not_loaded(&self) -> Vec<String> {
+        self.missing
+            .lock()
+            .map(|m| m.iter().map(|f| (*f).to_string()).collect())
+            .unwrap_or_default()
+    }
 }
 
 impl Hyphenator for ResolvedHyphenator<'_> {
     fn supports(&self, lang: &str) -> bool {
-        self.store.lookup(lang).is_some() || HypherHyphenator.supports(lang)
+        self.store.lookup(lang).is_some() || builtin::language(lang).is_some()
     }
 
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize> {
-        match self.store.lookup(lang) {
-            Some(p) => p.hyphenate(word),
-            None => HypherHyphenator.hyphenate(word, lang),
+        if let Some(p) = self.store.lookup(lang) {
+            return p.hyphenate(word);
         }
+        let Some(l) = builtin::language(lang) else {
+            return Vec::new();
+        };
+        if let Some(trie) = embedded(l) {
+            return builtin::hyphenate(trie, l, word);
+        }
+        if let Some(trie) = self.store.builtin.get(l.file) {
+            return builtin::hyphenate(trie, l, word);
+        }
+        if let Ok(mut missing) = self.missing.lock() {
+            missing.insert(l.file);
+        }
+        Vec::new()
     }
 }
 
@@ -477,18 +546,18 @@ mod tests {
         assert_eq!(paragraph_tag("EN_us.UTF-8").as_deref(), Some("en"));
         assert_eq!(paragraph_tag("english"), None);
         // hypher goes by the language subtag.
-        assert!(HypherHyphenator.supports("de-at"));
-        assert!(!HypherHyphenator.supports("deu"));
+        assert!(BuiltinHyphenator.supports("de-at"));
+        assert!(!BuiltinHyphenator.supports("deu"));
     }
 
     #[test]
     fn registered_patterns_come_first() {
         let mut store = HyphenationStore::new();
-        let h = ResolvedHyphenator { store: &store };
+        let h = ResolvedHyphenator::new(&store);
         // Built in (hypher), and none for Japanese.
         assert_eq!(
             h.hyphenate("documentation", "en"),
-            HypherHyphenator.hyphenate("documentation", "en")
+            BuiltinHyphenator.hyphenate("documentation", "en")
         );
         assert!(!h.supports("ja"));
 
@@ -497,7 +566,7 @@ mod tests {
             .register("EN", br"\hyphenation{ documentati-on }")
             .unwrap();
         assert!(store.contains("ja-JP") && store.contains("en-GB"));
-        let h = ResolvedHyphenator { store: &store };
+        let h = ResolvedHyphenator::new(&store);
         assert!(h.supports("ja"));
         assert_eq!(split("banana", &h.hyphenate("banana", "ja")), "ba-na-na");
         assert_eq!(
@@ -518,14 +587,14 @@ mod tests {
             .register("en_us", br"\hyphenation{ co-lour }")
             .unwrap();
         assert_eq!(store.len(), 2);
-        let h = ResolvedHyphenator { store: &store };
+        let h = ResolvedHyphenator::new(&store);
         assert_eq!(split("colour", &h.hyphenate("colour", "en-gb")), "colo-ur");
         assert_eq!(split("colour", &h.hyphenate("colour", "en-us")), "co-lour");
         // Neither serves the bare language or another region: hypher does.
         assert!(!store.contains("en") && !store.contains("en-AU"));
         assert_eq!(
             h.hyphenate("colour", "en-au"),
-            HypherHyphenator.hyphenate("colour", "en")
+            BuiltinHyphenator.hyphenate("colour", "en")
         );
         // Unregistering one region keeps the other.
         assert!(store.unregister("EN-gb"));
@@ -536,9 +605,9 @@ mod tests {
     #[test]
     fn three_letter_languages() {
         let mut store = HyphenationStore::new();
-        assert!(!ResolvedHyphenator { store: &store }.supports("haw"));
+        assert!(!ResolvedHyphenator::new(&store).supports("haw"));
         store.register("haw", br"\patterns{ 1k 1l 1n }").unwrap();
-        let h = ResolvedHyphenator { store: &store };
+        let h = ResolvedHyphenator::new(&store);
         assert!(h.supports("haw") && h.supports("haw-us"));
         assert_eq!(
             split("hanakala", &h.hyphenate("hanakala", "haw")),
@@ -555,7 +624,7 @@ mod tests {
         store
             .register("de-CH", br"\hyphenation{ str-asse }")
             .unwrap();
-        let h = ResolvedHyphenator { store: &store };
+        let h = ResolvedHyphenator::new(&store);
         let of = |lang| split("strasse", &h.hyphenate("strasse", lang));
         assert_eq!(of("de"), "stra-sse");
         assert_eq!(of("de-at"), "stra-sse");

@@ -10,12 +10,27 @@
  */
 export type WasmSource = URL | string | Response | PromiseLike<Response> | BufferSource | WebAssembly.Module;
 
+export interface InitOptions {
+  /**
+   * The folder of the built-in hyphenation patterns (`<file>.bin`), fetched as documents need
+   * them. Default: the package's `hyphenation/`, which bundlers copy.
+   */
+  hyphenation?: string | URL;
+}
+
 /**
  * Compiles and instantiates the engine. Every other function throws until
  * the promise resolves. Later calls return the same promise and ignore
- * their `source`.
+ * their arguments.
  */
-export function init(source?: WasmSource): Promise<void>;
+export function init(source?: WasmSource, options?: InitOptions): Promise<void>;
+
+/**
+ * Fetches the built-in hyphenation patterns for `langs` (BCP-47 tags) that are not loaded,
+ * for `renderSync`; `render` fetches those a document needs itself. The module does not embed
+ * them: each language is a download of its own.
+ */
+export function loadHyphenation(langs: string[]): Promise<void>;
 
 /**
  * Empties the caches renders share (decoded images, font subsets, SVG laid
@@ -64,6 +79,7 @@ export type ErrorCode =
   | 'PDF_ERROR'
   | 'HYPHENATION_ERROR'
   | 'INVALID_ARGUMENT'
+  | 'NOT_LOADED'
   | 'INTERNAL';
 
 /** A PDF/A part and conformance level (mirrors Rust `PdfALevel`). */
@@ -110,6 +126,13 @@ export interface RenderOptions {
    * password in the message.
    */
   encryption?: EncryptionOptions;
+  /**
+   * Fonts the document declares that are fetched only if the render needs them, by id: the URL
+   * of each. A render that does not draw with one, or try it for a character (a fallback),
+   * renders as if it were registered; `render` fetches and registers those it needs, and
+   * `renderSync` fails with `NOT_LOADED`.
+   */
+  lazyFonts?: Record<string, string | URL>;
 }
 
 /** Mirrors Rust `Encryption`. */
@@ -194,11 +217,15 @@ export function validate(
   images?: Record<string, Uint8Array>,
 ): ValidationError[];
 /**
- * Renders to PDF. The promise is for the contract of the `inkoxide` package: the render runs on
- * the calling thread, so in a page call it from a worker.
+ * Renders to PDF, after fetching what the document needs: built-in hyphenation patterns and its
+ * `lazyFonts`. The render itself runs on the calling thread, so in a page call it from a worker.
  */
 export function render(doc: Uint8Array | string, options?: RenderOptions): Promise<Uint8Array>;
-/** Renders on the calling thread. */
+/**
+ * Renders on the calling thread, with what is loaded: a document that needs built-in
+ * hyphenation patterns not loaded (`loadHyphenation`) or one of its `lazyFonts` fails with
+ * `NOT_LOADED`.
+ */
 export function renderSync(doc: Uint8Array | string, options?: RenderOptions): Uint8Array;
 export interface Version {
   /** Engine version, e.g. `"0.1.0"`. */

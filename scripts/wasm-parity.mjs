@@ -24,6 +24,12 @@ const LIMIT_SECONDS = 20;
 const CREATION_DATE = '2026-10-08T00:00:00Z';
 
 await wasm.init();
+// renderSync cannot fetch the built-in hyphenation patterns: all of them, first.
+await wasm.loadHyphenation(
+  readdirSync(join(ROOT, 'crates/core/hyphenation'))
+    .filter((f) => f.endsWith('.bin'))
+    .map((f) => f.slice(0, -'.bin'.length)),
+);
 const bindings = { native, wasm };
 const failures = [];
 const fail = (what) => failures.push(what);

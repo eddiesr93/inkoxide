@@ -30,22 +30,23 @@ from localhost. Median of 20 renders after a warm-up (10 for the report); react-
 
 | Browser | Document | Pages | Inkoxide | react-pdf | Longest main-thread task, Inkoxide / react-pdf |
 |---|---|---:|---:|---:|---:|
-| Chromium 153 | Invoice | 1 | 2.4 ms | 16.2 ms | none over 50 ms / none over 50 ms |
-| Chromium 153 | Report | 43 | 56 ms | 1,913 ms | none over 50 ms / 1,956 ms |
+| Chromium 153 | Invoice | 1 | 2.3 ms | 16.0 ms | none over 50 ms / none over 50 ms |
+| Chromium 153 | Report | 43 | 56 ms | 1,901 ms | none over 50 ms / 1,930 ms |
 | WebKit 26.6 | Invoice | 1 | 3.0 ms | 18.0 ms | not reported |
-| WebKit 26.6 | Report | 43 | 47 ms | 1,931 ms | not reported |
+| WebKit 26.6 | Report | 43 | 47 ms | 1,909 ms | not reported |
 
 - **Main thread.** react-pdf lays the report out on the page's main thread, which does not
   respond for about two seconds. Inkoxide renders in its worker: what stays on the main thread
   (React, building the document tree) takes no task over 50 ms.
 - **First render.** From the start of the page's navigation to the first invoice, the download
-  of the library, its engine and its fonts included, Inkoxide takes 129 ms against 152 ms in
-  Chromium, and 125 ms against 152 ms in WebKit (median of 3 page loads). From localhost: on a
+  of the library, its engine and its fonts included, Inkoxide takes 121 ms against 146 ms in
+  Chromium, and 116 ms against 155 ms in WebKit (median of 3 page loads). From localhost: on a
   real network, the download dominates.
-- **Download, with brotli.** Inkoxide 2.76 MB: 1.97 MB of WebAssembly, 0.23 MB of JavaScript and
-  0.56 MB of fonts (Inter and Noto Sans, the fallback of the default font stack). react-pdf
-  0.69 MB: 0.37 MB of JavaScript and 0.32 MB of fonts. The module is downloaded once, and
-  cached.
+- **Download, with brotli.** Inkoxide 1.76 MB: 1.18 MB of WebAssembly, 0.26 MB of JavaScript and
+  0.32 MB of fonts (Inter regular and bold). react-pdf 0.69 MB: 0.37 MB of JavaScript and
+  0.32 MB of fonts. The module is downloaded once, and cached. Hyphenation patterns (1 to
+  350 KB a language) and Noto Sans, the fallback font, are downloaded only by a document that
+  needs them; these documents need neither.
 - Firefox was not measured: the Playwright build of Firefox does not start on this machine.
 
 The documents and the harnesses are in [`benchmarks/`](../benchmarks):

@@ -9,7 +9,12 @@
 //!   result: [`ink_result_ptr`] and [`ink_result_len`] locate it until the
 //!   next call, and [`ink_result_free`] drops it. It returns 0 when the
 //!   result is its value, and 1 when the result is an error, as
-//!   `{ code, path, message }` JSON.
+//!   `{ code, path, message }` JSON. A render returns 2 when it needs what
+//!   it has not been given: fonts of its `deferredFonts`, or built-in
+//!   hyphenation patterns, which the module does not embed, to keep it
+//!   small. The result is then `{ fonts, hyphenation }` JSON: JavaScript
+//!   registers them ([`ink_register_font`],
+//!   [`ink_register_builtin_hyphenation`]) and renders again.
 //! - **Options** come as JSON (`options.rs`), images as one buffer
 //!   (`images.rs`).
 //!
@@ -25,7 +30,7 @@ mod options;
 
 use std::cell::RefCell;
 
-use inkoxide::{FontStore, HyphenationStore, InputFormat};
+use inkoxide::{FontStore, HyphenationStore, InkoxideError, InputFormat};
 use inkoxide_binding::Failure;
 
 /// Threads a render may ask for: WebAssembly here has none to start.
@@ -90,17 +95,49 @@ pub fn validate(doc: &[u8], format: &[u8], images: Option<&[u8]>) -> Result<Stri
     Ok(inkoxide_binding::validation_json(&errors))
 }
 
+/// Why a render did not give a PDF.
+#[derive(Debug)]
+pub enum NotRendered {
+    Failed(Failure),
+    /// What it needs and has not been given.
+    Needs(inkoxide::NotLoaded),
+}
+
+impl From<Failure> for NotRendered {
+    fn from(f: Failure) -> Self {
+        Self::Failed(f)
+    }
+}
+
+pub fn register_builtin_hyphenation(file: &[u8], automaton: &[u8]) -> Result<(), Failure> {
+    let file = text(file, "")?;
+    HYPHENATION.with(|h| h.borrow_mut().register_builtin(&file, automaton))?;
+    Ok(())
+}
+
+/// The file of the built-in patterns for text in `lang`, or empty.
+pub fn hyphenation_file(lang: &[u8]) -> String {
+    std::str::from_utf8(lang)
+        .ok()
+        .and_then(inkoxide::builtin_hyphenation_file)
+        .unwrap_or_default()
+        .to_string()
+}
+
 /// The PDF of `doc`, with `options` as JSON and `images` as one buffer.
-pub fn render(doc: &[u8], options: &[u8], images: &[u8]) -> Result<Vec<u8>, Failure> {
+pub fn render(doc: &[u8], options: &[u8], images: &[u8]) -> Result<Vec<u8>, NotRendered> {
     let options = options::parse(options)?;
     let images = images::parse(images)?;
     let hyphenation = HYPHENATION.with(|h| h.borrow().clone());
     let (format, core) = options.into_core(hyphenation, MAX_THREADS)?;
     if format == InputFormat::MessagePack {
-        return Err(Failure::new("PARSE_ERROR", "", JSON_ONLY));
+        return Err(Failure::new("PARSE_ERROR", "", JSON_ONLY).into());
     }
-    let pdf = FONTS.with(|f| inkoxide::render(doc, format, &core, &f.borrow(), &images))?;
-    Ok(pdf)
+    match FONTS.with(|f| inkoxide::render(doc, format, &core, &f.borrow(), &images)) {
+        Ok(pdf) => Ok(pdf),
+        Err(InkoxideError::NotLoaded(missing)) => Err(NotRendered::Needs(missing)),
+        Err(e) => Err(NotRendered::Failed(e.into())),
+    }
 }
 
 /// `{ engine, schema, gitSha }` as JSON.
@@ -276,7 +313,53 @@ pub unsafe extern "C" fn ink_render(
             take(images, images_len),
         )
     };
-    finish(render(&doc, &options, &images))
+    match render(&doc, &options, &images) {
+        Ok(pdf) => finish(Ok(pdf)),
+        Err(NotRendered::Failed(f)) => finish(Err(f)),
+        Err(NotRendered::Needs(missing)) => {
+            let list = |ids: &[String]| {
+                let quoted: Vec<String> = ids
+                    .iter()
+                    .map(|id| inkoxide_binding::json_string(id))
+                    .collect();
+                format!("[{}]", quoted.join(","))
+            };
+            let json = format!(
+                "{{\"fonts\":{},\"hyphenation\":{}}}",
+                list(&missing.fonts),
+                list(&missing.hyphenation)
+            );
+            finish(Ok(json.into_bytes()));
+            2
+        }
+    }
+}
+
+/// [`register_builtin_hyphenation`]; the result is empty or an error.
+///
+/// # Safety
+///
+/// Each pointer and length is as [`take`] says.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ink_register_builtin_hyphenation(
+    file: *mut u8,
+    file_len: usize,
+    data: *mut u8,
+    data_len: usize,
+) -> u32 {
+    let (file, data) = unsafe { (take(file, file_len), take(data, data_len)) };
+    finish(register_builtin_hyphenation(&file, &data).map(|()| Vec::new()))
+}
+
+/// [`hyphenation_file`] as the result.
+///
+/// # Safety
+///
+/// As [`take`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ink_hyphenation_file(lang: *mut u8, lang_len: usize) -> u32 {
+    let lang = unsafe { take(lang, lang_len) };
+    finish(Ok(hyphenation_file(&lang).into_bytes()))
 }
 
 /// [`version`] as the result.

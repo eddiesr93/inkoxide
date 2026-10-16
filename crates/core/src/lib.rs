@@ -34,11 +34,11 @@ mod text;
 mod validate;
 
 pub use encryption::{Encryption, Permissions, Printing};
-pub use error::{InkoxideError, ValidationCode, ValidationError};
+pub use error::{InkoxideError, NotLoaded, ValidationCode, ValidationError};
 pub use fonts::FontStore;
 pub use images::ImageStore;
 pub use schema::SCHEMA_VERSION;
-pub use text::HyphenationStore;
+pub use text::{builtin_hyphenation_file, HyphenationStore};
 
 use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -150,6 +150,13 @@ pub struct RenderOptions {
     /// Encrypt the PDF with passwords and permissions (default `None`).
     /// Not with [`pdf_a`](Self::pdf_a), which forbids encryption.
     pub encryption: Option<Encryption>,
+    /// Ids of fonts the document declares that the caller gives only when
+    /// a render needs them (default: none), such as fallback fonts that a
+    /// browser would otherwise download for every document. One that is
+    /// not registered may be: a render that draws with it, or might (it is
+    /// tried for a character), fails with [`InkoxideError::NotLoaded`]
+    /// naming it; one that does not renders as if it were registered.
+    pub deferred_fonts: Vec<String>,
 }
 
 impl Default for RenderOptions {
@@ -164,6 +171,7 @@ impl Default for RenderOptions {
             pdf_a_level: PdfALevel::default(),
             hyphenation: HyphenationStore::new(),
             encryption: None,
+            deferred_fonts: Vec::new(),
         }
     }
 }
@@ -218,6 +226,13 @@ impl RenderOptions {
     pub fn with_pdf_a_level(mut self, level: PdfALevel) -> Self {
         self.pdf_a = true;
         self.pdf_a_level = level;
+        self
+    }
+
+    /// Sets [`deferred_fonts`](Self::deferred_fonts).
+    #[must_use]
+    pub fn with_deferred_fonts(mut self, ids: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.deferred_fonts = ids.into_iter().map(Into::into).collect();
         self
     }
 
@@ -344,9 +359,16 @@ fn render_inner(
 ) -> Result<Vec<u8>, InkoxideError> {
     let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
+    // A deferred font may be missing: it stands in until a render needs it.
+    let deferred = |e: &ValidationError| {
+        e.code == ValidationCode::FontNotRegistered
+            && document.fonts.iter().enumerate().any(|(i, f)| {
+                e.path == format!("fonts[{i}].id") && options.deferred_fonts.contains(&f.id)
+            })
+    };
     if let Some(first) = validate::check(&document, fonts, Some(images), profile)
         .into_iter()
-        .next()
+        .find(|e| !deferred(e))
     {
         return Err(first.into());
     }
@@ -379,10 +401,8 @@ fn render_inner(
         Some(e) => Some(e.params()?),
     };
 
-    let font_set = FontSet::load(&document, fonts)?;
-    let hyphenator = text::ResolvedHyphenator {
-        store: &options.hyphenation,
-    };
+    let font_set = FontSet::load_with(&document, fonts, &options.deferred_fonts)?;
+    let hyphenator = text::ResolvedHyphenator::new(&options.hyphenation);
     let mut image_set =
         images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
     image_set.load_emoji(&document.emoji_images, images, &images::ImageCrateDecoder)?;
@@ -415,6 +435,16 @@ fn render_inner(
     // Text left unshaped may have failed layout another way.
     if let Some(e) = text.shaping_error() {
         return Err(e);
+    }
+    // Text that needed a deferred font, or built-in hyphenation patterns
+    // this build was not given, was laid out without them: render again
+    // once they are.
+    let not_loaded = NotLoaded {
+        fonts: font_set.not_loaded(),
+        hyphenation: hyphenator.not_loaded(),
+    };
+    if not_loaded != NotLoaded::default() {
+        return Err(InkoxideError::NotLoaded(not_loaded));
     }
     let (pages, marks, colors) = laid_out?;
     let unicode: UnicodeMap = text.into_unicode();

@@ -286,12 +286,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hypher"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45f2b4f6b5da34d400d4c112eadcc14512cc5d04307a8eee182586d9bebd7ce6"
-
-[[package]]
 name = "image"
 version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -332,7 +326,6 @@ dependencies = [
  "aes",
  "data-url",
  "flate2",
- "hypher",
  "image",
  "pdf-writer",
  "rayon",

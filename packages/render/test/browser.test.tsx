@@ -91,6 +91,27 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
     );
     expect(browser.engineStatus()?.fonts).toContain('Inter-Regular');
     expect(browser.engineStatus()?.fonts).not.toContain('RobotoMono-Regular');
+    // Noto Sans, the fallback, only when a character needs it.
+    expect(browser.engineStatus()?.fonts).not.toContain('NotoSans-Regular');
+  });
+
+  it('fetches the fallback font when a character needs it, for the bytes Node renders', async () => {
+    // Inter has no U+01C4 (Ǆ); Noto Sans, the fallback, has.
+    const node = await load<typeof import('../src/index.ts')>('../src/index.ts');
+    const doc = (ink: Pick<Entry, 'Document' | 'Page' | 'Text'>) => (
+      <ink.Document>
+        <ink.Page>
+          <ink.Text>{'Hello \u01C4'}</ink.Text>
+        </ink.Page>
+      </ink.Document>
+    );
+    const expected = await node.renderToBuffer(doc(node), OPTS);
+    const browser = await load<Entry>('../src/browser.ts');
+    await browser.init({ worker: false });
+    const pdf = await browser.renderToBuffer(doc(browser), OPTS);
+    expect(Buffer.from(pdf).equals(Buffer.from(expected))).toBe(true);
+    // It drew with Noto Sans: the font is in the PDF.
+    expect(Buffer.from(pdf).toString('latin1')).toMatch(/NotoSans-Regular/);
   });
 
   it('refuses what needs a file system', async () => {

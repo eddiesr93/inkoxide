@@ -115,6 +115,34 @@ impl fmt::Display for ValidationError {
     }
 }
 
+/// What a render needs and does not have yet ([`InkoxideError::NotLoaded`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct NotLoaded {
+    /// Font ids of [`crate::RenderOptions::deferred_fonts`] the render draws
+    /// with, or might: register them with the [`crate::FontStore`].
+    pub fonts: Vec<String>,
+    /// Files of built-in hyphenation patterns ([`crate::builtin_hyphenation_file`]):
+    /// register them with [`crate::HyphenationStore::register_builtin`].
+    pub hyphenation: Vec<String>,
+}
+
+impl std::fmt::Display for NotLoaded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = Vec::new();
+        if !self.fonts.is_empty() {
+            parts.push(format!("the fonts {}", self.fonts.join(", ")));
+        }
+        if !self.hyphenation.is_empty() {
+            parts.push(format!(
+                "the built-in hyphenation patterns {}",
+                self.hyphenation.join(", ")
+            ));
+        }
+        write!(f, "not loaded: {}", parts.join(" and "))
+    }
+}
+
 /// Why a render failed.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -138,6 +166,12 @@ pub enum InkoxideError {
     /// Hyphenation patterns could not be parsed.
     #[error("hyphenation error: {0}")]
     Hyphenation(String),
+    /// The render needs what the caller said it would give later: fonts
+    /// in [`crate::RenderOptions::deferred_fonts`], or built-in hyphenation
+    /// patterns a build without the `embedded-hyphenation` feature has not
+    /// been given. Render again once they are registered.
+    #[error("{0}")]
+    NotLoaded(NotLoaded),
     /// A bug or resource failure inside the engine (e.g. the worker pool
     /// could not be built).
     #[error("internal error: {0}")]
@@ -155,6 +189,7 @@ impl InkoxideError {
             Self::Layout(_) => "LAYOUT_ERROR",
             Self::Pdf(_) => "PDF_ERROR",
             Self::Hyphenation(_) => "HYPHENATION_ERROR",
+            Self::NotLoaded(_) => "NOT_LOADED",
             Self::Internal(_) => "INTERNAL",
         }
     }

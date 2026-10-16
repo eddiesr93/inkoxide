@@ -17,14 +17,16 @@
       "default": "./index.js"
     },
     "./inkoxide.wasm": "./inkoxide.wasm",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./hyphenation/*": "./hyphenation/*"
   },
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
     "index.js",
     "index.d.ts",
-    "inkoxide.wasm"
+    "inkoxide.wasm",
+    "hyphenation"
   ],
   "scripts": {
     "build": "../../scripts/build-wasm.sh",

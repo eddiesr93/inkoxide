@@ -165,6 +165,7 @@ impl RenderJob {
                     owner_password: e.owner_password,
                     permissions: e.permissions.map(Into::into),
                 }),
+                deferred_fonts: Vec::new(),
             };
             if let Some(map) = o.images {
                 for (id, bytes) in map {
