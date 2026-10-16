@@ -5,7 +5,8 @@
 //   relative, and in the file identifier, compared with their streams decompressed; a listed
 //   one that no longer differs fails too;
 // - the fuzz seeds (the fixture fonts, malformed and limit fonts included, and the fixture
-//   images) register and render with the same outcome;
+//   images) register with the same outcome, and those that register render text with the same
+//   outcome and bytes;
 // - documents at the engine's limits (from crates/core/tests/limits.rs) fail with the same code
 //   and message, or render the same, in at most LIMIT_SECONDS.
 // Needs both builds: scripts/build-node.sh and scripts/build-wasm.sh.
@@ -107,14 +108,34 @@ function closeEnough(a, b) {
 for (const f of files('fixtures/fonts', ['.ttf', '.otf'])) {
   for (const b of Object.values(bindings)) b.registerFont(stem(f), read('fixtures/fonts', f));
 }
+const seeds = [];
 for (const dir of ['fixtures/fonts/woff', 'fixtures/fonts/malformed', 'fixtures/fonts/limits']) {
   for (const f of files(dir, ['.ttf', '.otf', '.woff', '.woff2'])) {
     const bytes = read(dir, f);
-    agree(
-      `register ${dir}/${f}`,
-      both((b) => b.registerFont(`seed-${f}`, bytes)),
-    );
+    const r = both((b) => b.registerFont(`seed-${f}`, bytes));
+    if (agree(`register ${dir}/${f}`, r) && r.native.ok) seeds.push(`${dir}/${f}`);
   }
+}
+// Each seed that registers, rendering text: letters, digits, a ligature, accents, Arabic, an
+// emoji and a hyphen, which reach its cmap, shaping, outlines and subsetting.
+for (const seed of seeds) {
+  const id = `seed-${seed.slice(seed.lastIndexOf('/') + 1)}`;
+  const doc = JSON.stringify({
+    version: 1,
+    fonts: [{ id, family: 'Seed' }],
+    pages: [
+      {
+        size: { width: 300, height: 200 },
+        children: [
+          { type: 'text', runs: [{ text: 'Seed 0123 office café ﬁ مرحبا 😀 co-op', font: id, size: 12 }] },
+        ],
+      },
+    ],
+  });
+  agree(
+    `render ${seed}`,
+    both((b) => b.renderSync(doc, { creationDate: CREATION_DATE })),
+  );
 }
 
 const allowed = JSON.parse(read('fixtures/wasm-parity.json'));
@@ -276,7 +297,10 @@ for (const [what, [doc, opts = {}]] of Object.entries(limits)) {
 
 const renders = files('fixtures/docs', ['.json']).length + Object.keys(images).length;
 const differ = allowed.docs.length + allowed.images.length;
-console.log(`${identical} of ${renders} fixture renders identical, ${differ} allowed to differ in numbers`);
+console.log(
+  `${identical} of ${renders} fixture renders identical, ${differ} allowed to differ in numbers; ` +
+    `${seeds.length} seed fonts rendered`,
+);
 if (failures.length) {
   console.error(failures.map((f) => `wasm-parity: ${f}`).join('\n'));
   process.exit(1);

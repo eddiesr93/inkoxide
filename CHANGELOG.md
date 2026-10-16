@@ -13,8 +13,9 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 - Rendering in the browser. `@inkoxide/render/browser` renders the same templates with the
   engine as WebAssembly, in a Web Worker, to the same PDF bytes as Node (but for the last digits
-  of SVG marker angles): `renderToBuffer` and `renderToBlob`, whose `signal` stops a render,
-  `generate`, and the React helpers `usePdf`, `<PdfDownloadLink>` and `<PdfViewer>`. It needs no
+  of SVG marker angles): `renderToBuffer` and `renderToBlob`, whose `signal` or `timeoutMs`
+  stops a render, `generate`, `clearCaches`, and the React helpers `usePdf`, `<PdfDownloadLink>`
+  and `<PdfViewer>`. It needs no
   cross-origin isolation, and a Content Security Policy needs only `'wasm-unsafe-eval'`. The
   engine is about 1.2 MB to download with brotli; a bundled font downloads when a document first
   draws with it (Noto Sans, the fallback, only for a character Inter lacks), and a language's
@@ -22,7 +23,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   browser".
 - `@inkoxide/wasm`, the engine as WebAssembly, with the functions of `inkoxide`, and `init`,
   `clearCaches` and `loadHyphenation`; its `render` fetches the hyphenation patterns and the
-  `lazyFonts` a document needs. It is released with the other packages, at their version.
+  `deferredFonts` a document needs. It is released with the other packages, at their version.
 - `@inkoxide/tailwind` has a browser entry, chosen through the `browser` export condition, with
   Tailwind's theme bundled.
 - Rust: `inkoxide::clear_caches()`; the cargo features `msgpack`, for

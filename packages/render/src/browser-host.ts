@@ -8,6 +8,7 @@ import * as wasm from '@inkoxide/wasm';
 import type { WasmSource } from '@inkoxide/wasm';
 
 import { type EngineHost, type EngineIssue, type EngineVersion, setEngineHost } from './host.ts';
+import { nodeProcess, onPage } from './runtime.ts';
 import type { Op, Request, Response } from './worker.ts';
 
 export interface BrowserOptions {
@@ -15,7 +16,9 @@ export interface BrowserOptions {
   wasm?: WasmSource;
   /**
    * The folder of the bundled fonts and hyphenation patterns (`fonts/`, `hyphenation/`), to serve
-   * them from elsewhere. Default: the files of this package, which bundlers copy.
+   * them from elsewhere: `fonts/` and `hyphenation/` from this package's `assets/`, and the
+   * engine's built-in patterns (`@inkoxide/wasm`'s `hyphenation/*.bin`) in `hyphenation/` too.
+   * Default: the files of the packages, which bundlers copy.
    */
   assets?: string | URL;
   /** Render in a Web Worker. Default `true` where there is `Worker`. */
@@ -86,7 +89,7 @@ const direct: Engine = {
  */
 async function forWorker(source: WasmSource): Promise<unknown> {
   if (source instanceof URL) return source.href;
-  if (typeof source === 'string') return new URL(source, globalThis.location?.href).href;
+  if (typeof source === 'string') return onPage(source).href;
   if (source instanceof WebAssembly.Module || ArrayBuffer.isView(source) || source instanceof ArrayBuffer) {
     return source;
   }
@@ -185,9 +188,17 @@ function current(): Engine {
   return engine;
 }
 
+/**
+ * Empties the engine's caches (decoded images, font subsets, SVG converted with its text), when
+ * it has started. Its memory stays with the engine, for the renders after.
+ */
+export async function clearCaches(): Promise<void> {
+  await engine?.call('clearCaches', []);
+}
+
 /** The URL of a bundled asset. */
 function assetUrl(path: string): URL | undefined {
-  if (options.assets !== undefined) return new URL(path, new URL(options.assets, globalThis.location?.href));
+  if (options.assets !== undefined) return new URL(path, onPage(options.assets));
   return BUNDLED[path]?.();
 }
 
@@ -196,8 +207,7 @@ async function readUrl(url: URL): Promise<Uint8Array | undefined> {
   try {
     if (url.protocol === 'file:') {
       type Fs = { readFile(url: URL): Promise<Uint8Array> };
-      const process = (globalThis as { process?: { getBuiltinModule?(id: string): unknown } }).process;
-      const fs = process?.getBuiltinModule?.('node:fs/promises') as Fs | undefined;
+      const fs = nodeProcess()?.getBuiltinModule?.('node:fs/promises') as Fs | undefined;
       return await fs?.readFile(url);
     }
     const res = await fetch(url);
@@ -213,7 +223,11 @@ const browserHost: EngineHost = {
     const inWorker = options.worker ?? typeof Worker !== 'undefined';
     engine = inWorker ? new WorkerEngine() : direct;
     const { wasm: source } = options;
-    const args = source === undefined ? [] : [inWorker ? await forWorker(source) : source];
+    const args: unknown[] = source === undefined ? [] : [inWorker ? await forWorker(source) : source];
+    // The engine's built-in hyphenation patterns are served from `assets` too, when it is set.
+    if (options.assets !== undefined) {
+      args[1] = { hyphenation: assetUrl('hyphenation/')?.href };
+    }
     await engine.call('init', args);
     engineVersion = (await engine.call('version', [])) as EngineVersion;
   },
@@ -225,16 +239,16 @@ const browserHost: EngineHost = {
   registerHyphenationPatterns: async (lang, bytes) =>
     void (await current().call('registerHyphenationPatterns', [lang, bytes])),
   validate: async (doc, images) => (await current().call('validate', [doc, 'json', images])) as EngineIssue[],
-  render: async (doc, options, signal, lazyFonts = {}) => {
+  render: async (doc, options, signal, deferredFonts = {}) => {
     // As URLs, which the engine fetches only if the document needs them.
     const urls = Object.fromEntries(
-      Object.entries(lazyFonts).flatMap(([id, path]) => {
+      Object.entries(deferredFonts).flatMap(([id, path]) => {
         const url = assetUrl(path);
         return url ? [[id, url.href]] : [];
       }),
     );
-    const withLazy = Object.keys(urls).length > 0 ? { ...options, lazyFonts: urls } : options;
-    return (await current().call('render', [doc, withLazy], signal)) as Uint8Array;
+    const withDeferred = Object.keys(urls).length > 0 ? { ...options, deferredFonts: urls } : options;
+    return (await current().call('render', [doc, withDeferred], signal)) as Uint8Array;
   },
   isEngineError: (e): e is Error & EngineIssue =>
     e instanceof Error &&
@@ -246,7 +260,7 @@ const browserHost: EngineHost = {
     return url && readUrl(url);
   },
   assetLocation: (path) => assetUrl(path)?.href ?? path,
-  lazyFonts: true,
+  defersFonts: true,
 };
 
 setEngineHost(browserHost);

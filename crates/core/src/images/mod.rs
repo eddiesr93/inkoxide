@@ -35,13 +35,7 @@ use crate::schema::{
     ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,
 };
 use crate::InkoxideError;
-
-/// Empties the caches of decoded images and of SVG trees converted with
-/// text.
-pub(crate) fn clear_caches() {
-    cache::clear();
-    svg::clear_text_trees();
-}
+pub(crate) use cache::CACHE;
 
 /// Largest accepted image, in pixels (decoded-memory guard).
 pub(crate) const MAX_PIXELS: u64 = 50_000_000;

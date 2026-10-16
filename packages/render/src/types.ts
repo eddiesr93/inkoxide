@@ -59,6 +59,12 @@ export interface RenderOpts {
  */
 export interface Abortable {
   signal?: AbortSignal;
+  /**
+   * Time a render may take, in ms from 0 (`Infinity`, the default, for no limit): past it, the
+   * render stops as with `signal`, and rejects with a `DOMException` named `TimeoutError`.
+   * A fraction is rounded up to a whole ms.
+   */
+  timeoutMs?: number;
 }
 
 export interface LocalImageOptions {

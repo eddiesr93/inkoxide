@@ -32,14 +32,14 @@ export interface EngineHost {
   validate(doc: string, images: Record<string, Uint8Array>): Promise<EngineIssue[]>;
   /**
    * The PDF of a JSON document. A host that can stop a render does when `signal` aborts.
-   * `lazyFonts` are bundled fonts the document declares and the engine does not have, by their
-   * asset paths: a host with `lazyFonts` fetches each only when the render needs it.
+   * `deferredFonts` are bundled fonts the document declares and the engine does not have, by
+   * their asset paths: a host that `defersFonts` fetches each only when the render needs it.
    */
   render(
     doc: string,
     options: RenderOptions,
     signal?: AbortSignal,
-    lazyFonts?: Record<string, string>,
+    deferredFonts?: Record<string, string>,
   ): Promise<Uint8Array>;
   /** Whether `e` is an error of the engine, with its code and path. */
   isEngineError(e: unknown): e is Error & EngineIssue;
@@ -53,7 +53,7 @@ export interface EngineHost {
    * Whether the bundled fonts are read when a document uses them, rather than all at start-up
    * (in a browser, where each is a download).
    */
-  lazyFonts?: boolean;
+  defersFonts?: boolean;
 }
 
 /** Files: image files (`localImages`) and fonts registered from a path. */

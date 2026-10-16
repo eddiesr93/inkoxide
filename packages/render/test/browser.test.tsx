@@ -5,7 +5,10 @@
  * own, as in an application, since both keep process-wide state. Needs packages/wasm/inkoxide.wasm
  * (scripts/build-wasm.sh): without it the tests skip, except in CI.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -133,6 +136,78 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
       code: 'INVALID_FONT',
       message: expect.stringContaining('no file system'),
     });
+    // A file path is an error even where text is a URL on the page.
+    vi.stubGlobal('location', { href: 'https://example.com/app/' });
+    for (const [family, src] of [
+      ['File URL', 'file:///fonts/Brand.ttf'],
+      ['Windows path', 'C:\\fonts\\Brand.ttf'],
+      ['Backslash', 'fonts\\Brand.ttf'],
+    ] as const) {
+      browser.Font.register({ family, src });
+      await expect(
+        browser.renderToBuffer(
+          <Document>
+            <Page>
+              <Text style={{ fontFamily: family }}>Hello</Text>
+            </Page>
+          </Document>,
+        ),
+      ).rejects.toMatchObject({
+        code: 'INVALID_FONT',
+        message: expect.stringMatching(new RegExp(`${family}.*no file system`)),
+      });
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it('takes the bundled files from `assets`, and fails with INTERNAL on one it cannot fetch', async () => {
+    // Only Inter Regular: neither Noto Sans nor the engine's German hyphenation patterns.
+    const dir = mkdtempSync(join(tmpdir(), 'inkoxide-assets-'));
+    mkdirSync(join(dir, 'fonts'));
+    copyFileSync(
+      new URL('../assets/fonts/Inter-Regular.ttf', import.meta.url),
+      join(dir, 'fonts/Inter-Regular.ttf'),
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const browser = await load<Entry>('../src/browser.ts');
+    await browser.init({ worker: false, assets: pathToFileURL(`${dir}/`) });
+    const { Document, Page, Text } = browser;
+    const page = (text: string, lang?: string) => (
+      <Document lang={lang}>
+        <Page>
+          <Text hyphenate={lang !== undefined} style={{ width: 60 }}>
+            {text}
+          </Text>
+        </Page>
+      </Document>
+    );
+    expect((await browser.renderToBuffer(page('Hello'), OPTS)).length).toBeGreaterThan(0);
+    const url = pathToFileURL(dir).href;
+    await expect(browser.renderToBuffer(page('Hello \u01C4'), OPTS)).rejects.toMatchObject({
+      code: 'INTERNAL',
+      engineCode: 'NOT_LOADED',
+      message: expect.stringContaining(`${url}/fonts/NotoSans-Regular.ttf`),
+    });
+    await expect(browser.renderToBuffer(page('Donaudampfschifffahrt', 'de'), OPTS)).rejects.toMatchObject({
+      code: 'INTERNAL',
+      engineCode: 'NOT_LOADED',
+      message: expect.stringContaining(`${url}/hyphenation/de.bin`),
+    });
+  });
+
+  it('checks timeoutMs, and renders the same after clearCaches', async () => {
+    const browser = await load<Entry>('../src/browser.ts');
+    await browser.init({ worker: false });
+    await expect(browser.clearCaches()).resolves.toBeUndefined();
+    const doc = <Doc ink={browser} />;
+    const opts = { ...OPTS, images: { logo: PNG } };
+    await expect(browser.renderToBuffer(doc, { ...opts, timeoutMs: -1 })).rejects.toMatchObject({
+      code: 'ENGINE_REJECTED',
+      path: 'options.timeoutMs',
+    });
+    const pdf = await browser.renderToBuffer(doc, { ...opts, timeoutMs: 60_000 });
+    await browser.clearCaches();
+    expect(Buffer.from(await browser.renderToBuffer(doc, opts)).equals(Buffer.from(pdf))).toBe(true);
   });
 
   it('stops a render when its signal aborts', async () => {

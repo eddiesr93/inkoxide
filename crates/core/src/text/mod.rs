@@ -413,7 +413,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
         Self {
             fonts,
             unicode,
-            hyphenator: &hyphen::BuiltinHyphenator,
+            hyphenator: hyphen::builtin_only(),
             shapes,
             objects: Arc::default(),
         }

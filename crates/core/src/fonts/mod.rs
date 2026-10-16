@@ -16,8 +16,8 @@ mod color;
 mod layout;
 mod woff;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
 
 pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
@@ -414,7 +414,7 @@ pub(crate) type FontKey = u16;
 
 /// The deferred fonts ([`crate::RenderOptions::deferred_fonts`]) a render
 /// drew with, or tried.
-type Needed = Arc<Mutex<BTreeSet<String>>>;
+type Needed = Arc<crate::error::Missing>;
 
 /// A registered font parsed for one render: its `cmap` and advances.
 pub(crate) struct LoadedFont<'a> {
@@ -435,8 +435,8 @@ impl LoadedFont<'_> {
 
     /// Notes that the render needs the deferred font this stands in for.
     fn note_needed(&self) {
-        if let Some(Ok(mut needed)) = self.deferred.as_ref().map(|n| n.lock()) {
-            needed.insert(self.id.to_string());
+        if let Some(needed) = &self.deferred {
+            needed.note(self.id);
         }
     }
 
@@ -642,10 +642,7 @@ impl<'a> FontSet<'a> {
 
     /// The deferred fonts the render drew with, or tried.
     pub fn not_loaded(&self) -> Vec<String> {
-        self.needed
-            .lock()
-            .map(|n| n.iter().cloned().collect())
-            .unwrap_or_default()
+        self.needed.names()
     }
 
     pub fn key(&self, id: &str) -> Option<FontKey> {

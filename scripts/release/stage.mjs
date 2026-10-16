@@ -148,6 +148,10 @@ function build(name) {
   const dist = join(dir, 'dist');
   rmSync(dist, { recursive: true, force: true });
   console.log(`stage: building @inkoxide/${name}`);
+  // The version the React package reports, from its package.json.
+  if (name === 'react') {
+    execFileSync(process.execPath, [join(ROOT, 'scripts', 'gen-react-version.mjs')], { stdio: 'inherit' });
+  }
   execFileSync(process.execPath, [TSC, '-p', join(dir, 'tsconfig.build.json')], { stdio: 'inherit' });
   const src = join(dir, 'src');
   for (const file of walk(src)) {

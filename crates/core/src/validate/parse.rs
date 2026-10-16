@@ -92,7 +92,7 @@ fn parse_msgpack(_: &[u8]) -> Result<Document, ValidationError> {
     Err(ValidationError {
         code: Code::ParseError,
         path: String::new(),
-        message: "this build reads JSON only, not MessagePack".into(),
+        message: crate::JSON_ONLY.into(),
     })
 }
 

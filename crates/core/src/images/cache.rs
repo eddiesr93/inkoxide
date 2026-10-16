@@ -16,12 +16,8 @@ use crate::lru::SharedLru;
 /// kept across renders.
 const BUDGET: usize = 64 << 20;
 
-static CACHE: SharedLru<ContentKey<Arc<[u8]>>, Arc<DecodedImage>> = SharedLru::new(BUDGET);
-
-/// Empties the cache.
-pub(crate) fn clear() {
-    CACHE.clear();
-}
+pub(crate) static CACHE: SharedLru<ContentKey<Arc<[u8]>>, Arc<DecodedImage>> =
+    SharedLru::new(BUDGET);
 
 /// Approximate memory held by an entry whose encoded form is `encoded`
 /// bytes long.

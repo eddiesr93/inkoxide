@@ -127,6 +127,29 @@ pub struct NotLoaded {
     pub hyphenation: Vec<String>,
 }
 
+/// Names of what a render found missing, for [`NotLoaded`], noted from any
+/// of its threads.
+#[derive(Debug, Default)]
+pub(crate) struct Missing(std::sync::Mutex<std::collections::BTreeSet<String>>);
+
+impl Missing {
+    pub fn note(&self, name: &str) {
+        if let Ok(mut names) = self.0.lock() {
+            if !names.contains(name) {
+                names.insert(name.to_string());
+            }
+        }
+    }
+
+    /// The names noted, in order.
+    pub fn names(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .map(|names| names.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
 impl std::fmt::Display for NotLoaded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut parts = Vec::new();

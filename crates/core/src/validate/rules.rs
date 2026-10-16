@@ -83,13 +83,16 @@ impl From<TrackBreadth> for Len {
 }
 
 /// Checks `doc` for a render with `profile`. Without `images`, image ids
-/// are not looked up (inline `data` is still checked). Under PDF/A, a
+/// are not looked up (inline `data` is still checked). The fonts of
+/// `deferred` ([`crate::RenderOptions::deferred_fonts`]) may be missing from
+/// `fonts`. Under PDF/A, a
 /// valid document that the level does not allow gets one error:
 /// `PDFA_CONFLICT` at the first thing it does not allow (a page under
 /// [`PDF_A_MIN_PAGE_EDGE`] at any level; transparency at PDF/A-1b).
 pub(crate) fn check(
     doc: &Document,
     fonts: &FontStore,
+    deferred: &[String],
     images: Option<&ImageStore>,
     profile: Profile,
 ) -> Vec<ValidationError> {
@@ -98,6 +101,7 @@ pub(crate) fn check(
         errors: Vec::new(),
         declared: BTreeSet::new(),
         fonts,
+        deferred,
         images,
         doc,
         anchors: None,
@@ -146,6 +150,8 @@ struct Checker<'a> {
     errors: Vec<ValidationError>,
     declared: BTreeSet<&'a str>,
     fonts: &'a FontStore,
+    /// Font ids that may be missing from `fonts`.
+    deferred: &'a [String],
     images: Option<&'a ImageStore>,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
@@ -389,7 +395,7 @@ impl<'a> Checker<'a> {
                     if !(1..=MAX_WEIGHT).contains(&f.weight) {
                         c.err(Code::OutOfRange, Some("weight"), format!("font weight must be within 1..={MAX_WEIGHT}"));
                     }
-                    if !c.fonts.contains(&f.id) {
+                    if !c.fonts.contains(&f.id) && !c.deferred.contains(&f.id) {
                         c.err(
                             Code::FontNotRegistered,
                             Some("id"),

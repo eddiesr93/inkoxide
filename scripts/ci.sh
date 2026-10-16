@@ -56,8 +56,10 @@ else
 fi
 
 step "WebAssembly (packages/wasm)"
-# The engine without MessagePack, as the WebAssembly build has it.
+# The engine as the WebAssembly build has it: without MessagePack, and given the built-in
+# hyphenation patterns at run time.
 cargo test -p inkoxide --no-default-features --locked --test fixtures msgpack
+cargo test -p inkoxide --no-default-features --locked --test builtin_hyphenation
 if ! rustup target list --installed | grep -qx wasm32-unknown-unknown; then
   echo "the wasm32-unknown-unknown target is not installed; skipped (rustup target add wasm32-unknown-unknown)"
 elif ! command -v pnpm >/dev/null; then

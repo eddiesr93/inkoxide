@@ -11,7 +11,7 @@ import { latin1 } from './bytes.ts';
 import { DEFAULT_FACES } from './fonts.ts';
 import { engineHost, type EngineVersion } from './host.ts';
 import { HYPHENATION_FILES } from './hyphenation.ts';
-import { checkEncryptionTypes, checkOptionTypes } from './policy.ts';
+import { checkEncryptionTypes, checkOptionTypes, timerMs } from './policy.ts';
 import { type Abortable, RenderError, type RenderOpts } from './types.ts';
 
 export type { EngineVersion } from './host.ts';
@@ -27,7 +27,7 @@ let status: EngineStatus | undefined;
 
 /**
  * The bundled faces the engine does not have yet, with the files they are in, when the host reads
- * them as documents use them (`lazyFonts`); each one's load once it has started.
+ * them as documents use them (`defersFonts`); each one's load once it has started.
  */
 const lazyFaces = new Map<string, string>();
 const lazyLoads = new Map<string, Promise<void>>();
@@ -70,7 +70,7 @@ async function startEngine(): Promise<EngineStatus> {
   const missing: string[] = [];
   for (const { file, ...face } of DEFAULT_FACES) {
     if (fonts.has(face.id)) continue;
-    if (host.lazyFonts) {
+    if (host.defersFonts) {
       fonts.register(face);
       lazyFaces.set(face.id, file);
       continue;
@@ -109,38 +109,29 @@ async function startEngine(): Promise<EngineStatus> {
     }
   }
   for (const w of warnings) console.warn(`[inkoxide] ${w}`);
-  // The fonts the engine has: not yet the bundled ones a document has not used (`lazyFonts`).
+  // The fonts the engine has: not yet the bundled ones a document has not used (`defersFonts`).
   status = { version: v, fonts: fonts.ids().filter((id) => !lazyFaces.has(id)), hyphenation, warnings };
   return status;
 }
 
-/** The font ids `value` names under a `font` key, at any depth: those its text is drawn in. */
-function namedFonts(value: unknown, into = new Set<string>()): Set<string> {
-  if (Array.isArray(value)) {
-    for (const v of value) namedFonts(v, into);
-  } else if (value !== null && typeof value === 'object') {
-    for (const [key, v] of Object.entries(value)) {
-      if (key === 'font' && typeof v === 'string') into.add(v);
-      else namedFonts(v, into);
-    }
-  }
-  return into;
-}
-
 /**
- * Hands the engine the bundled fonts that `doc` draws its text in and it does not have yet (a
- * host with `lazyFonts`), and returns the other bundled fonts it declares and the engine does not
- * have, by their asset paths: the fallbacks, which the engine fetches only when a character needs
- * one. A font that cannot be read fails the render with an `INTERNAL` RenderError.
+ * Hands the engine the bundled fonts `doc` declares and it does not have yet (a host with
+ * `defersFonts`), and returns those of them that are only its fallback fonts, by their asset
+ * paths: the engine fetches one of those only when a character needs it. The React tree declares
+ * the fonts its text uses and its fallbacks. A font that cannot be read fails the render with an
+ * `INTERNAL` RenderError.
  */
-async function loadDocumentFonts(doc: Pick<Document, 'fonts' | 'pages'>): Promise<Record<string, string>> {
-  const named = namedFonts(doc.pages);
+async function loadDocumentFonts(
+  doc: Pick<Document, 'fonts' | 'fallbackFonts'>,
+): Promise<Record<string, string>> {
+  if (lazyFaces.size === 0) return {};
+  const fallbacks = new Set(doc.fallbackFonts);
   const deferred: Record<string, string> = {};
   const loads: Promise<void>[] = [];
   for (const { id } of doc.fonts ?? []) {
     const file = lazyFaces.get(id);
     if (file === undefined) continue;
-    if (!named.has(id)) {
+    if (fallbacks.has(id)) {
       deferred[id] = `fonts/${file}`;
       continue;
     }
@@ -188,11 +179,13 @@ export function version(): EngineVersion {
  * An engine failure as a RenderError; the pipeline adds the component at `path`. A render option
  * the engine refuses (`INVALID_ARGUMENT` at `options.threads`, `options.creationDate`) is the
  * caller's to fix, so `ENGINE_REJECTED`; any other `INVALID_ARGUMENT` is a bug of this package.
+ * `NOT_LOADED` (in a browser) is a bundled font or hyphenation file the engine could not fetch:
+ * `INTERNAL`, as a bundled font that cannot be read, since the deployment is broken.
  */
 export function toRenderError(e: unknown): RenderError {
   if (engineHost().isEngineError(e)) {
     const badOption = e.code === 'INVALID_ARGUMENT' && e.path.startsWith('options.');
-    if (e.code === 'INTERNAL' || (e.code === 'INVALID_ARGUMENT' && !badOption)) {
+    if (e.code === 'INTERNAL' || e.code === 'NOT_LOADED' || (e.code === 'INVALID_ARGUMENT' && !badOption)) {
       return new RenderError('INTERNAL', `Engine error ${e.code}: ${e.message}`, {
         engineCode: e.code,
         cause: e,
@@ -213,7 +206,7 @@ export function toRenderError(e: unknown): RenderError {
  * Sequence → why.
  */
 export async function refusedEmoji(
-  doc: Pick<Document, 'emojiImages' | 'fonts' | 'pages'>,
+  doc: Pick<Document, 'emojiImages' | 'fonts' | 'fallbackFonts'>,
   images: Record<string, Uint8Array>,
 ): Promise<Record<string, string>> {
   const emojiImages = doc.emojiImages ?? {};
@@ -270,14 +263,26 @@ export async function renderPdf(
   if (pdfA !== undefined) options.pdfA = pdfA;
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
-  opts.signal?.throwIfAborted();
-  const lazyFonts = await loadDocumentFonts(doc);
+  const signal = withTimeout(opts.signal, opts.timeoutMs);
+  signal?.throwIfAborted();
+  const deferredFonts = await loadDocumentFonts(doc);
   try {
-    return await engineHost().render(JSON.stringify(doc), options, opts.signal, lazyFonts);
+    return await engineHost().render(JSON.stringify(doc), options, signal, deferredFonts);
   } catch (e) {
-    if (opts.signal?.aborted && e === opts.signal.reason) throw e;
+    if (signal?.aborted && e === signal.reason) throw e;
     throw toRenderError(e);
   }
+}
+
+/** `signal`, and a timeout after `timeoutMs`: a signal that aborts with whichever comes first. */
+function withTimeout(
+  signal: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): AbortSignal | undefined {
+  const ms = timeoutMs === undefined ? undefined : timerMs(timeoutMs);
+  if (ms === undefined) return signal;
+  const timeout = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 /**

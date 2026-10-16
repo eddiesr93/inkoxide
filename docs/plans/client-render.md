@@ -8,16 +8,40 @@ decision. Where the implementation differs from this plan:
   layout, since shaping runs inside the layout engine's measure callback.
 - **The binding** shares its option checks through a crate, `crates/binding`.
 - **No wasm-opt.** binaryen 133 at `-O3`, `-Os` and `-Oz` made the module no smaller with brotli
-  (1.97 MB) and no faster, so the release ships the module CI tests.
+  (1.97 MB then) and no faster, so the release ships the module CI tests.
+- **Built-in hyphenation patterns (E4)** do not stay in the module. The engine matches words
+  against hypher's patterns itself (`text/builtin.rs`, tested against hypher in every language),
+  and a cargo feature, `embedded-hyphenation`, on by default, embeds them. The WebAssembly build
+  leaves them out; `@inkoxide/wasm` fetches a language's file when a document first hyphenates
+  text in it, and hyphenates as Node does. The module is 1.18 MB with brotli.
+- **Deferred fonts.** `RenderOptions::deferred_fonts` names declared fonts that may be missing.
+  A render that does not draw with one, nor try it for a character, gives the bytes it would
+  give with the font; one that does fails with `NOT_LOADED`, naming it. The browser entry
+  defers the bundled fallback font, Noto Sans, which `@inkoxide/wasm` fetches only when a
+  character needs it.
+- **The size budget** is 1.3 MB with brotli, from the build with both changes above.
 - **Images** are copied to the worker, since a render may need them again; the PDF is
   transferred.
 - **`@inkoxide/wasm`** is an optional peer of `@inkoxide/render`, so that Node installs do not
   download it.
 - **`examples/browser`** has an invoice of its own: the Node examples import Node modules.
-- **Edge runtimes (Decision 7)** are out of scope: no Deno in CI, and the docs name browsers and
-  Node only.
+- **Edge runtimes (Decision 7)** are out of scope: the supported runtimes are browsers and
+  Node, and the docs name only those.
 - **The browser benchmark** (`benchmarks/browser`) measures Chromium and WebKit; the Playwright
   build of Firefox does not start on the machine it was run on.
+- **Browser tests.** `packages/render/test/browser.test.tsx` runs the browser entry in Node, on
+  the calling thread (`worker: false`). The Playwright tests on `examples/browser` render in a
+  worker in Chromium, Firefox and WebKit, through the bundler: the invoice, and a letter for
+  which the engine fetches German hyphenation patterns and Noto Sans.
+- **`timeoutMs`** is an option of the render, as `signal` is: it stops the render the same way,
+  which rejects with a `DOMException` named `TimeoutError`. In Node the native render cannot be
+  stopped, and neither has an effect on it.
+- **`Font.register` in the browser:** text is a URL, relative to the page, as in a link. A file
+  path that cannot be one (a `file:` URL, a drive letter or a backslash) fails the render with
+  `INVALID_FONT`.
+- **The React version** is generated from `package.json` by `scripts/gen-react-version.mjs`,
+  which staging runs before the build; the generated file is committed, and CI checks it.
+- **SRI.** The README `@inkoxide/wasm` publishes gets the hash of its module at staging.
 
 It covers the [ROADMAP.md](../../ROADMAP.md) "Later" item **Rendering in the browser, through a
 WebAssembly build of the engine** (ROADMAP.md:8).
@@ -125,8 +149,7 @@ WebAssembly build of the engine** (ROADMAP.md:8).
    - no cross-origin isolation (COOP/COEP);
    - no `unsafe-eval` in the Content Security Policy, only `wasm-unsafe-eval`.
 4. At most 2 MB (brotli) to download for the engine. Fonts are loaded per document.
-5. Usable without React (from JSON), and wherever WebAssembly runs outside browsers: Deno, Bun
-   and edge runtimes. These are documented, but not all of them are tested in CI at first.
+5. Usable without React (from JSON), through `@inkoxide/wasm`.
 
 ## Not in the first release
 
@@ -222,8 +245,8 @@ Each change lands on its own, and native output stays byte-identical.
   - The WebAssembly build turns it off and takes JSON only; the JS side sends
     `JSON.stringify` anyway.
   - Estimated saving: about a fifth of the code. The PR measures it.
-- **Built-in hyphenation patterns stay.** Leaving them out would change how text breaks
-  compared with Node.
+- **Built-in hyphenation patterns** come at run time in the WebAssembly build, so that text
+  breaks as in Node (see the list of changes at the top).
 
 **E5. Parity**
 
@@ -248,10 +271,9 @@ The package has `sideEffects: false`.
 **`init(source?)`**
 - Compiles the module once (with `WebAssembly.compileStreaming` where available) and
   instantiates it.
-- `source` is one of: a URL, a `Response`, bytes, or a compiled `WebAssembly.Module` (Cloudflare
-  Workers import `.wasm` files as modules).
+- `source` is one of: a URL, a `Response`, bytes, or a compiled `WebAssembly.Module`.
 - The default source is `new URL('./inkoxide.wasm', import.meta.url)`. Vite, webpack 5,
-  Rollup, esbuild with a loader, Deno and Bun all resolve it.
+  Rollup and esbuild with a loader resolve it.
 - The other functions throw until `init` resolves.
 
 **`render`**
@@ -361,8 +383,8 @@ Running out of memory, at the 4 GiB WebAssembly limit or the browser's own, ends
 - **`crates/wasm`:**
   - Rust unit tests for the buffer format;
   - `cargo build --target wasm32-unknown-unknown -p inkoxide-wasm` in CI.
-- **Size budget.** CI fails when the brotli size goes over a budget set from the first build
-  (about 2.2 MB), and prints the size in the job summary.
+- **Size budget.** CI fails when the brotli size goes over a budget set from the build (1.3 MB),
+  and prints the size in the job summary.
 - **Parity (E5)** runs in CI on every pull request that touches `crates/`.
 - **Contract.** The tests in `packages/inkoxide/test` run against `@inkoxide/wasm` in Node.
 - **Browser.** Playwright tests (Chromium, Firefox, WebKit) on `examples/browser`, a Vite app:
@@ -393,7 +415,7 @@ Running out of memory, at the 4 GiB WebAssembly limit or the browser's own, ends
 
 ## Docs
 
-- **README** "Platforms" (`README.md:180-189`): add browsers (current versions), Deno and Bun.
+- **README** "Platforms" (`README.md:180-189`): add browsers (current versions).
 - **GUIDE.md:**
   - The FAQ "Does it run in the browser?" (`GUIDE.md:1209-1211`) and the "Server only"
     limitation (`GUIDE.md:1254-1255`) change.
@@ -482,4 +504,4 @@ Each has a recommendation.
 6. **Default fonts.**
    - TTF, fetched per document. Recommended: the same bytes as Node.
    - Or WOFF2: a smaller download, but other bytes.
-7. **Edge runtimes.** Documented, with Deno in CI (recommended), or out of scope.
+7. **Edge runtimes.** Out of scope (decided): browsers and Node only.

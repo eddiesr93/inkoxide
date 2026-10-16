@@ -5,6 +5,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import Invoice, { OPTIONS, sample } from './Invoice.tsx';
+import Letter from './Letter.tsx';
 
 async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>);
@@ -15,6 +16,11 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 const hooks = {
   /** The SHA-256 of the invoice's PDF, rendered with renderToBuffer. */
   invoiceDigest: async () => sha256(await renderToBuffer(<Invoice {...sample} />, OPTIONS)),
+  /**
+   * The SHA-256 of the letter's PDF, for which the engine fetches its German hyphenation patterns
+   * and Noto Sans.
+   */
+  letterDigest: async () => sha256(await renderToBuffer(<Letter />, OPTIONS)),
   /**
    * Starts a render and stops it when the page dispatches `inkoxide:stop` (the tests do once the
    * worker has the render); resolves to the reason it rejected with.
@@ -28,6 +34,12 @@ const hooks = {
       (e: unknown) => (e instanceof Error ? e.message : String(e)),
     );
   },
+  /** A render with `timeoutMs: 0`: resolves to the name of the error it rejected with. */
+  timedOutRender: async () =>
+    renderToBuffer(<Invoice {...sample} />, { ...OPTIONS, timeoutMs: 0 }).then(
+      () => 'rendered',
+      (e: unknown) => (e as { name?: string } | undefined)?.name ?? String(e),
+    ),
 };
 Object.assign(globalThis, { inkoxide: hooks });
 

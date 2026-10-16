@@ -11,14 +11,17 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { CSP } from '../vite.config.ts';
 
-/** The SHA-256 of the invoice rendered in Node: once for every browser. */
-const expected = execFileSync('tsx', [fileURLToPath(new URL('render-node.tsx', import.meta.url))], {
-  encoding: 'utf8',
-}).trim();
+/** The SHA-256 of the invoice and of the letter rendered in Node: once for every browser. */
+const node = JSON.parse(
+  execFileSync('tsx', [fileURLToPath(new URL('render-node.tsx', import.meta.url))], { encoding: 'utf8' }),
+) as { invoice: string; letter: string };
+const expected = node.invoice;
 
 interface Hooks {
   invoiceDigest(): Promise<string>;
+  letterDigest(): Promise<string>;
   abortedRender(): Promise<string>;
+  timedOutRender(): Promise<string>;
 }
 
 /** The page once it has rendered, with the Content Security Policy problems it logged. */
@@ -56,6 +59,16 @@ test('PdfDownloadLink downloads the PDF PdfViewer shows', async ({ page }) => {
   await expect(page.locator('iframe#viewer')).toHaveAttribute('src', /^blob:/);
 });
 
+test('fetches hyphenation patterns and the fallback font as a document needs them', async ({ page }) => {
+  await open(page);
+  const fetched: string[] = [];
+  page.context().on('request', (r) => fetched.push(new URL(r.url()).pathname));
+  expect(await call(page, 'letterDigest')).toBe(node.letter);
+  // Bundlers add a hash to the file names.
+  expect(fetched.some((p) => /\/de(?:-[\w-]+)?\.bin$/.test(p))).toBe(true);
+  expect(fetched.some((p) => /NotoSans-Regular[^/]*\.ttf$/.test(p))).toBe(true);
+});
+
 test('needs no cross-origin isolation', async ({ page }) => {
   await open(page);
   expect(await page.evaluate(() => globalThis.crossOriginIsolated)).toBe(false);
@@ -85,4 +98,10 @@ test('a signal ends the worker of a render, and the next one renders', async ({ 
   expect(await call(page, 'abortedRender')).toBe('stopped');
   expect(await call(page, 'invoiceDigest')).toBe(expected);
   expect(await workers()).toBe(before + 1);
+});
+
+test('timeoutMs stops a render that takes longer, and the next one renders', async ({ page }) => {
+  await open(page);
+  expect(await call(page, 'timedOutRender')).toBe('TimeoutError');
+  expect(await call(page, 'invoiceDigest')).toBe(expected);
 });

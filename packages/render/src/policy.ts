@@ -1,6 +1,7 @@
 /** The limits of loading images and fonts, and the reading of the image environment variables. */
 
-import { RenderError, type RenderOpts } from './types.ts';
+import { nodeProcess } from './runtime.ts';
+import { type Abortable, RenderError, type RenderOpts } from './types.ts';
 
 /** Largest image file or download in bytes, unless the policy says otherwise: 20 MiB. */
 export const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -47,13 +48,14 @@ export function checkImageLimits(opts: RenderOpts): void {
  * `null` is an option left out, except inside `encryption`, which goes to the engine as is. A bad one is an `ENGINE_REJECTED` RenderError (400) at its path;
  * the message names the type found, never the value, which may be a password.
  */
-export function checkOptionTypes(opts: RenderOpts): void {
+export function checkOptionTypes(opts: RenderOpts & Abortable): void {
   const o = opts as Record<string, unknown>;
   if (!isObject(o)) {
     throw new RenderError('ENGINE_REJECTED', `The render options must be an object, found ${typeName(o)}.`, {
       path: 'options',
     });
   }
+  check('timeoutMs', opts.timeoutMs, 'milliseconds from 0 (Infinity for no limit)');
   checkTypes(o, ENGINE_OPTION_TYPES, '', true);
   if (!absent(o.pdfA) && typeof o.pdfA !== 'boolean' && typeof o.pdfA !== 'string') {
     rejectType('pdfA', 'a boolean or a string', o.pdfA);
@@ -165,8 +167,7 @@ function check(name: string, value: unknown, unit: string): void {
  * a browser.
  */
 export function env(name: string): string | undefined {
-  const process = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-  return process?.env?.[name];
+  return nodeProcess()?.env?.[name];
 }
 
 /** Whether `NODE_ENV` is `production`. */

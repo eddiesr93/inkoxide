@@ -65,9 +65,9 @@ scripts/ci.sh              # everything, including clippy and the visual diff
 Maintainers release from `main`:
 
 1. Bump the version of `inkoxide`, `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/react`,
-   `@inkoxide/tailwind` and `@inkoxide/style` together (the Cargo workspace, the six
-   `package.json` files and `packages/react/src/version.ts`; `scripts/check-versions.py` checks
-   them), since they share one version. Bump `@inkoxide/schema` only if the schema changed; it has its own
+   `@inkoxide/tailwind` and `@inkoxide/style` together (the Cargo workspace and the six
+   `package.json` files; `scripts/check-versions.py` checks them), since they share one version,
+   and run `node scripts/gen-react-version.mjs`. Bump `@inkoxide/schema` only if the schema changed; it has its own
    version. Move the "Unreleased" entries in [CHANGELOG.md](CHANGELOG.md) and
    [packages/schema/CHANGELOG.md](packages/schema/CHANGELOG.md) under the new versions.
 2. Dispatch the `release` workflow, first with `dry_run` on. It stops unless the `ci` workflow

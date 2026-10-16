@@ -169,8 +169,8 @@ Median render times after warm-up:
 
 | Document | Pages | All cores | One thread | Machine |
 |---|---:|---:|---:|---|
-| Invoice, from React | 1 | 1.6 ms | 1.3 ms | Apple M4 Pro, Node 24 |
-| Report, from React: 40 sections, 1,000 table rows | 43 | 43 ms | 56 ms | Apple M4 Pro, Node 24 |
+| Invoice, from React | 1 | 1.5 ms | 1.2 ms | Apple M4 Pro, Node 24 |
+| Report, from React: 40 sections, 1,000 table rows | 43 | 41 ms | 54 ms | Apple M4 Pro, Node 24 |
 | Report, from React, in the browser (WebAssembly, in a worker) | 43 | | 56 ms | Apple M4 Pro, Chromium 153 |
 | Report, from JSON: 40 tables, header, footer | 98 | 130 ms | 277 ms | 4-vCPU Xeon container |
 
