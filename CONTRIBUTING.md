@@ -85,9 +85,11 @@ environment) before the workflow can publish it. Where npm lets that be set only
 that exists, the maintainer publishes its first version by hand, from the staged copy
 (`node scripts/npm-release.mjs <bin-dir> <staging-dir>`), then sets the trusted publisher.
 
-The crates `inkoxide` and `inkoxide-cli` go to crates.io by hand, after the workflow, from the
-tagged commit: `cargo publish -p inkoxide`, then `cargo publish -p inkoxide-cli`, which depends
-on it. The other crates are not published.
+The workflow also publishes the crates `inkoxide` and `inkoxide-cli` to crates.io, after the npm
+packages and with the versions not on crates.io yet. crates.io trusts the workflow too: each crate
+has a trusted publisher there for `release.yml` and the `release` environment. A new crate is
+published by hand the first time (`cargo publish -p <crate>`), since crates.io sets a trusted
+publisher only on a crate that exists. The other crates are not published.
 
 ## Licence
 
