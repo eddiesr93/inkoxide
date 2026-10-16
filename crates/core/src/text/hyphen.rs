@@ -2,11 +2,12 @@
 //! without touching line layout. Patterns registered at runtime
 //! ([`HyphenationStore`]) win over the built-in ones (`builtin.rs`).
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock};
 
 use super::builtin;
+use crate::error::Missing;
 use crate::InkoxideError;
 
 /// Finds hyphenation points in a word.
@@ -17,21 +18,13 @@ pub(crate) trait Hyphenator: Send + Sync {
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize>;
 }
 
-/// The built-in patterns embedded in the engine (none without the
-/// `embedded-hyphenation` feature).
-pub(crate) struct BuiltinHyphenator;
-
-impl Hyphenator for BuiltinHyphenator {
-    fn supports(&self, lang: &str) -> bool {
-        builtin::language(lang).is_some_and(|l| embedded(l).is_some())
-    }
-
-    fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize> {
-        match builtin::language(lang) {
-            Some(l) => embedded(l).map_or_else(Vec::new, |trie| builtin::hyphenate(trie, l, word)),
-            None => Vec::new(),
-        }
-    }
+/// The built-in patterns alone, without registered ones: what a shaper
+/// hyphenates with until it is given a store.
+pub(crate) fn builtin_only() -> &'static ResolvedHyphenator<'static> {
+    static STORE: LazyLock<HyphenationStore> = LazyLock::new(HyphenationStore::new);
+    static ONLY: LazyLock<ResolvedHyphenator<'static>> =
+        LazyLock::new(|| ResolvedHyphenator::new(&STORE));
+    &ONLY
 }
 
 #[cfg(feature = "embedded-hyphenation")]
@@ -235,25 +228,22 @@ impl HyphenationStore {
 /// in `missing`, and its text is not hyphenated: the render then fails with
 /// [`InkoxideError::NotLoaded`].
 pub(crate) struct ResolvedHyphenator<'a> {
-    pub store: &'a HyphenationStore,
-    pub missing: Mutex<BTreeSet<&'static str>>,
+    store: &'a HyphenationStore,
+    missing: Missing,
 }
 
 impl<'a> ResolvedHyphenator<'a> {
     pub fn new(store: &'a HyphenationStore) -> Self {
         Self {
             store,
-            missing: Mutex::default(),
+            missing: Missing::default(),
         }
     }
 
     /// The files of the built-in patterns the text needed and this build
     /// does not have.
     pub fn not_loaded(&self) -> Vec<String> {
-        self.missing
-            .lock()
-            .map(|m| m.iter().map(|f| (*f).to_string()).collect())
-            .unwrap_or_default()
+        self.missing.names()
     }
 }
 
@@ -269,16 +259,12 @@ impl Hyphenator for ResolvedHyphenator<'_> {
         let Some(l) = builtin::language(lang) else {
             return Vec::new();
         };
-        if let Some(trie) = embedded(l) {
-            return builtin::hyphenate(trie, l, word);
+        if let Some(trie) = embedded(l).or_else(|| self.store.builtin.get(l.file).map(|t| &**t)) {
+            builtin::hyphenate(trie, l, word)
+        } else {
+            self.missing.note(l.file);
+            Vec::new()
         }
-        if let Some(trie) = self.store.builtin.get(l.file) {
-            return builtin::hyphenate(trie, l, word);
-        }
-        if let Ok(mut missing) = self.missing.lock() {
-            missing.insert(l.file);
-        }
-        Vec::new()
     }
 }
 
@@ -546,8 +532,8 @@ mod tests {
         assert_eq!(paragraph_tag("EN_us.UTF-8").as_deref(), Some("en"));
         assert_eq!(paragraph_tag("english"), None);
         // hypher goes by the language subtag.
-        assert!(BuiltinHyphenator.supports("de-at"));
-        assert!(!BuiltinHyphenator.supports("deu"));
+        assert!(builtin_only().supports("de-at"));
+        assert!(!builtin_only().supports("deu"));
     }
 
     #[test]
@@ -557,7 +543,7 @@ mod tests {
         // Built in (hypher), and none for Japanese.
         assert_eq!(
             h.hyphenate("documentation", "en"),
-            BuiltinHyphenator.hyphenate("documentation", "en")
+            builtin_only().hyphenate("documentation", "en")
         );
         assert!(!h.supports("ja"));
 
@@ -594,7 +580,7 @@ mod tests {
         assert!(!store.contains("en") && !store.contains("en-AU"));
         assert_eq!(
             h.hyphenate("colour", "en-au"),
-            BuiltinHyphenator.hyphenate("colour", "en")
+            builtin_only().hyphenate("colour", "en")
         );
         // Unregistering one region keeps the other.
         assert!(store.unregister("EN-gb"));

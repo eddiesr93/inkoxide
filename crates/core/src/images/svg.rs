@@ -424,13 +424,8 @@ type Rewrites = HashMap<ContentKey<Arc<Vec<u8>>>, Arc<Vec<u8>>>;
 const TEXT_TREES_BUDGET: usize = 32 << 20;
 
 /// Trees converted with text, by every rewritten source they come from.
-static TEXT_TREES: SharedLru<ContentKey<Arc<[u8]>>, Arc<usvg::Tree>> =
+pub(crate) static TEXT_TREES: SharedLru<ContentKey<Arc<[u8]>>, Arc<usvg::Tree>> =
     SharedLru::new(TEXT_TREES_BUDGET);
-
-/// Empties the cache of trees converted with text.
-pub(crate) fn clear_text_trees() {
-    TEXT_TREES.clear();
-}
 
 /// Converts the SVG of `source` with each text laid out by `lay_out` and
 /// replaced with its placeholder (`svg_text/rewrite.rs`), with the same

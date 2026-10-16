@@ -4,24 +4,32 @@
 //! `INVALID_ARGUMENT` at its path, without the value. JSON has no NaN or
 //! infinities: the wrapper sends them as the strings `"NaN"`,
 //! `"Infinity"` and `"-Infinity"`, so that the range checks report them.
-//! Keys this does not know are ignored, as napi ignores them. `deferredFonts`
-//! (font ids, `RenderOptions::deferred_fonts`) is the wrapper's own: it
-//! sends the ids of its `lazyFonts`.
+//! Keys this does not know are ignored, as napi ignores them.
+//! `deferredFonts`, the font ids of `RenderOptions::deferred_fonts`, is
+//! this binding's own: the wrapper sends the ids of its `deferredFonts`.
 
 use inkoxide_binding::{EncryptionOptions, Failure, Options, PdfA, PermissionOptions};
 use serde_json::{Map, Value};
 
 type Object = Map<String, Value>;
 
-pub(crate) fn parse(json: &[u8]) -> Result<Options, Failure> {
+/// The options of a render: those the Node binding has too, and the fonts
+/// it may be missing.
+#[derive(Default)]
+pub(crate) struct Parsed {
+    pub options: Options,
+    pub deferred_fonts: Vec<String>,
+}
+
+pub(crate) fn parse(json: &[u8]) -> Result<Parsed, Failure> {
     if json.is_empty() {
-        return Ok(Options::default());
+        return Ok(Parsed::default());
     }
     let Ok(Value::Object(o)) = serde_json::from_slice(json) else {
         return Err(Failure::invalid_arg("options", "must be an object"));
     };
     let at = "options";
-    Ok(Options {
+    let options = Options {
         format: string(&o, at, "format")?,
         compress: boolean(&o, at, "compress")?,
         compression_level: number(&o, at, "compressionLevel")?,
@@ -42,15 +50,19 @@ pub(crate) fn parse(json: &[u8]) -> Result<Options, Failure> {
         encryption: object(&o, at, "encryption")?
             .map(|e| encryption(e, "options.encryption"))
             .transpose()?,
-        deferred_fonts: match o.get("deferredFonts") {
-            None => Vec::new(),
-            Some(Value::Array(ids)) => ids
-                .iter()
-                .map(|id| id.as_str().map(str::to_string))
-                .collect::<Option<_>>()
-                .ok_or_else(|| wrong(at, "deferredFonts", "an array of font ids"))?,
-            Some(_) => return Err(wrong(at, "deferredFonts", "an array of font ids")),
-        },
+    };
+    let deferred_fonts = match o.get("deferredFonts") {
+        None => Vec::new(),
+        Some(Value::Array(ids)) => ids
+            .iter()
+            .map(|id| id.as_str().map(str::to_string))
+            .collect::<Option<_>>()
+            .ok_or_else(|| wrong(at, "deferredFonts", "an array of font ids"))?,
+        Some(_) => return Err(wrong(at, "deferredFonts", "an array of font ids")),
+    };
+    Ok(Parsed {
+        options,
+        deferred_fonts,
     })
 }
 

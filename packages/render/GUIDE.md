@@ -1116,7 +1116,7 @@ apply:
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image, or a render option is out of range (`path` is `options.threads`, `options.creationDate`, …) |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
-| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), `renderToFile` could not write the file, or a bug |
+| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), a bundled font or hyphenation file could not be read or, in a browser, fetched (`engineCode` `NOT_LOADED`), `renderToFile` could not write the file, or a bug |
 
 `INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. Besides `code`,
 `status`, `message`, `path`, `component` and `componentStack`, a `RenderError` may have
@@ -1248,13 +1248,18 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   with the browser's own viewer. Each renders when it mounts: give it another `key` to render
   again.
 - **`renderToBuffer`** and **`renderToBlob`** render outside React components, and **`generate`**
-  renders a [template](#serving-templates). A `signal` in their options stops a render: its
-  worker ends, and the next render starts a new one.
+  renders a [template](#serving-templates). A `signal` in their options, or `timeoutMs` (a time
+  in ms), stops a render: its worker ends, and the next render starts a new one. A render that
+  times out rejects with a `DOMException` named `TimeoutError`.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
   first call count. `wasm` is where the module comes from (a URL, a `Response`, its bytes or a
   compiled `WebAssembly.Module`); `assets` is a folder to serve the bundled fonts and
-  hyphenation patterns from, with `fonts/` and `hyphenation/` in it; `worker: false` renders on
-  the calling thread.
+  hyphenation patterns from: `fonts/` and `hyphenation/` from `@inkoxide/render`'s `assets/`,
+  with the `.bin` files of `@inkoxide/wasm`'s `hyphenation/` in `hyphenation/` too;
+  `worker: false` renders on the calling thread.
+- **`clearCaches()`** empties the engine's caches of decoded images, font subsets and SVG text.
+  The memory stays with the engine, which reuses it for the next renders; the PDFs are the
+  same.
 
 **Setting up.** Bundlers copy the module, the worker and the bundled fonts, which the packages
 refer to with `new URL(…, import.meta.url)`. With Vite, set `worker: { format: 'es' }`, and
@@ -1265,7 +1270,8 @@ set up that way.
 
 **Fonts and images.** A bundled font is downloaded the first time a document uses it, as a
 TrueType file, for the same PDF as on the server. `Font.register` takes a URL (relative to the
-page) or the bytes, not a file path. A WOFF2 font gives other PDF bytes than its TrueType file;
+page) or the bytes; a file path (a `file:` URL, a drive letter or a backslash) fails the render
+with `INVALID_FONT`. A WOFF2 font gives other PDF bytes than its TrueType file;
 WOFF gives the same. Images come as bytes in `images`, or from the hosts allowed in
 `remoteImages`: the requests carry no cookies, need CORS, and a redirect is refused.
 `localImages` is not available.

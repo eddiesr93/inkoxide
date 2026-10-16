@@ -132,7 +132,7 @@ export interface RenderOptions {
    * renders as if it were registered; `render` fetches and registers those it needs, and
    * `renderSync` fails with `NOT_LOADED`.
    */
-  lazyFonts?: Record<string, string | URL>;
+  deferredFonts?: Record<string, string | URL>;
 }
 
 /** Mirrors Rust `Encryption`. */
@@ -218,12 +218,12 @@ export function validate(
 ): ValidationError[];
 /**
  * Renders to PDF, after fetching what the document needs: built-in hyphenation patterns and its
- * `lazyFonts`. The render itself runs on the calling thread, so in a page call it from a worker.
+ * `deferredFonts`. The render itself runs on the calling thread, so in a page call it from a worker.
  */
 export function render(doc: Uint8Array | string, options?: RenderOptions): Promise<Uint8Array>;
 /**
  * Renders on the calling thread, with what is loaded: a document that needs built-in
- * hyphenation patterns not loaded (`loadHyphenation`) or one of its `lazyFonts` fails with
+ * hyphenation patterns not loaded (`loadHyphenation`) or one of its `deferredFonts` fails with
  * `NOT_LOADED`.
  */
 export function renderSync(doc: Uint8Array | string, options?: RenderOptions): Uint8Array;

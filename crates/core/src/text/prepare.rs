@@ -927,7 +927,7 @@ fn bidi_levels(text: &str, direction: Direction) -> (Option<Vec<u8>>, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::hyphen::{BuiltinHyphenator, NoHyphenation};
+    use super::super::hyphen::{builtin_only, NoHyphenation};
     use super::*;
 
     fn run(text: &str) -> TextRun {
@@ -1032,7 +1032,7 @@ mod tests {
 
     #[test]
     fn soft_hyphens_in_long_words_only() {
-        let out = insert_soft_hyphens("a documentation hyphenation", &BuiltinHyphenator, "en");
+        let out = insert_soft_hyphens("a documentation hyphenation", builtin_only(), "en");
         assert!(out.starts_with("a "));
         assert!(
             out.contains("doc\u{AD}u\u{AD}men\u{AD}ta\u{AD}tion"),
@@ -1049,7 +1049,7 @@ mod tests {
                 direction: Direction::Ltr,
                 hyphenate,
                 lang: Some("en"),
-                hyphenator: &BuiltinHyphenator,
+                hyphenator: builtin_only(),
                 objects: &super::super::InlineObjects::default(),
                 runs,
             })
@@ -1073,8 +1073,8 @@ mod tests {
 
     #[test]
     fn built_in_languages() {
-        assert!(BuiltinHyphenator.supports("de"));
+        assert!(builtin_only().supports("de"));
         // Languages without built-in patterns.
-        assert!(!BuiltinHyphenator.supports("ja"));
+        assert!(!builtin_only().supports("ja"));
     }
 }

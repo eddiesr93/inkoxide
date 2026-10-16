@@ -96,9 +96,11 @@ jobs:
       - name: Install pnpm
         # The version comes from packageManager in package.json.
         run: corepack enable
-      - name: Engine without MessagePack
+      - name: Engine without MessagePack and embedded hyphenation patterns
         # As the WebAssembly build has it.
-        run: cargo test -p inkoxide --no-default-features --locked --test fixtures msgpack
+        run: |
+          cargo test -p inkoxide --no-default-features --locked --test fixtures msgpack
+          cargo test -p inkoxide --no-default-features --locked --test builtin_hyphenation
       - name: Build the WebAssembly engine
         run: scripts/build-wasm.sh
       - name: Size

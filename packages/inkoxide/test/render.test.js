@@ -457,16 +457,16 @@ test(
   },
 );
 
-test('the WebAssembly engine fetches the lazy fonts a document needs', { skip: !wasm }, async () => {
+test('the WebAssembly engine fetches the deferred fonts a document needs', { skip: !wasm }, async () => {
   const noto = new URL('../../../fixtures/fonts/NotoSans-Regular.ttf', import.meta.url);
   const doc = (text) =>
     JSON.stringify({
       version: 1,
       fonts: [
         { id: 'Inter-Regular', family: 'Inter' },
-        { id: 'Lazy-Noto', family: 'Noto Sans' },
+        { id: 'Deferred-Noto', family: 'Noto Sans' },
       ],
-      fallbackFonts: ['Lazy-Noto'],
+      fallbackFonts: ['Deferred-Noto'],
       pages: [
         {
           size: { width: 200, height: 200 },
@@ -474,15 +474,15 @@ test('the WebAssembly engine fetches the lazy fonts a document needs', { skip: !
         },
       ],
     });
-  const lazyFonts = { 'Lazy-Noto': noto };
+  const deferredFonts = { 'Deferred-Noto': noto };
   // Not needed: renders without it.
-  assert.ok(ink.renderSync(doc('Hello'), { lazyFonts }).length > 0);
+  assert.ok(ink.renderSync(doc('Hello'), { deferredFonts }).length > 0);
   // Inter has no U+01C4: the fallback is needed.
   assert.throws(
-    () => ink.renderSync(doc('\u01C4'), { lazyFonts }),
-    (e) => e.code === 'NOT_LOADED' && /Lazy-Noto/.test(e.message),
+    () => ink.renderSync(doc('\u01C4'), { deferredFonts }),
+    (e) => e.code === 'NOT_LOADED' && /Deferred-Noto/.test(e.message),
   );
-  const pdf = await ink.render(doc('\u01C4'), { lazyFonts });
-  assert.deepStrictEqual(ink.renderSync(doc('\u01C4'), { lazyFonts }), pdf);
-  assert.strictEqual(ink.unregisterFont('Lazy-Noto'), true);
+  const pdf = await ink.render(doc('\u01C4'), { deferredFonts });
+  assert.deepStrictEqual(ink.renderSync(doc('\u01C4'), { deferredFonts }), pdf);
+  assert.strictEqual(ink.unregisterFont('Deferred-Noto'), true);
 });

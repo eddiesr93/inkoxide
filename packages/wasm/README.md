@@ -39,7 +39,7 @@ How it differs from `inkoxide`:
 - **JSON only.** `format: 'msgpack'` is a `PARSE_ERROR`.
 - **Downloads on demand.** The module (about 1.2 MB with brotli) leaves out the built-in
   hyphenation patterns: `render` fetches a language's from `hyphenation/` next to the module the
-  first time a document hyphenates text in it, and the fonts of its `lazyFonts` option (id →
+  first time a document hyphenates text in it, and the fonts of its `deferredFonts` option (id →
   URL) that a document draws with, or needs as a fallback. `renderSync` cannot fetch, and fails
   with `NOT_LOADED`: call `loadHyphenation(['de'])` first, or use `render`.
 - **`init(source?)`** takes a URL, a `Response`, the bytes or a compiled
@@ -51,6 +51,20 @@ How it differs from `inkoxide`:
 - **Memory** grows and is not given back. `clearCaches()` empties the caches
   renders share, for later renders to reuse the memory.
 - **Fonts.** A WOFF2 font gives other PDF bytes than its TrueType file.
+
+**From a CDN**, give `init` the module with its
+[Subresource Integrity](https://developer.mozilla.org/docs/Web/Security/Subresource_Integrity)
+hash, so that the browser refuses any other bytes, and the folder of the
+hyphenation patterns:
+
+```js
+const base = 'https://cdn.jsdelivr.net/npm/@inkoxide/wasm@<version>/';
+await init(fetch(`${base}inkoxide.wasm`, { integrity: 'sha384-<hash of inkoxide.wasm>' }), {
+  hyphenation: `${base}hyphenation/`,
+});
+```
+
+The README published with each version on npm has its version and hash here.
 
 Options, defaults and error codes are typed in `index.d.ts` and described in
 the [API reference](https://github.com/eddiesr93/inkoxide/blob/main/docs/API.md).

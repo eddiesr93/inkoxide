@@ -19,6 +19,7 @@ import { DEFAULT_FACES } from './fonts.ts';
 import { engineHost, NO_FILES } from './host.ts';
 import { FONT_TIMEOUT_MS, MAX_FONT_BYTES } from './policy.ts';
 import { fetchBytes } from './remote.ts';
+import { onPage, pageUrl } from './runtime.ts';
 import { RenderError } from './types.ts';
 
 /**
@@ -103,15 +104,16 @@ async function bytesOf(src: FontSrc): Promise<Uint8Array> {
   if (src instanceof Uint8Array) return src;
   if (src instanceof ArrayBuffer) return new Uint8Array(src);
   const files = engineHost().files;
-  // Without files (in a browser), text is a URL, relative to the page.
-  const page = (globalThis as { location?: { href: string } }).location?.href;
+  // Without files (in a browser), text is a URL, relative to the page; a file path is an error
+  // (`file:`, a drive letter or a backslash).
+  if (!files && typeof src === 'string' && src.includes('\\')) throw new Error(NO_FILES);
   const url =
     src instanceof URL
       ? src
       : /^(?:https?|file):/i.test(src)
         ? new URL(src)
-        : !files && page !== undefined
-          ? new URL(src, page)
+        : !files && pageUrl() !== undefined
+          ? onPage(src)
           : undefined;
   if (url && (url.protocol === 'http:' || url.protocol === 'https:')) {
     // The URL comes from the developer, not a template, so redirects are followed.

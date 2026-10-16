@@ -156,11 +156,12 @@ const TEMPLATES_TYPES = [
 ];
 
 /**
- * `@inkoxide/render/browser`: the main entry without what needs Node, with `renderToBlob`, and
- * `generate` from the templates.
+ * `@inkoxide/render/browser`: the main entry without what needs Node, with `renderToBlob`,
+ * `clearCaches`, and `generate` from the templates.
  */
 const BROWSER_VALUES = [
   ...MAIN_VALUES.filter((n) => n !== 'renderToFile' && n !== 'renderToStream'),
+  'clearCaches',
   'generate',
   'PdfDownloadLink',
   'PdfViewer',

@@ -51,6 +51,11 @@ use text::{RustybuzzShaper, TextCache, UnicodeMap};
 /// Engine version (the crate version).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The message of the `PARSE_ERROR` for MessagePack input to a build without
+/// the `msgpack` feature, which bindings built that way give too.
+#[doc(hidden)]
+pub const JSON_ONLY: &str = "this build reads JSON only, not MessagePack";
+
 /// Serialisation of the document tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -288,7 +293,7 @@ fn validate_with(
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
         // No profile: `validate` does not know the level.
-        Ok(d) => validate::check(&d, fonts, images, Profile::default()),
+        Ok(d) => validate::check(&d, fonts, &[], images, Profile::default()),
         Err(e) => vec![e],
     }
 }
@@ -298,8 +303,10 @@ fn validate_with(
 /// again, with the same output. In WebAssembly the memory goes back to the
 /// instance for reuse, not to the host.
 pub fn clear_caches() {
-    images::clear_caches();
-    pdf::clear_subsets();
+    // Every process-wide cache (a `SharedLru` static).
+    images::CACHE.clear();
+    images::svg::TEXT_TREES.clear();
+    pdf::SUBSETS.clear();
 }
 
 /// Validates and renders a document to PDF bytes. Never renders a partial
@@ -360,16 +367,14 @@ fn render_inner(
     let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
     let document = validate::parse(doc, format)?;
     // A deferred font may be missing: it stands in until a render needs it.
-    let deferred = |e: &ValidationError| {
-        e.code == ValidationCode::FontNotRegistered
-            && document.fonts.iter().enumerate().any(|(i, f)| {
-                e.path == format!("fonts[{i}].id") && options.deferred_fonts.contains(&f.id)
-            })
-    };
-    if let Some(first) = validate::check(&document, fonts, Some(images), profile)
-        .into_iter()
-        .find(|e| !deferred(e))
-    {
+    let checked = validate::check(
+        &document,
+        fonts,
+        &options.deferred_fonts,
+        Some(images),
+        profile,
+    );
+    if let Some(first) = checked.into_iter().next() {
         return Err(first.into());
     }
 

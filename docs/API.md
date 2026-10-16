@@ -50,7 +50,7 @@ How it differs from the Node package:
   `PARSE_ERROR`.
 - **Downloads on demand.** It is built without the `embedded-hyphenation` feature: `render`
   fetches the patterns of a language from `hyphenation/<file>.bin` the first time a document
-  hyphenates text in it, and the fonts of the `lazyFonts` option (id → URL) a render needs.
+  hyphenates text in it, and the fonts of the `deferredFonts` option (id → URL) a render needs.
   `renderSync` cannot fetch: it fails with `NOT_LOADED` instead (load the patterns first with
   `loadHyphenation`).
 - **A bug in the engine** (a panic in a dependency) ends the instance, since WebAssembly cannot
@@ -75,7 +75,7 @@ How it differs from the Node package:
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A, at `pdf_a_level` (Node: `true` is PDF/A-2b). PDF/A forbids scripts, so text fields with a `format` keep their formatted text and value but not the form scripts that format what the user types |
 | `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '3b'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b or 3b (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
-| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `lazyFonts`) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
+| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
 | `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
@@ -315,7 +315,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed, or a PDF/A-1b file would pass one of the limits of PDF/A-1 |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
-| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only, from `renderSync` | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again (`@inkoxide/wasm`'s `render` does) |
+| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only: from `renderSync`, and from `render` when it cannot fetch what the document needs | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again (`@inkoxide/wasm`'s `render` fetches them and does). `@inkoxide/render/browser` reports a file it could not fetch as `INTERNAL` |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
 | `INVALID_ARGUMENT` | n/a (types are checked at compile time) | Node only | A JS argument has the wrong type or is out of range |
 

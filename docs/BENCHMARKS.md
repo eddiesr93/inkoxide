@@ -14,12 +14,12 @@ Node 24.14; median of 20 renders after a warm-up (10 for the report), in one pro
 
 | Document | Pages | Inkoxide, all cores | Inkoxide, 1 thread | react-pdf |
 |---|---:|---:|---:|---:|
-| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.6 ms | 1.3 ms | 21.2 ms |
-| Invoice (react-pdf with `StyleSheet`) | 1 | 1.6 ms | 1.6 ms | 19.2 ms |
-| Report: 40 sections, 1,000 table rows | 43 | 43 ms | 56 ms | 2,331 ms |
+| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.5 ms | 1.2 ms | 18.4 ms |
+| Invoice (react-pdf with `StyleSheet`) | 1 | 1.3 ms | 1.1 ms | 17.2 ms |
+| Report: 40 sections, 1,000 table rows | 43 | 41 ms | 54 ms | 2,185 ms |
 
-The first render in a new process, including loading each library, takes 177 ms against
-226 ms for the invoice, and 217 ms against 2,398 ms for the report (median of 5 processes).
+The first render in a new process, including loading each library, takes 166 ms against
+214 ms for the invoice, and 207 ms against 2,312 ms for the report (median of 5 processes).
 
 ### In the browser
 

@@ -34,13 +34,6 @@ def main() -> int:
     versions["Cargo.toml workspace.package"] = package[1]
     versions["Cargo.toml inkoxide dependency"] = pin[1]
 
-    react = (ROOT / "packages" / "react" / "src" / "version.ts").read_text()
-    constant = re.search(r"^export const VERSION = '([^']+)';", react, re.M)
-    if not constant:
-        print("packages/react/src/version.ts: no VERSION", file=sys.stderr)
-        return 1
-    versions["packages/react/src/version.ts"] = constant[1]
-
     expected = versions["inkoxide"]
     wrong = {k: v for k, v in versions.items() if v != expected}
     if wrong:

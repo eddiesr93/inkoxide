@@ -64,15 +64,15 @@ function checkOptions(options) {
   if (options === undefined || options === null) return;
   checkObject(options, 'options');
   checkTypes(options, OPTION_TYPES, 'options');
-  const { pdfA, images, encryption, lazyFonts } = options;
+  const { pdfA, images, encryption, deferredFonts } = options;
   if (pdfA !== undefined && typeof pdfA !== 'boolean' && typeof pdfA !== 'string') {
     throw engineError('INVALID_ARGUMENT', 'options.pdfA', 'must be a boolean or a string');
   }
-  if (lazyFonts !== undefined) {
-    checkObject(lazyFonts, 'options.lazyFonts');
-    for (const [id, url] of Object.entries(lazyFonts)) {
+  if (deferredFonts !== undefined) {
+    checkObject(deferredFonts, 'options.deferredFonts');
+    for (const [id, url] of Object.entries(deferredFonts)) {
       if (typeof url !== 'string' && !(url instanceof URL)) {
-        throw engineError('INVALID_ARGUMENT', `options.lazyFonts.${id}`, 'must be a URL');
+        throw engineError('INVALID_ARGUMENT', `options.deferredFonts.${id}`, 'must be a URL');
       }
     }
   }
@@ -329,11 +329,11 @@ async function loadFiles(files) {
   );
 }
 
-// Fetches and registers the fonts of `ids` from `lazyFonts`.
-async function loadFonts(ids, lazyFonts) {
+// Fetches and registers the fonts of `ids` from `deferredFonts` (id → URL).
+async function loadFonts(ids, deferredFonts) {
   await Promise.all(
     ids.map(async (id) => {
-      const url = new URL(String(lazyFonts?.[id] ?? ''), globalThis.location?.href ?? import.meta.url);
+      const url = new URL(String(deferredFonts?.[id] ?? ''), globalThis.location?.href ?? import.meta.url);
       const bytes = await fetchBytes(url, `the font ${id}`);
       registerFont(id, bytes);
     }),
@@ -360,9 +360,9 @@ export async function loadHyphenation(langs) {
 function renderOnce(doc, options) {
   const bytes = bytesOf(doc);
   checkOptions(options);
-  const { images, lazyFonts, ...rest } = options ?? {};
-  // The engine renders without them until a render needs them.
-  if (lazyFonts !== undefined) rest.deferredFonts = Object.keys(lazyFonts);
+  const { images, deferredFonts, ...rest } = options ?? {};
+  // The engine renders without them until a render needs them: it takes their ids.
+  if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
   const json = encoder.encode(JSON.stringify(rest, finiteOrString));
   const buf = images === undefined ? new Uint8Array() : imagesBuffer(images);
   return call((e) => {
@@ -382,7 +382,7 @@ function notLoaded({ fonts, hyphenation }) {
 
 /**
  * Renders on the calling thread, with what was loaded: a document that needs one of its
- * `lazyFonts`, or built-in hyphenation patterns not loaded (`loadHyphenation`), fails with
+ * `deferredFonts`, or built-in hyphenation patterns not loaded (`loadHyphenation`), fails with
  * `NOT_LOADED`.
  */
 export function renderSync(doc, options) {
@@ -393,12 +393,15 @@ export function renderSync(doc, options) {
 
 /**
  * Renders on the calling thread (in a page, call it from a worker), after fetching what the
- * document needs: those of its `lazyFonts` it draws with, and built-in hyphenation patterns.
+ * document needs: those of its `deferredFonts` it draws with, and built-in hyphenation patterns.
  */
 export async function render(doc, options) {
   const first = renderOnce(doc, options);
   if (!first.needs) return first.pdf;
-  await Promise.all([loadFonts(first.needs.fonts, options?.lazyFonts), loadFiles(first.needs.hyphenation)]);
+  await Promise.all([
+    loadFonts(first.needs.fonts, options?.deferredFonts),
+    loadFiles(first.needs.hyphenation),
+  ]);
   const { pdf, needs } = renderOnce(doc, options);
   if (needs) throw notLoaded(needs);
   return pdf;

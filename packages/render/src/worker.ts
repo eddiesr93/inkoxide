@@ -14,6 +14,7 @@ const OPS = {
   validate: engine.validate,
   render: engine.render,
   version: engine.version,
+  clearCaches: engine.clearCaches,
 } as const;
 
 export type Op = keyof typeof OPS;

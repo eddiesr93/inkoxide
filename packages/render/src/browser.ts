@@ -9,6 +9,7 @@ import './browser-host.ts';
 export {
   type BrowserOptions,
   type BrowserRenderOptions,
+  clearCaches,
   init,
   renderToBlob,
   renderToBuffer,

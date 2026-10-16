@@ -45,10 +45,6 @@ thread_local! {
     static RESULT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
-/// This build reads JSON only. The engine is built without `msgpack`
-/// for it, but a workspace build unifies features: say so here too.
-const JSON_ONLY: &str = "this build reads JSON only, not MessagePack";
-
 fn text(bytes: &[u8], path: &str) -> Result<String, Failure> {
     String::from_utf8(bytes.to_vec()).map_err(|_| Failure::invalid_arg(path, "must be valid UTF-8"))
 }
@@ -81,7 +77,7 @@ pub fn validate(doc: &[u8], format: &[u8], images: Option<&[u8]>) -> Result<Stri
     };
     let format = inkoxide_binding::input_format(format.as_deref(), "options.format")?;
     if format == InputFormat::MessagePack {
-        let e = Failure::new("PARSE_ERROR", "", JSON_ONLY);
+        let e = Failure::new("PARSE_ERROR", "", inkoxide::JSON_ONLY);
         return Ok(format!("[{}]", e.to_json()));
     }
     let images = images.map(images::parse).transpose()?;
@@ -126,12 +122,18 @@ pub fn hyphenation_file(lang: &[u8]) -> String {
 
 /// The PDF of `doc`, with `options` as JSON and `images` as one buffer.
 pub fn render(doc: &[u8], options: &[u8], images: &[u8]) -> Result<Vec<u8>, NotRendered> {
-    let options = options::parse(options)?;
+    let options::Parsed {
+        options,
+        deferred_fonts,
+    } = options::parse(options)?;
     let images = images::parse(images)?;
     let hyphenation = HYPHENATION.with(|h| h.borrow().clone());
     let (format, core) = options.into_core(hyphenation, MAX_THREADS)?;
+    let core = core.with_deferred_fonts(deferred_fonts);
+    // The engine is built without `msgpack` for this binding, but a
+    // workspace build unifies features: refuse it here too.
     if format == InputFormat::MessagePack {
-        return Err(Failure::new("PARSE_ERROR", "", JSON_ONLY).into());
+        return Err(Failure::new("PARSE_ERROR", "", inkoxide::JSON_ONLY).into());
     }
     match FONTS.with(|f| inkoxide::render(doc, format, &core, &f.borrow(), &images)) {
         Ok(pdf) => Ok(pdf),
