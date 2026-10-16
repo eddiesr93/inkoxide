@@ -572,27 +572,30 @@ mod tests {
         }
     }
 
+    /// Placing a label does not look at every label already placed: labels
+    /// spread over a large page, and as many piled on a few points, place
+    /// in linear time.
     #[test]
     fn placing_many_labels_takes_linear_time() {
         let size = label_size(&size_text([3.0, 3.0]));
-        let start = std::time::Instant::now();
-        let mut labels = Labels::default();
-        // 100 000 labels spread over a large page, and 100 000 piled on a
-        // few points: scanning every label would take minutes.
-        for k in 0..100_000 {
-            let r = Rect::new((k % 316) as f32 * 45.0, (k / 316) as f32 * 45.0, 3.0, 3.0);
-            labels.place(corners(r, size), size);
-        }
-        for k in 0..100_000 {
-            let r = Rect::new(100.0 + (k % 7) as f32 * 0.01, 100.0, 3.0, 3.0);
-            labels.place(corners(r, size), size);
-        }
-        assert!(
-            labels.cells.values().all(|c| c.len() <= CELL_CAP + 1),
-            "cells stay bounded"
-        );
-        let took = start.elapsed();
-        assert!(took.as_secs_f32() < 5.0, "{took:?}");
+        crate::test_timing::assert_linear("labels", 25_000, |n| {
+            let start = std::time::Instant::now();
+            let mut labels = Labels::default();
+            for k in 0..n {
+                let r = Rect::new((k % 316) as f32 * 45.0, (k / 316) as f32 * 45.0, 3.0, 3.0);
+                labels.place(corners(r, size), size);
+            }
+            for k in 0..n {
+                let r = Rect::new(100.0 + (k % 7) as f32 * 0.01, 100.0, 3.0, 3.0);
+                labels.place(corners(r, size), size);
+            }
+            let took = start.elapsed();
+            assert!(
+                labels.cells.values().all(|c| c.len() <= CELL_CAP + 1),
+                "cells stay bounded"
+            );
+            took
+        });
     }
 
     #[test]

@@ -575,31 +575,32 @@ fn debug_adds_no_text_links_or_fields() {
     assert_eq!(debug_marks, plain_marks);
 }
 
+/// Untrusted documents can hold many elements on one page: placing a
+/// label must not look at every label already placed.
 #[test]
-fn a_page_of_50k_outlined_elements_renders_quickly() {
-    // Untrusted documents can hold many elements on one page: placing a
-    // label must not look at every label already placed.
-    let n = 50_000;
+fn outlined_elements_on_one_page_render_in_linear_time() {
     let side = 224;
-    let kids: Vec<String> = (0..n)
-        .map(|k| {
-            format!(
-                r#"{{"type":"box","style":{{"position":"absolute",
-                    "inset":{{"top":{},"left":{}}},"width":3,"height":3}}}}"#,
-                (k / side) * 62,
-                (k % side) * 62
-            )
-        })
-        .collect();
-    let json = format!(
-        r#"{{"version":1,"pages":[{{"size":{{"width":14400,"height":14400}},"debug":true,
-            "children":[{}]}}]}}"#,
-        kids.join(",")
-    );
-    let start = std::time::Instant::now();
-    let pages = pages(&json);
-    let took = start.elapsed();
-    // The page and every box.
-    assert_eq!(labels(&pages[0]).len(), n + 1);
-    assert!(took.as_secs_f32() < 10.0, "{took:?}");
+    crate::test_timing::assert_linear("outlined elements", 12_500, |n| {
+        let kids: Vec<String> = (0..n)
+            .map(|k| {
+                format!(
+                    r#"{{"type":"box","style":{{"position":"absolute",
+                        "inset":{{"top":{},"left":{}}},"width":3,"height":3}}}}"#,
+                    (k / side) * 62,
+                    (k % side) * 62
+                )
+            })
+            .collect();
+        let json = format!(
+            r#"{{"version":1,"pages":[{{"size":{{"width":14400,"height":14400}},"debug":true,
+                "children":[{}]}}]}}"#,
+            kids.join(",")
+        );
+        let start = std::time::Instant::now();
+        let pages = pages(&json);
+        let took = start.elapsed();
+        // The page and every box.
+        assert_eq!(labels(&pages[0]).len(), n + 1);
+        took
+    });
 }

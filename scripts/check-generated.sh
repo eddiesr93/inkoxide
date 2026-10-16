@@ -23,11 +23,22 @@ esac
 python3 scripts/gen-schema-doc.py >/dev/null
 python3 scripts/gen-fuzz-dict.py >/dev/null
 python3 scripts/fixtures/report_realistic.py >/dev/null
+python3 scripts/fixtures/invoice.py >/dev/null
+python3 scripts/fixtures/pagination.py >/dev/null
+python3 scripts/fixtures/tables.py >/dev/null
 python3 scripts/fixtures/emoji_fonts.py >/dev/null
+# Not scripts/fixtures/images.py: it needs Pillow, whose PNG bytes change
+# from one version to the next.
 generated=(
   docs/SCHEMA.md
   fuzz/render_json.dict
   fixtures/docs/report-100p-realistic.json
+  fixtures/docs/invoice.json
+  fixtures/docs/multi-page-text.json
+  fixtures/docs/keep-together.json
+  fixtures/docs/header-footer-pagenumbers.json
+  fixtures/docs/table-basic.json
+  fixtures/docs/table-split-header-repeat.json
   fixtures/fonts/EmojiTest-COLR.ttf
   fixtures/fonts/EmojiTest-CBDT.ttf
   fixtures/fonts/EmojiTest-sbix.ttf

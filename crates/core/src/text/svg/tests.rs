@@ -226,14 +226,11 @@ fn records_glyphs_for_the_text_layer() {
 }
 
 /// Each `textLength` finds the clusters inside it without going through
-/// the others: many spans with their own lay out in linear time. Four
-/// times the spans take well under the sixteen times a quadratic layout
-/// would; a ratio, not a wall-clock limit, so a busy machine does not fail
-/// it.
+/// the others: many spans with their own lay out in linear time.
 #[test]
 fn fits_many_text_lengths_in_linear_time() {
     let a = advance('a', 10.0);
-    let lay_out = |n: usize| {
+    crate::test_timing::assert_linear("text lengths", 8_000, |n| {
         let mut body = String::from(r#"<text font-size="10">"#);
         for _ in 0..n {
             body.push_str(r#"<tspan textLength="5" lengthAdjust="spacingAndGlyphs">a</tspan>"#);
@@ -246,36 +243,32 @@ fn fits_many_text_lengths_in_linear_time() {
         assert!(laid.glyphs.iter().all(|g| close(g.scale_x, 5.0 / a)));
         assert!(close(laid.glyphs[n - 1].x, 5.0 * (n - 1) as f32));
         took
-    };
-    let n = 8_000;
-    let (small, big) = (lay_out(n), lay_out(4 * n));
-    assert!(
-        big < small * 8 + std::time::Duration::from_millis(500),
-        "{n} took {small:?}, {} took {big:?}",
-        4 * n
-    );
+    });
 }
 
-/// Each decoration finds its font without a search: thousands of
-/// decorated runs (a `dx` starts each) lay out in linear time, and each
-/// paint style's glyphs are found in one step.
+/// Each decoration finds its font without a search: decorated runs (a
+/// `dx` starts each) lay out in linear time, and each paint style's glyphs
+/// are found in one step.
 #[test]
 fn decorates_and_sorts_many_spans_in_linear_time() {
-    let mut body = String::from(r#"<text text-decoration="underline">"#);
-    for i in 0..20_000 {
-        let fill = if i % 2 == 0 { "red" } else { "blue" };
-        let _ = write!(body, r#"<tspan dx="1" fill="{fill}">a</tspan>"#);
-    }
-    body.push_str("</text>");
-    let t = std::time::Instant::now();
-    let laid = laid(&body);
-    assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
-    assert_eq!(laid.decorations.len(), 20_000);
-    assert_eq!(laid.glyphs_of(0).len(), 10_000);
-    assert!(laid.glyphs_of(1).iter().all(|g| g.paint == 1));
-    assert_eq!(laid.decorations_of(1).len(), 10_000);
-    // In each paint style, in the order they are drawn.
-    assert!(laid.glyphs_of(0).windows(2).all(|w| w[0].x < w[1].x));
+    crate::test_timing::assert_linear("decorated spans", 5_000, |n| {
+        let mut body = String::from(r#"<text text-decoration="underline">"#);
+        for i in 0..n {
+            let fill = if i % 2 == 0 { "red" } else { "blue" };
+            let _ = write!(body, r#"<tspan dx="1" fill="{fill}">a</tspan>"#);
+        }
+        body.push_str("</text>");
+        let t = std::time::Instant::now();
+        let laid = laid(&body);
+        let took = t.elapsed();
+        assert_eq!(laid.decorations.len(), n);
+        assert_eq!(laid.glyphs_of(0).len(), n / 2);
+        assert!(laid.glyphs_of(1).iter().all(|g| g.paint == 1));
+        assert_eq!(laid.decorations_of(1).len(), n / 2);
+        // In each paint style, in the order they are drawn.
+        assert!(laid.glyphs_of(0).windows(2).all(|w| w[0].x < w[1].x));
+        took
+    });
 }
 
 /// An emoji the document maps to an image is that image, 1em high and

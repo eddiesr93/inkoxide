@@ -106,8 +106,8 @@ fn without_hex_strings(text: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Asserts that no token is a non-finite number, and that there are
-/// numbers to check at all.
+/// Asserts that no token is a non-finite number, that every number is
+/// one readers parse, and that there are numbers to check at all.
 fn assert_finite(pdf: &[u8], min_numbers: usize) {
     assert_finite_tokens(&tokens(pdf, false), min_numbers);
 }
@@ -126,6 +126,7 @@ fn assert_finite_tokens(tokens: &[String], min_numbers: usize) {
         .filter(|t| t.parse::<f64>().is_ok_and(f64::is_finite))
         .count();
     assert!(numbers >= min_numbers, "only {numbers} numbers");
+    assert_parsable_tokens(tokens);
 }
 
 fn doc(page: &str, children: &[String]) -> String {
@@ -205,6 +206,7 @@ fn every_property_at_its_bounds_renders_finite_numbers() {
     ];
     let pdf = render(&doc(r#"{"width":14400,"height":14400}"#, &children));
     assert_finite(&pdf, 500);
+    assert_qpdf_check("bounds", &pdf);
 }
 
 #[test]
@@ -226,6 +228,7 @@ fn percentages_compounding_past_f32_render_finite_numbers() {
     ];
     let pdf = render(&doc(r#"{"width":200,"height":200}"#, &children));
     assert_finite(&pdf, 100);
+    assert_qpdf_check("compounding-percentages", &pdf);
 }
 
 #[test]
@@ -253,6 +256,7 @@ fn svg_numbers_that_overflow_render_finite_numbers() {
     }
     let pdf = render_with(&doc(r#"{"width":200,"height":200}"#, &children), &images);
     assert_finite_tokens(&tokens(&pdf, true), 50);
+    assert_qpdf_check("overflowing-svg-numbers", &pdf);
 }
 
 #[test]
@@ -315,7 +319,6 @@ fn svgs_too_small_to_scale_are_invalid_images() {
     let pdf = render_with(&json, &images);
     let tokens = tokens(&pdf, true);
     assert_finite_tokens(&tokens, 50);
-    assert_parsable_tokens(&tokens);
     assert_qpdf_check("smallest-svgs", &pdf);
 }
 
@@ -389,7 +392,6 @@ fn huge_svg_numbers_are_written_within_what_readers_parse() {
     let pdf = render_with(&doc(r#"{"width":200,"height":200}"#, &children), &images);
     let tokens = tokens(&pdf, true);
     assert_finite_tokens(&tokens, 100);
-    assert_parsable_tokens(&tokens);
     assert!(
         tokens.iter().any(|t| t == "100000000000.0"),
         "nothing reached the bound"

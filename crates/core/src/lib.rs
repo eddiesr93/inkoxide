@@ -30,6 +30,8 @@ mod pool;
 mod schema;
 #[cfg(test)]
 mod test_fixtures;
+#[cfg(test)]
+mod test_timing;
 mod text;
 mod validate;
 

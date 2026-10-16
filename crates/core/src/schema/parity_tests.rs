@@ -364,7 +364,8 @@ fn named_bounds_match_schema() {
         MAX_ALT, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS,
         MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTIONS, MAX_FIELD_OPTION_LEN,
         MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT,
-        MAX_NOTE, MAX_NOTE_AUTHOR, MAX_ORPHANS, MAX_TEXT_INDENT, MAX_WEIGHT,
+        MAX_LINK, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_NUMBER, MAX_ORPHANS, MAX_PAGE_EDGE,
+        MAX_TEXT_INDENT, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -682,6 +683,58 @@ fn named_bounds_match_schema() {
         ),
     ];
     let mut cases = cases;
+    let page = |width: f64, height: f64| {
+        format!(
+            r#"{{"version":1,"pages":[{{"size":{{"width":{width},"height":{height}}},"children":[]}}]}}"#
+        )
+    };
+    let boxed = |b: &str| doc("", &format!(r#"{{"type":"box",{b}}}"#));
+    let node = "pages[0].children[0]";
+    cases.extend::<[(&str, f64, Make, f64, &str, String); 5]>([
+        (
+            "/$defs/Size/properties/width/maximum",
+            f64::from(MAX_PAGE_EDGE),
+            Box::new(move |v| page(v, 100.0)),
+            f64::from(MAX_PAGE_EDGE) + 0.5,
+            "OUT_OF_RANGE",
+            "pages[0].size.width".into(),
+        ),
+        (
+            "/$defs/Size/properties/height/maximum",
+            f64::from(MAX_PAGE_EDGE),
+            Box::new(move |v| page(100.0, v)),
+            f64::from(MAX_PAGE_EDGE) + 0.5,
+            "OUT_OF_RANGE",
+            "pages[0].size.height".into(),
+        ),
+        (
+            "/$defs/Length/oneOf/0/maximum",
+            f64::from(MAX_NUMBER),
+            Box::new(move |v| boxed(&format!(r#""style":{{"width":{v}}}"#))),
+            f64::from(MAX_NUMBER) + 1.0,
+            "OUT_OF_RANGE",
+            format!("{style}.width"),
+        ),
+        (
+            "/$defs/Length/oneOf/0/minimum",
+            -f64::from(MAX_NUMBER),
+            Box::new(move |v| boxed(&format!(r#""style":{{"margin":{{"left":{v}}}}}"#))),
+            -f64::from(MAX_NUMBER) - 1.0,
+            "OUT_OF_RANGE",
+            format!("{style}.margin.left"),
+        ),
+        (
+            "/$defs/Link/maxLength",
+            MAX_LINK as f64,
+            Box::new(move |n| {
+                let target = format!("https://e.com/{}", chars(n - 14.0));
+                boxed(&format!(r#""link":"{target}""#))
+            }),
+            MAX_LINK as f64 + 1.0,
+            "INVALID_VALUE",
+            format!("{node}.link"),
+        ),
+    ]);
     cases.push((
         "/$defs/InlineImage/properties/alt/maxLength",
         MAX_ALT as f64,
@@ -709,6 +762,58 @@ fn named_bounds_match_schema() {
             errors(&make(past), &["f"]),
             one(code, &path),
             "{pointer}: {past}"
+        );
+    }
+}
+
+/// The schema's patterns for percentages state the engine's bound, and the
+/// engine accepts a percentage at it and rejects one past it.
+#[test]
+fn percent_bounds_match_schema() {
+    use crate::validate::rules::MAX_PERCENT;
+    let s = schema();
+    let most = (MAX_PERCENT * 100.0) as u32;
+    let digits = most.to_string().len() - 1;
+    for (def, pattern) in [
+        (
+            "Percent",
+            format!(r"^-?0*([0-9]{{1,{digits}}}(\.[0-9]+)?|{most}(\.0+)?)%$"),
+        ),
+        (
+            "NonNegativePercent",
+            format!(r"^(0*([0-9]{{1,{digits}}}(\.[0-9]+)?|{most}(\.0+)?)|-0+(\.0+)?)%$"),
+        ),
+    ] {
+        let stated = s
+            .pointer(&format!("/$defs/{def}/pattern"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap();
+        assert_eq!(stated, pattern, "{def}");
+    }
+    // `width` is never negative, a margin may be.
+    let doc = |style: &str| {
+        format!(
+            r#"{{"version":1,"pages":[{{{PAGE},"children":[{{"type":"box","style":{{{style}}}}}]}}]}}"#
+        )
+    };
+    let path = "pages[0].children[0].style";
+    for (ok, past, at) in [
+        (
+            format!(r#""width":"{most}%""#),
+            format!(r#""width":"{most}.5%""#),
+            "width",
+        ),
+        (
+            format!(r#""margin":{{"left":"-{most}%"}}"#),
+            format!(r#""margin":{{"left":"-{most}.5%"}}"#),
+            "margin.left",
+        ),
+    ] {
+        assert_eq!(errors(&doc(&ok), &[]), [], "{ok}");
+        assert_eq!(
+            errors(&doc(&past), &[]),
+            one("OUT_OF_RANGE", &format!("{path}.{at}")),
+            "{past}"
         );
     }
 }
