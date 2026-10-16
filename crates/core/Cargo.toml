@@ -6,6 +6,12 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["pdf", "typesetting", "layout", "document", "rendering"]
+categories = ["text-processing", "rendering"]
+# The workspace's tests and benchmarks read fixtures outside the crate.
+include = ["src/**", "hyphenation/**", "README.md", "LICENSE"]
 
 [lints]
 workspace = true

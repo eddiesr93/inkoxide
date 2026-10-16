@@ -8,6 +8,7 @@ edition = "2021"
 license = "MIT"
 rust-version = "1.97"
 repository = "https://github.com/eddiesr93/inkoxide"
+homepage = "https://inkoxide.dev"
 
 # Exact pins: upgrades are deliberate PRs.
 [workspace.dependencies]
