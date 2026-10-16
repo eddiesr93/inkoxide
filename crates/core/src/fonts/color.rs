@@ -826,11 +826,23 @@ mod tests {
     #[test]
     fn a_glyph_over_the_work_budget_has_no_colour() {
         with_fonts(|fonts| {
-            // Its paints call the painter, or they never do.
+            // Its paints call the painter, or they never do: either way it
+            // stops as fast as an ordinary colour glyph is drawn.
+            let colr = fonts.get(0);
             for font in [fonts.get(3), fonts.get(4)] {
-                let t = std::time::Instant::now();
-                assert_eq!(font.color_glyph(font.glyph('😀').unwrap()), None);
-                assert!(t.elapsed().as_secs() < 2, "took {:?}", t.elapsed());
+                crate::test_timing::assert_as_fast(
+                    font.id,
+                    || {
+                        let t = std::time::Instant::now();
+                        assert!(colr.color_glyph(colr.glyph('😀').unwrap()).is_some());
+                        t.elapsed()
+                    },
+                    || {
+                        let t = std::time::Instant::now();
+                        assert_eq!(font.color_glyph(font.glyph('😀').unwrap()), None);
+                        t.elapsed()
+                    },
+                );
             }
         });
     }

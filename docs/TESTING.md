@@ -18,6 +18,11 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
 ## Suites
 
 - Unit tests next to each module (`validate/tests.rs`, `lru.rs`, …).
+  A test of how fast something runs never sets a time limit, which a
+  slow or busy runner would miss: `crates/core/src/test_timing.rs`
+  compares an input with one four times larger (linear time, or a
+  limit that stops both), or a hostile input with an ordinary one. The
+  integration tests share it through `crates/core/tests/common`.
 - `crates/core/tests/fixtures.rs`: every `fixtures/docs/*.json`
   validates, renders byte-identically twice (and with one thread), renders
   identically from MessagePack, and passes `qpdf --check`. Each also
@@ -44,10 +49,12 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   of SVG text, the work budget of one `COLR` glyph, deepest accepted
   nesting on a small stack). SVG text at scale (thousands of texts on
   one point, of spans with their own paint, of text nodes) renders in
-  bounded time and memory, measured with a counting allocator; its
-  placeholders are bounded before they are written; and validation
-  refuses what a render would. The unit tests of `images/svg_text` and
-  `text/svg.rs` push each step to hundreds of thousands. The budgets of a render's colour glyphs
+  linear time and bounded memory, measured with a counting allocator;
+  its placeholders are bounded before they are written; and validation
+  refuses what a render would. The unit tests of `images/svg_text` push
+  reading and rewriting to hundreds of thousands of texts, spans and
+  text nodes, those of `text/svg` the layout of tens of thousands of
+  spans, with `textLength` and decorations. The budgets of a render's colour glyphs
   (how many, and the bytes of their images) are tested in
   `text/color.rs`, with smaller limits.
 - `crates/core/tests/finite_numbers.rs`: every number in the PDF is
@@ -142,8 +149,11 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   examples and benchmark invoices, each run through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
-  `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the report
-  fixture and the emoji test fonts) and fails when one is stale; `ci.yml` and `scripts/ci.sh` run it.
+  `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture
+  documents that `scripts/fixtures` writes and the emoji test fonts) and
+  fails when one is stale; `ci.yml` and `scripts/ci.sh` run it. The
+  images of `scripts/fixtures/images.py` and its document are the
+  exception: it needs Pillow, whose PNG bytes change between versions.
   With `--python-only` it checks only the files python3 writes, which is
   what `scripts/ci.sh` does where pnpm is not installed.
 - `cargo bench -p inkoxide`: criterion benchmarks (docs/BENCHMARKS.md).

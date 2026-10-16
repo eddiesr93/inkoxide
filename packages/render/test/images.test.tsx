@@ -649,6 +649,44 @@ describe('Font.registerEmojiSource', () => {
     expect(hits.get('/slower/1f600.png')).toBe(1);
   });
 
+  it('names the files by their format, with U+FE0F when asked', () => {
+    const heart = {
+      ...emojiTemplate,
+      Template: () => (
+        <Document>
+          <Page>
+            <Text>Heart ❤️ and smile 😀</Text>
+          </Page>
+        </Document>
+      ),
+    };
+    const urls = () => {
+      const tree = renderTree(heart, {}, allowed());
+      const ids = Object.entries(tree.document.emojiImages ?? {});
+      return Object.fromEntries(ids.map(([emoji, id]) => [emoji, tree.remote[id ?? '']]));
+    };
+    Font.registerEmojiSource({ url: `${base}/emoji/`, format: 'svg' });
+    expect(urls()).toEqual({ '❤': `${base}/emoji/2764.svg`, '😀': `${base}/emoji/1f600.svg` });
+    Font.registerEmojiSource({ url: `${base}/emoji/`, withVariationSelectors: true });
+    expect(urls()).toEqual({ '❤': `${base}/emoji/2764-fe0f.png`, '😀': `${base}/emoji/1f600.png` });
+  });
+
+  it('takes a data: URL as the bytes it holds, and refuses one that is not base64', async () => {
+    Font.registerEmojiSource({ builder: () => `data:image/png;base64,${logo.toString('base64')}` });
+    const tree = renderTree(emojiTemplate, {}, {});
+    const ids = Object.values(tree.document.emojiImages ?? {});
+    expect(ids).toHaveLength(3);
+    for (const id of ids) expect(Buffer.from(tree.images[id ?? ''] ?? []).equals(logo)).toBe(true);
+    const pdf = await renderToBuffer(<emojiTemplate.Template />, { compress: false });
+    expect(pageImages(pdf)).toEqual([[LOGO]]);
+    Font.registerEmojiSource({ builder: () => 'data:image/png,not base64' });
+    const e = await renderToBuffer(<emojiTemplate.Template />).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(RenderError);
+    expect((e as RenderError).message).toContain(
+      'Font.registerEmojiSource, for 😀: a data: URL that is not valid base64',
+    );
+  });
+
   it('takes a builder, and refuses a URL outside remoteImages', async () => {
     Font.registerEmojiSource({
       builder: (points) => (points === '1f600' ? logo : `${base}/emoji/${points}.png`),

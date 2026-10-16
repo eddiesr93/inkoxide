@@ -2473,24 +2473,15 @@ fn a_document_holds_a_bounded_number_of_table_slots() {
     );
 }
 
-/// Four times the rows and columns take well under the sixteen times a
-/// check of every slot would. A ratio, not a wall-clock limit, so a slow
-/// or busy machine does not fail it.
+/// Wide tables are checked without visiting every slot.
 #[test]
 fn checks_wide_tables_in_linear_time() {
-    let check = |n: usize| {
+    crate::test_timing::assert_linear("tables", 4000, |n| {
         let d = doc(&spanned_table(n, n));
         let t = std::time::Instant::now();
         assert_eq!(one(&d).0, C::OutOfRange);
         t.elapsed()
-    };
-    let n = 4000;
-    let (small, big) = (check(n), check(4 * n));
-    assert!(
-        big < small * 8 + std::time::Duration::from_millis(500),
-        "{n} took {small:?}, {} took {big:?}",
-        4 * n
-    );
+    });
 }
 
 /// An integer written with a zero fraction reads as the integer, as JSON

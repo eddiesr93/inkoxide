@@ -24,20 +24,20 @@ use crate::{FontStore, ImageStore};
 const MAX_ERRORS: usize = 100;
 
 /// Largest page edge PDF viewers accept (200 in, PDF 1.6+ user unit aside).
-const MAX_PAGE_EDGE: f32 = 14_400.0;
+pub(crate) const MAX_PAGE_EDGE: f32 = 14_400.0;
 
 /// Largest percentage either way, as a fraction (10000 %), wherever a
 /// percentage is accepted. Far past any useful layout, and small enough
 /// that a percentage of any length stays finite: an unbounded one (say
 /// `"9999999999999999999999999999999999999%"`) overflowed `f32` and wrote
 /// `inf` into the content stream.
-const MAX_PERCENT: f32 = 100.0;
+pub(crate) const MAX_PERCENT: f32 = 100.0;
 
 /// Largest magnitude of a length in points (about 350 m), and of the other
 /// numbers that have no tighter bound of their own: flex factors, `fr`,
 /// angles, scale and matrix entries. Sums over a whole document stay far
 /// from overflowing `f32`.
-const MAX_NUMBER: f32 = 1_000_000.0;
+pub(crate) const MAX_NUMBER: f32 = 1_000_000.0;
 
 /// A length as the range checks see it.
 #[derive(Clone, Copy)]
@@ -180,14 +180,16 @@ struct Checker<'a> {
     table_slots: usize,
 }
 
+// The bounds below, up to `MAX_FLOATS`, are the schema's, and so are
+// `MAX_PAGE_EDGE`, `MAX_PERCENT` and `MAX_NUMBER` above:
+// `schema::parity_tests` reads each from `document.v1.json` and checks
+// that validation enforces it.
+
 /// Longest link target accepted.
-const MAX_LINK: usize = 2048;
+pub(crate) const MAX_LINK: usize = 2048;
 
 /// Longest `Id` (node, font and image ids), in characters.
 const MAX_ID: usize = 256;
-
-// The bounds below are the schema's; `schema::parity_tests` reads each
-// from `document.v1.json` and checks that validation enforces it.
 
 /// Font weights are `1..=MAX_WEIGHT` (`FontDecl.weight`).
 pub(crate) const MAX_WEIGHT: u16 = 1000;
@@ -238,6 +240,9 @@ pub(crate) const MAX_ORPHANS: u32 = 100;
 pub(crate) const MAX_FONT_FEATURES: usize = 32;
 /// Largest value of a font feature.
 pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
+
+// The bounds below are the engine's own: the schema does not state them,
+// and `validate::tests` checks each.
 
 /// Most floated children of one box: placing each looks at the others.
 pub(crate) const MAX_FLOATS: usize = 1000;

@@ -834,19 +834,21 @@ fn pretty_lines_follow_forced_breaks_ellipsis_and_bands() {
     assert_fits(&l, 200.0);
 }
 
+/// Optimal line breaking looks back a bounded number of breaks: a long
+/// paragraph breaks in linear time.
 #[test]
-fn a_long_pretty_paragraph_is_quick() {
+fn a_long_pretty_paragraph_breaks_in_linear_time() {
     let s = store();
-    let text = [PROSE; 40].join(" ");
-    let start = std::time::Instant::now();
-    let (l, spaces) = line_spaces(
-        &pretty(doc(&para(&text, r#""textAlign":"justify""#))),
-        &s,
-        300.0,
-    );
-    assert!(l.lines.len() > 100);
-    assert_fits_shrunk(&l, 300.0, &spaces);
-    assert!(start.elapsed().as_secs_f32() < 5.0, "{:?}", start.elapsed());
+    crate::test_timing::assert_linear("paragraph", 10, |n| {
+        let text = vec![PROSE; n].join(" ");
+        let d = pretty(doc(&para(&text, r#""textAlign":"justify""#)));
+        let start = std::time::Instant::now();
+        let (l, spaces) = line_spaces(&d, &s, 300.0);
+        let took = start.elapsed();
+        assert!(l.lines.len() > 25 * n / 10);
+        assert_fits_shrunk(&l, 300.0, &spaces);
+        took
+    });
 }
 
 #[test]

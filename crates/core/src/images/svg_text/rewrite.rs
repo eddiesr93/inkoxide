@@ -275,53 +275,55 @@ mod tests {
     /// Texts on one point get their own probes in one step each.
     #[test]
     fn rewrites_many_texts_on_one_point_in_linear_time() {
-        let n = 200_000;
-        let source = "<text>a</text>".repeat(n);
-        let texts = (0..n)
-            .map(|i| SvgText {
-                range: i * 14..(i + 1) * 14,
-                attrs: String::new(),
-                effects: String::new(),
-                in_clip: false,
-                chars: Vec::new(),
-                spans: Vec::new(),
-                paints: vec!["fill:red;".into()],
-                adjust: Vec::new(),
-                rtl: false,
-            })
-            .collect();
-        let doc = SvgTextDoc {
-            texts,
-            form: ProbeForm::default(),
-        };
-        let glyph = crate::text::SvgGlyph {
-            font: 0,
-            id: 1,
-            size: 1.0,
-            x: 0.0,
-            y: 0.0,
-            rotate: 0.0,
-            scale_x: 1.0,
-            paint: 0,
-            text: (0, 0),
-        };
-        let laid = vec![
-            LaidText {
-                glyphs: vec![glyph],
-                decorations: Vec::new(),
-                images: Vec::new(),
-                ink: Some([0.0, 0.0, 1.0, 1.0]),
-                text: String::new(),
+        crate::test_timing::assert_linear("texts", 50_000, |n| {
+            let source = "<text>a</text>".repeat(n);
+            let texts = (0..n)
+                .map(|i| SvgText {
+                    range: i * 14..(i + 1) * 14,
+                    attrs: String::new(),
+                    effects: String::new(),
+                    in_clip: false,
+                    chars: Vec::new(),
+                    spans: Vec::new(),
+                    paints: vec!["fill:red;".into()],
+                    adjust: Vec::new(),
+                    rtl: false,
+                })
+                .collect();
+            let doc = SvgTextDoc {
+                texts,
+                form: ProbeForm::default(),
             };
-            n
-        ];
-        let t = std::time::Instant::now();
-        let mut probes = Probes::new();
-        let bits = index_bits(doc.most_probes());
-        let out = rewrite(&source, &doc, &laid, 0, (&mut probes, bits));
-        assert!(t.elapsed().as_secs() < 10, "took {:?}", t.elapsed());
-        assert_eq!(probes.len(), n);
-        assert_eq!(out.matches("<path").count(), n);
-        assert!(out.len() <= most_bytes(&doc));
+            let glyph = crate::text::SvgGlyph {
+                font: 0,
+                id: 1,
+                size: 1.0,
+                x: 0.0,
+                y: 0.0,
+                rotate: 0.0,
+                scale_x: 1.0,
+                paint: 0,
+                text: (0, 0),
+            };
+            let laid = vec![
+                LaidText {
+                    glyphs: vec![glyph],
+                    decorations: Vec::new(),
+                    images: Vec::new(),
+                    ink: Some([0.0, 0.0, 1.0, 1.0]),
+                    text: String::new(),
+                };
+                n
+            ];
+            let t = std::time::Instant::now();
+            let mut probes = Probes::new();
+            let bits = index_bits(doc.most_probes());
+            let out = rewrite(&source, &doc, &laid, 0, (&mut probes, bits));
+            let took = t.elapsed();
+            assert_eq!(probes.len(), n);
+            assert_eq!(out.matches("<path").count(), n);
+            assert!(out.len() <= most_bytes(&doc));
+            took
+        });
     }
 }

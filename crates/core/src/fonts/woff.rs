@@ -199,23 +199,38 @@ mod tests {
     fn woff2_bombs_fail_before_they_expand() {
         // The file is well formed: the same table with a stream of its
         // size decodes.
-        assert!(decode(&woff2(1024, ZEROS_1_KIB, 0)).unwrap().is_some());
-        // Decoding 256 MiB would take seconds; each bomb fails at once.
-        let start = std::time::Instant::now();
+        let ordinary = woff2(1024, ZEROS_1_KIB, 0);
         // A 4 GiB table in a 300-byte file: rejected by its compression
         // ratio before anything is allocated or decompressed.
         let claims = woff2(u32::MAX, ZEROS_256_MIB, 0);
         assert!(claims.len() < 300);
-        assert_eq!(decode(&claims).unwrap_err(), "not a valid WOFF2 font");
         // A plausible ratio, padded with private data, but more than the
         // 128 MiB limit: rejected before decompressing.
         let padded = woff2(200 << 20, ZEROS_256_MIB, 3 << 20);
-        assert_eq!(decode(&padded).unwrap_err(), "not a valid WOFF2 font");
         // A stream that expands to 256 MiB in a table that declares 16 KiB:
         // decoded into a 16 KiB buffer, which it overflows.
         let expands = woff2(16 << 10, ZEROS_256_MIB, 0);
-        assert_eq!(decode(&expands).unwrap_err(), "not a valid WOFF2 font");
-        assert!(start.elapsed().as_secs() < 1, "{:?}", start.elapsed());
+        // Decoding 256 MiB would take seconds; each bomb fails as fast as
+        // the 1 KiB table decodes.
+        for (what, bomb) in [
+            ("claims", &claims),
+            ("padded", &padded),
+            ("expands", &expands),
+        ] {
+            crate::test_timing::assert_as_fast(
+                what,
+                || {
+                    let t = std::time::Instant::now();
+                    assert!(decode(&ordinary).unwrap().is_some());
+                    t.elapsed()
+                },
+                || {
+                    let t = std::time::Instant::now();
+                    assert_eq!(decode(bomb).unwrap_err(), "not a valid WOFF2 font");
+                    t.elapsed()
+                },
+            );
+        }
         // Registration reports each as a font error.
         for bomb in [claims, padded, expands] {
             let err = super::super::FontStore::new()

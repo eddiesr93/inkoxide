@@ -1842,10 +1842,14 @@ mod tests {
         // Each copy of a nested SVG is parsed again: a thousand copies of
         // 47k elements must not get a fresh budget each.
         let inner = bomb(4);
-        let t = std::time::Instant::now();
-        let e = parse(image_of(&inner, 1000, 0).as_bytes()).unwrap_err();
-        assert!(e.contains("too complex"), "{e}");
-        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
+        crate::test_timing::assert_bounded("copies", 1000, |n| {
+            let doc = image_of(&inner, n, 0);
+            let t = std::time::Instant::now();
+            let e = rejected(&doc);
+            let took = t.elapsed();
+            assert!(e.contains("too complex"), "{e}");
+            took
+        });
 
         // Nor each level: 50 copies of 50 copies of 4.7k elements.
         let mid = image_of(&bomb(3), 50, 0);
@@ -1902,8 +1906,8 @@ mod tests {
         let marker = |content: &str| format!(r#"<defs><marker id="m">{content}</marker></defs>"#);
         let dot = marker(r#"<circle r="1"/>"#);
         let long = format!("M0 0{}", "h1".repeat(200_000));
-        let t = std::time::Instant::now();
-        // A dot at each of 200k vertices, however the marker is set.
+        // A dot at each of 200k vertices, however the marker is set, is
+        // refused at the cost of the path alone.
         for shape in [
             format!(r#"<path d="{long}" marker-mid="url(#m)"/>"#),
             format!(r#"<path d="{long}" style="MARKER-MID: url(#m)"/>"#),
@@ -1912,8 +1916,23 @@ mod tests {
             format!(r#"<style>path {{ marker-mid: url(#m) }}</style><path d="{long}"/>"#),
             format!(r##"<path id="p" d="{long}"/><use href="#p" marker-mid="url(#m)"/>"##),
         ] {
-            let e = rejected(&svg(&(dot.clone() + &shape)));
-            assert!(e.contains("too complex"), "{shape:.60}: {e}");
+            let plain = svg(&format!(r#"<path d="{long}"/>"#));
+            let marked = svg(&(dot.clone() + &shape));
+            crate::test_timing::assert_as_fast(
+                &format!("{shape:.60}"),
+                || {
+                    let t = std::time::Instant::now();
+                    parse(plain.as_bytes()).unwrap();
+                    t.elapsed()
+                },
+                || {
+                    let t = std::time::Instant::now();
+                    let e = rejected(&marked);
+                    let took = t.elapsed();
+                    assert!(e.contains("too complex"), "{shape:.60}: {e}");
+                    took
+                },
+            );
         }
         // An embedded image in a marker is decoded at every vertex.
         let png = format!("data:image/png;base64,{}", "A".repeat(1 << 20));
@@ -1924,7 +1943,6 @@ mod tests {
         );
         let e = rejected(&svg(&(image + &path)));
         assert!(e.contains("MiB"), "{e}");
-        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
 
         // Arrowheads at the ends of a long path, dots along a short line.
         let arrows = format!(r#"<path d="{long}" marker-start="url(#m)" marker-end="url(#m)"/>"#);
@@ -1990,31 +2008,40 @@ mod tests {
 
     #[test]
     fn limits_styles() {
+        type Doc<'a> = &'a dyn Fn(usize) -> String;
         // The CSS parser scans a style from its start for every
-        // declaration, and `usvg` parses a copied element's style again.
-        let t = std::time::Instant::now();
-        let long = "fill:none;".repeat(100_000);
-        let e = rejected(&svg(&format!(r#"<g style="{long}"/>"#)));
-        assert!(e.contains("too long"), "{e}");
-        // It also scans after every unitless number, in sheets too.
-        let dashes = format!("stroke-dasharray:{}", "1 ".repeat(40_000));
-        let e = rejected(&svg(&format!(r#"<rect style="{dashes}"/>"#)));
-        assert!(e.contains("too long"), "{e}");
-        let e = rejected(&svg(&format!("<style>rect{{{dashes}}}</style><rect/>")));
-        assert!(e.contains("too long"), "{e}");
-        let dashes = format!("stroke-dasharray:{}", "1 ".repeat(1_000));
-        parse(svg(&format!(r#"<rect style="{dashes}"/>"#)).as_bytes()).unwrap();
+        // declaration, and `usvg` parses a copied element's style again:
+        // what is too long is refused in linear time. It also scans after
+        // every unitless number, in sheets too.
         let style = "fill:none;".repeat(100);
-        let doc = |copies| {
+        let copied = |copies: usize| {
             let uses = r##"<use href="#a"/>"##.repeat(copies);
             svg(&format!(
                 r#"<defs><g id="a" style="{style}"/></defs>{uses}"#
             ))
         };
-        let e = rejected(&doc(30_000));
-        assert!(e.contains("too long"), "{e}");
-        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
-        parse(doc(100).as_bytes()).unwrap();
+        let dashes = |n: usize| format!("stroke-dasharray:{}", "1 ".repeat(n));
+        let declarations = |n: usize| svg(&format!(r#"<g style="{}"/>"#, "fill:none;".repeat(n)));
+        let numbers = |n: usize| svg(&format!(r#"<rect style="{}"/>"#, dashes(n)));
+        let in_sheet = |n: usize| svg(&format!("<style>rect{{{}}}</style><rect/>", dashes(n)));
+        let docs: [(&str, usize, Doc); 4] = [
+            ("declarations", 25_000, &declarations),
+            ("numbers", 20_000, &numbers),
+            ("numbers in a sheet", 20_000, &in_sheet),
+            ("copies", 7_500, &copied),
+        ];
+        for (what, n, doc) in docs {
+            crate::test_timing::assert_linear(what, n, |n| {
+                let doc = doc(n);
+                let t = std::time::Instant::now();
+                let e = rejected(&doc);
+                let took = t.elapsed();
+                assert!(e.contains("too long"), "{what}: {e}");
+                took
+            });
+        }
+        parse(svg(&format!(r#"<rect style="{}"/>"#, dashes(1_000))).as_bytes()).unwrap();
+        parse(copied(100).as_bytes()).unwrap();
 
         // Every style sheet rule is matched against each copy.
         let sheet = format!("<style>{}</style>", ".a{}".repeat(2_000));
@@ -2039,18 +2066,38 @@ mod tests {
         let groups = 60;
         let deep = format!("{}<rect/>{}", "<g>".repeat(groups), "</g>".repeat(groups));
         let selector = vec!["*"; 30].join(" ");
-        let t = std::time::Instant::now();
-        let e = rejected(&svg(&format!("<style>{selector} {{}}</style>{deep}")));
-        assert!(e.contains("rule matches"), "{e}");
         // A selector list is one rule per selector.
         let list = vec!["g rect"; 20_000].join(",");
         let flat = "<rect/>".repeat(3_000);
-        let e = rejected(&svg(&format!("<style>{list} {{}}</style>{flat}")));
-        assert!(e.contains("rule matches"), "{e}");
-        assert!(t.elapsed().as_secs() < 5, "took {:?}", t.elapsed());
-        // Ordinary sheets fit.
+        // Ordinary sheets fit, and the others are refused as fast.
         let sheet = "<style>.st0{fill:#fff} svg g .st1{stroke:red} #a > path{fill:none}</style>";
-        parse(svg(&format!("{sheet}{deep}{flat}")).as_bytes()).unwrap();
+        let ordinary = svg(&format!("{sheet}{deep}{flat}"));
+        for (what, doc) in [
+            (
+                "combinators",
+                svg(&format!("<style>{selector} {{}}</style>{deep}")),
+            ),
+            (
+                "a selector list",
+                svg(&format!("<style>{list} {{}}</style>{flat}")),
+            ),
+        ] {
+            crate::test_timing::assert_as_fast(
+                what,
+                || {
+                    let t = std::time::Instant::now();
+                    parse(ordinary.as_bytes()).unwrap();
+                    t.elapsed()
+                },
+                || {
+                    let t = std::time::Instant::now();
+                    let e = rejected(&doc);
+                    let took = t.elapsed();
+                    assert!(e.contains("rule matches"), "{what}: {e}");
+                    took
+                },
+            );
+        }
     }
 
     #[test]
@@ -2063,12 +2110,23 @@ mod tests {
             r#"<rect width="5" height="5" rx="1e9"/>"#,
             r#"<circle style="r: 1e20"/>"#,
         ] {
-            let t = std::time::Instant::now();
-            let e = rejected(&svg(shape));
-            assert!(e.contains("larger than"), "{shape}: {e}");
-            assert!(t.elapsed().as_secs() < 2, "{shape} took {:?}", t.elapsed());
+            let ordinary = svg(r#"<path d="M0 0A5 5 0 1 1 10 0"/><circle r="4"/>"#);
+            crate::test_timing::assert_as_fast(
+                shape,
+                || {
+                    let t = std::time::Instant::now();
+                    parse(ordinary.as_bytes()).unwrap();
+                    t.elapsed()
+                },
+                || {
+                    let t = std::time::Instant::now();
+                    let e = rejected(&svg(shape));
+                    let took = t.elapsed();
+                    assert!(e.contains("larger than"), "{shape}: {e}");
+                    took
+                },
+            );
         }
-        parse(svg(r#"<path d="M0 0A5 5 0 1 1 10 0"/><circle r="4"/>"#).as_bytes()).unwrap();
     }
 
     #[test]
