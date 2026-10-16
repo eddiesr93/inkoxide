@@ -75,6 +75,11 @@ type SubsetKey = ([u8; 32], Vec<u16>);
 
 static SUBSETS: SharedLru<SubsetKey, Program> = SharedLru::new(SUBSET_BUDGET);
 
+/// Empties the cache of subsets.
+pub(crate) fn clear_subsets() {
+    SUBSETS.clear();
+}
+
 /// Prepares the font program: a subset of `used` when `subset` is set and
 /// the subsetter accepts the font, otherwise the whole (cached) font.
 pub(crate) fn program(

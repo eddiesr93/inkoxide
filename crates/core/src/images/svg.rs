@@ -427,6 +427,11 @@ const TEXT_TREES_BUDGET: usize = 32 << 20;
 static TEXT_TREES: SharedLru<ContentKey<Arc<[u8]>>, Arc<usvg::Tree>> =
     SharedLru::new(TEXT_TREES_BUDGET);
 
+/// Empties the cache of trees converted with text.
+pub(crate) fn clear_text_trees() {
+    TEXT_TREES.clear();
+}
+
 /// Converts the SVG of `source` with each text laid out by `lay_out` and
 /// replaced with its placeholder (`svg_text/rewrite.rs`), with the same
 /// checks as [`parse`]. A conversion of the same rewritten sources is

@@ -102,11 +102,14 @@ fn all_fixtures_render() {
         assert!(a == b, "{name}: output is not deterministic");
 
         // The same document as MessagePack renders the same bytes.
-        let value: serde_json::Value = serde_json::from_slice(&input).unwrap();
-        let packed = rmp_serde::to_vec(&value).unwrap();
-        let c = inkoxide::render(&packed, InputFormat::MessagePack, &opts, &fonts, &images)
-            .unwrap_or_else(|e| panic!("{name} (msgpack): {e}"));
-        assert!(a == c, "{name}: MessagePack output differs from JSON");
+        #[cfg(feature = "msgpack")]
+        {
+            let value: serde_json::Value = serde_json::from_slice(&input).unwrap();
+            let packed = rmp_serde::to_vec(&value).unwrap();
+            let c = inkoxide::render(&packed, InputFormat::MessagePack, &opts, &fonts, &images)
+                .unwrap_or_else(|e| panic!("{name} (msgpack): {e}"));
+            assert!(a == c, "{name}: MessagePack output differs from JSON");
+        }
 
         let out = out_dir.join(format!("{name}.pdf"));
         fs::write(&out, &a).unwrap();
@@ -351,7 +354,23 @@ fn output_is_independent_of_thread_count() {
     assert!(one == render(8), "8 threads differ from 1");
 }
 
+/// Without the `msgpack` feature, `MessagePack` input is a parse error.
+#[cfg(not(feature = "msgpack"))]
+#[test]
+fn msgpack_is_a_parse_error_without_its_feature() {
+    let (fonts, images) = stores();
+    let ok: serde_json::Value = serde_json::from_str(
+        r#"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},"children":[]}]}"#,
+    )
+    .unwrap();
+    let packed = rmp_serde::to_vec(&ok).unwrap();
+    let e = inkoxide::validate(&packed, InputFormat::MessagePack, &fonts, &images);
+    assert_eq!(e[0].code.as_str(), "PARSE_ERROR", "{e:?}");
+    assert!(e[0].message.contains("JSON only"), "{e:?}");
+}
+
 /// `MessagePack` errors carry the same codes and paths as JSON ones.
+#[cfg(feature = "msgpack")]
 #[test]
 fn msgpack_errors_match_json() {
     let (fonts, images) = stores();

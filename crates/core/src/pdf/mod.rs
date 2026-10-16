@@ -27,6 +27,7 @@ use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
 
+pub(crate) use font::clear_subsets;
 pub(crate) use image::transparency as image_transparency;
 pub(crate) use out::written_text_len;
 use out::Out;

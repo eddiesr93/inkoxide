@@ -5,9 +5,9 @@
 //! buffers stay private to this file.
 
 use std::collections::HashMap;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use unicode_linebreak::{linebreaks, BreakOpportunity};
 
@@ -293,14 +293,30 @@ pub(crate) const MAX_EXTRA_GLYPHS: u64 = 1 << 22;
 
 /// Why shaping stopped a render, and the id of the font being shaped.
 /// Shaping has no error path (the layout engine measures text through a
-/// callback), so this unwinds out of it, in place of a panic's own
-/// payload; `render` turns it into a font error.
+/// callback), so the first failure is kept in the render's
+/// [`ShapeCache`]s, the text after it is not shaped, and `render` returns
+/// it as a font error once layout is done.
 pub(crate) struct ShapingFailure {
-    pub font: String,
-    pub cause: ShapingCause,
+    font: String,
+    cause: ShapingCause,
 }
 
-pub(crate) enum ShapingCause {
+impl ShapingFailure {
+    pub fn error(&self) -> InkoxideError {
+        let what = match self.cause {
+            ShapingCause::Panicked => "the shaper panicked".to_string(),
+            ShapingCause::TooManyGlyphs => format!(
+                "the text shaped to more than {MAX_EXTRA_GLYPHS} glyphs beyond one per byte"
+            ),
+        };
+        InkoxideError::Font(format!(
+            "font `{}`: {what}; the font's layout tables may be malformed",
+            self.font
+        ))
+    }
+}
+
+enum ShapingCause {
     /// The shaper panicked, as it does on some malformed fonts.
     /// Registration rejects the ones known (see `fonts/layout.rs`).
     Panicked,
@@ -352,6 +368,8 @@ pub(super) struct ShapeCache<'a> {
     /// Glyphs the render's text has shaped to beyond one per byte, shared
     /// by the caches of its threads: against [`MAX_EXTRA_GLYPHS`].
     extra: Arc<AtomicU64>,
+    /// The first [`ShapingFailure`] of the render, shared like `extra`.
+    failure: Arc<OnceLock<ShapingFailure>>,
     plans: HashMap<
         (
             FontKey,
@@ -376,6 +394,7 @@ impl<'a> ShapeCache<'a> {
         Self {
             faces,
             extra: Arc::default(),
+            failure: Arc::default(),
             plans: HashMap::new(),
             words: HashMap::new(),
             features: vec![Box::default()],
@@ -416,8 +435,22 @@ impl<'a> ShapeCache<'a> {
     pub fn sibling(&self) -> Self {
         Self {
             extra: self.extra.clone(),
+            failure: self.failure.clone(),
             ..Self::new(self.faces.clone())
         }
+    }
+
+    /// The first failure shaping the render's text, if any.
+    pub fn failure(&self) -> Option<&ShapingFailure> {
+        self.failure.get()
+    }
+
+    /// Keeps `cause` as the render's failure, unless it has one already.
+    fn fail(&self, font: &LoadedFont<'_>, cause: ShapingCause) {
+        let _ = self.failure.set(ShapingFailure {
+            font: font.id.to_string(),
+            cause,
+        });
     }
 
     /// Counts `glyphs` shaped from `bytes` of text; false once the render's
@@ -590,20 +623,26 @@ pub(crate) fn prepare(
         let first = glyphs.len() as u32;
         let dir = levels.is_some().then_some(seg.level % 2 == 1);
         for (off, word) in words(seg_text) {
-            let fail = |cause| {
-                resume_unwind(Box::new(ShapingFailure {
-                    font: fonts.get(seg.font).id.to_string(),
-                    cause,
-                }))
-            };
+            // Once shaping has failed, the render fails: the rest of its
+            // text is left unshaped.
+            if cache.failure().is_some() {
+                break;
+            }
             let shaped = catch_unwind(AssertUnwindSafe(|| {
                 cache.word(seg.font, word, dir, set, unicode)
-            }))
-            .unwrap_or_else(|_| fail(ShapingCause::Panicked));
-            // Every occurrence counts: each copies its glyphs.
-            if !cache.spend(shaped.len(), word.len()) {
-                fail(ShapingCause::TooManyGlyphs);
-            }
+            }));
+            let shaped = match shaped {
+                // Every occurrence counts: each copies its glyphs.
+                Ok(g) if cache.spend(g.len(), word.len()) => g,
+                Ok(_) => {
+                    cache.fail(fonts.get(seg.font), ShapingCause::TooManyGlyphs);
+                    break;
+                }
+                Err(_) => {
+                    cache.fail(fonts.get(seg.font), ShapingCause::Panicked);
+                    break;
+                }
+            };
             for (k, g) in shaped.iter().enumerate() {
                 let c = word[g.cluster as usize..].chars().next().unwrap_or(' ');
                 let mut flags = 0;
@@ -634,6 +673,14 @@ pub(crate) fn prepare(
             }
         }
         seg.glyphs = first..glyphs.len() as u32;
+    }
+    // A render whose shaping failed lays out nothing more: what this
+    // paragraph shaped (up to the glyph limit) goes, as an unwind dropped it.
+    if cache.failure().is_some() {
+        glyphs.clear();
+        for seg in &mut segments {
+            seg.glyphs = 0..0;
+        }
     }
 
     // Break opportunities, as glyph indices where the next line starts.

@@ -59,7 +59,8 @@ pub enum InputFormat {
     #[default]
     Json,
     /// `MessagePack` with the same structure as the JSON (maps keyed by the
-    /// JSON field names).
+    /// JSON field names). A build without the `msgpack` feature (on by
+    /// default) reports it as a parse error.
     MessagePack,
 }
 
@@ -277,6 +278,15 @@ fn validate_with(
     }
 }
 
+/// Empties the process-wide caches renders share: decoded images, font
+/// subsets, and SVG converted with its text. Later renders fill them
+/// again, with the same output. In WebAssembly the memory goes back to the
+/// instance for reuse, not to the host.
+pub fn clear_caches() {
+    images::clear_caches();
+    pdf::clear_subsets();
+}
+
 /// Validates and renders a document to PDF bytes. Never renders a partial
 /// document: any validation problem is returned as an error.
 ///
@@ -313,21 +323,9 @@ pub fn render(
     .unwrap_or_else(|payload| Err(panic_error(payload.as_ref())))
 }
 
-/// The error a render returns for a panic with `payload`.
+/// The error a render returns for a panic with `payload`. A panic while
+/// shaping is a font error instead ([`text::TextCache::shaping_error`]).
 fn panic_error(payload: &(dyn Any + Send)) -> InkoxideError {
-    if let Some(f) = payload.downcast_ref::<text::ShapingFailure>() {
-        let what = match f.cause {
-            text::ShapingCause::Panicked => "the shaper panicked".to_string(),
-            text::ShapingCause::TooManyGlyphs => format!(
-                "the text shaped to more than {} glyphs beyond one per byte",
-                text::MAX_EXTRA_GLYPHS
-            ),
-        };
-        return InkoxideError::Font(format!(
-            "font `{}`: {what}; the font's layout tables may be malformed",
-            f.font
-        ));
-    }
     let message = payload
         .downcast_ref::<&str>()
         .copied()
@@ -393,7 +391,11 @@ fn render_inner(
         .with_objects(Arc::new(image_set.inline_objects()));
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
     // SVG text is shaped with the document's text, before layout.
-    image_set.lay_out_text(text.shaper())?;
+    let svg_text = image_set.lay_out_text(text.shaper());
+    if let Some(e) = text.shaping_error() {
+        return Err(e);
+    }
+    svg_text?;
     let mut sink = PdfWriterSink {
         compression: options.compress.then_some(options.compression_level.min(9)),
         subset_fonts: options.subset_fonts,
@@ -401,7 +403,7 @@ fn render_inner(
         encryption,
         parallel,
     };
-    let (pages, marks, colors) = pipeline::run(
+    let laid_out = pipeline::run(
         &document,
         &font_set,
         &mut text,
@@ -409,7 +411,12 @@ fn render_inner(
         parallel,
         profile,
         |page| sink.encode_page(&page, &font_set),
-    )?;
+    );
+    // Text left unshaped may have failed layout another way.
+    if let Some(e) = text.shaping_error() {
+        return Err(e);
+    }
+    let (pages, marks, colors) = laid_out?;
     let unicode: UnicodeMap = text.into_unicode();
 
     sink.write(&DocumentOut {
