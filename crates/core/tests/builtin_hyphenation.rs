@@ -19,8 +19,9 @@ fn fonts() -> FontStore {
 }
 
 /// German text in a narrow box, so that long words hyphenate, and an
-/// English paragraph without hyphenation.
-const DOC: &str = r#"{"version":1,"meta":{"lang":"de-AT"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+/// English paragraph without hyphenation. Its own producer keeps the engine
+/// version, and so the digest, out of the PDF.
+const DOC: &str = r#"{"version":1,"meta":{"lang":"de-AT","producer":"Inkoxide tests"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
   "pages":[{"size":{"width":200,"height":400},"children":[
     {"type":"text","style":{"width":80,"hyphenate":true},
      "runs":[{"text":"Donaudampfschifffahrtsgesellschaft Wörterbuch","font":"Inter-Regular","size":10}]},
