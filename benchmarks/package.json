@@ -2,23 +2,27 @@
   "name": "@inkoxide/benchmarks",
   "private": true,
   "type": "module",
-  "description": "Inkoxide compared with @react-pdf/renderer on the same documents.",
+  "description": "Inkoxide compared with @react-pdf/renderer on the same documents, on the server and in the browser.",
   "scripts": {
     "react-pdf": "tsx invoice-react-pdf.tsx",
     "react-pdf-tailwind": "tsx invoice-react-pdf-tailwind.tsx",
     "inkoxide": "tsx invoice-inkoxide.tsx",
     "all": "pnpm react-pdf && pnpm react-pdf-tailwind && pnpm inkoxide",
-    "bench": "NODE_ENV=production tsx bench.tsx"
+    "bench": "NODE_ENV=production tsx bench.tsx",
+    "bench:browser": "tsx browser/run.ts"
   },
   "dependencies": {
     "@inkoxide/render": "workspace:*",
     "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
     "@react-pdf/renderer": "4.9.0",
     "react": "19.3.0",
     "react-pdf-tailwind": "3.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/react": "19.3.0",
-    "tsx": "4.23.15"
+    "tsx": "4.23.15",
+    "vite": "8.3.4"
   }
 }

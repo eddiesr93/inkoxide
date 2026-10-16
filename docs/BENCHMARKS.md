@@ -3,25 +3,59 @@
 ## Compared with other libraries
 
 `@inkoxide/render` against `@react-pdf/renderer` 4.9, on the same documents with the same
-font, page size and page count. Each document is written once for both libraries where the API
-allows (the report uses only the primitives they share). Apple M4 Pro (14 cores), 24 GB,
-Node 24.14, macOS; median of 20 renders after a warm-up (10 for the report), in one process.
+font, page size and page count, on the server and in the browser. Each document is written once
+for both libraries where the API allows (the report uses only the primitives they share); the
+documents are in [`benchmarks/documents`](../benchmarks/documents). Apple M4 Pro (14 cores),
+24 GB, macOS.
+
+### On the server
+
+Node 24.14; median of 20 renders after a warm-up (10 for the report), in one process.
 
 | Document | Pages | Inkoxide, all cores | Inkoxide, 1 thread | react-pdf |
 |---|---:|---:|---:|---:|
-| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.3 ms | 1.0 ms | 19.2 ms |
-| Invoice (react-pdf with `StyleSheet`) | 1 | 1.2 ms | 1.3 ms | 17.6 ms |
-| Report: 40 sections, 1,000 table rows | 43 | 33 ms | 44 ms | 2,214 ms |
+| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.6 ms | 1.3 ms | 21.2 ms |
+| Invoice (react-pdf with `StyleSheet`) | 1 | 1.6 ms | 1.6 ms | 19.2 ms |
+| Report: 40 sections, 1,000 table rows | 43 | 43 ms | 56 ms | 2,331 ms |
 
-The first render in a new process, including loading each library, takes 164 ms against
-231 ms for the invoice, and 191 ms against 2,407 ms for the report (median of 5 processes).
+The first render in a new process, including loading each library, takes 177 ms against
+226 ms for the invoice, and 217 ms against 2,398 ms for the report (median of 5 processes).
 
-The documents and the harness are in [`benchmarks/`](../benchmarks):
+### In the browser
+
+`@inkoxide/render/browser` (the engine as WebAssembly, in a Web Worker) against react-pdf's
+browser build (on the page's main thread), each on a page of its own built with Vite and served
+from localhost. Median of 20 renders after a warm-up (10 for the report); react-pdf renders the
+`StyleSheet` invoice.
+
+| Browser | Document | Pages | Inkoxide | react-pdf | Longest main-thread task, Inkoxide / react-pdf |
+|---|---|---:|---:|---:|---:|
+| Chromium 153 | Invoice | 1 | 2.4 ms | 16.2 ms | none over 50 ms / none over 50 ms |
+| Chromium 153 | Report | 43 | 56 ms | 1,913 ms | none over 50 ms / 1,956 ms |
+| WebKit 26.6 | Invoice | 1 | 3.0 ms | 18.0 ms | not reported |
+| WebKit 26.6 | Report | 43 | 47 ms | 1,931 ms | not reported |
+
+- **Main thread.** react-pdf lays the report out on the page's main thread, which does not
+  respond for about two seconds. Inkoxide renders in its worker: what stays on the main thread
+  (React, building the document tree) takes no task over 50 ms.
+- **First render.** From the start of the page's navigation to the first invoice, the download
+  of the library, its engine and its fonts included, Inkoxide takes 129 ms against 152 ms in
+  Chromium, and 125 ms against 152 ms in WebKit (median of 3 page loads). From localhost: on a
+  real network, the download dominates.
+- **Download, with brotli.** Inkoxide 2.76 MB: 1.97 MB of WebAssembly, 0.23 MB of JavaScript and
+  0.56 MB of fonts (Inter and Noto Sans, the fallback of the default font stack). react-pdf
+  0.69 MB: 0.37 MB of JavaScript and 0.32 MB of fonts. The module is downloaded once, and
+  cached.
+- Firefox was not measured: the Playwright build of Firefox does not start on this machine.
+
+The documents and the harnesses are in [`benchmarks/`](../benchmarks):
 
 ```sh
 pnpm install
 scripts/build-node.sh
-pnpm --filter @inkoxide/benchmarks bench
+scripts/build-wasm.sh
+pnpm --filter @inkoxide/benchmarks bench           # on the server
+pnpm --filter @inkoxide/benchmarks bench:browser   # in the browser (pnpm exec playwright install first)
 ```
 
 ## Engine

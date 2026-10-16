@@ -16,7 +16,8 @@ decision. Where the implementation differs from this plan:
 - **`examples/browser`** has an invoice of its own: the Node examples import Node modules.
 - **Edge runtimes (Decision 7)** are out of scope: no Deno in CI, and the docs name browsers and
   Node only.
-- **Not done:** the browser benchmark in `benchmarks/`.
+- **The browser benchmark** (`benchmarks/browser`) measures Chromium and WebKit; the Playwright
+  build of Firefox does not start on the machine it was run on.
 
 It covers the [ROADMAP.md](../../ROADMAP.md) "Later" item **Rendering in the browser, through a
 WebAssembly build of the engine** (ROADMAP.md:8).

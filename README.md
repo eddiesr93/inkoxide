@@ -169,13 +169,14 @@ Median render times after warm-up:
 
 | Document | Pages | All cores | One thread | Machine |
 |---|---:|---:|---:|---|
-| Invoice, from React | 1 | 1.3 ms | 1.0 ms | Apple M4 Pro, Node 24 |
-| Report, from React: 40 sections, 1,000 table rows | 43 | 33 ms | 44 ms | Apple M4 Pro, Node 24 |
+| Invoice, from React | 1 | 1.6 ms | 1.3 ms | Apple M4 Pro, Node 24 |
+| Report, from React: 40 sections, 1,000 table rows | 43 | 43 ms | 56 ms | Apple M4 Pro, Node 24 |
+| Report, from React, in the browser (WebAssembly, in a worker) | 43 | | 56 ms | Apple M4 Pro, Chromium 153 |
 | Report, from JSON: 40 tables, header, footer | 98 | 130 ms | 277 ms | 4-vCPU Xeon container |
 
 Layout and PDF writing run in parallel across pages, and fonts are parsed once per process.
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the methodology, per-stage profiles and comparisons
-with other libraries.
+with other libraries, on the server and in the browser.
 
 ## Platforms
 
