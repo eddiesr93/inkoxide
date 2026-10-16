@@ -674,6 +674,14 @@ pub(crate) fn prepare(
         }
         seg.glyphs = first..glyphs.len() as u32;
     }
+    // A render whose shaping failed lays out nothing more: what this
+    // paragraph shaped (up to the glyph limit) goes, as an unwind dropped it.
+    if cache.failure().is_some() {
+        glyphs.clear();
+        for seg in &mut segments {
+            seg.glyphs = 0..0;
+        }
+    }
 
     // Break opportunities, as glyph indices where the next line starts.
     let mut breaks = Vec::new();

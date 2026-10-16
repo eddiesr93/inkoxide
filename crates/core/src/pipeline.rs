@@ -263,6 +263,10 @@ pub(crate) fn run<'d, T: Send>(
         }
     }
     text.prepare_all(&texts, parallel);
+    // A render whose shaping failed fails: nothing more to lay out.
+    if let Some(e) = text.shaping_error() {
+        return Err(e);
+    }
     let color = |k| fonts.get(k).has_color();
     let mut used = text.glyph_colors(&texts, color);
     drop(texts);
