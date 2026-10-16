@@ -1015,7 +1015,6 @@ renderToFile(<Form {...sample} />, 'form.pdf');
 | [Serving templates](GUIDE.md#serving-templates) | Templates by id, with a zod schema for their data: `@inkoxide/render/templates` |
 | [In the browser](GUIDE.md#in-the-browser) | `@inkoxide/render/browser`: `usePdf`, `<PdfViewer>`, `<PdfDownloadLink>`, `renderToBlob`, bundlers and Content Security Policy |
 | [FAQ](GUIDE.md#faq) | Installing on servers and in Docker, hooks, page numbers, determinism |
-| [Migrating from another React PDF library](MIGRATING.md) | What has another name, and what is not available |
 
 ## Performance
 

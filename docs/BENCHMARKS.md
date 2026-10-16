@@ -1,52 +1,44 @@
 # Benchmarks
 
-## Compared with other libraries
+## React documents
 
-`@inkoxide/render` against `@react-pdf/renderer` 4.9, on the same documents with the same
-font, page size and page count, on the server and in the browser. Each document is written once
-for both libraries where the API allows (the report uses only the primitives they share); the
-documents are in [`benchmarks/documents`](../benchmarks/documents). Apple M4 Pro (14 cores),
-24 GB, macOS.
+`@inkoxide/render` on two documents, an invoice styled with Tailwind classes and a 43-page
+report, on the server and in the browser. The documents are in
+[`benchmarks/documents`](../benchmarks/documents). Apple M4 Pro (14 cores), 24 GB, macOS.
 
 ### On the server
 
 Node 24.14; median of 20 renders after a warm-up (10 for the report), in one process.
 
-| Document | Pages | Inkoxide, all cores | Inkoxide, 1 thread | react-pdf |
-|---|---:|---:|---:|---:|
-| Invoice (react-pdf with `react-pdf-tailwind`) | 1 | 1.5 ms | 1.2 ms | 18.4 ms |
-| Invoice (react-pdf with `StyleSheet`) | 1 | 1.3 ms | 1.1 ms | 17.2 ms |
-| Report: 40 sections, 1,000 table rows | 43 | 41 ms | 54 ms | 2,185 ms |
+| Document | Pages | All cores | 1 thread |
+|---|---:|---:|---:|
+| Invoice | 1 | 1.5 ms | 1.2 ms |
+| Report: 40 sections, 1,000 table rows | 43 | 41 ms | 54 ms |
 
-The first render in a new process, including loading each library, takes 166 ms against
-214 ms for the invoice, and 207 ms against 2,312 ms for the report (median of 5 processes).
+The first render in a new process, including loading the library, takes 166 ms for the invoice
+and 207 ms for the report (median of 5 processes).
 
 ### In the browser
 
-`@inkoxide/render/browser` (the engine as WebAssembly, in a Web Worker) against react-pdf's
-browser build (on the page's main thread), each on a page of its own built with Vite and served
-from localhost. Median of 20 renders after a warm-up (10 for the report); react-pdf renders the
-`StyleSheet` invoice.
+`@inkoxide/render/browser`, the engine as WebAssembly in a Web Worker, on a page built with Vite
+and served from localhost. Median of 20 renders after a warm-up (10 for the report).
 
-| Browser | Document | Pages | Inkoxide | react-pdf | Longest main-thread task, Inkoxide / react-pdf |
-|---|---|---:|---:|---:|---:|
-| Chromium 153 | Invoice | 1 | 2.3 ms | 16.0 ms | none over 50 ms / none over 50 ms |
-| Chromium 153 | Report | 43 | 56 ms | 1,901 ms | none over 50 ms / 1,930 ms |
-| WebKit 26.6 | Invoice | 1 | 3.0 ms | 18.0 ms | not reported |
-| WebKit 26.6 | Report | 43 | 47 ms | 1,909 ms | not reported |
+| Browser | Document | Pages | Render | Longest main-thread task |
+|---|---|---:|---:|---:|
+| Chromium 153 | Invoice | 1 | 2.3 ms | none over 50 ms |
+| Chromium 153 | Report | 43 | 56 ms | none over 50 ms |
+| WebKit 26.6 | Invoice | 1 | 3.0 ms | not reported |
+| WebKit 26.6 | Report | 43 | 47 ms | not reported |
 
-- **Main thread.** react-pdf lays the report out on the page's main thread, which does not
-  respond for about two seconds. Inkoxide renders in its worker: what stays on the main thread
-  (React, building the document tree) takes no task over 50 ms.
+- **Main thread.** The engine renders in its worker: what stays on the main thread (React,
+  building the document tree) takes no task over 50 ms.
 - **First render.** From the start of the page's navigation to the first invoice, the download
-  of the library, its engine and its fonts included, Inkoxide takes 121 ms against 146 ms in
-  Chromium, and 116 ms against 155 ms in WebKit (median of 3 page loads). From localhost: on a
-  real network, the download dominates.
-- **Download, with brotli.** Inkoxide 1.76 MB: 1.18 MB of WebAssembly, 0.26 MB of JavaScript and
-  0.32 MB of fonts (Inter regular and bold). react-pdf 0.69 MB: 0.37 MB of JavaScript and
-  0.32 MB of fonts. The module is downloaded once, and cached. Hyphenation patterns (1 to
-  350 KB a language) and Noto Sans, the fallback font, are downloaded only by a document that
-  needs them; these documents need neither.
+  of the library, its engine and its fonts included, takes 121 ms in Chromium and 116 ms in
+  WebKit (median of 3 page loads). From localhost: on a real network, the download dominates.
+- **Download, with brotli.** 1.76 MB: 1.18 MB of WebAssembly, 0.26 MB of JavaScript and 0.32 MB
+  of fonts (Inter regular and bold). The module is downloaded once, and cached. Hyphenation
+  patterns (1 to 350 KB a language) and Noto Sans, the fallback font, are downloaded only by a
+  document that needs them; these documents need neither.
 - Firefox was not measured: the Playwright build of Firefox does not start on this machine.
 
 The documents and the harnesses are in [`benchmarks/`](../benchmarks):

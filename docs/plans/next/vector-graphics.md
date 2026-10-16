@@ -191,7 +191,7 @@ Probes are ordinary paths, and group boxes include every child (`tree/mod.rs:186
 
 ### Docs
 - `GUIDE.md:524-527` becomes the list of what SVG text supports, including the textPath, vertical-text and font-through-`use` limits.
-- `MIGRATING.md:24`, `ROADMAP.md:15-16`, CHANGELOG.
+- `ROADMAP.md:15-16`, CHANGELOG.
 - Schema CHANGELOG, and a regenerated SCHEMA.md for the `fonts` descriptions.
 - ARCHITECTURE.md: SVG text goes through `prepare.rs`; simplecss and svgtypes are used only in `images/svg_text/extract.rs`.
 - TESTING.md, and an ADR on the probe design.
@@ -257,7 +257,7 @@ Probes are ordinary paths, and group boxes include every child (`tree/mod.rs:186
 
 Plus a render smoke test and an example.
 
-**Docs:** MIGRATING.md:24, GUIDE.md:508-522, CHANGELOG, and the `CanvasGradient` export.
+**Docs:** GUIDE.md:508-522, CHANGELOG, and the `CanvasGradient` export.
 
 **New dependencies:** none.
 

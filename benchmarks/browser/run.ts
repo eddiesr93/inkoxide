@@ -1,7 +1,6 @@
-// The browser benchmark: the same invoice and report rendered in the same browser by
-// @inkoxide/render/browser (WebAssembly, in a Web Worker) and by @react-pdf/renderer (on the main
-// thread). Builds the two pages with Vite, serves them with `vite preview`, and opens each in a
-// fresh browser context, so that nothing is cached between cold starts.
+// The browser benchmark: the invoice and the report rendered by @inkoxide/render/browser
+// (WebAssembly, in a Web Worker). Builds the page with Vite, serves it with `vite preview`, and
+// opens it in a fresh browser context each time, so that nothing is cached between cold starts.
 //   pnpm bench:browser [warm runs]       (after scripts/build-wasm.sh)
 // Cold: from the start of navigation to the first invoice, the download of the library, its
 // engine and fonts from localhost included; median of 3 page loads. Warm: median of N renders
@@ -13,7 +12,6 @@ import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants } from 'node:zlib';
 
 import { type BrowserType, chromium, firefox, webkit } from '@playwright/test';
-import reactPdfPackage from '@react-pdf/renderer/package.json' with { type: 'json' };
 import { build, preview } from 'vite';
 
 import type { Result } from './measure.ts';
@@ -22,8 +20,6 @@ const runs = Number(process.argv[2] ?? 20);
 const COLD_LOADS = 3;
 const configFile = fileURLToPath(new URL('vite.config.ts', import.meta.url));
 const dist = fileURLToPath(new URL('dist/', import.meta.url));
-const LIBS = ['inkoxide', 'react-pdf'] as const;
-type Lib = (typeof LIBS)[number];
 
 await build({ configFile, logLevel: 'warn' });
 const server = await preview({ configFile, preview: { port: 4180, strictPort: true } });
@@ -45,7 +41,7 @@ interface Load {
   download: Download;
 }
 
-async function load(browser: Awaited<ReturnType<BrowserType['launch']>>, lib: Lib): Promise<Load> {
+async function load(browser: Awaited<ReturnType<BrowserType['launch']>>): Promise<Load> {
   const context = await browser.newContext();
   const page = await context.newPage();
   const urls = new Set<string>();
@@ -56,7 +52,7 @@ async function load(browser: Awaited<ReturnType<BrowserType['launch']>>, lib: Li
   context.on('request', (r) => {
     if (r.url().startsWith(origin)) urls.add(new URL(r.url()).pathname);
   });
-  await page.goto(`${origin}/${lib}.html?runs=${runs}`);
+  await page.goto(`${origin}/inkoxide.html?runs=${runs}`);
   const result = (
     await page.waitForFunction(() => (globalThis as { bench?: unknown }).bench, null, {
       timeout: 600_000,
@@ -64,7 +60,7 @@ async function load(browser: Awaited<ReturnType<BrowserType['launch']>>, lib: Li
   ).jsonValue() as Promise<Result | { error: string }>;
   const value = await result;
   await context.close();
-  if ('error' in value) throw new Error(`${lib}: ${value.error}`);
+  if ('error' in value) throw new Error(value.error);
   const download: Download = { wasm: 0, js: 0, fonts: 0 };
   for (const path of urls) {
     let bytes: Buffer;
@@ -85,7 +81,7 @@ const mb = (n: number) => `${(n / 1e6).toFixed(2)} MB`;
 
 console.log(
   `${cpus()[0]?.model ?? 'unknown CPU'}, ${cpus().length} cores, ${Math.round(totalmem() / 2 ** 30)} GB, ` +
-    `@react-pdf/renderer ${reactPdfPackage.version}; warm: median of ${runs} renders (10 for the report)\n`,
+    `warm: median of ${runs} renders (10 for the report)\n`,
 );
 try {
   for (const [name, type] of [
@@ -100,36 +96,25 @@ try {
       console.log(`${name}: did not launch (${(e as Error).message.split('\n')[0]}); skipped\n`);
       continue;
     }
-    const loads: Record<Lib, Load[]> = { inkoxide: [], 'react-pdf': [] };
-    for (let k = 0; k < COLD_LOADS; k++) {
-      for (const lib of LIBS) loads[lib].push(await load(browser, lib));
-    }
+    const loads: Load[] = [];
+    for (let k = 0; k < COLD_LOADS; k++) loads.push(await load(browser));
     console.log(`${name} ${browser.version()}\n`);
-    console.log(
-      '| Document | Pages | Inkoxide | react-pdf | Faster | Longest main-thread task, Inkoxide / react-pdf |',
-    );
-    console.log('|---|---:|---:|---:|---:|---:|');
+    console.log('| Document | Pages | Warm render | Longest main-thread task |');
+    console.log('|---|---:|---:|---:|');
     for (const doc of ['invoice', 'report'] as const) {
-      const [ink, rp] = LIBS.map((lib) => loads[lib][0]?.result.warm[doc]);
-      if (!ink || !rp) continue;
+      const r = loads[0]?.result.warm[doc];
+      if (!r) continue;
       // Long tasks are those over 50 ms.
-      const task = (t: number | null) => (t === null ? '—' : t === 0 ? 'none over 50 ms' : f(t));
-      console.log(
-        `| ${doc} | ${ink.pages} / ${rp.pages} | ${f(ink.ms)} | ${f(rp.ms)} | ${Math.round(rp.ms / ink.ms)}× | ` +
-          `${task(ink.longestTaskMs)} / ${task(rp.longestTaskMs)} |`,
-      );
+      const task =
+        r.longestTaskMs === null ? '—' : r.longestTaskMs === 0 ? 'none over 50 ms' : f(r.longestTaskMs);
+      console.log(`| ${doc} | ${r.pages} | ${f(r.ms)} | ${task} |`);
     }
-    const cold = (lib: Lib) => median(loads[lib].map((l) => l.result.coldMs));
-    const download = (lib: Lib) => {
-      const d = loads[lib][0]?.download ?? { wasm: 0, js: 0, fonts: 0 };
-      const parts = [`${mb(d.js)} JavaScript`, `${mb(d.fonts)} fonts`];
-      if (d.wasm > 0) parts.unshift(`${mb(d.wasm)} WebAssembly`);
-      return `${mb(d.wasm + d.js + d.fonts)} (${parts.join(', ')})`;
-    };
+    const cold = median(loads.map((l) => l.result.coldMs));
+    const d = loads[0]?.download ?? { wasm: 0, js: 0, fonts: 0 };
     console.log(
-      `\nFirst invoice after the page starts loading, from localhost (median of ${COLD_LOADS}): ` +
-        `Inkoxide ${f(cold('inkoxide'))}, react-pdf ${f(cold('react-pdf'))}.\n` +
-        `Downloaded, with brotli: Inkoxide ${download('inkoxide')}; react-pdf ${download('react-pdf')}.\n`,
+      `\nFirst invoice after the page starts loading, from localhost (median of ${COLD_LOADS}): ${f(cold)}.\n` +
+        `Downloaded, with brotli: ${mb(d.wasm + d.js + d.fonts)} (${mb(d.wasm)} WebAssembly, ` +
+        `${mb(d.js)} JavaScript, ${mb(d.fonts)} fonts).\n`,
     );
     await browser.close();
   }

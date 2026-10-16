@@ -144,7 +144,6 @@ MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and 
 |---|---|
 | Writing documents in React | [Guide](packages/render/GUIDE.md): components, styling, fonts, images, pagination, tables, forms, API, errors |
 | Tailwind classes | [Supported utilities](docs/TAILWIND_SUPPORT.md) |
-| Moving from another React PDF library | [Migration guide](packages/render/MIGRATING.md) |
 | Using the engine from Node | [Client integration](docs/CLIENT_INTEGRATION.md): fonts, images, errors, threading, determinism |
 | The engine API | [API reference](docs/API.md): the Rust and Node APIs, options and error codes |
 | The document tree | [Schema reference](docs/SCHEMA.md) and [example documents](packages/schema/EXAMPLES.md) |

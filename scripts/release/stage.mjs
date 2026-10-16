@@ -102,7 +102,7 @@ const doc = await renderToTree(
 console.log(JSON.stringify(doc)); // an Inkoxide document (schema v1); @inkoxide/render turns it into a PDF`,
     },
   },
-  { name: 'render', assets: true, extras: ['media', 'GUIDE.md', 'MIGRATING.md'] },
+  { name: 'render', assets: true, extras: ['media', 'GUIDE.md'] },
 ];
 
 /** Licence files that must ship with the fonts. */
@@ -320,7 +320,7 @@ These files are not covered by the package's MIT licence; each keeps its own lic
 
 /**
  * npm shows a README without the repository's files, so the screenshots and the docs are
- * published in the package (the entry's `extras`: `media/`, `GUIDE.md`, `MIGRATING.md`) and
+ * published in the package (the entry's `extras`: `media/` and `GUIDE.md`) and
  * linked through jsDelivr, which serves files of npm packages: their links become absolute URLs
  * pinned to this version.
  */
@@ -358,7 +358,7 @@ MIT
 }
 
 /** Files a package's README may link that only reach npm when its entry publishes them. */
-const PUBLISHABLE = ['media', 'GUIDE.md', 'MIGRATING.md'];
+const PUBLISHABLE = ['media', 'GUIDE.md'];
 
 async function stage(entry) {
   const { name, assets, extras = [] } = entry;
