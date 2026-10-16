@@ -4,15 +4,32 @@ All notable changes to the packages in this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every package follows
 [Semantic Versioning](https://semver.org/). Since 0.7.0, `inkoxide`, `@inkoxide/render`,
 `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style` share one version and are released
-together. The document schema has its own version and
+together, and so does `@inkoxide/wasm` from its first release. The document schema has its own version and
 [changelog](packages/schema/CHANGELOG.md).
 
 ## Unreleased
 
 ### Added
 
+- Rendering in the browser. `@inkoxide/render/browser` renders the same templates with the
+  engine as WebAssembly, in a Web Worker, to the same PDF bytes as Node (but for the last digits
+  of SVG marker angles): `renderToBuffer` and `renderToBlob`, whose `signal` stops a render,
+  `generate`, and the React helpers `usePdf`, `<PdfDownloadLink>` and `<PdfViewer>`. It needs no
+  cross-origin isolation, and a Content Security Policy needs only `'wasm-unsafe-eval'`. The
+  bundled fonts download when a document first uses them. See GUIDE.md, "In the browser".
+- `@inkoxide/wasm`, the engine as WebAssembly, with the functions of `inkoxide` and `init` and
+  `clearCaches`; it is released with the other packages, at their version.
+- `@inkoxide/tailwind` has a browser entry, chosen through the `browser` export condition, with
+  Tailwind's theme bundled.
+- Rust: `inkoxide::clear_caches()`, and a `msgpack` cargo feature, on by default, for
+  `InputFormat::MessagePack`.
 - A text node with `hyphenate` on and no `lang` (nor `meta.lang`) logs a warning, and the
   `warnings` of an `@inkoxide/render` result say so, since such text is not hyphenated.
+
+### Changed
+
+- `@inkoxide/react` validates trees in development with code generated from the schema, which
+  compiles nothing at run time: it no longer depends on `ajv`.
 
 ### Fixed
 

@@ -6,7 +6,7 @@
 /**
  * Where the engine's WebAssembly module comes from: a URL (by default
  * `inkoxide.wasm` next to this module), a `Response`, its bytes, or the
- * module compiled already (as Cloudflare Workers import `.wasm` files).
+ * module compiled already.
  */
 export type WasmSource = URL | string | Response | PromiseLike<Response> | BufferSource | WebAssembly.Module;
 

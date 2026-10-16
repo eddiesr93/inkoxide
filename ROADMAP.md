@@ -5,7 +5,9 @@ or should come sooner.
 
 ## Later
 
-- **Rendering in the browser**, through a WebAssembly build of the engine.
+- **Threads in the browser**, through a thread pool in Web Workers, for pages that are
+  cross-origin isolated.
+- **A build-time Tailwind plugin**, so that a browser need not load the Tailwind compiler.
 - **Accessibility**: tagged PDF and PDF/UA, with alternative text for images.
 - **File attachments**.
 - **Layout**: `@media` styles for the page size.

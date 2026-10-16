@@ -191,15 +191,14 @@ function assetUrl(path: string): URL | undefined {
   return BUNDLED[path]?.();
 }
 
-/** The bytes at `url`, or undefined when there are none. A `file:` URL is read where it can be (Node, Deno). */
+/** The bytes at `url`, or undefined when there are none. A `file:` URL is read in Node (the tests). */
 async function readUrl(url: URL): Promise<Uint8Array | undefined> {
   try {
     if (url.protocol === 'file:') {
       type Fs = { readFile(url: URL): Promise<Uint8Array> };
       const process = (globalThis as { process?: { getBuiltinModule?(id: string): unknown } }).process;
       const fs = process?.getBuiltinModule?.('node:fs/promises') as Fs | undefined;
-      const deno = (globalThis as { Deno?: Fs }).Deno;
-      return await (fs ?? deno)?.readFile(url);
+      return await fs?.readFile(url);
     }
     const res = await fetch(url);
     return res.ok ? new Uint8Array(await res.arrayBuffer()) : undefined;

@@ -1,10 +1,9 @@
 # @inkoxide/wasm
 
 The Inkoxide PDF engine built as WebAssembly: a declarative document tree
-(JSON) in, PDF bytes out, in browsers and other WebAssembly runtimes. The
-same engine, limits and error codes as the native
-[`inkoxide`](https://www.npmjs.com/package/inkoxide) package, with the same
-functions, plus `init` and `clearCaches`.
+(JSON) in, PDF bytes out, in browsers. The same engine, limits and error codes
+as the native [`inkoxide`](https://www.npmjs.com/package/inkoxide) package,
+with the same functions, plus `init` and `clearCaches`.
 
 ```sh
 npm install @inkoxide/wasm

@@ -25,6 +25,11 @@ Inkoxide is designed to render documents built from untrusted data:
   within the size limit; network paths are refused. Errors name the path as the template wrote
   it, and do not tell a missing file from one outside the folders.
 - A function or promise `<Image src>` that does not settle in time fails the render.
+- In a browser (`@inkoxide/wasm`, `@inkoxide/render/browser`) the engine and its limits are the
+  same, and an instance has at most 4 GiB of memory. Renders run in a Web Worker, which a
+  `signal` ends. Remote images stay off unless allowed, as on a server, since the requests come
+  from the user's network; they are sent without cookies or credentials. The page needs
+  `script-src 'wasm-unsafe-eval'`, and nothing needs `'unsafe-eval'`.
 
 ## Encryption
 

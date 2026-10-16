@@ -188,6 +188,10 @@ Node.js 22 or later and is an ES module.
 | Linux | x64 (glibc 2.35+ and musl), arm64 (glibc 2.35+) |
 | Windows | x64 |
 
+In browsers (current Chrome, Edge, Firefox and Safari), the engine is WebAssembly
+(`@inkoxide/wasm`), and `@inkoxide/render/browser` renders in a Web Worker; see
+[In the browser](packages/render/GUIDE.md#in-the-browser).
+
 ## Contributing
 
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build

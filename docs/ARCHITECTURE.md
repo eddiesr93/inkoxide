@@ -19,7 +19,7 @@ how the pieces fit together, for contributors.
 | `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms and positions that React and Tailwind share: `@inkoxide/style`. |
 | `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`, optional. |
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
-| `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`. |
+| `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`; in a browser, with the engine as WebAssembly in a Web Worker: `@inkoxide/render/browser`. The shared code reaches the engine and the bundled assets through an `EngineHost` (`host.ts`): `node-host.ts` in Node, `browser-host.ts` and `worker.ts` in a browser. |
 | `examples` | Example documents in React; they produce the screenshots in the READMEs. |
 | `benchmarks` | Comparisons with other PDF libraries. |
 | `fixtures` | Engine test documents, fonts, images and reference renders. |
