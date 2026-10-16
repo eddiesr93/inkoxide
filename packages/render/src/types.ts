@@ -53,6 +53,14 @@ export interface RenderOpts {
   imageTimeoutMs?: number;
 }
 
+/**
+ * A render that can be stopped, where the host can stop one (in a browser, by ending its worker).
+ * An aborted render rejects with the signal's reason.
+ */
+export interface Abortable {
+  signal?: AbortSignal;
+}
+
 export interface LocalImageOptions {
   /**
    * The folders image files may come from. A relative path (`./logo.png`) is resolved against

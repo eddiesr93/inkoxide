@@ -1,0 +1,23 @@
+body {
+  margin: 0;
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0 1rem;
+}
+h1 {
+  font-size: 1.1rem;
+}
+iframe {
+  flex: 1;
+  border: 0;
+  border-top: 1px solid #ddd;
+}

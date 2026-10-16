@@ -1,7 +1,3 @@
-import { createRequire } from 'node:module';
-import { dirname } from 'node:path';
-
-import { __unstable__loadDesignSystem } from '@tailwindcss/node';
 import postcss, { type AtRule, type Rule } from 'postcss';
 
 import { DEFAULT_THEME_CSS } from './theme.ts';
@@ -22,10 +18,28 @@ export type CandidateProblem =
 
 export type CandidateResult = { ok: true; css: CandidateCss } | { ok: false; problem: CandidateProblem };
 
-type DesignSystem = Awaited<ReturnType<typeof __unstable__loadDesignSystem>>;
+/**
+ * What is used of Tailwind's design system. `tailwindcss` and `@tailwindcss/node` each declare the
+ * whole type, and the two declarations do not match.
+ */
+export interface DesignSystem {
+  theme: { entries(): Iterable<[string, { value: string }]> };
+  getClassOrder(classes: string[]): Array<[string, bigint | null]>;
+  candidatesToCss(classes: string[]): Array<string | null>;
+}
 
-/** Where `@import "tailwindcss/…"` resolves from: the tailwindcss package itself. */
-const TAILWIND_DIR = dirname(createRequire(import.meta.url).resolve('tailwindcss/package.json'));
+/**
+ * Loads Tailwind's design system for theme `css`, its `@import`s resolved from `base` (by default
+ * the tailwindcss package). Each entry installs its own: Node's reads the imports from disk
+ * (`node.ts`), the browser's has the theme bundled (`browser.ts`).
+ */
+export type DesignSystemLoader = (css: string, base: string | undefined) => Promise<DesignSystem>;
+
+let loader: DesignSystemLoader | undefined;
+
+export function setDesignSystemLoader(l: DesignSystemLoader): void {
+  loader = l;
+}
 
 export { DEFAULT_THEME_CSS };
 
@@ -48,9 +62,10 @@ export class TailwindCompiler {
     }
   }
 
-  static async load(css: string = DEFAULT_THEME_CSS, base: string = TAILWIND_DIR): Promise<TailwindCompiler> {
-    const ds = await __unstable__loadDesignSystem(css, { base });
-    return new TailwindCompiler(ds);
+  static async load(css: string = DEFAULT_THEME_CSS, base?: string): Promise<TailwindCompiler> {
+    if (!loader)
+      throw new Error('@inkoxide/tailwind: no design system loader; import the package through an entry.');
+    return new TailwindCompiler(await loader(css, base));
   }
 
   /** A theme variable (`--spacing`, `--color-red-500`), unresolved. */
@@ -68,7 +83,7 @@ export class TailwindCompiler {
       .map((x) => x.cls);
   }
 
-  /** The CSS of one class, cached for the life of the process. */
+  /** The CSS of one class, cached for the life of the compiler. */
   candidate(cls: string): CandidateResult {
     let hit = this.cache.get(cls);
     if (!hit) {

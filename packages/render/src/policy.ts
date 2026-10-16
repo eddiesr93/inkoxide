@@ -161,13 +161,25 @@ function check(name: string, value: unknown, unit: string): void {
 }
 
 /**
+ * The environment variable `name`, where there is an environment (Node, Deno, Bun); undefined in
+ * a browser.
+ */
+export function env(name: string): string | undefined {
+  const process = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  return process?.env?.[name];
+}
+
+/** Whether `NODE_ENV` is `production`. */
+export const isProduction = (): boolean => env('NODE_ENV') === 'production';
+
+/**
  * The entries of the environment variable `name`, split at `separator` and trimmed; undefined
  * when it is unset or lists nothing.
  */
 export function envList(name: string, separator: string): string[] | undefined {
-  const env = process.env[name];
-  if (!env) return undefined;
-  const list = env
+  const value = env(name);
+  if (!value) return undefined;
+  const list = value
     .split(separator)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);

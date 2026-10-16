@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - examples
+  - examples/browser
   - benchmarks
 onlyBuiltDependencies:
   - esbuild

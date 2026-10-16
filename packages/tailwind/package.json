@@ -5,7 +5,10 @@
   "type": "module",
   "description": "Tailwind class strings to Inkoxide styles, using the real Tailwind v4 compiler.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "browser": "./src/browser.ts",
+      "default": "./src/index.ts"
+    }
   },
   "dependencies": {
     "@inkoxide/style": "workspace:*",

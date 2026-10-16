@@ -4,8 +4,6 @@
  * to the engine before the next render, so `register` stays synchronous.
  * `Font.registerHyphenationCallback`: the word breaking used by every render.
  */
-import { readFile } from 'node:fs/promises';
-
 import {
   type EmojiSource,
   familyKey,
@@ -15,15 +13,17 @@ import {
   type HyphenationCallback,
 } from '@inkoxide/react';
 
+import { sameBytes } from './bytes.ts';
 import { registerEngineFont } from './engine.ts';
 import { DEFAULT_FACES } from './fonts.ts';
+import { engineHost, NO_FILES } from './host.ts';
 import { FONT_TIMEOUT_MS, MAX_FONT_BYTES } from './policy.ts';
 import { fetchBytes } from './remote.ts';
 import { RenderError } from './types.ts';
 
 /**
  * A TrueType, CFF OpenType, WOFF or WOFF2 font: a file path, a `file:`, `https:` or `http:` URL,
- * or its bytes.
+ * or its bytes. In a browser, text is a URL, relative to the page.
  */
 export type FontSrc = string | URL | Uint8Array | ArrayBuffer;
 
@@ -87,26 +87,32 @@ const describe = (src: FontSrc): string =>
 const isFontSrc = (src: unknown): src is FontSrc =>
   typeof src === 'string' || src instanceof URL || src instanceof Uint8Array || src instanceof ArrayBuffer;
 
-const bytesView = (src: FontSrc): Buffer | undefined =>
-  src instanceof Uint8Array
-    ? Buffer.from(src.buffer, src.byteOffset, src.byteLength)
-    : src instanceof ArrayBuffer
-      ? Buffer.from(src)
-      : undefined;
+const bytesView = (src: FontSrc): Uint8Array | undefined =>
+  src instanceof Uint8Array ? src : src instanceof ArrayBuffer ? new Uint8Array(src) : undefined;
 
 /** Whether two sources are the same font: the same bytes, or the same path or URL. */
 function sameSource(a: FontSrc, b: FontSrc): boolean {
   if (a === b) return true;
   const x = bytesView(a);
   const y = bytesView(b);
-  if (x || y) return x !== undefined && y !== undefined && x.equals(y);
+  if (x || y) return x !== undefined && y !== undefined && sameBytes(x, y);
   return describe(a) === describe(b);
 }
 
 async function bytesOf(src: FontSrc): Promise<Uint8Array> {
   if (src instanceof Uint8Array) return src;
   if (src instanceof ArrayBuffer) return new Uint8Array(src);
-  const url = src instanceof URL ? src : /^(?:https?|file):/i.test(src) ? new URL(src) : undefined;
+  const files = engineHost().files;
+  // Without files (in a browser), text is a URL, relative to the page.
+  const page = (globalThis as { location?: { href: string } }).location?.href;
+  const url =
+    src instanceof URL
+      ? src
+      : /^(?:https?|file):/i.test(src)
+        ? new URL(src)
+        : !files && page !== undefined
+          ? new URL(src, page)
+          : undefined;
   if (url && (url.protocol === 'http:' || url.protocol === 'https:')) {
     // The URL comes from the developer, not a template, so redirects are followed.
     const limits = { timeoutMs: FONT_TIMEOUT_MS, maxBytes: MAX_FONT_BYTES };
@@ -114,7 +120,8 @@ async function bytesOf(src: FontSrc): Promise<Uint8Array> {
       throw new Error(why, { cause });
     });
   }
-  return readFile(url ?? src);
+  if (!files) throw new Error(NO_FILES);
+  return files.readFile(url ?? src);
 }
 
 export const Font = {
@@ -230,7 +237,7 @@ export function loadRegisteredFonts(): Promise<void> {
         let bytes: Uint8Array;
         try {
           bytes = await bytesOf(f.src);
-          registerEngineFont(f.id, bytes);
+          await registerEngineFont(f.id, bytes);
         } catch (e) {
           known.delete(faceKey(f));
           failed ??= new RenderError(

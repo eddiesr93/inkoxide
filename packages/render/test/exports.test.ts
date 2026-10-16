@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import pkg from '../package.json' with { type: 'json' };
+import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
 
@@ -154,16 +155,45 @@ const TEMPLATES_TYPES = [
   'TreeResult',
 ];
 
+/**
+ * `@inkoxide/render/browser`: the main entry without what needs Node, with `renderToBlob`, and
+ * `generate` from the templates.
+ */
+const BROWSER_VALUES = [
+  ...MAIN_VALUES.filter((n) => n !== 'renderToFile' && n !== 'renderToStream'),
+  'generate',
+  'PdfDownloadLink',
+  'PdfViewer',
+  'renderToBlob',
+  'usePdf',
+];
+const BROWSER_TYPES = [
+  ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions'),
+  'BrowserOptions',
+  'BrowserRenderOptions',
+  'GenerateOptions',
+  'PdfDownloadLinkProps',
+  'PdfViewerProps',
+  'RenderOpts',
+  'RenderResult',
+  'TemplateLike',
+  'Timings',
+  'UsePdfResult',
+];
+
 const sorted = (names: Iterable<string>) => [...names].sort();
 
 /**
  * The names an entry file exports, values and types: it may only re-export, with
- * `export { … } from` and `export type { … } from`.
+ * `export { … } from`, `export type { … } from` and `export * from` a file of this package, and
+ * import its engine host (`import './node-host.ts';`).
  */
 function declared(file: string): string[] {
   const src = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   const code = src.replace(/^\s*\/\/.*$/gm, '');
   const names: string[] = [];
+  for (const m of code.matchAll(/^export \* from '\.\/([a-z-]+\.tsx?)';$/gm))
+    names.push(...declared(m[1] ?? ''));
   for (const m of code.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'[^']+';/g)) {
     for (const part of (m[1] ?? '').split(',')) {
       const name = part
@@ -174,7 +204,11 @@ function declared(file: string): string[] {
       if (name) names.push(name);
     }
   }
-  const rest = code.replace(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*'[^']+';/g, '').trim();
+  const rest = code
+    .replace(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*'[^']+';/g, '')
+    .replace(/^import '\.\/[a-z-]+-host\.ts';$/m, '')
+    .replace(/^export \* from '\.\/[a-z-]+\.ts';$/gm, '')
+    .trim();
   expect(rest, `${file} only re-exports`).toBe('');
   return sorted(names);
 }
@@ -190,7 +224,16 @@ describe('exports', () => {
     expect(declared('templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
   });
 
+  it('@inkoxide/render/browser exports the main names that do not need Node', () => {
+    expect(sorted(Object.keys(browser))).toEqual(sorted(BROWSER_VALUES));
+    expect(declared('browser.ts')).toEqual(sorted([...BROWSER_VALUES, ...BROWSER_TYPES]));
+  });
+
   it('has an entry in package.json for each', () => {
-    expect(pkg.exports).toEqual({ '.': './src/index.ts', './templates': './src/templates.ts' });
+    expect(pkg.exports).toEqual({
+      '.': './src/index.ts',
+      './templates': './src/templates.ts',
+      './browser': './src/browser.ts',
+    });
   });
 });

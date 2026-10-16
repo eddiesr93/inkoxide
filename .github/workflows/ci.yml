@@ -115,6 +115,14 @@ jobs:
       - name: Parity with the native build
         # Fixtures, fuzz seeds and documents at the limits (scripts/wasm-parity.mjs).
         run: node scripts/wasm-parity.mjs
+      - name: Install the browsers
+        working-directory: examples/browser
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Browser tests
+        # examples/browser, built with Vite: a render in a worker, in each browser, gives the bytes
+        # Node gives, under a strict Content Security Policy and without cross-origin isolation.
+        working-directory: examples/browser
+        run: pnpm test
 
   schema:
     name: Schema
@@ -144,6 +152,8 @@ jobs:
           persist-credentials: false
       - name: Install Rust
         uses: ./.github/actions/install-rust
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -154,6 +164,9 @@ jobs:
         run: corepack enable
       - name: Build the native binding
         run: scripts/build-node.sh --debug
+      - name: Build the WebAssembly engine
+        # For the tests of @inkoxide/render/browser.
+        run: scripts/build-wasm.sh
       - name: Install dependencies
         # Before the binding tests: schema-parity.test.js imports ajv.
         run: pnpm install --frozen-lockfile

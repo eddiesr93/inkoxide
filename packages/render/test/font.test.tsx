@@ -12,8 +12,8 @@ import { fonts, renderTemplate } from '@inkoxide/react';
 import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { assetsDir } from '../src/engine.ts';
 import { countPages, Document, Font, Page, RenderError, renderToBuffer, Text } from '../src/index.ts';
+import { assetsDir } from '../src/node-host.ts';
 
 const file = (name: string) => join(assetsDir(), 'fonts', name);
 

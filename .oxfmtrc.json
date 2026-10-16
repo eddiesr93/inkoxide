@@ -15,6 +15,8 @@
     "tmp/**",
     "pnpm-lock.yaml",
     "packages/schema/index.d.ts",
+    "packages/react/src/tree/schema-validator.ts",
+    "packages/tailwind/src/tailwind-theme.ts",
     "packages/schema/document.v1.json",
     "packages/render/assets/**"
   ]

@@ -6,7 +6,8 @@
   "description": "React components to PDF with the native Inkoxide engine: renderToBuffer, renderToFile, Font.register.",
   "exports": {
     ".": "./src/index.ts",
-    "./templates": "./src/templates.ts"
+    "./templates": "./src/templates.ts",
+    "./browser": "./src/browser.ts"
   },
   "dependencies": {
     "@inkoxide/react": "workspace:*",
@@ -17,13 +18,18 @@
   },
   "devDependencies": {
     "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
     "@types/react": "19.3.0"
   },
   "peerDependencies": {
-    "@inkoxide/tailwind": "workspace:*"
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@inkoxide/tailwind": {
+      "optional": true
+    },
+    "@inkoxide/wasm": {
       "optional": true
     }
   }

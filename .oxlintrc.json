@@ -12,5 +12,12 @@
     "builtin": true,
     "node": true
   },
-  "ignorePatterns": ["fixtures/**", "fuzz/**", "target/**", "tmp/**", "packages/render/assets/**"]
+  "ignorePatterns": [
+    "fixtures/**",
+    "fuzz/**",
+    "target/**",
+    "tmp/**",
+    "packages/render/assets/**",
+    "packages/react/src/tree/schema-validator.ts"
+  ]
 }

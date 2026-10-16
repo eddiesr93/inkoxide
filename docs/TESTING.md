@@ -127,6 +127,14 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
     `limits.rs`, with both, and compares the outcomes;
   - the engine's tests that need MessagePack are left out of a build
     without its feature (`--no-default-features`), which reads JSON only.
+  - `examples/browser` (`pnpm test` there, after `pnpm exec playwright
+    install`): Playwright renders the page's invoice in a worker in
+    Chromium, Firefox and WebKit, under a strict Content Security Policy
+    and without cross-origin isolation, and compares the PDF with the one
+    Node renders; a render's `signal` ends its worker.
+- `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
+  the calling thread renders the bytes the main entry renders. It needs
+  `scripts/build-wasm.sh` first, and skips without it outside CI.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
   Tailwind class mapping and `initTailwind` options, the React tree
   builder, `renderToBuffer`, `Font.register`, error messages, the

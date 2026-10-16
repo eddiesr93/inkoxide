@@ -1,6 +1,3 @@
-import { writeFile } from 'node:fs/promises';
-import { Readable } from 'node:stream';
-
 import {
   assertValidTree,
   innermostComponent,
@@ -25,13 +22,11 @@ import {
   version,
 } from './engine.ts';
 import { fontsPending, loadRegisteredFonts } from './font.ts';
+import { engineHost } from './host.ts';
 import { type ImagePolicies, loadEmojiImages, loadImages } from './images.ts';
-import { localPolicy } from './local.ts';
-import { checkImageLimits, checkOptionTypes, DEFAULT_IMAGE_TIMEOUT_MS } from './policy.ts';
+import { checkImageLimits, checkOptionTypes, DEFAULT_IMAGE_TIMEOUT_MS, isProduction } from './policy.ts';
 import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
 import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
-
-const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
 /**
  * A template for `generate`: a component that takes `{ data }`, the zod schema of that data and
@@ -150,9 +145,17 @@ function templateTree<S extends z.ZodType>(
 function imagePolicies(opts: RenderOpts): ImagePolicies {
   checkOptionTypes(opts);
   checkImageLimits(opts);
+  const files = engineHost().files;
+  if (!files && opts.localImages !== undefined) {
+    throw new RenderError(
+      'ENGINE_REJECTED',
+      'The render option localImages needs a file system, which is not available here: pass the bytes in images.',
+      { path: 'options.localImages' },
+    );
+  }
   return {
     remote: remotePolicy(opts.remoteImages),
-    local: localPolicy(opts.localImages),
+    local: files?.localPolicy(opts.localImages),
     timeoutMs: opts.imageTimeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS,
   };
 }
@@ -312,7 +315,7 @@ export async function renderSettled(
     fetchMs += performance.now() - f0;
     dropEmoji(tr, 'could not be loaded', (_, id) => emojiImages.failed[id]);
     // So are those whose image the engine refuses: not an image, or one too large.
-    const refused = emoji.size > 0 ? refusedEmoji(tr.document, all) : {};
+    const refused = emoji.size > 0 ? await refusedEmoji(tr.document, all) : {};
     dropEmoji(tr, 'cannot be drawn', (sequence) => refused[sequence]);
     try {
       return await renderPdf(tr.document, opts, all, tr.output);
@@ -450,41 +453,6 @@ export async function renderToBuffer(
   }
   const { pdf } = await renderSettled(tree, {}, opts);
   return pdf;
-}
-
-/** `renderToBuffer`, then writes the PDF to `path`; a failed write is an `INTERNAL` RenderError. */
-export async function renderToFile(
-  element: ReactElement,
-  path: string,
-  opts: RenderToBufferOptions = {},
-): Promise<void> {
-  const pdf = await renderToBuffer(element, opts);
-  try {
-    await writeFile(path, pdf);
-  } catch (e) {
-    throw new RenderError('INTERNAL', `Cannot write the PDF to ${path}: ${(e as Error).message}`, {
-      cause: e,
-    });
-  }
-}
-
-/**
- * `renderToBuffer` as a Node stream, to pipe into an HTTP response:
- *
- * ```tsx
- * (await renderToStream(<Invoice invoice={invoice} />)).pipe(res);
- * ```
- *
- * The engine writes the whole file at once, so the stream starts when the PDF is ready, and a
- * render that fails rejects the promise instead of erroring the stream.
- */
-export async function renderToStream(
-  element: ReactElement,
-  opts: RenderToBufferOptions = {},
-): Promise<Readable> {
-  const pdf = await renderToBuffer(element, opts);
-  // Buffer chunks, as from a file stream; the view shares the PDF's memory.
-  return Readable.from([Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength)], { objectMode: false });
 }
 
 /** The name of the element's component, for errors; JavaScript callers can pass anything. */
