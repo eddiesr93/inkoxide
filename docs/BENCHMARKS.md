@@ -33,11 +33,12 @@ and served from localhost. Median of 20 renders after a warm-up (10 for the repo
 - **Main thread.** The engine renders in its worker: what stays on the main thread (React,
   building the document tree) takes no task over 50 ms.
 - **First render.** From the start of the page's navigation to the first invoice, the download
-  of the library, its engine and its fonts included, takes 121 ms in Chromium and 116 ms in
+  of the library, its engine and its fonts included, takes 104 ms in Chromium and 106 ms in
   WebKit (median of 3 page loads). From localhost: on a real network, the download dominates.
-- **Download, with brotli.** 1.76 MB: 1.18 MB of WebAssembly, 0.26 MB of JavaScript and 0.32 MB
-  of fonts (Inter regular and bold), measured with 0.9.1. Variable fonts have since taken the
-  WebAssembly to 1.32 MB. The module is downloaded once, and cached. Hyphenation
+- **Download, with brotli.** 1.87 MB: 1.37 MB of WebAssembly, 0.18 MB of JavaScript and 0.32 MB
+  of fonts (Inter regular and bold). The page is built with the Tailwind build plugin, which
+  replaces Tailwind's compiler (0.08 MB of that JavaScript without it) with a table of the
+  documents' classes. The module is downloaded once, and cached. Hyphenation
   patterns (1 to 350 KB a language) and Noto Sans, the fallback font, are downloaded only by a
   document that needs them; these documents need neither.
 - Firefox was not measured: the Playwright build of Firefox does not start on this machine.

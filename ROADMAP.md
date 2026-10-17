@@ -7,7 +7,8 @@ or should come sooner.
 
 - **In the browser**: threads, through a thread pool in Web Workers, for pages that are
   cross-origin isolated; `renderToStream`; reading local files.
-- **A build-time Tailwind plugin**, so that a browser need not load the Tailwind compiler.
+- **The Tailwind build plugin** for webpack, Rspack and Next.js (Turbopack), and reading a
+  theme's `@source` directives (Vite, Rollup, Rolldown and esbuild have it now).
 - **Accessibility**: PDF/UA-2 (PDF 2.0, with structure destinations); structure elements in
   object streams, so tagged files grow less; list numbering attributes; tagging the parts of SVG
   images.

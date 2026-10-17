@@ -21,7 +21,20 @@ import {
   verticalAlignKeyword,
 } from '@inkoxide/style/internal';
 
-import type { CandidateCss, CandidateProblem, Decl, TailwindCompiler } from './compile.ts';
+import type { CandidateCss, CandidateProblem, CandidateResult, Decl } from './compile.ts';
+
+/**
+ * Where the classes come from: Tailwind's compiler (`TailwindCompiler`), or a table of the classes
+ * a build saw (`precompiled.ts`).
+ */
+export interface ClassSource {
+  /** The CSS of one class, or why it cannot be used. */
+  candidate(cls: string): CandidateResult;
+  /** Sorts classes the way Tailwind orders them in its stylesheet (later wins on conflicts). */
+  sort(classes: string[]): string[];
+  /** A theme variable (`--spacing`, `--color-red-500`), unresolved. */
+  themeValue(name: string): string | undefined;
+}
 
 /** A class that cannot be turned into an engine style. Thrown in strict (dev) mode. */
 export class UnsupportedUtilityError extends Error {
@@ -42,6 +55,12 @@ function problemReason(p: CandidateProblem): string {
   switch (p.kind) {
     case 'unknown':
       return 'not a Tailwind utility (check the spelling, or see docs/TAILWIND_SUPPORT.md)';
+    case 'unseen':
+      return (
+        'not a Tailwind utility, or one the build did not see: with the Tailwind build plugin, ' +
+        'write each class whole in the source (not put together at run time, as `bg-${c}-500` is), ' +
+        "or list it in the plugin's `safelist`"
+      );
     case 'media':
       return p.message;
     case 'atRule':
@@ -58,7 +77,7 @@ function problemReason(p: CandidateProblem): string {
 }
 
 /** The variant prefixes of a class (`md:hover:` of `md:hover:p-4`), outside arbitrary values. */
-function variantOf(cls: string): string {
+export function variantOf(cls: string): string {
   let depth = 0;
   let end = 0;
   for (let i = 0; i < cls.length; i++) {
@@ -86,11 +105,12 @@ export const PAGE_VARIANTS: readonly string[] = [
  * Why class `cls` cannot be used, from Tailwind's `problem`: its own when the class without its
  * variants has it too (`md:space-x-2`), or else its variants'.
  */
-function candidateReason(compiler: TailwindCompiler, cls: string, problem: CandidateProblem): string {
+function candidateReason(compiler: ClassSource, cls: string, problem: CandidateProblem): string {
   const variant = variantOf(cls);
-  if (!variant || problem.kind === 'unknown') return problemReason(problem);
+  const unknown = (p: CandidateProblem) => p.kind === 'unknown' || p.kind === 'unseen';
+  if (!variant || unknown(problem)) return problemReason(problem);
   const base = compiler.candidate(cls.slice(variant.length));
-  if (!base.ok) return problemReason(base.problem.kind === 'unknown' ? problem : base.problem);
+  if (!base.ok) return problemReason(unknown(base.problem) ? problem : base.problem);
   const why =
     problem.kind === 'media'
       ? ` (${problem.message})`
@@ -557,7 +577,7 @@ export interface TwUnits {
  * `units`, such a value is an error.
  */
 export function mapClasses(
-  compiler: TailwindCompiler,
+  compiler: ClassSource,
   classes: string[],
   onError: (e: UnsupportedUtilityError) => void,
   units?: TwUnits,
@@ -632,7 +652,7 @@ export function mapClasses(
  * that do not `apply`, for another page size, are read and dropped: a mistake in them fails anyway.
  */
 function applyClasses(
-  compiler: TailwindCompiler,
+  compiler: ClassSource,
   ordered: string[],
   applies: (decl: Decl) => boolean,
   lookup: (name: string) => string | undefined,

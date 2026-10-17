@@ -47,6 +47,42 @@ tw.warm(['p-4 text-lg', 'flex gap-2']); // map known class strings ahead, e.g. a
 tw.cacheSize(); // 2: the class strings cached
 ```
 
+## In a browser bundle
+
+In a browser, `@inkoxide/tailwind` loads Tailwind's compiler, about 90 KB with brotli. The build
+plugin replaces it with a table of the classes your sources use (a few KB): it scans them when
+the bundle is built, and in client bundles points `@inkoxide/tailwind` at
+`@inkoxide/tailwind/precompiled`, which reads the table. Classes are still resolved when a
+document renders, with the same results; server bundles keep the compiler.
+
+```ts
+// vite.config.ts (Vite, and Rollup or Rolldown the same way)
+import { inkoxideTailwind } from '@inkoxide/tailwind/plugin';
+
+export default { plugins: [inkoxideTailwind()] };
+```
+
+```js
+// esbuild, for builds with `platform: 'browser'` (its default)
+import { inkoxideTailwindEsbuild } from '@inkoxide/tailwind/plugin';
+
+await esbuild.build({ bundle: true, plugins: [inkoxideTailwindEsbuild()], … });
+```
+
+The options are all optional: `css`, the theme (or `cssFile`, a file whose `@import`s resolve
+from its folder), which `initTailwind({ css })` in the browser must then be given as well;
+`sources`, the directories and files to scan, relative to the project root (by default the root,
+without `node_modules`, build output and hidden directories); and `safelist`, classes to keep
+whatever the scan finds. A Vite dev server scans each file that changes and reloads the page
+when it brings a class the table lacks.
+
+A class the scan does not see is unknown in the browser: write each class whole
+(`bg-red-500`, not `` `bg-${color}-500` ``), or put it in `safelist`. It fails as an unknown
+class does, in strict mode with a message that says so.
+
+The plugin needs nothing beyond this package. In this repository's workspace, where packages are
+TypeScript sources, Vite loads a config that imports it with `--configLoader runner`.
+
 ## Licence
 
 MIT

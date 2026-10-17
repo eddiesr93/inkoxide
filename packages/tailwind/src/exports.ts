@@ -1,0 +1,43 @@
+// What both entries (api.ts and precompiled.ts) export besides `initTailwind`.
+export { DEFAULT_THEME_CSS } from './theme.ts';
+export { isTailwindReady, setTailwindStrict, type TailwindOptions, tw } from './core.ts';
+export { type TwUnits, UnsupportedUtilityError } from './parse.ts';
+// The style values it shares with @inkoxide/react, from @inkoxide/style.
+export {
+  BORDER_STYLES,
+  type BorderStyle,
+  type Color,
+  type ColorValue,
+  type DecorationStyle,
+  type Direction,
+  type FlatStyle,
+  type FlatStyleKey,
+  type LenPercent,
+  type Len,
+  type LetterSpacing,
+  type LineHeight,
+  OBJECT_FITS,
+  type ObjectFit,
+  type ObjectPosition,
+  PT_PER_PX,
+  PT_PER_REM,
+  PT_PER_UNIT,
+  parseColor,
+  parseFlex,
+  parseObjectPosition,
+  parseOrigin,
+  parseTransform,
+  round,
+  splitTopLevel,
+  TEXT_INHERITED,
+  TEXT_ONLY,
+  type TextAlign,
+  type TextDecoration,
+  type TextTransform,
+  type TransformOp,
+  type TwKey,
+  type TwStyle,
+  type Units,
+  UnsupportedValueError,
+  type WhiteSpace,
+} from '@inkoxide/style';

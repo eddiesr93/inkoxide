@@ -11,6 +11,15 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Added
 
+- A Tailwind build plugin, so that a browser need not load Tailwind's compiler. In client
+  bundles, `inkoxideTailwind()` (Vite, Rollup, Rolldown) and `inkoxideTailwindEsbuild()` from
+  `@inkoxide/tailwind/plugin` point `@inkoxide/tailwind` at `@inkoxide/tailwind/precompiled`,
+  which reads a table of the classes the sources use, scanned at build time: the Tailwind
+  JavaScript a page downloads goes from about 88 KB to about 6 KB with brotli, and styles are
+  the same. Server bundles keep the compiler. A class the scan does not see fails as an unknown
+  class, with a reason that says so; the plugin's `safelist` keeps classes put together at run
+  time. `@inkoxide/tailwind/precompile` builds such a table.
+
 - Vertical SVG text and SVG text on a path. `writing-mode` (`vertical-rl`, `vertical-lr`, `tb`,
   `tb-rl`, `sideways-rl`, `sideways-lr`) lays text down a column, CJK upright in its vertical
   forms with the font's vertical metrics and Latin sideways, by `text-orientation` (or
@@ -93,6 +102,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Fixed
 
+- A class for which Tailwind writes CSS that does not parse is an unknown class in
+  `@inkoxide/tailwind`, instead of an error from postcss.
 - A run's `verticalAlign` or a table column's `width` of the wrong type (`true`, an object) is
   reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
 - `@inkoxide/render/browser`: the types of `generate` take `signal` and `timeoutMs` (its
