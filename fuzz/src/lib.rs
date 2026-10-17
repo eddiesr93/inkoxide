@@ -186,9 +186,16 @@ pub fn check(doc: &[u8]) {
     let _ = check_with(doc, &FONTS, &IMAGES, pdf_a_level(doc.len()));
 }
 
+/// Above this size the JSON render is not rendered again, encrypted and
+/// as `MessagePack`: a valid document can ask for tens of thousands of pages
+/// (a row 1 000 000 points high on a page 32 points high), and three
+/// renders of those take longer than the fuzzer's timeout.
+const RERENDER_LIMIT: usize = 8 << 20;
+
 /// The oracle of [`check`], with the given stores and PDF/A level:
 /// validates and renders the JSON `doc`, encrypted too when `pdf_a` is
-/// `None`, and as `MessagePack`. Returns the JSON render.
+/// `None`, and as `MessagePack` (both only up to [`RERENDER_LIMIT`]).
+/// Returns the JSON render.
 fn check_with(
     doc: &[u8],
     fonts: &FontStore,
@@ -196,6 +203,9 @@ fn check_with(
     pdf_a: Option<PdfALevel>,
 ) -> Result<Vec<u8>, InkoxideError> {
     let json = render_with(doc, InputFormat::Json, fonts, images, pdf_a);
+    if json.as_ref().is_ok_and(|pdf| pdf.len() > RERENDER_LIMIT) {
+        return json;
+    }
     let value = serde_json::from_slice::<serde_json::Value>(doc).ok();
     // The plain renders are also rendered encrypted.
     if pdf_a.is_none() {
@@ -342,16 +352,19 @@ pub fn check_font(bytes: &[u8]) -> usize {
 
 /// Every script of `pdf` (uncompressed) is a call of a standard form
 /// function with plain arguments: integers, booleans and string literals
-/// that cannot end early. PDF/A output has no scripts and no `/AA`.
+/// that cannot end early. PDF/A output has no scripts, no `/AA` and no
+/// JavaScript actions. Only keys and action types count: a font may be
+/// named `AA` or `JavaScript` (`/BaseFont /AA`).
 fn check_scripts(pdf: &[u8], pdf_a: bool) {
     let objects = pdf_objects(pdf);
     if pdf_a {
         assert!(
             objects.scripts.is_empty()
                 && !objects
-                    .names
+                    .keys
                     .iter()
-                    .any(|n| n == b"AA" || n == b"JavaScript"),
+                    .any(|n| n == b"AA" || n == b"JavaScript")
+                && !objects.action_types.iter().any(|n| n == b"JavaScript"),
             "PDF/A output with a script"
         );
     }
@@ -367,8 +380,13 @@ fn check_scripts(pdf: &[u8], pdf_a: bool) {
 /// What [`check_scripts`] reads from the object syntax of a PDF.
 #[derive(Debug, Default)]
 struct PdfObjects {
-    /// Every name, without its `/`.
-    names: Vec<Vec<u8>>,
+    /// Every name (without its `/`) followed by a value that is not a
+    /// name: a key, as `/AA <<`, and never a name value, as the `/AA` of
+    /// `/BaseFont /AA`. A key with a name value is not in it.
+    keys: Vec<Vec<u8>>,
+    /// The value of every `/S` key that is a name: the action types (and
+    /// other subtypes, as `/S /D` of page labels).
+    action_types: Vec<Vec<u8>>,
     /// The value of every `/JS` key, decoded as a text string; `None` when
     /// it is not a string.
     scripts: Vec<Option<String>>,
@@ -381,6 +399,7 @@ fn pdf_objects(pdf: &[u8]) -> PdfObjects {
     let mut out = PdfObjects::default();
     let mut i = 0;
     let (mut length, mut after_length) = (None, false);
+    let mut after_s = false;
     while i < pdf.len() {
         match pdf[i] {
             b'%' => {
@@ -389,8 +408,14 @@ fn pdf_objects(pdf: &[u8]) -> PdfObjects {
                 }
             }
             // A dictionary.
-            b'<' if pdf.get(i + 1) == Some(&b'<') => i += 2,
-            b'(' | b'<' => i = pdf_string(pdf, i).map_or(pdf.len(), |(_, end)| end),
+            b'<' if pdf.get(i + 1) == Some(&b'<') => {
+                after_s = false;
+                i += 2;
+            }
+            b'(' | b'<' => {
+                after_s = false;
+                i = pdf_string(pdf, i).map_or(pdf.len(), |(_, end)| end);
+            }
             b'/' => {
                 let start = i + 1;
                 i = start;
@@ -399,6 +424,10 @@ fn pdf_objects(pdf: &[u8]) -> PdfObjects {
                 }
                 let name = pdf[start..i].to_vec();
                 after_length = name == b"Length";
+                if after_s {
+                    out.action_types.push(name.clone());
+                }
+                after_s = name == b"S";
                 if name == b"JS" {
                     while i < pdf.len() && pdf[i].is_ascii_whitespace() {
                         i += 1;
@@ -410,10 +439,16 @@ fn pdf_objects(pdf: &[u8]) -> PdfObjects {
                         i = end;
                     }
                 }
-                out.names.push(name);
+                let next = pdf[i..].trim_ascii_start();
+                if !(next.is_empty()
+                    || [&b"/"[..], b">>", b"]"].iter().any(|d| next.starts_with(d)))
+                {
+                    out.keys.push(name);
+                }
             }
             b if delimiter(b) => i += 1,
             _ => {
+                after_s = false;
                 let start = i;
                 while i < pdf.len() && !delimiter(pdf[i]) {
                     i += 1;
@@ -2336,6 +2371,8 @@ mod tests {
         assert!(fails(bad, false));
         assert!(fails(ok, true));
         assert!(fails(b"<< /AA << >> >>", true));
+        assert!(fails(b"<< /AA 5 0 R >>", true));
+        assert!(fails(b"<< /Names << /JavaScript 6 0 R >> >>", true));
         assert!(fails(b"<< /S /JavaScript >>", true));
         assert!(fails(b"<< /JS 12 0 R >>", false));
         // Strings and stream data that look like a script.
@@ -2343,6 +2380,10 @@ mod tests {
             &b"<< /Title (/JS \\(x\\)) /Subject </4A53> >>"[..],
             b"1 0 obj << /Length 8 >> stream\n/JS (x) \nendstream endobj",
             b"1 0 obj << /Length 2 0 R >> stream\n/JS (x)\nendstream endobj",
+            // Fonts named `AA` and `JavaScript`.
+            b"<< /Type /Font /BaseFont /AA\n /Encoding /Identity-H >>",
+            b"<< /FontName /JavaScript >>",
+            b"<< /S /D /St 1 >> << /BaseFont /JavaScript >>",
         ] {
             check_scripts(decoy, false);
             check_scripts(decoy, true);
