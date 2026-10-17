@@ -23,7 +23,13 @@ import {
 } from '@inkoxide/style';
 import { Reader, verticalAlignKeyword } from '@inkoxide/style/internal';
 
-import type { Edges, HyphenationCallback, StyleProp, Style as StyleInput } from '../components/index.ts';
+import type {
+  Edges,
+  FontWeightName,
+  HyphenationCallback,
+  StyleProp,
+  Style as StyleInput,
+} from '../components/index.ts';
 
 /** A text property that cascades from an element to its content. */
 type InheritedKey = (typeof TEXT_INHERITED)[number];
@@ -677,12 +683,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   for (const k of ['float', 'clear'] as const) {
     if (out[k] !== undefined) out[k] = new Reader(k).oneOf(k, String(out[k]));
   }
-  if (textWrap !== undefined) {
-    if (textWrap === 'balance') {
-      throw new Error(`textWrap "balance" is not supported yet: use 'pretty' for even lines, or 'wrap'`);
-    }
-    out.textWrap = new Reader('textWrap').oneOf('textWrap', String(textWrap));
-  }
+  if (textWrap !== undefined) out.textWrap = new Reader('textWrap').textWrap(String(textWrap));
   if (verticalAlign !== undefined) {
     // A number (points up) or a CSS keyword; an `<Image>` in a `<Text>` takes them all.
     const v = verticalAlign as unknown;
@@ -808,6 +809,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   return out as FlatStyle;
 }
 
+/** Every `FontWeightName`, and only those, with its number. */
 const WEIGHTS: Readonly<Record<string, number>> = {
   thin: 100,
   hairline: 100,
@@ -824,7 +826,7 @@ const WEIGHTS: Readonly<Record<string, number>> = {
   extrabold: 800,
   heavy: 900,
   black: 900,
-};
+} satisfies Record<FontWeightName, number>;
 
 /** A numeric weight, or a CSS name (`'bold'`). */
 export function weightOf(w: number | string): number {
@@ -916,7 +918,7 @@ function borderShorthand(
 /** `flexGrow` or `flexShrink`: a number that is not negative, as `flex` takes them. */
 function checkFactor(key: string, v: unknown): void {
   if (typeof v !== 'number') throw new Error(`${key} ${JSON.stringify(v)} is not a number`);
-  if (v < 0) throw new Error(`${key} ${v}: cannot be negative`);
+  new Reader(key).factor(String(v));
 }
 
 /** CSS `flex`: a number is `n 1 0%`; strings are read by `parseFlex`, with plain numbers for grow and shrink. */

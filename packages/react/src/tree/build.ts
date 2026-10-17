@@ -413,20 +413,24 @@ class Builder {
 
   /**
    * Where the value of `key` in an element's own style `s` came from: its `className` (with the
-   * error fields that go with a class), or its `style` prop.
+   * error fields that go with a class), or its `style` prop. `from` names it in a message.
    */
-  private source(inst: Instance, s: FlatStyle, key: string): { fromClass: boolean; init: TemplateErrorInit } {
+  private source(
+    inst: Instance,
+    s: FlatStyle,
+    key: string,
+  ): { fromClass: boolean; init: TemplateErrorInit; from: string } {
     const v = this.classStyles.get(inst)?.[key as keyof FlatStyle];
     if (v === undefined || v !== s[key as keyof FlatStyle])
-      return { fromClass: false, init: { kind: 'props' } };
-    return { fromClass: true, init: { kind: 'tailwind', className: inst.props.className as string } };
+      return { fromClass: false, init: { kind: 'props' }, from: 'its style' };
+    const className = inst.props.className as string;
+    return { fromClass: true, init: { kind: 'tailwind', className }, from: `className="${className}"` };
   }
 
   private onlyKeys(inst: Instance, s: FlatStyle, allowed: ReadonlySet<string>, hint: string): void {
     for (const k of boxKeys(s)) {
       if (!allowed.has(k)) {
-        const { fromClass, init } = this.source(inst, s, k);
-        const from = fromClass ? `className="${init.className}"` : 'its style';
+        const { init, from } = this.source(inst, s, k);
         this.fail(inst, `<${HOST_NAME[inst.type]}> does not support "${k}" (from ${from}). ${hint}`, init);
       }
     }
@@ -1080,11 +1084,11 @@ class Builder {
     const allowed = new Set(['width', 'height', 'verticalAlign']);
     const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => !allowed.has(k));
     if (bad[0] !== undefined) {
-      const { fromClass, init: from } = this.source(n, own, bad[0]);
+      const { init: at, from } = this.source(n, own, bad[0]);
       this.fail(
         n,
-        `An <Image> inside <Text> is part of the line: it takes width, height, objectFit, objectPosition and verticalAlign, not "${bad.join(', ')}" (from ${fromClass ? `className="${from.className}"` : 'its style'}).`,
-        from,
+        `An <Image> inside <Text> is part of the line: it takes width, height, objectFit, objectPosition and verticalAlign, not "${bad.join(', ')}" (from ${from}).`,
+        at,
       );
     }
     const image: InlineImage = this.placedImage(n, own, (msg) => this.fail(n, msg, init));
@@ -1124,10 +1128,10 @@ class Builder {
     const own = this.styleOf(n, ctx);
     const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => k !== 'backgroundColor');
     if (bad[0] !== undefined) {
-      const { fromClass, init } = this.source(n, own, bad[0]);
+      const { init, from } = this.source(n, own, bad[0]);
       this.fail(
         n,
-        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${fromClass ? `className="${init.className}"` : 'its style'}).`,
+        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${from}).`,
         init,
       );
     }
@@ -1259,10 +1263,10 @@ class Builder {
       let minHeight = r.props.minHeight as number | undefined;
       if (minHeight === undefined && typeof rOwn.minHeight === 'number') minHeight = rOwn.minHeight;
       else if (minHeight === undefined && typeof rOwn.minHeight === 'string' && rOwn.minHeight !== 'auto') {
-        const { fromClass, init } = this.source(r, rOwn, 'minHeight');
+        const { init, from } = this.source(r, rOwn, 'minHeight');
         this.fail(
           r,
-          `<Row>: a minimum height of ${rOwn.minHeight} (from ${fromClass ? `className="${init.className}"` : 'its style'}) has no table height to be a percentage of; use a length.`,
+          `<Row>: a minimum height of ${rOwn.minHeight} (from ${from}) has no table height to be a percentage of; use a length.`,
           init,
         );
       }
@@ -1290,10 +1294,10 @@ class Builder {
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
     if (runAlignOf(own) !== undefined) {
-      const { fromClass, init } = this.source(inst, own, 'verticalAlign');
+      const { init, from } = this.source(inst, own, 'verticalAlign');
       this.fail(
         inst,
-        `<Cell>: verticalAlign "${own.verticalAlign}" (from ${fromClass ? `className="${init.className}"` : 'its style'}) places text on its line; a Cell takes top, middle or bottom.`,
+        `<Cell>: verticalAlign "${own.verticalAlign}" (from ${from}) places text on its line; a Cell takes top, middle or bottom.`,
         init,
       );
     }

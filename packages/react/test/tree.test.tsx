@@ -369,7 +369,7 @@ describe('textWrap', () => {
 
   it('rejects balance, which is reserved', () => {
     expect(() => render(<Text style={{ textWrap: 'balance' }}>a</Text>)).toThrow(
-      /textWrap "balance" is not supported/,
+      /textWrap: balance \(not supported yet/,
     );
     expect(() => render(<Text className="text-balance">a</Text>)).toThrow(/text-balance/);
   });

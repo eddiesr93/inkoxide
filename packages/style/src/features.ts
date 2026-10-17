@@ -1,3 +1,4 @@
+import { MAX_FEATURE_VALUE, MAX_FEATURES } from './bounds.ts';
 // OpenType features: CSS `font-feature-settings` and `font-variant-numeric`, read into the
 // engine's `fontFeatures` (tag → value).
 import { UnsupportedValueError } from './reader.ts';
@@ -12,10 +13,6 @@ export type FontFeatures = Readonly<Record<string, number>>;
  * (`{ tnum: 1, liga: false }`).
  */
 export type FontFeatureSettings = string | readonly string[] | Readonly<Record<string, number | boolean>>;
-
-/** The schema's bounds: features a run takes, and the largest value of one. */
-const MAX_FEATURES = 32;
-const MAX_VALUE = 65_535;
 
 const TAG = /^[\x20-\x7e]{4}$/;
 
@@ -43,8 +40,8 @@ function tagOf(fail: Fail, tag: string): string {
 
 function valueOf(fail: Fail, tag: string, v: number | boolean): number {
   const n = typeof v === 'boolean' ? Number(v) : v;
-  if (!Number.isInteger(n) || n < 0 || n > MAX_VALUE) {
-    fail(`the value of "${tag}" is a whole number from 0 to ${MAX_VALUE}, or on or off`);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_FEATURE_VALUE) {
+    fail(`the value of "${tag}" is a whole number from 0 to ${MAX_FEATURE_VALUE}, or on or off`);
   }
   return n;
 }

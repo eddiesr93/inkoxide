@@ -14,7 +14,7 @@ import {
 
 import { base64Bytes } from './bytes.ts';
 import { engineHost, NO_FILES } from './host.ts';
-import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, timerMs } from './policy.ts';
+import { DEFAULT_IMAGE_TIMEOUT_MS, maxImageBytes, timerMs } from './policy.ts';
 import { fetchImage, REMOTE_IMAGES_VARIABLE } from './remote.ts';
 import { type LocalImageOptions, RenderError, type RemoteImageOptions } from './types.ts';
 
@@ -123,7 +123,7 @@ async function fetchEmoji(url: string, policy: RemoteImageOptions | undefined): 
     emojiFetches.set(url, load);
   }
   const bytes = hit ?? (await within(load as Promise<Uint8Array>, url, policy));
-  const max = policy.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+  const max = maxImageBytes(policy);
   if (bytes.byteLength > max) {
     throw new RenderError(
       'IMAGE_FETCH_FAILED',

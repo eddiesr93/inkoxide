@@ -447,9 +447,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     case 'text-wrap':
       // `text-nowrap` is white space that does not wrap.
       if (v === 'nowrap') s.whiteSpace = 'nowrap';
-      else if (v === 'balance')
-        throw r.error('text-wrap: balance (not supported yet; text-pretty evens lines)');
-      else s.textWrap = r.oneOf('textWrap', v);
+      else s.textWrap = r.textWrap(v);
       return;
     case 'hyphens':
       s.hyphenate = v === 'auto';
