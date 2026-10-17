@@ -24,7 +24,8 @@ export interface TailwindPluginOptions {
   cssFile?: string;
   /**
    * Directories and files to scan for classes (relative to the project root); by default the
-   * project root, without `node_modules`, build output and hidden directories.
+   * project root, without `node_modules`, build output and hidden directories. A directory's
+   * files of the types the scanner knows are read, and a file named here whatever its type.
    */
   sources?: string[];
   /** Classes to keep whether the scan finds them or not: those put together at run time. */
@@ -61,10 +62,14 @@ async function scan(options: TailwindPluginOptions, root: string, out?: string):
   return { precompiler, files };
 }
 
-/** Whether `file` is in one of `roots` and not in `out`. */
+/**
+ * Whether `file` is one of the sources: one of `roots`, or of a type the scanner reads in one of
+ * them, and not in `out`.
+ */
 function inSources(file: string, roots: readonly string[], out: string | undefined): boolean {
   const under = (dir: string) => file === dir || file.startsWith(dir + sep);
-  return roots.some(under) && !(out !== undefined && under(out));
+  if (out !== undefined && under(out)) return false;
+  return roots.includes(file) || (SCANNED.has(extname(file)) && roots.some(under));
 }
 
 /** A path with `/` between its parts, as bundlers write module ids. */
@@ -91,13 +96,14 @@ interface Context {
   environment?: { config?: { consumer?: string } };
 }
 
-/** What the plugin uses of a Vite dev server. */
-interface DevServer {
+/** What the plugin uses of a Vite dev server's environment. */
+interface DevEnvironment {
+  config: { consumer: string };
   moduleGraph: {
     getModuleById(id: string): unknown;
     invalidateModule(mod: never): void;
   };
-  ws: { send(payload: { type: 'full-reload' }): void };
+  hot: { send(payload: { type: 'full-reload' }): void };
 }
 
 /** A Vite, Rollup or Rolldown plugin. */
@@ -109,11 +115,10 @@ export interface TailwindPlugin {
   buildStart(this: Context): Promise<void>;
   resolveId(this: Context, id: string, importer?: string, opts?: { ssr?: boolean }): string | null;
   load(this: Context, id: string): Promise<{ code: string; map: null } | null>;
-  handleHotUpdate(ctx: {
-    file: string;
-    server: DevServer;
-    read(): string | Promise<string>;
-  }): Promise<[] | undefined>;
+  hotUpdate(
+    this: { environment: DevEnvironment },
+    ctx: { type: 'create' | 'update' | 'delete'; file: string; read(): string | Promise<string> },
+  ): Promise<[] | undefined>;
 }
 
 /**
@@ -150,17 +155,22 @@ export function inkoxideTailwind(options: TailwindPluginOptions = {}): TailwindP
       if (fileOf(id) !== slashed(TABLE_FILE)) return null;
       return { code: tableModule((await start()).precompiler.table()), map: null };
     },
-    async handleHotUpdate({ file, server, read }) {
-      if (!SCANNED.has(extname(file)) || scanned === undefined) return undefined;
+    // A file created or changed in the browser's environment (only it has the table; a removed
+    // file's classes stay until the next build).
+    async hotUpdate({ type, file, read }) {
+      const env = this.environment;
+      if (type === 'delete' || env.config.consumer !== 'client' || scanned === undefined) {
+        return undefined;
+      }
       const out = outDir === undefined ? undefined : resolve(root, outDir);
       if (!inSources(resolve(file), rootsOf(options, root), out)) return undefined;
       const found = new Set<string>();
       candidatesIn(await read(), found);
       if (!(await scanned).precompiler.add(found)) return undefined;
       // A new class: the table again, and the page, whose styles are cached.
-      const mod = server.moduleGraph.getModuleById(slashed(TABLE_FILE));
-      if (mod) server.moduleGraph.invalidateModule(mod as never);
-      server.ws.send({ type: 'full-reload' });
+      const mod = env.moduleGraph.getModuleById(slashed(TABLE_FILE));
+      if (mod) env.moduleGraph.invalidateModule(mod as never);
+      env.hot.send({ type: 'full-reload' });
       return [];
     },
   };

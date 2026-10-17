@@ -129,33 +129,40 @@ describe('the build plugin', () => {
   });
 
   it('reloads the page in a dev server when a file brings a new class', async () => {
-    const plugin = inkoxideTailwind();
+    writeFileSync(join(dir, 'classes.json'), '["p-4"]');
+    const plugin = inkoxideTailwind({ sources: ['src', 'classes.json'] });
     plugin.configResolved({ root: dir });
     await plugin.buildStart.call({});
     const sent: unknown[] = [];
     const invalidated: unknown[] = [];
-    const server = {
+    const environment = (consumer: string) => ({
+      config: { consumer },
       moduleGraph: {
         getModuleById: (id: string) => ({ id }),
         invalidateModule: (mod: never) => void invalidated.push(mod),
       },
-      ws: { send: (payload: unknown) => void sent.push(payload) },
-    };
-    const update = (text: string) =>
-      plugin.handleHotUpdate({ file: join(dir, 'src/b.tsx'), server, read: () => text });
-    // A class it has, a file it does not read, and one outside its sources: nothing.
-    expect(await update('p-4')).toBeUndefined();
-    expect(
-      await plugin.handleHotUpdate({ file: join(tmpdir(), 'elsewhere.tsx'), server, read: () => 'm-3' }),
-    ).toBeUndefined();
-    expect(
-      await plugin.handleHotUpdate({ file: join(dir, 'x.css'), server, read: () => 'm-3' }),
-    ).toBeUndefined();
+      hot: { send: (payload: unknown) => void sent.push(payload) },
+    });
+    const client = { environment: environment('client') };
+    type Update = 'create' | 'update' | 'delete';
+    const hot = (file: string, text: string, type: Update = 'update', env = client) =>
+      plugin.hotUpdate.call(env, { type, file, read: () => text });
+    const b = join(dir, 'src/b.tsx');
+    // A class it has, a file it does not read, one outside its sources, a file removed and the
+    // server's environment: nothing.
+    expect(await hot(b, 'p-4')).toBeUndefined();
+    expect(await hot(join(tmpdir(), 'elsewhere.tsx'), 'm-3')).toBeUndefined();
+    expect(await hot(join(dir, 'src/x.css'), 'm-3')).toBeUndefined();
+    expect(await hot(b, 'm-3', 'delete')).toBeUndefined();
+    expect(await hot(b, 'm-3', 'update', { environment: environment('server') })).toBeUndefined();
     expect(sent).toEqual([]);
-    expect(await update('<View className="m-3" />')).toEqual([]);
-    expect(sent).toEqual([{ type: 'full-reload' }]);
-    expect(invalidated).toHaveLength(1);
+    // A file created with a new class, and a source named whatever its type.
+    expect(await hot(b, '<View className="m-3" />', 'create')).toEqual([]);
+    expect(await hot(join(dir, 'classes.json'), '["m-5"]')).toEqual([]);
+    expect(sent).toEqual([{ type: 'full-reload' }, { type: 'full-reload' }]);
+    expect(invalidated).toHaveLength(2);
     const table = await plugin.load.call({}, join(SRC, 'table.ts'));
     expect(table?.code).toContain('m-3');
+    expect(table?.code).toContain('m-5');
   });
 });

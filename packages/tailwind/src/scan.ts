@@ -98,7 +98,8 @@ function add(token: string, out: Set<string>): void {
 
 /**
  * The files under `roots` (directories or files) that it reads, without `node_modules`, build
- * output and hidden directories, nor `exclude` (absolute paths).
+ * output and hidden directories, nor `exclude` (absolute paths): in a directory, those of the
+ * types in `SCANNED`; a root that is a file, whatever its type.
  */
 export function sourceFiles(roots: readonly string[], exclude: ReadonlySet<string> = new Set()): string[] {
   const files: string[] = [];
@@ -115,7 +116,7 @@ export function sourceFiles(roots: readonly string[], exclude: ReadonlySet<strin
       if (level > 0 && (SKIPPED.has(name) || name.startsWith('.'))) return;
       if (level === 1 && OUTPUT.has(name)) return;
       for (const entry of readdirSync(path).sort()) walk(join(path, entry), level + 1);
-    } else if (stat.isFile() && SCANNED.has(extname(path)) && stat.size <= MAX_FILE) {
+    } else if (stat.isFile() && (level === 0 || SCANNED.has(extname(path))) && stat.size <= MAX_FILE) {
       files.push(path);
     }
   };

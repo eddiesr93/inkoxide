@@ -44,7 +44,9 @@ The npm packages depend on each other like this:
 React commits, the tree is converted into a schema v1 document: `className`
 strings go through `@inkoxide/tailwind` when it is installed (the real
 Tailwind compiler turns classes into CSS, and the CSS declarations are
-mapped to engine styles), style objects are read with the same readers of
+mapped to engine styles; in a browser bundle built with its plugin, a
+table of the classes the sources use, made by the same compiler at build
+time, stands in for it), style objects are read with the same readers of
 lengths, keywords, colours, `flex`, transforms and positions from
 `@inkoxide/style` (`em`, `vw` and `vh` resolve against the element's font
 size and the page in both), and fonts are resolved against the font
