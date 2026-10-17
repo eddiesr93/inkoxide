@@ -66,7 +66,7 @@ pub(crate) struct SvgImage {
     /// The box it fills, from its place before rotation and stretch, y
     /// down.
     pub rect: Rect,
-    pub placement: crate::images::Placement,
+    pub placement: crate::images::ImagePlacement,
     /// What text extraction gets for it, through an invisible space of
     /// `font` at `size`, as wide as the image.
     pub text: Option<Box<str>>,
@@ -438,7 +438,7 @@ fn length_adjust(text: &SvgText, chunks: &mut [Chunk]) {
 
 /// How far the baseline of `span` sits below the text position, in user
 /// units (`resolve_baseline`).
-fn baseline_shift(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
+fn baseline_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
     let m = &font.data.metrics;
     let scale = font.scale(span.size);
     let mut up = 0.0;
@@ -510,7 +510,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             let shifted = ch.dx != 0.0 || ch.dy != 0.0 || ch.rotate != 0.0;
             let span = &text.spans[c.span];
             let font = fonts.get(c.font);
-            let down = baseline_shift(span, font);
+            let down = baseline_drop(span, font);
             let (ox, oy) = (x0 + x, y0 + y + down);
             let scale = font.scale(span.size);
             let mut pen = 0.0;

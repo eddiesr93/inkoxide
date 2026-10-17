@@ -173,26 +173,26 @@ pub(crate) struct PageWindow {
 }
 
 /// Overlap (points) too thin to count as being on a page.
-const HAIR: f32 = 0.01;
+const MIN_OVERLAP: f32 = 0.01;
 
 impl PageWindow {
     /// Whether content from paged `top`, `height` high, misses the page:
     /// it starts below it or ends above it, give or take a hair.
     pub fn hides(self, top: f32, height: f32) -> bool {
-        top >= self.bottom - HAIR || top + height <= self.top + HAIR
+        top >= self.bottom - MIN_OVERLAP || top + height <= self.top + MIN_OVERLAP
     }
 
     /// Whether content from paged `top` starts on the page: of the pages
     /// something taller than a page is sliced across, the one it starts on.
     pub fn starts(self, top: f32) -> bool {
-        top >= self.top - HAIR && top < self.bottom - HAIR
+        top >= self.top - MIN_OVERLAP && top < self.bottom - MIN_OVERLAP
     }
 
     /// Whether something with no height at paged `top` is on the page: it
     /// starts on it, or sits on its bottom edge (after the last content of
     /// a flow, which makes no page of its own).
     pub fn holds(self, top: f32) -> bool {
-        self.starts(top) || (top >= self.bottom - HAIR && top < self.bottom + HAIR)
+        self.starts(top) || (top >= self.bottom - MIN_OVERLAP && top < self.bottom + MIN_OVERLAP)
     }
 
     /// The part of `top..bottom` (page coordinates) shown on the page, for

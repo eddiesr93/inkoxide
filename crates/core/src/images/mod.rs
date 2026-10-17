@@ -212,12 +212,12 @@ pub(crate) type ImageKey = u32;
 
 /// How an image fills its box: its `fit`, and its `objectPosition` there.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Placement {
+pub(crate) struct ImagePlacement {
     pub fit: ImageFit,
     pub position: ObjectPosition,
 }
 
-impl Placement {
+impl ImagePlacement {
     /// Stretched over the box.
     pub const FILL: Self = Self {
         fit: ImageFit::Fill,
@@ -536,7 +536,7 @@ impl ImageSet {
         let bx = Rect::new(cx + ctx.dx, cy + ctx.shift + ctx.dy, cw, ch);
         // `borderRadius` rounds the image without `overflow: hidden`.
         let radii = crate::paint::content_radii(&node.style, geo);
-        let placement = Placement::new(*fit, *object_position);
+        let placement = ImagePlacement::new(*fit, *object_position);
         self.paint_in(key, bx, placement, &radii, ops);
     }
 
@@ -546,7 +546,7 @@ impl ImageSet {
         &self,
         key: ImageKey,
         bx: Rect,
-        placement: Placement,
+        placement: ImagePlacement,
         radii: &crate::paint::Radii,
         ops: &mut Vec<crate::paint::Op>,
     ) {
@@ -556,7 +556,7 @@ impl ImageSet {
         }
         let img = self.get(key);
         let intrinsic = self.intrinsic_of(key);
-        let Placement { fit, position } = placement;
+        let ImagePlacement { fit, position } = placement;
         let (rect, clip) = match (&img.body, fit) {
             // The box is the SVG's viewport, which its `viewBox` fits.
             (

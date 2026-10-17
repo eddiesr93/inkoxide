@@ -149,7 +149,7 @@ pub(crate) fn number(v: f32) -> f32 {
 /// Rounds to 1/1000 pt so output has at most three decimals; bounded and
 /// never infinite or NaN (see [`number`]).
 #[inline]
-pub(crate) fn q(v: f32) -> f32 {
+pub(crate) fn round_pt(v: f32) -> f32 {
     round_to(v, 1000.0)
 }
 
@@ -506,7 +506,12 @@ impl PdfWriterSink {
             let parent = tree_root.leaf_parents[i / PAGE_TREE_FANOUT];
             let mut p = pdf.page(*page_ref);
             p.parent(parent)
-                .media_box(PdfRect::new(0.0, 0.0, q(page.width), q(page.height)))
+                .media_box(PdfRect::new(
+                    0.0,
+                    0.0,
+                    round_pt(page.width),
+                    round_pt(page.height),
+                ))
                 .contents(*content_ref);
             let mut res = p.resources();
             if !page.opacities.is_empty() {
@@ -734,13 +739,18 @@ fn write_link(
 /// An annotation's `/Rect`: `r` (page coordinates, top-left origin) in
 /// PDF user space, whose origin is the bottom left of a page `page_h` high.
 fn annot_rect(r: Rect, page_h: f32) -> PdfRect {
-    PdfRect::new(q(r.x), q(page_h - r.y - r.h), q(r.x + r.w), q(page_h - r.y))
+    PdfRect::new(
+        round_pt(r.x),
+        round_pt(page_h - r.y - r.h),
+        round_pt(r.x + r.w),
+        round_pt(page_h - r.y),
+    )
 }
 
 /// `[page /XYZ left top 0]`: keeps the viewer's zoom.
 fn xyz(d: pdf_writer::writers::Destination<'_>, dest: Dest, pages: &[Ref]) {
     d.page(pages[dest.page as usize])
-        .xyz(q(dest.x), q(dest.y), None);
+        .xyz(round_pt(dest.x), round_pt(dest.y), None);
 }
 
 /// Most bytes URI `uri` takes in the file once written by [`write_link`],
@@ -945,7 +955,7 @@ fn font_name(key: FontKey) -> String {
 fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool) {
     let font = fonts.get(t.font);
     let scale = font.scale(t.size);
-    let size = q(t.size);
+    let size = round_pt(t.size);
     set_fill(c, &t.color);
     c.begin_text();
     c.set_font(Name(font_name(t.font).as_bytes()), size);
@@ -958,7 +968,14 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool
             continue;
         }
         // Text space is y-up; the page is flipped, so flip back.
-        c.set_text_matrix([1.0, 0.0, 0.0, -1.0, q(t.x + g0.x), q(t.y - g0.y_offset)]);
+        c.set_text_matrix([
+            1.0,
+            0.0,
+            0.0,
+            -1.0,
+            round_pt(t.x + g0.x),
+            round_pt(t.y - g0.y_offset),
+        ]);
         if g0.y_offset != 0.0 {
             c.show(Str(&g0.id.to_be_bytes()));
             i += 1;
@@ -973,7 +990,7 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool
             .iter()
             .filter(|g| !(skip_notdef && g.id == 0));
         let run = run.map(|g| (g.id, g.x, font.advance(g.id) * scale));
-        show_kerned(c, g0.x, t.size, q, run);
+        show_kerned(c, g0.x, t.size, round_pt, run);
         i = end;
     }
     c.end_text();
@@ -1029,20 +1046,27 @@ fn clip(c: &mut Content, rule: FillRule) {
 }
 
 fn set_fill(c: &mut Content, color: &Color) {
-    c.set_fill_rgb(q(color[0]), q(color[1]), q(color[2]));
+    c.set_fill_rgb(round_pt(color[0]), round_pt(color[1]), round_pt(color[2]));
 }
 
 fn path(c: &mut Content, segs: &[PathSeg]) {
     for s in segs {
         match *s {
             PathSeg::MoveTo(x, y) => {
-                c.move_to(q(x), q(y));
+                c.move_to(round_pt(x), round_pt(y));
             }
             PathSeg::LineTo(x, y) => {
-                c.line_to(q(x), q(y));
+                c.line_to(round_pt(x), round_pt(y));
             }
             PathSeg::CubicTo(x1, y1, x2, y2, x3, y3) => {
-                c.cubic_to(q(x1), q(y1), q(x2), q(y2), q(x3), q(y3));
+                c.cubic_to(
+                    round_pt(x1),
+                    round_pt(y1),
+                    round_pt(x2),
+                    round_pt(y2),
+                    round_pt(x3),
+                    round_pt(y3),
+                );
             }
             PathSeg::Close => {
                 c.close_path();
@@ -1060,7 +1084,7 @@ pub(crate) fn content_stream(
 ) -> Result<Vec<u8>, InkoxideError> {
     let mut c = Content::new();
     // Flip to a top-left origin once; everything below is in layout space.
-    c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(page.height)]);
+    c.transform([1.0, 0.0, 0.0, -1.0, 0.0, round_pt(page.height)]);
     for op in &page.ops {
         match op {
             Op::Save => {
@@ -1073,7 +1097,7 @@ pub(crate) fn content_stream(
                 c.transform(m.map(|v| round_to(v, 1e5)));
             }
             Op::ClipRect(r) => {
-                c.rect(q(r.x), q(r.y), q(r.w), q(r.h));
+                c.rect(round_pt(r.x), round_pt(r.y), round_pt(r.w), round_pt(r.h));
                 c.clip_nonzero();
                 c.end_path();
             }
@@ -1084,7 +1108,12 @@ pub(crate) fn content_stream(
             }
             Op::FillRect { rect, color } => {
                 set_fill(&mut c, color);
-                c.rect(q(rect.x), q(rect.y), q(rect.w), q(rect.h));
+                c.rect(
+                    round_pt(rect.x),
+                    round_pt(rect.y),
+                    round_pt(rect.w),
+                    round_pt(rect.h),
+                );
                 c.fill_nonzero();
             }
             Op::FillPath {
@@ -1103,10 +1132,10 @@ pub(crate) fn content_stream(
                 dash,
             } => {
                 c.save_state();
-                c.set_stroke_rgb(q(color[0]), q(color[1]), q(color[2]));
-                c.set_line_width(q(*width));
+                c.set_stroke_rgb(round_pt(color[0]), round_pt(color[1]), round_pt(color[2]));
+                c.set_line_width(round_pt(*width));
                 if let Some(d) = dash {
-                    c.set_dash_pattern(d.pattern.map(q), 0.0);
+                    c.set_dash_pattern(d.pattern.map(round_pt), 0.0);
                     if d.round_cap {
                         c.set_line_cap(LineCapStyle::RoundCap);
                     }
@@ -1122,7 +1151,7 @@ pub(crate) fn content_stream(
             Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
             Op::Image { key, matrix } => {
                 c.save_state();
-                c.transform(matrix.map(q));
+                c.transform(matrix.map(round_pt));
                 c.x_object(Name(image_name(*key).as_bytes()));
                 c.restore_state();
             }
@@ -1167,10 +1196,10 @@ fn invisible_glyph(
     }
     c.save_state();
     c.begin_text();
-    c.set_font(Name(name), q(size));
+    c.set_font(Name(name), round_pt(size));
     c.set_text_rendering_mode(TextRenderingMode::Invisible);
-    c.set_horizontal_scaling(q(scaling));
-    c.set_text_matrix([1.0, 0.0, 0.0, -1.0, q(g.x), q(g.y)]);
+    c.set_horizontal_scaling(round_pt(scaling));
+    c.set_text_matrix([1.0, 0.0, 0.0, -1.0, round_pt(g.x), round_pt(g.y)]);
     c.show(Str(&g.glyph.to_be_bytes()));
     c.end_text();
     c.restore_state();
@@ -1204,8 +1233,8 @@ mod tests {
 
     #[test]
     fn numbers_are_rounded_bounded_and_never_non_finite() {
-        assert_eq!(q(1.234_56), 1.235);
-        assert_eq!(q(-0.000_4), -0.0);
+        assert_eq!(round_pt(1.234_56), 1.235);
+        assert_eq!(round_pt(-0.000_4), -0.0);
         // Tiny values keep their precision where they are not rounded.
         assert_eq!(number(1e-7), 1e-7);
         assert_eq!(number(-1e-30), -1e-30);
@@ -1214,13 +1243,13 @@ mod tests {
         for v in [1e6, 1e10, MAX_NUMBER] {
             assert_eq!(number(v), v);
             assert_eq!(number(-v), -v);
-            assert_eq!(q(v), v);
+            assert_eq!(round_pt(v), v);
         }
         for v in [1.5e11, 1e12, 1e30, f32::MAX] {
             assert_eq!(number(v), MAX_NUMBER);
             assert_eq!(number(-v), -MAX_NUMBER);
-            assert_eq!(q(v), MAX_NUMBER);
-            assert_eq!(q(-v), -MAX_NUMBER);
+            assert_eq!(round_pt(v), MAX_NUMBER);
+            assert_eq!(round_pt(-v), -MAX_NUMBER);
             assert_eq!(round_to(v, 1e5), MAX_NUMBER);
         }
         // ±2^31 would be written as a 32-bit integer: -2^31 is past the
@@ -1229,7 +1258,7 @@ mod tests {
         assert!(number(2_147_483_648.0) < 2_147_483_648.0);
         for v in [f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
             assert_eq!(number(v), 0.0);
-            assert_eq!(q(v), 0.0);
+            assert_eq!(round_pt(v), 0.0);
             assert_eq!(round_to(v, 1e5), 0.0);
         }
     }
@@ -1516,7 +1545,7 @@ mod tests {
         // 30 pt from the space's advance.
         let font = fonts.get(fonts.key("Inter-Regular").unwrap());
         let space = font.glyph(' ').unwrap();
-        let scaling = q(100.0 * 30.0 / (font.advance(space) * font.scale(10.0)));
+        let scaling = round_pt(100.0 * 30.0 / (font.advance(space) * font.scale(10.0)));
         let glyph = format!("q\nBT\n/F0 10 Tf\n3 Tr\n{scaling} Tz\n1 0 0 -1 20 40 Tm\n");
         let g = text
             .find(&glyph)

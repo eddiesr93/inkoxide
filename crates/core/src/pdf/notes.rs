@@ -5,7 +5,9 @@
 use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
-use super::{annot_rect, content_bytes, path, q, set_fill, EncodedPage, Out, Profile, RefAlloc};
+use super::{
+    annot_rect, content_bytes, path, round_pt, set_fill, EncodedPage, Out, Profile, RefAlloc,
+};
 use crate::geom::Rect;
 use crate::icons::{IconKind, ICON};
 use crate::paint::rounded_rect;
@@ -56,7 +58,7 @@ fn write_note(
     let mut a = pdf.annotation(r);
     a.subtype(AnnotationType::Text).rect(rect).page(page_ref);
     a.pair(Name(b"Contents"), Str(&contents));
-    a.color_rgb(q(color[0]), q(color[1]), q(color[2]))
+    a.color_rgb(round_pt(color[0]), round_pt(color[1]), round_pt(color[2]))
         .flags(AnnotationFlags::PRINT | AnnotationFlags::NO_ZOOM | AnnotationFlags::NO_ROTATE)
         .icon(AnnotationIcon::Note);
     if let Some(author) = &author {
@@ -77,7 +79,7 @@ fn write_note(
 /// A sticky note in `color`: a rounded square with a darker outline and
 /// three lines of "text".
 fn icon(color: &Color, profile: Profile) -> Result<Vec<u8>, InkoxideError> {
-    let dark = color.map(|v| q(v * 0.45));
+    let dark = color.map(|v| round_pt(v * 0.45));
     let mut c = Content::new();
     set_fill(&mut c, color);
     c.set_stroke_rgb(dark[0], dark[1], dark[2]);

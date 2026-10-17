@@ -22,7 +22,9 @@ use rayon::prelude::*;
 
 use crate::fonts::{ColorGlyph, FontKey, FontSet, LoadedFont, TextColor, BLACK_TEXT};
 use crate::geom::Rect;
-use crate::images::{DecodedImage, ImageCrateDecoder, ImageData, ImageKey, ImageSet, Placement};
+use crate::images::{
+    DecodedImage, ImageCrateDecoder, ImageData, ImageKey, ImagePlacement, ImageSet,
+};
 use crate::paint::{InvisibleGlyph, Op, TextOp};
 
 /// Most distinct colour glyphs one render draws in colour; the others draw
@@ -330,7 +332,7 @@ impl ColorGlyphs {
                 (x1 - x0) * scale,
                 (y1 - y0) * scale,
             );
-            super::paint::image_span(images, p.key, rect, Placement::FILL, text, ops);
+            super::paint::image_span(images, p.key, rect, ImagePlacement::FILL, text, ops);
         }
         if !plain.is_empty() && outlined {
             ops.push(Op::Text(TextOp { glyphs: plain, ..t }));

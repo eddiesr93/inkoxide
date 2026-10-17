@@ -147,7 +147,7 @@ impl Placed {
 
 /// Height a zero-height float or box counts as when looking for room, so
 /// that it still meets the floats at its top.
-const HAIR: f32 = 1e-3;
+const MIN_HEIGHT: f32 = 1e-3;
 
 /// The floats of one container, in its content box `width` wide.
 #[derive(Debug, Clone)]
@@ -177,7 +177,7 @@ impl FloatContext {
     /// right edge of the left floats it meets; on the right, from the left
     /// edge of the right floats.
     pub fn band(&self, y: f32, h: f32) -> Insets {
-        let h = h.max(HAIR);
+        let h = h.max(MIN_HEIGHT);
         let mut taken = Insets::default();
         for f in &self.floats {
             if f.y < y + h && f.bottom() > y {

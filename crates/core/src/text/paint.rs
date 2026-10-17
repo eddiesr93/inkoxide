@@ -9,7 +9,7 @@ use super::{
 };
 use crate::fonts::{FontKey, FontSet};
 use crate::geom::Rect;
-use crate::images::{ImageKey, ImageSet, Placement};
+use crate::images::{ImageKey, ImagePlacement, ImageSet};
 use crate::layout::{Geometry, LineBox, LineBoxes};
 use crate::paint::{
     span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg,
@@ -572,7 +572,7 @@ pub(super) fn image_span(
     images: &ImageSet,
     key: ImageKey,
     rect: Rect,
-    placement: Placement,
+    placement: ImagePlacement,
     text: Option<(&str, Option<InvisibleGlyph>)>,
     ops: &mut Vec<Op>,
 ) {

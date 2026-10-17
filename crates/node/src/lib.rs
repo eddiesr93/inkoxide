@@ -49,8 +49,10 @@ fn fonts_snapshot() -> FontStore {
     FONTS.read().map(|f| f.clone()).unwrap_or_default()
 }
 
-fn doc_bytes(doc: Either<Uint8Array, String>) -> Vec<u8> {
-    match doc {
+/// The bytes of a document or of hyphenation patterns, passed as bytes or
+/// as a string.
+fn input_bytes(input: Either<Uint8Array, String>) -> Vec<u8> {
+    match input {
         Either::A(b) => b.to_vec(),
         Either::B(s) => s.into_bytes(),
     }
@@ -177,7 +179,7 @@ impl RenderJob {
             .into_core(hyphenation, MAX_THREADS)
             .map_err(js_error)?;
         Ok(Self {
-            doc: doc_bytes(doc),
+            doc: input_bytes(doc),
             format,
             options: core,
             images,
@@ -235,7 +237,7 @@ pub fn unregister_font(id: String) -> bool {
 /// by all later renders before the built-in patterns.
 #[napi]
 pub fn register_hyphenation_patterns(lang: String, data: Either<Uint8Array, String>) -> Result<()> {
-    let bytes = doc_bytes(data);
+    let bytes = input_bytes(data);
     let mut store = HYPHENATION
         .write()
         .map_err(|_| js_error(Failure::internal("hyphenation registry poisoned")))?;
@@ -260,7 +262,7 @@ pub fn validate(
 ) -> Result<Vec<ValidationError>> {
     let format =
         inkoxide_binding::input_format(format.as_deref(), "options.format").map_err(js_error)?;
-    let bytes = doc_bytes(doc);
+    let bytes = input_bytes(doc);
     let fonts = fonts_snapshot();
     let store = images.map(|images| {
         let mut store = ImageStore::new();

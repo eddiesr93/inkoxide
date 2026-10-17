@@ -156,7 +156,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         ops: &mut Vec<Op>,
     ) {
         if let (Some(bg), Some(key)) = (&node.background_image, self.images.background_key(node)) {
-            let placement = crate::images::Placement::new(bg.fit, bg.object_position);
+            let placement = crate::images::ImagePlacement::new(bg.fit, bg.object_position);
             self.images
                 .paint_in(key, padding_box, placement, radii, ops);
         }
@@ -173,17 +173,17 @@ struct Laid<'a> {
     /// The flow, without its overlays.
     flow: Tree<'a>,
     placement: Placement,
-    header: Option<Band<'a>>,
-    footer: Option<Band<'a>>,
+    header: Option<PageBand<'a>>,
+    footer: Option<PageBand<'a>>,
     /// The flow's overlays, with their index in `spec.children`.
-    overlays: Vec<(usize, Band<'a>)>,
+    overlays: Vec<(usize, PageBand<'a>)>,
 }
 
 /// A header, a footer or an overlay, laid out once with stand-in digits for
 /// page numbers. One that shows page numbers is laid out again on every
 /// page, with that page's numbers, so its lines break and its boxes size to
 /// the digits painted; the first layout then only warms the text cache.
-struct Band<'a> {
+struct PageBand<'a> {
     node: &'a Node,
     tree: Tree<'a>,
     numbered: bool,
@@ -193,7 +193,7 @@ struct Band<'a> {
     height: f32,
 }
 
-impl<'a> Band<'a> {
+impl<'a> PageBand<'a> {
     fn new(
         node: &'a Node,
         width: f32,
@@ -297,19 +297,19 @@ pub(crate) fn run<'d, T: Send>(
         let header = spec
             .header
             .as_deref()
-            .map(|n| Band::new(n, spec.size.width, 0.0, &mut leaves))
+            .map(|n| PageBand::new(n, spec.size.width, 0.0, &mut leaves))
             .transpose()?;
         let footer = spec
             .footer
             .as_deref()
-            .map(|n| Band::new(n, spec.size.width, 0.0, &mut leaves))
+            .map(|n| PageBand::new(n, spec.size.width, 0.0, &mut leaves))
             .transpose()?;
         let overlays = spec
             .children
             .iter()
             .enumerate()
             .filter(|(_, n)| is_overlay(n))
-            .map(|(k, n)| Ok((k, Band::new(n, content_w, content_h, &mut leaves)?)))
+            .map(|(k, n)| Ok((k, PageBand::new(n, content_w, content_h, &mut leaves)?)))
             .collect::<Result<_, InkoxideError>>()?;
         laid.push(Laid {
             spec,
@@ -890,7 +890,7 @@ fn collect_texts<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
 /// Lays out a header, footer or overlay that shows page numbers again,
 /// measuring with one page's text.
 fn relayout<'a>(
-    band: Option<&Band<'a>>,
+    band: Option<&PageBand<'a>>,
     leaves: &mut dyn LeafMeasure,
 ) -> Result<Option<Tree<'a>>, InkoxideError> {
     match band {

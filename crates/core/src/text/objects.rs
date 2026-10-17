@@ -16,7 +16,7 @@ use std::ops::Range;
 
 use super::emoji::{VS16, ZWJ};
 use crate::fonts::FontSet;
-use crate::images::{ImageKey, Placement};
+use crate::images::{ImageKey, ImagePlacement};
 use crate::schema::{RunAlign, TextRun};
 
 /// The images available to inline objects: by run, and by emoji sequence
@@ -85,7 +85,7 @@ impl InlineObjects {
             key: src.key,
             width: w,
             height: h,
-            placement: Placement::FILL,
+            placement: ImagePlacement::FILL,
             align: RunAlign::Points(-0.1 * run.size),
             shifted: true,
             alt: Some(seq.into()),
@@ -101,7 +101,7 @@ impl InlineObjects {
             key: src.key,
             width: w,
             height: h,
-            placement: Placement::new(image.fit, image.object_position),
+            placement: ImagePlacement::new(image.fit, image.object_position),
             align: run.vertical_align.unwrap_or_default(),
             shifted: false,
             alt: image.alt.as_deref().map(Box::from),
@@ -127,7 +127,7 @@ pub(crate) struct InlineObject {
     pub key: ImageKey,
     pub width: f32,
     pub height: f32,
-    pub placement: Placement,
+    pub placement: ImagePlacement,
     pub align: RunAlign,
     /// Whether `align` places it from the run's baseline as its
     /// `verticalAlign` moves it, as the run's glyphs are (an emoji image),

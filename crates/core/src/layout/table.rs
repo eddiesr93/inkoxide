@@ -115,21 +115,21 @@ struct Grid {
 
 /// A side of a cell.
 #[derive(Debug, Clone, Copy)]
-enum Side {
+enum CellSide {
     Top,
     Right,
     Bottom,
     Left,
 }
 
-impl Side {
+impl CellSide {
     /// This side's value of `[top, right, bottom, left]`.
     fn of<T>(self, [top, right, bottom, left]: [T; 4]) -> T {
         match self {
-            Side::Top => top,
-            Side::Right => right,
-            Side::Bottom => bottom,
-            Side::Left => left,
+            CellSide::Top => top,
+            CellSide::Right => right,
+            CellSide::Bottom => bottom,
+            CellSide::Left => left,
         }
     }
 }
@@ -187,7 +187,7 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
         }
     }
 
-    let border = |k: usize, side: Side| -> Border {
+    let border = |k: usize, side: CellSide| -> Border {
         let s = tree.nodes[cells[k].idx as usize].style();
         Border {
             width: s.border_width.map_or(0.0, |b| side.of(b.get(0.0))),
@@ -200,7 +200,7 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
     // CSS conflict resolution: the wider border wins, then the higher
     // ranked style; on a full tie the later cell (document order) wins.
     let rank = |b: &Border| (b.width, style_rank(b.style));
-    let resolve = |a: Option<(usize, Side)>, b: Option<(usize, Side)>| -> Option<Border> {
+    let resolve = |a: Option<(usize, CellSide)>, b: Option<(usize, CellSide)>| -> Option<Border> {
         let ca = a.map(|(k, s)| (k, border(k, s)));
         let cb = b.map(|(k, s)| (k, border(k, s)));
         let best = match (ca, cb) {
@@ -230,8 +230,8 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
                 continue; // inside a row span
             }
             if let Some(b) = resolve(
-                above.map(|k| (k, Side::Bottom)),
-                below.map(|k| (k, Side::Top)),
+                above.map(|k| (k, CellSide::Bottom)),
+                below.map(|k| (k, CellSide::Top)),
             ) {
                 h_edges.push(HEdge {
                     line,
@@ -259,8 +259,8 @@ fn grid(tree: &Tree<'_>, idx: NodeIdx, table: &Table, separate: bool) -> Grid {
                 .max(1);
             if left.is_none() || left != right {
                 if let Some(b) = resolve(
-                    left.map(|k| (k, Side::Right)),
-                    right.map(|k| (k, Side::Left)),
+                    left.map(|k| (k, CellSide::Right)),
+                    right.map(|k| (k, CellSide::Left)),
                 ) {
                     v_edges.push(VEdge {
                         line,
