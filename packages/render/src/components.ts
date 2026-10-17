@@ -107,6 +107,8 @@ export {
   type TextFieldProps,
   type TextFormat,
   TextInput,
+  TextPath,
+  type TextPathProps,
   type TextProps,
   TotalPages,
   Tspan,

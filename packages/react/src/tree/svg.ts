@@ -22,6 +22,7 @@ export const SVG_TAGS: Readonly<Record<string, string>> = {
   [HOST.ClipPath]: 'clipPath',
   [HOST.Marker]: 'marker',
   [HOST.Tspan]: 'tspan',
+  [HOST.TextPath]: 'textPath',
   [HOST.LinearGradient]: 'linearGradient',
   [HOST.RadialGradient]: 'radialGradient',
   [HOST.Stop]: 'stop',
@@ -42,6 +43,7 @@ const CAMEL_ATTRS = new Set([
   'markerUnits',
   'textLength',
   'lengthAdjust',
+  'startOffset',
 ]);
 
 /** The props `<Svg>` adds to the SVG presentation attributes, apart from its own SVG ones. */
@@ -120,7 +122,7 @@ function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean
     if (!inText) throw new Error('Internal error: the reconciler let text into an <Svg>.');
     return escapeXml(n.text);
   }
-  const isText = n.type === HOST.Text || n.type === HOST.Tspan;
+  const isText = n.type === HOST.Text || n.type === HOST.Tspan || n.type === HOST.TextPath;
   const tag = n.type === HOST.Text ? 'text' : SVG_TAGS[n.type];
   if (tag === undefined) throw new Error(`Internal error: the reconciler let <${n.type}> into an <Svg>.`);
   let inner: DrawingFont;

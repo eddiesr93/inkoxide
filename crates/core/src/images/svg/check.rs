@@ -248,7 +248,7 @@ pub(super) fn is_space(b: u8) -> bool {
 }
 
 /// The id an `href` names (`#id`), read as `usvg` reads an IRI.
-pub(super) fn iri(v: &str) -> Option<&str> {
+pub(crate) fn iri(v: &str) -> Option<&str> {
     let v = v.trim_start_matches(|c: char| c.is_ascii() && is_space(c as u8));
     let link = v.strip_prefix('#')?;
     let end = link.find(' ').unwrap_or(link.len());
@@ -528,7 +528,9 @@ impl<'d> Info<'d> {
                 _ => info.drawn.file(name, v, &mut info.refs),
             }
         }
-        if let Some(v) = href {
+        // `usvg` reads no text: a `textPath` refers to its path for the
+        // text layout alone, which reads each path once (`svg_text/path.rs`).
+        if let Some(v) = href.filter(|_| tag != "textPath") {
             match iri(v) {
                 Some(r) if tag == "use" => info.link = Some(r),
                 Some(r) => {

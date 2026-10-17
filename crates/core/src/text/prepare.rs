@@ -45,6 +45,9 @@ pub(crate) struct ParagraphOptions<'a> {
     pub hyphenate: bool,
     /// Language code to hyphenate in (only set when patterns exist).
     pub lang: Option<&'a str>,
+    /// Shaped top to bottom (upright text in a vertical SVG text): the
+    /// advances are vertical, and there is no bidi.
+    pub vertical: bool,
     pub hyphenator: &'a dyn Hyphenator,
     pub runs: &'a [TextRun],
     /// The images of image runs.
@@ -274,7 +277,8 @@ fn itemize(
 #[derive(Debug, Clone, Copy)]
 struct UnitGlyph {
     id: u16,
-    x_advance: i32,
+    /// Along the direction shaped: down, in vertical text.
+    advance: i32,
     x_offset: i32,
     y_offset: i32,
     /// Byte offset of the cluster within the word.
@@ -324,7 +328,7 @@ enum ShapingCause {
 
 /// Font, direction, feature set ([`ShapeCache::features`]) and text of a
 /// shaped word.
-type WordKey = (FontKey, Option<bool>, FeatureSet, Box<str>);
+type WordKey = (FontKey, Option<rustybuzz::Direction>, FeatureSet, Box<str>);
 
 /// Index of a run's OpenType features in [`ShapeCache::features`]; 0 is
 /// none. Validation bounds the different sets of a document.
@@ -388,8 +392,8 @@ pub(super) struct ShapeCache<'a> {
         ),
         rustybuzz::ShapePlan,
     >,
-    /// Keyed by font, direction (`Some(true)`: right to left; `None`:
-    /// guessed from the text), features and text.
+    /// Keyed by font, direction (`None`: guessed from the text), features
+    /// and text.
     words: HashMap<WordKey, Arc<[UnitGlyph]>>,
     /// The feature sets of the runs shaped so far, by [`FeatureSet`]; the
     /// first is empty.
@@ -472,30 +476,28 @@ impl<'a> ShapeCache<'a> {
     /// Shapes `word` in `font`, recording glyph → text mappings the first
     /// time a word is seen.
     /// Glyphs come back in logical order (clusters ascending) whatever
-    /// the direction; painting reverses right-to-left runs.
+    /// the direction; painting reverses right-to-left runs. Top to bottom,
+    /// the advances are the vertical ones, down.
     fn word(
         &mut self,
         key: FontKey,
         word: &str,
-        rtl: Option<bool>,
+        dir: Option<rustybuzz::Direction>,
         set: FeatureSet,
         unicode: &mut super::UnicodeMap,
     ) -> Arc<[UnitGlyph]> {
-        if let Some(g) = self.words.get(&(key, rtl, set, Box::from(word))) {
+        if let Some(g) = self.words.get(&(key, dir, set, Box::from(word))) {
             return g.clone();
         }
         let face = &self.faces.0[usize::from(key)];
         let mut buf = rustybuzz::UnicodeBuffer::new();
         buf.push_str(word);
         buf.guess_segment_properties();
-        if let Some(rtl) = rtl {
-            buf.set_direction(if rtl {
-                rustybuzz::Direction::RightToLeft
-            } else {
-                rustybuzz::Direction::LeftToRight
-            });
+        if let Some(dir) = dir {
+            buf.set_direction(dir);
         }
-        let reversed = buf.direction() == rustybuzz::Direction::RightToLeft && rtl.is_some();
+        let reversed = buf.direction() == rustybuzz::Direction::RightToLeft && dir.is_some();
+        let vertical = buf.direction() == rustybuzz::Direction::TopToBottom;
         let features = self
             .features
             .get(usize::from(set))
@@ -513,7 +515,7 @@ impl<'a> ShapeCache<'a> {
             .zip(shaped.glyph_positions())
             .map(|(i, p)| UnitGlyph {
                 id: i.glyph_id as u16,
-                x_advance: p.x_advance,
+                advance: if vertical { -p.y_advance } else { p.x_advance },
                 x_offset: p.x_offset,
                 y_offset: p.y_offset,
                 cluster: i.cluster,
@@ -544,7 +546,7 @@ impl<'a> ShapeCache<'a> {
             unicode.record(key, g.id, &word[cluster..end]);
         }
         self.words
-            .insert((key, rtl, set, Box::from(word)), glyphs.clone());
+            .insert((key, dir, set, Box::from(word)), glyphs.clone());
         glyphs
     }
 }
@@ -579,7 +581,12 @@ pub(crate) fn prepare(
     unicode: &mut super::UnicodeMap,
 ) -> Prepared {
     let (text, run_ranges) = build_text(opts);
-    let (levels, rtl) = bidi_levels(&text, opts.direction);
+    // Upright text has no bidi, as in CSS.
+    let (levels, rtl) = if opts.vertical {
+        (None, false)
+    } else {
+        bidi_levels(&text, opts.direction)
+    };
     let bidi = levels
         .as_ref()
         .is_some_and(|l| l.iter().any(|v| v % 2 == 1));
@@ -600,7 +607,11 @@ pub(crate) fn prepare(
             let first = glyphs.len() as u32;
             glyphs.push(Glyph {
                 id: 0,
-                advance: objects[o as usize].width,
+                advance: if opts.vertical {
+                    objects[o as usize].height
+                } else {
+                    objects[o as usize].width
+                },
                 x_offset: 0.0,
                 y_offset: 0.0,
                 cluster: seg.text.start,
@@ -630,7 +641,15 @@ pub(crate) fn prepare(
         let seg_text = &text[seg.text.start as usize..seg.text.end as usize];
 
         let first = glyphs.len() as u32;
-        let dir = levels.is_some().then_some(seg.level % 2 == 1);
+        let dir = if opts.vertical {
+            Some(rustybuzz::Direction::TopToBottom)
+        } else {
+            levels.is_some().then_some(if seg.level % 2 == 1 {
+                rustybuzz::Direction::RightToLeft
+            } else {
+                rustybuzz::Direction::LeftToRight
+            })
+        };
         for (off, word) in words(seg_text) {
             // Once shaping has failed, the render fails: the rest of its
             // text is left unshaped.
@@ -669,7 +688,7 @@ pub(crate) fn prepare(
                 let advance = if flags & GLYPH_INVISIBLE != 0 {
                     0.0
                 } else {
-                    g.x_advance as f32 * scale + if cluster_end { letter_spacing } else { 0.0 }
+                    g.advance as f32 * scale + if cluster_end { letter_spacing } else { 0.0 }
                 };
                 glyphs.push(Glyph {
                     id: g.id,
@@ -970,6 +989,7 @@ mod tests {
             direction: Direction::Ltr,
             hyphenate: false,
             lang: None,
+            vertical: false,
             hyphenator: &NoHyphenation,
             objects: &super::super::InlineObjects::default(),
             runs,
@@ -987,6 +1007,7 @@ mod tests {
             direction: Direction::Ltr,
             hyphenate: false,
             lang: None,
+            vertical: false,
             hyphenator: &NoHyphenation,
             objects: &super::super::InlineObjects::default(),
             runs: &[run("a "), run(" b")],
@@ -1062,6 +1083,7 @@ mod tests {
                 direction: Direction::Ltr,
                 hyphenate,
                 lang: Some("en"),
+                vertical: false,
                 hyphenator: builtin_only(),
                 objects: &super::super::InlineObjects::default(),
                 runs,

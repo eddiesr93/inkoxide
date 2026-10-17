@@ -1047,6 +1047,14 @@ impl Svg<'_> {
         }
         let area = p.stroke_bounding_box();
         let bbox = Rect::new(area.left(), area.top(), area.right(), area.bottom());
+        // Text on a path and vertical text read in their logical order.
+        let actual = laid.actual.get(paint as usize).filter(|t| !t.is_empty());
+        if let Some(t) = actual {
+            let text = super::out::text_bytes(t);
+            cv.c.begin_marked_content_with_properties(Name(b"Span"))
+                .properties()
+                .pair(Name(b"ActualText"), Str(&text));
+        }
         let fill = |s: &mut Self, cv: &mut Canvas| -> Res {
             let Some(f) = p.fill() else { return Ok(()) };
             cv.c.save_state();
@@ -1074,7 +1082,11 @@ impl Svg<'_> {
             }
         }
         // Images have their own colours.
-        self.text_images(cv, laid, paint, fonts)
+        self.text_images(cv, laid, paint, fonts)?;
+        if actual.is_some() {
+            cv.c.end_marked_content();
+        }
+        Ok(())
     }
 
     /// The colour glyphs and emoji images of `laid` in paint style

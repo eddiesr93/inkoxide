@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="400" height="320" viewBox="0 0 400 320" font-family="Inter" font-size="14">
+  <defs>
+    <path id="wave" d="M20 90 C 80 30, 140 30, 200 90 S 320 150, 380 90"/>
+    <circle id="ring" cx="110" cy="210" r="62"/>
+    <path id="arc" d="M230 250 A 80 80 0 0 1 370 250"/>
+    <path id="short" d="M230 300 H 330" transform="translate(0 -6)"/>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#e0a800"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="399" height="319" rx="8" fill="#fbfbfd" stroke="#c9ccd6"/>
+  <text x="20" y="30" font-size="18" font-weight="bold" fill="#14287a">Text on a path</text>
+
+  <g fill="none" stroke="#d5d8e0">
+    <use href="#wave"/>
+    <use href="#ring"/>
+    <use href="#arc"/>
+    <use href="#short"/>
+  </g>
+
+  <text fill="url(#g)" font-weight="bold" font-size="16">
+    <textPath href="#wave">Along a wave, <tspan fill="#c0392b" dy="-4">up</tspan><tspan dy="4"> and down again</tspan></textPath>
+  </text>
+
+  <text font-size="12" fill="#1f2937" text-decoration="underline">
+    <textPath xlink:href="#ring" startOffset="25%" text-anchor="middle">all the way round a circle</textPath>
+  </text>
+  <text x="110" y="214" text-anchor="middle" font-size="11" fill="#6b7280">startOffset 25%</text>
+
+  <text font-size="13" fill="#0f766e"><textPath href="#arc" startOffset="50%" text-anchor="middle">over an arc</textPath></text>
+  <text font-size="13" fill="#9333ea"><textPath href="#arc" side="right" startOffset="50%" text-anchor="middle">and under it</textPath></text>
+
+  <text font-size="13" fill="#b91c1c"><textPath href="#short">past the end is not drawn</textPath></text>
+
+  <text font-size="12" fill="#334155"><textPath path="M230 130 Q 300 100 370 130" letter-spacing="1">its own path data</textPath><tspan fill="#94a3b8"> then on</tspan></text>
+</svg>

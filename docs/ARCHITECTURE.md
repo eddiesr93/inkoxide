@@ -213,6 +213,11 @@ lays the text out with its fonts before layout (`text/svg.rs`, one
 `TextShaper::prepare` call per chunk, so fallback fonts, bidi, the glyph
 limit and ToUnicode apply), replaces each `<text>` with a "probe" path
 over its ink, and converts the SVG again (cached by the rewritten source).
+Vertical text shapes its upright runs top to bottom (`ParaStyle::vertical`,
+the font's `vmtx`, `VORG` and `vert`) and its sideways runs as horizontal
+text, by the Unicode vertical orientation (`text/vertical.rs`, generated);
+text on a path follows the geometry `images/svg_text/path.rs` reads from
+the XML, with an arc-length table.
 usvg resolves the probes' paint; the PDF writer draws each probe's text in
 its place as PDF text (`pdf/svg.rs`). See
 [ADR 0001](adr/0001-svg-text-probes.md).

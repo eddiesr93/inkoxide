@@ -1,0 +1,60 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "SVG text on a path",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "SVG text on a path: along a curve, round a circle, over and under an arc, past the end and on its own path data",
+       "font": "Inter-Regular",
+       "size": 13,
+       "color": [
+        0,
+        0,
+        0,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "src": "text-path",
+     "style": {
+      "width": 480,
+      "margin": {
+       "top": 12
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

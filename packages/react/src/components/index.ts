@@ -43,6 +43,7 @@ export const HOST = {
   ClipPath: 'ink-svg-clip-path',
   Marker: 'ink-svg-marker',
   Tspan: 'ink-svg-tspan',
+  TextPath: 'ink-svg-text-path',
   LinearGradient: 'ink-svg-linear-gradient',
   RadialGradient: 'ink-svg-radial-gradient',
   Stop: 'ink-svg-stop',
@@ -866,6 +867,41 @@ export interface SvgTextProps extends SvgPresentation {
   textLength?: number | string;
   lengthAdjust?: 'spacing' | 'spacingAndGlyphs';
   direction?: 'ltr' | 'rtl';
+  /**
+   * The direction of the line: `vertical-rl` and `vertical-lr` (the same for one line) go down,
+   * `sideways-rl` down with every character turned, `sideways-lr` up. Read on the `Text`.
+   */
+  writingMode?: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr' | 'sideways-rl' | 'sideways-lr';
+  /**
+   * How characters stand in vertical text: `mixed` (the default) stands CJK upright and turns
+   * Latin sideways, `upright` stands every character, `sideways` turns every one.
+   */
+  textOrientation?: 'mixed' | 'upright' | 'sideways';
+  /** OpenType features, as in CSS: `"'tnum', 'liga' off"`. */
+  fontFeatureSettings?: string;
+  /** `small-caps`, `tabular-nums`, `no-common-ligatures`, … as in CSS. */
+  fontVariant?: string;
+  /** `none` turns kerning off. */
+  fontKerning?: 'auto' | 'normal' | 'none';
+}
+
+/**
+ * Text along a path: a `TextPath` directly inside a `Text` in an `<Svg>`. Its characters take
+ * no positions of their own (a `Tspan` inside it can shift them).
+ */
+export interface TextPathProps extends Omit<SvgTextProps, 'x' | 'y' | 'dx' | 'dy' | 'rotate'> {
+  /** The path or basic shape to follow, by id: `#curve`. */
+  href?: string;
+  /** Path data to follow instead of an element (SVG 2). */
+  path?: string;
+  /** Where the text starts along the path: a length, or a percentage of the path's length. */
+  startOffset?: number | string;
+  /** `right` follows the path the other way. */
+  side?: 'left' | 'right';
+  /** Accepted, as in SVG 2; glyphs are not warped. */
+  method?: 'align' | 'stretch';
+  /** Accepted, as in SVG 2; the font's spacing is kept. */
+  spacing?: 'auto' | 'exact';
 }
 
 /** A span of SVG text: a `Tspan` inside a `Text` in an `<Svg>`. */
@@ -1061,6 +1097,8 @@ export const ClipPath = host<ClipPathProps>(HOST.ClipPath);
 export const Marker = host<MarkerProps>(HOST.Marker);
 /** A span of SVG text, inside a `Text` in an `<Svg>`: its own position, font or paint. */
 export const Tspan = host<TspanProps>(HOST.Tspan);
+/** Text along a path or shape (`href="#curve"`), directly inside a `Text` in an `<Svg>`. */
+export const TextPath = host<TextPathProps>(HOST.TextPath);
 export const LinearGradient = host<GradientProps>(HOST.LinearGradient);
 export const RadialGradient = host<GradientProps>(HOST.RadialGradient);
 export const Stop = host<StopProps>(HOST.Stop);

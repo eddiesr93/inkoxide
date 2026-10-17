@@ -12,11 +12,14 @@ use simplecss::{Declaration, DeclarationTokenizer, Element, StyleSheet};
 use svgtypes::{FontFamily, FontShorthand, Length, LengthUnit};
 use usvg::roxmltree::{Document, Node, NodeId};
 
+use super::path::{self, TextPathGeom, MAX_TEXT_PATH_SEGMENTS};
 use super::{
-    Anchor, Baseline, LengthAdjust, ProbeForm, ProbeShape, Shift, SvgChar, SvgSpan, SvgText,
-    SvgTextDoc,
+    Anchor, Baseline, LengthAdjust, Orientation, ProbeForm, ProbeShape, Shift, SvgChar, SvgSpan,
+    SvgText, SvgTextDoc, TextPathSpec, Writing,
 };
-use crate::images::svg::SVG_NS;
+use crate::images::svg::{iri, SVG_NS, XLINK_NS};
+use crate::schema::FontFeature;
+use crate::validate::rules::{MAX_FEATURE_VALUE, MAX_FONT_FEATURES};
 
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
@@ -30,7 +33,7 @@ const DPI: f32 = 96.0;
 /// Why text cannot be read.
 #[derive(Debug)]
 pub(crate) enum TextError {
-    /// Text this version does not lay out (`textPath`, vertical text).
+    /// Text this version does not lay out (vertical text on a path).
     Unsupported(String),
     /// Text whose properties take more than the bytes allowed.
     Limit(String),
@@ -85,7 +88,17 @@ const TEXT: &[&str] = &[
     "text-decoration",
     "direction",
     "writing-mode",
+    "text-orientation",
+    "glyph-orientation-vertical",
+    "font-feature-settings",
+    "font-kerning",
+    "font-variant",
 ];
+
+/// Most different sets of OpenType features the text of an SVG uses, as
+/// in a document (`validate::rules::MAX_FEATURE_SETS`): each is shaped
+/// with plans and words of its own.
+const MAX_FEATURE_SETS: usize = 64;
 
 /// Properties `usvg` reads only from `style` and style sheets.
 const NOT_ATTRIBUTES: &[&str] = &["mix-blend-mode", "isolation"];
@@ -199,7 +212,18 @@ struct Cascade<'a, 'i> {
     kept: usize,
     max_kept: usize,
     work: Work,
-    _doc: std::marker::PhantomData<&'i ()>,
+    root: Node<'a, 'i>,
+    /// Elements by id, the last of each (as `usvg` follows a link), once
+    /// a `textPath` needs them.
+    ids: Option<HashMap<&'a str, Node<'a, 'i>>>,
+    /// The geometry of each element a `textPath` refers to, by side.
+    geoms: HashMap<(NodeId, bool), Option<Arc<TextPathGeom>>>,
+    /// Segments the text paths may still have.
+    segments: usize,
+    /// Feature lists by the declared values they come from, and the
+    /// different lists.
+    features: HashMap<[Option<String>; 3], Arc<[FontFeature]>>,
+    feature_sets: HashSet<Arc<[FontFeature]>>,
 }
 
 impl<'a, 'i: 'a> Cascade<'a, 'i> {
@@ -226,8 +250,132 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
             kept: 0,
             max_kept,
             work: Work::default(),
-            _doc: std::marker::PhantomData,
+            root: doc.root_element(),
+            ids: None,
+            geoms: HashMap::new(),
+            segments: MAX_TEXT_PATH_SEGMENTS,
+            features: HashMap::new(),
+            feature_sets: HashSet::new(),
         }
+    }
+
+    /// The OpenType features of `n`: `font-kerning` and `font-variant`,
+    /// then `font-feature-settings` over them (CSS Fonts 3, 7.2), read
+    /// once per distinct declaration.
+    fn features(&mut self, n: Node<'a, 'i>) -> Result<Arc<[FontFeature]>, TextError> {
+        let key =
+            ["font-kerning", "font-variant", "font-feature-settings"].map(|p| self.inherited(n, p));
+        if let Some(f) = self.features.get(&key) {
+            return Ok(f.clone());
+        }
+        let mut tags: Vec<([u8; 4], u32)> = Vec::new();
+        let mut set = |tag: &[u8; 4], value: u32| match tags.iter_mut().find(|t| &t.0 == tag) {
+            Some(t) => t.1 = value,
+            None => tags.push((*tag, value)),
+        };
+        if key[0].as_deref() == Some("none") {
+            set(b"kern", 0);
+        }
+        for word in key[1].as_deref().unwrap_or("").split_ascii_whitespace() {
+            for (tag, value) in variant(word) {
+                set(tag, *value);
+            }
+        }
+        if let Some(list) = key[2].as_deref().and_then(feature_settings) {
+            for (tag, value) in list {
+                set(&tag, value);
+            }
+        }
+        tags.sort_unstable();
+        let list: Arc<[FontFeature]> = tags
+            .into_iter()
+            .take(MAX_FONT_FEATURES)
+            .map(|(tag, value)| FontFeature {
+                tag: String::from_utf8_lossy(&tag).into_owned(),
+                value,
+            })
+            .collect();
+        let list = match self.feature_sets.get(&list) {
+            Some(l) => l.clone(),
+            None if list.is_empty() => list,
+            None => {
+                if self.feature_sets.len() >= MAX_FEATURE_SETS {
+                    return Err(TextError::Limit(format!(
+                        "its text uses more than {MAX_FEATURE_SETS} different sets of font features"
+                    )));
+                }
+                self.keep(list.len() * (size_of::<FontFeature>() + 4))?;
+                self.feature_sets.insert(list.clone());
+                list
+            }
+        };
+        let bytes = key.iter().flatten().map(String::len).sum();
+        self.keep(bytes)?;
+        self.features.insert(key, list.clone());
+        Ok(list)
+    }
+
+    /// The element with id `id`.
+    fn element(&mut self, id: &str) -> Option<Node<'a, 'i>> {
+        let root = self.root;
+        self.ids
+            .get_or_insert_with(|| {
+                root.descendants()
+                    .filter_map(|n| Some((n.attribute("id")?, n)))
+                    .collect()
+            })
+            .get(id)
+            .copied()
+    }
+
+    /// The path of `textPath` element `n` and where its text starts on it:
+    /// its own path data (`path`, SVG 2), or the `path` or basic shape its
+    /// `href` names, after that element's `transform`; `None` when there
+    /// is none.
+    fn text_path(
+        &mut self,
+        n: Node<'a, 'i>,
+        viewport: (f32, f32),
+    ) -> Result<Option<TextPathSpec>, TextError> {
+        let reverse = n.attribute("side") == Some("right");
+        let geom = if let Some(d) = n.attribute("path") {
+            path::data_geometry(d, reverse, &mut self.segments)?.map(Arc::new)
+        } else {
+            let href = n
+                .attribute("href")
+                .or_else(|| n.attribute((XLINK_NS, "href")));
+            let Some(target) = href.and_then(iri).and_then(|id| self.element(id)) else {
+                return Ok(None);
+            };
+            if !matches!(target.tag_name().namespace(), None | Some(SVG_NS)) {
+                return Ok(None);
+            }
+            let key = (target.id(), reverse);
+            if let Some(g) = self.geoms.get(&key) {
+                g.clone()
+            } else {
+                let ts = self.own(target, "transform");
+                let g =
+                    path::geometry(target, ts.as_deref(), reverse, viewport, &mut self.segments)?
+                        .map(Arc::new);
+                self.geoms.insert(key, g.clone());
+                g
+            }
+        };
+        let Some(geom) = geom else {
+            return Ok(None);
+        };
+        let start = n
+            .attribute("startOffset")
+            .and_then(|v| Length::from_str(v).ok())
+            .map_or(0.0, |l| match l.unit {
+                LengthUnit::Percent => geom.length() * l.number as f32 / 100.0,
+                _ => absolute(l, self.font_size(n)),
+            });
+        Ok(Some(TextPathSpec {
+            geom,
+            start: if start.is_finite() { start } else { 0.0 },
+        }))
     }
 
     /// The declared values of `n`: presentation attributes, then the rules
@@ -420,9 +568,68 @@ fn declare(d: &mut Decls, decl: &Declaration<'_>) {
     }
 }
 
+/// The features a `font-variant` keyword turns on or off (CSS Fonts 3,
+/// 6.4-6.8); `font-variant` is a shorthand in CSS and SVG 2.
+fn variant(word: &str) -> &'static [(&'static [u8; 4], u32)] {
+    match word {
+        "none" | "no-common-ligatures" => &[(b"liga", 0), (b"clig", 0)],
+        "common-ligatures" => &[(b"liga", 1), (b"clig", 1)],
+        "discretionary-ligatures" => &[(b"dlig", 1)],
+        "no-discretionary-ligatures" => &[(b"dlig", 0)],
+        "historical-ligatures" => &[(b"hlig", 1)],
+        "contextual" => &[(b"calt", 1)],
+        "no-contextual" => &[(b"calt", 0)],
+        "small-caps" => &[(b"smcp", 1)],
+        "all-small-caps" => &[(b"smcp", 1), (b"c2sc", 1)],
+        "petite-caps" => &[(b"pcap", 1)],
+        "all-petite-caps" => &[(b"pcap", 1), (b"c2pc", 1)],
+        "unicase" => &[(b"unic", 1)],
+        "titling-caps" => &[(b"titl", 1)],
+        "lining-nums" => &[(b"lnum", 1)],
+        "oldstyle-nums" => &[(b"onum", 1)],
+        "proportional-nums" => &[(b"pnum", 1)],
+        "tabular-nums" => &[(b"tnum", 1)],
+        "diagonal-fractions" => &[(b"frac", 1)],
+        "stacked-fractions" => &[(b"afrc", 1)],
+        "ordinal" => &[(b"ordn", 1)],
+        "slashed-zero" => &[(b"zero", 1)],
+        "sub" => &[(b"subs", 1)],
+        "super" => &[(b"sups", 1)],
+        _ => &[],
+    }
+}
+
+/// `font-feature-settings`: `normal`, or a comma-separated list of a
+/// quoted four-character tag and a value (`on`, `off` or a number, 1 when
+/// left out). `None` for `normal` and for a list with an error, which
+/// CSS ignores whole.
+fn feature_settings(v: &str) -> Option<Vec<([u8; 4], u32)>> {
+    if v.trim() == "normal" {
+        return None;
+    }
+    v.split(',')
+        .map(|item| {
+            let item = item.trim();
+            let quote = item.chars().next().filter(|q| matches!(q, '"' | '\''))?;
+            let rest = &item[1..];
+            let end = rest.find(quote)?;
+            let tag: [u8; 4] = rest.as_bytes()[..end].try_into().ok()?;
+            if !tag.iter().all(|b| (b' '..=b'~').contains(b)) {
+                return None;
+            }
+            let value = match rest[end + 1..].trim() {
+                "" | "on" => 1,
+                "off" => 0,
+                n => n.parse::<u32>().ok().filter(|v| *v <= MAX_FEATURE_VALUE)?,
+            };
+            Some((tag, value))
+        })
+        .collect()
+}
+
 /// A length in user units, `%` aside: `em` and `ex` relative to
 /// `font_size`.
-fn absolute(l: Length, font_size: f32) -> f32 {
+pub(super) fn absolute(l: Length, font_size: f32) -> f32 {
     let n = l.number as f32;
     match l.unit {
         LengthUnit::None | LengthUnit::Px => n,
@@ -552,11 +759,12 @@ struct Chars<'a, 'i> {
     parent: Node<'a, 'i>,
 }
 
-/// An element of a text (the text, a `tspan` or an `a`), and the text
-/// nodes inside it.
+/// An element of a text (the text, a `tspan`, an `a` or a `textPath`),
+/// and the text nodes inside it.
 struct Elem<'a, 'i> {
     node: Node<'a, 'i>,
     nodes: std::ops::Range<usize>,
+    text_path: bool,
 }
 
 /// Collects the text nodes and elements under `parent`, as `usvg`'s
@@ -572,6 +780,7 @@ fn collect<'a, 'i>(
     elems.push(Elem {
         node: parent,
         nodes: nodes.len()..nodes.len(),
+        text_path: is_svg(parent, "textPath"),
     });
     for child in parent.children() {
         if child.is_text() {
@@ -586,11 +795,8 @@ fn collect<'a, 'i>(
             continue;
         }
         match child.tag_name().name() {
-            "tspan" | "a" => collect(child, depth + 1, space_of(child, space), nodes, elems)?,
-            "textPath" => {
-                return Err(TextError::Unsupported(
-                    "SVG <textPath> is not supported; convert the text to outlines (paths)".into(),
-                ))
+            "tspan" | "a" | "textPath" => {
+                collect(child, depth + 1, space_of(child, space), nodes, elems)?;
             }
             // `tref` and anything else draw nothing.
             _ => {}
@@ -714,16 +920,13 @@ fn read_text<'a, 'i>(
     cascade: &mut Cascade<'a, 'i>,
     (vw, vh): (f32, f32),
 ) -> Result<SvgText, TextError> {
-    if let Some(mode) = cascade.inherited(text, "writing-mode") {
-        if matches!(
-            mode.as_str(),
-            "tb" | "tb-rl" | "vertical-rl" | "vertical-lr"
-        ) {
-            return Err(TextError::Unsupported(
-                "vertical SVG text is not supported; convert the text to outlines (paths)".into(),
-            ));
-        }
-    }
+    // One-line text: the vertical modes are all the same.
+    let writing = match cascade.inherited(text, "writing-mode").as_deref() {
+        Some("tb" | "tb-rl" | "vertical-rl" | "vertical-lr") => Writing::Vertical,
+        Some("sideways-rl") => Writing::SidewaysRl,
+        Some("sideways-lr") => Writing::SidewaysLr,
+        _ => Writing::Horizontal,
+    };
     let space = text
         .ancestors()
         .find(|a| a.attribute((XML_NS, "space")).is_some())
@@ -742,6 +945,36 @@ fn read_text<'a, 'i>(
     let range = |e: &Elem<'_, '_>| starts[e.nodes.start]..starts[e.nodes.end];
     let total = starts[nodes.len()];
 
+    // Text paths: a `textPath` that is a child of the text takes its
+    // characters along its path; any other, or one without a path, draws
+    // none of them (they still take positions).
+    let mut paths: Vec<TextPathSpec> = Vec::new();
+    let mut path_of: Vec<Option<u16>> = vec![None; total];
+    let mut off_path = vec![false; total];
+    for e in elems.iter().filter(|e| e.text_path) {
+        let direct = e.node.parent_element() == Some(text);
+        if direct && writing != Writing::Horizontal {
+            return Err(TextError::Unsupported(
+                "vertical SVG text on a path is not supported; convert the text to outlines (paths)"
+                    .into(),
+            ));
+        }
+        let spec = if direct {
+            cascade.text_path(e.node, (vw, vh))?
+        } else {
+            None
+        };
+        let index = spec.and_then(|spec| {
+            let i = u16::try_from(paths.len()).ok()?;
+            paths.push(spec);
+            Some(i)
+        });
+        for i in range(e) {
+            path_of[i] = index;
+            off_path[i] = index.is_none();
+        }
+    }
+
     // Positions and rotations (`resolve_positions_list` and
     // `resolve_rotate_list`): inner elements win; a rotation repeats the
     // last one given.
@@ -751,7 +984,8 @@ fn read_text<'a, 'i>(
     let mut dy = vec![0.0; total];
     let mut rotate = vec![0.0; total];
     let mut last_rotate = 0.0;
-    for e in &elems {
+    // A `textPath` has no positions of its own.
+    for e in elems.iter().filter(|e| !e.text_path) {
         let r = range(e);
         let size = cascade.font_size(e.node);
         let list = |name: &str, base: f32| -> Option<Vec<f32>> {
@@ -819,7 +1053,7 @@ fn read_text<'a, 'i>(
         let (span, hidden) = if let Some(&s) = span_of.get(&n.parent.id()) {
             s
         } else {
-            let props = span_props(n.parent, text, cascade, vw.hypot(vh) / 2f32.sqrt())?;
+            let props = span_props(n.parent, text, cascade, vw.hypot(vh) / 2f32.sqrt(), writing)?;
             let paint = paint_style(n.parent, text, cascade);
             let p = if let Some(&p) = paint_of.get(&paint) {
                 p
@@ -846,7 +1080,8 @@ fn read_text<'a, 'i>(
                 dx: dx[at],
                 dy: dy[at],
                 rotate: rotate[at],
-                hidden,
+                hidden: hidden || off_path[at],
+                path: path_of[at],
             });
         }
     }
@@ -881,6 +1116,8 @@ fn read_text<'a, 'i>(
         paints,
         adjust,
         rtl,
+        writing,
+        paths,
     })
 }
 
@@ -892,6 +1129,7 @@ fn span_props<'a, 'i>(
     text: Node<'a, 'i>,
     cascade: &mut Cascade<'a, 'i>,
     diagonal: f32,
+    writing: Writing,
 ) -> Result<SvgSpan, TextError> {
     let size = cascade.font_size(n);
     let families = match cascade.inherited(n, "font-family") {
@@ -922,10 +1160,33 @@ fn span_props<'a, 'i>(
             .and_then(|p| cascade.own_or_parent(p, "dominant-baseline"));
     }
     let alignment = cascade.own_or_parent(n, "alignment-baseline");
-    let baseline = match alignment.as_deref() {
-        None | Some("auto" | "baseline") => baseline(dominant.as_deref()),
-        Some(a) => baseline(Some(a)),
+    // Vertical text sits on its central baseline unless told otherwise.
+    let auto = if writing == Writing::Horizontal {
+        Baseline::Alphabetic
+    } else {
+        Baseline::Central
     };
+    let baseline = match alignment.as_deref() {
+        None | Some("auto" | "baseline") => baseline(dominant.as_deref(), auto),
+        Some(a) => baseline(Some(a), auto),
+    };
+    // `glyph-orientation-vertical` is the SVG 1.1 name (SVG 2, 11.10.1.3).
+    let orientation = match cascade.inherited(n, "text-orientation").as_deref() {
+        Some("upright") => Some(Orientation::Upright),
+        Some("sideways" | "sideways-right") => Some(Orientation::Sideways),
+        Some("mixed") => Some(Orientation::Mixed),
+        _ => None,
+    };
+    let orientation = orientation.unwrap_or_else(|| {
+        match cascade
+            .inherited(n, "glyph-orientation-vertical")
+            .as_deref()
+        {
+            Some("0" | "0deg") => Orientation::Upright,
+            Some("90" | "90deg") => Orientation::Sideways,
+            _ => Orientation::Mixed,
+        }
+    });
     let mut shift = Vec::new();
     for a in n.ancestors().take_while(|a| *a != text) {
         let Some(v) = cascade.own(a, "baseline-shift") else {
@@ -964,11 +1225,14 @@ fn span_props<'a, 'i>(
         underline: decoration("underline"),
         overline: decoration("overline"),
         line_through: decoration("line-through"),
+        orientation,
+        features: cascade.features(n)?,
         paint: 0,
     })
 }
 
-fn baseline(v: Option<&str>) -> Baseline {
+/// The baseline `v` names; `auto` where it names none.
+fn baseline(v: Option<&str>, auto: Baseline) -> Baseline {
     match v {
         Some("middle") => Baseline::Middle,
         Some("central") => Baseline::Central,
@@ -977,7 +1241,8 @@ fn baseline(v: Option<&str>) -> Baseline {
         Some("text-before-edge" | "before-edge") => Baseline::TextBeforeEdge,
         Some("text-after-edge" | "after-edge") => Baseline::TextAfterEdge,
         Some("ideographic") => Baseline::Ideographic,
-        _ => Baseline::Alphabetic,
+        Some("alphabetic") => Baseline::Alphabetic,
+        _ => auto,
     }
 }
 

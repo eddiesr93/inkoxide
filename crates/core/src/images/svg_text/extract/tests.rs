@@ -293,16 +293,85 @@ fn reads_direction_and_percentages_of_the_viewport() {
 }
 
 #[test]
-fn rejects_text_on_a_path_and_vertical_text() {
-    assert!(
-        error(r##"<path id="p" d="M0 0L9 9"/><text><textPath href="#p">a</textPath></text>"##)
-            .contains("<textPath>")
-    );
-    for mode in ["tb", "tb-rl", "vertical-rl", "vertical-lr"] {
-        let e = error(&format!(r#"<g writing-mode="{mode}"><text>a</text></g>"#));
-        assert!(e.contains("vertical"), "{mode}: {e}");
+fn reads_writing_modes_and_orientations() {
+    use Orientation::{Mixed, Sideways, Upright};
+    for (mode, want) in [
+        ("tb", Writing::Vertical),
+        ("tb-rl", Writing::Vertical),
+        ("vertical-rl", Writing::Vertical),
+        ("vertical-lr", Writing::Vertical),
+        ("sideways-rl", Writing::SidewaysRl),
+        ("sideways-lr", Writing::SidewaysLr),
+        ("lr-tb", Writing::Horizontal),
+        ("horizontal-tb", Writing::Horizontal),
+    ] {
+        let t = one(&format!(r#"<g writing-mode="{mode}"><text>a</text></g>"#));
+        assert_eq!(t.writing, want, "{mode}");
     }
-    one(r#"<text writing-mode="lr-tb">a</text>"#);
+    // Only the text element's mode counts.
+    let t = one(r#"<text>a<tspan writing-mode="tb">b</tspan></text>"#);
+    assert_eq!(t.writing, Writing::Horizontal);
+    // Orientations inherit; the SVG 1.1 property is read where the CSS one
+    // is not set. Vertical text sits on its central baseline unless set.
+    let t = one(
+        r#"<text writing-mode="tb" text-orientation="upright">a<tspan text-orientation="sideways">b</tspan>
+           <tspan glyph-orientation-vertical="90" text-orientation="mixed">c</tspan>
+           <tspan text-orientation="inherit" glyph-orientation-vertical="0">d</tspan>
+           <tspan dominant-baseline="alphabetic">e</tspan></text>"#,
+    );
+    let o: Vec<Orientation> = t.spans.iter().map(|s| s.orientation).collect();
+    assert_eq!(o, [Upright, Sideways, Mixed, Upright, Upright]);
+    let b: Vec<Baseline> = t.spans.iter().map(|s| s.baseline).collect();
+    assert_eq!(b[0], Baseline::Central);
+    assert_eq!(b[4], Baseline::Alphabetic);
+    assert_eq!(
+        one("<text>a</text>").spans[0].baseline,
+        Baseline::Alphabetic
+    );
+}
+
+#[test]
+fn reads_text_paths() {
+    let t = one(
+        r##"<defs><path id="p" d="M0 0H100" transform="translate(0 10)"/></defs>
+           <text x="5" dx="1">a<textPath href="#p" x="50" startOffset="10%">b<tspan dx="3">c</tspan></textPath>d</text>"##,
+    );
+    assert_eq!(string(&t), "abcd");
+    let path: Vec<Option<u16>> = t.chars.iter().map(|c| c.path).collect();
+    assert_eq!(path, [None, Some(0), Some(0), None]);
+    assert_eq!(t.paths.len(), 1);
+    assert_eq!(t.paths[0].start, 10.0);
+    assert_eq!(t.paths[0].geom.length(), 100.0);
+    // The textPath element's own positions are ignored; its spans' are not.
+    assert_eq!(t.chars[1].x, None);
+    assert_eq!(t.chars[2].dx, 3.0);
+    // `path` wins over `href`, which wins over `xlink:href`; two textPaths
+    // on one element share its geometry.
+    let t = one(r##"<path id="p" d="M0 0H10"/><path id="q" d="M0 0H20"/>
+           <text xmlns:xlink="http://www.w3.org/1999/xlink">
+             <textPath path="M0 0H30" href="#p">a</textPath>
+             <textPath href="#p" xlink:href="#q">b</textPath>
+             <textPath xlink:href="#q" startOffset="5">c</textPath>
+             <textPath xlink:href="#q" side="right">d</textPath>
+             <textPath xlink:href="#q">e</textPath></text>"##);
+    let lengths: Vec<f32> = t.paths.iter().map(|p| p.geom.length()).collect();
+    assert_eq!(lengths, [30.0, 10.0, 20.0, 20.0, 20.0]);
+    assert!(Arc::ptr_eq(&t.paths[2].geom, &t.paths[4].geom));
+    assert!(!Arc::ptr_eq(&t.paths[2].geom, &t.paths[3].geom));
+    assert_eq!(t.paths[2].start, 5.0);
+    // Without a path, or not directly in the text, the characters take
+    // positions but are not drawn.
+    let t = one(
+        r##"<path id="p" d="M0 0H10"/><g id="g"/><text><textPath href="#none">a</textPath><textPath href="#g">b</textPath><tspan><textPath href="#p">c</textPath></tspan><textPath href="#p">d<textPath href="#p">e</textPath></textPath></text>"##,
+    );
+    let hidden: Vec<bool> = t.chars.iter().map(|c| c.hidden).collect();
+    assert_eq!(string(&t), "abcde");
+    assert_eq!(hidden, [true, true, true, false, true]);
+    // Vertical text on a path is refused.
+    let e = error(
+        r##"<path id="p" d="M0 0H10"/><text writing-mode="tb"><textPath href="#p">a</textPath></text>"##,
+    );
+    assert!(e.contains("vertical SVG text on a path"), "{e}");
 }
 
 #[test]
@@ -381,4 +450,47 @@ fn shares_inherited_font_families_and_counts_what_texts_keep() {
     );
     let doc = Document::parse(&src).unwrap();
     assert!(matches!(extract(&doc, 10), Err(TextError::Limit(_))));
+}
+
+#[test]
+fn reads_font_features() {
+    let t = one(
+        r#"<text font-feature-settings="'tnum', &quot;ss01&quot; 2, 'liga' off" font-variant="small-caps oldstyle-nums">a
+           <tspan font-kerning="none" font-feature-settings="normal">b</tspan>
+           <tspan font-feature-settings="'tnum' 1, 'bad'">c</tspan>
+           <tspan font-variant="none" font-feature-settings="'liga' on">d</tspan></text>"#,
+    );
+    let tags = |i: usize| -> Vec<(String, u32)> {
+        t.spans[i]
+            .features
+            .iter()
+            .map(|f| (f.tag.clone(), f.value))
+            .collect()
+    };
+    let s = |tag: &str, v: u32| (tag.to_string(), v);
+    assert_eq!(
+        tags(0),
+        [
+            s("liga", 0),
+            s("onum", 1),
+            s("smcp", 1),
+            s("ss01", 2),
+            s("tnum", 1)
+        ]
+    );
+    // `normal` and a list with an error leave the variants.
+    assert_eq!(tags(1), [s("kern", 0), s("onum", 1), s("smcp", 1)]);
+    assert_eq!(tags(2), [s("onum", 1), s("smcp", 1)]);
+    // The settings win over the variant.
+    assert_eq!(tags(3), [s("clig", 0), s("liga", 1)]);
+    // Spans with the same features share them; none is empty.
+    assert!(one("<text>a</text>").spans[0].features.is_empty());
+    let t = one(r#"<text font-variant="small-caps">a<tspan>b</tspan></text>"#);
+    assert!(Arc::ptr_eq(&t.spans[0].features, &t.spans[1].features));
+    // At most 64 different sets in an SVG.
+    let mut many = String::new();
+    for i in 0..65 {
+        let _ = write!(many, r#"<text font-feature-settings="'tnum' {i}">a</text>"#);
+    }
+    assert!(error(&many).contains("different sets of font features"));
 }
