@@ -561,11 +561,15 @@ export function withStyleProp(
 function styleList(style: StyleInput, page: Units['page']): { applied: StyleProp[]; checked: StyleProp[] } {
   const applied: StyleProp[] = [];
   const checked: StyleProp[] = [];
-  const add = (p: StyleProp, matches: boolean) => {
+  const add = (p: StyleProp, matches: boolean, depth: number) => {
+    if (depth > MAX_MEDIA_DEPTH) {
+      throw new Error(`@media blocks nest at most ${MAX_MEDIA_DEPTH} deep`);
+    }
     let own: Record<string, unknown> | undefined;
     const blocks: Array<[MediaQuery, StyleProp]> = [];
     for (const [key, value] of Object.entries(p)) {
-      if (!key.startsWith('@media')) continue;
+      // `@media` and a query: `@mediaprint` is not one, and fails as a style key.
+      if (!/^@media[\s(]/.test(key)) continue;
       own ??= { ...p };
       delete own[key];
       if (value === undefined) continue;
@@ -576,11 +580,14 @@ function styleList(style: StyleInput, page: Units['page']): { applied: StyleProp
       blocks.push([query, value as StyleProp]);
     }
     (matches ? applied : checked).push((own ?? p) as StyleProp);
-    for (const [query, block] of blocks) add(block, matches && query.matches(page));
+    for (const [query, block] of blocks) add(block, matches && query.matches(page), depth + 1);
   };
-  for (const p of Array.isArray(style) ? style : [style]) if (p) add(p as StyleProp, true);
+  for (const p of Array.isArray(style) ? style : [style]) if (p) add(p as StyleProp, true, 0);
   return { applied, checked };
 }
+
+/** How deep `@media` blocks nest: a style object that holds itself would not end. */
+const MAX_MEDIA_DEPTH = 32;
 
 /** Parsed media queries, by text: a template reads the same few on every element. */
 const MEDIA = new Map<string, MediaQuery>();

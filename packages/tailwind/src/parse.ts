@@ -72,7 +72,7 @@ function variantOf(cls: string): string {
 
 /** Why a class with variant `variant` cannot be used, from Tailwind's `problem`. */
 function variantReason(variant: string, p: CandidateProblem): string {
-  const why = p.kind === 'variant' ? ` (${problemReason(p)})` : '';
+  const why = p.kind === 'variant' ? ` (${p.detail})` : '';
   return `the variant \`${variant}\` has no meaning in a PDF${why}; page variants work: sm: to 2xl:, max-*:, min-[…]:, max-[…]:, portrait:, landscape: and print:`;
 }
 

@@ -27,6 +27,8 @@ describe('parseMedia', () => {
     expect(on('(width: 612pt)')).toEqual([false, false, false, true, false]);
     expect(on('(width = 21cm)')).toEqual([true, false, false, false, false]);
     expect(on('(width)')).toEqual([true, true, true, true, true]);
+    // 1pc is 12pt.
+    expect(on('(width > 50pc)')).toEqual([false, true, false, true, false]);
   });
 
   it('meets the presets at their boundaries, to 1/100 pt', () => {
@@ -37,6 +39,10 @@ describe('parseMedia', () => {
     const at = { width: 576, height: 800 };
     expect(parseMedia('(width >= 48rem)').matches(at)).toBe(true);
     expect(parseMedia('(width < 48rem)').matches(at)).toBe(false);
+    // Orientation rounds the sides too: a page square to 1/100 pt is portrait.
+    const near = { width: 500.004, height: 500 };
+    expect(parseMedia('(orientation: portrait)').matches(near)).toBe(true);
+    expect(parseMedia('(orientation: landscape)').matches(near)).toBe(false);
   });
 
   it('reads orientation and aspect ratios; a square page is portrait', () => {

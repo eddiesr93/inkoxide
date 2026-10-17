@@ -314,7 +314,7 @@ function show(t: Token): string {
 }
 
 /** Throws for a feature the page has not. */
-function known(name: string): void {
+function known(name: string): never {
   if (SCREEN_FEATURES.has(name) || SCREEN_FEATURES.has(name.replace(/^(min|max)-/, ''))) {
     throw new ValueError(`"${name}" has no meaning in a PDF`);
   }
@@ -333,7 +333,7 @@ function range(name: string, op: Op, value: Value): Test {
   const s = side(name);
   if (!s) {
     if (name === 'orientation') throw new ValueError('orientation takes portrait or landscape, not a range');
-    return known(name) as never;
+    return known(name);
   }
   if (s === 'aspect-ratio') {
     if (!('ratio' in value)) throw new ValueError('aspect-ratio takes a ratio, like 16/9');
@@ -355,19 +355,21 @@ function plain(name: string, parser: Parser): Test {
     if (v !== 'portrait' && v !== 'landscape') {
       throw new ValueError(`orientation is portrait or landscape, not "${v}"`);
     }
-    // A square page is portrait.
-    return v === 'portrait' ? (p) => p.height >= p.width : (p) => p.width > p.height;
+    // A square page is portrait; sides compare to 1/100 pt, as lengths do.
+    return v === 'portrait'
+      ? (p) => round(p.height) >= round(p.width)
+      : (p) => round(p.width) > round(p.height);
   }
   const prefix = /^(min|max)-/.exec(name)?.[1];
   const base = prefix ? name.slice(prefix.length + 1) : name;
-  if (!side(base)) return known(name) as never;
+  if (!side(base)) return known(name);
   return range(base, prefix === 'min' ? '>=' : prefix === 'max' ? '<=' : '=', parser.value());
 }
 
 /** `(name)`: true when the feature is not zero, which every page's is. */
 function boolean(name: string): Test {
   if (side(name) || name === 'orientation') return () => true;
-  return known(name) as never;
+  return known(name);
 }
 
 /**

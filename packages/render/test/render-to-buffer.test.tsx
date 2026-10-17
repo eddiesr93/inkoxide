@@ -388,6 +388,25 @@ describe('renderToBuffer', () => {
     expect(fonts(await renderToBuffer(doc(false)))).toBe(1);
   });
 
+  it('lays one component out by the size of each page it is on', async () => {
+    // Taller on a page narrower than 150mm: two of them fill more than an A5 page.
+    const Block = () => <View style={{ height: 100, '@media (width < 150mm)': { height: 400 } }} />;
+    const doc = (narrow: boolean) => (
+      <Document>
+        <Page size="A4">
+          <Block />
+          <Block />
+        </Page>
+        <Page size={narrow ? 'A5' : 'A4'}>
+          <Block />
+          <Block />
+        </Page>
+      </Document>
+    );
+    expect(countPages(await renderToBuffer(doc(false)))).toBe(2);
+    expect(countPages(await renderToBuffer(doc(true)))).toBe(3);
+  });
+
   it('renders superscripts, subscripts and font features', async () => {
     const doc = (features: boolean) => (
       <Document>

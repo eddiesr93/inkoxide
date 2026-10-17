@@ -395,7 +395,7 @@ describe('page variants', () => {
       /^the variant `focus:` has no meaning in a PDF; page variants work/,
     );
     expect(errorOf('@sm:p-4').reason).toMatch(
-      /^the variant `@sm:` has no meaning in a PDF \(at-rules have no meaning/,
+      /^the variant `@sm:` has no meaning in a PDF \(@container \(width >= 24rem\)\);/,
     );
     expect(errorOf('md:not-a-class').reason).toMatch(/^not a Tailwind utility/);
   });

@@ -395,6 +395,45 @@ describe('relative units in the style prop', () => {
     expect(
       thrown(() => tree(<View style={{ '@media print': 3 } as unknown as StyleProp} />)).message,
     ).toContain('@media print: a block takes a style object, not 3');
+    // `@media` without a query is a key like any other.
+    expect(
+      thrown(() => tree(<View style={{ '@mediaprint': { width: 1 } } as unknown as StyleProp} />)).message,
+    ).toContain('@mediaprint');
+    // A style object that holds itself ends.
+    const loop: Record<string, unknown> = { width: 1 };
+    loop['@media print'] = loop;
+    expect(thrown(() => tree(<View style={loop as StyleProp} />)).message).toContain(
+      '@media blocks nest at most 32 deep',
+    );
+  });
+
+  it('applies blocks with classes, on a page, and in its header and footer', () => {
+    const r = renderTemplate(
+      <Document>
+        <Page size="A5" style={{ padding: 10, '@media (width < 150mm)': { padding: 20 } }}>
+          <Header style={{ '@media (orientation: portrait)': { paddingTop: 7 } }}>
+            <Text>head</Text>
+          </Header>
+          <Footer style={{ '@media (orientation: landscape)': { paddingTop: 7 } }}>
+            <Text>foot</Text>
+          </Footer>
+          <View className="p-2" style={{ '@media (width < 150mm)': { paddingTop: 1 } }} />
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    const page = r.document.pages[0];
+    expect(page?.margin).toEqual({ top: 20, right: 20, bottom: 20, left: 20 });
+    // The style wins over the classes, its block included.
+    expect(((page?.children ?? [])[0] as BoxNode).style?.padding).toEqual({
+      top: 1,
+      right: 6,
+      bottom: 6,
+      left: 6,
+    });
+    // The header and footer take the page's sides as padding, and their blocks.
+    expect((page?.header as BoxNode | undefined)?.style?.padding).toEqual({ top: 7, right: 20, left: 20 });
+    expect((page?.footer as BoxNode | undefined)?.style?.padding).toEqual({ right: 20, left: 20 });
   });
 
   it('rejects lengths and style numbers that are not finite, which JSON would drop', () => {

@@ -16,7 +16,7 @@ how the pieces fit together, for contributors.
 | `packages/wasm` | The npm package for it: loader, types; it runs the tests of `packages/inkoxide`. |
 | `crates/binding` | What the two bindings share: the render options as JavaScript passes them, their checks, and errors as JSON. |
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
-| `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms and positions that React and Tailwind share: `@inkoxide/style`. |
+| `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms, positions and page media queries that React and Tailwind share: `@inkoxide/style`. |
 | `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`, optional. |
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
 | `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`; in a browser, with the engine as WebAssembly in a Web Worker: `@inkoxide/render/browser`. The shared code reaches the engine and the bundled assets through an `EngineHost` (`host.ts`): `node-host.ts` in Node, `browser-host.ts` and `worker.ts` in a browser. |

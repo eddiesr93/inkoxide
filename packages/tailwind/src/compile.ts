@@ -112,6 +112,10 @@ export class TailwindCompiler {
             rule.selector.trim().startsWith('.') &&
             !/[\s>:+~[\]]/.test(rule.selector.replace(/\\./g, ''))
           ) {
+            // One rule's conditions: a class under two `@media` would need either to match.
+            if (found && out.media.map((q) => q.source).join() !== media.map((q) => q.source).join()) {
+              problem ??= { kind: 'variant', detail: 'its rules are under different @media' };
+            }
             found = true;
             out.media = media;
             rule.each((d) => {
