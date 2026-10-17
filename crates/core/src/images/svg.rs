@@ -639,7 +639,7 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
     let inner = Nesting {
         meter: at.meter,
         level: at.level + 1,
-        depth: checked.images + 1,
+        depth: checked.image_depth + 1,
         rewrites: at.rewrites,
     };
     let options = usvg::Options {
@@ -773,7 +773,7 @@ struct Checked {
     /// Its own elements, nested SVG images left out.
     own: usize,
     /// Depth of the deepest image with a `data:` URL.
-    images: usize,
+    image_depth: usize,
     /// Its text elements.
     text: SvgTextDoc,
     /// Its nested SVG images with text, once each.
@@ -824,7 +824,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
                     sheet_values += body.len();
                 }
                 for (p, v) in declarations(t) {
-                    sheet.sort(p, v, &mut rest);
+                    sheet.file(p, v, &mut rest);
                 }
             }
             // Any selector may apply them: charged to every shape.
@@ -851,7 +851,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
         level,
         cost: Cost::default(),
         own: 0,
-        images: 0,
+        image_depth: 0,
         nested: HashMap::new(),
         nested_text: Vec::new(),
         nested_seen: HashSet::new(),
@@ -886,7 +886,7 @@ fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Checked, Reje
     Ok(Checked {
         cost: walk.cost,
         own: walk.own,
-        images: walk.images,
+        image_depth: walk.image_depth,
         text,
         nested: walk.nested_text,
     })
@@ -1146,7 +1146,7 @@ struct Drawn<'d> {
 
 impl<'d> Drawn<'d> {
     /// Files the references in property `prop`; others go to `rest`.
-    fn sort(&mut self, prop: &str, value: &'d str, rest: &mut Vec<&'d str>) {
+    fn file(&mut self, prop: &str, value: &'d str, rest: &mut Vec<&'d str>) {
         let prop = prop.trim().to_ascii_lowercase();
         // The last word, after any comment.
         let name = prop.rsplit(char::is_whitespace).next().unwrap_or("");
@@ -1248,7 +1248,7 @@ impl<'d> Info<'d> {
                         {
                             return Err(too_large());
                         }
-                        info.drawn.sort(p, value, &mut styled);
+                        info.drawn.file(p, value, &mut styled);
                     }
                 }
                 "d" | "points" => {
@@ -1269,7 +1269,7 @@ impl<'d> Info<'d> {
                         return Err(too_large());
                     }
                 }
-                _ => info.drawn.sort(name, v, &mut info.refs),
+                _ => info.drawn.file(name, v, &mut info.refs),
             }
         }
         if let Some(v) = href {
@@ -1359,7 +1359,8 @@ struct Walk<'d, 'i, 'w> {
     level: usize,
     cost: Cost,
     own: usize,
-    images: usize,
+    /// Depth of the deepest image with a `data:` URL.
+    image_depth: usize,
     /// Cost of the nested SVG in each image element.
     nested: HashMap<NodeId, Cost>,
     /// The nested SVG images with text, once each.
@@ -1438,7 +1439,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         if let Some((url, resolved)) = info.url {
             let mut cost = Cost::default();
             if resolved {
-                self.images = self.images.max(depth);
+                self.image_depth = self.image_depth.max(depth);
                 cost = self.nested(n.id(), url, depth)?;
             }
             cost.data_bytes = cost.data_bytes.saturating_add(url.len());

@@ -9,7 +9,7 @@ use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::pdfa::limits::NAME as MAX_NAME;
-use super::{font_name, q, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc};
+use super::{font_name, round_pt, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
@@ -373,10 +373,10 @@ fn default_appearance(op: &FieldOp) -> String {
     let font = op.font.map_or_else(|| "F0".to_string(), font_name);
     format!(
         "/{font} {} Tf {} {} {} rg",
-        q(op.field.size),
-        q(c[0]),
-        q(c[1]),
-        q(c[2])
+        round_pt(op.field.size),
+        round_pt(c[0]),
+        round_pt(c[1]),
+        round_pt(c[2])
     )
 }
 
@@ -412,13 +412,13 @@ impl Ctx<'_, '_, '_> {
         // the result to the widget's `/Rect`, which bounds it.
         let matrix = op
             .ctm
-            .map(|[a, b, c, d, ..]| [a, -b, -c, d, 0.0, 0.0].map(q))
+            .map(|[a, b, c, d, ..]| [a, -b, -c, d, 0.0, 0.0].map(round_pt))
             .filter(|m| *m != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         let mut aps = Vec::new();
         let mut form = |pdf: &mut Pdf, content: Vec<u8>, font: Option<FontKey>| -> Ref {
             let r = alloc.next();
             out.form_xobject(pdf, r, &content, |x| {
-                x.bbox(PdfRect::new(0.0, 0.0, q(w), q(h)));
+                x.bbox(PdfRect::new(0.0, 0.0, round_pt(w), round_pt(h)));
                 if let Some(m) = matrix {
                     x.matrix(m);
                 }
@@ -437,15 +437,20 @@ impl Ctx<'_, '_, '_> {
                 let mut c = Content::new();
                 c.begin_marked_content(Name(b"Tx"));
                 c.save_state();
-                c.rect(1.0, 1.0, q((w - 2.0).max(0.0)), q((h - 2.0).max(0.0)));
+                c.rect(
+                    1.0,
+                    1.0,
+                    round_pt((w - 2.0).max(0.0)),
+                    round_pt((h - 2.0).max(0.0)),
+                );
                 c.clip_nonzero();
                 c.end_path();
                 // Widget space is y-up; the text ops are top-left based.
-                c.transform([1.0, 0.0, 0.0, -1.0, 0.0, q(h)]);
+                c.transform([1.0, 0.0, 0.0, -1.0, 0.0, round_pt(h)]);
                 if !op.highlights.is_empty() {
                     set_fill(&mut c, &crate::forms::HIGHLIGHT);
                     for r in &op.highlights {
-                        c.rect(q(r.x), q(r.y), q(r.w), q(r.h));
+                        c.rect(round_pt(r.x), round_pt(r.y), round_pt(r.w), round_pt(r.h));
                     }
                     c.fill_nonzero();
                 }

@@ -65,17 +65,17 @@ pub(crate) fn display(f: &FieldFormat, value: &str) -> Option<Shown> {
             let t = parse_local_time(value).or_else(|| parse_local(value))?;
             plain(dated(f.pattern.as_deref()?, t))
         }
-        FormatKind::Zip => plain(digits(value, 5)?.to_string()),
+        FormatKind::Zip => plain(exact_digits(value, 5)?.to_string()),
         FormatKind::ZipPlus4 => {
-            let d = digits(value, 9)?;
+            let d = exact_digits(value, 9)?;
             plain(format!("{}-{}", &d[..5], &d[5..]))
         }
         FormatKind::Phone => {
-            let d = digits(value, 10)?;
+            let d = exact_digits(value, 10)?;
             plain(format!("({}) {}-{}", &d[..3], &d[3..6], &d[6..]))
         }
         FormatKind::Ssn => {
-            let d = digits(value, 9)?;
+            let d = exact_digits(value, 9)?;
             plain(format!("{}-{}-{}", &d[..3], &d[3..5], &d[5..]))
         }
     }
@@ -258,7 +258,7 @@ fn weekday(t: LocalDateTime) -> usize {
 }
 
 /// `value` when it is exactly `n` ASCII digits.
-fn digits(value: &str, n: usize) -> Option<&str> {
+fn exact_digits(value: &str, n: usize) -> Option<&str> {
     is_digits(value, n).then_some(value)
 }
 

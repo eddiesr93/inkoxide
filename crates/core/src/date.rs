@@ -54,8 +54,8 @@ pub(crate) fn parse_rfc3339(s: &str) -> Option<Timestamp> {
     let offset_minutes = match zone.as_bytes().first()? {
         b'Z' | b'z' if zone.len() == 1 => 0,
         sign @ (b'+' | b'-') if zone.len() == 6 && zone.as_bytes()[3] == b':' => {
-            let h = digits(&zone[1..3], 2)?;
-            let m = digits(&zone[4..6], 2)?;
+            let h = parse_digits(&zone[1..3], 2)?;
+            let m = parse_digits(&zone[4..6], 2)?;
             if h > 23 || m > 59 {
                 return None;
             }
@@ -93,16 +93,16 @@ pub(crate) fn is_digits(s: &str, len: usize) -> bool {
 
 /// The digits of `s` as a number, when `s` is exactly `len` (at most 9)
 /// ASCII digits.
-fn digits(s: &str, len: usize) -> Option<u32> {
+fn parse_digits(s: &str, len: usize) -> Option<u32> {
     is_digits(s, len).then(|| s.bytes().fold(0, |a, d| a * 10 + u32::from(d - b'0')))
 }
 
 /// Parses `YYYY-MM-DD`, a real day; the time is left at zero.
 fn parse_date(s: &str) -> Option<LocalDateTime> {
     let mut parts = s.split('-');
-    let year = digits(parts.next()?, 4)?;
-    let month = digits(parts.next()?, 2)?;
-    let day = digits(parts.next()?, 2)?;
+    let year = parse_digits(parts.next()?, 4)?;
+    let month = parse_digits(parts.next()?, 2)?;
+    let day = parse_digits(parts.next()?, 2)?;
     if parts.next().is_some() || day == 0 || day > days_in_month(year, month) {
         return None;
     }
@@ -117,10 +117,10 @@ fn parse_date(s: &str) -> Option<LocalDateTime> {
 /// Parses `HH:MM[:SS]`, with a second up to 60 (a leap second).
 fn parse_clock(s: &str) -> Option<(u8, u8, u8)> {
     let mut parts = s.split(':');
-    let hour = digits(parts.next()?, 2)?;
-    let minute = digits(parts.next()?, 2)?;
+    let hour = parse_digits(parts.next()?, 2)?;
+    let minute = parse_digits(parts.next()?, 2)?;
     let second = match parts.next() {
-        Some(p) => digits(p, 2)?,
+        Some(p) => parse_digits(p, 2)?,
         None => 0,
     };
     if parts.next().is_some() || hour > 23 || minute > 59 || second > 60 {

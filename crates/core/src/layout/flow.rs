@@ -368,7 +368,7 @@ impl Container<'_, '_> {
 
 /// The children of a float container placed in its content box.
 #[derive(Default)]
-struct Placement {
+struct Arrangement {
     /// Per child: its border box with its margins, and how it was placed.
     placed: Vec<(NodeIdx, Geometry, Kind)>,
     /// The floats, and where each is in `placed`.
@@ -388,7 +388,7 @@ fn place(
     container: &Container<'_, '_>,
     idx: NodeIdx,
     auto_margin: f32,
-) -> Result<Placement, InkoxideError> {
+) -> Result<Arrangement, InkoxideError> {
     let tree = container.tree;
     let width = container.width;
     let style = tree.nodes[idx as usize].style();
@@ -419,7 +419,7 @@ fn place(
             };
     }
     let mut floats = FloatContext::new(width);
-    let mut out = Placement::default();
+    let mut out = Arrangement::default();
     let mut cursor = 0.0f32;
     let mut any_in_flow = false;
     for (k, &(c, s, text)) in kids.iter().enumerate() {
@@ -643,7 +643,7 @@ pub(super) fn layout(
             placement = place(ctx, &container, idx, free / placement.autos as f32)?;
         }
     }
-    let Placement {
+    let Arrangement {
         mut placed,
         floats: float_ids,
         wraps,
