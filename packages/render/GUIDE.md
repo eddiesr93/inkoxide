@@ -1619,7 +1619,8 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 ## Limitations
 
-- **Browsers.** Renders run on one thread, in a worker (see [In the browser](#in-the-browser)).
+- **Browsers.** Renders run in a worker, on one thread unless the page is cross-origin isolated
+  (see [In the browser](#in-the-browser)).
   Browsers and Node are the runtimes supported; edge runtimes are not.
 - **Drawing.** Vertical SVG text on a path is not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).

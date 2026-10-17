@@ -1,6 +1,8 @@
 # 2. Rendering in the browser with the engine as WebAssembly
 
-Status: accepted, 2026-10-15; shipped in 0.9.0. Threads: [ADR 0003](0003-browser-threads.md).
+Status: accepted, 2026-10-15; shipped in 0.9.0. The decision **One thread**, and the rejection of
+a nightly toolchain for the module with threads, are superseded by
+[ADR 0003](0003-browser-threads.md).
 
 ## Context
 
@@ -30,7 +32,8 @@ Worker.
   in a dependency still traps: the JS wrapper drops the instance, starts a new one from the
   compiled module, registers its fonts and patterns again, and fails the call with `INTERNAL`.
 - **Binding: a hand-written C ABI and a small JS wrapper, not wasm-bindgen.** Byte buffers in,
-  one result buffer out; options as JSON. The module has no imports, and there is no generated
+  one result buffer out; options as JSON. The module has no imports (the module with threads of
+ADR 0003 imports its memory), and there is no generated
   glue to keep in step with a tool version. Both bindings share their option checks through
   `crates/binding`. Unsafe code stays in `crates/wasm`.
 - **Entry point: a subpath, `@inkoxide/render/browser`**, not an export condition, so a server
@@ -50,8 +53,8 @@ Worker.
 - **Parity.** `scripts/wasm-parity.mjs` renders every fixture with both builds and compares the
   bytes. Fixtures listed in `fixtures/wasm-parity.json` may differ only in numbers, within 1e-6,
   and in `/ID`. Making them exact would need patched dependencies.
-- **One thread.** On WebAssembly a pool of more than one thread is refused early; `threads` takes
-  only 1. The process-wide caches get a quarter of their native budgets, and
+- **One thread** (superseded by ADR 0003, which adds a module with threads). On WebAssembly a
+  pool of more than one thread is refused early; `threads` takes only 1. The process-wide caches get a quarter of their native budgets, and
   `inkoxide::clear_caches()` empties them.
 - **The worker.** One worker runs the renders in order and keeps its fonts registered. Images
   are copied to it, since a render may need them again; the PDF is transferred back. `signal`
@@ -78,7 +81,8 @@ Worker.
   changes.
 - A panic in a dependency costs the browser a new instance (about 10 ms) and the call fails;
   natively it is an error and the process goes on.
-- Renders in the browser use one thread, and an instance has at most 4 GiB of memory.
+- Renders in the browser use one thread, and an instance has at most 4 GiB of memory (ADR 0003:
+  the module with threads renders on up to 256, with at most 2 GiB).
 - Not available in the browser: `renderToFile`, `renderToStream`, and local image files
   (`localImages`).
 

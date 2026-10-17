@@ -1,6 +1,8 @@
 # 3. Threads in the browser
 
-Status: accepted, 2026-10-17.
+Status: accepted, 2026-10-17. Supersedes the decision **One thread** of
+[ADR 0002](0002-browser-rendering.md), and its rejection of a nightly toolchain with `-Zbuild-std`
+for the module with threads.
 
 ## Context
 
@@ -54,7 +56,9 @@ content streams and compression run in parallel (about 68% of a render's instruc
   each size) and allocates from them without the lock. Only the module with threads has it.
 - **A bug on a thread ends the engine.** Both modules keep `panic = "abort"`. A trap on the
   render thread drops its instance and its pool: the next call gets a new instance on new memory,
-  and a new pool once its workers have started. A trap on a pool thread leaves the render thread
+  and a new pool once its workers have started. Until then renders run on one thread, those that
+  ask for more too, and where the old memory is not freed yet the new one may have a smaller
+  maximum. A trap on a pool thread leaves the render thread
   waiting for good, and it cannot hear of it: the pool thread posts on a `BroadcastChannel`
   (`trapChannel`), and `@inkoxide/render/browser`, which listens, ends the worker and fails the
   render with `INTERNAL`, as a `signal` would. Without a listener, `timeoutMs` still ends it.
@@ -72,3 +76,19 @@ content streams and compression run in parallel (about 68% of a render's instruc
   header: servers must send it on every response.
 - Memory is shared and never shrinks; each pool thread holds a stack, a shaper and its cache of
   blocks.
+
+## Alternatives
+
+- One thread, as ADR 0002 decided: no nightly and no second module, but the browser keeps none of
+  the native gain, 2.2× to 2.9× on a long report.
+- `wasm32-wasip1-threads` on stable: a WASI shim in every page, and wasi-libc's maths, so the output
+  would differ from the one-thread module's. Not tried.
+- wasm-bindgen-rayon: the generated glue ADR 0002 rejected, and workers of its own outside the
+  binding.
+- A worker per render, each with its own instance and no shared memory: renders run side by side,
+  but one document renders no faster, and each instance holds its own fonts and memory.
+- The standard allocator, or one with a lock around all of it: past two threads the report got
+  slower with each thread.
+- A `MessagePort` from each pool thread to the page for traps: each would have to be passed through
+  the render worker, whose thread is the one blocked; a `BroadcastChannel` is found by its name, a
+  string in `init`'s options.

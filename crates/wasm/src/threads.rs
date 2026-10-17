@@ -26,14 +26,17 @@ use std::sync::{Condvar, Mutex, PoisonError};
 /// engine accepts fits 2 MiB (`crates/core/tests/limits.rs`).
 pub const THREAD_STACK: usize = 4 << 20;
 
+/// Most threads of a pool, as natively.
+pub const MAX_THREADS: u32 = 256;
+
 /// Threads of the pool, 0 until it is started.
 static POOL: AtomicU32 = AtomicU32::new(0);
 
-/// Threads a render may ask for: 256, as natively, once there is a pool,
+/// Threads a render may ask for: [`MAX_THREADS`] once there is a pool,
 /// and otherwise 1.
 pub fn max_threads() -> u32 {
     if POOL.load(Ordering::Acquire) > 1 {
-        256
+        MAX_THREADS
     } else {
         1
     }
@@ -118,7 +121,7 @@ mod abi {
 
     use inkoxide_binding::Failure;
 
-    use super::{block_layout, Queue, POOL, THREAD_STACK};
+    use super::{block_layout, Queue, MAX_THREADS, POOL, THREAD_STACK};
 
     /// The threads rayon asked for, which workers take.
     static THREADS: Queue<rayon::ThreadBuilder> = Queue::new();
@@ -144,7 +147,7 @@ mod abi {
     /// Workers waiting in [`ink_thread_run`] run its threads.
     #[unsafe(no_mangle)]
     pub extern "C" fn ink_threads_start(n: u32) -> u32 {
-        let started = (2..=256)
+        let started = (2..=MAX_THREADS)
             .contains(&n)
             .then(|| {
                 rayon::ThreadPoolBuilder::new()
@@ -155,10 +158,13 @@ mod abi {
                     })
                     .build_global()
             })
-            .ok_or_else(|| Failure::invalid_arg("threads", "must be an integer from 2 to 256"))
-            .and_then(|r| {
-                r.map_err(|e| Failure::new("INTERNAL", "", &format!("thread pool: {e}")))
-            });
+            .ok_or_else(|| {
+                Failure::invalid_arg(
+                    "threads",
+                    &format!("must be an integer from 2 to {MAX_THREADS}"),
+                )
+            })
+            .and_then(|r| r.map_err(|e| Failure::internal(&format!("thread pool: {e}"))));
         if started.is_ok() {
             POOL.store(n, Ordering::Release);
         }

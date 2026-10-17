@@ -7,6 +7,9 @@ import test from 'node:test';
 import { Worker } from 'node:worker_threads';
 
 const MODULE = new URL('../inkoxide-threads.wasm', import.meta.url);
+// CI builds it, so there (`CI` set) its absence fails instead of skipping.
+if (!existsSync(MODULE) && process.env.CI)
+  throw new Error('packages/wasm/inkoxide-threads.wasm is missing: run scripts/build-wasm.sh --threads');
 const skip = !existsSync(MODULE) && 'not built: scripts/build-wasm.sh --threads';
 const fixture = (path) => readFileSync(new URL(`../../../fixtures/${path}`, import.meta.url));
 
@@ -56,8 +59,21 @@ test('after a trap on the render thread, a new engine starts its own pool', { sk
   const ink = await started(undefined, { threads: 2 });
   const pdf = ink.renderSync(fixture('docs/invoice.json'));
   assert.throws(() => ink.InkoxideError.__testPanic(), { code: 'INTERNAL' });
-  // Until the new pool has started, renders run on one thread.
-  assert.deepEqual(ink.renderSync(fixture('docs/invoice.json')), pdf);
+  // Until the new pool has started, renders run on one thread, those that ask for more too. A
+  // device that cannot reserve the memory again gets a new engine that may grow less far.
+  const Memory = WebAssembly.Memory;
+  const maxima = [];
+  WebAssembly.Memory = function (desc) {
+    maxima.push(desc.maximum);
+    if (desc.maximum > 4096) throw new RangeError('out of memory');
+    return new Memory(desc);
+  };
+  try {
+    assert.deepEqual(ink.renderSync(fixture('docs/invoice.json'), { threads: 2 }), pdf);
+  } finally {
+    WebAssembly.Memory = Memory;
+  }
+  assert.deepEqual(maxima, [32768, 16384, 8192, 4096]);
   for (let i = 0; i < 100 && ink.threadCount() === 1; i++) await new Promise((r) => setTimeout(r, 50));
   assert.equal(ink.threadCount(), 2);
   assert.deepEqual(ink.renderSync(fixture('docs/invoice.json')), pdf);
