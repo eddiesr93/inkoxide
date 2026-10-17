@@ -48,7 +48,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use fonts::FontSet;
-use pdf::{DocumentOut, PdfSink, PdfWriterSink, Profile};
+use pdf::{DocumentOut, PdfWriterSink, Profile};
 use text::{RustybuzzShaper, TextCache, UnicodeMap};
 
 /// Engine version (the crate version).

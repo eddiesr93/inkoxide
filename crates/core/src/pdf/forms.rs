@@ -9,7 +9,9 @@ use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::pdfa::limits::NAME as MAX_NAME;
-use super::{font_name, round_pt, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc};
+use super::{
+    font_name, round_pt, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc, Writer,
+};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
@@ -81,12 +83,11 @@ impl<'n> Groups<'n> {
 /// Writes every field; appends widget refs to `annots` (per page).
 /// `None` when the document has no fields.
 pub(super) fn write_fields(
-    pdf: &mut Pdf,
-    alloc: &mut RefAlloc,
-    out: &mut Out,
+    w: &mut Writer,
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
 ) -> Result<Option<Form>, InkoxideError> {
+    let Writer { pdf, alloc, out } = w;
     // Widgets by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
     let mut widgets_of: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();

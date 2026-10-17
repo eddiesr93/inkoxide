@@ -3,9 +3,9 @@
 //! PDF/A output has an sRGB output intent only, so CMYK JPEGs are
 //! converted to RGB samples there.
 
-use pdf_writer::{Filter, Pdf, Ref};
+use pdf_writer::{Filter, Ref};
 
-use super::{Out, Profile, RefAlloc};
+use super::{Profile, Writer};
 use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 
 /// What in `img` needs transparency, which PDF/A-1 forbids: an alpha
@@ -35,9 +35,7 @@ pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
 
 /// Writes `img`; `fonts` draw the text of a render's copy of an SVG.
 pub(crate) fn write_image(
-    pdf: &mut Pdf,
-    alloc: &mut RefAlloc,
-    out: &mut Out,
+    w: &mut Writer,
     img: &DecodedImage,
     profile: Profile,
     fonts: Option<super::svg::TextResources<'_, '_>>,
@@ -46,8 +44,9 @@ pub(crate) fn write_image(
         // A render's copy has the size of the SVG without its text.
         let size = probed.as_ref().map_or(tree.size(), |p| p.size);
         let text = probed.as_deref().zip(fonts);
-        return super::svg::write_svg(pdf, alloc, out, (tree, size), profile, text);
+        return super::svg::write_svg(w, (tree, size), profile, text);
     }
+    let Writer { pdf, alloc, out } = w;
     let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);
     match &img.body {

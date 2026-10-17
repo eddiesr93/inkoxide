@@ -6,7 +6,7 @@ use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::{
-    annot_rect, content_bytes, path, round_pt, set_fill, EncodedPage, Out, Profile, RefAlloc,
+    annot_rect, content_bytes, path, round_pt, set_fill, EncodedPage, Out, Profile, Writer,
 };
 use crate::geom::Rect;
 use crate::icons::{IconKind, ICON};
@@ -17,13 +17,12 @@ use crate::InkoxideError;
 /// Writes the icon annotations of every page, in page order; appends
 /// their refs to `annots` (per page).
 pub(super) fn write_icons(
-    pdf: &mut Pdf,
-    alloc: &mut RefAlloc,
-    out: &mut Out,
+    w: &mut Writer,
     (pages, page_refs): (&[EncodedPage], &[Ref]),
     annots: &mut [Vec<Ref>],
     profile: Profile,
 ) -> Result<(), InkoxideError> {
+    let Writer { pdf, alloc, out } = w;
     for (i, page) in pages.iter().enumerate() {
         for icon in &page.icons {
             let r = alloc.next();
