@@ -25,16 +25,18 @@ export const SCANNED = new Set([
   '.mdx',
 ]);
 
-/** Directories it does not go into, besides hidden ones (`.git`, `.next`). */
-const SKIPPED = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'target', 'tmp']);
+/** Directories it does not go into anywhere, besides hidden ones (`.git`, `.next`). */
+const SKIPPED = new Set(['node_modules']);
+/** Build output, which it does not go into directly under a root. */
+const OUTPUT = new Set(['dist', 'build', 'out', 'coverage', 'target', 'tmp']);
 
 /** Files larger than this are not read: bundles and data, not sources. */
 const MAX_FILE = 1 << 20;
 /** Tokens longer than this are not classes; one that grows past it is dropped. */
 const MAX_TOKEN = 256;
 
-/** Characters that end a token outside brackets. */
-const DELIMITERS = new Set(' \t\r\n"\'`<>{};,=)');
+/** Characters that end a token outside brackets: a backslash too, of an escaped quote. */
+const DELIMITERS = new Set(' \t\r\n"\'`<>{};,=)\\');
 
 /**
  * Adds the tokens of `text` that may be classes to `out`: once with brackets holding values
@@ -87,6 +89,8 @@ const START = /^[a-z0-9\-!@[*]/i;
 function add(token: string, out: Set<string>): void {
   if (token.length === 0 || token.length > MAX_TOKEN || !START.test(token)) return;
   out.add(token);
+  // A Svelte class directive (`class:p-4={on}`).
+  if (token.startsWith('class:')) add(token.slice('class:'.length), out);
   // At the end of a sentence or a label.
   const trimmed = token.replace(/[.:]+$/, '');
   if (trimmed !== token && trimmed.length > 0) out.add(trimmed);
@@ -98,7 +102,7 @@ function add(token: string, out: Set<string>): void {
  */
 export function sourceFiles(roots: readonly string[], exclude: ReadonlySet<string> = new Set()): string[] {
   const files: string[] = [];
-  const walk = (path: string, top: boolean) => {
+  const walk = (path: string, level: number) => {
     if (exclude.has(path)) return;
     let stat;
     try {
@@ -108,13 +112,14 @@ export function sourceFiles(roots: readonly string[], exclude: ReadonlySet<strin
     }
     if (stat.isDirectory()) {
       const name = path.split(/[\\/]/).pop() ?? '';
-      if (!top && (SKIPPED.has(name) || name.startsWith('.'))) return;
-      for (const entry of readdirSync(path).sort()) walk(join(path, entry), false);
+      if (level > 0 && (SKIPPED.has(name) || name.startsWith('.'))) return;
+      if (level === 1 && OUTPUT.has(name)) return;
+      for (const entry of readdirSync(path).sort()) walk(join(path, entry), level + 1);
     } else if (stat.isFile() && SCANNED.has(extname(path)) && stat.size <= MAX_FILE) {
       files.push(path);
     }
   };
-  for (const root of roots) walk(root, true);
+  for (const root of roots) walk(root, 0);
   return files;
 }
 

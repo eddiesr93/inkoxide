@@ -15,7 +15,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   bundles, `inkoxideTailwind()` (Vite, Rollup, Rolldown) and `inkoxideTailwindEsbuild()` from
   `@inkoxide/tailwind/plugin` point `@inkoxide/tailwind` at `@inkoxide/tailwind/precompiled`,
   which reads a table of the classes the sources use, scanned at build time: the Tailwind
-  JavaScript a page downloads goes from about 88 KB to about 6 KB with brotli, and styles are
+  JavaScript a page downloads goes from about 90 KB to about 6 KB with brotli, and styles are
   the same. Server bundles keep the compiler. A class the scan does not see fails as an unknown
   class, with a reason that says so; the plugin's `safelist` keeps classes put together at run
   time. `@inkoxide/tailwind/precompile` builds such a table.

@@ -10,7 +10,7 @@
  * with the compiler, and get the same styles.
  */
 import { readFileSync, realpathSync } from 'node:fs';
-import { dirname, extname, isAbsolute, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Precompiler } from './precompile.ts';
@@ -48,28 +48,40 @@ function theme(options: TailwindPluginOptions, root: string): { css?: string; ba
   return { css: readFileSync(file, 'utf8'), base: dirname(file) };
 }
 
-/** Scans the sources under `root` and builds the table. */
-async function scan(options: TailwindPluginOptions, root: string, outDir?: string): Promise<Scan> {
+/** The directories and files of `options.sources` under `root`. */
+const rootsOf = (options: TailwindPluginOptions, root: string): string[] =>
+  (options.sources ?? ['.']).map((s) => resolve(root, s));
+
+/** Scans the sources under `root`, without `out` (the build's output), and builds the table. */
+async function scan(options: TailwindPluginOptions, root: string, out?: string): Promise<Scan> {
   const precompiler = await Precompiler.create(theme(options, root));
-  const roots = (options.sources ?? ['.']).map((s) => resolve(root, s));
-  const files = sourceFiles(roots, new Set(outDir ? [resolve(root, outDir)] : []));
+  const files = sourceFiles(rootsOf(options, root), new Set(out ? [resolve(root, out)] : []));
   precompiler.add(scanFiles(files));
   precompiler.add(options.safelist ?? []);
   return { precompiler, files };
 }
+
+/** Whether `file` is in one of `roots` and not in `out`. */
+function inSources(file: string, roots: readonly string[], out: string | undefined): boolean {
+  const under = (dir: string) => file === dir || file.startsWith(dir + sep);
+  return roots.some(under) && !(out !== undefined && under(out));
+}
+
+/** A path with `/` between its parts, as bundlers write module ids. */
+const slashed = (path: string): string => path.split(sep).join('/');
 
 /** The table stub's code with `table` in it: parsed as JSON, which is faster than a literal. */
 function tableModule(table: Table): string {
   return `export const TABLE = JSON.parse(${JSON.stringify(JSON.stringify(table))});\n`;
 }
 
-/** `id` without a query (`?v=…`), resolved through links. */
+/** `id` without a query (`?v=…`), resolved through links, with `/` between its parts. */
 function fileOf(id: string): string {
   const path = id.split('?', 1)[0] as string;
   try {
-    return realpathSync(path);
+    return slashed(realpathSync(path));
   } catch {
-    return path;
+    return slashed(path);
   }
 }
 
@@ -135,16 +147,18 @@ export function inkoxideTailwind(options: TailwindPluginOptions = {}): TailwindP
       return server ? null : PRECOMPILED;
     },
     async load(id) {
-      if (fileOf(id) !== TABLE_FILE) return null;
+      if (fileOf(id) !== slashed(TABLE_FILE)) return null;
       return { code: tableModule((await start()).precompiler.table()), map: null };
     },
     async handleHotUpdate({ file, server, read }) {
       if (!SCANNED.has(extname(file)) || scanned === undefined) return undefined;
+      const out = outDir === undefined ? undefined : resolve(root, outDir);
+      if (!inSources(resolve(file), rootsOf(options, root), out)) return undefined;
       const found = new Set<string>();
       candidatesIn(await read(), found);
       if (!(await scanned).precompiler.add(found)) return undefined;
       // A new class: the table again, and the page, whose styles are cached.
-      const mod = server.moduleGraph.getModuleById(TABLE_FILE);
+      const mod = server.moduleGraph.getModuleById(slashed(TABLE_FILE));
       if (mod) server.moduleGraph.invalidateModule(mod as never);
       server.ws.send({ type: 'full-reload' });
       return [];
@@ -154,7 +168,7 @@ export function inkoxideTailwind(options: TailwindPluginOptions = {}): TailwindP
 
 /** What the plugin uses of esbuild's plugin API. */
 interface EsbuildBuild {
-  initialOptions: { platform?: string; absWorkingDir?: string; outdir?: string };
+  initialOptions: { platform?: string; absWorkingDir?: string; outdir?: string; outfile?: string };
   onStart(callback: () => void): void;
   onResolve(options: { filter: RegExp }, callback: () => { path: string } | undefined): void;
   onLoad(
@@ -179,7 +193,7 @@ export function inkoxideTailwindEsbuild(options: TailwindPluginOptions = {}): Ta
   return {
     name: 'inkoxide-tailwind',
     setup(build) {
-      const { platform = 'browser', absWorkingDir = process.cwd(), outdir } = build.initialOptions;
+      const { platform = 'browser', absWorkingDir = process.cwd(), outdir, outfile } = build.initialOptions;
       if (platform !== 'browser') return;
       let scanned: Promise<Scan> | undefined;
       // Each build scans again (in watch mode, and in a context built again).
@@ -188,8 +202,8 @@ export function inkoxideTailwindEsbuild(options: TailwindPluginOptions = {}): Ta
       });
       build.onResolve({ filter: /^@inkoxide\/tailwind$/ }, () => ({ path: PRECOMPILED }));
       build.onLoad({ filter: /[\\/]table\.[jt]s$/ }, async ({ path }) => {
-        if (fileOf(path) !== TABLE_FILE) return undefined;
-        const s = await (scanned ??= scan(options, absWorkingDir, outdir));
+        if (fileOf(path) !== slashed(TABLE_FILE)) return undefined;
+        const s = await (scanned ??= scan(options, absWorkingDir, outdir ?? outfile));
         return { contents: tableModule(s.precompiler.table()), loader: 'js', watchFiles: s.files };
       });
     },
