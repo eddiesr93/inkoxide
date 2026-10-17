@@ -1,6 +1,7 @@
 //! Path construction: rectangles, rounded rectangles, border rings.
 
-use super::{Path, PathSeg, Rect};
+use super::{Path, PathSeg};
+use crate::geom::Rect;
 use crate::schema::Edges;
 
 /// Bézier circle approximation constant.

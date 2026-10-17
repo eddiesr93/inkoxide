@@ -1,8 +1,8 @@
 //! Pagination invariants on synthetic trees.
 
 use super::*;
+use crate::geom::Rect;
 use crate::layout::{LayoutEngine, NoContent, TaffyLayout};
-use crate::paint::Rect;
 use crate::schema::Document;
 use crate::InputFormat;
 

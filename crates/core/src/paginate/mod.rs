@@ -44,8 +44,8 @@
 //!   its cells: each cell's content paginates like a column from the row
 //!   top, and the row ends below the longest cell.
 
+use crate::geom::Rect;
 use crate::layout::{LineBoxes, NodeIdx, Tree};
-use crate::paint::Rect;
 use crate::schema::{BreakMode, Display, InsideMode, Node, NodeKind, Position};
 use crate::text::{LineLayout, TextCache, TextShaper};
 

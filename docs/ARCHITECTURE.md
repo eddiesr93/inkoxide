@@ -70,6 +70,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
 | PDF | `pdf` | Pages and content streams (encoded in parallel), links, notes, outline, forms, PDF/A-1b, 2b and 3b, encryption. Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
 | Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
+| Geometry | `geom` | Rectangles and 2×3 matrices, shared by layout, pagination, fonts and paint |
 
 ## Public API (core)
 
@@ -147,7 +148,13 @@ touches only that module: ttf-parser (font parsing) is used only in
 `fonts`, which gives the rest of the engine metrics, glyph ids and
 advances; rustybuzz (shaping) only in `text/prepare.rs`, which parses its
 shaping faces from the font bytes once per render and shares them between
-threads. `pdf` depends on `fonts` and `images`, never the reverse: `fonts`
+threads. One check knows rustybuzz without using it: `fonts/layout.rs`
+refuses at registration the fonts whose `GSUB` or `GPOS` coverage offsets
+rustybuzz would unwrap, read with ttf-parser, so replacing rustybuzz
+means checking that list again. `pdf` depends on `fonts` and `images`,
+never the reverse, and `text` does not depend on `pdf`: the pipeline asks
+`pdf` what a colour glyph's image (from `ColorGlyphs`) needs for PDF/A,
+and how many bytes the text of a node's images takes. `fonts`
 subsets font programs and caches the compressed whole program, and the PDF
 writer supplies the compression; the writer and `images` both compress
 through `flate.rs`.

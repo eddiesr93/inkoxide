@@ -8,49 +8,13 @@ mod boxes;
 pub(crate) mod debug;
 mod shapes;
 
-pub(crate) use boxes::{
-    apply, content_radii, invert, mul, paint_flow, ContentCtx, ContentPainter, FlowPart,
-};
+pub(crate) use boxes::{content_radii, paint_flow, ContentCtx, ContentPainter, FlowPart};
 pub(crate) use debug::{draw as draw_debug, page_box as debug_page_box};
 pub(crate) use debug::{DebugBoxes, DebugLine, Labels as DebugLabels};
 pub(crate) use shapes::{is_square, polygon, rounded_rect, Radii, KAPPA, NO_RADII};
 
-use crate::schema::{Color, Edges};
-
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub(crate) struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-impl Rect {
-    pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
-        Self { x, y, w, h }
-    }
-
-    /// Shrunk by `e` on each side, to no less than nothing.
-    pub fn inset(self, e: Edges<f32>) -> Self {
-        Self::new(
-            self.x + e.left,
-            self.y + e.top,
-            (self.w - e.left - e.right).max(0.0),
-            (self.h - e.top - e.bottom).max(0.0),
-        )
-    }
-
-    /// Grown by `e` on each side (shrunk where negative, to no less than
-    /// nothing).
-    pub fn outset(self, e: Edges<f32>) -> Self {
-        Self::new(
-            self.x - e.left,
-            self.y - e.top,
-            (self.w + e.left + e.right).max(0.0),
-            (self.h + e.top + e.bottom).max(0.0),
-        )
-    }
-}
+use crate::geom::Rect;
+use crate::schema::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum PathSeg {

@@ -21,8 +21,9 @@ use std::sync::Arc;
 use rayon::prelude::*;
 
 use crate::fonts::{ColorGlyph, FontKey, FontSet, LoadedFont, TextColor, BLACK_TEXT};
+use crate::geom::Rect;
 use crate::images::{DecodedImage, ImageCrateDecoder, ImageData, ImageKey, ImageSet, Placement};
-use crate::paint::{InvisibleGlyph, Op, Rect, TextOp};
+use crate::paint::{InvisibleGlyph, Op, TextOp};
 
 /// Most distinct colour glyphs one render draws in colour; the others draw
 /// as glyphs without colour (in glyph order, by font). Glyphs of colour
@@ -78,14 +79,6 @@ fn bytes_of(glyph: ColorGlyph) -> (Vec<u8>, [f32; 4]) {
     }
 }
 
-/// The image bytes of glyph `gid` of `font` (SVG or PNG), its layers in
-/// the foreground colour black, and the box they fill. `None` for a glyph
-/// without colour, or whose colour data is malformed or over the limits of
-/// one glyph.
-fn glyph_bytes(font: &LoadedFont<'_>, gid: u16) -> Option<(Vec<u8>, [f32; 4])> {
-    font.color_glyph(gid).map(bytes_of)
-}
-
 /// A colour glyph's image, through the checks of an image in a document:
 /// its header first (a bitmap's size), then the decode, through the
 /// process-wide cache, with the SVG limits.
@@ -94,14 +87,6 @@ fn decode(bytes: Vec<u8>) -> Option<Arc<DecodedImage>> {
     ImageData::new(bytes.into())
         .decoded(&ImageCrateDecoder)
         .ok()
-}
-
-/// What colour glyph `gid` of `font` needs transparency for (an alpha
-/// channel, an opacity), which PDF/A-1b forbids; `None` when it draws
-/// opaque, or has no colour. Whatever the text colour.
-pub(crate) fn glyph_transparency(font: &LoadedFont<'_>, gid: u16) -> Option<&'static str> {
-    let (bytes, _) = glyph_bytes(font, gid)?;
-    crate::pdf::image_transparency(&*decode(bytes)?)
 }
 
 /// The limits of [`ColorGlyphs::load`]: [`MAX_COLOR_GLYPHS`] and
@@ -272,6 +257,22 @@ impl ColorGlyphs {
         self.glyphs.contains_key(&(font, gid))
     }
 
+    /// The image glyph `gid` of `font` is drawn as (for a glyph that takes
+    /// the text colour, in the first of its colours); `None` when it is
+    /// not drawn in colour.
+    pub fn image<'i>(
+        &self,
+        font: FontKey,
+        gid: u16,
+        images: &'i ImageSet,
+    ) -> Option<&'i DecodedImage> {
+        let placed = match self.glyphs.get(&(font, gid))? {
+            Images::One(p) => p,
+            Images::ByColor(by) => by.iter().min_by_key(|(c, _)| **c)?.1,
+        };
+        Some(images.get(placed.key))
+    }
+
     /// The image of glyph `gid` of `font` in text colour `color`.
     fn placed(&self, font: FontKey, gid: u16, color: TextColor) -> Option<&Placed> {
         match self.glyphs.get(&(font, gid))? {
@@ -353,6 +354,12 @@ mod tests {
             {"id":"EmojiTest-CBDT","family":"b"},{"id":"EmojiTest-sbix","family":"c"}],"pages":[]}"#;
         let doc: crate::schema::Document = serde_json::from_str(json).unwrap();
         f(&FontSet::load(&doc, &store).unwrap());
+    }
+
+    /// The image bytes of glyph `gid` of `font` (SVG or PNG), its layers
+    /// in the foreground colour black, and the box they fill.
+    fn glyph_bytes(font: &LoadedFont<'_>, gid: u16) -> Option<(Vec<u8>, [f32; 4])> {
+        font.color_glyph(gid).map(bytes_of)
     }
 
     fn no_images() -> ImageSet {
@@ -544,20 +551,33 @@ mod tests {
         });
     }
 
+    /// The image a colour glyph is drawn as: what PDF/A-1b checks for
+    /// transparency.
     #[test]
-    fn transparency_of_colour_glyphs() {
+    fn image_of_colour_glyphs() {
         with_fonts(|fonts| {
             let (colr, cbdt) = (fonts.get(0), fonts.get(1));
             let glyph = |f: &LoadedFont<'_>, c: char| f.glyph(c).unwrap();
-            assert_eq!(
-                glyph_transparency(cbdt, glyph(cbdt, '😀')),
-                Some("an alpha channel")
-            );
-            assert!(glyph_transparency(colr, glyph(colr, '😀')).is_some());
+            let (grin, heart) = (glyph(colr, '😀'), glyph(colr, '\u{2764}'));
+            let space = glyph(colr, ' ');
+            let used = BTreeMap::from([(0, BTreeSet::from([grin, heart, space]))]);
+            let mut used = black(&used);
+            used.insert((1, glyph(cbdt, '😀')), BTreeSet::from([BLACK_TEXT]));
+            // In two text colours: the image of the first.
+            used.insert((0, heart), BTreeSet::from([[200, 0, 0], BLACK_TEXT]));
+            let mut images = no_images();
+            let colors = ColorGlyphs::load(fonts, &used, &mut images, false);
+            let transparency = |font, gid| {
+                let image = colors.image(font, gid, &images)?;
+                crate::pdf::image_transparency(image)
+            };
+            assert_eq!(transparency(1, glyph(cbdt, '😀')), Some("an alpha channel"));
+            assert!(transparency(0, grin).is_some());
             // Solid layers only.
-            assert_eq!(glyph_transparency(colr, glyph(colr, '\u{2764}')), None);
+            assert!(colors.image(0, heart, &images).is_some());
+            assert_eq!(transparency(0, heart), None);
             // No colour.
-            assert_eq!(glyph_transparency(colr, glyph(colr, ' ')), None);
+            assert!(colors.image(0, space, &images).is_none());
         });
     }
 }

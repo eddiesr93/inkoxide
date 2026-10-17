@@ -18,9 +18,9 @@ use std::collections::HashMap;
 use super::objects::InlineObject;
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
+use crate::geom::Rect;
 use crate::images::svg_text::{Anchor, Baseline, Shift, SvgSpan, SvgText};
 use crate::images::ImageKey;
-use crate::paint::Rect;
 use crate::schema::{Direction, FontStyle, TextAlign, TextRun, TextWrap, WhiteSpace};
 
 /// A glyph of SVG text.
