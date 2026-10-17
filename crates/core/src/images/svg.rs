@@ -25,8 +25,8 @@ use usvg::roxmltree::{self, Document, Node, NodeId};
 use super::probe::{sniff, ImageFormat};
 use super::svg_text::{Probes, SvgText, SvgTextDoc};
 use super::ContentKey;
+use crate::geom::Rect;
 use crate::lru::SharedLru;
-use crate::paint::Rect;
 use crate::text::LaidText;
 
 /// Most elements the converted tree may contain, counting every copy made

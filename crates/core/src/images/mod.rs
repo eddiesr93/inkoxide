@@ -29,8 +29,8 @@ pub(crate) use decode::{
 };
 pub(crate) use probe::{probe, ProbeError};
 
+use crate::geom::Rect;
 use crate::layout::{AvailableSpace, Size};
-use crate::paint::Rect;
 use crate::schema::{
     ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,
 };

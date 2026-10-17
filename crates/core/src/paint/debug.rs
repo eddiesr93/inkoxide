@@ -11,7 +11,8 @@
 use std::collections::HashMap;
 
 use super::shapes::{push_rounded_rect, NO_RADII};
-use super::{with_alpha, Dash, FillRule, Op, Path, PathSeg, Rect};
+use super::{with_alpha, Dash, FillRule, Op, Path, PathSeg};
+use crate::geom::Rect;
 use crate::schema::{Color, Edges, PageSpec};
 
 /// Margin: orange, like browser developer tools.

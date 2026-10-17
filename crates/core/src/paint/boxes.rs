@@ -5,7 +5,8 @@ use super::debug::{DebugBox, DebugBoxes, DebugLine};
 use super::shapes::{
     corner_radii, inset_radii, line, polygon, rounded_rect, uniform_radii, Radii, NO_RADII,
 };
-use super::{with_alpha, Dash, FillRule, Op, Path, Rect};
+use super::{with_alpha, Dash, FillRule, Op, Path};
+use crate::geom::{mul, Rect};
 use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, LineBoxes, NodeIdx, Part, Tree};
 use crate::paginate::{PageWindow, Placement, PAGED_EPS};
@@ -878,42 +879,6 @@ pub(crate) fn content_radii(s: &Style, g: &Geometry) -> Radii {
     inset_radii(&radii(s, g.w, g.h), inset)
 }
 
-/// `a · b`: applies `b` first, then `a` (PDF matrix order `[a b c d e f]`).
-pub(crate) fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
-    [
-        a[0] * b[0] + a[2] * b[1],
-        a[1] * b[0] + a[3] * b[1],
-        a[0] * b[2] + a[2] * b[3],
-        a[1] * b[2] + a[3] * b[3],
-        a[0] * b[4] + a[2] * b[5] + a[4],
-        a[1] * b[4] + a[3] * b[5] + a[5],
-    ]
-}
-
-/// The inverse of `m`, when it has one.
-pub(crate) fn invert(m: [f32; 6]) -> Option<[f32; 6]> {
-    let [a, b, c, d, e, f] = m;
-    let det = a * d - b * c;
-    if det == 0.0 || !det.is_finite() {
-        return None;
-    }
-    let inv = [d / det, -b / det, -c / det, a / det, 0.0, 0.0];
-    let r = [
-        inv[0],
-        inv[1],
-        inv[2],
-        inv[3],
-        -(inv[0] * e + inv[2] * f),
-        -(inv[1] * e + inv[3] * f),
-    ];
-    r.iter().all(|v| v.is_finite()).then_some(r)
-}
-
-/// Point `(x, y)` transformed by `m`.
-pub(crate) fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
-    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
-}
-
 fn resolve(v: LengthPercent, of: f32) -> f32 {
     match v {
         LengthPercent::Points(p) => p,
@@ -963,6 +928,7 @@ pub(crate) fn box_transform(s: &Style, x: f32, y: f32, w: f32, h: f32) -> [f32; 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geom::apply;
 
     fn style(json: &str) -> Style {
         serde_json::from_str(json).unwrap()

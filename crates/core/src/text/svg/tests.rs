@@ -297,7 +297,7 @@ fn lays_out_emoji_images_as_images() {
     assert_eq!(image.text.as_deref(), Some("😀"));
     assert!(close(image.x, 10.0 + advance('a', 20.0)));
     // 1em high, its bottom 0.1em below the baseline.
-    assert_eq!(image.rect, crate::paint::Rect::new(0.0, -18.0, 40.0, 20.0));
+    assert_eq!(image.rect, crate::geom::Rect::new(0.0, -18.0, 40.0, 20.0));
     // Two glyphs, none missing, the second after the image.
     assert_eq!(laid.glyphs.len(), 2);
     assert!(laid.glyphs.iter().all(|g| g.id != 0));

@@ -8,10 +8,11 @@ use super::{
     baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS,
 };
 use crate::fonts::{FontKey, FontSet};
+use crate::geom::Rect;
 use crate::images::{ImageKey, ImageSet, Placement};
 use crate::layout::{Geometry, LineBox, LineBoxes};
 use crate::paint::{
-    span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg, Rect,
+    span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg,
     TextGlyph, TextOp, NO_RADII,
 };
 use crate::schema::{
@@ -214,7 +215,7 @@ fn view(page: Rect, ctm: Option<[f32; 6]>) -> Option<Rect> {
     let Some(m) = ctm else {
         return Some(page);
     };
-    let inv = crate::paint::invert(m)?;
+    let inv = crate::geom::invert(m)?;
     let (x1, y1) = (page.x + page.w, page.y + page.h);
     let corners = [(page.x, page.y), (x1, page.y), (page.x, y1), (x1, y1)];
     let (mut lo, mut hi) = (
@@ -222,7 +223,7 @@ fn view(page: Rect, ctm: Option<[f32; 6]>) -> Option<Rect> {
         (f32::NEG_INFINITY, f32::NEG_INFINITY),
     );
     for c in corners {
-        let (x, y) = crate::paint::apply(inv, c);
+        let (x, y) = crate::geom::apply(inv, c);
         lo = (lo.0.min(x), lo.1.min(y));
         hi = (hi.0.max(x), hi.1.max(y));
     }
@@ -773,7 +774,8 @@ fn wave(x: f32, mid: f32, w: f32, thick: f32, bounds: WaveBounds) -> Option<Path
 #[cfg(test)]
 mod tests {
     use super::{reorder, wave, WaveBounds};
-    use crate::paint::{PathSeg, Rect};
+    use crate::geom::Rect;
+    use crate::paint::PathSeg;
 
     fn ends(segs: &[PathSeg]) -> Vec<(f32, f32)> {
         segs.iter()

@@ -4,8 +4,9 @@
 pub(crate) mod format;
 
 use crate::fonts::{FontKey, FontSet, LoadedFont};
+use crate::geom::Rect;
 use crate::layout::{AvailableSpace, Geometry, Size};
-use crate::paint::{ContentCtx, Op, Rect, TextGlyph, TextOp};
+use crate::paint::{ContentCtx, Op, TextGlyph, TextOp};
 use crate::schema::{Color, Field, FieldKind, BLACK};
 
 /// Inner padding between the widget edge and its text, points.

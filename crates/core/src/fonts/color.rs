@@ -23,7 +23,7 @@ use ttf_parser::colr::{ClipBox, CompositeMode, GradientExtend, Paint, Painter};
 use ttf_parser::{GlyphId, RasterImageFormat, RgbaColor, Transform};
 
 use super::LoadedFont;
-use crate::paint::{invert, mul};
+use crate::geom::{apply, invert, mul};
 
 /// Most painter calls (outlines, fills, clips, layers, transforms) for one
 /// colour glyph. Emoji take a few hundred.
@@ -52,6 +52,7 @@ impl LoadedFont<'_> {
     /// colour black), else its largest PNG bitmap. `None` for a glyph
     /// without colour, or whose colour data is malformed or over the
     /// limits.
+    #[cfg(test)]
     pub fn color_glyph(&self, gid: u16) -> Option<ColorGlyph> {
         self.color_glyph_in(gid, BLACK_TEXT)
     }
@@ -331,10 +332,6 @@ fn colr_svg(
 /// The 2×3 matrix of `t`, `[a b c d e f]`.
 fn matrix(t: Transform) -> [f32; 6] {
     [t.a, t.b, t.c, t.d, t.e, t.f]
-}
-
-fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
-    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
 }
 
 /// Writes glyph outlines as SVG path data, and their bounds.

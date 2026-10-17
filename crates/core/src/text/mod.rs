@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
-pub(crate) use color::{glyph_transparency as color_glyph_transparency, ColorGlyphs};
+pub(crate) use color::ColorGlyphs;
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
 pub(crate) use paint::{PageNumbers, TextPainter, WAVES_PER_GLYPH};
@@ -330,6 +330,11 @@ impl UnicodeMap {
             .or_insert_with(|| text.to_string());
     }
 
+    /// The text of glyph `gid` of `font`, when one was recorded.
+    pub fn text(&self, font: FontKey, gid: u16) -> Option<&str> {
+        self.fonts.get(&font)?.get(&gid).map(String::as_str)
+    }
+
     /// Adds `other`'s mappings, keeping the first mapping of each glyph.
     pub fn merge_first(&mut self, other: UnicodeMap) {
         for (font, map) in other.fonts {
@@ -617,28 +622,27 @@ fn node_key(n: &Node) -> usize {
 }
 
 impl TextCache<'_, RustybuzzShaper<'_, '_>> {
-    /// Most bytes the text of the images text node `node` draws takes in
-    /// the file, once it is shaped: each image is in a span with its text,
-    /// the `alt` of an inline object or the text of a colour glyph.
-    pub fn image_text_len(&self, node: &Node) -> usize {
+    /// The texts of the images text node `node` draws, once it is shaped:
+    /// each image is in a span with its text, the `alt` of an inline object
+    /// or the text of a colour glyph.
+    pub fn image_texts(&self, node: &Node) -> impl Iterator<Item = &str> + '_ {
         let fonts = self.shaper.fonts();
-        let Some(e) = self.entries.get(&node_key(node)) else {
-            return 0;
-        };
-        let p = &e.prepared;
-        let mut total = 0;
-        for s in &p.segments {
-            if let Some(o) = s.object {
-                let alt = p.objects.get(o as usize).and_then(|o| o.alt.as_deref());
-                total += alt.map_or(0, crate::pdf::written_text_len);
-            } else if fonts.get(s.font).has_color() {
-                total += (s.glyphs.start as usize..s.glyphs.end as usize)
-                    .filter_map(|k| p.glyph_text(s, k))
-                    .map(crate::pdf::written_text_len)
-                    .sum::<usize>();
-            }
-        }
-        total
+        let p = self.entries.get(&node_key(node)).map(|e| &e.prepared);
+        p.into_iter().flat_map(move |p| {
+            p.segments.iter().flat_map(move |s| {
+                let alt = s
+                    .object
+                    .and_then(|o| p.objects.get(o as usize)?.alt.as_deref());
+                let colour = s.object.is_none() && fonts.get(s.font).has_color();
+                let glyphs = if colour {
+                    s.glyphs.start as usize..s.glyphs.end as usize
+                } else {
+                    0..0
+                };
+                let texts = glyphs.filter_map(move |k| p.glyph_text(s, k));
+                alt.into_iter().chain(texts)
+            })
+        })
     }
 
     /// Shapes `nodes` (text nodes in document order) ahead of layout, in
@@ -858,7 +862,22 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         Some(e.prepared.glyphs.len())
     }
 
+    /// The glyphs text node `node` draws from its runs' fonts (not its
+    /// inline objects), once it is shaped: each as its run, its font and
+    /// its id, in order.
+    pub fn run_glyphs(&self, node: &Node) -> impl Iterator<Item = (u16, FontKey, u16)> + '_ {
+        let p = self.entries.get(&node_key(node)).map(|e| &e.prepared);
+        p.into_iter().flat_map(|p| {
+            let segments = p.segments.iter().filter(|s| s.object.is_none());
+            segments.flat_map(move |s| {
+                let glyphs = &p.glyphs[s.glyphs.start as usize..s.glyphs.end as usize];
+                glyphs.iter().map(move |g| (s.run, s.font, g.id))
+            })
+        })
+    }
+
     /// Text node `node` shaped, once it is.
+    #[cfg(test)]
     pub fn prepared(&self, node: &Node) -> Option<(&Prepared, &ParaStyle)> {
         self.entries
             .get(&node_key(node))

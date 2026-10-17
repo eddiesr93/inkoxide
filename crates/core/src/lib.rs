@@ -17,6 +17,7 @@ mod error;
 mod flate;
 mod fonts;
 mod forms;
+mod geom;
 mod icons;
 mod images;
 mod layout;

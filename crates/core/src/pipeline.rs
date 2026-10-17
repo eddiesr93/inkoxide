@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use rayon::prelude::*;
 
 use crate::fonts::{FontKey, FontSet};
+use crate::geom::Rect;
 use crate::images::{ImageBody, ImageKey, ImageSet};
 use crate::layout::{
     AvailableSpace, Geometry, LayoutEngine, LeafMeasure, LineBoxes, NodeIdx, Part, Size,
@@ -13,16 +14,15 @@ use crate::layout::{
 };
 use crate::paginate::{paginate, Placement};
 use crate::paint::{
-    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent, Rect,
+    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent,
 };
-use crate::pdf::Profile;
+use crate::pdf::{image_transparency, Profile};
 use crate::schema::{
     Decoration, DecorationStyle, Display, Document, Node, NodeKind, PageFilter, PagePattern,
     PageSpec, Position, TextRun,
 };
 use crate::text::{
-    color_glyph_transparency, ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache,
-    TextPainter, WAVES_PER_GLYPH,
+    ColorGlyphs, PageNumbers, PageText, RustybuzzShaper, TextCache, TextPainter, WAVES_PER_GLYPH,
 };
 use crate::{InkoxideError, ValidationError};
 
@@ -280,7 +280,7 @@ pub(crate) fn run<'d, T: Send>(
     }
     let colors = ColorGlyphs::load(fonts, &used, images, parallel);
     if !profile.transparency() {
-        let conflict = transparent_color_glyph(doc, fonts, text, &colors)
+        let conflict = transparent_color_glyph(doc, fonts, text, images, &colors)
             .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors));
         if let Some(conflict) = conflict {
             return Err(conflict.into());
@@ -365,29 +365,24 @@ fn transparent_color_glyph(
     doc: &Document,
     fonts: &FontSet<'_>,
     text: &Cache<'_, '_, '_>,
+    images: &ImageSet,
     colors: &ColorGlyphs,
 ) -> Option<ValidationError> {
     let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
     find_shown(doc, |node, path| {
-        let (p, _) = text.prepared(node)?;
-        for seg in p.segments.iter().filter(|s| s.object.is_none()) {
-            let glyphs = &p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize];
-            for g in glyphs.iter().filter(|g| colors.draws(seg.font, g.id)) {
-                let font = fonts.get(seg.font);
-                let need = *seen
-                    .entry((seg.font, g.id))
-                    .or_insert_with(|| color_glyph_transparency(font, g.id));
-                let Some(need) = need else { continue };
-                let glyph = text
-                    .unicode()
-                    .fonts
-                    .get(&seg.font)
-                    .and_then(|m| m.get(&g.id))
-                    .map_or(String::new(), |t| format!(" `{t}`"));
-                let what = format!("the colour glyph{glyph} of font `{}` ({need})", font.id);
-                let path = format!("{path}.runs[{}]", seg.run);
-                return Some(crate::validate::transparency_conflict(path, &what));
-            }
+        for (run, font, gid) in text.run_glyphs(node) {
+            let need = *seen
+                .entry((font, gid))
+                .or_insert_with(|| colors.image(font, gid, images).and_then(image_transparency));
+            let Some(need) = need else { continue };
+            let glyph =
+                (text.unicode().text(font, gid)).map_or(String::new(), |t| format!(" `{t}`"));
+            let what = format!(
+                "the colour glyph{glyph} of font `{}` ({need})",
+                fonts.get(font).id
+            );
+            let path = format!("{path}.runs[{run}]");
+            return Some(crate::validate::transparency_conflict(path, &what));
         }
         None
     })
@@ -411,11 +406,13 @@ fn transparent_svg_color_glyph(
             return None;
         };
         let glyphs = probed.texts.iter().flat_map(|t| &t.glyphs);
-        for g in glyphs.filter(|g| colors.draws(g.font, g.id)) {
+        for g in glyphs {
             let font = fonts.get(g.font);
-            let need = *seen
-                .entry((g.font, g.id))
-                .or_insert_with(|| color_glyph_transparency(font, g.id));
+            let need = *seen.entry((g.font, g.id)).or_insert_with(|| {
+                colors
+                    .image(g.font, g.id, images)
+                    .and_then(image_transparency)
+            });
             if let Some(need) = need {
                 return Some(format!(
                     "a colour glyph of font `{}` in the text of the SVG image ({need})",
@@ -663,7 +660,11 @@ fn repeated(tree: &Tree<'_>, i: NodeIdx, pages: u64, all: bool, text: &Cache<'_,
                     // Images in the text, each in a span with its text.
                     let colored = text.image_glyph_count(n) as u64;
                     size = size.saturating_add(colored * LINK_BYTES);
-                    size = size.saturating_add(text.image_text_len(n) as u64);
+                    size = size.saturating_add(
+                        text.image_texts(n)
+                            .map(|t| crate::pdf::written_text_len(t) as u64)
+                            .sum(),
+                    );
                     if debug {
                         // A box and a baseline per line, and a box per
                         // stretch of a run on a line: at most one per

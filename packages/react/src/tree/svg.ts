@@ -1,4 +1,4 @@
-import { parseFontFamily } from '@inkoxide/style';
+import { parseFontFamily } from '@inkoxide/style/internal';
 
 import { type DrawingFont, escapeXml, quotedFamily } from '../canvas.ts';
 import { HOST, HOST_NAME, type SvgPresentation, type SvgProps } from '../components/index.ts';

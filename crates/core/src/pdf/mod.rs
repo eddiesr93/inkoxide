@@ -20,8 +20,9 @@ use rayon::prelude::*;
 
 use crate::date::Timestamp;
 use crate::fonts::{FontKey, FontSet};
+use crate::geom::{apply, mul, Rect};
 use crate::images::{ImageKey, ImageSet};
-use crate::paint::{apply, FillRule, InvisibleGlyph, Op, PageContent, PathSeg, Rect, TextOp};
+use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, TextOp};
 use crate::pipeline::{Dest, Marks};
 use crate::schema::{self, Color, Meta};
 use crate::text::UnicodeMap;
@@ -205,7 +206,7 @@ impl PdfSink for PdfWriterSink {
             match op {
                 Op::Save => saved.push(ctm),
                 Op::Restore => ctm = saved.pop().flatten(),
-                Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| crate::paint::mul(c, *m))),
+                Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| mul(c, *m))),
                 Op::Text(t) => {
                     // The painter leaves out the text of a font without
                     // outlines (`ColorGlyphs::push`): it is never embedded.
@@ -244,7 +245,7 @@ impl PdfSink for PdfWriterSink {
                 Op::Icon(i) => {
                     let mut i = (**i).clone();
                     if let Some(m) = ctm {
-                        (i.x, i.y) = crate::paint::apply(m, (i.x, i.y));
+                        (i.x, i.y) = apply(m, (i.x, i.y));
                     }
                     icons.push(i);
                 }

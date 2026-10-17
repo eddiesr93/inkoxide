@@ -6,8 +6,9 @@ use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::{annot_rect, content_bytes, path, q, set_fill, EncodedPage, Out, Profile, RefAlloc};
+use crate::geom::Rect;
 use crate::icons::{IconKind, ICON};
-use crate::paint::{rounded_rect, Rect};
+use crate::paint::rounded_rect;
 use crate::schema::{Color, Note, NOTE_YELLOW};
 use crate::InkoxideError;
 

@@ -29,7 +29,7 @@ pub(crate) use float::{LineBox, LineBoxes};
 pub(crate) use flow::Wrapped;
 pub(crate) use table::TableLayout;
 
-use crate::paint::Rect;
+use crate::geom::Rect;
 use crate::schema::{Edges, FieldKind, Node, NodeKind, Style, TableCell, TableRow, VerticalAlign};
 use crate::InkoxideError;
 
