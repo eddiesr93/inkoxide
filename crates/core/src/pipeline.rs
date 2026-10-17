@@ -17,9 +17,7 @@ use rayon::prelude::*;
 
 use crate::fonts::FontSet;
 use crate::images::ImageSet;
-use crate::layout::{
-    AvailableSpace, LayoutEngine, LeafMeasure, LineBoxes, Size, TaffyLayout, Tree, Wrapped,
-};
+use crate::layout::{compute, AvailableSpace, LeafMeasure, LineBoxes, Size, Tree, Wrapped};
 use crate::paginate::{paginate, Placement};
 use crate::paint::PageContent;
 use crate::pdf::Profile;
@@ -135,7 +133,7 @@ fn layout_fixed<'a>(
     leaves: &mut dyn LeafMeasure,
 ) -> Result<Tree<'a>, InkoxideError> {
     let mut tree = Tree::build_single(node);
-    TaffyLayout.compute(&mut tree, width, height, leaves)?;
+    compute(&mut tree, width, height, leaves)?;
     Ok(tree)
 }
 
@@ -271,7 +269,7 @@ fn lay_out_flow<'a>(
     let (content_w, content_h) = spec.content_size();
     let mut flow = Tree::build(spec.children.iter().filter(|n| !is_overlay(n)));
     let mut leaves = Leaves { text, images };
-    TaffyLayout.compute(&mut flow, content_w, content_h, &mut leaves)?;
+    compute(&mut flow, content_w, content_h, &mut leaves)?;
     let placement = paginate(&flow, content_h, text);
     Ok((flow, placement))
 }

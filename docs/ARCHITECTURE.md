@@ -94,7 +94,7 @@ outside the crate.
 `layout::Tree` is an arena (`Vec<LNode>`) in breadth-first order, so each
 node's children are a contiguous index range. Index 0 is a synthetic root:
 the page content box (column flex, fixed width, unbounded height). After
-`LayoutEngine::compute` every node holds absolute `Geometry` (border box,
+`layout::compute` every node holds absolute `Geometry` (border box,
 plus resolved border and padding) in flow coordinates; paint adds the page
 margin offset.
 

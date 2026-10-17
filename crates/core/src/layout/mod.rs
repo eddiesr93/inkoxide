@@ -356,23 +356,6 @@ impl LeafMeasure for NoContent {
     }
 }
 
-/// Dependency firewall around the flex/grid engine: neither it nor
-/// [`LeafMeasure`] names a Taffy type.
-pub(crate) trait LayoutEngine {
-    /// Lays out `tree` in a column of the given `width` and unbounded
-    /// height (at least `min_height`, so `flexGrow` can fill a short page),
-    /// writing absolute geometry into every node (tables included).
-    fn compute(
-        &mut self,
-        tree: &mut Tree<'_>,
-        width: f32,
-        min_height: f32,
-        measure: &mut dyn LeafMeasure,
-    ) -> Result<(), InkoxideError>;
-}
-
-pub(crate) struct TaffyLayout;
-
 #[expect(clippy::needless_pass_by_value, reason = "a `map_err` adapter")]
 fn layout_err(e: taffy::TaffyError) -> InkoxideError {
     InkoxideError::Layout(e.to_string())
@@ -875,19 +858,21 @@ fn root_style(ln: &LNode<'_>, mode: RootMode) -> taffy::Style {
     }
 }
 
-impl LayoutEngine for TaffyLayout {
-    fn compute(
-        &mut self,
-        tree: &mut Tree<'_>,
-        width: f32,
-        min_height: f32,
-        measure: &mut dyn LeafMeasure,
-    ) -> Result<(), InkoxideError> {
-        compute_tree(tree, width, min_height, measure, true)
-    }
+/// Lays out `tree` in a column of the given `width` and unbounded height
+/// (at least `min_height`, so `flexGrow` can fill a short page), writing
+/// absolute geometry into every node (tables included). The flex/grid
+/// engine stays behind it: neither it nor [`LeafMeasure`] names a Taffy
+/// type.
+pub(crate) fn compute(
+    tree: &mut Tree<'_>,
+    width: f32,
+    min_height: f32,
+    measure: &mut dyn LeafMeasure,
+) -> Result<(), InkoxideError> {
+    compute_tree(tree, width, min_height, measure, true)
 }
 
-/// [`TaffyLayout::compute`], with the simple-cell fast path switchable so
+/// [`compute`], with the simple-cell fast path switchable so
 /// tests can check it against Taffy.
 fn compute_tree(
     tree: &mut Tree<'_>,
