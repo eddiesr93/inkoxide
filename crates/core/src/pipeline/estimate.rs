@@ -4,7 +4,9 @@
 use super::{Cache, Laid};
 use crate::icons::Icon;
 use crate::layout::{NodeIdx, Part, Tree};
+use crate::pdf::{most_written_text_len, written_text_len};
 use crate::schema::{Decoration, DecorationStyle, NodeKind, PageFilter, PagePattern, TextRun};
+use crate::tag::{LinkText, MAX_LINK_TEXT};
 use crate::text::WAVES_PER_GLYPH;
 use crate::InkoxideError;
 
@@ -24,6 +26,10 @@ pub(super) const ITEM_BYTES: u64 = 16;
 /// colour glyph or an image node with `alt`),
 pub(super) const LINK_BYTES: u64 = 256;
 
+/// in tagged output, what an annotation (a link, a widget, an icon) adds:
+/// its `/StructParent`, its element and its entry in the parent tree,
+pub(super) const TAG_BYTES: u64 = 256;
+
 /// a `debug` outline, a form field widget or a background image,
 pub(super) const BOX_BYTES: u64 = 768;
 
@@ -39,10 +45,11 @@ pub(super) const SCRIPT_BYTES: u64 = 512;
 pub(super) const WAVE_BYTES: u64 = WAVES_PER_GLYPH as u64 * 48;
 
 /// Checks that the content painted on every page stays within
-/// [`MAX_REPEATED`].
+/// [`MAX_REPEATED`]; `tagged`: in tagged output.
 pub(super) fn repeated_size(
     laid: &[Laid<'_>],
     text: &Cache<'_, '_, '_>,
+    tagged: bool,
 ) -> Result<(), InkoxideError> {
     let mut total: u64 = 0;
     for l in laid {
@@ -50,16 +57,16 @@ pub(super) fn repeated_size(
         let bands = l.header.iter().chain(&l.footer);
         let bands = bands.chain(l.overlays.iter().map(|(_, b)| b));
         for b in bands {
-            total = total.saturating_add(repeated(&b.tree, 0, pages, all, text));
+            total = total.saturating_add(repeated(&b.tree, 0, (pages, all, tagged), text));
         }
         for &i in &l.placement.fixed {
-            total = total.saturating_add(repeated(&l.flow, i, pages, all, text));
+            total = total.saturating_add(repeated(&l.flow, i, (pages, all, tagged), text));
         }
         // Header rows, again on every page after a table's first.
         for (&t, table) in &l.flow.tables {
             let (first, last) = l.placement.page_range[t as usize];
             for r in l.flow.children(t).take(table.header_rows) {
-                let size = repeated(&l.flow, r, u64::from(last - first), all, text);
+                let size = repeated(&l.flow, r, (u64::from(last - first), all, tagged), text);
                 total = total.saturating_add(size);
             }
         }
@@ -77,14 +84,24 @@ pub(super) fn repeated_size(
 
 /// Estimated output, in bytes, of node `i` of `tree` and its descendants
 /// painted on `pages` pages (fewer for nodes shown on some pages only);
-/// `all`: every box has a `debug` outline.
+/// `all`: every box has a `debug` outline; `tagged`: in tagged output.
 pub(super) fn repeated(
     tree: &Tree<'_>,
     i: NodeIdx,
-    pages: u64,
-    all: bool,
+    (pages, all, tagged): (u64, bool, bool),
     text: &Cache<'_, '_, '_>,
 ) -> u64 {
+    // What tagging adds to an annotation, and to a link with target `t`
+    // whose text takes `label` bytes (its `/Contents`: that text, or where
+    // it goes).
+    let tag = if tagged { TAG_BYTES } else { 0 };
+    let link_tag = |t: &str, label: usize| {
+        if tagged {
+            TAG_BYTES + written_text_len(t).max(label) as u64
+        } else {
+            0
+        }
+    };
     let mut total: u64 = 0;
     let mut stack = vec![(i, pages)];
     while let Some((j, pages)) = stack.pop() {
@@ -103,7 +120,14 @@ pub(super) fn repeated(
                 pages = pages.min(most);
             }
             if let Some(target) = &n.link {
-                size += LINK_BYTES + crate::pdf::written_uri_len(target) as u64;
+                let label = if tagged {
+                    LinkText::of(n).finish().map_or(0, |l| written_text_len(&l))
+                } else {
+                    0
+                };
+                size += LINK_BYTES
+                    + crate::pdf::written_uri_len(target) as u64
+                    + link_tag(target, label);
             }
             if n.background_image.is_some() {
                 size += BOX_BYTES;
@@ -116,9 +140,17 @@ pub(super) fn repeated(
                     // segment, plus one per line where a segment wraps or a
                     // hyphen or an ellipsis shows.
                     let mut pieces = None;
+                    // A link's text: the text of the linked runs it covers,
+                    // a space between them.
+                    let linked: usize = runs
+                        .iter()
+                        .filter(|r| r.link.is_some())
+                        .map(|r| r.text.as_ref().map_or(0, |t| t.chars().count() + 1))
+                        .sum();
+                    let label = most_written_text_len(linked.min(MAX_LINK_TEXT));
                     for r in runs {
                         if let Some(icon) = r.icon() {
-                            size = size.saturating_add(icon_bytes(icon));
+                            size = size.saturating_add(icon_bytes(icon) + tag);
                         }
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
@@ -136,7 +168,8 @@ pub(super) fn repeated(
                                         (p.segments.len() + 2 * l.lines.len()) as u64
                                     })
                             });
-                            let uri = crate::pdf::written_uri_len(target) as u64;
+                            let uri = crate::pdf::written_uri_len(target) as u64
+                                + link_tag(target, label);
                             size = size.saturating_add(chars.min(most).saturating_mul(uri));
                         }
                     }
@@ -154,7 +187,7 @@ pub(super) fn repeated(
                     size = size.saturating_add(colored * LINK_BYTES);
                     size = size.saturating_add(
                         text.image_texts(n)
-                            .map(|t| crate::pdf::written_text_len(t) as u64)
+                            .map(|t| written_text_len(t) as u64)
                             .sum(),
                     );
                     if debug {
@@ -172,19 +205,19 @@ pub(super) fn repeated(
                     // Its options and values, in the field and in its
                     // appearance.
                     let text: usize = f.options.iter().chain(f.values()).map(String::len).sum();
-                    size = size.saturating_add(BOX_BYTES + text as u64 * ITEM_BYTES);
+                    size = size.saturating_add(BOX_BYTES + tag + text as u64 * ITEM_BYTES);
                     if f.format.is_some() {
                         // Its two scripts.
                         size = size.saturating_add(SCRIPT_BYTES);
                     }
                 }
-                NodeKind::Note(n) => size = size.saturating_add(icon_bytes(Icon::Note(n))),
+                NodeKind::Note(n) => size = size.saturating_add(icon_bytes(Icon::Note(n)) + tag),
                 NodeKind::Attachment(a) => {
-                    size = size.saturating_add(icon_bytes(Icon::Attachment(a)));
+                    size = size.saturating_add(icon_bytes(Icon::Attachment(a)) + tag);
                 }
                 // In a span with its text.
                 NodeKind::Image { alt: Some(alt), .. } => {
-                    let text = crate::pdf::written_text_len(alt) as u64;
+                    let text = written_text_len(alt) as u64;
                     size = size.saturating_add(LINK_BYTES + text);
                 }
                 _ => {}
@@ -206,7 +239,6 @@ pub(super) fn is_wavy(r: &TextRun) -> bool {
 /// the file holds it. An attachment's icon without text shows its file's
 /// description or name, at most a note's length.
 pub(super) fn icon_bytes(icon: Icon<'_>) -> u64 {
-    use crate::pdf::{most_written_text_len, written_text_len};
     let text = match icon {
         Icon::Note(n) => {
             written_text_len(&n.contents) + n.author.as_deref().map_or(0, written_text_len)

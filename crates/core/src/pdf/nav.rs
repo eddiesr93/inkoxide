@@ -6,7 +6,7 @@ use pdf_writer::{Name, Rect as PdfRect, Ref, Str};
 use crate::geom::Rect;
 use crate::pipeline::{Dest, Marks};
 
-use super::{round_pt, Profile, Writer};
+use super::{round_pt, LinkArea, Profile, Writer};
 
 /// Writes one link annotation as object `r`; `false` (nothing written)
 /// when an anchor has no destination.
@@ -14,10 +14,12 @@ pub(super) fn write_link(
     w: &mut Writer,
     r: Ref,
     page_h: f32,
-    (rect, target): &(Rect, Box<str>),
+    link: &LinkArea,
     (marks, pages): (&Marks<'_>, &[Ref]),
     profile: Profile,
+    struct_parent: Option<i32>,
 ) -> bool {
+    let target = &*link.target;
     let dest = match target.strip_prefix('#') {
         Some(id) => match marks.anchors.get(id) {
             Some(d) => Some(*d),
@@ -26,12 +28,22 @@ pub(super) fn write_link(
         None => None,
     };
     let uri = dest.is_none().then(|| w.out.bytes(&uri_bytes(target)));
+    // Tagged, a link says what it is (ISO 14289-1, 7.18.5): the text it
+    // covers, or else where it goes.
+    let contents = struct_parent.map(|_| {
+        let label = link.label.as_deref().filter(|l| !l.trim().is_empty());
+        w.out.text(label.unwrap_or_else(|| link_text(target)))
+    });
     let mut a = w.pdf.annotation(r);
     a.subtype(AnnotationType::Link)
-        .rect(annot_rect(*rect, page_h))
+        .rect(annot_rect(link.rect, page_h))
         .border(0.0, 0.0, 0.0, None);
     if profile.is_pdf_a() {
         a.flags(AnnotationFlags::PRINT);
+    }
+    super::tag::struct_parent(&mut a, struct_parent);
+    if let Some(c) = &contents {
+        a.pair(Name(b"Contents"), Str(c));
     }
     let mut action = a.action();
     match dest {
@@ -46,6 +58,11 @@ pub(super) fn write_link(
         }
     }
     true
+}
+
+/// What a link's `/Contents` says: where it goes.
+fn link_text(target: &str) -> &str {
+    target.strip_prefix("mailto:").unwrap_or(target)
 }
 
 /// An annotation's `/Rect`: `r` (page coordinates, top-left origin) in

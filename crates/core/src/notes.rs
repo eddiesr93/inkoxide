@@ -23,5 +23,6 @@ pub(crate) fn paint_at(icon: Icon<'_>, (x, y): (f32, f32), ops: &mut Vec<Op>) {
         x,
         y,
         kind: icon.to_kind(),
+        owner: None,
     })));
 }

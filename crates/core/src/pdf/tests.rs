@@ -362,7 +362,7 @@ fn extraction_reads_the_actual_text() {
         encryption: None,
         parallel: false,
     };
-    let pages = [sink.encode_page(&page, &fonts).unwrap()];
+    let pages = [sink.encode_page(&page, &fonts, None).unwrap()];
     let images = ImageSet::load(
         &doc.pages,
         &crate::ImageStore::new(),
@@ -377,6 +377,7 @@ fn extraction_reads_the_actual_text() {
             fonts: &fonts,
             unicode: &UnicodeMap::default(),
             files: &[],
+            plan: None,
             images: &images,
             colors: &crate::text::ColorGlyphs::default(),
             marks: &Marks::default(),
@@ -416,7 +417,7 @@ fn the_invisible_glyph_is_embedded() {
         encryption: None,
         parallel: false,
     };
-    let encoded = sink.encode_page(&page, &fonts).unwrap();
+    let encoded = sink.encode_page(&page, &fonts, None).unwrap();
     let font = fonts.key("Inter-Regular").unwrap();
     let space = fonts.get(font).glyph(' ').unwrap();
     assert_eq!(

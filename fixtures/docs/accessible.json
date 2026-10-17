@@ -1,0 +1,984 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Accessible document",
+  "lang": "en",
+  "author": "Inkoxide"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 48,
+    "right": 48,
+    "bottom": 48,
+    "left": 48
+   },
+   "header": {
+    "type": "box",
+    "style": {
+     "padding": {
+      "top": 16,
+      "right": 16,
+      "bottom": 16,
+      "left": 16
+     }
+    },
+    "children": [
+     {
+      "type": "text",
+      "runs": [
+       {
+        "text": "Accessible document — page ",
+        "font": "Inter-Regular",
+        "size": 8,
+        "color": [
+         0.1,
+         0.11,
+         0.14,
+         1
+        ]
+       },
+       {
+        "placeholder": "pageNumber",
+        "font": "Inter-Regular",
+        "size": 8,
+        "color": [
+         0.1,
+         0.11,
+         0.14,
+         1
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Accessible document",
+       "font": "Inter-Bold",
+       "size": 17,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "role": "h1"
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Every part of this page is tagged with what it is.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "A list",
+       "font": "Inter-Bold",
+       "size": 14,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "role": "h2"
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row"
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 14
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "role": "label"
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Headings go down one level at a time.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "role": "listBody"
+        }
+       ],
+       "role": "listItem"
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row"
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 14
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "2.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "role": "label"
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Images have alternative text.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "role": "listBody"
+        }
+       ],
+       "role": "listItem"
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "row"
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 14
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "3.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "role": "label"
+        },
+        {
+         "type": "box",
+         "style": {
+          "flexGrow": 1
+         },
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Fields have labels.",
+             "font": "Inter-Regular",
+             "size": 10,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "role": "listBody"
+        }
+       ],
+       "role": "listItem"
+      }
+     ],
+     "role": "list"
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "A table",
+       "font": "Inter-Bold",
+       "size": 14,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "role": "h2"
+    },
+    {
+     "type": "table",
+     "columns": [
+      {
+       "width": "2fr"
+      },
+      {
+       "width": "1fr"
+      },
+      {
+       "width": "1fr"
+      }
+     ],
+     "headerRows": 1,
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "rows": [
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Item",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Qty",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Price",
+             "font": "Inter-Bold",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Licence",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         },
+         "header": true
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1,200",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Support",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         },
+         "header": true
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "6 hours, 95 each",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         },
+         "colSpan": 2
+        }
+       ]
+      },
+      {
+       "cells": [
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "Total",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         },
+         "header": true
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        },
+        {
+         "children": [
+          {
+           "type": "text",
+           "runs": [
+            {
+             "text": "1,770",
+             "font": "Inter-Regular",
+             "size": 9,
+             "color": [
+              0.1,
+              0.11,
+              0.14,
+              1
+             ]
+            }
+           ]
+          }
+         ],
+         "style": {
+          "padding": {
+           "top": 4,
+           "right": 4,
+           "bottom": 4,
+           "left": 4
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Figures",
+       "font": "Inter-Bold",
+       "size": 11,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "role": "h3"
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "gap": 12,
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "image",
+       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCI+PHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0iIzI5NWJkYiIvPjwvc3ZnPg==",
+       "alt": "The Inkoxide logo",
+       "style": {
+        "width": 24,
+        "height": 24
+       }
+      },
+      {
+       "type": "image",
+       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCI+PHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiByeD0iNCIgZmlsbD0iIzI5NWJkYiIvPjwvc3ZnPg==",
+       "alt": "",
+       "style": {
+        "width": 24,
+        "height": 24
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "padding": {
+         "top": 6,
+         "right": 6,
+         "bottom": 6,
+         "left": 6
+        },
+        "backgroundColor": [
+         0.94,
+         0.95,
+         0.98,
+         1
+        ]
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "Q3",
+           "font": "Inter-Bold",
+           "size": 14,
+           "color": [
+            0.1,
+            0.11,
+            0.14,
+            1
+           ]
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "+12%",
+           "font": "Inter-Regular",
+           "size": 10,
+           "color": [
+            0.16,
+            0.36,
+            0.86,
+            1
+           ]
+          }
+         ]
+        }
+       ],
+       "role": "figure",
+       "alt": "Sales rose 12% in the third quarter"
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Read the ",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      },
+      {
+       "text": "guide",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.16,
+        0.36,
+        0.86,
+        1
+       ],
+       "link": "https://example.com/guide"
+      },
+      {
+       "text": " for more.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Jump to the end",
+         "font": "Inter-Regular",
+         "size": 10,
+         "color": [
+          0.16,
+          0.36,
+          0.86,
+          1
+         ]
+        }
+       ]
+      }
+     ],
+     "link": "#end"
+    },
+    {
+     "type": "field",
+     "field": {
+      "name": "email",
+      "kind": "text",
+      "font": "Inter-Regular",
+      "size": 10,
+      "label": "Your email address"
+     },
+     "style": {
+      "width": 200,
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "note",
+     "note": {
+      "contents": "Reviewed by the accessibility team."
+     }
+    },
+    {
+     "type": "text",
+     "role": "artifact",
+     "runs": [
+      {
+       "text": "Decoration that is not read.",
+       "font": "Inter-Regular",
+       "size": 8,
+       "color": [
+        0.6,
+        0.6,
+        0.6,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. Tagged output keeps the reading order of the document, whatever the layout does on the page. ",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     }
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "The end.",
+       "font": "Inter-Regular",
+       "size": 10,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 6
+      }
+     },
+     "id": "end"
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Footer: confidential",
+       "font": "Inter-Regular",
+       "size": 8,
+       "color": [
+        0.1,
+        0.11,
+        0.14,
+        1
+       ]
+      }
+     ],
+     "break": {
+      "fixed": true
+     },
+     "style": {
+      "position": "absolute",
+      "inset": {
+       "bottom": -30,
+       "left": 0
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

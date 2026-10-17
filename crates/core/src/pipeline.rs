@@ -150,7 +150,7 @@ pub(crate) fn run<'d, T: Send>(
     text: &mut Cache<'_, '_, '_>,
     images: &mut ImageSet,
     parallel: bool,
-    profile: Profile,
+    (profile, plan): (Profile, Option<&crate::tag::Plan>),
     encode: impl Fn(PageContent) -> Result<T, InkoxideError> + Sync,
 ) -> Result<(Vec<T>, Marks<'d>, ColorGlyphs), InkoxideError> {
     // Shaping is the bulk of layout and independent per paragraph: do it
@@ -226,7 +226,7 @@ pub(crate) fn run<'d, T: Send>(
     // The painter draws each page's digits in placeholders, and headers
     // and footers that show them are laid out per page.
     let total = page_count(&laid)?;
-    repeated_size(&laid, text)?;
+    repeated_size(&laid, text, plan.is_some())?;
     let mut marks = Marks::default();
     let mut first = 0;
     for l in &laid {
@@ -243,7 +243,15 @@ pub(crate) fn run<'d, T: Send>(
             current: i as u32 + 1,
             total,
         };
-        encode(paint_page(l, k, numbers, fonts, text, images, &colors)?)
+        encode(paint_page(
+            l,
+            k,
+            numbers,
+            fonts,
+            text,
+            (images, &colors),
+            plan,
+        )?)
     };
     let pages = if parallel {
         jobs.par_iter()

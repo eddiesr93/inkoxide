@@ -233,7 +233,7 @@ impl<'a> Tree<'a> {
                     }
                 }
                 Part::Node(n) => match &n.kind {
-                    NodeKind::Box { children } => {
+                    NodeKind::Box { children, .. } => {
                         nodes.extend(children.iter().map(|k| new(Part::Node(k), i)));
                     }
                     NodeKind::Table(t) => {

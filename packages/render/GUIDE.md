@@ -650,13 +650,15 @@ wins over it:
 | `'PDF/A-2b'` or `'PDF/A-2'` | `true` or `'2b'` | PDF/A-2b |
 | `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, as 2b, with [attachments](#attachments) (an e-invoice's XML) |
 | `'PDF/A-1b'` or `'PDF/A-1'` | `'1b'` | PDF/A-1b, the oldest level, for archives that require it |
+| `'PDF/A-2a'` | `'2a'` | PDF/A-2b, [tagged](#accessibility) (accessible) |
+| `'PDF/A-3a'` | `'3a'` | PDF/A-3b, tagged |
 
 PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
 `PDFA_CONFLICT`) and the component at fault for a colour with alpha below 1 (a transparent
 background is fine: it draws nothing), an `opacity` between 0 and 1, an image with an alpha
 channel such as most PNG logos, an SVG drawn with opacity, a mask or a blend mode, or `debug`.
-PDF/A-2b and 3b allow all of these. The a and u levels (`'PDF/A-2a'`, `'PDF/A-3u'`) need tagged
-PDF, which is not supported yet: they fail with `TEMPLATE_ERROR`.
+PDF/A-2b and 3b allow all of these. The u levels (`'PDF/A-2u'`) and PDF/A-1a are not
+supported: they fail with `TEMPLATE_ERROR`.
 
 `conformance` is not part of the document tree: to render a stored `result.document` again at
 the same level, pass `pdfA` to [`renderDocument`](#serving-templates), from
@@ -1037,6 +1039,61 @@ every viewer, and the output stays PDF/A-2b.
 Inside a `Text`, a note is part of the line: it takes no room, and its icon hangs from the top of
 the line where it is, on the page of that line. Line breaking keeps it with the word before it,
 or after a space, with the word after it. There it takes `backgroundColor` and no other style.
+
+## Accessibility
+
+```tsx
+<Document title="Annual report" lang="en" pdfUA>
+  <Page>
+    <Text role="h1">Annual report</Text>
+    <Text>Sales grew in every region.</Text>
+    <Image src={chart} alt="Revenue by month, rising from 12k to 30k" />
+    <Image src={flourish} alt="" />
+    <View role="list">
+      <View role="listItem" className="flex-row">
+        <Text role="label">1.</Text>
+        <View role="listBody"><Text>North: +12%</Text></View>
+      </View>
+    </View>
+    <Table columns={['2fr', '1fr']} headerRows={1}>
+      <Row><Cell>Region</Cell><Cell>Growth</Cell></Row>
+      <Row><Cell header>North</Cell><Cell>12%</Cell></Row>
+    </Table>
+    <TextField name="email" label="Your email address" />
+  </Page>
+</Document>
+```
+
+`tagged` writes **tagged PDF**: a structure tree that tells screen readers, reflowing viewers
+and text extraction what each part of the page is, in reading order. `pdfUA` writes
+**PDF/UA-1** (ISO 14289-1), the standard for accessible PDF, which is tagged and also needs a
+`title`, a `lang`, alternative text on every image that is not decoration, a `label` on every
+field (in a `Header` or `fixed` too), headings in order and lists made of items: without one, the
+render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the component that lacks it. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
+options `tagged` and `pdfUA` do the same and win over the props.
+
+- **What is what.** A `Text` is a paragraph, an `Image`, `Svg` or `Canvas` a figure with its
+  `alt`, a `Table` a table (its header rows head their columns; `<Cell header>` heads its row;
+  spans are kept), a field a form field with its `label`, a `Note` or an `Attachment` an
+  annotation, and a link a link, which screen readers announce by its text. An image with `alt`
+  inside a `Text` is a figure in place, and a link inside one a link. A `View` is not an element: its children belong to its parent.
+  `role` says otherwise: `'h1'` to `'h6'` for headings (PDF/UA wants them to go down one level at
+  a time from `h1`), `'section'`, `'blockQuote'`, `'caption'`, `'figure'` (a `View` drawn as one
+  figure, with `alt`), `'list'`, `'listItem'`, `'label'` and `'listBody'` for lists, or
+  `'artifact'` for decoration that screen readers skip. A `'listItem'` belongs in a `'list'` and a
+  `'listBody'` in a `'listItem'`; the list's numbering is read from its labels (`1.`, `a)`, `•`).
+- **Decoration.** `alt=""` makes an image decoration. Backgrounds, borders, rules, `Header`s,
+  `Footer`s and `fixed` elements (painted on every page), and repeated table header rows are
+  decoration too.
+- **Reading order** is the order of the template, whatever `zIndex`, floats, absolute positions
+  or grid areas do on the page: write the template in the order it should be read.
+- **What checkers cannot tell.** That alternative text says what an image shows, that the
+  template's order is the reading order, and that colours have enough contrast are yours to
+  check. Test with a screen reader, and with [PAC](https://pac.pdf-accessibility.org/) or
+  veraPDF.
+
+A tagged file is larger: about 2.5 times for a long report of tables, much less for documents
+of paragraphs.
 
 ## Attachments
 

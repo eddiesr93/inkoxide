@@ -9,6 +9,7 @@ use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::pdfa::limits::NAME as MAX_NAME;
+use super::tag::{struct_parent, AnnotKind, AnnotTags};
 use super::{
     font_name, round_pt, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc, Writer,
 };
@@ -86,8 +87,13 @@ pub(super) fn write_fields(
     w: &mut Writer,
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
+    mut tags: Option<&mut AnnotTags>,
 ) -> Result<Option<Form>, InkoxideError> {
     let Writer { pdf, alloc, out } = w;
+    let mut key = |r: Ref, page: usize, op: &FieldOp| {
+        tags.as_deref_mut()
+            .map(|t| t.add(r, page, op.owner, AnnotKind::Widget))
+    };
     // Widgets by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
     let mut widgets_of: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
@@ -136,6 +142,7 @@ pub(super) fn write_fields(
             field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps, states.on[0]);
+            struct_parent(&mut annot, key(field_ref, widgets[0].0, first));
             annot.finish();
             annots[widgets[0].0].push(field_ref);
             continue;
@@ -148,6 +155,7 @@ pub(super) fn write_fields(
             f.parent(field_ref);
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, (page, op), &aps, states.on[i]);
+            struct_parent(&mut annot, key(kid, page, op));
             annot.finish();
             annots[page].push(kid);
             kids.push(kid);
@@ -247,6 +255,10 @@ fn field_entries(
     let op = widgets[0].1;
     let spec = &op.field;
     f.pair(Name(b"T"), Str(&out.text(name)));
+    // What screen readers and tooltips say for the field.
+    if let Some(label) = &spec.label {
+        f.pair(Name(b"TU"), Str(&out.text(label)));
+    }
     let mut flags = FieldFlags::empty();
     if spec.read_only {
         flags |= FieldFlags::READ_ONLY;
@@ -387,8 +399,8 @@ pub(super) struct Ctx<'r, 'f, 'a> {
     pub page_refs: &'r [Ref],
     pub font_refs: &'r BTreeMap<FontKey, Ref>,
     pub fonts: &'f FontSet<'a>,
-    /// Under PDF/A, `.notdef` glyphs are left out of appearance streams,
-    /// as page content does, and fields carry no scripts.
+    /// Under PDF/A and PDF/UA, `.notdef` glyphs are left out of appearance
+    /// streams, as page content does; under PDF/A fields carry no scripts.
     pub profile: Profile,
 }
 
@@ -456,7 +468,7 @@ impl Ctx<'_, '_, '_> {
                     c.fill_nonzero();
                 }
                 for t in &op.text {
-                    show_text(&mut c, t, self.fonts, self.profile.is_pdf_a());
+                    show_text(&mut c, t, self.fonts, self.profile.skips_notdef(), false);
                 }
                 c.restore_state();
                 c.end_marked_content();

@@ -7,9 +7,10 @@ use crate::icons::Icon;
 use crate::images::ImageSet;
 use crate::layout::Geometry;
 use crate::paint::{
-    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent,
+    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageBand, PageContent,
 };
 use crate::schema::{Node, NodeKind};
+use crate::tag::{Plan, StructId};
 use crate::text::{ColorGlyphs, PageNumbers, PageText, TextPainter};
 use crate::InkoxideError;
 
@@ -18,6 +19,8 @@ pub(super) struct Content<'x, T: ContentPainter> {
     pub(super) text: T,
     pub(super) images: &'x ImageSet,
     pub(super) fonts: &'x FontSet<'x>,
+    /// The structure of tagged output.
+    pub(super) plan: Option<&'x Plan>,
 }
 
 impl<T: ContentPainter> ContentPainter for Content<'_, T> {
@@ -62,6 +65,23 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
     fn numbers(&self) -> PageNumbers {
         self.text.numbers()
     }
+
+    fn owner(&self, node: &Node) -> Option<StructId> {
+        self.plan?.owner(node)
+    }
+
+    fn link_owner(&self, node: &Node) -> Option<StructId> {
+        self.plan?.link(node)
+    }
+
+    fn tagged(&self) -> bool {
+        self.plan.is_some()
+    }
+
+    fn is_figure(&self, id: StructId) -> bool {
+        self.plan
+            .is_some_and(|p| p.elems[id as usize].kind == crate::tag::Kind::Figure)
+    }
 }
 
 pub(super) fn paint_page(
@@ -70,8 +90,8 @@ pub(super) fn paint_page(
     numbers: PageNumbers,
     fonts: &FontSet<'_>,
     text: &Cache<'_, '_, '_>,
-    images: &ImageSet,
-    colors: &ColorGlyphs,
+    (images, colors): (&ImageSet, &ColorGlyphs),
+    plan: Option<&Plan>,
 ) -> Result<PageContent, InkoxideError> {
     let spec = l.spec;
     let (pw, ph) = (spec.size.width, spec.size.height);
@@ -109,9 +129,11 @@ pub(super) fn paint_page(
             colors,
             numbers,
             page_box: Rect::new(0.0, 0.0, pw, ph),
+            plan,
         },
         images,
         fonts,
+        plan,
     };
 
     // `debug` outlines, drawn over everything once the page is painted.
@@ -160,6 +182,7 @@ pub(super) fn paint_page(
     painter.text.page = Some(&page_text);
     paint_overlays(over, &mut painter, &mut page.ops, &mut debug);
     if let Some(header) = header {
+        page.ops.push(Op::Band(Some(PageBand::Header)));
         paint::paint_flow(
             header,
             FlowPart::All,
@@ -169,9 +192,11 @@ pub(super) fn paint_page(
             &mut page.ops,
             &mut debug,
         );
+        page.ops.push(Op::Band(None));
     }
     if let Some(footer) = footer {
         let fh = footer.nodes[0].geo.h;
+        page.ops.push(Op::Band(Some(PageBand::Footer)));
         paint::paint_flow(
             footer,
             FlowPart::All,
@@ -181,6 +206,7 @@ pub(super) fn paint_page(
             &mut page.ops,
             &mut debug,
         );
+        page.ops.push(Op::Band(None));
     }
 
     let mut labels = paint::DebugLabels::default();

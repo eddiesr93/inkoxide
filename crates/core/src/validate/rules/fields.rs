@@ -56,6 +56,16 @@ impl Checker<'_> {
 
     pub(super) fn field(&mut self, f: &Field) {
         let errors = self.errors.len();
+        if f.label
+            .as_ref()
+            .is_some_and(|l| !(1..=super::MAX_ALT).contains(&l.chars().count()))
+        {
+            self.err(
+                Code::InvalidValue,
+                Some("label"),
+                format!("a field's label is 1 to {} characters", super::MAX_ALT),
+            );
+        }
         let parts = f.name.split('.').count();
         if f.name.chars().count() > MAX_FIELD_NAME
             || parts > MAX_FIELD_PARTS

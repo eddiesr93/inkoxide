@@ -111,6 +111,8 @@ const ENGINE_OPTION_TYPES = {
   threads: 'number',
   compress: 'boolean',
   subsetFonts: 'boolean',
+  tagged: 'boolean',
+  pdfUA: 'boolean',
 } as const;
 
 const PERMISSION_TYPES = {

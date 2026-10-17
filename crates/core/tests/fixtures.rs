@@ -4,30 +4,12 @@
 mod common;
 
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
-use common::{installed, qpdf_available, root, sorted_files, stores};
+use common::{hyphenation_for, installed, qpdf_available, root, sorted_files, stores, verapdf};
 use inkoxide::{
     HyphenationStore, InkoxideError, InputFormat, PdfALevel, RenderOptions, ValidationCode,
 };
-
-/// Patterns registered for one fixture only:
-/// `fixtures/hyphenation/<fixture>.<lang>.tex`.
-fn hyphenation_for(name: &str) -> HyphenationStore {
-    let mut store = HyphenationStore::new();
-    for p in sorted_files(&root().join("fixtures/hyphenation"), &["tex"]) {
-        let file = p.file_name().unwrap().to_str().unwrap();
-        if let Some(lang) = file
-            .strip_prefix(name)
-            .and_then(|rest| rest.strip_prefix('.'))
-            .and_then(|rest| rest.strip_suffix(".tex"))
-        {
-            store.register(lang, &fs::read(&p).unwrap()).unwrap();
-        }
-    }
-    store
-}
 
 #[test]
 fn all_fixtures_render() {
@@ -206,26 +188,6 @@ fn pdf_a_fixtures() {
             outputs.push(out);
         }
         verapdf(name, &outputs);
-    }
-}
-
-/// With `VERAPDF` set, every one of `outputs` passes veraPDF's profile
-/// for `flavour` (`1b`, `2b`, `3b`). CI installs veraPDF and sets it.
-fn verapdf(flavour: &str, outputs: &[PathBuf]) {
-    let vera = std::env::var("VERAPDF");
-    assert!(
-        vera.is_ok() || std::env::var_os("CI").is_none(),
-        "VERAPDF is not set"
-    );
-    if let Ok(vera) = vera {
-        let o = Command::new(vera)
-            .args(["--flavour", flavour, "--format", "text"])
-            .args(outputs)
-            .output()
-            .unwrap();
-        let report = String::from_utf8_lossy(&o.stdout);
-        let passed = report.lines().filter(|l| l.starts_with("PASS ")).count();
-        assert_eq!(passed, outputs.len(), "veraPDF ({flavour}):\n{report}");
     }
 }
 

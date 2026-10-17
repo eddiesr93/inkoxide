@@ -264,6 +264,10 @@ export async function renderPdf(
   if (opts.subsetFonts != null) options.subsetFonts = opts.subsetFonts;
   const pdfA = opts.pdfA ?? output.pdfA;
   if (pdfA !== undefined) options.pdfA = pdfA;
+  const tagged = opts.tagged ?? output.tagged;
+  if (tagged !== undefined) options.tagged = tagged;
+  const pdfUA = opts.pdfUA ?? output.pdfUA;
+  if (pdfUA !== undefined) options.pdfUA = pdfUA;
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
   const signal = withTimeout(opts.signal, opts.timeoutMs);

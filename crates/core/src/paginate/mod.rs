@@ -433,7 +433,7 @@ impl Paginator<'_, '_, '_> {
         }
         match &node.kind {
             NodeKind::Text { .. } | NodeKind::Table(_) => false,
-            NodeKind::Box { children } => children.is_empty() || (banded(node) && !tall),
+            NodeKind::Box { children, .. } => children.is_empty() || (banded(node) && !tall),
             _ => true,
         }
     }

@@ -8,7 +8,9 @@ or should come sooner.
 - **In the browser**: threads, through a thread pool in Web Workers, for pages that are
   cross-origin isolated; `renderToStream`; reading local files.
 - **A build-time Tailwind plugin**, so that a browser need not load the Tailwind compiler.
-- **Accessibility**: tagged PDF and PDF/UA, with alternative text for images.
+- **Accessibility**: PDF/UA-2 (PDF 2.0, with structure destinations); structure elements in
+  object streams, so tagged files grow less; list numbering attributes; tagging the parts of SVG
+  images.
 - **Encryption**: an `entropy` option, for output that cannot be linked to its input; Unicode
   passwords, prepared with SASLprep (passwords are printable ASCII now); and an independent
   review of the key derivation by cryptographers. It has had an internal review only.
