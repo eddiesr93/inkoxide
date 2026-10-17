@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::images::{ImageCrateDecoder, ImageStore};
+use crate::paint::{self, Op};
 use crate::FontStore;
 
 /// Page size; the flow is one box sliced over the pages.
