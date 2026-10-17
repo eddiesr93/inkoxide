@@ -179,6 +179,7 @@ pub(crate) fn paint(
                     id,
                     x: pen,
                     y_offset: 0.0,
+                    continues: false,
                 });
                 pen += lf.advance(id) * scale;
             }

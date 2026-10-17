@@ -511,6 +511,7 @@ mod tests {
                         id,
                         x: 20.0 * i as f32,
                         y_offset: 0.0,
+                        continues: false,
                     })
                     .collect(),
             };

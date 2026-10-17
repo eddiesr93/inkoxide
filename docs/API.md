@@ -150,14 +150,51 @@ bytes, arrays of at most 8191 entries, dictionaries of at most 4095, and
 graphics states nested at most 28 deep. A document that would pass one
 fails with `PDF_ERROR`.
 
-The a and u levels need tagged PDF, which Inkoxide does not write yet.
-
 In the CLI, `--pdf-a` alone writes PDF/A-2b, and a level follows an
 equals sign:
 
 ```sh
 inkoxide render doc.json --fonts fonts/ --pdf-a=1b
 ```
+
+## Tagged PDF and PDF/UA
+
+With `tagged` (Rust: `with_tagged`), the file has a structure tree:
+what each part of the page is, in reading order, for screen readers,
+reflowing viewers and text extraction. `pdfUA` (`with_pdf_ua`) writes
+PDF/UA-1 (ISO 14289-1), which is tagged; the PDF/A levels 2a and 3a are
+tagged too, and combine with `pdfUA`. In the CLI, `--tagged` and
+`--pdf-ua`.
+
+- **Elements.** The reading order is document order, whatever `zIndex`,
+  floats or positioning do on the page. A text is a paragraph and an
+  image a figure with its `alt`; a table keeps its header rows (`TH`,
+  scope column), header cells (`header`, scope row) and spans; a field is
+  a form field with its `label` (`/TU`), a note or an attachment icon an
+  annotation, and a link a link that says where it goes (`/Contents`). A
+  box is no element of its own unless its [`role`](SCHEMA.md#role) makes
+  it one (`h1`–`h6`, `section`, `blockQuote`, `figure`, a list and its
+  parts).
+- **Decoration** is marked as artifacts, which screen readers skip:
+  headers, footers and other content painted on every page, repeated
+  table header rows, backgrounds and borders, nodes with the role
+  `artifact`, and images with an empty `alt`, in text too.
+- **Glyphs.** Every glyph drawn maps to text, as PDF/UA requires: a
+  glyph a font draws apart from the first of its cluster (a mark, the
+  dots of an Arabic letter) maps to the combining grapheme joiner, inside
+  a span with no text (`/ActualText ()`), so that extraction reads the
+  cluster once.
+- **`UA_CONFLICT`.** With `pdfUA`, a document without a `meta.title`, a
+  `meta.lang`, `alt` on each image (in text too) and `figure` box that
+  is not decoration, a `label` on each field, or headings that go down
+  one level at a time from `h1` fails, at the path of the first thing it
+  lacks. Only `render` reports it. An encrypted file must keep
+  `contentAccessibility`.
+
+Without these options the output does not change. A tagged file is the
+same on any number of threads, draws the same pixels and extracts the
+same text as untagged; it is larger, about 2.5 times for a long report
+of tables.
 
 ## Encryption
 

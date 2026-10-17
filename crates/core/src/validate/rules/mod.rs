@@ -712,7 +712,7 @@ impl<'a> Checker<'a> {
     }
 
     /// What PDF/UA-1 asks of a node that tagged output reads: alternative
-    /// text on images and figures, labels on fields, and headings that go
+    /// text on images (in text too) and figures, labels on fields, and headings that go
     /// down one level at a time from `h1`. The first thing it lacks is the
     /// render's conflict.
     fn ua_node(&mut self, node: &Node) {
@@ -733,6 +733,19 @@ impl<'a> Checker<'a> {
                 "PDF/UA requires alternative text on an image: `alt`, or \"\" for decoration"
                     .into(),
             ),
+            NodeKind::Text { runs } => {
+                if let Some(i) = runs
+                    .iter()
+                    .position(|r| r.image.as_ref().is_some_and(|im| im.alt.is_none()))
+                {
+                    lacks(
+                        self,
+                        &format!("runs[{i}].image.alt"),
+                        "PDF/UA requires alternative text on an image: `alt`, or \"\" for decoration"
+                            .into(),
+                    );
+                }
+            }
             NodeKind::Box { alt: None, .. } if node.role == Some(Role::Figure) => lacks(
                 self,
                 "alt",

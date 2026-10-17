@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use common::{qpdf_available, root, stores};
+use common::{installed, qpdf_available, root, sorted_files, stores};
 use inkoxide::{Encryption, InputFormat, PdfALevel, Permissions, RenderOptions};
 use serde_json::Value;
 
@@ -188,6 +188,7 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
         other => panic!("{d}: {:?}", other.map(|_| ())),
     };
     let image = r#"{"type":"image","data":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiLz4="}"#;
+    let run_image = |alt: &str| run_image(alt, image);
     for (d, path) in [
         (doc(r#""lang":"en""#, ""), "meta.title"),
         (doc(r#""title":"T""#, ""), "meta.lang"),
@@ -202,6 +203,10 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
                 r#"{"type":"field","field":{"name":"a","kind":"checkbox"}}"#,
             ),
             "pages[0].children[0].field.label",
+        ),
+        (
+            doc(meta, &run_image("")),
+            "pages[0].children[0].runs[1].image.alt",
         ),
         (doc(meta, &text("h2")), "pages[0].children[0].role"),
         (
@@ -218,6 +223,7 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
     // Decoration needs none of it, and tagging alone needs no title.
     let decorative = doc(meta, &image.replace("\"data\"", r#""alt":"","data""#));
     render(decorative.as_bytes(), &ua).unwrap();
+    render(doc(meta, &run_image(r#","alt":"""#)).as_bytes(), &ua).unwrap();
     render(
         doc("", image).as_bytes(),
         &RenderOptions::default().with_tagged(true),
@@ -236,6 +242,108 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
             "options.encryption.permissions.contentAccessibility".into()
         )
     );
+}
+
+/// Tagging changes what the file says, not what it shows: every fixture,
+/// tagged, extracts the same text and draws the same pixels (its first
+/// two pages) as untagged, when poppler is installed.
+#[test]
+fn tagged_fixtures_read_and_look_as_untagged() {
+    if !installed("pdftotext", "-v") || !installed("pdftoppm", "-v") {
+        return;
+    }
+    let dir = root().join("target/accessibility/parity");
+    fs::create_dir_all(&dir).unwrap();
+    let run = |tool: &str, args: &[&str]| {
+        let o = Command::new(tool).args(args).output().unwrap();
+        assert!(
+            o.status.success(),
+            "{tool}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+    };
+    for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
+        let name = doc.file_stem().unwrap().to_str().unwrap().to_string();
+        let input = fs::read(&doc).unwrap();
+        let mut seen: Vec<(String, Vec<u8>)> = Vec::new();
+        for tagged in [false, true] {
+            let options = RenderOptions::default()
+                .with_creation_date("2026-10-08T00:00:00Z")
+                .with_tagged(tagged);
+            let pdf = render(&input, &options).unwrap();
+            let base = dir.join(format!("{name}-{tagged}"));
+            let file = base.with_extension("pdf");
+            fs::write(&file, pdf).unwrap();
+            let (file, base) = (file.to_str().unwrap(), base.to_str().unwrap());
+            let text = format!("{base}.txt");
+            run("pdftotext", &[file, &text]);
+            let mut out = vec![("text".to_string(), fs::read(&text).unwrap())];
+            run("pdftoppm", &["-r", "36", "-l", "2", file, base]);
+            for page in sorted_files(&dir, &["ppm"]) {
+                let stem = page.file_name().unwrap().to_str().unwrap().to_string();
+                if let Some(n) = stem.strip_prefix(&format!("{name}-{tagged}-")) {
+                    out.push((n.to_string(), fs::read(&page).unwrap()));
+                    fs::remove_file(&page).unwrap();
+                }
+            }
+            if seen.is_empty() {
+                seen = out;
+            } else {
+                assert_eq!(seen.len(), out.len(), "{name}: pages");
+                for ((what, a), (_, b)) in seen.iter().zip(&out) {
+                    assert!(a == b, "{name}: {what} differs when tagged");
+                }
+            }
+        }
+    }
+}
+
+/// A paragraph with a run image from `image`'s `data`, with `alt` (`""`:
+/// none; `,"alt":""`: an empty one) between two runs of text.
+fn run_image(alt: &str, image: &str) -> String {
+    let data = image
+        .split(r#""data":"#)
+        .nth(1)
+        .unwrap()
+        .trim_end_matches('}');
+    format!(
+        r#"{{"type":"text","runs":[{{"text":"Before ","font":"Inter-Regular","size":9}},
+          {{"image":{{"data":{data},"width":9,"height":9{alt}}},"font":"Inter-Regular","size":9}},
+          {{"text":" after","font":"Inter-Regular","size":9}}]}}"#
+    )
+}
+
+/// An image in text with an empty `alt` is decoration: an artifact amid
+/// the paragraph's content, which goes on after it in a sequence of its
+/// own.
+#[test]
+fn an_image_in_text_with_an_empty_alt_is_an_artifact() {
+    let image = r#""data":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiLz4="}"#;
+    let doc = format!(
+        r#"{{"version":1,"meta":{{"title":"T","lang":"en"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+        "pages":[{{"size":{{"width":200,"height":200}},"children":[{}]}}]}}"#,
+        run_image(r#","alt":"""#, image)
+    );
+    let options = RenderOptions::default()
+        .with_pdf_ua(true)
+        .with_compress(false);
+    let pdf = render(doc.as_bytes(), &options).unwrap();
+    let text = String::from_utf8_lossy(&pdf);
+    let page = text
+        .split("stream\n")
+        .find(|s| s.contains(" BDC"))
+        .and_then(|s| s.split("endstream").next())
+        .unwrap();
+    let artifact = page.find("/Artifact BMC").expect(page);
+    let image = page.find(" Do").expect(page);
+    let first = page.find("/P <<\n  /MCID 0").expect(page);
+    let second = page.find("/P <<\n  /MCID 1").expect(page);
+    assert!(
+        first < artifact && artifact < image && image < second,
+        "{page}"
+    );
+    assert!(!page.contains("/ActualText"), "{page}");
+    verapdf(&write("decoration", &pdf), "ua1");
 }
 
 /// Marked content and save levels nest (ISO 32000-1, 14.6): no `q` … `Q`

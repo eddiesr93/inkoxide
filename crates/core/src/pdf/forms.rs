@@ -483,7 +483,7 @@ impl Ctx<'_, '_, '_> {
                     c.fill_nonzero();
                 }
                 for t in &op.text {
-                    show_text(&mut c, t, self.fonts, self.profile.is_pdf_a());
+                    show_text(&mut c, t, self.fonts, self.profile.is_pdf_a(), false);
                 }
                 c.restore_state();
                 c.end_marked_content();

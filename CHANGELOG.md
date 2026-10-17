@@ -14,9 +14,10 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - Tagged PDF and PDF/UA-1. The render option `tagged` writes a structure tree in document
   order: paragraphs, headings, lists, sections, figures with their alternative text, tables with
   header cells and spans, links, form fields and annotations, with everything else (backgrounds,
-  borders, headers, footers, fixed elements, repeated header rows) marked as decoration.
+  borders, headers, footers, fixed elements, repeated header rows, images with `alt=""`, in text
+  too) marked as decoration. Every glyph maps to text, and extraction reads each cluster once.
   `pdfUA` writes PDF/UA-1, with its metadata, and refuses a document without a title, a
-  language, alternative text on its images, labels on its fields or headings in order
+  language, alternative text on its images (in text too), labels on its fields or headings in order
   (`UA_CONFLICT`). New PDF/A levels 2a and 3a are tagged. Nodes take `role`, `figure` boxes
   `alt`, table cells `header` and fields `label`; `@inkoxide/render` takes them as props, with
   `<Document tagged pdfUA>` and `conformance="PDF/A-2a"`. The CLI takes `--tagged` and

@@ -147,6 +147,7 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
                 id: g.id,
                 x: 0.0,
                 y_offset: 0.0,
+                continues: false,
             }],
         };
         let mut ops = Vec::new();

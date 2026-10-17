@@ -1049,7 +1049,7 @@ export interface InlineImage {
    */
   objectPosition?: ObjectPosition;
   /**
-   * Alternative text: what copying, searching and screen readers get for the image.
+   * Alternative text: what copying, searching and screen readers get for the image. In tagged output, `""` makes the image decoration; PDF/UA requires `alt` on every image that is not.
    */
   alt?: string;
 }
