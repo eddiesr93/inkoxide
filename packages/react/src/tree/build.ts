@@ -1,12 +1,9 @@
 import type {
   BackgroundImage,
-  Bookmark,
   BoxNode,
-  Break,
   Color,
   ColumnSpec,
   Document,
-  FieldFormat,
   FieldNode,
   FontDecl,
   ImageNode,
@@ -37,10 +34,8 @@ import {
   type HyphenationCallback,
   type Length,
   type PageSize,
-  type Permissions,
   type RenderProp,
   type Style as StyleInput,
-  type TextFormat,
 } from '../components/index.ts';
 import { TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
@@ -55,8 +50,21 @@ import {
 } from '../reconciler/instance.ts';
 import { renderToInstances } from '../reconciler/render.ts';
 import { classStyle, defaultFamily, isUnsupportedClass } from '../tailwind.ts';
+import { textFieldFormat } from './formats.ts';
 import { ImageTable, type ImageTableOptions, type PendingImage } from './images.ts';
+import { documentConformance, documentEncryption, type OutputOptions, outputOptions } from './output.ts';
 import { PRESET_NAMES, presetSize } from './page-sizes.ts';
+import {
+  BLOCK_ONLY,
+  blockOnly,
+  commonProps,
+  flowOnlyProp,
+  isEl,
+  isFixed,
+  paginates,
+  toBookmark,
+  toBreak,
+} from './props.ts';
 import {
   boxKeys,
   boxStyle,
@@ -92,42 +100,7 @@ export interface BuildOptions {
  * Render options a `<Document>` sets that are not part of the document tree, for the caller to
  * pass to the engine.
  */
-export interface OutputOptions {
-  /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
-  pdfA?: PdfALevel;
-  /**
-   * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
-   * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
-   */
-  encryption?: EncryptionOptions;
-}
-
-/** The encryption render option (the `inkoxide` binding's `EncryptionOptions`). */
-export interface EncryptionOptions {
-  userPassword?: string;
-  ownerPassword?: string;
-  permissions?: Permissions;
-}
-
-const REDACTED = '<redacted>';
-
-/** Output options whose JSON and `util.inspect` view hide the passwords. */
-function outputOptions(): OutputOptions {
-  const redacted = function (this: OutputOptions): object {
-    return this.encryption === undefined ? { ...this } : { ...this, encryption: REDACTED };
-  };
-  const out: OutputOptions = {};
-  for (const key of ['toJSON', Symbol.for('nodejs.util.inspect.custom')]) {
-    Object.defineProperty(out, key, { value: redacted, enumerable: false });
-  }
-  return out;
-}
-
-/** The PDF/A parts and conformance levels the engine writes, from the oldest part. */
-const PDF_A_LEVELS = ['1b', '2b', '3b'] as const;
-
-/** A PDF/A part and conformance level the engine writes. */
-export type PdfALevel = (typeof PDF_A_LEVELS)[number];
+export type { EncryptionOptions, OutputOptions, PdfALevel } from './output.ts';
 
 export interface BuildResult {
   document: Document;
@@ -148,31 +121,6 @@ export interface BuildResult {
   /** Other images to load: image id → a file, a request, or a function or promise `src`. */
   pending: Record<string, PendingImage>;
 }
-
-/**
- * Props of a `Text` or `Link` that need a node of its own: an inline run inside a `Text` has
- * none. `debug` is left out: on a run it draws nothing, as the guide says.
- */
-const BLOCK_ONLY = [
-  'id',
-  'bookmark',
-  'pages',
-  'render',
-  'dir',
-  'orphans',
-  'widows',
-  'break',
-  'wrap',
-  'minPresenceAhead',
-] as const;
-
-/** Whether a block-only prop is set to something other than its default (`wrap`, `break={false}`). */
-function blockOnly(props: Record<string, unknown>, key: (typeof BLOCK_ONLY)[number]): boolean {
-  const v = props[key];
-  return v !== undefined && !(key === 'wrap' && v === true) && !(key === 'break' && v === false);
-}
-
-const isEl = (n: Node | undefined, type: string): n is Instance => n?.kind === 'element' && n.type === type;
 
 /** A run's OpenType features: `fontVariantNumeric`'s, then `fontFeatureSettings`, which win. */
 function fontFeatures(ctx: TextCtx): Record<string, number> | undefined {
@@ -195,62 +143,8 @@ function sameColor(a: Color | undefined, b: Color | undefined): boolean {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
 
-function toBreak(b: BreakProp | undefined): Break | undefined {
-  if (b === undefined) return undefined;
-  if (b === 'avoid') return { inside: 'avoid' };
-  if (b === 'page-before') return { before: 'page' };
-  if (b === 'page-after') return { after: 'page' };
-  return b;
-}
-
-/** Copies the props every element's node takes, `id` and `debug`. */
-function commonProps(node: { id?: string; debug?: boolean }, inst: Instance): void {
-  if (typeof inst.props.id === 'string') node.id = inst.props.id;
-  if (inst.props.debug === true) node.debug = true;
-}
-
-/** Props of an element in the flow, which a `Page`, a band, a row or a cell does not take. */
-const FLOW_ONLY = [
-  'pages',
-  'href',
-  'bookmark',
-  'render',
-  'break',
-  'wrap',
-  'minPresenceAhead',
-  'fixed',
-] as const;
-
-/** The first flow-only prop set on `inst` to something other than its default. */
-function flowOnlyProp(inst: Instance, skip: readonly string[] = []): (typeof FLOW_ONLY)[number] | undefined {
-  return FLOW_ONLY.find((k) => {
-    if (skip.includes(k)) return false;
-    if (k === 'fixed') return isFixed(inst);
-    if (k === 'break' && inst.props.break === false) return false;
-    if (k === 'wrap' && inst.props.wrap === true) return false;
-    return inst.props[k] !== undefined;
-  });
-}
-
 /** The end of the component stack of an error inside a `render` prop's own root. */
 const RENDER_CALL = formatStack([RenderCall.name]);
-
-/** Whether the element has the `fixed` prop. */
-function isFixed(inst: Instance): boolean {
-  return inst.props.fixed !== undefined && inst.props.fixed !== false;
-}
-
-/** Whether `b` sets a pagination control: a break before, after or inside, or `minPresenceAhead`. */
-function paginates(b: Break | undefined): boolean {
-  if (b === undefined) return false;
-  const set = (v: string | undefined) => v !== undefined && v !== 'auto';
-  return set(b.before) || set(b.after) || set(b.inside) || b.minPresenceAhead !== undefined;
-}
-
-function toBookmark(b: BookmarkProp | undefined): Bookmark | undefined {
-  if (b === undefined) return undefined;
-  return typeof b === 'string' ? { title: b } : b;
-}
 
 /** An emoji sequence (Unicode's RGI emoji); the `v` flag is built at run time for the ES2023 target. */
 const EMOJI = new RegExp('\\p{RGI_Emoji}', 'gv');
@@ -500,8 +394,9 @@ class Builder {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
-    if (p.conformance !== undefined) this.output.pdfA = this.conformance(root, p.conformance);
-    const encryption = this.encryption(root, p);
+    const fail = (message: string): never => this.fail(root, message);
+    if (p.conformance !== undefined) this.output.pdfA = documentConformance(p.conformance, fail);
+    const encryption = documentEncryption(p, fail);
     if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
@@ -536,48 +431,6 @@ class Builder {
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
-  }
-
-  /**
-   * The encryption of `<Document userPassword ownerPassword permissions>`, its types checked;
-   * the engine checks the values. Messages never show a password.
-   */
-  private encryption(root: Instance, p: Record<string, unknown>): EncryptionOptions | undefined {
-    const out: EncryptionOptions = {};
-    for (const key of ['userPassword', 'ownerPassword'] as const) {
-      const v = p[key];
-      if (v === undefined) continue;
-      if (typeof v !== 'string') this.fail(root, `<Document ${key}> must be a string.`);
-      out[key] = v;
-    }
-    if (p.permissions !== undefined) {
-      const perms = p.permissions;
-      if (typeof perms !== 'object' || perms === null || Array.isArray(perms)) {
-        this.fail(root, '<Document permissions> must be an object.');
-      }
-      out.permissions = { ...(perms as Permissions) };
-    }
-    return Object.keys(out).length > 0 ? out : undefined;
-  }
-
-  /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
-  private conformance(root: Instance, value: unknown): PdfALevel {
-    const m = typeof value === 'string' ? /^PDF\/A-(\d)([abu]?)$/.exec(value) : null;
-    const level = PDF_A_LEVELS.find((l) => l === `${m?.[1]}b`);
-    if (m && level && (m[2] === '' || m[2] === 'b')) return level;
-    const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
-    if (m && level) {
-      this.fail(
-        root,
-        `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${level}'.`,
-      );
-    }
-    const levels = PDF_A_LEVELS.map((l) => `'PDF/A-${l}'`);
-    const parts = PDF_A_LEVELS.map((l) => `'PDF/A-${l.slice(0, -1)}'`);
-    this.fail(
-      root,
-      `<Document conformance=${shown}> is not a PDF/A level: use ${levels.slice(0, -1).join(', ')} or ${levels.at(-1)} (or ${parts.join(', ')}).`,
-    );
   }
 
   fontIds(): string[] {
@@ -1376,7 +1229,8 @@ class Builder {
         if (p.multiline) field.multiline = true;
         if (p.password) field.password = true;
         if (p.maxLength !== undefined) field.maxLength = p.maxLength;
-        if (p.format !== undefined) field.format = this.textFormat(inst, p.format);
+        if (p.format !== undefined)
+          field.format = textFieldFormat(p.format, (m, init) => this.fail(inst, m, init));
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
@@ -1458,48 +1312,6 @@ class Builder {
     if (p.open) note.open = true;
     if (color) note.color = color;
     return note;
-  }
-
-  /** A `TextField`'s format, from its readable keys or their other names. */
-  private textFormat(inst: Instance, f: TextFormat): FieldFormat {
-    if (typeof f !== 'object' || f === null || Array.isArray(f)) {
-      this.fail(inst, "<TextField format> is an object, as format={{ type: 'number', decimals: 2 }}.", {
-        kind: 'props',
-      });
-    }
-    const type = f.type === 'zip4' ? 'zipPlus4' : f.type;
-    const out: FieldFormat = { type };
-    // The other names come with their own defaults: no decimals and no thousands separator.
-    const aliased = ALIAS_KEYS.some((k) => f[k] !== undefined) && (type === 'number' || type === 'percent');
-    const decimals = f.decimals ?? f.nDec ?? (aliased ? 0 : undefined);
-    if (decimals !== undefined) out.decimals = decimals;
-    const sepComma = f.sepComma ?? (aliased ? false : undefined);
-    const separators =
-      f.separators ?? (sepComma === undefined ? undefined : sepComma ? '1,234.56' : '1234.56');
-    if (separators !== undefined) out.separators = separators;
-    const negative = f.negative ?? (f.negStyle === undefined ? undefined : NEGATIVE[f.negStyle]);
-    if (negative !== undefined) out.negative = negative;
-    if (f.currency !== undefined) out.currency = f.currency;
-    const before = f.currencyBefore ?? f.currencyPrepend;
-    if (before !== undefined) out.currencyBefore = before;
-    const pattern = f.pattern ?? (f.param === undefined ? undefined : this.formatParam(inst, type, f.param));
-    if (pattern !== undefined) out.pattern = pattern;
-    return out;
-  }
-
-  /** A format's `param`: the pattern of a date, or one of the four styles of a time, by index. */
-  private formatParam(inst: Instance, type: FieldFormat['type'], param: string | number): string {
-    if (type !== 'time') return String(param);
-    const style = /^[0-3]$/.test(String(param)) ? TIME_STYLES[Number(param)] : undefined;
-    if (style === undefined) {
-      this.fail(
-        inst,
-        `<TextField format> param on a time is a style from 0 to 3, not ${JSON.stringify(param)}; ` +
-          "give a pattern as pattern: 'HH:MM'.",
-        { kind: 'props' },
-      );
-    }
-    return style;
   }
 
   /**
@@ -1598,20 +1410,6 @@ class Builder {
     return this.mark(stackVariants(all), inst);
   }
 }
-
-/** The other names of format keys, which come with their own defaults. */
-const ALIAS_KEYS = ['nDec', 'sepComma', 'negStyle', 'currencyPrepend', 'param'] as const;
-
-/** The patterns of a time format's `param`: the four styles of `AFTime_Format`. */
-const TIME_STYLES: readonly string[] = ['HH:MM', 'h:MM tt', 'HH:MM:ss', 'h:MM:ss tt'];
-
-/** The negative styles by their other names (`negStyle`). */
-const NEGATIVE: Record<string, FieldFormat['negative']> = {
-  MinusBlack: 'minus',
-  Red: 'red',
-  ParensBlack: 'parens',
-  ParensRed: 'parensRed',
-};
 
 /** Builds the schema document from rendered host instances. */
 export function buildTree(container: Container, opts: BuildOptions): BuildResult {

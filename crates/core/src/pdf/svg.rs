@@ -31,11 +31,11 @@ use pdf_writer::types::{
     BlendMode, ColorSpaceOperand, FunctionShadingType, LineCapStyle, LineJoinStyle, MaskType,
     PaintType, TextRenderingMode, TilingType,
 };
-use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str};
+use pdf_writer::{Content, Filter, Finish, Name, Rect, Ref, Str};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{alpha_key, key_alpha, number, Out, Profile, RefAlloc};
+use super::{alpha_key, key_alpha, number, Profile, Writer};
 use crate::fonts::{FontKey, FontSet};
 use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
@@ -216,18 +216,14 @@ impl Frame {
 /// onto the unit square (y up), like an image `XObject`. `text` draws the
 /// text of a render's copy of an SVG at its probes.
 pub(crate) fn write_svg(
-    pdf: &mut Pdf,
-    alloc: &mut RefAlloc,
-    out: &mut Out,
+    writer: &mut Writer,
     (tree, size): (&usvg::Tree, usvg::Size),
     profile: Profile,
     text: Option<(&ProbedText, TextResources<'_, '_>)>,
 ) -> Result<Ref, InkoxideError> {
     let (w, h) = (size.width(), size.height());
     let mut s = Svg {
-        pdf,
-        alloc,
-        out,
+        w: writer,
         alphas: HashMap::new(),
         images: HashMap::new(),
         segments: 0,
@@ -236,7 +232,7 @@ pub(crate) fn write_svg(
     };
     let mut cv = Canvas::new();
     s.group(&mut cv, tree.root(), Scope::form(0, false))?;
-    let id = s.alloc.next();
+    let id = s.w.alloc.next();
     s.write_form(
         id,
         cv,
@@ -673,9 +669,7 @@ impl Scope {
 }
 
 struct Svg<'a> {
-    pdf: &'a mut Pdf,
-    alloc: &'a mut RefAlloc,
-    out: &'a mut Out,
+    w: &'a mut Writer,
     /// Shared graphics states for (fill alpha, stroke alpha, blend mode).
     alphas: HashMap<(u16, u16, u8), Ref>,
     /// Embedded raster images by content: the image `XObject`, `None` if
@@ -699,7 +693,7 @@ fn too_complex() -> InkoxideError {
 
 impl Svg<'_> {
     fn next(&mut self) -> Ref {
-        self.alloc.next()
+        self.w.alloc.next()
     }
 
     fn write_form(
@@ -714,7 +708,7 @@ impl Svg<'_> {
             &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), self.profile)?,
             flate::LEVEL,
         )?;
-        self.out.form_xobject(self.pdf, id, &data, |f| {
+        self.w.out.form_xobject(&mut self.w.pdf, id, &data, |f| {
             f.filter(Filter::FlateDecode);
             f.bbox(bounded(bbox));
             if let Some(m) = m {
@@ -757,7 +751,7 @@ impl Svg<'_> {
             return Ok(r);
         }
         let r = self.next();
-        let mut gs = self.pdf.ext_graphics(r);
+        let mut gs = self.w.pdf.ext_graphics(r);
         gs.non_stroking_alpha(key_alpha(key.0))
             .stroking_alpha(key_alpha(key.1));
         if blend != usvg::BlendMode::Normal {
@@ -770,7 +764,8 @@ impl Svg<'_> {
 
     fn soft_mask_gs(&mut self, group: Ref, kind: MaskType) -> Ref {
         let r = self.next();
-        self.pdf
+        self.w
+            .pdf
             .ext_graphics(r)
             .soft_mask()
             .subtype(kind)
@@ -1343,7 +1338,8 @@ impl Svg<'_> {
                 let periods = Periods::cover(spread, &kind, gt, bbox);
                 let shading = self.shading(stops, &kind, periods, false);
                 let pattern = self.next();
-                self.pdf
+                self.w
+                    .pdf
                     .shading_pattern(pattern)
                     .shading_ref(shading)
                     .matrix(matrix(at.ts.pre_concat(gt)));
@@ -1366,7 +1362,7 @@ impl Svg<'_> {
         match alpha_mask {
             Some(form) => {
                 let r = self.next();
-                let mut gs = self.pdf.ext_graphics(r);
+                let mut gs = self.w.pdf.ext_graphics(r);
                 gs.non_stroking_alpha(f).stroking_alpha(s);
                 gs.soft_mask().subtype(MaskType::Luminosity).group(form);
                 gs.finish();
@@ -1415,7 +1411,8 @@ impl Svg<'_> {
         let mut parts = Vec::with_capacity(points.len() - 1);
         for w in points.windows(2) {
             let r = self.next();
-            self.pdf
+            self.w
+                .pdf
                 .exponential_function(r)
                 .domain([0.0, 1.0])
                 .c0(w[0].1.iter().copied())
@@ -1428,7 +1425,8 @@ impl Svg<'_> {
         } else {
             let r = self.next();
             let bounds: Vec<f32> = points[1..points.len() - 1].iter().map(|p| p.0).collect();
-            self.pdf
+            self.w
+                .pdf
                 .stitching_function(r)
                 .domain([0.0, 1.0])
                 .functions(parts.iter().copied())
@@ -1442,7 +1440,8 @@ impl Svg<'_> {
             Some(p) => {
                 let starts: Vec<f32> = (p.from as i32..p.to as i32).map(|n| n as f32).collect();
                 let r = self.next();
-                self.pdf
+                self.w
+                    .pdf
                     .stitching_function(r)
                     .domain([p.from, p.to])
                     .functions(starts.iter().map(|_| function))
@@ -1459,7 +1458,7 @@ impl Svg<'_> {
             None => (function, [0.0, 1.0], geometry.1.clone()),
         };
         let id = self.next();
-        let mut sh = self.pdf.function_shading(id);
+        let mut sh = self.w.pdf.function_shading(id);
         sh.shading_type(geometry.0);
         if alpha {
             sh.color_space().device_gray();
@@ -1486,7 +1485,7 @@ impl Svg<'_> {
             flate::LEVEL,
         )?;
         let id = self.next();
-        self.out.tiling_pattern(self.pdf, id, &data, |t| {
+        self.w.out.tiling_pattern(&mut self.w.pdf, id, &data, |t| {
             t.filter(Filter::FlateDecode);
             t.tiling_type(TilingType::ConstantSpacing)
                 .paint_type(PaintType::Colored)
@@ -1509,9 +1508,7 @@ impl Svg<'_> {
         }
         let r = match crate::images::decode_embedded(data) {
             Ok(decoded) => Some(super::image::write_image(
-                self.pdf,
-                self.alloc,
-                self.out,
+                self.w,
                 &decoded,
                 self.profile,
                 None,
@@ -1567,10 +1564,9 @@ impl Svg<'_> {
 mod tests {
     use std::fmt::Write as _;
 
-    use pdf_writer::Pdf;
-
-    use super::{Out, Profile, RefAlloc};
+    use super::Profile;
     use crate::images::{ImageBody, ImageCrateDecoder, ImageDecoder};
+    use crate::pdf::{Out, Writer};
 
     /// The PDF objects written for `svg`.
     fn written(svg: &str) -> Vec<u8> {
@@ -1578,17 +1574,9 @@ mod tests {
         else {
             panic!("not an SVG");
         };
-        let mut pdf = Pdf::new();
-        super::write_svg(
-            &mut pdf,
-            &mut RefAlloc(0),
-            &mut Out::plain(),
-            (&tree, tree.size()),
-            Profile::default(),
-            None,
-        )
-        .unwrap();
-        pdf.finish()
+        let mut w = Writer::new(Out::plain());
+        super::write_svg(&mut w, (&tree, tree.size()), Profile::default(), None).unwrap();
+        w.pdf.finish()
     }
 
     /// The objects written for `svg` as text, its streams inflated.
@@ -1937,18 +1925,14 @@ mod tests {
             assert_eq!(super::transparency(&tree, None), want, "{body}");
             // The writer refuses exactly what the scan finds.
             let refused = super::write_svg(
-                &mut Pdf::new(),
-                &mut RefAlloc(0),
-                &mut Out::plain(),
+                &mut Writer::new(Out::plain()),
                 (&tree, tree.size()),
                 one_b,
                 None,
             );
             assert_eq!(refused.is_err(), want.is_some(), "{body}");
             super::write_svg(
-                &mut Pdf::new(),
-                &mut RefAlloc(0),
-                &mut Out::plain(),
+                &mut Writer::new(Out::plain()),
                 (&tree, tree.size()),
                 Profile::default(),
                 None,

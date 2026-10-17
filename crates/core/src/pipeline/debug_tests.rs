@@ -6,7 +6,7 @@ use super::*;
 use crate::geom::Rect;
 use crate::images::ImageStore;
 use crate::paint::debug::{BASELINE, BORDER, CONTENT, LABEL_BG, LINE, MARGIN, PADDING, RUN};
-use crate::paint::PathSeg;
+use crate::paint::{Op, PathSeg};
 use crate::test_fixtures::inter;
 use crate::{InputFormat, RenderOptions};
 
