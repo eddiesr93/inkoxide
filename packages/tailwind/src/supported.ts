@@ -12,7 +12,17 @@ import type { TwUnits } from './parse.ts';
  * Lengths are points: 1rem = 12pt and 1px = 0.75pt, so `p-4` is 12pt.
  */
 export interface SupportedFamily {
-  group: 'Layout' | 'Flexbox' | 'Grid' | 'Spacing' | 'Sizing' | 'Position' | 'Visual' | 'Border' | 'Text';
+  group:
+    | 'Layout'
+    | 'Flexbox'
+    | 'Grid'
+    | 'Spacing'
+    | 'Sizing'
+    | 'Position'
+    | 'Visual'
+    | 'Border'
+    | 'Text'
+    | 'Page variants';
   utilities: string;
   /** The engine `Style` field (or run property) it sets. */
   maps: string;
@@ -774,14 +784,40 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'hyphens-none': { hyphenate: false },
     },
   },
+  // Page variants
+  {
+    group: 'Page variants',
+    utilities:
+      '`sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, and `[@media(…)]:`',
+    maps: 'the class, on pages it matches',
+    notes:
+      "Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`).",
+    units: A4_UNITS,
+    examples: {
+      'md:p-4': { paddingTop: 12, paddingRight: 12, paddingBottom: 12, paddingLeft: 12 },
+      'max-sm:p-4': {},
+      'p-2 min-[200mm]:p-4': { paddingTop: 12, paddingRight: 12, paddingBottom: 12, paddingLeft: 12 },
+      'portrait:flex-row': { flexDirection: 'row' },
+      'landscape:flex-row': {},
+      'print:hidden': { display: 'none' },
+      'sm:portrait:gap-2': { rowGap: 6, columnGap: 6 },
+      '[@media(max-aspect-ratio:3/4)]:text-lg': { fontSize: 13.5, lineHeight: { mult: 1.555556 } },
+    },
+  },
 ];
 
 /** Classes that must fail, with the reason shown in the docs. */
 export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
   {
-    example: 'md:p-4',
-    why: 'Variants and breakpoints (`md:`, `hover:`, `print:`) have no meaning in a PDF.',
+    example: 'hover:p-4',
+    why: 'Variants of interaction and state (`hover:`, `focus:`, `first:`, `group-*:`): a PDF has no states.',
   },
+  {
+    example: 'dark:bg-black',
+    why: 'Media features of screens (`dark:`, `motion-safe:`, `contrast-more:`): a page has width, height and orientation only.',
+  },
+  { example: '@sm:p-4', why: 'Container queries (`@sm:`, `@container`).' },
+  { example: 'container', why: '`container`: it follows the screen width; use `max-w-*` or `w-full`.' },
   { example: 'shadow-md', why: 'Shadows (`shadow-*`, `ring-*`) are not drawn by the engine.' },
   { example: 'ring-2', why: 'Shadows (`shadow-*`, `ring-*`) are not drawn by the engine.' },
   { example: 'space-x-2', why: '`space-x/y` and `divide-*` style child elements; use `gap-*` and borders.' },

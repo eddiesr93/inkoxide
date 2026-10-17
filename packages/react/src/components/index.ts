@@ -245,12 +245,21 @@ export interface StyleProp extends Omit<
   verticalAlign?: FlatStyle['verticalAlign'] | 'text-top' | 'text-bottom';
 }
 
+/**
+ * A style object with `@media` blocks: styles for the page the element is on, applied when it
+ * matches the query. A query reads the page's width and height (the whole sheet, margins
+ * included), `aspect-ratio`, `orientation` and `print`: `'@media (orientation: landscape)'`,
+ * `'@media (width < 150mm)'`. Blocks apply after the object's own properties, in the order
+ * written; they may nest, and nested queries must all match.
+ */
+export type MediaStyle = StyleProp & { [query: `@media ${string}`]: MediaStyle | undefined };
+
 /** One style object, or a list of them merged left to right (falsy entries are skipped). */
-export type Style = StyleProp | ReadonlyArray<StyleProp | false | null | undefined>;
+export type Style = StyleProp | MediaStyle | ReadonlyArray<StyleProp | MediaStyle | false | null | undefined>;
 
 /** Named styles, typed once (`StyleSheet.create({ title: { fontSize: 18 } })`). */
 export const StyleSheet = {
-  create<T extends Record<string, StyleProp>>(styles: T): T {
+  create<T extends Record<string, StyleProp | MediaStyle>>(styles: T): T {
     return styles;
   },
 };

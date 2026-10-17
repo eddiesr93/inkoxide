@@ -20,7 +20,7 @@ import {
   verticalAlignKeyword,
 } from '@inkoxide/style/internal';
 
-import type { CandidateProblem, TailwindCompiler } from './compile.ts';
+import type { CandidateCss, CandidateProblem, TailwindCompiler } from './compile.ts';
 
 /** A class that cannot be turned into an engine style. Thrown in strict (dev) mode. */
 export class UnsupportedUtilityError extends Error {
@@ -42,9 +42,12 @@ function problemReason(p: CandidateProblem): string {
     case 'unknown':
       return 'not a Tailwind utility (check the spelling, or see docs/TAILWIND_SUPPORT.md)';
     case 'variant':
-      return `variants and media queries have no meaning in a PDF (${p.detail})`;
+      // A media query that does not parse names its own problem.
+      return p.detail.startsWith('@media') ? p.detail : `at-rules have no meaning in a PDF (${p.detail})`;
     case 'selector':
-      if (p.detail.startsWith('@media')) return `media queries have no meaning in a PDF (${p.detail})`;
+      // `container`: its widths follow the screen's.
+      if (p.detail.startsWith('@media'))
+        return `it sizes the element by the screen width (${p.detail}); use max-w-* or w-full`;
       if (p.detail.startsWith('@')) return `at-rules have no meaning in a PDF (${p.detail})`;
       // `space-x-*` and `divide-*` style the element's children.
       if (/[>+~]/.test(p.detail)) {
@@ -54,15 +57,23 @@ function problemReason(p: CandidateProblem): string {
   }
 }
 
-/** True when the class has a variant prefix (`md:`, `hover:`) outside an arbitrary value. */
-function hasVariant(cls: string): boolean {
+/** The variant prefixes of a class (`md:hover:` of `md:hover:p-4`), outside arbitrary values. */
+function variantOf(cls: string): string {
   let depth = 0;
-  for (const c of cls) {
+  let end = 0;
+  for (let i = 0; i < cls.length; i++) {
+    const c = cls[i];
     if (c === '[' || c === '(') depth++;
     else if (c === ']' || c === ')') depth--;
-    else if (c === ':' && depth === 0) return true;
+    else if (c === ':' && depth === 0) end = i + 1;
   }
-  return false;
+  return cls.slice(0, end);
+}
+
+/** Why a class with variant `variant` cannot be used, from Tailwind's `problem`. */
+function variantReason(variant: string, p: CandidateProblem): string {
+  const why = p.kind === 'variant' ? ` (${problemReason(p)})` : '';
+  return `the variant \`${variant}\` has no meaning in a PDF${why}; page variants work: sm: to 2xl:, max-*:, min-[…]:, max-[…]:, portrait:, landscape: and print:`;
 }
 
 /** Expands a 1-4 value CSS edge shorthand into [top, right, bottom, left]. */
@@ -527,16 +538,30 @@ export function mapClasses(
   const elementVars = new Map<string, string>();
   const initials = new Map<string, string>();
   const usable: string[] = [];
+  // Read on use, to tell a style that depends on the units from one that can be cached alone.
+  let relative = false;
+  // Classes for another page size: checked, not applied.
+  const inactive = new Set<string>();
 
   for (const cls of classes) {
-    if (hasVariant(cls)) {
-      onError(new UnsupportedUtilityError(cls, 'variants (md:, hover:, print:, …) have no meaning in a PDF'));
-      continue;
-    }
     const r = compiler.candidate(cls);
     if (!r.ok) {
-      onError(new UnsupportedUtilityError(cls, problemReason(r.problem)));
+      const variant = variantOf(cls);
+      const reason =
+        variant && r.problem.kind !== 'unknown'
+          ? variantReason(variant, r.problem)
+          : problemReason(r.problem);
+      onError(new UnsupportedUtilityError(cls, reason));
       continue;
+    }
+    const { media } = r.css;
+    if (media.length > 0) {
+      relative = true;
+      if (!units) {
+        onError(new UnsupportedUtilityError(cls, `its page variant ${UNITS_UNKNOWN}`));
+        continue;
+      }
+      if (!media.every((q) => q.matches(units.page))) inactive.add(cls);
     }
     usable.push(cls);
   }
@@ -544,15 +569,13 @@ export function mapClasses(
   const ordered = compiler.sort(usable);
   for (const cls of ordered) {
     const r = compiler.candidate(cls);
-    if (!r.ok) continue;
+    if (!r.ok || inactive.has(cls)) continue;
     for (const [name, value] of r.css.initials) initials.set(name, value);
     for (const [prop, value] of r.css.decls) if (prop.startsWith('--')) elementVars.set(prop, value);
   }
   const lookup = (name: string): string | undefined =>
     elementVars.get(name) ?? initials.get(name) ?? compiler.themeValue(name);
 
-  // Read on use, to tell a style that depends on the units from one that can be cached alone.
-  let relative = false;
   let ownEm = false;
   const unitsOf = (em: () => number, own: boolean): Units => ({
     get em() {
@@ -570,7 +593,7 @@ export function mapClasses(
   const parentEm = () => units?.parentFontSize ?? 0;
   const fontUnits = unitsOf(parentEm, false);
   const apply = (em: () => number): FlatStyle =>
-    applyClasses(compiler, ordered, lookup, onError, (prop) =>
+    applyClasses(compiler, ordered, inactive, lookup, onError, (prop) =>
       prop === 'font-size' ? fontUnits : unitsOf(em, true),
     );
 
@@ -583,10 +606,14 @@ export function mapClasses(
   return { style, relative };
 }
 
-/** Applies the declarations of `ordered` classes, each with the units `unitsFor` its property. */
+/**
+ * Applies the declarations of `ordered` classes, each with the units `unitsFor` its property. The
+ * `inactive` ones, for another page size, are read and dropped: a mistake in them fails anyway.
+ */
 function applyClasses(
   compiler: TailwindCompiler,
   ordered: string[],
+  inactive: ReadonlySet<string>,
   lookup: (name: string) => string | undefined,
   onError: (e: UnsupportedUtilityError) => void,
   unitsFor: (prop: string) => Units,
@@ -597,6 +624,8 @@ function applyClasses(
     const r = compiler.candidate(cls);
     if (!r.ok) continue;
     const decls = r.css.decls;
+    // An inactive class reads its own custom properties, which the element's leave out.
+    const read = inactive.has(cls) ? withOwnVars(r.css, lookup) : lookup;
     const clamp = decls.find(([p]) => p === '-webkit-line-clamp');
     // `truncate`: one line with an ellipsis. `text-ellipsis` alone has no engine meaning.
     const ellipsis =
@@ -631,7 +660,7 @@ function applyClasses(
           applyDecl(
             next,
             sideStyle ? 'border-style' : prop,
-            substituteVars(raw, lookup),
+            substituteVars(raw, read),
             unitsFor(prop),
             nextLines,
           );
@@ -642,8 +671,10 @@ function applyClasses(
           throw e;
         }
       }
-      style = next;
-      lines = nextLines;
+      if (!inactive.has(cls)) {
+        style = next;
+        lines = nextLines;
+      }
     } catch (e) {
       if (e instanceof UnsupportedValueError) onError(new UnsupportedUtilityError(cls, e.detail, e.property));
       else if (e instanceof ValueError) onError(new UnsupportedUtilityError(cls, e.message));
@@ -651,6 +682,15 @@ function applyClasses(
     }
   }
   return style;
+}
+
+/** `lookup`, after the custom properties `css` sets and the initial values it declares. */
+function withOwnVars(
+  css: CandidateCss,
+  lookup: (name: string) => string | undefined,
+): (name: string) => string | undefined {
+  const own = new Map([...css.initials, ...css.decls.filter(([p]) => p.startsWith('--'))]);
+  return (name) => own.get(name) ?? lookup(name);
 }
 
 /** Splits a class string into classes; the normalised string is the cache key. */

@@ -21,7 +21,7 @@ import {
   type FlatStyle,
   type Units,
 } from '@inkoxide/style';
-import { Reader, verticalAlignKeyword } from '@inkoxide/style/internal';
+import { type MediaQuery, parseMedia, Reader, verticalAlignKeyword } from '@inkoxide/style/internal';
 
 import type {
   Edges,
@@ -538,12 +538,14 @@ export function withStyleProp(
   parentSize: number,
   page: Units['page'],
 ): FlatStyle {
-  const list = styleList(style);
+  const { applied, checked } = styleList(style, page);
   const outer: Units = { em: parentSize, page };
   // The font size comes first: `em` in every other length depends on it.
   const units: Units = { em: styleFontSize(style, parentSize, page) ?? base.fontSize ?? parentSize, page };
   let s = base;
-  for (const p of list) s = over(s, fromStyleProp(p, units, outer));
+  for (const p of applied) s = over(s, fromStyleProp(p, units, outer));
+  // A block for another page size is read too: a mistake in it fails on every page.
+  for (const p of checked) fromStyleProp(p, units, outer);
   for (const [key, v] of Object.entries(s)) {
     const bad = nonFinite(v);
     if (bad !== undefined) throw new Error(`${key}: ${bad} is not a finite number`);
@@ -551,8 +553,46 @@ export function withStyleProp(
   return s;
 }
 
-function styleList(style: StyleInput): StyleProp[] {
-  return (Array.isArray(style) ? style : [style]).filter((p): p is StyleProp => !!p);
+/**
+ * The style objects of a `style` prop in the order they apply: each object's own properties, then
+ * its `@media` blocks that match `page`, in the order written. The blocks that do not match are
+ * `checked`, not applied.
+ */
+function styleList(style: StyleInput, page: Units['page']): { applied: StyleProp[]; checked: StyleProp[] } {
+  const applied: StyleProp[] = [];
+  const checked: StyleProp[] = [];
+  const add = (p: StyleProp, matches: boolean) => {
+    let own: Record<string, unknown> | undefined;
+    const blocks: Array<[MediaQuery, StyleProp]> = [];
+    for (const [key, value] of Object.entries(p)) {
+      if (!key.startsWith('@media')) continue;
+      own ??= { ...p };
+      delete own[key];
+      if (value === undefined) continue;
+      const query = mediaQuery(key.slice('@media'.length).trim());
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new Error(`${key}: a block takes a style object, not ${JSON.stringify(value)}`);
+      }
+      blocks.push([query, value as StyleProp]);
+    }
+    (matches ? applied : checked).push((own ?? p) as StyleProp);
+    for (const [query, block] of blocks) add(block, matches && query.matches(page));
+  };
+  for (const p of Array.isArray(style) ? style : [style]) if (p) add(p as StyleProp, true);
+  return { applied, checked };
+}
+
+/** Parsed media queries, by text: a template reads the same few on every element. */
+const MEDIA = new Map<string, MediaQuery>();
+
+function mediaQuery(text: string): MediaQuery {
+  let q = MEDIA.get(text);
+  if (!q) {
+    q = parseMedia(text);
+    if (MEDIA.size >= 256) MEDIA.clear();
+    MEDIA.set(text, q);
+  }
+  return q;
 }
 
 /** The font size a `style` prop sets, in points: `em` in it is `parentSize`. */
@@ -562,7 +602,7 @@ export function styleFontSize(
   page: Units['page'],
 ): number | undefined {
   let size: number | undefined;
-  for (const p of styleList(style)) {
+  for (const p of styleList(style, page).applied) {
     const v = lengthOf('points', 'fontSize', p.fontSize, { em: parentSize, page });
     if (typeof v === 'number') size = v;
   }

@@ -11,6 +11,13 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Added
 
+- `@media` for the page size. `@inkoxide/react` style objects take `'@media …'` blocks, and
+  `@inkoxide/tailwind` the page variants `sm:` to `2xl:`, `max-*:`, `min-[…]:`, `max-[…]:`,
+  `portrait:`, `landscape:`, `print:` and `[@media(…)]:`. A query reads the page's width and
+  height (margins included), `aspect-ratio` and `orientation`; features of screens (`hover`,
+  `prefers-color-scheme`) are errors. Each page answers the queries once, before layout, so the
+  engine and the schema do not change. `@inkoxide/react` exports the `MediaStyle` type.
+
 - `inkoxide`: `PdfALevel` implements `FromStr` (`"2b".parse()`), with `ParsePdfALevelError`; the
   CLI and the Node and WebAssembly bindings read the level through it. An unknown `pdfA` level in
   the bindings now says `(expected one of 1b, 2b, 3b); pdfA also takes true or false`.

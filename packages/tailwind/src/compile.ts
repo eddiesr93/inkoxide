@@ -1,4 +1,5 @@
-import postcss, { type AtRule, type Rule } from 'postcss';
+import { type MediaQuery, parseMedia } from '@inkoxide/style/internal';
+import postcss, { type AtRule, type Container, type Rule } from 'postcss';
 
 import { DEFAULT_THEME_CSS } from './theme.ts';
 
@@ -8,6 +9,8 @@ export interface CandidateCss {
   decls: Array<[string, string]>;
   /** `@property --tw-*` initial values the rule depends on. */
   initials: Array<[string, string]>;
+  /** The page media the rule is for (`md:`, `landscape:`), all of which must match; none for most. */
+  media: readonly MediaQuery[];
 }
 
 /** Why a class cannot be used, when Tailwind's output already says so. */
@@ -97,37 +100,53 @@ export class TailwindCompiler {
     const [css] = this.ds.candidatesToCss([cls]);
     if (css == null) return { ok: false, problem: { kind: 'unknown' } };
     const root = postcss.parse(css);
-    const out: CandidateCss = { decls: [], initials: [] };
+    const out: CandidateCss = { decls: [], initials: [], media: [] };
     let found = false;
     let problem: CandidateProblem | undefined;
-    root.each((node) => {
-      if (node.type === 'rule') {
-        const rule = node as Rule;
-        if (rule.selector.trim().startsWith('.') && !/[\s>:+~[\]]/.test(rule.selector.replace(/\\./g, ''))) {
-          found = true;
-          rule.each((d) => {
-            if (d.type === 'decl') out.decls.push([d.prop, d.value]);
-            else if (d.type === 'atrule' && (d as AtRule).name === 'supports') {
-              // A progressive-enhancement override; the plain declarations are the fallback.
-            } else if (d.type === 'rule' || d.type === 'atrule') {
-              problem ??= { kind: 'selector', detail: d.toString().split('{')[0]?.trim() ?? '' };
+    // Page variants wrap the rule in `@media`, nested for each one (`sm:landscape:`).
+    const visit = (container: Container, media: readonly MediaQuery[]) =>
+      container.each((node) => {
+        if (node.type === 'rule') {
+          const rule = node as Rule;
+          if (
+            rule.selector.trim().startsWith('.') &&
+            !/[\s>:+~[\]]/.test(rule.selector.replace(/\\./g, ''))
+          ) {
+            found = true;
+            out.media = media;
+            rule.each((d) => {
+              if (d.type === 'decl') out.decls.push([d.prop, d.value]);
+              else if (d.type === 'atrule' && (d as AtRule).name === 'supports') {
+                // A progressive-enhancement override; the plain declarations are the fallback.
+              } else if (d.type === 'rule' || d.type === 'atrule') {
+                problem ??= { kind: 'selector', detail: d.toString().split('{')[0]?.trim() ?? '' };
+              }
+            });
+          } else {
+            problem ??= { kind: 'selector', detail: rule.selector };
+          }
+        } else if (node.type === 'atrule') {
+          const at = node as AtRule;
+          if (at.name === 'property') {
+            at.each((d) => {
+              if (d.type === 'decl' && d.prop === 'initial-value')
+                out.initials.push([at.params.trim(), d.value]);
+            });
+          } else if (at.name === 'media') {
+            let query: MediaQuery;
+            try {
+              query = parseMedia(at.params);
+            } catch (e) {
+              problem ??= { kind: 'variant', detail: (e as Error).message };
+              return;
             }
-          });
-        } else {
-          problem ??= { kind: 'selector', detail: rule.selector };
+            visit(at, [...media, query]);
+          } else if (at.name !== 'supports') {
+            problem ??= { kind: 'variant', detail: `@${at.name} ${at.params}` };
+          }
         }
-      } else if (node.type === 'atrule') {
-        const at = node as AtRule;
-        if (at.name === 'property') {
-          at.each((d) => {
-            if (d.type === 'decl' && d.prop === 'initial-value')
-              out.initials.push([at.params.trim(), d.value]);
-          });
-        } else if (at.name !== 'supports') {
-          problem ??= { kind: 'variant', detail: `@${at.name} ${at.params}` };
-        }
-      }
-    });
+      });
+    visit(root, []);
     if (problem) return { ok: false, problem };
     if (!found) return { ok: false, problem: { kind: 'unknown' } };
     return { ok: true, css: out };

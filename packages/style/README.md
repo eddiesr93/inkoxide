@@ -1,7 +1,8 @@
 # @inkoxide/style
 
 Reads CSS values into Inkoxide styles: lengths (with `calc()`, `em`, `vw` and `vh`), colours,
-`flex`, transforms, transform origins, object positions and OpenType features.
+`flex`, transforms, transform origins, object positions and OpenType features, and media queries
+for the page size.
 `@inkoxide/react` uses it for `style` props and `@inkoxide/tailwind` for classes, so both read
 a value the same way.
 

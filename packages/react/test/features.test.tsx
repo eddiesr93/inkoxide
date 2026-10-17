@@ -47,6 +47,7 @@ import {
   Spacer,
   Stop,
   type StyleProp,
+  StyleSheet,
   Svg,
   Table,
   Text,
@@ -297,6 +298,103 @@ describe('relative units in the style prop', () => {
     expect(thrown(() => tree(null, { page: { size: { width: '50vw', height: 100 } } })).message).toContain(
       'size: 50vw (depends on the font or page size',
     );
+  });
+
+  it('applies @media blocks that match the page, after the object and in order', () => {
+    const styles = StyleSheet.create({
+      grid: {
+        flexDirection: 'column',
+        padding: 4,
+        '@media (orientation: landscape)': { flexDirection: 'row', gap: 24 },
+        '@media (width < 150mm)': { padding: 2 },
+        '@media print': { '@media (min-width: 48rem)': { margin: 1 } },
+      },
+    });
+    const Grid = () => <View style={styles.grid} />;
+    const both = renderTemplate(
+      <Document>
+        <Page size="A4">
+          <Grid />
+        </Page>
+        <Page size="A4" orientation="landscape">
+          <Grid />
+        </Page>
+        <Page size="A5">
+          <Grid />
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(both.document.pages.map((p) => ((p.children ?? [])[0] as BoxNode).style)).toEqual([
+      {
+        flexDirection: 'column',
+        padding: { top: 4, right: 4, bottom: 4, left: 4 },
+        margin: { top: 1, right: 1, bottom: 1, left: 1 },
+      },
+      {
+        flexDirection: 'row',
+        gap: 24,
+        padding: { top: 4, right: 4, bottom: 4, left: 4 },
+        margin: { top: 1, right: 1, bottom: 1, left: 1 },
+      },
+      { flexDirection: 'column', padding: { top: 2, right: 2, bottom: 2, left: 2 } },
+    ]);
+  });
+
+  it('lets a later style entry win over a block, and fontSize in a block reach runs and em', () => {
+    const r = tree(
+      <View
+        style={[
+          { fontSize: 10, '@media (orientation: portrait)': { fontSize: 20, paddingTop: '1em' } },
+          { paddingTop: 3 },
+        ]}
+      >
+        <Text style={{ '@media print': { paddingLeft: '1em' } }}>x</Text>
+      </View>,
+    );
+    const view = first<BoxNode>(r);
+    expect(view.style).toEqual({ padding: { top: 3 } });
+    const text = (view.children ?? [])[0] as TextNode;
+    expect(text.style?.padding).toEqual({ left: 20 });
+    expect(text.runs[0]?.size).toBe(20);
+  });
+
+  it('applies Tailwind page variants per page', () => {
+    const Card = () => <View className="p-2 md:p-4 landscape:flex-row" />;
+    const r = renderTemplate(
+      <Document>
+        <Page size="A4">
+          <Card />
+        </Page>
+        <Page size="A5">
+          <Card />
+        </Page>
+        <Page size="A4" orientation="landscape">
+          <Card />
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(r.document.pages.map((p) => ((p.children ?? [])[0] as BoxNode).style)).toEqual([
+      { padding: { top: 12, right: 12, bottom: 12, left: 12 } },
+      { padding: { top: 6, right: 6, bottom: 6, left: 6 } },
+      { flexDirection: 'row', padding: { top: 12, right: 12, bottom: 12, left: 12 } },
+    ]);
+  });
+
+  it('reads blocks for other page sizes too, and names a bad query', () => {
+    // A block is typed as a style object.
+    // @ts-expect-error: `wide` is not a length.
+    const bad = <View style={{ '@media (width > 9999in)': { width: 'wide' } }} />;
+    expect(thrown(() => tree(bad)).message).toBe(
+      'Invalid style prop on <View>: width: wide (cannot evaluate "wide")',
+    );
+    expect(thrown(() => tree(<View style={{ '@media (hover: hover)': { width: 1 } }} />)).message).toBe(
+      'Invalid style prop on <View>: @media (hover: hover): "hover" has no meaning in a PDF',
+    );
+    expect(
+      thrown(() => tree(<View style={{ '@media print': 3 } as unknown as StyleProp} />)).message,
+    ).toContain('@media print: a block takes a style object, not 3');
   });
 
   it('rejects lengths and style numbers that are not finite, which JSON would drop', () => {
