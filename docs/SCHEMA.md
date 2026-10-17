@@ -418,7 +418,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `height` | `number` |  | > 0, ≤ 14400 |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
 | `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
-| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. |
+| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. In tagged output, `""` makes the image decoration; PDF/UA requires `alt` on every image that is not. |
 
 ### ColumnSpec
 

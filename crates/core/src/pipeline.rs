@@ -226,7 +226,7 @@ pub(crate) fn run<'d, T: Send>(
     // The painter draws each page's digits in placeholders, and headers
     // and footers that show them are laid out per page.
     let total = page_count(&laid)?;
-    repeated_size(&laid, text)?;
+    repeated_size(&laid, text, plan.is_some())?;
     let mut marks = Marks::default();
     let mut first = 0;
     for l in &laid {

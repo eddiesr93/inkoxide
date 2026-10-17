@@ -112,6 +112,13 @@ pub(crate) enum Op {
     /// again after. Without tagging none is pushed.
     Tag(crate::tag::StructId),
     EndTag,
+    /// Inside an element's content, starts decoration: what is drawn until
+    /// [`Op::EndDecoration`] is an artifact, and the element's content goes
+    /// on after it (an image in text with an empty `alt`). It encloses
+    /// whole save levels and does not nest. Output without tagging ignores
+    /// it.
+    Decoration,
+    EndDecoration,
 }
 
 /// A glyph of `font` at `size`, drawn invisibly (text rendering mode 3)
@@ -242,6 +249,9 @@ pub(crate) struct TextGlyph {
     pub x: f32,
     /// Vertical offset, points, positive up.
     pub y_offset: f32,
+    /// Whether it follows the first glyph of its cluster (a mark the font
+    /// draws apart), which holds the cluster's text: it has none of its own.
+    pub continues: bool,
 }
 
 /// A run of glyphs in one font, size and colour on one baseline.

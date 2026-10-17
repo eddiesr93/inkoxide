@@ -148,8 +148,9 @@ impl PdfWriterSink {
             let mut unicode = doc.unicode.font_with(*key, &fonts.field_text);
             // Tagged output maps every glyph (ISO 14289-1, 7.21.7): a glyph
             // after the first of its cluster (a mark the font draws apart)
-            // gets the combining grapheme joiner, which text processing
-            // ignores, so text is not doubled.
+            // gets the combining grapheme joiner, and is drawn in a span of
+            // no text (`show_text`), so that extraction reads the cluster
+            // once.
             if doc.plan.is_some() {
                 let all = unicode.get_or_insert_with(Default::default).to_mut();
                 for &g in glyphs {

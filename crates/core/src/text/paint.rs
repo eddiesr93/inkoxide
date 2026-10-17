@@ -350,6 +350,7 @@ fn paint_line(
                     id,
                     x: piece.width,
                     y_offset: 0.0,
+                    continues: false,
                 });
                 piece.width += advance;
             }
@@ -374,6 +375,9 @@ fn paint_line(
                         id: g.id,
                         x: piece.width + g.x_offset,
                         y_offset: g.y_offset,
+                        // As shaping gave the cluster's text to its first
+                        // glyph, in logical order.
+                        continues: k > 0 && p.glyphs[k - 1].cluster == g.cluster,
                     });
                     if color {
                         piece.texts.push(p.glyph_text(seg, k));
@@ -532,7 +536,7 @@ fn object_rect(
 
 /// Draws inline object `object` of run `run` in `rect`, on a line with its
 /// baseline at `baseline`, in a span with its alternative text when it has
-/// one.
+/// one, or as decoration when that text is empty.
 fn paint_object(
     object: &InlineObject,
     rect: Rect,
@@ -548,9 +552,16 @@ fn paint_object(
         at: (rect.x, baseline),
         width: object.width,
     };
+    let decoration = object.alt.as_deref() == Some("");
+    if decoration {
+        ops.push(Op::Decoration);
+    }
     alt_span(ops, fonts, object.alt.as_deref(), space, |ops| {
         images.paint_in(object.key, rect, object.placement, &NO_RADII, ops);
     });
+    if decoration {
+        ops.push(Op::EndDecoration);
+    }
 }
 
 /// The font of the invisible space in the span of an image drawn in run
@@ -590,6 +601,7 @@ fn extra_piece(e: &ExtraGlyph, text: &'static str) -> Piece<'static> {
             id: e.glyph,
             x: e.advance * f32::from(i),
             y_offset: 0.0,
+            continues: false,
         })
         .collect();
     Piece {

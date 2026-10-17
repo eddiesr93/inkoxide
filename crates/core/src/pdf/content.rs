@@ -9,7 +9,7 @@ use pdf_writer::{Content, Name, Str};
 use crate::fonts::{FontKey, FontSet};
 use crate::geom::{apply, mul, Rect};
 use crate::images::ImageKey;
-use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, TextOp};
+use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, TextGlyph, TextOp};
 use crate::schema::Color;
 use crate::tag::{Plan, StructId};
 use crate::InkoxideError;
@@ -155,6 +155,8 @@ struct Marker<'p> {
     tag: Option<(StructId, bool)>,
     /// Whether an artifact is open.
     artifact: bool,
+    /// The element whose content goes on after the decoration drawn now.
+    resume: Option<StructId>,
     /// Spans open: they enclose whole save levels, and what they draw is in
     /// the sequence open around them.
     spans: usize,
@@ -193,6 +195,21 @@ impl Marker<'_> {
                 self.artifact = true;
             }
             _ => {}
+        }
+    }
+
+    /// Suspends the element's content: what is drawn next is an artifact.
+    fn decoration(&mut self, c: &mut Content) {
+        self.resume = self.tag.map(|(id, _)| id);
+        self.end_tag(c);
+    }
+
+    /// Ends the decoration: the suspended element's content goes on, in a
+    /// sequence of its own.
+    fn end_decoration(&mut self, c: &mut Content) {
+        self.close_artifact(c);
+        if let Some(id) = self.resume.take() {
+            self.tag = Some((id, false));
         }
     }
 
@@ -254,7 +271,13 @@ pub(super) fn font_name(key: FontKey) -> String {
 /// adjustments wherever our positions differ from the font's advances.
 /// With `skip_notdef` (PDF/A), `.notdef` glyphs are left out and the next
 /// glyph keeps its position.
-pub(super) fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool) {
+pub(super) fn show_text(
+    c: &mut Content,
+    t: &TextOp,
+    fonts: &FontSet<'_>,
+    skip_notdef: bool,
+    tagged: bool,
+) {
     let font = fonts.get(t.font);
     let scale = font.scale(t.size);
     let size = round_pt(t.size);
@@ -262,6 +285,10 @@ pub(super) fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_n
     c.begin_text();
     c.set_font(Name(font_name(t.font).as_bytes()), size);
     let glyphs = &t.glyphs;
+    // Tagged, each glyph after the first of its cluster is in a span of no
+    // text: the font maps it to the combining grapheme joiner, as tagged
+    // output must map every glyph, and extraction would read that too.
+    let silent = |g: &TextGlyph| tagged && g.continues;
     let mut i = 0;
     while i < glyphs.len() {
         let g0 = glyphs[i];
@@ -278,15 +305,23 @@ pub(super) fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_n
             round_pt(t.x + g0.x),
             round_pt(t.y - g0.y_offset),
         ]);
-        if g0.y_offset != 0.0 {
+        if g0.y_offset != 0.0 || silent(&g0) {
+            if silent(&g0) {
+                c.begin_marked_content_with_properties(Name(b"Span"))
+                    .properties()
+                    .pair(Name(b"ActualText"), Str(b""));
+            }
             c.show(Str(&g0.id.to_be_bytes()));
+            if silent(&g0) {
+                c.end_marked_content();
+            }
             i += 1;
             continue;
         }
-        // Up to the next glyph moved up or down.
+        // Up to the next glyph moved up or down, or silent.
         let end = glyphs[i..]
             .iter()
-            .position(|g| g.y_offset != 0.0)
+            .position(|g| g.y_offset != 0.0 || silent(g))
             .map_or(glyphs.len(), |n| i + n);
         let run = glyphs[i..end]
             .iter()
@@ -401,6 +436,7 @@ pub(crate) fn marked_content_stream(
         mcids: Vec::new(),
         tag: None,
         artifact: false,
+        resume: None,
         spans: 0,
     });
     // Flip to a top-left origin once; everything below is in layout space.
@@ -410,6 +446,8 @@ pub(crate) fn marked_content_stream(
             match op {
                 Op::Tag(id) => m.tag(&mut c, *id),
                 Op::EndTag => m.end_tag(&mut c),
+                Op::Decoration => m.decoration(&mut c),
+                Op::EndDecoration => m.end_decoration(&mut c),
                 Op::Save | Op::Restore => m.save_level(&mut c),
                 Op::Span { .. } => {
                     m.draw(&mut c);
@@ -483,11 +521,17 @@ pub(crate) fn marked_content_stream(
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) | Op::Icon(_) | Op::Tag(_) | Op::EndTag => {}
+            Op::Link { .. }
+            | Op::Field(_)
+            | Op::Icon(_)
+            | Op::Tag(_)
+            | Op::EndTag
+            | Op::Decoration
+            | Op::EndDecoration => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
+            Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a(), plan.is_some()),
             Op::Image { key, matrix } => {
                 c.save_state();
                 c.transform(matrix.map(round_pt));
