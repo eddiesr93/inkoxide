@@ -42,6 +42,7 @@ const INTERNAL_VALUES = [
   'VERTICAL_ALIGNS',
   'evalDim',
   'parseFontFamily',
+  'parseMedia',
   'substituteVars',
   'verticalAlignKeyword',
 ];

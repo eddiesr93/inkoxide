@@ -85,6 +85,7 @@ export {
   type SpacerProps,
   Stop,
   type StopProps,
+  type MediaStyle,
   type Style,
   type StyleProp,
   StyleSheet,

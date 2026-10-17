@@ -113,6 +113,29 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 - **Inheritance.** Text properties (font, size, weight, colour, line height, alignment) pass down
   from `Page` and `View` to the text inside. Box properties apply only to the element that has
   them.
+- **Page media.** An `'@media …'` key holds styles for the pages it matches, so one component
+  can fit the page it lands on:
+
+  ```tsx
+  const styles = StyleSheet.create({
+    grid: {
+      flexDirection: 'column',
+      '@media (orientation: landscape)': { flexDirection: 'row', gap: 24 },
+      '@media (width < 150mm)': { fontSize: 9 },
+    },
+  });
+  ```
+
+  A query reads the page: `width` and `height` (the whole sheet, margins included, as `vw` and
+  `vh` do), `aspect-ratio` and `orientation` (a square page is portrait), with `min-`/`max-`
+  or the range forms (`(400pt <= width < 600pt)`), joined by `and`, `or`, `not` and commas.
+  `print` and `all` match, `screen` does not. Lengths take `pt`, `mm`, `cm`, `in`, `px`, `pc`
+  and `rem`, and are compared to 1/100 pt, so `(max-width: 210mm)` holds on A4. Blocks apply
+  after the object's own properties, in the order written, and may nest (all their queries must
+  match); a later entry of a style array still wins. A block for another page size is read too,
+  so a mistake in it fails on every page. Features of screens (`hover`, `prefers-color-scheme`,
+  `resolution`) are errors. Each `Page` has one size, so the queries are answered once per
+  page, before layout; a JSON document has no `@media` (its author knows each page's size).
 
 ### Tailwind
 
@@ -132,8 +155,13 @@ it.
 - **Supported:** flexbox, grid, sizing, spacing, the full colour palette with opacity
   (`bg-black/5`), borders, per-corner radii, typography, `absolute` positioning with `z-*`,
   and 2D transforms.
-- **Not supported:** variants (`md:`, `hover:`), shadows, gradients and `space-*`/`divide-*`
-  (use `gap-*` and borders). Using one throws and names the class; in production (`NODE_ENV=production`) it is logged once and ignored.
+- **Page variants** read the page as `@media` does: `md:p-4`, `max-sm:text-xs`,
+  `min-[200mm]:flex-row`, `landscape:flex-row`, `print:hidden`, and stacked, `sm:landscape:`.
+  Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg`
+  768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own
+  (`--breakpoint-a4: 595.28pt` gives `a4:` and `max-a4:`).
+- **Not supported:** variants for screens and states (`hover:`, `focus:`, `dark:`), container
+  queries (`@sm:`), shadows, gradients and `space-*`/`divide-*` (use `gap-*` and borders). Using one throws and names the class; in production (`NODE_ENV=production`) it is logged once and ignored.
 
 ## Fonts
 
@@ -1086,7 +1114,8 @@ serves `Polyline` and `Polygon`, `GradientProps` both gradients, `SvgPresentatio
 attributes every SVG shape takes, and `SvgTextProps` the props of a `Text` in an `Svg`. Also
 exported:
 
-- styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
+- styles and values: `Style`, `StyleProp`, `MediaStyle` (a `StyleProp` with `@media` blocks),
+  `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
   `Permissions` (of `<Document permissions>`), and `TextFormat`, the `format` of a `TextField`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
@@ -1391,6 +1420,7 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 - **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely
   positioned, rotated or transformed element, table rows tied by a `rowSpan`) is cut at the
   page edge when it is taller than a page.
-- **Tailwind.** Variants (`md:`, `hover:`), shadows and gradients are not supported.
+- **Tailwind.** Variants for screens and states (`hover:`, `dark:`), container queries, shadows
+  and gradients are not supported.
 - **Output.** The engine produces the whole PDF at once: `renderToStream` streams the finished
   file, it does not send pages while later ones are still being laid out.

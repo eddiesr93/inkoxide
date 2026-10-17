@@ -4,3 +4,4 @@
 export { VERTICAL_ALIGNS, type VerticalAlignKeyword, verticalAlignKeyword } from './align.ts';
 export { ENUMS, type EnumKey, Reader } from './reader.ts';
 export { DEFAULT_SANS, type Dim, evalDim, parseFontFamily, substituteVars, UNITS_UNKNOWN } from './values.ts';
+export { type MediaQuery, parseMedia } from './media.ts';
