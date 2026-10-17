@@ -13,9 +13,7 @@ fn doc(children: &str) -> Document {
 
 fn layout(d: &Document, width: f32) -> Vec<(f32, f32, f32, f32)> {
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, width, 0.0, &mut NoContent)
-        .unwrap();
+    compute(&mut tree, width, 0.0, &mut NoContent).unwrap();
     tree.nodes
         .iter()
         .map(|n| (n.geo.x, n.geo.y, n.geo.w, n.geo.h))
@@ -66,9 +64,7 @@ fn borders_take_space_and_positions_are_absolute() {
             "children":[{"type":"box","style":{"height":10}}]}"#,
     );
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 100.0, 0.0, &mut NoContent)
-        .unwrap();
+    compute(&mut tree, 100.0, 0.0, &mut NoContent).unwrap();
     let outer = tree.nodes[1].geo;
     assert_eq!((outer.y, outer.h), (7.0, 15.0));
     assert_eq!(outer.border, Edges::from([3.0, 0.0, 0.0, 4.0]));
@@ -129,9 +125,7 @@ fn root_min_height_lets_flex_grow_fill_the_page() {
         r#"{"type":"box","style":{"height":10}},{"type":"box","style":{"flexGrow":1}},{"type":"box","style":{"height":10}}"#,
     );
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 100.0, 300.0, &mut NoContent)
-        .unwrap();
+    compute(&mut tree, 100.0, 300.0, &mut NoContent).unwrap();
     assert_eq!(tree.nodes[0].geo.h, 300.0);
     assert_eq!(tree.nodes[3].geo.y, 290.0);
 }
@@ -144,9 +138,7 @@ fn page_children_take_percentage_heights_of_the_page() {
            {"type":"box","style":{"height":10}}"#,
     );
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 100.0, 400.0, &mut NoContent)
-        .unwrap();
+    compute(&mut tree, 100.0, 400.0, &mut NoContent).unwrap();
     let g = |i: usize| (tree.nodes[i].geo.y, tree.nodes[i].geo.h);
     assert_eq!(g(1), (0.0, 200.0));
     assert_eq!(g(4), (0.0, 100.0), "half of its parent");
@@ -154,9 +146,7 @@ fn page_children_take_percentage_heights_of_the_page() {
     assert_eq!(g(3).0, 240.0);
     // Without a page height (a header or footer), they stay `auto`.
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 100.0, 0.0, &mut NoContent)
-        .unwrap();
+    compute(&mut tree, 100.0, 0.0, &mut NoContent).unwrap();
     assert_eq!(tree.nodes[1].geo.h, 0.0);
 }
 

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::geom::Rect;
-use crate::layout::{LayoutEngine, NoContent, TaffyLayout};
+use crate::layout::{compute, NoContent};
 use crate::schema::Document;
 use crate::InputFormat;
 
@@ -28,9 +28,7 @@ impl LineSource for NoLines {
 
 fn run(d: &Document) -> (Tree<'_>, Placement) {
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 200.0, H, &mut NoContent)
-        .unwrap();
+    compute(&mut tree, 200.0, H, &mut NoContent).unwrap();
     let p = paginate(&tree, H, &mut NoLines);
     (tree, p)
 }
@@ -290,9 +288,7 @@ fn text_splits_between_lines() {
     let fonts = FontSet::load(&d, &store).unwrap();
     let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 200.0, H, &mut cache)
-        .unwrap();
+    compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
 
     let node = tree.nodes[2].node().unwrap();
@@ -338,9 +334,7 @@ fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
     let fonts = FontSet::load(&d, &store).unwrap();
     let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 200.0, H, &mut cache)
-        .unwrap();
+    compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
     let node = tree.nodes[2].node().unwrap();
     let Rect { y: cy, w: cw, .. } = tree.nodes[2].geo.content_box();
@@ -429,9 +423,7 @@ fn horizontal_padding_narrows_measured_text() {
     let fonts = FontSet::load(&d, &store).unwrap();
     let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 200.0, H, &mut cache)
-        .unwrap();
+    compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let Rect { w: cw, h: ch, .. } = tree.nodes[1].geo.content_box();
     assert!((cw - 96.0).abs() < 0.01);
     let layout = cache.layout(tree.nodes[1].node().unwrap(), cw).unwrap();
@@ -654,9 +646,7 @@ fn check_lines(children: &str) -> u32 {
     let fonts = FontSet::load(&d, &store).unwrap();
     let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 200.0, H, &mut cache)
-        .unwrap();
+    compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
     for i in 0..tree.nodes.len() as NodeIdx {
         let Some(node) = tree.nodes[i as usize].node() else {
@@ -802,9 +792,7 @@ fn run_text<R>(
     let fonts = FontSet::load(&d, &store).unwrap();
     let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
     let mut tree = Tree::build(&d.pages[0].children);
-    TaffyLayout
-        .compute(&mut tree, 200.0, H, &mut cache)
-        .unwrap();
+    compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
     f(&tree, &p, &mut cache)
 }
