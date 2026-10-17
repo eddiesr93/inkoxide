@@ -237,7 +237,7 @@ describe('paint styles', () => {
     expect(thrown(() => tree(<View className="flex-[-1]" />)).message).toContain('flex-[-1]');
     for (const key of ['flexGrow', 'flexShrink'] as const) {
       expect(thrown(() => tree(<View style={{ [key]: -1 }} />)).message).toBe(
-        `Invalid style prop on <View>: ${key} -1: cannot be negative`,
+        `Invalid style prop on <View>: ${key}: -1 (cannot be negative)`,
       );
       expect(thrown(() => tree(<View style={{ [key]: '30%' as never }} />)).message).toBe(
         `Invalid style prop on <View>: ${key} "30%" is not a number`,

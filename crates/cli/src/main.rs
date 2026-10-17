@@ -18,17 +18,6 @@ use inkoxide::{
     ValidationError,
 };
 
-/// `--pdf-a=LEVEL`.
-fn pdf_a_level(s: &str) -> Result<PdfALevel, String> {
-    PdfALevel::from_name(s).ok_or_else(|| {
-        let names: Vec<&str> = PdfALevel::ALL.iter().map(|l| l.as_str()).collect();
-        format!(
-            "unsupported PDF/A level `{s}` (expected one of {})",
-            names.join(", ")
-        )
-    })
-}
-
 #[derive(Parser)]
 #[command(
     name = "inkoxide",
@@ -96,7 +85,7 @@ enum Cmd {
         /// Write PDF/A, at LEVEL: 1b, 2b (the default) or 3b. The level
         /// follows an equals sign (`--pdf-a=1b`), so `--pdf-a doc.json`
         /// writes PDF/A-2b.
-        #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = pdf_a_level)]
+        #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = str::parse::<PdfALevel>)]
         pdf_a: Option<PdfALevel>,
         /// Also rasterise every page to PNG with `pdftoppm`, which must be
         /// installed: without it the PDF is written and the exit code is 2.

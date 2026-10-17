@@ -124,10 +124,10 @@ function fromTemplateError(e: unknown, id?: string): never {
 function templateTree<S extends z.ZodType>(
   t: TemplateLike<S>,
   data: z.output<S>,
-  opts: RenderOpts = {},
+  opts: RenderOpts,
+  policies: ImagePolicies,
 ): TreeResult {
-  // Outside the try: a bad option is not a template error.
-  const imageOptions = treeImageOptions(opts);
+  const imageOptions = treeImageOptions(policies);
   try {
     return renderTemplate(createElement(t.Template, { data }), {
       ...imageOptions,
@@ -161,10 +161,10 @@ function imagePolicies(opts: RenderOpts): ImagePolicies {
 }
 
 /** What tree building needs to know of the image policies. */
-function treeImageOptions(
-  opts: RenderOpts,
-): Pick<TreeOptions, 'remoteImages' | 'remoteImagesElsewhere' | 'localImages'> {
-  const { remote, local } = imagePolicies(opts);
+function treeImageOptions({
+  remote,
+  local,
+}: ImagePolicies): Pick<TreeOptions, 'remoteImages' | 'remoteImagesElsewhere' | 'localImages'> {
   return {
     remoteImages: remote,
     remoteImagesElsewhere: REMOTE_IMAGES_VARIABLE,
@@ -192,7 +192,9 @@ export function renderTree<S extends z.ZodType>(
       'renderTree needs Tailwind, the engine and the fonts loaded: call `await init()` first, and again after Font.register.',
     );
   }
-  const tree = templateTree(t, parseData(t, data), opts);
+  const parsed = parseData(t, data);
+  // Before the template runs: a bad option is not a template error.
+  const tree = templateTree(t, parsed, opts, imagePolicies(opts));
   return withTemplateImages(t, tree, opts.images);
 }
 
@@ -226,7 +228,9 @@ export async function generate<S extends z.ZodType>(
   const t0 = performance.now();
   await init();
   const parsed = parseData(t, data);
-  let tree = templateTree(t, parsed, opts);
+  // Before the template runs: a bad option is not a template error.
+  const policies = imagePolicies(opts);
+  let tree = templateTree(t, parsed, opts, policies);
 
   let validateMs = 0;
   if (opts.validate ?? !isProduction()) {
@@ -241,7 +245,7 @@ export async function generate<S extends z.ZodType>(
 
   const e0 = performance.now();
   const first = tree;
-  const settled = await renderSettled(tree, { ...t.images }, opts);
+  const settled = await settle(tree, { ...t.images }, opts, policies);
   tree = settled.tree;
   const { pdf, passes, fetchMs } = settled;
   const e1 = performance.now();
@@ -281,7 +285,13 @@ export async function renderSettled(
   first: TreeResult,
   images: Record<string, Uint8Array>,
   opts: RenderOpts = {},
-): Promise<{
+): Promise<Settled> {
+  await init();
+  return settle(first, images, opts, imagePolicies(opts));
+}
+
+/** What {@link renderSettled} gives. */
+interface Settled {
   tree: TreeResult;
   pdf: Uint8Array;
   pages: number;
@@ -289,10 +299,16 @@ export async function renderSettled(
   images: Record<string, Uint8Array>;
   fetchMs: number;
   treeMs: number;
-}> {
-  await init();
+}
+
+/** {@link renderSettled} under image policies already read from its options. */
+async function settle(
+  first: TreeResult,
+  images: Record<string, Uint8Array>,
+  opts: RenderOpts,
+  policies: ImagePolicies,
+): Promise<Settled> {
   const registered = { ...images, ...opts.images };
-  const policies = imagePolicies(opts);
   const all: Record<string, Uint8Array> = { ...registered };
   let fetchMs = 0;
   const render = async (tr: TreeResult): Promise<Uint8Array> => {
@@ -440,7 +456,8 @@ export async function renderToBuffer(
   await init();
   const name = componentName(element);
   // Outside the try: a bad option is not a template error.
-  const imageOptions = treeImageOptions(opts);
+  const policies = imagePolicies(opts);
+  const imageOptions = treeImageOptions(policies);
   let tree: TreeResult;
   try {
     tree = renderTemplate(element, {
@@ -451,7 +468,7 @@ export async function renderToBuffer(
   } catch (e) {
     fromTemplateError(e, name);
   }
-  const { pdf } = await renderSettled(tree, {}, opts);
+  const { pdf } = await settle(tree, {}, opts, policies);
   return pdf;
 }
 

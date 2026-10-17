@@ -111,6 +111,41 @@ impl PdfALevel {
     }
 }
 
+/// Parses a level's short name (`"1b"`, `"2b"`, `"3b"`), with an error
+/// that lists them.
+///
+/// ```
+/// use inkoxide::PdfALevel;
+/// assert_eq!("3b".parse(), Ok(PdfALevel::A3b));
+/// let err = "2a".parse::<PdfALevel>().unwrap_err();
+/// assert_eq!(err.to_string(), "unsupported PDF/A level `2a` (expected one of 1b, 2b, 3b)");
+/// ```
+impl std::str::FromStr for PdfALevel {
+    type Err = ParsePdfALevelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_name(s).ok_or_else(|| ParsePdfALevelError(s.to_string()))
+    }
+}
+
+/// A name that is not a PDF/A level, from [`PdfALevel`]'s `FromStr`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsePdfALevelError(String);
+
+impl std::fmt::Display for ParsePdfALevelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = PdfALevel::ALL.iter().map(|l| l.as_str()).collect();
+        write!(
+            f,
+            "unsupported PDF/A level `{}` (expected one of {})",
+            self.0,
+            names.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for ParsePdfALevelError {}
+
 /// Output settings for [`render`]; the document describes content only.
 ///
 /// Fields are public to read and assign; the type is `#[non_exhaustive]`, so

@@ -9,7 +9,7 @@ import { open, realpath } from 'node:fs/promises';
 import { delimiter, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_MAX_IMAGE_BYTES, envList } from './policy.ts';
+import { envList, maxImageBytes } from './policy.ts';
 import type { LocalImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
@@ -36,7 +36,7 @@ function inside(path: string, root: string): boolean {
  * `file://host/…`) are refused, so a path never makes a network request.
  */
 export async function readLocalImage(src: string, opts: LocalImageOptions): Promise<Uint8Array> {
-  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+  const maxBytes = maxImageBytes(opts);
   const fail = (why: string, cause?: unknown): never => {
     throw new RenderError('IMAGE_READ_FAILED', `Cannot read the image ${src}: ${why}.`, { cause });
   };

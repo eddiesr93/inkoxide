@@ -1,6 +1,6 @@
 import type { ImageRequest } from '@inkoxide/react';
 
-import { DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES, envList, timerMs } from './policy.ts';
+import { DEFAULT_IMAGE_TIMEOUT_MS, envList, maxImageBytes, timerMs } from './policy.ts';
 import type { RemoteImageOptions } from './types.ts';
 import { RenderError } from './types.ts';
 
@@ -30,7 +30,7 @@ export function fetchImage(src: string | ImageRequest, opts: RemoteImageOptions)
   }
   const limits = {
     timeoutMs: opts.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS,
-    maxBytes: opts.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES,
+    maxBytes: maxImageBytes(opts),
   };
   return fetchBytes(url, init, limits, (why, cause) => {
     throw new RenderError('IMAGE_FETCH_FAILED', `Cannot fetch the image ${url}: ${why}.`, { cause });

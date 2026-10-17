@@ -14,6 +14,13 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   fixtures outside the crate.
 - A run's `verticalAlign` or a table column's `width` of the wrong type (`true`, an object) is
   reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
+- `inkoxide`: `PdfALevel` implements `FromStr` (`"2b".parse()`), with `ParsePdfALevelError`; the
+  CLI and the Node and WebAssembly bindings read the level through it. An unknown `pdfA` level in
+  the bindings now says `(expected one of 1b, 2b, 3b); pdfA also takes true or false`.
+- `@inkoxide/react`: `textWrap: 'balance'` and a negative `flexGrow` or `flexShrink` are refused
+  with the same message as their Tailwind classes, from `@inkoxide/style`
+  (`textWrap: balance (not supported yet; pretty evens lines)`, `flexGrow: -1 (cannot be
+  negative)`); a `flexGrow` of `NaN` is refused too.
 
 ## 0.9.1 - 2026-10-16
 

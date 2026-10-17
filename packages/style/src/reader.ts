@@ -1,6 +1,7 @@
 // Reading CSS values into Inkoxide style values, one property at a time.
 import type { GridPlacement, Style, TemplateTrack, TrackBreadth, TrackSize } from '@inkoxide/schema';
 
+import { MAX_GRID_LINE, MAX_GRID_SPAN } from './bounds.ts';
 import {
   BORDER_STYLES,
   type ColorValue,
@@ -14,6 +15,7 @@ import {
   type ObjectPosition,
   type TextDecoration,
   type TextTransform,
+  type TextWrap,
   type TransformOp,
 } from './types.ts';
 import {
@@ -125,6 +127,13 @@ export class Reader {
       throw this.error(`${this.prop}: ${value} (supported: ${ENUMS[key].join(', ')})`);
     }
     return v;
+  }
+
+  /** A `text-wrap` mode; `balance` is reserved, not supported yet. */
+  textWrap(value: string): TextWrap {
+    if (value.trim() === 'balance')
+      throw this.error(`${this.prop}: balance (not supported yet; pretty evens lines)`);
+    return this.oneOf('textWrap', value);
   }
 
   private dimToLen(d: Dim, value: string): Len {
@@ -267,14 +276,16 @@ export class Reader {
       const span = /^span\s+(\d+)$/.exec(s);
       if (span?.[1] !== undefined) {
         const n = Number(span[1]);
-        if (n < 1 || n > 65535) throw this.error(`${this.prop}: ${value} (a span is 1 to 65535 tracks)`);
+        if (n < 1 || n > MAX_GRID_SPAN) {
+          throw this.error(`${this.prop}: ${value} (a span is 1 to ${MAX_GRID_SPAN} tracks)`);
+        }
         return { span: n };
       }
       if (/^-?\d+$/.test(s)) {
         const n = Number(s);
-        if (n === 0 || Math.abs(n) > 32767) {
+        if (n === 0 || Math.abs(n) > MAX_GRID_LINE) {
           throw this.error(
-            `${this.prop}: ${value} (a line is 1 to 32767, or negative from the end; there is no line 0)`,
+            `${this.prop}: ${value} (a line is 1 to ${MAX_GRID_LINE}, or negative from the end; there is no line 0)`,
           );
         }
         return { start: n };

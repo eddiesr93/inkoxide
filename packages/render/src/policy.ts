@@ -6,6 +6,11 @@ import { type Abortable, RenderError, type RenderOpts } from './types.ts';
 /** Largest image file or download in bytes, unless the policy says otherwise: 20 MiB. */
 export const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
+/** The size limit of an image policy, remote or local: its `maxBytes`, else the default. */
+export function maxImageBytes(policy: { maxBytes?: number }): number {
+  return policy.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+}
+
 /** Time for one download, and for a function or promise `src`, unless the options say otherwise. */
 export const DEFAULT_IMAGE_TIMEOUT_MS = 10_000;
 

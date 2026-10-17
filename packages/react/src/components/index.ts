@@ -1,6 +1,8 @@
 import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { FlatStyle, FontFeatureSettings } from '@inkoxide/style';
+import type { BorderStyle, FlatStyle, FontFeatureSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
+
+import type { PdfALevel } from '../tree/build.ts';
 
 /**
  * Host element types. Components are host elements, not function components: one fiber per
@@ -69,7 +71,7 @@ export type Length = AbsoluteLength | `${number}${'em' | 'vw' | 'vh'}` | `calc($
 export type LengthPercent = Length | `${number}%`;
 export type LengthAuto = LengthPercent | 'auto';
 
-type BorderLineStyle = 'solid' | 'dashed' | 'dotted';
+type BorderLineStyle = BorderStyle;
 
 /** CSS `text-decoration-line` values. `lineThrough` is the Tailwind builder's spelling. */
 type TextDecorationLine =
@@ -346,7 +348,7 @@ export interface Permissions {
 }
 
 /** A PDF/A part and conformance level; a bare part (`'PDF/A-2'`) is level b. */
-export type Conformance = 'PDF/A-1' | 'PDF/A-1b' | 'PDF/A-2' | 'PDF/A-2b' | 'PDF/A-3' | 'PDF/A-3b';
+export type Conformance = `PDF/A-${PdfALevel}` | `PDF/A-${PdfALevel extends `${infer Part}b` ? Part : never}`;
 
 export interface DocumentProps {
   title?: string;
