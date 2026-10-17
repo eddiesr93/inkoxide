@@ -17,9 +17,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
-use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
+use pdf_writer::{Filter, Finish, Name, Rect, Ref, Str};
 
-use super::{deflate, Out, Profile, RefAlloc};
+use super::{deflate, Out, Profile, Writer};
 use crate::flate;
 use crate::fonts::LoadedFont;
 use crate::lru::SharedLru;
@@ -159,12 +159,11 @@ pub(crate) struct Embedded<'f, 'a> {
 /// Under PDF/A-1 a subset's descriptor lists its CIDs, and the widths
 /// keep to its array limit.
 pub(crate) fn write_font(
-    pdf: &mut Pdf,
-    alloc: &mut RefAlloc,
-    out: &mut Out,
+    w: &mut Writer,
     embedded: &Embedded<'_, '_>,
     profile: Profile,
 ) -> Result<Ref, InkoxideError> {
+    let Writer { pdf, alloc, out } = w;
     let Embedded {
         font,
         program,
