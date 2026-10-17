@@ -19,7 +19,7 @@ use super::{
 };
 use crate::images::svg::{iri, SVG_NS, XLINK_NS};
 use crate::schema::FontFeature;
-use crate::validate::rules::{MAX_FEATURE_VALUE, MAX_FONT_FEATURES};
+use crate::validate::rules::{MAX_FEATURE_SETS, MAX_FEATURE_VALUE, MAX_FONT_FEATURES};
 
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
@@ -94,11 +94,6 @@ const TEXT: &[&str] = &[
     "font-kerning",
     "font-variant",
 ];
-
-/// Most different sets of OpenType features the text of an SVG uses, as
-/// in a document (`validate::rules::MAX_FEATURE_SETS`): each is shaped
-/// with plans and words of its own.
-const MAX_FEATURE_SETS: usize = 64;
 
 /// Properties `usvg` reads only from `style` and style sheets.
 const NOT_ATTRIBUTES: &[&str] = &["mix-blend-mode", "isolation"];
@@ -372,9 +367,15 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
                 LengthUnit::Percent => geom.length() * l.number as f32 / 100.0,
                 _ => absolute(l, self.font_size(n)),
             });
+        // A start past f32 is as far past the path's end (or before its
+        // start) as one within it.
         Ok(Some(TextPathSpec {
             geom,
-            start: if start.is_finite() { start } else { 0.0 },
+            start: if start.is_nan() {
+                0.0
+            } else {
+                start.clamp(-f32::MAX, f32::MAX)
+            },
         }))
     }
 

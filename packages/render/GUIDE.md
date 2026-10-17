@@ -948,7 +948,8 @@ In an SVG, whether in `<Svg>` or an image file:
   laid out as described above, and read in their order when the PDF's text is copied or
   extracted. Vertical text on a path fails the render with `INVALID_IMAGE`: convert it to
   outlines in your design tool, as for the text paths of an SVG that has more than 100,000
-  path segments in all. An SVG's text uses at most 64 different sets of font features.
+  path segments in all. An SVG's text uses at most 64 different sets of font features, and so do the SVGs of a
+  document in all.
   `font-stretch` is ignored, and font properties set on a `<use>` do not reach the text it
   copies (its fill and stroke do). A `<text>` element that an XML entity expands to fails with `INVALID_IMAGE` too:
   write the element in the SVG itself. An entity inside a `<text>` that is in the SVG

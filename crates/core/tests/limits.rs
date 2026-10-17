@@ -487,6 +487,48 @@ fn render_svg(declared: &str, svg: &str) -> Result<Vec<u8>, InkoxideError> {
     )
 }
 
+/// The SVGs of a render use at most 64 different sets of font features in
+/// all, as the document's text does, whatever each uses alone.
+#[test]
+fn svgs_share_the_bound_on_feature_sets() {
+    let svg = |sets: std::ops::Range<usize>| {
+        let mut texts = String::new();
+        for i in sets {
+            let _ = write!(
+                texts,
+                r#"<text font-feature-settings="'tnum' {i}">a</text>"#
+            );
+        }
+        format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">{texts}</svg>"#)
+    };
+    let render_two = |a: &str, b: &str| {
+        let mut images = ImageStore::new();
+        images.insert("a", a.as_bytes().to_vec());
+        images.insert("b", b.as_bytes().to_vec());
+        let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+           "pages":[{"size":{"width":595,"height":842},"children":[
+             {"type":"image","src":"a","style":{"width":100,"height":100}},
+             {"type":"image","src":"b","style":{"width":100,"height":100}}]}]}"#;
+        let options = RenderOptions::default().with_threads(1);
+        inkoxide::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &images,
+        )
+    };
+    render_two(&svg(0..40), &svg(0..40)).unwrap();
+    render_two(&svg(0..40), &svg(24..64)).unwrap();
+    let err = render_two(&svg(0..40), &svg(40..80)).unwrap_err();
+    assert_eq!(err.code(), "IMAGE_ERROR", "{err}");
+    assert!(
+        err.to_string()
+            .contains("more than 64 different sets of font features"),
+        "{err}"
+    );
+}
+
 /// SVG text copied by `use` many times over is counted per copy: past a
 /// million characters the SVG fails, before anything is laid out or
 /// drawn.
@@ -882,9 +924,18 @@ fn text_paths_are_read_once_and_bounded() {
             r##"<textPath href="#p">a</textPath>"##.repeat(texts)
         )
     };
-    let t = Instant::now();
-    render_svg(inter, &svg(100_000, 10_000)).unwrap();
-    assert!(t.elapsed().as_secs() < 30, "{:?}", t.elapsed());
+    let took = |segments, texts| {
+        let t = Instant::now();
+        render_svg(inter, &svg(segments, texts)).unwrap();
+        t.elapsed()
+    };
+    // Read once: the long path and the many texts cost what each does
+    // alone, where reading it per text would cost 10 000 times as much.
+    assert_as_fast(
+        "text paths",
+        || took(100_000, 1) + took(1, 10_000),
+        || took(100_000, 10_000),
+    );
     let err = render_svg(inter, &svg(100_001, 1)).unwrap_err();
     assert_eq!(err.code(), "INVALID_IMAGE", "{err}");
     assert!(
