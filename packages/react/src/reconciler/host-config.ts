@@ -46,6 +46,7 @@ const FLOW = new Set<string>([
   HOST.Field,
   HOST.FieldSet,
   HOST.Note,
+  HOST.Attachment,
   HOST.Svg,
   HOST.Canvas,
 ]);
@@ -54,6 +55,7 @@ const INLINE = new Set<string>([
   HOST.Link,
   HOST.Image,
   HOST.Note,
+  HOST.Attachment,
   HOST.PageNumber,
   HOST.TotalPages,
 ]);
@@ -132,6 +134,7 @@ const TEXT_PARENTS = new Set<string>([
   HOST.Link,
   HOST.FieldSet,
   HOST.Note,
+  HOST.Attachment,
   HOST.Cell,
   HOST.Header,
   HOST.Footer,
@@ -171,12 +174,15 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
   if (child === HOST.Tspan) {
     return new TemplateError('<Tspan> goes inside a <Text> in an <Svg>.');
   }
-  if (parent === HOST.Note) {
-    return new TemplateError(`A <Note> contains only text: ${name(child)} cannot be inside it.`);
+  if (parent === HOST.Note || parent === HOST.Attachment) {
+    const article = parent === HOST.Note ? 'A' : 'An';
+    return new TemplateError(
+      `${article} ${name(parent)} contains only text: ${name(child)} cannot be inside it.`,
+    );
   }
   if (parent === HOST.Text) {
     return new TemplateError(
-      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <PageNumber> and <TotalPages>.`,
+      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber> and <TotalPages>.`,
     );
   }
   if (child === HOST.PageNumber || child === HOST.TotalPages) {

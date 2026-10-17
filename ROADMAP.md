@@ -9,7 +9,6 @@ or should come sooner.
   cross-origin isolated; `renderToStream`; reading local files.
 - **A build-time Tailwind plugin**, so that a browser need not load the Tailwind compiler.
 - **Accessibility**: tagged PDF and PDF/UA, with alternative text for images.
-- **File attachments**.
 - **Encryption**: an `entropy` option, for output that cannot be linked to its input; Unicode
   passwords, prepared with SASLprep (passwords are printable ASCII now); and an independent
   review of the key derivation by cryptographers. It has had an internal review only.

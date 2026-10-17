@@ -25,6 +25,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
             NodeKind::Image { .. } => self.images.paint(node, geo, ctx, self.fonts, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
+            NodeKind::Attachment(ref a) => crate::notes::paint_attachment(a, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),
         }
     }

@@ -20,6 +20,9 @@ export type ValidationCode =
   | 'UNKNOWN_IMAGE'
   | 'INVALID_IMAGE'
   | 'IMAGE_TOO_LARGE'
+  | 'UNKNOWN_ATTACHMENT'
+  | 'ATTACHMENT_NOT_REGISTERED'
+  | 'ATTACHMENT_TOO_LARGE'
   | 'STYLE_NOT_APPLICABLE'
   | 'INVALID_TABLE'
   | 'INVALID_NODE'
@@ -82,6 +85,11 @@ export interface RenderOptions {
   pdfA?: boolean | PdfALevel;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
+  /**
+   * The bytes of the files the document's `attachments` name in `src`, by id. A `src`
+   * missing from here is `ATTACHMENT_NOT_REGISTERED`.
+   */
+  attachments?: Record<string, Uint8Array>;
   /**
    * Encrypt the PDF with AES-256 (PDF 2.0). Not with `pdfA`. Default: not
    * encrypted. A bad value is `INVALID_ARGUMENT` at its path, without the

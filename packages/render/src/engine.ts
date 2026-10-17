@@ -257,6 +257,7 @@ export async function renderPdf(
   // The <Document> passwords and permissions, which JavaScript can give any type.
   checkEncryptionTypes(opts.encryption ?? output.encryption);
   const options: RenderOptions = { images };
+  if (opts.attachments !== undefined) options.attachments = opts.attachments;
   if (opts.creationDate != null) options.creationDate = opts.creationDate;
   if (opts.threads != null) options.threads = opts.threads;
   if (opts.compress != null) options.compress = opts.compress;

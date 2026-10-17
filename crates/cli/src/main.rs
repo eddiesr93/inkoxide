@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
 use inkoxide::{
-    FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions,
-    ValidationError,
+    AttachmentStore, FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat,
+    PdfALevel, RenderOptions, ValidationError,
 };
 
 #[derive(Parser)]
@@ -60,6 +60,10 @@ struct Output {
     /// built-in patterns.
     #[arg(long, value_name = "LANG=PATH")]
     hyphenation: Vec<String>,
+    /// Directory of files for `attachments`; each is available to `src`
+    /// under its whole file name (`invoice.xml`).
+    #[arg(long, value_name = "DIR")]
+    attachments: Vec<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -180,6 +184,19 @@ fn load_hyphenation(out: &Output) -> Result<HyphenationStore, String> {
 }
 
 /// Regular files of `dir` as (stem, path), sorted for determinism.
+/// The files of the `--attachments` directories, by file name.
+fn load_attachments(out: &Output) -> Result<AttachmentStore, String> {
+    let mut store = AttachmentStore::new();
+    for dir in &out.attachments {
+        for (_, path) in dir_files(dir)? {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                store.insert(name, read(&path)?);
+            }
+        }
+    }
+    Ok(store)
+}
+
 fn dir_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
@@ -251,7 +268,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .with_compress(!no_compress)
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
-                .with_hyphenation(load_hyphenation(&out)?);
+                .with_hyphenation(load_hyphenation(&out)?)
+                .with_attachments(load_attachments(&out)?);
             if let Some(level) = pdf_a {
                 opts = opts.with_pdf_a_level(level);
             }
@@ -292,7 +310,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             let opts = RenderOptions::default()
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
-                .with_hyphenation(load_hyphenation(&out)?);
+                .with_hyphenation(load_hyphenation(&out)?)
+                .with_attachments(load_attachments(&out)?);
             // Cold start: font registration plus the first render, which
             // also fills the process-wide caches.
             let cold = Instant::now();

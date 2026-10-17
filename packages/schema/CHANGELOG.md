@@ -9,6 +9,9 @@ version 2.
 
 ### Added
 
+- **Attachments:** `attachments` at the top of a document (files with a `name`, `src` or `data`,
+  and optional `mimeType`, `description`, `relationship` and `modified`), the `attachment` node
+  type and run property, `useAttachments` in `meta.pageMode`, and `meta.xmpExtensions`.
 - **`source` and `variations` on font declarations:** a declaration draws with the registered
   font `source` (default: its `id`), at the axis values of `variations` when that font is
   variable.

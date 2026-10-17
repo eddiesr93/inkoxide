@@ -64,7 +64,7 @@ function checkOptions(options) {
   if (options === undefined || options === null) return;
   checkObject(options, 'options');
   checkTypes(options, OPTION_TYPES, 'options');
-  const { pdfA, images, encryption, deferredFonts } = options;
+  const { pdfA, images, attachments, encryption, deferredFonts } = options;
   if (pdfA !== undefined && typeof pdfA !== 'boolean' && typeof pdfA !== 'string') {
     throw engineError('INVALID_ARGUMENT', 'options.pdfA', 'must be a boolean or a string');
   }
@@ -76,11 +76,15 @@ function checkOptions(options) {
       }
     }
   }
-  if (images !== undefined) {
-    checkObject(images, 'options.images');
-    for (const [id, bytes] of Object.entries(images)) {
+  for (const [name, files] of [
+    ['images', images],
+    ['attachments', attachments],
+  ]) {
+    if (files === undefined) continue;
+    checkObject(files, `options.${name}`);
+    for (const [id, bytes] of Object.entries(files)) {
       if (!(bytes instanceof Uint8Array)) {
-        throw engineError('INVALID_ARGUMENT', `options.images.${id}`, 'must be a Uint8Array');
+        throw engineError('INVALID_ARGUMENT', `options.${name}.${id}`, 'must be a Uint8Array');
       }
     }
   }
@@ -230,8 +234,8 @@ const stringOf = (v) => {
   return v;
 };
 
-// Images as one buffer: their count, then for each the id's length, the id, the bytes' length
-// and the bytes, lengths as little-endian u32s (crates/wasm/src/images.rs).
+// Images, or attachments, as one buffer: their count, then for each the id's length, the id, the
+// bytes' length and the bytes, lengths as little-endian u32s (crates/wasm/src/images.rs).
 function imagesBuffer(images) {
   const entries = Object.entries(images).map(([id, bytes]) => [encoder.encode(id), bytes]);
   const size = entries.reduce((n, [id, bytes]) => n + 8 + id.length + bytes.length, 4);
@@ -360,13 +364,14 @@ export async function loadHyphenation(langs) {
 function renderOnce(doc, options) {
   const bytes = bytesOf(doc);
   checkOptions(options);
-  const { images, deferredFonts, ...rest } = options ?? {};
+  const { images, attachments, deferredFonts, ...rest } = options ?? {};
   // The engine renders without them until a render needs them: it takes their ids.
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
   const json = encoder.encode(JSON.stringify(rest, finiteOrString));
   const buf = images === undefined ? new Uint8Array() : imagesBuffer(images);
+  const files = attachments === undefined ? new Uint8Array() : imagesBuffer(attachments);
   return call((e) => {
-    const status = e.ink_render(...put(e, bytes), ...put(e, json), ...put(e, buf));
+    const status = e.ink_render(...put(e, bytes), ...put(e, json), ...put(e, buf), ...put(e, files));
     if (status === 2) return { needs: JSON.parse(decoder.decode(result(e))) };
     return { pdf: outcome(e, status) };
   });

@@ -50,7 +50,7 @@ impl<T: LeafMeasure> LeafMeasure for Leaves<'_, T> {
             NodeKind::Image { .. } => self.images.measure(node, known, available),
             NodeKind::Field(ref f) => crate::forms::measure(f, available),
             // It takes no space.
-            NodeKind::Note(_) => Size::ZERO,
+            NodeKind::Note(_) | NodeKind::Attachment(_) => Size::ZERO,
             _ => self.text.measure(node, known, available),
         }
     }

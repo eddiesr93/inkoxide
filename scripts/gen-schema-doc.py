@@ -81,11 +81,14 @@ INTRO = """# Document schema v1
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
 | `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
 | `IMAGE_TOO_LARGE` | Raster image (not SVG) over 50 megapixels (width × height). An SVG has its own limit: a width or height over 100,000 px is `INVALID_IMAGE` |
+| `UNKNOWN_ATTACHMENT` | An `attachment` names a file not declared in `attachments` |
+| `ATTACHMENT_NOT_REGISTERED` | An attachment's `src` not provided in the render options. Only a render reports it |
+| `ATTACHMENT_TOO_LARGE` | An attachment over 64 MiB, or attachments over 256 MiB together |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b and 2b, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100

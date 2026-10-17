@@ -1,6 +1,9 @@
 //! Semantic checks on a parsed document: font and image ids, anchors,
 //! value ranges, and where each node type and style property applies.
 
+mod attachments;
+#[cfg(test)]
+pub(crate) use attachments::{MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS};
 mod fields;
 mod images;
 mod links;
@@ -21,7 +24,7 @@ use crate::schema::{
     is_area_name, parse_areas, BorderCollapse, Break, BreakMode, Document, FieldKind, FontFeature,
     Length, LengthPercent, Node, NodeKind, PageSpec, Position, Style, TrackBreadth, SCHEMA_VERSION,
 };
-use crate::{FontStore, ImageStore};
+use crate::{AttachmentStore, FontStore, ImageStore, PdfALevel};
 
 /// Stop collecting after this many problems; the rest is usually noise.
 const MAX_ERRORS: usize = 100;
@@ -86,7 +89,9 @@ impl From<TrackBreadth> for Len {
 }
 
 /// Checks `doc` for a render with `profile`. Without `images`, image ids
-/// are not looked up (inline `data` is still checked). The fonts of
+/// are not looked up (inline `data` is still checked); without
+/// `attachments` (`validate`), neither are attachment ids, nor what only a
+/// render can tell. The fonts of
 /// `deferred` ([`crate::RenderOptions::deferred_fonts`]) may be missing from
 /// `fonts`. Under PDF/A, a
 /// valid document that the level does not allow gets one error:
@@ -97,9 +102,13 @@ pub(crate) fn check(
     fonts: &FontStore,
     deferred: &[String],
     images: Option<&ImageStore>,
+    attachments: Option<&AttachmentStore>,
     profile: Profile,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
+        attachments,
+        rendering: attachments.is_some(),
+        level: profile.level(),
         path: String::with_capacity(128),
         errors: Vec::new(),
         declared: BTreeSet::new(),
@@ -156,6 +165,12 @@ struct Checker<'a> {
     /// Font ids that may be missing from `fonts`.
     deferred: &'a [String],
     images: Option<&'a ImageStore>,
+    /// The files attachments name, in a render.
+    attachments: Option<&'a AttachmentStore>,
+    /// Checking for a render, which knows its options.
+    rendering: bool,
+    /// The PDF/A level rendered at.
+    level: Option<PdfALevel>,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -461,6 +476,12 @@ impl<'a> Checker<'a> {
             for (sequence, id) in &doc.emoji_images {
                 self.at("emojiImages", |c| c.emoji_image(sequence, id));
             }
+        }
+        self.attachments(&doc.attachments);
+        if let Some(schemas) = &doc.meta.xmp_extensions {
+            self.at("meta", |c| {
+                c.at("xmpExtensions", |c| c.xmp_extensions(schemas));
+            });
         }
         if doc.pages.is_empty() {
             self.err(
@@ -793,6 +814,7 @@ impl<'a> Checker<'a> {
             NodeKind::Spacer => {}
             NodeKind::Field(f) => self.at("field", |c| c.field(f)),
             NodeKind::Note(n) => self.at("note", |c| c.note(n)),
+            NodeKind::Attachment(a) => self.at("attachment", |c| c.attachment(a)),
         }
     }
 }

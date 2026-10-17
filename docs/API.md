@@ -27,6 +27,7 @@ versions; removing or renaming any of them is a major version.
 | Register a font (TrueType, CFF OpenType, WOFF or WOFF2, static or variable; not a `.ttc` collection) | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
 | Remove a font | `FontStore::unregister(id) -> bool` | `unregisterFont(id): boolean` |
 | Images | `ImageStore::insert(id, bytes)`, `remove(id) -> bool`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
+| Attachments (the files `attachments[].src` names) | `AttachmentStore::insert(id, bytes)`, `remove(id) -> bool`, via `RenderOptions::with_attachments` | `options.attachments: Record<string, Uint8Array>` per render |
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
 | Validate | `validate(doc, format, &fonts, &images) -> Vec<ValidationError>` | `validate(doc, format?, images?): ValidationError[]` |
 | Validate without the images | `validate_without_images(doc, format, &fonts) -> Vec<ValidationError>` | `validate(doc, format?)`, with no `images` |
@@ -122,7 +123,7 @@ are left out. Every level is "b": the pages look the same in every reader.
 | Level | Node | Rust | Notes |
 |---|---|---|---|
 | PDF/A-2b | `true` or `'2b'` | `PdfALevel::A2b` (default) | Based on PDF 1.7 |
-| PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b; the level allows embedded files, but Inkoxide cannot attach any yet |
+| PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b, with the document's `attachments` as associated files (`/AF`) |
 | PDF/A-1b | `'1b'` | `PdfALevel::A1b` | Based on PDF 1.4, for archives that require it. Font subsets list their glyphs (`CIDSet`) |
 
 In Rust, `PdfALevel::ALL` lists the levels, `as_str` gives a level's

@@ -120,8 +120,14 @@ pub fn hyphenation_file(lang: &[u8]) -> String {
         .to_string()
 }
 
-/// The PDF of `doc`, with `options` as JSON and `images` as one buffer.
-pub fn render(doc: &[u8], options: &[u8], images: &[u8]) -> Result<Vec<u8>, NotRendered> {
+/// The PDF of `doc`, with `options` as JSON, and `images` and `files` (the
+/// attachments) as one buffer each.
+pub fn render(
+    doc: &[u8],
+    options: &[u8],
+    images: &[u8],
+    files: &[u8],
+) -> Result<Vec<u8>, NotRendered> {
     let options::Parsed {
         options,
         deferred_fonts,
@@ -129,7 +135,9 @@ pub fn render(doc: &[u8], options: &[u8], images: &[u8]) -> Result<Vec<u8>, NotR
     let images = images::parse(images)?;
     let hyphenation = HYPHENATION.with(|h| h.borrow().clone());
     let (format, core) = options.into_core(hyphenation, MAX_THREADS)?;
-    let core = core.with_deferred_fonts(deferred_fonts);
+    let core = core
+        .with_deferred_fonts(deferred_fonts)
+        .with_attachments(images::parse_files(files)?);
     // The engine is built without `msgpack` for this binding, but a
     // workspace build unifies features: refuse it here too.
     if format == InputFormat::MessagePack {
@@ -307,15 +315,18 @@ pub unsafe extern "C" fn ink_render(
     options_len: usize,
     images: *mut u8,
     images_len: usize,
+    files: *mut u8,
+    files_len: usize,
 ) -> u32 {
-    let (doc, options, images) = unsafe {
+    let (doc, options, images, files) = unsafe {
         (
             take(doc, doc_len),
             take(options, options_len),
             take(images, images_len),
+            take(files, files_len),
         )
     };
-    match render(&doc, &options, &images) {
+    match render(&doc, &options, &images, &files) {
         Ok(pdf) => finish(Ok(pdf)),
         Err(NotRendered::Failed(f)) => finish(Err(f)),
         Err(NotRendered::Needs(missing)) => {
