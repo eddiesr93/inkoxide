@@ -35,7 +35,15 @@ export type Debug = boolean;
  * via the `definition` "Node".
  */
 export type Node =
-  BoxNode | TextNode | ImageNode | TableNode | PageBreakNode | SpacerNode | FieldNode | NoteNode;
+  | BoxNode
+  | TextNode
+  | ImageNode
+  | TableNode
+  | PageBreakNode
+  | SpacerNode
+  | FieldNode
+  | NoteNode
+  | AttachmentNode;
 /**
  * A `Length` that is not negative: points (at most 1000000), a percentage of the containing block (at most 10000%), or "auto". A percentage height needs a containing block with a definite height, as for `Length`.
  *
@@ -272,6 +280,12 @@ export interface Document {
     [k: string]: Id | undefined;
   };
   /**
+   * Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b allows them; PDF/A-1b and PDF/A-2b refuse them (`PDFA_CONFLICT`).
+   *
+   * @maxItems 1000
+   */
+  attachments?: AttachmentDecl[];
+  /**
    * @minItems 1
    */
   pages: [PageSpec, ...PageSpec[]];
@@ -299,9 +313,9 @@ export interface Meta {
    */
   creationDate?: string;
   /**
-   * What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) or the pages full screen (`fullScreen`). Default: `useOutlines` when the document has bookmarks, else `useNone`.
+   * What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`.
    */
-  pageMode?: 'useNone' | 'useOutlines' | 'useThumbs' | 'fullScreen';
+  pageMode?: 'useNone' | 'useOutlines' | 'useThumbs' | 'fullScreen' | 'useAttachments';
   /**
    * How the viewer lays out the pages: one at a time (`singlePage`), one scrolling column (`oneColumn`), two scrolling columns with odd pages on the left or right (`twoColumnLeft`, `twoColumnRight`), or two pages at a time with odd pages on the left or right (`twoPageLeft`, `twoPageRight`). Default: the viewer's own setting.
    */
@@ -312,6 +326,177 @@ export interface Meta {
     | 'twoColumnRight'
     | 'twoPageLeft'
     | 'twoPageRight';
+  /**
+   * XMP schemas the PDF/A metadata declares and fills in, such as Factur-X's (`fx`) for an e-invoice: PDF/A accepts properties outside its own schemas only when they are declared, which these are, as Text. At most 16 schemas of 64 properties. Without PDF/A there is no XMP to put them in, and `render` refuses them.
+   *
+   * @maxItems 16
+   */
+  xmpExtensions?:
+    | []
+    | [XmpSchema]
+    | [XmpSchema, XmpSchema]
+    | [XmpSchema, XmpSchema, XmpSchema]
+    | [XmpSchema, XmpSchema, XmpSchema, XmpSchema]
+    | [XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema]
+    | [XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema]
+    | [XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema]
+    | [XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema, XmpSchema]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ]
+    | [
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema,
+        XmpSchema
+      ];
+}
+/**
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "XmpSchema".
+ */
+export interface XmpSchema {
+  /**
+   * What the schema is (`Factur-X PDFA Extension Schema`).
+   */
+  schema: string;
+  /**
+   * The namespace URI of its properties.
+   */
+  namespace: string;
+  /**
+   * The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`).
+   */
+  prefix: string;
+  /**
+   * @maxItems 64
+   */
+  properties: XmpProperty[];
+}
+/**
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "XmpProperty".
+ */
+export interface XmpProperty {
+  /**
+   * The property name (`DocumentType`).
+   */
+  name: string;
+  /**
+   * Its value, a Text.
+   */
+  value: string;
+  /**
+   * What the property is.
+   */
+  description: string;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -341,6 +526,42 @@ export interface FontDecl {
   variations?: {
     [k: string]: number | undefined;
   };
+}
+/**
+ * A file the PDF carries. Exactly one of `src` and `data`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "AttachmentDecl".
+ */
+export interface AttachmentDecl {
+  /**
+   * The file name viewers show and save it under, unique in the document: no `/`, `\\` or control characters. `attachment` icons name the file by it.
+   */
+  name: string;
+  /**
+   * Key into the render option `attachments`.
+   */
+  src?: Id;
+  /**
+   * The file's bytes, base64-encoded.
+   */
+  data?: string;
+  /**
+   * The file's MIME type (`text/xml`, `application/pdf`).
+   */
+  mimeType?: string;
+  /**
+   * What the file is; viewers show it in their attachments panel.
+   */
+  description?: string;
+  /**
+   * How the file relates to the document (`/AFRelationship`, which PDF/A-3 requires): the original it was made from (`source`), the data it shows (`data`, as an e-invoice's XML), another form of the same content (`alternative`), or something that adds to it (`supplement`).
+   */
+  relationship?: 'source' | 'data' | 'alternative' | 'supplement' | 'unspecified';
+  /**
+   * When the file was last changed (RFC 3339). Default: the creation date, when there is one; otherwise none is written.
+   */
+  modified?: string;
 }
 /**
  * A page template. Its content flows across as many physical pages as needed.
@@ -771,6 +992,10 @@ export interface TextRun {
    * A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it.
    */
   note?: Note;
+  /**
+   * An attachment's icon in the line, in place of text, as a `note` is: it takes no room, and its icon hangs from the top of the line where the run is.
+   */
+  attachment?: Attachment;
 }
 /**
  * An image in a line of text, as wide as `width` and as high as `height`, in points. With one of them, the other follows the image's aspect ratio; with neither, it is as high as the run's `size` (1em). The run's `font` and `size` still set the line's strut, and its `verticalAlign` places the image.
@@ -820,6 +1045,28 @@ export interface Note {
    * Whether viewers show the text when the document opens.
    */
   open?: boolean;
+}
+/**
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Attachment".
+ */
+export interface Attachment {
+  /**
+   * The `name` of a file in `attachments`.
+   */
+  file: string;
+  /**
+   * The icon: a push pin, a paper clip, a bar chart or a tag.
+   */
+  icon?: 'pushPin' | 'paperclip' | 'graph' | 'tag';
+  /**
+   * The icon's colour (its alpha is not used); default blue, [0.3, 0.55, 0.9, 1].
+   */
+  color?: Color;
+  /**
+   * The text viewers show for the icon; default the file's `description`, else its name.
+   */
+  contents?: string;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -1053,6 +1300,21 @@ export interface NoteNode {
   pages?: PageFilter;
   debug?: Debug;
   note: Note;
+}
+/**
+ * An icon that opens a file of `attachments` (a file attachment annotation). It takes no space, and sits as a note does: at the top-left corner of its box, inside the page, on the page where the box starts, 20 pt square at any zoom. In a header, a footer or a fixed element it is on every page, each icon opening the one file.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "AttachmentNode".
+ */
+export interface AttachmentNode {
+  type: 'attachment';
+  id?: Id;
+  style?: Style;
+  break?: Break;
+  pages?: PageFilter;
+  debug?: Debug;
+  attachment: Attachment;
 }
 
 /** The document `version` this schema describes. */

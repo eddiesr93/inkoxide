@@ -425,6 +425,10 @@ fn paint_line(
             crate::notes::paint_at(note, (x, cy + line.top), ops);
             continue;
         }
+        if let Some(a) = run.attachment.as_deref() {
+            crate::notes::paint_attachment_at(a, (x, cy + line.top), ops);
+            continue;
+        }
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
                 Some((_, x1, t)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {

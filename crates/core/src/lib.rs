@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod attachments;
 mod date;
 mod encryption;
 mod error;
@@ -36,6 +37,7 @@ mod test_timing;
 mod text;
 mod validate;
 
+pub use attachments::AttachmentStore;
 pub use encryption::{Encryption, Permissions, Printing};
 pub use error::{InkoxideError, NotLoaded, ValidationCode, ValidationError};
 pub use fonts::FontStore;
@@ -200,6 +202,10 @@ pub struct RenderOptions {
     /// tried for a character), fails with [`InkoxideError::NotLoaded`]
     /// naming it; one that does not renders as if it were registered.
     pub deferred_fonts: Vec<String>,
+    /// Files that the document's `attachments` name by `src` (default:
+    /// none). Validation cannot see them: a `src` missing from here is
+    /// reported by [`render`] (`ATTACHMENT_NOT_REGISTERED`).
+    pub attachments: AttachmentStore,
 }
 
 impl Default for RenderOptions {
@@ -215,6 +221,7 @@ impl Default for RenderOptions {
             hyphenation: HyphenationStore::new(),
             encryption: None,
             deferred_fonts: Vec::new(),
+            attachments: AttachmentStore::new(),
         }
     }
 }
@@ -286,6 +293,13 @@ impl RenderOptions {
         self
     }
 
+    /// Sets [`attachments`](Self::attachments).
+    #[must_use]
+    pub fn with_attachments(mut self, store: AttachmentStore) -> Self {
+        self.attachments = store;
+        self
+    }
+
     /// Sets [`encryption`](Self::encryption).
     #[must_use]
     pub fn with_encryption(mut self, encryption: Encryption) -> Self {
@@ -331,7 +345,7 @@ fn validate_with(
 ) -> Vec<ValidationError> {
     match validate::parse(doc, format) {
         // No profile: `validate` does not know the level.
-        Ok(d) => validate::check(&d, fonts, &[], images, Profile::default()),
+        Ok(d) => validate::check(&d, fonts, &[], images, None, Profile::default()),
         Err(e) => vec![e],
     }
 }
@@ -410,6 +424,7 @@ fn render_inner(
         fonts,
         &options.deferred_fonts,
         Some(images),
+        Some(&options.attachments),
         profile,
     );
     if let Some(first) = checked.into_iter().next() {
@@ -459,8 +474,16 @@ fn render_inner(
         return Err(e);
     }
     svg_text?;
+    let compression = options.compress.then_some(options.compression_level.min(9));
+    // Prepared once: an encrypted render writes the document twice.
+    let files = attachments::prepare(
+        &document.attachments,
+        &options.attachments,
+        compression,
+        creation_date,
+    )?;
     let mut sink = PdfWriterSink {
-        compression: options.compress.then_some(options.compression_level.min(9)),
+        compression,
         subset_fonts: options.subset_fonts,
         profile,
         encryption,
@@ -501,5 +524,6 @@ fn render_inner(
         images: &image_set,
         colors: &colors,
         marks: &marks,
+        files: &files,
     })
 }

@@ -1,5 +1,6 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
+mod attach;
 mod content;
 pub(crate) mod crypt;
 mod document;
@@ -71,6 +72,8 @@ pub(crate) struct DocumentOut<'a> {
     pub images: &'a ImageSet,
     pub colors: &'a crate::text::ColorGlyphs,
     pub marks: &'a Marks<'a>,
+    /// The files the document carries.
+    pub files: &'a [crate::attachments::PreparedFile],
 }
 
 pub(crate) struct PdfWriterSink {

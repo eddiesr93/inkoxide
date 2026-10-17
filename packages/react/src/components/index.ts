@@ -28,6 +28,7 @@ export const HOST = {
   Field: 'ink-field',
   FieldSet: 'ink-field-set',
   Note: 'ink-note',
+  Attachment: 'ink-attachment',
   Canvas: 'ink-canvas',
   Svg: 'ink-svg',
   G: 'ink-svg-g',
@@ -412,7 +413,33 @@ export interface DocumentProps {
   ownerPassword?: string;
   /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
+  /**
+   * Files the PDF carries, listed in the viewer's attachments panel; `<Attachment file>` shows
+   * an icon that opens one. Under PDF/A, only `'PDF/A-3b'` allows them.
+   */
+  attachments?: readonly AttachmentFile[];
+  /**
+   * XMP schemas the PDF/A metadata declares and fills in, such as `facturX()`'s for an
+   * e-invoice. Needs `conformance`.
+   */
+  xmpExtensions?: Meta['xmpExtensions'];
   children?: ReactNode;
+}
+
+/** A file `<Document attachments>` carries. */
+export interface AttachmentFile {
+  /** The file name viewers show and save it under, unique in the document. */
+  name: string;
+  /** Its bytes; a string is its text, in UTF-8. */
+  data: Uint8Array | string;
+  /** Its MIME type (`'text/xml'`). Default `'application/octet-stream'`. */
+  mimeType?: string;
+  /** What it is; viewers show it in their attachments panel. */
+  description?: string;
+  /** How it relates to the document, as PDF/A-3 asks: `'data'` for an e-invoice's XML. */
+  relationship?: 'source' | 'data' | 'alternative' | 'supplement' | 'unspecified';
+  /** When it was last changed (RFC 3339). Default: the creation date, if any. */
+  modified?: string;
 }
 
 type Series<P extends string> = `${P}${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10}`;
@@ -712,6 +739,15 @@ export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
   children?: ReactNode;
 }
 
+export interface AttachmentProps extends Omit<Flow, 'href' | 'bookmark'> {
+  /** The `name` of a file in `<Document attachments>`. */
+  file: string;
+  /** The icon: a push pin (the default), a paper clip, a bar chart or a tag. */
+  icon?: 'pushPin' | 'paperclip' | 'graph' | 'tag';
+  /** The text viewers show for the icon: strings and numbers. Default: the file's description or name. */
+  children?: ReactNode;
+}
+
 export interface FieldSetProps extends ViewProps {
   /** The group's name, put in front of the name of every field inside it: `address.street`. */
   name: string;
@@ -962,6 +998,11 @@ export const FieldSet = host<FieldSetProps>(HOST.FieldSet);
  * `backgroundColor` (default yellow).
  */
 export const Note = host<NoteProps>(HOST.Note);
+/**
+ * An icon that opens a file of `<Document attachments>`, as a `<Note>` shows its text: it takes
+ * no room, and inside a `<Text>` it hangs from the line. Its colour is `backgroundColor`.
+ */
+export const Attachment = host<AttachmentProps>(HOST.Attachment);
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
 export const Svg = host<SvgProps>(HOST.Svg);
 export const G = host<SvgPresentation>(HOST.G);

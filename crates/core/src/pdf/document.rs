@@ -13,9 +13,9 @@ use crate::schema::{self};
 use crate::InkoxideError;
 
 use super::{
-    alpha_key, deflate, font, font_name, forms, gs_name, image, image_name, key_alpha, notes, pdfa,
-    round_pt, svg, svg_text_uses, text_ink, write_link, write_outline, DocumentOut, FontPrograms,
-    Out, PdfWriterSink, Writer, MAX_NUMBER,
+    alpha_key, attach, deflate, font, font_name, forms, gs_name, image, image_name, key_alpha,
+    notes, pdfa, round_pt, svg, svg_text_uses, text_ink, write_link, write_outline, DocumentOut,
+    FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
 };
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
@@ -64,7 +64,8 @@ impl PdfWriterSink {
             fonts: font_refs,
             images: image_refs,
         };
-        let (annots, form) = self.write_annotations(&mut w, doc, &page_refs, &res.fonts)?;
+        let files = attach::write_files(&mut w, doc.files);
+        let (annots, form) = self.write_annotations(&mut w, doc, &page_refs, &res.fonts, &files)?;
         let outline = write_outline(&mut w, &doc.marks.outline, &page_refs);
         write_pages(
             &mut w,
@@ -84,6 +85,7 @@ impl PdfWriterSink {
             pages: tree.root,
             form: form.as_ref(),
             outline,
+            files: &files.specs,
         };
         self.write_catalog(&mut w, doc, catalog, &nav, &res.fonts, producer)?;
         self.write_info(&mut w, doc, info, producer);
@@ -187,6 +189,7 @@ impl PdfWriterSink {
         doc: &DocumentOut<'_>,
         page_refs: &[Ref],
         font_refs: &BTreeMap<FontKey, Ref>,
+        files: &attach::FileRefs<'_>,
     ) -> Result<(Vec<Vec<Ref>>, Option<forms::Form>), InkoxideError> {
         let mut annots: Vec<Vec<Ref>> = Vec::with_capacity(doc.pages.len());
         for page in doc.pages {
@@ -206,7 +209,7 @@ impl PdfWriterSink {
             }
             annots.push(refs);
         }
-        notes::write_icons(w, (doc.pages, page_refs), &mut annots, self.profile)?;
+        notes::write_icons(w, (doc.pages, page_refs), &mut annots, files, self.profile)?;
         let fields = forms::Ctx {
             pages: doc.pages,
             page_refs,
@@ -236,8 +239,27 @@ impl PdfWriterSink {
             .level()
             .map(|level| (level, w.alloc.next(), w.alloc.next()));
         let intent = pdf_a.map(|_| (w.out.text("sRGB"), w.out.text("sRGB IEC61966-2.1")));
+        let embedded = attach::name_tree(doc.files, nav.files, |key| w.out.bytes(key));
         let mut cat = w.pdf.catalog(catalog);
         cat.pages(nav.pages);
+        if !embedded.is_empty() {
+            let mut names = cat.insert(Name(b"Names")).dict();
+            let mut tree = names.insert(Name(b"EmbeddedFiles")).dict();
+            let mut entries = tree.insert(Name(b"Names")).array();
+            for (key, r) in &embedded {
+                entries.item(Str(key));
+                entries.item(*r);
+            }
+            entries.finish();
+            tree.finish();
+            names.finish();
+            // Associated files (ISO 19005-3, 6.8).
+            if self.profile.level() == Some(crate::PdfALevel::A3b) {
+                cat.insert(Name(b"AF"))
+                    .array()
+                    .items(nav.files.iter().copied());
+            }
+        }
         if let Some(form) = nav.form {
             let mut acro = cat.form();
             acro.fields(form.fields.iter().copied());
@@ -289,7 +311,8 @@ impl PdfWriterSink {
             .pair(Name(b"DestOutputProfile"), profile);
         cat.finish();
         // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-        let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level);
+        let extensions = doc.meta.xmp_extensions.as_deref().unwrap_or(&[]);
+        let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level, extensions);
         w.out.metadata(&mut w.pdf, metadata, &xmp, |_| {});
         let icc = deflate(&pdfa::srgb_icc(), 9)?;
         w.out.icc_profile(&mut w.pdf, profile, &icc, |p| {
@@ -304,6 +327,10 @@ impl PdfWriterSink {
             h.update(&page.stream);
         }
         h.update(&xmp);
+        // Two documents that differ only in their files differ in `/ID`.
+        for f in doc.files {
+            h.update(&f.hash.to_le_bytes());
+        }
         let id = h.digest128().to_be_bytes().to_vec();
         w.pdf.set_file_id((id.clone(), id));
         Ok(())
@@ -349,6 +376,8 @@ struct Nav<'f> {
     pages: Ref,
     form: Option<&'f forms::Form>,
     outline: Option<Ref>,
+    /// The file specifications, in declaration order.
+    files: &'f [Ref],
 }
 
 /// The pages, each naming the shared resources it uses, with its
@@ -422,6 +451,7 @@ fn page_mode(mode: Option<schema::PageMode>, outline: bool) -> Option<PageMode> 
         Some(schema::PageMode::UseOutlines) => Some(PageMode::UseOutlines),
         Some(schema::PageMode::UseThumbs) => Some(PageMode::UseThumbs),
         Some(schema::PageMode::FullScreen) => Some(PageMode::FullScreen),
+        Some(schema::PageMode::UseAttachments) => Some(PageMode::UseAttachments),
     }
 }
 

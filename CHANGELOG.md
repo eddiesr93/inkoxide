@@ -11,6 +11,17 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Added
 
+- File attachments. A document's `attachments` are files the PDF carries (from the render
+  option `attachments`, or base64 `data`), listed in the viewer's attachments panel; `attachment`
+  nodes and runs show an icon (a push pin, a paper clip, a chart or a tag) that opens one, and
+  `meta.pageMode` takes `useAttachments`. Under PDF/A-3b they are associated files, and
+  `meta.xmpExtensions` declares and fills in XMP schemas, so a document can be a Factur-X or
+  ZUGFeRD e-invoice; PDF/A-1b and 2b refuse attachments. New validation codes
+  `UNKNOWN_ATTACHMENT`, `ATTACHMENT_NOT_REGISTERED` and `ATTACHMENT_TOO_LARGE`. Rust takes an
+  `AttachmentStore` in `RenderOptions::attachments`, the CLI `--attachments <DIR>`, and
+  `@inkoxide/render` `<Document attachments xmpExtensions>`, `<Attachment>`, `facturX()` and
+  `facturXRelationship()`.
+
 - Variable fonts. `inkoxide` accepts TrueType (`gvar`) and CFF2 variable fonts, and a font
   declaration takes `source` (the registered font it draws with) and `variations` (axis values):
   text is shaped and measured at that instance, and the PDF embeds it as a static TrueType

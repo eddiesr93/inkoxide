@@ -192,10 +192,14 @@ export function svgDocument(
 
 /** A `data:` URL for SVG markup. */
 export function svgDataUrl(markup: string): string {
-  const bytes = new TextEncoder().encode(markup);
+  return `data:image/svg+xml;base64,${base64(new TextEncoder().encode(markup))}`;
+}
+
+/** `bytes` in base64. */
+export function base64(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
     bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
-  return `data:image/svg+xml;base64,${btoa(bin)}`;
+  return btoa(bin);
 }

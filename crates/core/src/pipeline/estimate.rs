@@ -119,6 +119,9 @@ pub(super) fn repeated(
                         if let Some(note) = &r.note {
                             size = size.saturating_add(note_bytes(note));
                         }
+                        if let Some(a) = &r.attachment {
+                            size = size.saturating_add(attachment_bytes(a));
+                        }
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
                         let mut each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
@@ -178,6 +181,7 @@ pub(super) fn repeated(
                     }
                 }
                 NodeKind::Note(note) => size = size.saturating_add(note_bytes(note)),
+                NodeKind::Attachment(a) => size = size.saturating_add(attachment_bytes(a)),
                 // In a span with its text.
                 NodeKind::Image { alt: Some(alt), .. } => {
                     let text = crate::pdf::written_text_len(alt) as u64;
@@ -206,6 +210,20 @@ pub(super) fn note_bytes(note: &crate::schema::Note) -> u64 {
             .author
             .as_deref()
             .map_or(0, crate::pdf::written_text_len);
+    BOX_BYTES + text as u64
+}
+
+/// Estimated output of an attachment's icon, in bytes: its icon, and its
+/// text as the file holds it (its file's description or name at most a
+/// note's length).
+pub(super) fn attachment_bytes(a: &crate::schema::Attachment) -> u64 {
+    // A description: at most `MAX_NOTE` characters, each two UTF-16 units
+    // at most, in hex (see `written_text_len`).
+    const DESCRIPTION: usize = 2 + 2 * (2 + 4 * crate::validate::rules::MAX_NOTE + 32);
+    let text = a
+        .contents
+        .as_deref()
+        .map_or(DESCRIPTION, crate::pdf::written_text_len);
     BOX_BYTES + text as u64
 }
 

@@ -1,6 +1,9 @@
 // The components and their types, which every entry exports: they come with the renderer.
 export {
   type AbsoluteLength,
+  Attachment,
+  type AttachmentFile,
+  type AttachmentProps,
   type BookmarkProp,
   type BreakProp,
   Canvas,
@@ -22,6 +25,10 @@ export {
   Ellipse,
   type EllipseProps,
   type EmojiSource,
+  type FacturXOptions,
+  type FacturXProfile,
+  facturX,
+  facturXRelationship,
   Field,
   type FieldProps,
   FieldSet,

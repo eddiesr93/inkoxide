@@ -164,6 +164,32 @@ fn structs_match_schema() {
         Some("Note"),
         &node(r#"{"type":"note","note":{@"contents":"n"}}"#),
     );
+    check(
+        &s,
+        Some("Attachment"),
+        &node(r#"{"type":"attachment","attachment":{@"file":"a"}}"#),
+    );
+    check(
+        &s,
+        Some("AttachmentDecl"),
+        &format!(
+            r#"{{"version":1,"attachments":[{{@"name":"a","data":""}}],"pages":[{{{PAGE}}}]}}"#
+        ),
+    );
+    check(
+        &s,
+        Some("XmpSchema"),
+        &format!(
+            r#"{{"version":1,"meta":{{"xmpExtensions":[{{@"schema":"s","namespace":"n","prefix":"p","properties":[]}}]}},"pages":[{{{PAGE}}}]}}"#
+        ),
+    );
+    check(
+        &s,
+        Some("XmpProperty"),
+        &format!(
+            r#"{{"version":1,"meta":{{"xmpExtensions":[{{"schema":"s","namespace":"n","prefix":"p","properties":[{{@"name":"a","value":"v","description":"d"}}]}}]}},"pages":[{{{PAGE}}}]}}"#
+        ),
+    );
 
     // Node: the union of all node-type properties.
     let mut want = BTreeSet::new();
@@ -176,6 +202,7 @@ fn structs_match_schema() {
         "SpacerNode",
         "FieldNode",
         "NoteNode",
+        "AttachmentNode",
     ] {
         want.extend(schema_props(&s, Some(d)));
     }
@@ -1038,4 +1065,97 @@ fn emoji_image_bounds_match_schema() {
         bound(&s, "/properties/emojiImages/propertyNames/maxLength"),
         MAX_EMOJI_SEQUENCE as i64
     );
+}
+
+/// The schema's bounds on attachments and XMP extensions are the engine's.
+#[test]
+#[allow(clippy::cast_precision_loss)]
+fn attachment_bounds_match_schema() {
+    use crate::attachments::{MAX_ATTACHMENTS, MAX_FILE_NAME, MAX_MIME_TYPE};
+    use crate::validate::rules::{MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS};
+    type Make = Box<dyn Fn(usize) -> String>;
+    let s = schema();
+    let doc = move |attachments: &str, meta: &str| {
+        format!(
+            r#"{{"version":1,"meta":{{{meta}}},"attachments":[{attachments}],"pages":[{{{PAGE}}}]}}"#
+        )
+    };
+    let file = move |name: &str, extra: &str| format!(r#"{{"name":"{name}","data":""{extra}}}"#);
+    let files = move |n: usize| {
+        (0..n)
+            .map(|i| file(&format!("f{i}"), ""))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let mime = move |n: usize| format!("a/{}", "b".repeat(n - 2));
+    let schema_of = move |props: usize| {
+        let props = (0..props)
+            .map(|i| format!(r#"{{"name":"p{i}","value":"v","description":"d"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(r#"{{"schema":"s","namespace":"urn:x","prefix":"fx","properties":[{props}]}}"#)
+    };
+    let schemas = move |n: usize| {
+        let all = (0..n)
+            .map(|i| {
+                format!(r#"{{"schema":"s","namespace":"urn:x","prefix":"x{i}","properties":[]}}"#)
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(r#""xmpExtensions":[{all}]"#)
+    };
+    let cases: Vec<(&str, usize, Make, &str, &str)> = vec![
+        (
+            "/properties/attachments/maxItems",
+            MAX_ATTACHMENTS,
+            Box::new(move |n| doc(&files(n), "")),
+            "OUT_OF_RANGE",
+            "attachments",
+        ),
+        (
+            "/$defs/AttachmentDecl/properties/name/maxLength",
+            MAX_FILE_NAME,
+            Box::new(move |n| doc(&file(&"n".repeat(n), ""), "")),
+            "INVALID_VALUE",
+            "attachments[0].name",
+        ),
+        (
+            "/$defs/AttachmentDecl/properties/mimeType/maxLength",
+            MAX_MIME_TYPE,
+            Box::new(move |n| {
+                // Each half of a MIME type is at most 63 bytes.
+                let m = if n <= MAX_MIME_TYPE {
+                    format!("{}/{}", "a".repeat(63), "b".repeat(n - 64))
+                } else {
+                    mime(n)
+                };
+                doc(&file("f", &format!(r#","mimeType":"{m}""#)), "")
+            }),
+            "INVALID_VALUE",
+            "attachments[0].mimeType",
+        ),
+        (
+            "/$defs/Meta/properties/xmpExtensions/maxItems",
+            MAX_XMP_SCHEMAS,
+            Box::new(move |n| doc("", &schemas(n))),
+            "OUT_OF_RANGE",
+            "meta.xmpExtensions",
+        ),
+        (
+            "/$defs/XmpSchema/properties/properties/maxItems",
+            MAX_XMP_PROPERTIES,
+            Box::new(move |n| doc("", &format!(r#""xmpExtensions":[{}]"#, schema_of(n)))),
+            "OUT_OF_RANGE",
+            "meta.xmpExtensions[0].properties",
+        ),
+    ];
+    for (pointer, bound, make, code, path) in cases {
+        let stated = s
+            .pointer(pointer)
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or_else(|| panic!("the schema has no bound at {pointer}"));
+        assert_eq!(stated, bound as f64, "{pointer}");
+        assert_eq!(errors(&make(bound), &[]), [], "{pointer}: {bound}");
+        assert_eq!(errors(&make(bound + 1), &[]), one(code, path), "{pointer}");
+    }
 }

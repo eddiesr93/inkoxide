@@ -376,6 +376,7 @@ fn extraction_reads_the_actual_text() {
             creation_date: None,
             fonts: &fonts,
             unicode: &UnicodeMap::default(),
+            files: &[],
             images: &images,
             colors: &crate::text::ColorGlyphs::default(),
             marks: &Marks::default(),

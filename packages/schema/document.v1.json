@@ -43,6 +43,14 @@
         "$ref": "#/$defs/Id"
       }
     },
+    "attachments": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/$defs/AttachmentDecl"
+      },
+      "description": "Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b allows them; PDF/A-1b and PDF/A-2b refuse them (`PDFA_CONFLICT`)."
+    },
     "pages": {
       "type": "array",
       "minItems": 1,
@@ -126,9 +134,10 @@
             "useNone",
             "useOutlines",
             "useThumbs",
-            "fullScreen"
+            "fullScreen",
+            "useAttachments"
           ],
-          "description": "What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) or the pages full screen (`fullScreen`). Default: `useOutlines` when the document has bookmarks, else `useNone`."
+          "description": "What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`."
         },
         "pageLayout": {
           "enum": [
@@ -140,6 +149,14 @@
             "twoPageRight"
           ],
           "description": "How the viewer lays out the pages: one at a time (`singlePage`), one scrolling column (`oneColumn`), two scrolling columns with odd pages on the left or right (`twoColumnLeft`, `twoColumnRight`), or two pages at a time with odd pages on the left or right (`twoPageLeft`, `twoPageRight`). Default: the viewer's own setting."
+        },
+        "xmpExtensions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/XmpSchema"
+          },
+          "description": "XMP schemas the PDF/A metadata declares and fills in, such as Factur-X's (`fx`) for an e-invoice: PDF/A accepts properties outside its own schemas only when they are declared, which these are, as Text. At most 16 schemas of 64 properties. Without PDF/A there is no XMP to put them in, and `render` refuses them."
         }
       }
     },
@@ -1191,6 +1208,10 @@
         "note": {
           "$ref": "#/$defs/Note",
           "description": "A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it."
+        },
+        "attachment": {
+          "$ref": "#/$defs/Attachment",
+          "description": "An attachment's icon in the line, in place of text, as a `note` is: it takes no room, and its icon hangs from the top of the line where the run is."
         }
       },
       "oneOf": [
@@ -1213,6 +1234,11 @@
               {
                 "required": [
                   "note"
+                ]
+              },
+              {
+                "required": [
+                  "attachment"
                 ]
               }
             ]
@@ -1238,6 +1264,11 @@
                 "required": [
                   "note"
                 ]
+              },
+              {
+                "required": [
+                  "attachment"
+                ]
               }
             ]
           }
@@ -1262,6 +1293,11 @@
                 "required": [
                   "note"
                 ]
+              },
+              {
+                "required": [
+                  "attachment"
+                ]
               }
             ]
           }
@@ -1285,6 +1321,40 @@
               {
                 "required": [
                   "image"
+                ]
+              },
+              {
+                "required": [
+                  "attachment"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "attachment"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "text"
+                ]
+              },
+              {
+                "required": [
+                  "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "image"
+                ]
+              },
+              {
+                "required": [
+                  "note"
                 ]
               }
             ]
@@ -1462,7 +1532,8 @@
             "pageBreak",
             "spacer",
             "field",
-            "note"
+            "note",
+            "attachment"
           ]
         }
       },
@@ -1493,6 +1564,9 @@
         },
         {
           "$ref": "#/$defs/NoteNode"
+        },
+        {
+          "$ref": "#/$defs/AttachmentNode"
         }
       ]
     },
@@ -2121,6 +2195,203 @@
           "type": "boolean",
           "default": false,
           "description": "Whether viewers show the text when the document opens."
+        }
+      }
+    },
+    "AttachmentNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "attachment"
+      ],
+      "description": "An icon that opens a file of `attachments` (a file attachment annotation). It takes no space, and sits as a note does: at the top-left corner of its box, inside the page, on the page where the box starts, 20 pt square at any zoom. In a header, a footer or a fixed element it is on every page, each icon opening the one file.",
+      "properties": {
+        "type": {
+          "const": "attachment"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "style": {
+          "$ref": "#/$defs/Style"
+        },
+        "break": {
+          "$ref": "#/$defs/Break"
+        },
+        "pages": {
+          "$ref": "#/$defs/PageFilter"
+        },
+        "debug": {
+          "$ref": "#/$defs/Debug"
+        },
+        "attachment": {
+          "$ref": "#/$defs/Attachment"
+        }
+      }
+    },
+    "Attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "The `name` of a file in `attachments`."
+        },
+        "icon": {
+          "enum": [
+            "pushPin",
+            "paperclip",
+            "graph",
+            "tag"
+          ],
+          "default": "pushPin",
+          "description": "The icon: a push pin, a paper clip, a bar chart or a tag."
+        },
+        "color": {
+          "$ref": "#/$defs/Color",
+          "description": "The icon's colour (its alpha is not used); default blue, [0.3, 0.55, 0.9, 1]."
+        },
+        "contents": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000,
+          "description": "The text viewers show for the icon; default the file's `description`, else its name."
+        }
+      }
+    },
+    "AttachmentDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "description": "A file the PDF carries. Exactly one of `src` and `data`.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f]+$",
+          "description": "The file name viewers show and save it under, unique in the document: no `/`, `\\\\` or control characters. `attachment` icons name the file by it."
+        },
+        "src": {
+          "$ref": "#/$defs/Id",
+          "description": "Key into the render option `attachments`."
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "The file's bytes, base64-encoded."
+        },
+        "mimeType": {
+          "type": "string",
+          "maxLength": 127,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,62}/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,62}$",
+          "default": "application/octet-stream",
+          "description": "The file's MIME type (`text/xml`, `application/pdf`)."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 8000,
+          "description": "What the file is; viewers show it in their attachments panel."
+        },
+        "relationship": {
+          "enum": [
+            "source",
+            "data",
+            "alternative",
+            "supplement",
+            "unspecified"
+          ],
+          "default": "unspecified",
+          "description": "How the file relates to the document (`/AFRelationship`, which PDF/A-3 requires): the original it was made from (`source`), the data it shows (`data`, as an e-invoice's XML), another form of the same content (`alternative`), or something that adds to it (`supplement`)."
+        },
+        "modified": {
+          "type": "string",
+          "description": "When the file was last changed (RFC 3339). Default: the creation date, when there is one; otherwise none is written."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "src"
+          ]
+        },
+        {
+          "required": [
+            "data"
+          ]
+        }
+      ]
+    },
+    "XmpSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "namespace",
+        "prefix",
+        "properties"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "What the schema is (`Factur-X PDFA Extension Schema`)."
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^\\S+$",
+          "description": "The namespace URI of its properties."
+        },
+        "prefix": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$",
+          "description": "The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`)."
+        },
+        "properties": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/XmpProperty"
+          }
+        }
+      }
+    },
+    "XmpProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$",
+          "description": "The property name (`DocumentType`)."
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 8000,
+          "description": "Its value, a Text."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "What the property is."
         }
       }
     },

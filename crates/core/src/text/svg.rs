@@ -278,6 +278,7 @@ fn shape<S: TextShaper>(
                 font_features: None,
                 image: None,
                 note: None,
+                attachment: None,
             });
             run_span.push(span);
         }
