@@ -5,12 +5,16 @@ Node bindings and React/TypeScript packages on top. This brief asks for a review
 PDF files. It describes the construction precisely enough to review without reading the code first,
 and then points to the code.
 
-Commit reviewed: `da33b7a` on `main`. Code:
+Commit reviewed: the tag `v0.9.1` (`7a08f9a`). Since then `crypt.rs` and `pdf/font.rs` have changed
+only by refactoring that keeps the output: the six letters of a subset tag are made by a function
+the two files share, and the font writer takes the new `Writer`. `pdf/mod.rs` was split into
+modules, and `emit` now returns a `Writer`; `pdf/out.rs` and `encryption.rs` are unchanged. Code:
 
 - `crates/core/src/pdf/crypt.rs`: the whole derivation, Algorithm 2.B, CBC, HMAC, and the
   unit tests;
 - `crates/core/src/pdf/out.rs`: the only writer of strings and streams;
-- `crates/core/src/pdf/mod.rs`, `fn write`: the two passes;
+- `crates/core/src/pdf/mod.rs`, `PdfWriterSink::write`: the two passes, each running `emit` into a
+  `Writer`;
 - `crates/core/src/encryption.rs`: options and password checks;
 - `crates/core/tests/encryption.rs`: integration tests against qpdf.
 
@@ -233,4 +237,4 @@ permissions, when there is nothing for the owner password to guard).
   ```
 
 Dependencies: RustCrypto `aes` 0.9.3 (AES-NI or ARMv8 AES where the CPU has it, otherwise its constant-time fixsliced software path) and `sha2` 0.11.1; HMAC,
-CBC and `H2B` are implemented in `crypt.rs` (about 150 lines).
+CBC and `H2B` are implemented in `crypt.rs` (about 80 lines).

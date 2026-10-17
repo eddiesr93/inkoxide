@@ -3,7 +3,13 @@
 The Inkoxide PDF engine built as WebAssembly: a declarative document tree
 (JSON) in, PDF bytes out, in browsers. The same engine, limits and error codes
 as the native [`inkoxide`](https://www.npmjs.com/package/inkoxide) package,
-with the same functions, plus `init` and `clearCaches`.
+with the same functions, plus `init`, `loadHyphenation` and `clearCaches`, and
+one more render option, `deferredFonts`.
+
+This page is for using the engine directly. To render React components in a
+browser, in a Web Worker, use `@inkoxide/render/browser`, which runs this
+package for you: see
+[In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/render/GUIDE.md#in-the-browser).
 
 ```sh
 npm install @inkoxide/wasm

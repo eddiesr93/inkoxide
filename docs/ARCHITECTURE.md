@@ -21,15 +21,21 @@ how the pieces fit together, for contributors.
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
 | `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`; in a browser, with the engine as WebAssembly in a Web Worker: `@inkoxide/render/browser`. The shared code reaches the engine and the bundled assets through an `EngineHost` (`host.ts`): `node-host.ts` in Node, `browser-host.ts` and `worker.ts` in a browser. |
 | `examples` | Example documents in React; they produce the screenshots in the READMEs. |
-| `benchmarks` | Comparisons with other PDF libraries. |
+| `benchmarks` | Benchmarks of `@inkoxide/render` on an invoice and a report, on the server and in the browser. |
 | `fixtures` | Engine test documents, fonts, images and reference renders. |
 | `fuzz` | cargo-fuzz targets (nightly, outside the Cargo workspace). |
 
-The npm packages depend on each other in this order:
-`@inkoxide/schema` → `@inkoxide/style` → `@inkoxide/react` → `@inkoxide/render`,
-which also depends on `inkoxide`. `@inkoxide/tailwind` depends on `@inkoxide/style`, and
-`@inkoxide/react` and `@inkoxide/render` load it only when it is installed (an optional peer
-dependency), for `className`.
+The npm packages depend on each other like this:
+
+- `@inkoxide/schema` and `@inkoxide/style` depend on no other Inkoxide package
+  (`@inkoxide/style` only on culori).
+- `@inkoxide/react` depends on `@inkoxide/schema` and `@inkoxide/style`.
+- `@inkoxide/render` depends on `@inkoxide/react`, `@inkoxide/schema` and `inkoxide`.
+- `@inkoxide/tailwind` depends on `@inkoxide/style`. `@inkoxide/react` and
+  `@inkoxide/render` load it only when it is installed (an optional peer dependency), for
+  `className`.
+- `@inkoxide/wasm` is an optional peer dependency of `@inkoxide/render`, for
+  `@inkoxide/render/browser`.
 
 ## From React to a document tree
 
@@ -60,17 +66,21 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Stage | Module | What it does |
 |---|---|---|
 | Parse | `validate` (`parse`), `schema` | JSON or MessagePack into the typed structs of `schema` (hand-written deserialisers in `schema/de.rs`); serde errors become validation errors with their path and code |
-| Validate | `validate` (`check`) | Semantic checks: font ids, image ids (images must decode), anchors, value ranges |
+| Validate | `validate/rules/` | Semantic checks, a file per area (fields, images, links, styles, tables, text): font ids, image ids (images must decode), anchors, value ranges |
 | Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding, subsetting, CFF programs (`fonts/cff.rs`); Type0/CID embedding of TrueType and CFF, ToUnicode |
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
 | Floats | `layout/flow.rs`, `layout/float.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them, boxes narrowed |
-| Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks |
+| Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks; page numbers (`pipeline/numbering.rs`) |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
 | PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, PDF/A-1b, 2b and 3b, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
 | Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
+| SVG | `images/svg/` | Parsing through usvg with limits for untrusted input: what a file's copies, markers and references expand to is checked before usvg converts it (`check.rs`, against `limits.rs`); the root `viewBox` (`view_box.rs`); the text converted again with a render's fonts, cached across renders (`text.rs`) |
+| Forms | `forms` | AcroForm fields: intrinsic sizes, the widget ops painting hands to the PDF writer, and field formats (`forms/format.rs`) |
+| Notes | `notes`, `icons` | Text notes, from `note` nodes and note runs, as icon annotations: shown at a fixed size at a point |
 | Geometry | `geom` | Rectangles and 2×3 matrices, shared by layout, pagination, fonts and paint |
+| Support | `date`, `pool`, `lru` | RFC 3339 parsing for `creationDate`; the thread pools of `threads`; the size-bounded LRU map of the process-wide caches |
 
 ## Public API (core)
 
@@ -83,11 +93,14 @@ pub fn clear_caches();
 ```
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
-`PdfALevel`, `Encryption`, `Permissions`, `Printing`, `InputFormat`,
-`FontStore`, `ImageStore`, `HyphenationStore`, `InkoxideError`,
-`ValidationError`, `ValidationCode`) and the constants `ENGINE_VERSION` and
-`SCHEMA_VERSION`. Every module is private, so nothing else is reachable from
-outside the crate.
+`PdfALevel` and its `ParsePdfALevelError`, `Encryption`, `Permissions`,
+`Printing`, `InputFormat`, `FontStore`, `ImageStore`, `HyphenationStore`,
+`InkoxideError` and its `NotLoaded`, `ValidationError`, `ValidationCode`),
+`builtin_hyphenation_file`, and the constants `ENGINE_VERSION` and
+`SCHEMA_VERSION`. `JSON_ONLY`, the message the bindings share for
+MessagePack input to a JSON-only build, is public but `#[doc(hidden)]`.
+Every module is private, so nothing else is reachable from outside the
+crate.
 
 ## Layout data model
 
@@ -95,7 +108,7 @@ outside the crate.
 node's children are a contiguous index range. Index 0 is a synthetic root:
 the page content box (column flex, fixed width, unbounded height). After
 `layout::compute` every node holds absolute `Geometry` (border box,
-plus resolved border and padding) in flow coordinates; paint adds the page
+plus resolved border, padding and margin) in flow coordinates; paint adds the page
 margin offset.
 
 ## Text pipeline
@@ -198,7 +211,8 @@ Page-number placeholders are laid out as `999` until the page count is
 known. Then flow text that shows them gets the numbers of the page its
 first number lands on (`TextCache::set_numbers`, through `fill_numbers`),
 and the flows with such text are laid out and paginated again, until no
-number changes (at most three times; `pipeline::number_flows`). Text in a
+number changes (at most three times; `number_flows` in
+`pipeline/numbering.rs`). Text in a
 fixed node or a table's header rows is painted on several pages and keeps
 the stand-ins' width. The painter always draws the page's own digits. A
 header, footer or overlay that shows page numbers is laid out again on each page,

@@ -1,10 +1,20 @@
 # Public API
 
-Inkoxide has two public surfaces: the Rust crate `inkoxide`
-(`crates/core`) and the Node package `inkoxide` (`packages/inkoxide`,
-built from `crates/node`). They expose the same engine with the same options and
-error codes. The document format itself is described in
-[`SCHEMA.md`](SCHEMA.md) and [`EXAMPLES.md`](../packages/schema/EXAMPLES.md).
+This page covers the engine's three public surfaces: the Rust crate
+`inkoxide` (`crates/core`), the Node package `inkoxide`
+(`packages/inkoxide`, built from `crates/node`) and the WebAssembly
+package `@inkoxide/wasm` (`packages/wasm`, built from `crates/wasm`). They
+expose the same engine with the same render options and error codes, with
+a few differences. The Node package has no `clearCaches`, no
+`deferredFonts` option and no `NOT_LOADED` error; Rust and
+`@inkoxide/wasm` have all three. `@inkoxide/wasm` takes only `threads: 1`
+(see [WebAssembly](#webassembly-inkoxidewasm)).
+
+The document format itself is described in [`SCHEMA.md`](SCHEMA.md) and
+[`EXAMPLES.md`](../packages/schema/EXAMPLES.md). The JSX API that builds
+documents from React components is in
+[`packages/render/README.md`](../packages/render/README.md) and
+[`GUIDE.md`](../packages/render/GUIDE.md).
 
 The API follows semantic versioning. Changes are
 additive: new options, new error codes and new functions are minor
@@ -16,7 +26,7 @@ versions; removing or renaming any of them is a major version.
 |---|---|---|
 | Register a font (TrueType, CFF OpenType, WOFF or WOFF2; not a `.ttc` collection) | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
 | Remove a font | `FontStore::unregister(id) -> bool` | `unregisterFont(id): boolean` |
-| Images | `ImageStore::insert(id, bytes)`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
+| Images | `ImageStore::insert(id, bytes)`, `remove(id) -> bool`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
 | Validate | `validate(doc, format, &fonts, &images) -> Vec<ValidationError>` | `validate(doc, format?, images?): ValidationError[]` |
 | Validate without the images | `validate_without_images(doc, format, &fonts) -> Vec<ValidationError>` | `validate(doc, format?)`, with no `images` |
@@ -115,23 +125,24 @@ are left out. Every level is "b": the pages look the same in every reader.
 | PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b; the level allows embedded files, but Inkoxide cannot attach any yet |
 | PDF/A-1b | `'1b'` | `PdfALevel::A1b` | Based on PDF 1.4, for archives that require it. Font subsets list their glyphs (`CIDSet`) |
 
-Every level takes page sides of 3 points or more: a render of a smaller
-page as PDF/A fails with `PDFA_CONFLICT` at the page's `size`.
+In Rust, `PdfALevel::ALL` lists the levels, `as_str` gives a level's
+short name (`"1b"`, `"2b"`, `"3b"`, as Node and the CLI take it) and
+`from_name` reads one back. `PdfALevel` also implements `FromStr`: a name
+that is not a level is a `ParsePdfALevelError`, whose message lists the
+levels.
 
-PDF/A-1b has no transparency. A render at 1b fails with `PDFA_CONFLICT`
-at the path of the first thing that needs it: a colour with alpha below
-1 (a `backgroundColor` of alpha 0 draws nothing and is accepted), an
-`opacity` between 0 and 1, `debug`, an image, inline image, emoji image
-or background image with an alpha channel, an SVG drawn with opacity, a
-mask, a blend mode, an isolated group or a clip path other than one path,
-or a colour glyph that needs transparency (a bitmap with an alpha channel
-or a layer with an opacity, at the path of its run). `validate` does not
-know the level, so it does not report these. A PDF/A-1b file also keeps
-within the limits of PDF/A-1: real numbers within ±32767, strings of at
-most 65535 bytes, names of at most 127 bytes, arrays of at most 8191
-entries, dictionaries of at most 4095, and graphics states nested at
-most 28 deep. A document that
-would pass one fails with `PDF_ERROR`.
+What a level does not allow (a page side under 3 points at every level,
+transparency under PDF/A-1b) is `PDFA_CONFLICT`, at the path of its first
+use. The [code table of `SCHEMA.md`](SCHEMA.md#validation-error-codes)
+lists what counts as transparency. A `backgroundColor` of alpha 0 draws
+nothing and is accepted at 1b. Only `render` reports `PDFA_CONFLICT`:
+`validate` does not know the level.
+
+A PDF/A-1b file also keeps within the limits of PDF/A-1: real numbers
+within ±32767, strings of at most 65535 bytes, names of at most 127
+bytes, arrays of at most 8191 entries, dictionaries of at most 4095, and
+graphics states nested at most 28 deep. A document that would pass one
+fails with `PDF_ERROR`.
 
 The a and u levels need tagged PDF, which Inkoxide does not write yet.
 
@@ -198,11 +209,11 @@ let options = RenderOptions::default().with_encryption(
 
 ## Hyphenation patterns
 
-A text node with `hyphenate: true` is hyphenated in its `lang` (or
-`meta.lang`). With neither, nothing is hyphenated, and the render logs a
-`tracing` warning that names the node's `id`. A run's own `hyphenate`
-overrides the node's for that run's words, in the node's language. The
-patterns are chosen in this order:
+Which text is hyphenated, and in which language, is in
+[`SCHEMA.md`](SCHEMA.md#style) (`hyphenate` and `lang`; a run's own
+`hyphenate` is under [`TextRun`](SCHEMA.md#textrun)). The warning for a
+node with no language is a `tracing` warning that names the node's `id`.
+The patterns of a language are chosen in this order:
 
 1. patterns registered for the tag, then for each less specific tag
    (`en-GB`, then `en`);
@@ -213,10 +224,10 @@ patterns are chosen in this order:
 
 Soft hyphens (U+00AD) in the text are always honoured.
 
-A word wider than its line is broken between any two characters, hyphenated
-or not, as CSS does with `overflow-wrap: anywhere`; a grapheme cluster is
-never split. Text with `whiteSpace` `nowrap` or `pre` is not broken: a long
-word overflows the line.
+When a word wider than its line is broken between characters (as CSS
+does with `overflow-wrap: anywhere`), a grapheme cluster is never split.
+Text with `whiteSpace` `nowrap` or `pre` is not broken: a long word
+overflows the line.
 
 Patterns are registered for a BCP-47 tag with a two- or three-letter
 language (`en`, `en-GB`, `haw`), in any case and with `-` or `_`.
@@ -248,36 +259,15 @@ patterns.register("en-US", &std::fs::read("hyph-en-us.tex")?)?;
 let options = RenderOptions::default().with_hyphenation(patterns);
 ```
 
-## Line breaking
-
-A text node breaks its lines first fit by default (`textWrap: "wrap"`).
-With `textWrap: "pretty"`, each stretch of a paragraph between forced
-breaks is set as a whole (Knuth and Plass's total fit), for even lines.
-It is bounded per paragraph, so its cost and its output do not depend on
-the rest of the document or on threads; past a bound, the stretch is set
-first fit:
-
-- at most 20 000 break opportunities in a stretch;
-- at most 512 open breakpoints at a time;
-- at most 2 097 152 lines tried in a paragraph.
-
 ## Font features
 
-A run's `fontFeatures` set OpenType features by tag, as CSS
-`font-feature-settings`: 1 turns a feature on, 0 off, and a larger value
-picks an alternate. A feature does something only when the run's font
-has it. The features are bounded:
-
-- a tag is four printable ASCII characters, set once per run
-  (`INVALID_VALUE`);
-- a value is at most 65535 (`OUT_OF_RANGE`);
-- a run takes at most 32 features (`OUT_OF_RANGE`);
-- a document uses at most 64 different sets of features, as each set is
-  shaped with plans and words of its own (`OUT_OF_RANGE`).
-
-`@inkoxide/render` reads `fontFeatureSettings` and `fontVariantNumeric`,
-and their Tailwind classes, into a run's `fontFeatures`, within the same
-bounds.
+A run's `fontFeatures` and their bounds are in
+[`SCHEMA.md`](SCHEMA.md#textrun). A feature does something only when the
+run's font has it. A tag that is not four printable ASCII characters, or
+is set twice in a run, is `INVALID_VALUE`; a value or a count past its
+bound is `OUT_OF_RANGE`. In `@inkoxide/render`, `fontFeatureSettings` and
+`fontVariantNumeric` fill a run's `fontFeatures` (see
+[`GUIDE.md`](../packages/render/GUIDE.md)).
 
 ## Determinism
 
@@ -286,7 +276,9 @@ only on the document, the font, image and hyphenation pattern bytes, and
 the options. They
 do not depend on the thread count or on JSON versus MessagePack input.
 Without any creation date, no date is written, so output is still
-deterministic.
+deterministic. `textWrap: "pretty"` is bounded per paragraph (see
+[`SCHEMA.md`](SCHEMA.md#style)), so its cost and its output do not depend
+on the rest of the document either.
 
 Encrypted output is deterministic too: the keys, salts and IVs that
 revision 6 makes random are derived from the passwords and the whole
@@ -350,56 +342,21 @@ document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the
 reader rejects) is returned alone, as the rest cannot be checked.
 
-Some rules are checked by the engine but not by the JSON Schema, so a
-document that passes the schema can still fail validation. The schema's
-descriptions and [`SCHEMA.md`](SCHEMA.md) state them. Among them:
-
-- `break` with a value other than its defaults, on a header or footer,
-  on a node in a table cell, or on any node inside these, is
-  `INVALID_VALUE`; a `pageBreak` there is `INVALID_NODE`.
-- Page margins that leave no room for content (`left + right` at least
-  the page width, or `top + bottom` at least its height) are
-  `OUT_OF_RANGE` at `margin`.
-- `DUPLICATE_ID` is a font id declared twice, or a form field `name`
-  used twice (the buttons of one radio group share theirs) or used both
-  for a field and for a group of fields (`a` and `a.b`).
-- Fonts, images and `#id` links must resolve: `UNKNOWN_FONT`,
-  `FONT_NOT_REGISTERED`, `UNKNOWN_IMAGE`, `INVALID_IMAGE`,
-  `IMAGE_TOO_LARGE` and `UNKNOWN_ANCHOR`. A `#id` link must name a node
-  in the page body (the flow or an overlay) that is displayed: an id in
-  a header or footer, or under `display: none`, is not a destination.
-- A radio button needs a non-empty `value` (`MISSING_FIELD`), and a text
-  field's `value` is at most `maxLength` characters (`OUT_OF_RANGE`).
-  The `value` of a select or list field is one of its `options`; an
-  array `value` needs a list with `multiSelect` and names each option at
-  most once (`INVALID_VALUE`).
-- A `format` applies to single-line text fields that are not passwords,
-  with the keys of its `type`; a date or time `format` needs a `pattern`
-  (`MISSING_FIELD`) made of the documented letters and ` .,/:-`, and the
-  field's `value` must fit the format (`INVALID_VALUE`).
-- `gridArea` cannot be combined with `gridRow` or `gridColumn`
-  (`INVALID_VALUE`), and `gridTemplateAreas` has at most 10000 cells
-  (`OUT_OF_RANGE`).
-- `float` applies to the children of a column box, not with `position:
-  absolute` nor with a forced break (`INVALID_VALUE`), and not to table
-  cells (`STYLE_NOT_APPLICABLE`, as `clear`). Inside a float, a forced
-  break is `INVALID_VALUE` and a `pageBreak` `INVALID_NODE`. A box holds
-  at most 1000 floated children (`OUT_OF_RANGE`). A box with floats
-  takes no `justifyContent` or `alignContent`, and its children no
-  `flexGrow` or `flexBasis` (`STYLE_NOT_APPLICABLE`).
-- `transform`, `transformOrigin` and `zIndex` do not apply to table
-  cells (`STYLE_NOT_APPLICABLE`).
-- The tables of a document have at most 1000000 grid slots in all, a
-  slot being one row of one column, however the cells span them
-  (`OUT_OF_RANGE` at the table's `rows`).
-
-The other way, the engine reads a number as a 32-bit float: one past a
-bound by less than a float's precision there is read as the bound and
-accepted (`flexGrow: 1000000.01`). Integers (also written as `400.0`),
-percentages and `fr` sizes are bounded as written.
+Some rules are checked by the engine but not by the JSON Schema (an id
+used twice, references that must resolve, the rules of `break`, floats,
+form fields and grid areas, and others), so a document that passes the
+schema can still fail validation. The schema's descriptions state them,
+and [`SCHEMA.md`](SCHEMA.md) shows them with the properties they concern
+and in its [code table](SCHEMA.md#validation-error-codes). One more limit
+is not in the schema: the tables of a document have at most 1000000 grid
+slots in all, a slot being one row of one column, however the cells span
+them (`OUT_OF_RANGE` at the table's `rows`). How numbers are read against
+their bounds (as 32-bit floats) is in [`SCHEMA.md`](SCHEMA.md#conventions).
 
 ## Not part of the API
 
 - `InkoxideError.__testPanic` in the Node binding is a non-enumerable test hook, not a
   module export.
+- `inkoxide::JSON_ONLY` in the Rust crate is public but `#[doc(hidden)]`: the message the
+  bindings share for MessagePack input to a JSON-only build. Do not depend on it.
 - Nothing else in the Rust crate is public: its modules are private.

@@ -6,8 +6,8 @@ Issues live in GitHub Issues for `eddiesr93/inkoxide`, through the `gh` CLI. Sec
 
 ### Triage labels
 
-The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Issues are labelled by kind (`bug`, `enhancement`, `documentation`, `refactor`, `good first issue`). Of the triage labels, only `wontfix` exists; the others (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`) are not used. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
-Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+The domain docs are the architecture decision records in `docs/adr/`, with `docs/ARCHITECTURE.md`. See `docs/agents/domain.md`.

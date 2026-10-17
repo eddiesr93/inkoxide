@@ -7,21 +7,12 @@ PDF bytes out.
 npm install inkoxide
 ```
 
-Prebuilt binaries ship as per-platform packages that npm installs
-automatically (as optional dependencies) for the current platform:
-
-| Platform              | Package                     |
-| --------------------- | --------------------------- |
-| Linux x64 (glibc)     | `@inkoxide/linux-x64-gnu`   |
-| Linux x64 (musl)      | `@inkoxide/linux-x64-musl`  |
-| Linux arm64 (glibc)   | `@inkoxide/linux-arm64-gnu` |
-| macOS arm64           | `@inkoxide/darwin-arm64`    |
-| macOS x64             | `@inkoxide/darwin-x64`      |
-| Windows x64           | `@inkoxide/win32-x64-msvc`  |
-
-Linux glibc builds need glibc 2.35 or newer. Node.js 22 or newer; ES modules only.
-Other platforms: build from source with `scripts/build-node.sh`, which
-puts `inkoxide.<platform>.node` next to the loader.
+npm installs the prebuilt binary for the current platform, as an optional
+dependency (`@inkoxide/linux-x64-gnu`, `@inkoxide/darwin-arm64`, …);
+[Platforms](https://github.com/eddiesr93/inkoxide#platforms) lists them.
+Node.js 22 or newer; ES modules only. On another platform, build the addon from
+source with `scripts/build-node.sh`, which puts `inkoxide.<platform>.node` next
+to the loader.
 
 ```js
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -34,11 +25,14 @@ const doc = {
   version: 1,
   fonts: [{ id: 'Inter-Regular', family: 'Inter' }],
   pages: [{ size: { width: 595.28, height: 841.89 }, margin: { top: 48, right: 48, bottom: 48, left: 48 },
-            children: [{ type: 'text', runs: [{ text: 'Hello', font: 'Inter-Regular', size: 24 }] }] }],
+            children: [
+              { type: 'image', src: 'logo', style: { width: 120 } },
+              { type: 'text', runs: [{ text: 'Hello', font: 'Inter-Regular', size: 24 }] },
+            ] }],
 };
 
 try {
-  // Runs on the libuv pool; the event loop keeps running.
+  // Runs on the libuv pool; the event loop keeps running. `src: 'logo'` is an id in `images`.
   const pdf = await render(JSON.stringify(doc), { images: { logo: readFileSync('logo.jpg') } });
   writeFileSync('out.pdf', pdf);
 } catch (e) {

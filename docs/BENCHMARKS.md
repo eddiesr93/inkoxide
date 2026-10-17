@@ -41,15 +41,8 @@ and served from localhost. Median of 20 renders after a warm-up (10 for the repo
   document that needs them; these documents need neither.
 - Firefox was not measured: the Playwright build of Firefox does not start on this machine.
 
-The documents and the harnesses are in [`benchmarks/`](../benchmarks):
-
-```sh
-pnpm install
-scripts/build-node.sh
-scripts/build-wasm.sh
-pnpm --filter @inkoxide/benchmarks bench           # on the server
-pnpm --filter @inkoxide/benchmarks bench:browser   # in the browser (pnpm exec playwright install first)
-```
+The documents and the harnesses are in [`benchmarks/`](../benchmarks), whose
+[README](../benchmarks/README.md) gives the commands that build and run them.
 
 ## Engine
 

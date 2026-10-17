@@ -9,7 +9,7 @@ const t0 = performance.now();
 const ink = await import('@inkoxide/render');
 const el =
   doc === 'invoice'
-    ? createElement((await import('./invoice-inkoxide.tsx')).Invoice, invoice)
+    ? createElement((await import('./invoice.tsx')).Invoice, invoice)
     : createElement((await import('./documents/report.tsx')).Report);
 const pdf = await ink.renderToBuffer(el, { validate: false });
 console.log(JSON.stringify({ ms: performance.now() - t0, bytes: pdf.byteLength }));

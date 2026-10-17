@@ -10,6 +10,8 @@ export {
   type BrowserOptions,
   type BrowserRenderOptions,
   clearCaches,
+  type GenerateOptions,
+  generate,
   init,
   renderToBlob,
   renderToBuffer,
@@ -25,7 +27,7 @@ export {
 } from './helpers.tsx';
 export { countPages, type EngineStatus, type EngineVersion, engineStatus, version } from './engine.ts';
 export { Font, type FontRegistration, type FontSource, type FontSrc, type FontWeight } from './font.ts';
-export { type GenerateOptions, generate, type RenderToBufferOptions, type TemplateLike } from './pipeline.ts';
+export { type RenderToBufferOptions, type TemplateLike } from './pipeline.ts';
 export {
   type DataIssue,
   type RemoteImageOptions,

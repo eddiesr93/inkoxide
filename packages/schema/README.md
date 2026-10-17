@@ -11,6 +11,13 @@ npm install @inkoxide/schema
 The package is an ES module and needs Node.js 22 or later. Its version is independent of the
 document schema version: `@inkoxide/schema` 2.x describes schema version 1.
 
+- [Field reference](https://github.com/eddiesr93/inkoxide/blob/main/docs/SCHEMA.md): every
+  property, its bounds and the validation error codes.
+- [Examples](https://github.com/eddiesr93/inkoxide/blob/main/packages/schema/EXAMPLES.md):
+  complete documents.
+- [Changelog](https://github.com/eddiesr93/inkoxide/blob/main/packages/schema/CHANGELOG.md):
+  changes to the document format, by package version.
+
 ## Types
 
 ```ts

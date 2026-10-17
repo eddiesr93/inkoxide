@@ -5,11 +5,13 @@ browser. The results are in [docs/BENCHMARKS.md](../docs/BENCHMARKS.md).
 
 | File | What it is |
 |---|---|
-| `documents/` | The documents, written without Node so that the browser benchmark renders them too |
-| `invoice-inkoxide.tsx` | The invoice, styled with `className`, with its logo read from disk |
+| `documents/` | The documents, `invoice.tsx` and `report.tsx`, written without Node so that the browser benchmark renders them too |
+| `invoice.json` | The invoice's data: supplier, client, items, currency and VAT rate |
+| `logo.jpg` | The invoice's logo |
+| `invoice.tsx` | The invoice, styled with `className`, with its logo read from disk; run directly, it writes `invoice.pdf` |
 | `bench.tsx` | On the server: warm renders (median), one-thread renders and cold starts in fresh processes |
 | `cold.tsx` | One render in a fresh process, called by `bench.tsx` |
-| `browser/` | In the browser: a page built with Vite, measured with Playwright in Chromium, WebKit and Firefox |
+| `browser/` | In the browser: a page (`index.html`, `main.tsx`) built with Vite, measured with Playwright in Chromium, WebKit and Firefox |
 
 From the repository root, after `pnpm install`, `scripts/build-node.sh` and
 `scripts/build-wasm.sh`:

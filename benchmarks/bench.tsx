@@ -10,8 +10,8 @@ import * as inkoxide from '@inkoxide/render';
 import type { ReactElement } from 'react';
 
 import { Report } from './documents/report.tsx';
-import { Invoice } from './invoice-inkoxide.tsx';
 import invoice from './invoice.json' with { type: 'json' };
+import { Invoice } from './invoice.tsx';
 
 const runs = Number(process.argv[2] ?? 20);
 

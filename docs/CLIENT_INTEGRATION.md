@@ -6,7 +6,8 @@ built as JSON. To write documents as React components, use
 this for you. [API.md](API.md) has the full API and
 [EXAMPLES.md](../packages/schema/EXAMPLES.md) has complete documents. In a browser,
 [`@inkoxide/wasm`](../packages/wasm/README.md) has the same functions, on one
-thread: see [API.md](API.md#webassembly-inkoxidewasm).
+thread: its README covers the setup, and
+[API.md](API.md#webassembly-inkoxidewasm) the differences.
 
 ## Install
 
@@ -43,9 +44,10 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
   starts, not once per request: registration parses the font, and each
   font is compressed only once and then cached.
 - **The id is the link to the document.** Use the same string in the
-  document's `fonts[].id` and `runs[].font`. If a document names a font
-  that is not registered, you get `UNKNOWN_FONT`, with the path of the
-  first run that uses it.
+  document's `fonts[].id` and `runs[].font`. A font declared in `fonts`
+  but not registered is `FONT_NOT_REGISTERED`, at its `fonts[i].id`. A
+  run that names a font not declared in `fonts` is `UNKNOWN_FONT`, at
+  the run's `font` (`pages[0].children[0].runs[0].font`).
 - **Changing fonts is safe mid-render.** Each render takes a snapshot of
   the registry when it starts, so `registerFont` or `unregisterFont`
   never affects a render already in progress.
@@ -159,8 +161,8 @@ try {
   count. Each render then runs entirely on its own libuv thread, so
   concurrent renders use one core each with no coordination overhead.
 - **Few large documents.** For a 500-page export, keep the default.
-- **Memory.** Peak memory grows with the document: about 210 MB for a
-  435-page table (see [BENCHMARKS.md](BENCHMARKS.md)). The engine
+- **Memory.** Peak memory grows with the document;
+  [BENCHMARKS.md](BENCHMARKS.md) has measurements. The engine
   refuses documents that would exceed its page limit (100,000 pages), or whose
   headers, footers and fixed elements would add more than about 64 MB
   repeated on every page, with `LAYOUT_ERROR`. It also refuses, with
@@ -210,8 +212,9 @@ pattern files such as `hyph-en-us.tex`.
 
 ## Checklist
 
-- [ ] `scripts/build-node.sh` runs on every deploy platform, after every
-      engine update.
+- [ ] npm installs on the platform you deploy to (or with `--os`/`--cpu`).
+      Only a platform without a prebuilt binary needs
+      `scripts/build-node.sh`, after every engine update.
 - [ ] Fonts are registered once at startup, and the ids match the
       documents.
 - [ ] Images go in `options.images`, JPEG for photos.
