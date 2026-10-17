@@ -428,6 +428,23 @@ fn colour_emoji_and_images_extract_as_text() {
     }
 }
 
+/// An image taller than a page draws on each page it crosses, but its
+/// alternative text goes with its first part only.
+#[test]
+fn split_image_alt_is_written_once() {
+    let (fonts, images) = stores();
+    let doc = br#"{"version":1,"pages":[{"size":{"width":200,"height":200},"children":[
+        {"type":"image","src":"photo","alt":"Harbour","style":{"width":150,"height":500}}]}]}"#;
+    let opts = RenderOptions::default().with_compress(false);
+    let pdf = inkoxide::render(doc, InputFormat::Json, &opts, &fonts, &images).unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert!(
+        count(b"/Type /Page\n") + count(b"/Type /Page ") >= 3,
+        "the image splits"
+    );
+    assert_eq!(count(b"/ActualText"), 1);
+}
+
 /// The text of an SVG image is PDF text: the fonts' `ToUnicode` maps hold
 /// its characters, those only the SVG has too (its Hebrew, its digits, the
 /// capitals of its clip path).
@@ -448,12 +465,15 @@ fn form_field_glyphs_map_to_unicode() {
     let doc = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
            "pages":[{{"size":{{"width":300,"height":300}},"children":[{},{}]}}]}}"#,
-        field(r#"{"name":"a","kind":"text","font":"Inter-Regular","value":"Zoë","readOnly":true}"#),
+        field(
+            r#"{"name":"a","kind":"text","font":"Inter-Regular","value":"Zoë Ζωή","readOnly":true}"#
+        ),
         field(r#"{"name":"b","kind":"select","font":"Inter-Regular","options":["Ωmega"]}"#),
     );
     let mapped = mapped_text(doc.as_bytes());
-    // The value shown, an option, and the Latin range embedded for editing.
-    for c in "ZoëΩmega€Șț~".chars() {
+    // The value shown (Greek is outside what is embedded for editing), an
+    // option, and the Latin range embedded for editing.
+    for c in "ZoëΖωήΩmega€Șț~".chars() {
         assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
     }
 }

@@ -2499,6 +2499,9 @@ mod tests {
             r#""pageMode":"#,
             r#""pageLayout":"twoPage"#,
             r#""EmojiTest-sbix"]"#,
+            // Alt on an image node (keys are sorted) and on an image in text.
+            r#"[{"alt":"#,
+            r#""image":{"alt":"#,
         ];
         // Boxes nested close to the parser's limit (keys are sorted).
         let deep = r#"{"children":["#.repeat(56);

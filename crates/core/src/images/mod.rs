@@ -541,15 +541,17 @@ impl ImageSet {
         let radii = crate::paint::content_radii(&node.style, geo);
         let placement = ImagePlacement::new(*fit, *object_position);
         let draw = |ops: &mut Vec<crate::paint::Op>| self.paint_in(key, bx, placement, &radii, ops);
-        match alt.as_deref().filter(|a| !a.is_empty()) {
-            Some(alt) if bx.w > 0.0 && bx.h > 0.0 => {
-                use crate::paint::InvisibleGlyph;
-                let space = InvisibleGlyph::strut(fonts, None)
-                    .and_then(|k| InvisibleGlyph::space(fonts, k, bx.h, (bx.x, bx.y + bx.h), bx.w));
-                crate::paint::span(ops, alt, space, draw);
-            }
-            _ => draw(ops),
-        }
+        // Taller than a page, an image is sliced across pages; its text
+        // goes with the slice on the page it starts on.
+        let first = ctx.window.is_none_or(|w| w.starts(cy + ctx.shift));
+        let alt = alt.as_deref().filter(|_| first && bx.w > 0.0 && bx.h > 0.0);
+        let space = crate::paint::SpaceAt {
+            font: None,
+            size: bx.h,
+            at: (bx.x, bx.y + bx.h),
+            width: bx.w,
+        };
+        crate::paint::alt_span(ops, fonts, alt, space, draw);
     }
 
     /// Paints image `key` into `bx` (page coordinates) as `placement`

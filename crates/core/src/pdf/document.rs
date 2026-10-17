@@ -136,23 +136,12 @@ impl PdfWriterSink {
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
         for ((key, glyphs), program) in fonts.used.iter().zip(&fonts.programs) {
             // Glyphs laid out keep their text; field glyphs add theirs.
-            let merged;
-            let unicode = match fonts.field_text.fonts.get(key) {
-                None => doc.unicode.fonts.get(key),
-                Some(fields) => {
-                    let mut all = doc.unicode.fonts.get(key).cloned().unwrap_or_default();
-                    for (glyph, text) in fields {
-                        all.entry(*glyph).or_insert_with(|| text.clone());
-                    }
-                    merged = all;
-                    Some(&merged)
-                }
-            };
+            let unicode = doc.unicode.font_with(*key, &fonts.field_text);
             let embedded = font::Embedded {
                 font: doc.fonts.get(*key),
                 program,
                 used: glyphs,
-                unicode,
+                unicode: unicode.as_deref(),
             };
             let r = font::write_font(w, &embedded, self.profile)?;
             font_refs.insert(*key, r);

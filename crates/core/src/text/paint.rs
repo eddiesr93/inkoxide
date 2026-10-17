@@ -12,8 +12,8 @@ use crate::geom::Rect;
 use crate::images::{ImageKey, ImagePlacement, ImageSet};
 use crate::layout::{Geometry, LineBox, LineBoxes};
 use crate::paint::{
-    span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg,
-    TextGlyph, TextOp, NO_RADII,
+    alt_span, span, ContentCtx, ContentPainter, Dash, DebugLine, InvisibleGlyph, Op, Path, PathSeg,
+    SpaceAt, TextGlyph, TextOp, NO_RADII,
 };
 use crate::schema::{
     Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, RunAlign, TextAlign, TextRun,
@@ -541,21 +541,22 @@ fn paint_object(
     baseline: f32,
     ops: &mut Vec<Op>,
 ) {
-    let text = object.alt.as_deref().filter(|a| !a.is_empty()).map(|alt| {
-        let space = space_font(fonts, run).and_then(|k| {
-            InvisibleGlyph::space(fonts, k, run.size, (rect.x, baseline), object.width)
-        });
-        (alt, space)
+    let space = SpaceAt {
+        font: fonts.key(&run.font),
+        size: run.size,
+        at: (rect.x, baseline),
+        width: object.width,
+    };
+    alt_span(ops, fonts, object.alt.as_deref(), space, |ops| {
+        images.paint_in(object.key, rect, object.placement, &NO_RADII, ops);
     });
-    image_span(images, object.key, rect, object.placement, text, ops);
 }
 
 /// The font of the invisible space in the span of an image drawn in run
-/// `run` (an inline object, a colour glyph): the run's own font, the
-/// paragraph's strut, which the line embeds anyway, or another
-/// ([`InvisibleGlyph::strut`]).
+/// `run` (a colour glyph): the run's own font, or another
+/// ([`InvisibleGlyph::space_font`]).
 fn space_font(fonts: &FontSet<'_>, run: &TextRun) -> Option<FontKey> {
-    InvisibleGlyph::strut(fonts, fonts.key(&run.font))
+    InvisibleGlyph::space_font(fonts, fonts.key(&run.font))
 }
 
 /// Draws image `key` in `rect` as `placement` says. With `text`, inside a

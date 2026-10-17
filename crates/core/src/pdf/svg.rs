@@ -41,7 +41,7 @@ use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
 use crate::paint::FillRule;
-use crate::paint::{span, InvisibleGlyph, Op, TextGlyph, TextOp, NO_RADII};
+use crate::paint::{alt_span, InvisibleGlyph, Op, SpaceAt, TextGlyph, TextOp, NO_RADII};
 use crate::text::{ColorGlyphs, LaidText};
 use crate::{flate, InkoxideError};
 
@@ -150,7 +150,7 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
             }],
         };
         let mut ops = Vec::new();
-        let strut = InvisibleGlyph::strut(res.fonts, None);
+        let strut = InvisibleGlyph::space_font(res.fonts, None);
         res.colors.push(
             op,
             strut,
@@ -169,15 +169,13 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
                     .paint_in(i.key, i.rect, i.placement, &NO_RADII, ops);
             }
         };
-        match i.text.as_deref().filter(|t| !t.is_empty()) {
-            Some(text) => {
-                let space = InvisibleGlyph::strut(res.fonts, Some(i.font)).and_then(|k| {
-                    InvisibleGlyph::space(res.fonts, k, i.size, (0.0, 0.0), i.rect.w)
-                });
-                span(&mut ops, text, space, draw);
-            }
-            None => draw(&mut ops),
-        }
+        let space = SpaceAt {
+            font: Some(i.font),
+            size: i.size,
+            at: (0.0, 0.0),
+            width: i.rect.w,
+        };
+        alt_span(&mut ops, res.fonts, i.text.as_deref(), space, draw);
         out.push((Frame::of(i.x, i.y, i.rotate, i.scale_x), ops));
     }
     out

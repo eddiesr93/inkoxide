@@ -54,9 +54,9 @@ pub(crate) struct FieldOp {
     pub editable: bool,
     /// The glyphs of a select's or a list's options.
     pub option_glyphs: Vec<u16>,
-    /// The character of each glyph of `text` and `option_glyphs`, for its
+    /// Each glyph of `text` and `option_glyphs` with its character, for its
     /// font's `ToUnicode` map: they are looked up by character, not shaped.
-    pub chars: Vec<(u16, char)>,
+    pub glyph_chars: Vec<(u16, char)>,
     /// A list box: the rows of its selected options in view, in widget
     /// coordinates (top-left origin), filled behind the text.
     pub highlights: Vec<Rect>,
@@ -120,7 +120,7 @@ pub(crate) fn paint(
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
     let mut text = Vec::new();
     let mut option_glyphs = Vec::new();
-    let mut chars = Vec::new();
+    let mut glyph_chars = Vec::new();
     let editable = f.is_text_like() && !f.read_only;
     let line_h = f.size * LINE_HEIGHT;
     let (selected, top_index, highlights) = if f.kind == FieldKind::List {
@@ -174,7 +174,7 @@ pub(crate) fn paint(
             let mut glyphs = Vec::new();
             for c in line.chars() {
                 let Some(id) = lf.glyph(c) else { continue };
-                chars.push((id, c));
+                glyph_chars.push((id, c));
                 glyphs.push(TextGlyph {
                     id,
                     x: pen,
@@ -199,7 +199,7 @@ pub(crate) fn paint(
                 for c in o.chars() {
                     let Some(id) = lf.glyph(c) else { continue };
                     option_glyphs.push(id);
-                    chars.push((id, c));
+                    glyph_chars.push((id, c));
                 }
             }
         }
@@ -211,7 +211,7 @@ pub(crate) fn paint(
         text,
         editable: editable && font.is_some(),
         option_glyphs,
-        chars,
+        glyph_chars,
         highlights,
         selected,
         top_index,

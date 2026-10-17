@@ -240,7 +240,7 @@ impl PdfWriterSink {
                 if f.editable {
                     editable.insert(font);
                 }
-                for &(glyph, c) in &f.chars {
+                for &(glyph, c) in &f.glyph_chars {
                     field_text.record(font, glyph, c.encode_utf8(&mut buf));
                 }
             }
