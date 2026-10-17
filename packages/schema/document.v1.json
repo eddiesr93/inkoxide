@@ -173,6 +173,23 @@
             "italic"
           ],
           "default": "normal"
+        },
+        "source": {
+          "$ref": "#/$defs/Id",
+          "description": "The registered font it draws with; `id` when absent. One variable font can then serve several declarations, each with its own `variations`."
+        },
+        "variations": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[ -~]{4}$"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": -32767,
+            "maximum": 32767
+          },
+          "description": "A variable font's axis values, by tag, as CSS `font-variation-settings` (`{\"wght\": 650, \"wdth\": 75}`): text in this font is drawn and measured at that instance, and the PDF embeds the instance, never the variable font. A value is clamped to its axis; an axis the font lacks is ignored, with a warning, as every axis of a static font is. Tags are four printable ASCII characters; at most 16 axes, and at most 64 declarations with `variations` in a document."
         }
       }
     },

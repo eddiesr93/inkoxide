@@ -11,7 +11,7 @@ import type {
   TransformOp,
 } from '@inkoxide/schema';
 
-import type { FontFeatures } from './features.ts';
+import type { FontFeatures, FontVariations } from './features.ts';
 
 /** RGBA floats in [0, 1], the engine's colour format. */
 export type Color = SchemaColor;
@@ -176,6 +176,8 @@ export interface FlatStyle {
   fontFeatureSettings?: FontFeatures;
   /** The features `font-variant-numeric` turns on (`tabular-nums`: `tnum`). */
   fontVariantNumeric?: FontFeatures;
+  /** A variable font's axis values (`font-variation-settings`); `wght` wins over `fontWeight`. */
+  fontVariationSettings?: FontVariations;
 
   // Text, not inherited (the Text node that carries the class).
   maxLines?: number;
@@ -216,6 +218,7 @@ export const TEXT_INHERITED = [
   'widows',
   'fontFeatureSettings',
   'fontVariantNumeric',
+  'fontVariationSettings',
 ] as const satisfies readonly FlatStyleKey[];
 
 /** Keys that only mean something on a `Text` node. */

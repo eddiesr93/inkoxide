@@ -100,7 +100,7 @@ impl LoadedFont<'_> {
         {
             return None;
         }
-        let s = self.data.metrics.units_per_em / f32::from(img.pixels_per_em);
+        let s = self.metrics().units_per_em / f32::from(img.pixels_per_em);
         let (x, y) = (f32::from(img.x) * s, f32::from(img.y) * s);
         let png = ColorGlyph::Png {
             png: img.data.to_vec(),

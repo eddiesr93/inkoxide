@@ -672,6 +672,17 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Text',
+    utilities: '`[font-variation-settings:…]`',
+    maps: '`fontVariationSettings`',
+    notes:
+      "Axis values of a variable font, as an arbitrary property with `_` for spaces: `[font-variation-settings:'wdth'_75]`. A `wght` in it wins over the weight.",
+    examples: {
+      "[font-variation-settings:'wdth'_75]": { fontVariationSettings: { wdth: 75 } },
+      "[font-variation-settings:'wght'_650,'opsz'_14]": { fontVariationSettings: { wght: 650, opsz: 14 } },
+    },
+  },
+  {
+    group: 'Text',
     utilities:
       '`tabular-nums`, `proportional-nums`, `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`, `diagonal-fractions`, `stacked-fractions`, `normal-nums`',
     maps: 'run `fontFeatures`',

@@ -358,6 +358,25 @@ mod tests {
         f(&FontSet::load(&doc, &store).unwrap());
     }
 
+    #[test]
+    fn a_variable_colr_glyph_is_painted_at_the_instance() {
+        let mut store = crate::FontStore::new();
+        let bytes = crate::test_fixtures::fixture("fonts/VarTest-COLRv1.ttf");
+        store.register("VarTest-COLRv1", bytes).unwrap();
+        let json = r#"{"version":1,"fonts":[{"id":"a","family":"a","source":"VarTest-COLRv1"},
+            {"id":"b","family":"b","source":"VarTest-COLRv1","variations":{"wght":900}}],"pages":[]}"#;
+        let doc: crate::schema::Document = serde_json::from_str(json).unwrap();
+        let fonts = FontSet::load(&doc, &store).unwrap();
+        let svg = |key| match fonts.get(key).color_glyph(1) {
+            Some(ColorGlyph::Svg { svg, .. }) => svg,
+            other => panic!("{other:?}"),
+        };
+        // The square fades from opaque to half (127 of 255) with wght.
+        let (default, bold) = (svg(0), svg(1));
+        assert!(!default.contains("fill-opacity"), "{default}");
+        assert!(bold.contains(r#"fill-opacity="0.49803922""#), "{bold}");
+    }
+
     /// The image bytes of glyph `gid` of `font` (SVG or PNG), its layers
     /// in the foreground colour black, and the box they fill.
     fn glyph_bytes(font: &LoadedFont<'_>, gid: u16) -> Option<(Vec<u8>, [f32; 4])> {

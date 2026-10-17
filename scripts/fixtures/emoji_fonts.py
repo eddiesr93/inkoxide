@@ -230,9 +230,11 @@ def stops(*pairs):
     return list(pairs)
 
 
-def colrv1(v0, v1, clips, layers=None):
+def colrv1(v0, v1, clips, layers=None, var_map=b"", var_store=b""):
     """`v0`: {gid: [(layer gid, palette index)]}; `v1`: {gid: paint};
-    `clips`: {gid: (x0, y0, x1, y1)}; `layers`: the paints of the layer list."""
+    `clips`: {gid: (x0, y0, x1, y1)}; `layers`: the paints of the layer list;
+    `var_map` and `var_store`: the delta-set index map and the item
+    variation store of a variable font's paints."""
     layers = layers or []
 
     def f2dot14(v):
@@ -255,6 +257,8 @@ def colrv1(v0, v1, clips, layers=None):
             buf += struct.pack(">BBI", 1, p[2], p[1])
         elif kind == "solid":
             buf += struct.pack(">BH", 2, p[1]) + f2dot14(p[2])
+        elif kind == "varsolid":  # (varsolid, palette index, alpha, var index base)
+            buf += struct.pack(">BH", 3, p[1]) + f2dot14(p[2]) + struct.pack(">I", p[3])
         elif kind == "linear":  # (linear, p0, p1, p2, stops)
             _, (x0, y0), (x1, y1), (x2, y2), st = p
             buf += struct.pack(">B", 4) + b"\0\0\0" + struct.pack(">hhhhhh", x0, y0, x1, y1, x2, y2)
@@ -341,11 +345,15 @@ def colrv1(v0, v1, clips, layers=None):
     off_bgl = off_layer0 + len(layer0)
     off_ll = off_bgl + len(bgl)
     off_cl = off_ll + len(ll)
+    off_vm = off_cl + (len(cl) if clips else 0)
+    off_vs = off_vm + len(var_map)
     header = struct.pack(
         ">HHIIHIIIII", 1, len(v0), off_base0 if v0 else 0, off_layer0 if v0 else 0, n_layers,
-        off_bgl, off_ll if layers else 0, off_cl if clips else 0, 0, 0,
+        off_bgl, off_ll if layers else 0, off_cl if clips else 0, off_vm if var_map else 0,
+        off_vs if var_store else 0,
     )
-    return header + base0 + layer0 + bytes(bgl) + bytes(ll) + (bytes(cl) if clips else b"")
+    return (header + base0 + layer0 + bytes(bgl) + bytes(ll) + (bytes(cl) if clips else b"")
+            + var_map + var_store)
 
 
 # --- Bitmaps ----------------------------------------------------------------

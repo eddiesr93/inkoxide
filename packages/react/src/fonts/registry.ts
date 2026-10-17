@@ -17,12 +17,22 @@ export type EmojiSource =
     }
   | { builder: (codePoints: string) => ImageSrcValue };
 
+/** The weights a face draws, lowest and highest: one weight twice for a static face. */
+type Weights = readonly [lo: number, hi: number];
+
 export interface FontFace {
   /** The engine font id, used in `fonts[].id` and `runs[].font` (`Inter-Bold`). */
   id: string;
   family: string;
   weight?: number;
+  /**
+   * A variable font's weights, `[100, 900]`: a weight in the range draws at that `wght`, and one
+   * outside it at the nearer end. `weight` is then the weight of its default instance.
+   */
+  weightRange?: Weights;
   style?: 'normal' | 'italic';
+  /** Axis values every use of the face draws with (`{ ital: 1 }`), as CSS `@font-face` takes them. */
+  variations?: Readonly<Record<string, number>>;
   /**
    * File name, for `loadDirectory`.
    * @deprecated `loadDirectory` is deprecated: read the file and pass its bytes to `register`.
@@ -31,6 +41,7 @@ export interface FontFace {
 }
 
 export interface ResolvedFont {
+  /** The font id: a registered face's, or an instance of a variable face (`Inter-100-900@wght=650`). */
   id: string;
   /** False when the weight, style or family had to fall back. */
   exact: boolean;
@@ -38,9 +49,28 @@ export interface ResolvedFont {
   wanted?: string;
 }
 
-interface Face extends Required<Omit<FontFace, 'file'>> {
+interface Face extends Required<Omit<FontFace, 'file' | 'weightRange' | 'variations'>> {
   bytes: Uint8Array | undefined;
+  /** The weights it draws: one, or a variable font's range. */
+  weights: Weights;
+  variable: boolean;
+  variations: Readonly<Record<string, number>>;
 }
+
+/** An instance of a variable face: the face, at these axis values. */
+interface Instance {
+  face: Face;
+  /** The weight it declares, for SVG text to match. */
+  weight: number;
+  variations: Readonly<Record<string, number>>;
+}
+
+/**
+ * Most instances, and resolved fonts, kept: a document declares one per weight and variation it
+ * uses (the engine takes 64), and a long-running server meets many more over time, so the
+ * least recently used make room.
+ */
+const MAX_KEPT_FONTS = 4096;
 
 /**
  * Maps family + weight + style to registered font ids, and holds the font bytes until the
@@ -53,6 +83,7 @@ export class FontRegistry {
   private readonly faces: Face[] = [];
   private readonly byId = new Map<string, Face>();
   private readonly memo = new Map<string, ResolvedFont>();
+  private readonly instances = new Map<string, Instance>();
   /** Splits words into syllables in every `Text` without its own `hyphenationCallback`. */
   hyphenationCallback: HyphenationCallback | undefined;
   /** Draws the emoji of every `Text` as images from here. */
@@ -60,12 +91,18 @@ export class FontRegistry {
 
   register(face: FontFace, bytes?: Uint8Array): this {
     if (this.byId.has(face.id)) throw new Error(`Font id "${face.id}" is already registered`);
+    if (face.id.includes('@')) throw new Error(`Font id "${face.id}" has an @, which instances use`);
+    const range = face.weightRange;
+    const weight = face.weight ?? (range ? clamp(400, range) : 400);
     const f: Face = {
       id: face.id,
       family: face.family,
-      weight: face.weight ?? 400,
+      weight,
       style: face.style ?? 'normal',
       bytes,
+      weights: range ? [range[0], range[1]] : [weight, weight],
+      variable: range !== undefined || face.variations !== undefined,
+      variations: face.variations ?? {},
     };
     this.faces.push(f);
     this.byId.set(f.id, f);
@@ -103,7 +140,12 @@ export class FontRegistry {
   }
 
   has(id: string): boolean {
-    return this.byId.has(id);
+    return this.byId.has(id) || this.instances.has(id);
+  }
+
+  /** The instances of face `id` resolved so far, by id. */
+  instancesOf(id: string): string[] {
+    return [...this.instances].filter(([, i]) => i.face.id === id).map(([k]) => k);
   }
 
   bytes(id: string): Uint8Array | undefined {
@@ -119,27 +161,52 @@ export class FontRegistry {
     return [...new Set(this.faces.map((f) => f.family))];
   }
 
-  /** The `fonts[]` declaration of a registered id. */
+  /** The `fonts[]` declaration of a registered id, or of an instance. */
   decl(id: string): FontDecl {
-    const f = this.byId.get(id);
+    const instance = this.instances.get(id);
+    const f = instance?.face ?? this.byId.get(id);
     if (!f) throw new Error(`Font "${id}" is not registered`);
-    const d: FontDecl = { id: f.id, family: f.family };
-    if (f.weight !== 400) d.weight = f.weight;
+    const d: FontDecl = { id, family: f.family };
+    const weight = instance?.weight ?? f.weight;
+    if (weight !== 400) d.weight = weight;
     if (f.style !== 'normal') d.style = f.style;
+    if (instance) {
+      d.source = f.id;
+      d.variations = { ...instance.variations };
+    } else if (Object.keys(f.variations).length > 0) {
+      d.variations = { ...f.variations };
+    }
     return d;
   }
 
-  resolve(families: readonly string[], weight: number, style: 'normal' | 'italic'): ResolvedFont {
-    const key = `${families.join(',')}|${weight}|${style}`;
+  /**
+   * The font for `families`, `weight` and `style`, as CSS matches it; with `variations`
+   * (`fontVariationSettings`), or a weight within a variable face's range, an instance of the
+   * face at those axis values. A `wght` in `variations` wins over `weight` for the axis.
+   */
+  resolve(
+    families: readonly string[],
+    weight: number,
+    style: 'normal' | 'italic',
+    variations?: Readonly<Record<string, number>>,
+  ): ResolvedFont {
+    const axes = variations ? byTag(variations) : [];
+    const key = `${families.join(',')}|${weight}|${style}|${axesKey(axes)}`;
     let hit = this.memo.get(key);
     if (!hit) {
-      hit = this.match(families, weight, style);
+      hit = this.match(families, weight, style, axes);
+      if (this.memo.size >= MAX_KEPT_FONTS) this.memo.clear();
       this.memo.set(key, hit);
     }
     return hit;
   }
 
-  private match(families: readonly string[], weight: number, style: 'normal' | 'italic'): ResolvedFont {
+  private match(
+    families: readonly string[],
+    weight: number,
+    style: 'normal' | 'italic',
+    axes: ReadonlyArray<readonly [string, number]>,
+  ): ResolvedFont {
     if (this.faces.length === 0) throw new Error('No fonts are registered');
     const wanted = `${families[0] ?? '(none)'} ${weight}${style === 'italic' ? ' italic' : ''}`;
     const index = families.findIndex((f) => this.faces.some((x) => sameFamily(x.family, f)));
@@ -153,26 +220,76 @@ export class FontRegistry {
     const sameStyle = inFamily.filter((f) => f.style === style);
     const pool = sameStyle.length > 0 ? sameStyle : inFamily;
     const face = nearestWeight(pool, weight);
-    const exact = familyExact && sameStyle.length > 0 && face.weight === weight;
-    return exact ? { id: face.id, exact } : { id: face.id, exact, wanted };
+    const drawn = clamp(weight, face.weights);
+    const exact = familyExact && sameStyle.length > 0 && drawn === weight;
+    const id = this.instance(face, drawn, axes);
+    return exact ? { id, exact } : { id, exact, wanted };
+  }
+
+  /**
+   * The id of `face` at weight `weight` with `axes`: the face's own for a static face asked for no
+   * axes, else an instance's (`Inter-100-900@wght=650`), declared with the face as its source. A
+   * face with a weight range always takes an instance: its default `wght` is the font's to say.
+   */
+  private instance(face: Face, weight: number, axes: ReadonlyArray<readonly [string, number]>): string {
+    const ranged = face.weights[0] !== face.weights[1];
+    if (!ranged && axes.length === 0) return face.id;
+    const variations: Record<string, number> = { ...face.variations };
+    if (ranged) variations.wght = weight;
+    for (const [tag, v] of axes) variations[tag] = v;
+    const id = `${face.id}@${axesKey(byTag(variations))}`;
+    const known = this.instances.get(id);
+    if (known) {
+      // Most recently used last.
+      this.instances.delete(id);
+      this.instances.set(id, known);
+      return id;
+    }
+    if (this.instances.size >= MAX_KEPT_FONTS) {
+      const oldest = this.instances.keys().next().value as string;
+      this.instances.delete(oldest);
+      // Fonts resolved before may name it.
+      this.memo.clear();
+    }
+    const wght = variations.wght;
+    const declared =
+      wght !== undefined && Number.isFinite(wght) ? clamp(Math.round(wght), [1, 1000]) : weight;
+    this.instances.set(id, { face, weight: declared, variations });
+    return id;
   }
 }
+
+/** `n` within `lo` and `hi`. */
+const clamp = (n: number, [lo, hi]: Weights): number => Math.min(Math.max(n, lo), hi);
+
+/** Axis values ordered by tag, so that the same values make the same key. */
+const byTag = (variations: Readonly<Record<string, number>>): Array<[string, number]> =>
+  Object.entries(variations).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+
+/** Axis values ordered by tag as an id takes them: `wdth=75,wght=650`. */
+const axesKey = (axes: ReadonlyArray<readonly [string, number]>): string =>
+  axes.map(([t, v]) => `${t}=${v}`).join(',');
 
 /** What tells family names apart: they match ignoring ASCII case, as in CSS and in the engine. */
 export const familyKey = (family: string): string => family.replace(/[A-Z]/g, (c) => c.toLowerCase());
 const sameFamily = (a: string, b: string): boolean => a === b || familyKey(a) === familyKey(b);
 
-/** CSS Fonts 4 §5.2 weight matching. */
+/**
+ * CSS Fonts 4 §5.2 weight matching: a face whose weights hold `w`, else the nearest by the rules,
+ * a variable face standing at the end of its range nearer `w`.
+ */
 function nearestWeight(pool: readonly Face[], w: number): Face {
-  const exact = pool.find((f) => f.weight === w);
+  const exact = pool.find((f) => f.weights[0] <= w && w <= f.weights[1]);
   if (exact) return exact;
-  const asc = [...pool].sort((a, b) => a.weight - b.weight);
-  const above = asc.filter((f) => f.weight > w);
-  const below = asc.filter((f) => f.weight < w).reverse();
+  // Where each face stands: the end of its range nearer `w`.
+  const at = (f: Face) => (w < f.weights[0] ? f.weights[0] : f.weights[1]);
+  const asc = [...pool].sort((a, b) => at(a) - at(b));
+  const above = asc.filter((f) => at(f) > w);
+  const below = asc.filter((f) => at(f) < w).reverse();
   let order: Face[];
   if (w >= 400 && w <= 500) {
-    const upTo500 = above.filter((f) => f.weight <= 500);
-    order = [...upTo500, ...below, ...above.filter((f) => f.weight > 500)];
+    const upTo500 = above.filter((f) => at(f) <= 500);
+    order = [...upTo500, ...below, ...above.filter((f) => at(f) > 500)];
   } else if (w < 400) {
     order = [...below, ...above];
   } else {

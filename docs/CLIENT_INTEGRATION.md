@@ -51,8 +51,17 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
 - **Changing fonts is safe mid-render.** Each render takes a snapshot of
   the registry when it starts, so `registerFont` or `unregisterFont`
   never affects a render already in progress.
+- **Variable fonts.** A variable font (TrueType with `gvar`, or CFF2) is
+  registered once; each font declaration that draws with it names it in
+  `source` and gives its axis values in `variations`
+  (`{"id":"Body-650","family":"Body","weight":650,"source":"Body-VF","variations":{"wght":650}}`).
+  Text is laid out at that instance, and the PDF embeds the instance as
+  static TrueType, never the variable font.
 - **Unsupported fonts.** These are rejected with `FONT_ERROR`: variable
-  fonts and CFF2 fonts (register static instances instead), font
+  fonts with more than 63 axes, with an `avar` table other than version
+  1.0, or whose outlines the instancer cannot read (registration tries
+  the first glyph; another it cannot read fails the render with
+  `FONT_ERROR`), font
   collections (`.ttc`; register each font as its own file), fonts with
   neither TrueType nor embeddable CFF outlines, fonts without a
   Unicode `cmap`, fonts whose `GSUB` or `GPOS` lookups point to

@@ -344,12 +344,24 @@ impl<'a> Faces<'a> {
                 let data = f.data;
                 // `from_slice` fails only where ttf-parser does, and
                 // `FontSet::load` parsed these bytes already.
-                rustybuzz::Face::from_slice(&data.bytes, 0).ok_or_else(|| {
+                let mut face = rustybuzz::Face::from_slice(&data.bytes, 0).ok_or_else(|| {
                     InkoxideError::Font(format!(
                         "font `{}` cannot be loaded for shaping",
                         data.metrics.post_script_name
                     ))
-                })
+                })?;
+                if !f.coords().is_empty() {
+                    let variations: Vec<rustybuzz::Variation> = f
+                        .coords()
+                        .iter()
+                        .map(|&(tag, value)| rustybuzz::Variation {
+                            tag: crate::fonts::opentype_tag(tag),
+                            value,
+                        })
+                        .collect();
+                    face.set_variations(&variations);
+                }
+                Ok(face)
             })
             .collect::<Result<_, _>>()
             .map(Self)

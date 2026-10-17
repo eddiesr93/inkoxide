@@ -365,7 +365,7 @@ fn named_bounds_match_schema() {
         MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTIONS, MAX_FIELD_OPTION_LEN,
         MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT,
         MAX_LINK, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_NUMBER, MAX_ORPHANS, MAX_PAGE_EDGE,
-        MAX_TEXT_INDENT, MAX_WEIGHT,
+        MAX_TEXT_INDENT, MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -632,6 +632,51 @@ fn named_bounds_match_schema() {
             MAX_FONT_FEATURES as f64 + 1.0,
             "OUT_OF_RANGE",
             format!("{run}.fontFeatures"),
+        ),
+        (
+            "/$defs/FontDecl/properties/variations/maxProperties",
+            MAX_VARIATIONS as f64,
+            Box::new(|n| {
+                let axes = (0..n as usize)
+                    .map(|k| format!(r#""a{k:03}":1"#))
+                    .collect::<Vec<_>>();
+                doc(
+                    &format!(
+                        r#"{{"id":"f","family":"F","variations":{{{}}}}}"#,
+                        axes.join(",")
+                    ),
+                    "",
+                )
+            }),
+            MAX_VARIATIONS as f64 + 1.0,
+            "OUT_OF_RANGE",
+            "fonts[0].variations".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/variations/additionalProperties/maximum",
+            f64::from(MAX_VARIATION_VALUE),
+            Box::new(|v| {
+                doc(
+                    &format!(r#"{{"id":"f","family":"F","variations":{{"wght":{v}}}}}"#),
+                    "",
+                )
+            }),
+            f64::from(MAX_VARIATION_VALUE) + 1.0,
+            "OUT_OF_RANGE",
+            "fonts[0].variations".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/variations/additionalProperties/minimum",
+            -f64::from(MAX_VARIATION_VALUE),
+            Box::new(|v| {
+                doc(
+                    &format!(r#"{{"id":"f","family":"F","variations":{{"wght":{v}}}}}"#),
+                    "",
+                )
+            }),
+            -f64::from(MAX_VARIATION_VALUE) - 1.0,
+            "OUT_OF_RANGE",
+            "fonts[0].variations".into(),
         ),
         (
             "/$defs/TextRun/properties/fontFeatures/additionalProperties/maximum",

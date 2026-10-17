@@ -3,6 +3,7 @@ import {
   parseFlex,
   parseFontFeatureSettings,
   parseFontVariantNumeric,
+  parseFontVariationSettings,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
@@ -408,6 +409,9 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       return;
     case 'font-variant-numeric':
       s.fontVariantNumeric = parseFontVariantNumeric(prop, v);
+      return;
+    case 'font-variation-settings':
+      s.fontVariationSettings = parseFontVariationSettings(prop, v);
       return;
     case 'background-image':
       throw r.error('gradients and background images are not supported (use bg-<colour>)');

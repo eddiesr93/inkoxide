@@ -479,7 +479,7 @@ fn metrics(line: &mut Line, para: &Para<'_>) {
             }
         }
         let font = fonts.get(seg.font);
-        let m = &font.data.metrics;
+        let m = font.metrics();
         let scale = font.scale(run.size);
         let asc = m.ascender * scale;
         let desc = -m.descender * scale;

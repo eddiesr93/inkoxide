@@ -1,6 +1,7 @@
-import { MAX_FEATURE_VALUE, MAX_FEATURES } from './bounds.ts';
+import { MAX_FEATURE_VALUE, MAX_FEATURES, MAX_VARIATION_VALUE, MAX_VARIATIONS } from './bounds.ts';
 // OpenType features: CSS `font-feature-settings` and `font-variant-numeric`, read into the
-// engine's `fontFeatures` (tag → value).
+// engine's `fontFeatures` (tag → value); and CSS `font-variation-settings`, into a font
+// declaration's `variations`.
 import { UnsupportedValueError } from './reader.ts';
 import { splitTopLevel } from './values.ts';
 
@@ -31,9 +32,12 @@ function checked(fail: Fail, features: Record<string, number>): FontFeatures {
   return features;
 }
 
-function tagOf(fail: Fail, tag: string): string {
+/** `tag`, if it is an OpenType tag; `kind` and `example` say what it should be. */
+function tagOf(fail: Fail, tag: string, kind = 'feature', example = 'tnum'): string {
   if (!TAG.test(tag)) {
-    fail(`${JSON.stringify(tag)} is not a feature tag: four ASCII characters, such as "tnum"`);
+    fail(
+      `${JSON.stringify(tag)} is not ${kind === 'axis' ? 'an' : 'a'} ${kind} tag: four ASCII characters, such as "${example}"`,
+    );
   }
   return tag;
 }
@@ -81,6 +85,48 @@ export function parseFontFeatureSettings(prop: string, value: FontFeatureSetting
     out[tag] = valueOf(fail, tag, n);
   }
   return checked(fail, out);
+}
+
+/** A variable font's axis values by tag, as a font declaration's `variations`. */
+export type FontVariations = Readonly<Record<string, number>>;
+
+/**
+ * `fontVariationSettings` as a style takes it: a CSS string (`"'wght' 650, 'wdth' 75"`,
+ * `'normal'`) or tags with values (`{ wght: 650, wdth: 75 }`).
+ */
+export type FontVariationSettings = string | Readonly<Record<string, number>>;
+
+/**
+ * Reads `fontVariationSettings` (CSS `font-variation-settings`) into axis values. A later value of
+ * a tag wins; `'normal'` sets none.
+ */
+export function parseFontVariationSettings(prop: string, value: FontVariationSettings): FontVariations {
+  const fail: Fail = failing(prop, typeof value === 'string' ? value : JSON.stringify(value));
+  const out: Record<string, number> = {};
+  const set = (tag: string, v: unknown) => {
+    tagOf(fail, tag, 'axis', 'wght');
+    if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > MAX_VARIATION_VALUE) {
+      fail(`the value of "${tag}" is a number within ±${MAX_VARIATION_VALUE}`);
+    }
+    out[tag] = v;
+  };
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    for (const [tag, v] of Object.entries(value as Record<string, unknown>)) set(tag, v);
+  } else if (typeof value !== 'string') {
+    fail('a CSS string or an object of axis tags to numbers');
+  } else if (value.trim() !== 'normal') {
+    for (const item of splitFeatures(value)) {
+      // `'wght' 650`, `"wdth" 75.5`.
+      const m = /^(["'])(.*)\1\s+(\S+)$/s.exec(item);
+      if (!m) fail(`expected a quoted tag and a number, such as "'wght' 650"`);
+      set(
+        m[2] ?? '',
+        /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(m[3] ?? '') ? Number(m[3]) : Number.NaN,
+      );
+    }
+  }
+  if (Object.keys(out).length > MAX_VARIATIONS) fail(`at most ${MAX_VARIATIONS} axes`);
+  return out;
 }
 
 /** Splits a feature list at the commas outside quotes; an empty item between commas stays, to fail. */

@@ -9,6 +9,9 @@ version 2.
 
 ### Added
 
+- **`source` and `variations` on font declarations:** a declaration draws with the registered
+  font `source` (default: its `id`), at the axis values of `variations` when that font is
+  variable.
 - **`alt` on image nodes:** alternative text for an `image` node (at most 1024 characters), as a
   run's `image` has: what copying, searching and screen readers get for the image.
 

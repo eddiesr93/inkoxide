@@ -35,7 +35,8 @@ xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
 aes = "=0.9.3"
 sha2 = { version = "=0.11.1", default-features = false }
 rayon = "=1.12.0"
-subsetter = { version = "=0.2.6", default-features = false }
+# `variable-fonts` is its instancer, which embeds variable fonts as static instances.
+subsetter = { version = "=0.2.6", default-features = false, features = ["variable-fonts"] }
 usvg = { version = "=0.48.1", default-features = false }
 # The versions usvg uses: SVG text resolves CSS and values exactly as usvg does.
 simplecss = "=0.2.2"

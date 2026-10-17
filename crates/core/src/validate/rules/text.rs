@@ -3,7 +3,8 @@
 
 use super::{
     Checker, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS, MAX_FEATURE_VALUE,
-    MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE,
+    MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE, MAX_VARIATIONS,
+    MAX_VARIATION_VALUE,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{FontFeature, RunAlign, RunImage, TextRun};
@@ -22,6 +23,53 @@ impl Checker<'_> {
             );
         }
         self.image_ref(sequence, id);
+    }
+
+    /// A font declaration's `variations`: at most [`MAX_VARIATIONS`] axes,
+    /// each once, with a tag of four printable ASCII characters and a value
+    /// within ±[`MAX_VARIATION_VALUE`].
+    pub(super) fn variations(&mut self, variations: &[crate::schema::FontVariation]) {
+        let field = Some("variations");
+        if variations.len() > MAX_VARIATIONS {
+            self.err(
+                Code::OutOfRange,
+                field,
+                format!("a font takes at most {MAX_VARIATIONS} variation axes"),
+            );
+            return;
+        }
+        for (i, v) in variations.iter().enumerate() {
+            if !(v.tag.len() == 4 && v.tag.bytes().all(|b| (b' '..=b'~').contains(&b))) {
+                self.err(
+                    Code::InvalidValue,
+                    field,
+                    format!(
+                        "{:?} is not an axis tag: four printable ASCII characters, such as \"wght\"",
+                        v.tag
+                    ),
+                );
+                return;
+            }
+            if variations[..i].iter().any(|w| w.tag == v.tag) {
+                self.err(
+                    Code::InvalidValue,
+                    field,
+                    format!("axis \"{}\" is given twice", v.tag),
+                );
+                return;
+            }
+            if !(v.value.abs() <= MAX_VARIATION_VALUE) {
+                self.err(
+                    Code::OutOfRange,
+                    field,
+                    format!(
+                        "axis \"{}\": a value is within ±{MAX_VARIATION_VALUE}",
+                        v.tag
+                    ),
+                );
+                return;
+            }
+        }
     }
 
     /// A run's `image`: its source and placement, as an image node's, a

@@ -9,3 +9,7 @@ export const MAX_GRID_SPAN = 65_535;
 export const MAX_FEATURES = 32;
 /** Largest value of one OpenType feature. */
 export const MAX_FEATURE_VALUE = 65_535;
+/** Most axis values a font declaration takes (`FontDecl.variations`). */
+export const MAX_VARIATIONS = 16;
+/** Largest axis value, either way. */
+export const MAX_VARIATION_VALUE = 32_767;
