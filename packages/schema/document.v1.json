@@ -137,7 +137,7 @@
             "fullScreen",
             "useAttachments"
           ],
-          "description": "What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`."
+          "description": "What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`), the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`."
         },
         "pageLayout": {
           "enum": [

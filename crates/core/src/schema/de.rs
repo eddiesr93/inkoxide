@@ -920,9 +920,23 @@ fn image_source(
     data: Option<String>,
     what: &str,
 ) -> Result<ImageSource, String> {
+    src_or_data(src, data, what, ImageSource::Ref, |d| {
+        ImageSource::Inline(InlineData::new(d))
+    })
+}
+
+/// `by_id(src)` or `inline(data)`, exactly one of which `what` (for the
+/// message) must set.
+fn src_or_data<T>(
+    src: Option<String>,
+    data: Option<String>,
+    what: &str,
+    by_id: impl FnOnce(String) -> T,
+    inline: impl FnOnce(String) -> T,
+) -> Result<T, String> {
     match (src, data) {
-        (Some(s), None) => Ok(ImageSource::Ref(s)),
-        (None, Some(d)) => Ok(ImageSource::Inline(InlineData::new(d))),
+        (Some(s), None) => Ok(by_id(s)),
+        (None, Some(d)) => Ok(inline(d)),
         (Some(_), Some(_)) => Err(format!(
             "[INVALID_VALUE@data] {what} takes either `src` or `data`, not both"
         )),
@@ -972,18 +986,9 @@ impl TryFrom<RawAttachmentDecl> for AttachmentDecl {
 
     fn try_from(r: RawAttachmentDecl) -> Result<Self, String> {
         use crate::attachments::{FileSource, InlineFile};
-        let source = match (r.src, r.data) {
-            (Some(s), None) => FileSource::Ref(s),
-            (None, Some(d)) => FileSource::Inline(InlineFile::new(d)),
-            (Some(_), Some(_)) => {
-                return Err(
-                    "[INVALID_VALUE@data] an attachment takes `src` or `data`, not both".into(),
-                )
-            }
-            (None, None) => {
-                return Err("[MISSING_FIELD] an attachment requires `src` or `data`".into())
-            }
-        };
+        let source = src_or_data(r.src, r.data, "an attachment", FileSource::Ref, |d| {
+            FileSource::Inline(InlineFile::new(d))
+        })?;
         Ok(Self {
             name: r.name,
             source,

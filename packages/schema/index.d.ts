@@ -313,7 +313,7 @@ export interface Meta {
    */
   creationDate?: string;
   /**
-   * What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`.
+   * What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`), the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`.
    */
   pageMode?: 'useNone' | 'useOutlines' | 'useThumbs' | 'fullScreen' | 'useAttachments';
   /**

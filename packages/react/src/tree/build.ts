@@ -991,11 +991,26 @@ class Builder {
    * of the line where it is. Its `backgroundColor` is its colour.
    */
   private inlineNote(n: Instance, ctx: TextCtx): TextRun {
+    const note = this.noteOf(n, this.inlineIconColor(n, ctx, 'A <Note>'));
+    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
+  }
+
+  /** An `<Attachment>` in a `<Text>`: a run that takes no room, as a `<Note>` in a line is. */
+  private inlineAttachment(n: Instance, ctx: TextCtx): TextRun {
+    const attachment = this.attachmentOf(n, this.inlineIconColor(n, ctx, 'An <Attachment>'));
+    return this.mark({ attachment, font: this.font(ctx, n), size: ctx.fontSize }, n);
+  }
+
+  /**
+   * The colour of an icon in a line (`what`, a `<Note>` or an `<Attachment>`): its
+   * `backgroundColor`, the only style that applies to it.
+   */
+  private inlineIconColor(n: Instance, ctx: TextCtx, what: string): Color | undefined {
     const prop =
       BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
       (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
     if (prop) {
-      this.fail(n, `A <Note> inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
+      this.fail(n, `${what} inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
         kind: 'props',
       });
     }
@@ -1005,12 +1020,11 @@ class Builder {
       const { init, from } = this.source(n, own, bad[0]);
       this.fail(
         n,
-        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${from}).`,
+        `${what} inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${from}).`,
         init,
       );
     }
-    const note = this.noteOf(n, boxStyle(own, ctx.color)?.backgroundColor);
-    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
+    return boxStyle(own, ctx.color)?.backgroundColor;
   }
 
   /**
@@ -1318,10 +1332,27 @@ class Builder {
 
   /** A `<Note>`: its text children are its contents, and its background colour its colour. */
   private note(inst: Instance, ctx: TextCtx): NoteNode {
+    return this.iconNode(inst, ctx, (color) => ({ type: 'note', note: this.noteOf(inst, color) }));
+  }
+
+  /** An `<Attachment>`: an icon that takes no room, at the top-left corner of its box. */
+  private attachment(inst: Instance, ctx: TextCtx): AttachmentNode {
+    return this.iconNode(inst, ctx, (color) => ({
+      type: 'attachment',
+      attachment: this.attachmentOf(inst, color),
+    }));
+  }
+
+  /** The node `make` gives an icon, with its background colour; its box takes the rest of its style. */
+  private iconNode<N extends NoteNode | AttachmentNode>(
+    inst: Instance,
+    ctx: TextCtx,
+    make: (color: Color | undefined) => N,
+  ): N {
     const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
     const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
-    const node: NoteNode = { type: 'note', note: this.noteOf(inst, backgroundColor) };
+    const node = make(backgroundColor);
     if (Object.keys(style).length > 0) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
@@ -1352,50 +1383,8 @@ class Builder {
     });
   }
 
-  /** An `<Attachment>`: an icon that takes no room, at the top-left corner of its box. */
-  private attachment(inst: Instance, ctx: TextCtx): AttachmentNode {
-    const own = this.styleOf(inst, ctx);
-    this.noTextOnly(inst, own);
-    const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
-    const node: AttachmentNode = { type: 'attachment', attachment: this.attachmentOf(inst, backgroundColor) };
-    if (Object.keys(style).length > 0) node.style = style;
-    this.flowProps(node, inst);
-    return this.mark(node, inst);
-  }
-
-  /** An `<Attachment>` in a `<Text>`: a run that takes no room, as a `<Note>` in a line is. */
-  private inlineAttachment(n: Instance, ctx: TextCtx): TextRun {
-    const prop =
-      BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
-      (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
-    if (prop) {
-      this.fail(
-        n,
-        `An <Attachment> inside <Text> is part of the line, so \`${prop}\` does not apply to it.`,
-        {
-          kind: 'props',
-        },
-      );
-    }
-    const own = this.styleOf(n, ctx);
-    const bad = [...boxKeys(own), ...textOnlyKeys(own)].filter((k) => k !== 'backgroundColor');
-    if (bad[0] !== undefined) {
-      const { init, from } = this.source(n, own, bad[0]);
-      this.fail(
-        n,
-        `An <Attachment> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${from}).`,
-        init,
-      );
-    }
-    const attachment = this.attachmentOf(n, boxStyle(own, ctx.color)?.backgroundColor);
-    return this.mark({ attachment, font: this.font(ctx, n), size: ctx.fontSize }, n);
-  }
-
   /** What an `<Attachment>` holds: `file`, `icon`, its text children and `color`. */
-  private attachmentOf(
-    inst: Instance,
-    color: AttachmentNode['attachment']['color'],
-  ): AttachmentNode['attachment'] {
+  private attachmentOf(inst: Instance, color: Color | undefined): AttachmentNode['attachment'] {
     const p = inst.props;
     if (typeof p.file !== 'string' || p.file === '') {
       this.fail(inst, '<Attachment> needs file: the name of a file in <Document attachments>.', {
@@ -1411,7 +1400,7 @@ class Builder {
   }
 
   /** What a `<Note>` holds: its text children, `author`, `open`, and `color`. */
-  private noteOf(inst: Instance, color: NoteNode['note']['color']): NoteNode['note'] {
+  private noteOf(inst: Instance, color: Color | undefined): NoteNode['note'] {
     const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
     if (contents === '') {
       this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });

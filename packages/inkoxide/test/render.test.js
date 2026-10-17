@@ -137,7 +137,6 @@ test('images are passed per render', async () => {
   assert.ok(pdf.length > 10000);
 });
 
-// In WebAssembly, render runs on the calling thread, which a page keeps free with a worker.
 test('attachments are passed per render, and a missing one is named', async () => {
   const doc = JSON.stringify({
     version: 1,
@@ -151,6 +150,7 @@ test('attachments are passed per render, and a missing one is named', async () =
   assert.throws(() => ink.renderSync(doc), { code: 'ATTACHMENT_NOT_REGISTERED', path: 'attachments[0].src' });
 });
 
+// In WebAssembly, render runs on the calling thread, which a page keeps free with a worker.
 test('render does not block the event loop', { skip: wasm }, async () => {
   const doc = fixture('docs/table-split-header-repeat.json');
   let ticks = 0;

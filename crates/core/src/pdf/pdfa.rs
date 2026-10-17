@@ -329,14 +329,13 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
 
 /// The XMP packet for the catalog `/Metadata` stream. Every entry mirrors
 /// the information dictionary, as PDF/A requires. The properties of
-/// `extensions` follow, with the PDF/A extension schema that declares them
+/// `meta.xmpExtensions` follow, with the PDF/A extension schema that declares them
 /// (ISO 19005-2, 6.6.2.3).
 pub(crate) fn xmp(
     meta: &Meta,
     producer: &str,
     created: Option<Timestamp>,
     level: PdfALevel,
-    extensions: &[XmpSchema],
 ) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
@@ -388,7 +387,7 @@ pub(crate) fn xmp(
          </rdf:RDF>\n\
          </x:xmpmeta>\n\
          <?xpacket end=\"w\"?>",
-        extension_descriptions(extensions)
+        extension_descriptions(meta.xmp_extensions.as_deref().unwrap_or(&[]))
     )
     .into_bytes()
 }
@@ -608,7 +607,7 @@ mod tests {
             (PdfALevel::A2b, 2),
             (PdfALevel::A3b, 3),
         ] {
-            let x = String::from_utf8(xmp(&Meta::default(), "P", None, level, &[])).unwrap();
+            let x = String::from_utf8(xmp(&Meta::default(), "P", None, level)).unwrap();
             assert!(
                 x.contains(&format!("<pdfaid:part>{part}</pdfaid:part>")),
                 "{x}"
@@ -653,7 +652,7 @@ mod tests {
             },
             offset_minutes: -150,
         };
-        let x = String::from_utf8(xmp(&meta, "P", Some(t), PdfALevel::A2b, &[])).unwrap();
+        let x = String::from_utf8(xmp(&meta, "P", Some(t), PdfALevel::A2b)).unwrap();
         assert!(x.contains(">A &amp; &lt;B&gt;</rdf:li>"), "{x}");
         assert!(x.contains("<xmp:CreateDate>2026-03-04T05:06:07-02:30</xmp:CreateDate>"));
         assert_eq!(

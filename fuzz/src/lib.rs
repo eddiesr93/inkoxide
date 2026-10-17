@@ -2455,9 +2455,15 @@ pub fn document(data: &[u8]) -> Vec<u8> {
     // An unknown value takes a high byte: an exhausted source reads zeros,
     // and would otherwise break every chaos document here.
     if s.chance(40) {
-        let modes = ["useNone", "useOutlines", "useThumbs", "fullScreen"];
+        let modes = [
+            "useNone",
+            "useOutlines",
+            "useThumbs",
+            "fullScreen",
+            "useAttachments",
+        ];
         let mode = if s.chaos && !s.chance(196) {
-            "useAttachments"
+            "useFiles"
         } else {
             s.pick(&modes)
         };
@@ -2713,6 +2719,10 @@ mod tests {
             // and in CFF2.
             r#""font":"VarTest-max""#,
             r#""font":"VarCFF2-100""#,
+            // Files, their icons and the PDF/A metadata that describes them.
+            r#""type":"attachment""#,
+            r#""attachments":[{"#,
+            r#""xmpExtensions":[{"#,
         ];
         // Boxes nested close to the parser's limit (keys are sorted).
         let deep = r#"{"children":["#.repeat(56);

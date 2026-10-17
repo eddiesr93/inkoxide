@@ -761,8 +761,17 @@ pub struct TextRun {
 }
 
 impl TextRun {
-    /// Whether it is an icon (a note or an attachment's) in place of text:
-    /// it takes no room in its line.
+    /// The icon (a note or an attachment's) it is in place of text, which
+    /// takes no room in its line.
+    pub(crate) fn icon(&self) -> Option<crate::icons::Icon<'_>> {
+        use crate::icons::Icon;
+        self.note
+            .as_deref()
+            .map(Icon::Note)
+            .or_else(|| self.attachment.as_deref().map(Icon::Attachment))
+    }
+
+    /// Whether it is an icon in place of text ([`icon`](Self::icon)).
     pub fn is_icon(&self) -> bool {
         self.note.is_some() || self.attachment.is_some()
     }
