@@ -168,11 +168,12 @@ const canShare = () =>
   globalThis.crossOriginIsolated !== false &&
   !(typeof window === 'object' && typeof document === 'object');
 
-// Shared memory for the module with threads, or null where it cannot be had.
-function sharedMemory() {
+// Shared memory for the module with threads, of at most `maximum` pages, or null where it cannot
+// be had. The module takes any maximum up to its own.
+function sharedMemory(maximum = SHARED_MEMORY.maximum) {
   if (typeof SharedArrayBuffer !== 'function' || globalThis.crossOriginIsolated === false) return null;
   try {
-    return new WebAssembly.Memory(SHARED_MEMORY);
+    return new WebAssembly.Memory({ ...SHARED_MEMORY, maximum });
   } catch (e) {
     // A device that cannot reserve the maximum.
     if (e instanceof RangeError) return null;
@@ -318,10 +319,15 @@ function engine() {
   if (!compiled) throw new Error('@inkoxide/wasm: call init() and wait for it first');
   // After a trap: a new instance, with what the old one had registered. The module with threads
   // gets new memory, and a new pool once its workers have started; renders until then run on
-  // one thread.
-  const memory = importsMemory(compiled) ? sharedMemory() : null;
-  if (importsMemory(compiled) && !memory)
-    throw engineError('INTERNAL', '', 'the engine stopped: no memory for a new one');
+  // one thread. While the old memory is not freed, a device may not reserve as much again: the
+  // new one may then grow less far.
+  let memory = null;
+  if (importsMemory(compiled)) {
+    for (let max = SHARED_MEMORY.maximum; !memory && max >= SHARED_MEMORY.initial; max /= 2) {
+      memory = sharedMemory(max);
+    }
+    if (!memory) throw engineError('INTERNAL', '', 'the engine stopped: no memory for a new one');
+  }
   const e = exportsOf(new WebAssembly.Instance(compiled, memory ? { env: { memory } } : {}), memory);
   for (const [id, data] of fonts) callIn(e, () => registerIn(e, 'ink_register_font', id, data));
   for (const [lang, data] of patterns) {
@@ -534,6 +540,8 @@ function renderOnce(doc, options) {
   const bytes = bytesOf(doc);
   checkOptions(options);
   const { images, attachments, deferredFonts, ...rest } = options ?? {};
+  // A pool that is starting again after a trap, or could not: one thread, the same bytes.
+  if (pool.size > 1 && pool.workers.length === 0 && rest.threads > 1) rest.threads = 1;
   // The engine renders without them until a render needs them: it takes their ids.
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
   const json = encoder.encode(JSON.stringify(rest, finiteOrString));
