@@ -7,8 +7,8 @@ package `@inkoxide/wasm` (`packages/wasm`, built from `crates/wasm`). They
 expose the same engine with the same render options and error codes, with
 a few differences. The Node package has no `clearCaches`, no
 `deferredFonts` option and no `NOT_LOADED` error; Rust and
-`@inkoxide/wasm` have all three. `@inkoxide/wasm` takes only `threads: 1`
-(see [WebAssembly](#webassembly-inkoxidewasm)).
+`@inkoxide/wasm` have all three. `@inkoxide/wasm` takes `threads` above 1 only with a pool of
+threads, on a page that is cross-origin isolated (see [WebAssembly](#webassembly-inkoxidewasm)).
 
 The document format itself is described in [`SCHEMA.md`](SCHEMA.md) and
 [`EXAMPLES.md`](../packages/schema/EXAMPLES.md). The JSX API that builds
@@ -48,15 +48,24 @@ of the Node package, and two more:
 
 | Function | Meaning |
 |---|---|
-| `init(source?, { hyphenation? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`. Every other function throws until it resolves. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`) |
+| `init(source?, { hyphenation?, threads?, trapChannel? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`, or `{ single, threads }`, each of the two modules. Every other function throws until it resolves. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`). `threads` above 1 (at most 256) loads `inkoxide-threads.wasm` and starts a pool of that many workers, where memory can be shared; `trapChannel` names the `BroadcastChannel` a pool thread reports a bug on |
+| `threadCount(): number` | The threads renders use: the pool's size, or 1 |
 | `loadHyphenation(langs): Promise<void>` | Fetches the built-in hyphenation patterns of BCP-47 tags, for `renderSync` |
 | `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text). The memory stays with the instance. |
 
 How it differs from the Node package:
 
-- **One thread.** Every call runs on the calling thread, `render` included; `threads` may only
-  be `1`, and another number is `INVALID_ARGUMENT` at `options.threads`. In a page, call it from
-  a worker, as `@inkoxide/render/browser` does.
+- **One thread, or a pool.** Every call runs on the calling thread, `render` included: in a page,
+  call it from a worker, as `@inkoxide/render/browser` does. Without a pool `threads` may only be
+  `1`, and another number is `INVALID_ARGUMENT` at `options.threads`. With `init(source, {
+  threads })`, in a worker of a page that is cross-origin isolated (COOP `same-origin`, COEP
+  `require-corp`), or in Node, the module with threads renders on a pool of Web Workers (worker
+  threads in Node) that share its memory; a render's `threads: 1` keeps to the calling thread,
+  and any other number up to 256 uses the pool. The bytes are those of one thread. Where the
+  pool's workers cannot start, it renders on one thread. A bug on a pool thread leaves the call
+  waiting: the thread posts `{ message }` on the `trapChannel` (a name of its own: a channel
+  reaches every tab of the origin), and whoever listens ends the worker that waits (`timeoutMs` does too, in
+  `@inkoxide/render/browser`). See [ADR 0003](adr/0003-browser-threads.md).
 - **JSON only.** It is built without the `msgpack` feature: `format: 'msgpack'` is a
   `PARSE_ERROR`.
 - **Downloads on demand.** It is built without the `embedded-hyphenation` feature: `render`

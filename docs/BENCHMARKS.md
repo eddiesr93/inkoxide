@@ -43,6 +43,25 @@ and served from localhost. Median of 20 renders after a warm-up (10 for the repo
   document that needs them; these documents need neither.
 - Firefox was not measured: the Playwright build of Firefox does not start on this machine.
 
+**Threads.** The same page, cross-origin isolated, renders on a pool of threads
+([ADR 0003](adr/0003-browser-threads.md)); the warm report, median of 10, on an Apple M4 Pro (14
+cores) running other jobs:
+
+| Browser | 1 thread | 4 threads | 8 threads |
+|---|---:|---:|---:|
+| Chromium 153 | 51 ms | 40 ms | 39 ms |
+| WebKit 26.6 | 45 ms | 35 ms | 35 ms |
+
+The engine alone gains more: building the React tree stays on one thread, and past 4 threads the
+page gains little. The engine with threads renders `fixtures/docs/report-100p-realistic.json`
+(98 pages) in Node, median of 15, as fast as the one-thread module (121 ms) on one thread, and
+faster on more, for the same bytes:
+
+| Threads | 1 | 2 | 4 | 8 |
+|---|---:|---:|---:|---:|
+| Render | 121 ms | 79 ms | 56 ms | 42 ms |
+| Speedup | 1.0× | 1.5× | 2.2× | 2.9× |
+
 The documents and the harnesses are in [`benchmarks/`](../benchmarks), whose
 [README](../benchmarks/README.md) gives the commands that build and run them.
 

@@ -198,18 +198,23 @@ jobs:
         uses: ./.github/actions/install-rust
         with:
           targets: wasm32-unknown-unknown
+      - name: Install the nightly toolchain of the module with threads
+        run: >-
+          rustup toolchain install "$(sed -n 's/^NIGHTLY=//p' scripts/build-wasm.sh)"
+          --profile minimal --component rust-src --no-self-update
       - name: Build
-        # As the ci workflow builds the module it tests: no wasm-opt, which made it no smaller
+        # As the ci workflow builds the modules it tests: no wasm-opt, which made them no smaller
         # with brotli and no faster.
         run: |
           scripts/build-wasm.sh
+          scripts/build-wasm.sh --threads
           node scripts/wasm-size.mjs
           mkdir -p out
-          cp packages/wasm/inkoxide.wasm out/
+          cp packages/wasm/inkoxide.wasm packages/wasm/inkoxide-threads.wasm out/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bindings-wasm
-          path: out/inkoxide.wasm
+          path: out/*.wasm
           if-no-files-found: error
           retention-days: 3
 

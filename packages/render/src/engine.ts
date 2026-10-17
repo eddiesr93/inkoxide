@@ -21,6 +21,11 @@ export interface EngineStatus {
   fonts: string[];
   hyphenation: Record<string, boolean>;
   warnings: string[];
+  /**
+   * In a browser, the threads renders use: the size of the engine's pool when it started, or 1
+   * (see the `threads` option of `init`). Not set in Node, where each render picks its own.
+   */
+  threads?: number;
 }
 
 let status: EngineStatus | undefined;
@@ -111,6 +116,8 @@ async function startEngine(): Promise<EngineStatus> {
   for (const w of warnings) console.warn(`[inkoxide] ${w}`);
   // The fonts the engine has: not yet the bundled ones a document has not used (`defersFonts`).
   status = { version: v, fonts: fonts.ids().filter((id) => !lazyFaces.has(id)), hyphenation, warnings };
+  const threads = host.threads?.();
+  if (threads !== undefined) status.threads = threads;
   return status;
 }
 

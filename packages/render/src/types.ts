@@ -9,7 +9,9 @@ export interface RenderOpts {
   creationDate?: string;
   /**
    * Engine worker threads for this render (default: all cores): an integer from 1 to 256.
-   * Another value fails the render with `ENGINE_REJECTED` at `options.threads`.
+   * Another value fails the render with `ENGINE_REJECTED` at `options.threads`. In a browser
+   * (`@inkoxide/render/browser`), `1` renders on one thread, and any other number uses the
+   * engine's pool, whatever its size; without a pool only `1` is allowed.
    */
   threads?: number;
   /** Flate-compress content streams (default true). */

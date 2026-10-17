@@ -5,8 +5,9 @@ or should come sooner.
 
 ## Later
 
-- **In the browser**: threads, through a thread pool in Web Workers, for pages that are
-  cross-origin isolated; `renderToStream`; reading local files.
+- **In the browser**: `renderToStream`; reading local files; threads from a CDN, with the pool's
+  worker served from another origin; a module with threads on stable Rust, once its standard
+  library can be rebuilt there.
 - **The Tailwind build plugin** for webpack, Rspack and Next.js (Turbopack), and reading a
   theme's `@source` directives (Vite, Rollup, Rolldown and esbuild have it now).
 - **Accessibility**: PDF/UA-2 (PDF 2.0, with structure destinations); structure elements in

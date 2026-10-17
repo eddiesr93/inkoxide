@@ -12,8 +12,8 @@ how the pieces fit together, for contributors.
 | `crates/cli` | `inkoxide render / validate / bench`, the command line that does the file I/O: crate `inkoxide-cli`. |
 | `crates/node` | The napi-rs binding, published as the npm package `inkoxide`. |
 | `packages/inkoxide` | The npm package for the binding: loader, types and tests. The tests are the contract of both bindings. |
-| `crates/wasm` | The WebAssembly binding, through a small C ABI of its own (see its `lib.rs`), for the npm package `@inkoxide/wasm`. |
-| `packages/wasm` | The npm package for it: loader, types; it runs the tests of `packages/inkoxide`. |
+| `crates/wasm` | The WebAssembly binding, through a small C ABI of its own (see its `lib.rs`), for the npm package `@inkoxide/wasm`; built a second time with threads, whose pool (`threads.rs`) and allocator (`alloc.rs`) it has ([ADR 0003](adr/0003-browser-threads.md)). |
+| `packages/wasm` | The npm package for it: loader (`index.js`), the pool's worker (`thread.js`), types; it runs the tests of `packages/inkoxide`. |
 | `crates/binding` | What the two bindings share: the render options as JavaScript passes them, their checks, and errors as JSON. |
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
 | `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms, positions and page media queries that React and Tailwind share: `@inkoxide/style`. |
