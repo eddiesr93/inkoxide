@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use inkoxide::{FontStore, ImageStore};
+use inkoxide::{FontStore, HyphenationStore, ImageStore};
 
 #[path = "../../src/test_timing.rs"]
 mod timing;
@@ -65,4 +65,47 @@ pub(crate) fn installed(tool: &str, arg: &str) -> bool {
 
 pub(crate) fn qpdf_available() -> bool {
     installed("qpdf", "--version")
+}
+
+/// veraPDF's report on `files` at `flavour` (`2b`, `ua1`, …), when
+/// `VERAPDF` names it. CI installs veraPDF and sets it, so there (`CI`
+/// set) its absence fails the test instead of skipping the check.
+pub(crate) fn verapdf_report(flavour: &str, files: &[PathBuf]) -> Option<String> {
+    let vera = std::env::var("VERAPDF");
+    assert!(
+        vera.is_ok() || std::env::var_os("CI").is_none(),
+        "VERAPDF is not set"
+    );
+    let o = Command::new(vera.ok()?)
+        .args(["--flavour", flavour, "--format", "text"])
+        .args(files)
+        .output()
+        .unwrap();
+    Some(String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
+/// Every one of `files` passes veraPDF's profile for `flavour`
+/// ([`verapdf_report`]).
+pub(crate) fn verapdf(flavour: &str, files: &[PathBuf]) {
+    if let Some(report) = verapdf_report(flavour, files) {
+        let passed = report.lines().filter(|l| l.starts_with("PASS ")).count();
+        assert_eq!(passed, files.len(), "veraPDF ({flavour}):\n{report}");
+    }
+}
+
+/// Patterns registered for one fixture only:
+/// `fixtures/hyphenation/<fixture>.<lang>.tex`.
+pub(crate) fn hyphenation_for(name: &str) -> HyphenationStore {
+    let mut store = HyphenationStore::new();
+    for p in sorted_files(&root().join("fixtures/hyphenation"), &["tex"]) {
+        let file = p.file_name().unwrap().to_str().unwrap();
+        if let Some(lang) = file
+            .strip_prefix(name)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .and_then(|rest| rest.strip_suffix(".tex"))
+        {
+            store.register(lang, &fs::read(&p).unwrap()).unwrap();
+        }
+    }
+    store
 }

@@ -132,7 +132,7 @@ the "a" levels are tagged too (see `tagged`).
 | PDF/A-3a | `'3a'` | `PdfALevel::A3a` | PDF/A-3b, tagged |
 
 In Rust, `PdfALevel::ALL` lists the levels, `as_str` gives a level's
-short name (`"1b"`, `"2b"`, `"3b"`, as Node and the CLI take it) and
+short name (`"1b"`, `"2b"`, `"2a"`, `"3b"`, `"3a"`, as Node and the CLI take it) and
 `from_name` reads one back. `PdfALevel` also implements `FromStr`: a name
 that is not a level is a `ParsePdfALevelError`, whose message lists the
 levels.
@@ -168,17 +168,24 @@ tagged too, and combine with `pdfUA`. In the CLI, `--tagged` and
 
 - **Elements.** The reading order is document order, whatever `zIndex`,
   floats or positioning do on the page. A text is a paragraph and an
-  image a figure with its `alt`; a table keeps its header rows (`TH`,
+  image a figure with its `alt` and its bounding box; inside a
+  paragraph, an image with `alt` is a figure and a linked run a link,
+  each where it is among the text. A table keeps its header rows (`TH`,
   scope column), header cells (`header`, scope row) and spans; a field is
   a form field with its `label` (`/TU`), a note or an attachment icon an
-  annotation, and a link a link that says where it goes (`/Contents`). A
-  box is no element of its own unless its [`role`](SCHEMA.md#role) makes
-  it one (`h1`–`h6`, `section`, `blockQuote`, `figure`, a list and its
-  parts).
+  annotation, and a link a link that says what it is (`/Contents`: the
+  text it covers, or else where it goes). A box is no element of its own
+  unless its [`role`](SCHEMA.md#role) makes it one (`h1`–`h6`,
+  `section`, `blockQuote`, `figure`, a list and its parts); a `figure`
+  box that draws only its background and borders is still a figure. A
+  list says how its labels number it (`/ListNumbering`), read from them:
+  `1.`, `a)`, `iv`, `•` and the like.
 - **Decoration** is marked as artifacts, which screen readers skip:
-  headers, footers and other content painted on every page, repeated
-  table header rows, backgrounds and borders, nodes with the role
-  `artifact`, and images with an empty `alt`, in text too.
+  headers and footers (pagination artifacts that say which), other
+  content painted on every page, repeated table header rows, backgrounds
+  and borders, nodes with the role `artifact`, and images with an empty
+  `alt`, in text too. Under PDF/A and PDF/UA, glyphs a font lacks
+  (`.notdef`) are left out.
 - **Glyphs.** Every glyph drawn maps to text, as PDF/UA requires: a
   glyph a font draws apart from the first of its cluster (a mark, the
   dots of an Arabic letter) maps to the combining grapheme joiner, inside
@@ -186,9 +193,11 @@ tagged too, and combine with `pdfUA`. In the CLI, `--tagged` and
   cluster once.
 - **`UA_CONFLICT`.** With `pdfUA`, a document without a `meta.title`, a
   `meta.lang`, `alt` on each image (in text too) and `figure` box that
-  is not decoration, a `label` on each field, or headings that go down
-  one level at a time from `h1` fails, at the path of the first thing it
-  lacks. Only `render` reports it. An encrypted file must keep
+  is not decoration, a `label` on each field (in decoration too: its
+  widget is tagged), headings that go down one level at a time from
+  `h1`, or lists made of items (a `listItem` inside a `list`, a
+  `listBody` inside a `listItem`) fails, at the path of the first thing
+  it lacks. Only `render` reports it. An encrypted file must keep
   `contentAccessibility`.
 
 Without these options the output does not change. A tagged file is the
@@ -375,6 +384,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
 | `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, or transparency under PDF/A-1b. The path names the first such use. Only `render` reports it: `validate` does not know the level |
+| `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA-1 requires (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. Only `render` reports it: `validate` does not know the options |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
@@ -409,7 +419,8 @@ looked up and everything else is checked. An empty result means the
 document is valid; `render` can still fail on an option, on the page
 limit or the limit on content repeated on every page (`LAYOUT_ERROR`), on
 a font that cannot be shaped or embedded (`FONT_ERROR`), on
-something its PDF/A level does not allow (`PDFA_CONFLICT`, which `validate` cannot know),
+something its PDF/A level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`, which
+`validate` cannot know),
 or on a failure in writing the PDF (`PDF_ERROR`). `validate` reads the
 document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the

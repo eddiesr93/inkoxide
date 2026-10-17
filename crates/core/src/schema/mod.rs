@@ -401,6 +401,12 @@ impl Role {
 }
 
 impl Node {
+    /// Whether tagged output leaves it out as decoration: painted on every
+    /// page, or with the role `artifact`.
+    pub fn is_decoration(&self) -> bool {
+        self.brk.fixed || self.role == Some(Role::Artifact)
+    }
+
     /// Whether `display: none` hides the node.
     pub fn hidden(&self) -> bool {
         self.style.display == Some(Display::None)

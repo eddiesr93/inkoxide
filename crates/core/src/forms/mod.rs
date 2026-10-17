@@ -67,6 +67,9 @@ pub(crate) struct FieldOp {
     /// The transform in effect where the widget is painted (`None`:
     /// identity); the PDF writer sets it.
     pub ctm: Option<[f32; 6]>,
+    /// In tagged output, the structure element of its widget; the PDF
+    /// writer sets it (`None`: in decoration, an element of its own).
+    pub owner: Option<crate::tag::StructId>,
 }
 
 /// Content size of a field without explicit dimensions.
@@ -217,6 +220,7 @@ pub(crate) fn paint(
         selected,
         top_index,
         ctm: None,
+        owner: None,
     })));
 }
 
@@ -314,6 +318,7 @@ mod tests {
             opacity: 1.0,
             line_boxes: None,
             ctm: None,
+            tag: None,
         };
         let mut ops = Vec::new();
         paint(f, &geo, &ctx, &fonts, &mut ops);

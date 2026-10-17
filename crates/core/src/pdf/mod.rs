@@ -55,15 +55,30 @@ pub(crate) struct EncodedPage {
     /// Opacity keys (see `alpha_key`).
     pub opacities: BTreeSet<u16>,
     pub images: BTreeSet<ImageKey>,
-    /// Link areas (page coordinates, top-left origin) and their targets.
-    pub links: Vec<(Rect, Box<str>)>,
+    pub links: Vec<LinkArea>,
     /// Form field widgets.
     pub fields: Vec<crate::forms::FieldOp>,
     /// Icon annotations (text notes), at the corner the transform in
     /// effect puts them.
     pub icons: Vec<crate::icons::IconOp>,
-    /// In tagged output, the elements of its content and annotations.
-    pub tags: Option<content::PageTags>,
+    /// In tagged output, the element of each marked-content sequence, by
+    /// MCID.
+    pub mcids: Option<Vec<crate::tag::StructId>>,
+    /// In tagged output, where each figure is (page coordinates, top-left
+    /// origin): its bounding box is what it covers on its first page.
+    pub figures: Vec<(crate::tag::StructId, Rect)>,
+}
+
+/// A link of a page.
+pub(crate) struct LinkArea {
+    /// Where it is, in page coordinates (top-left origin).
+    pub rect: Rect,
+    pub target: Box<str>,
+    /// The text it covers, its `/Contents` in tagged output.
+    pub label: Option<Box<str>>,
+    /// In tagged output, its structure element (`None`: in decoration, an
+    /// element of its own).
+    pub owner: Option<crate::tag::StructId>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -79,8 +94,6 @@ pub(crate) struct DocumentOut<'a> {
     pub files: &'a [crate::attachments::PreparedFile],
     /// The structure of tagged output.
     pub plan: Option<&'a crate::tag::Plan>,
-    /// Writing PDF/UA-1.
-    pub ua: bool,
 }
 
 pub(crate) struct PdfWriterSink {

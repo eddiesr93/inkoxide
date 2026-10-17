@@ -11,8 +11,8 @@ use crate::layout::table::TableLayout;
 use crate::layout::{Geometry, LineBoxes, NodeIdx, Part, Tree};
 use crate::paginate::{PageWindow, Placement, PAGED_EPS};
 use crate::schema::{
-    BorderRadius, BorderStyle, BorderStyles, Color, Display, Edges, LengthPercent, Node, Overflow,
-    Style, TransformOp, BLACK,
+    BorderRadius, BorderStyle, BorderStyles, Color, Display, Edges, LengthPercent, Node, NodeKind,
+    Overflow, Style, TransformOp, BLACK,
 };
 use crate::text::PageNumbers;
 
@@ -40,6 +40,9 @@ pub(crate) struct ContentCtx<'p> {
     /// Transform in effect, from the node's coordinates to the page's
     /// (`None`: identity).
     pub ctm: Option<[f32; 6]>,
+    /// In tagged output, the element the node's content belongs to
+    /// (`None`: decoration, or untagged).
+    pub tag: Option<crate::tag::StructId>,
 }
 
 /// Paints leaf content (text, images, form fields, notes) inside a node's content box.
@@ -80,6 +83,17 @@ pub(crate) trait ContentPainter {
     /// box `node`.
     fn link_owner(&self, _node: &Node) -> Option<crate::tag::StructId> {
         None
+    }
+
+    /// Whether the output is tagged.
+    fn tagged(&self) -> bool {
+        false
+    }
+
+    /// In tagged output, whether element `id` is a figure, which says
+    /// where it is on the page.
+    fn is_figure(&self, _id: crate::tag::StructId) -> bool {
+        false
     }
 }
 
@@ -281,16 +295,22 @@ impl BoxPainter<'_, '_, '_, '_> {
         if outlined.is_some() {
             self.outline(&g, shift, extra, window, own);
         }
+        // Only the part of the box shown on this page takes clicks, and is
+        // where a figure is.
+        let (top, bottom) = match window {
+            Some(win) => win.clip(y, y + h, self.dy),
+            None => (y, y + h),
+        };
         if let Some(target) = &node.link {
-            // Only the part of the box shown on this page.
-            let (top, bottom) = match window {
-                Some(win) => win.clip(y, y + h, self.dy),
-                None => (y, y + h),
-            };
             if bottom > top && w > 0.0 {
                 let link = Op::Link {
                     rect: Rect::new(x, top, w, bottom - top),
                     target: target.clone(),
+                    label: self
+                        .content
+                        .tagged()
+                        .then(|| crate::tag::LinkText::of(node).finish())
+                        .flatten(),
                     owner: self.content.link_owner(node),
                 };
                 // Under the box's own transform, even when it is invisible
@@ -326,6 +346,25 @@ impl BoxPainter<'_, '_, '_, '_> {
             self.ctm = Some(self.ctm.map_or(m, |c| mul(c, m)));
         }
 
+        // Repeated header rows are decoration: the first ones are read.
+        let tag = match self.mode {
+            Mode::Header { .. } => None,
+            _ => self.content.owner(node),
+        };
+        // A box with content of its own (a figure) owns its background
+        // and borders.
+        let own_tag = tag.filter(|_| matches!(node.kind, NodeKind::Box { .. }));
+        if let Some(id) = own_tag {
+            self.ops.push(Op::Tag(id));
+        }
+        if let Some(id) = tag.filter(|&id| self.content.is_figure(id)) {
+            if bottom > top {
+                self.ops.push(Op::FigureArea {
+                    owner: id,
+                    rect: Rect::new(x, top, w, bottom - top),
+                });
+            }
+        }
         let border_box = Rect::new(x, y, w, h);
         let radii = radii(s, w, h);
         if let Some(bg) = s.background_color.filter(|c| c[3] > 0.0) {
@@ -337,6 +376,9 @@ impl BoxPainter<'_, '_, '_, '_> {
             self.content.background(node, padding_box, &inner, self.ops);
         }
         self.borders(s, g.border, border_box, &radii);
+        if own_tag.is_some() {
+            self.ops.push(Op::EndTag);
+        }
 
         if clip {
             self.state(Op::ClipPath {
@@ -360,11 +402,7 @@ impl BoxPainter<'_, '_, '_, '_> {
             opacity: self.opacity,
             line_boxes: self.tree.wraps.get(&i).map(|b| &**b),
             ctm: self.ctm,
-        };
-        // Repeated header rows are decoration: the first ones are read.
-        let tag = match self.mode {
-            Mode::Header { .. } => None,
-            _ => self.content.owner(node),
+            tag,
         };
         if let Some(id) = tag {
             self.ops.push(Op::Tag(id));

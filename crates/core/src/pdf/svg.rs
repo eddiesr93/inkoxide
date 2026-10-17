@@ -662,8 +662,8 @@ struct Svg<'a> {
     /// it did not decode.
     images: HashMap<ContentKey<Arc<Vec<u8>>>, Option<Ref>>,
     segments: usize,
-    /// Passed on to embedded raster images; under PDF/A, `.notdef` is
-    /// left out of text.
+    /// Passed on to embedded raster images; under PDF/A and PDF/UA,
+    /// `.notdef` is left out of text.
     profile: Profile,
     /// The text at the probes, and the fonts to draw it with.
     text: Option<(&'a ProbedText, TextResources<'a, 'a>)>,
@@ -1207,7 +1207,7 @@ impl Svg<'_> {
         let glyphs: Vec<_> = laid
             .glyphs_of(paint)
             .iter()
-            .filter(|g| !(self.profile.is_pdf_a() && g.id == 0))
+            .filter(|g| !(self.profile.skips_notdef() && g.id == 0))
             .filter(|g| clip || !fonts.ink.colors.draws(g.font, g.id))
             .filter(|g| fonts.refs.contains_key(&g.font))
             .collect();

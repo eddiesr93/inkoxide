@@ -4,9 +4,12 @@
 //! parent tree that maps both back to their elements, and the elements
 //! made here for annotations whose element holds content of another kind.
 
-use pdf_writer::{Finish, Name, Ref, Str};
+use std::collections::HashMap;
 
-use super::{EncodedPage, Writer};
+use pdf_writer::{Dict, Finish, Name, Ref, Str};
+
+use super::{annot_rect, EncodedPage, Writer};
+use crate::geom::Rect;
 use crate::tag::{Elem, Kind, Plan, Scope, StructId};
 
 /// What kind of annotation an annotation is, for the element it needs.
@@ -25,6 +28,13 @@ impl AnnotKind {
             Self::Widget => Kind::Form,
             Self::Other => Kind::Annot,
         }
+    }
+}
+
+/// An annotation's `/StructParent`, when tagged output gave it a key.
+pub(super) fn struct_parent(annot: &mut Dict, key: Option<i32>) {
+    if let Some(key) = key {
+        annot.pair(Name(b"StructParent"), key);
     }
 }
 
@@ -94,6 +104,39 @@ struct Tree<'p> {
     kids: Vec<Vec<Kid>>,
 }
 
+/// Puts the elements inside an element that holds content (the links and
+/// images of a paragraph) where their content is among its own: kids in
+/// order of their first marked content, the rest after, as they were.
+/// Elements of other kinds keep document order, whatever the order they
+/// are drawn in.
+fn interleave(kids: &mut [Vec<Kid>]) {
+    // The first marked content of each element, at any depth: children
+    // come after their parents.
+    let mut first = vec![None; kids.len()];
+    for id in (0..kids.len()).rev() {
+        first[id] = kids[id]
+            .iter()
+            .filter_map(|k| match *k {
+                Kid::Mcid(p, m) => Some((p, m)),
+                Kid::Elem(c) => first[c],
+                Kid::Obj(..) => None,
+            })
+            .min();
+    }
+    for k in kids.iter_mut() {
+        if k.iter().any(|k| matches!(k, Kid::Mcid(..))) {
+            k.sort_by_key(|k| {
+                match *k {
+                    Kid::Mcid(p, m) => Some((p, m)),
+                    Kid::Elem(c) => first[c],
+                    Kid::Obj(..) => None,
+                }
+                .map_or((1, (0, 0)), |at| (0, at))
+            });
+        }
+    }
+}
+
 /// Writes the structure tree of `pages` (each with its tags) and `annots`
 /// with root `root`. Elements without content are left out.
 pub(super) fn write_tree(
@@ -110,8 +153,8 @@ pub(super) fn write_tree(
     };
     // Content first, in page and MCID order.
     for (i, page) in pages.iter().enumerate() {
-        let Some(tags) = &page.tags else { continue };
-        for (mcid, &owner) in tags.mcids.iter().enumerate() {
+        let Some(mcids) = &page.mcids else { continue };
+        for (mcid, &owner) in mcids.iter().enumerate() {
             tree.kids[owner as usize].push(Kid::Mcid(i, mcid as i32));
         }
     }
@@ -126,21 +169,14 @@ pub(super) fn write_tree(
             Some(o) if tree.elems[o as usize].kind == kind => o as usize,
             owner => {
                 let parent = owner.unwrap_or(0);
-                tree.elems.push(std::borrow::Cow::Owned(Elem {
-                    kind,
-                    parent: Some(parent),
-                    alt: None,
-                    lang: None,
-                    scope: None,
-                    row_span: 1,
-                    col_span: 1,
-                }));
+                tree.elems
+                    .push(std::borrow::Cow::Owned(Elem::new(kind, Some(parent))));
                 tree.kids.push(Vec::new());
                 let id = tree.elems.len() - 1;
                 if owner.is_some() {
                     tree.kids[parent as usize].push(Kid::Elem(id));
                 } else {
-                    last.push(Kid::Elem(id));
+                    last.push((a.page, Kid::Elem(id)));
                 }
                 id
             }
@@ -154,7 +190,10 @@ pub(super) fn write_tree(
             tree.kids[p as usize].push(Kid::Elem(id));
         }
     }
-    tree.kids[0].extend(last);
+    // Links, icons and widgets are recorded kind by kind: in page order.
+    last.sort_by_key(|&(page, _)| page);
+    tree.kids[0].extend(last.into_iter().map(|(_, k)| k));
+    interleave(&mut tree.kids);
     // Which elements have content, at any depth: children come after
     // their parents.
     let mut kept = vec![false; tree.elems.len()];
@@ -201,10 +240,10 @@ pub(super) fn write_tree(
         for (i, page) in pages.iter().enumerate() {
             nums.item(i as i32);
             let mut arr = nums.push().array();
-            if let Some(tags) = &page.tags {
+            if let Some(mcids) = &page.mcids {
                 // An MCID's place is its index: one without an element
                 // keeps it, as null.
-                for &owner in &tags.mcids {
+                for &owner in mcids {
                     match refs[owner as usize] {
                         Some(r) => arr.item(r),
                         None => arr.item(pdf_writer::Null),
@@ -216,6 +255,17 @@ pub(super) fn write_tree(
         for (a, &into) in annots.entries.iter().zip(&elem_of_annot) {
             nums.item(a.key);
             nums.item(refs[into].unwrap_or(doc));
+        }
+    }
+
+    // Where each figure is, on each page it is on.
+    let mut areas: HashMap<(StructId, usize), Rect> = HashMap::new();
+    for (i, page) in pages.iter().enumerate() {
+        for &(id, r) in &page.figures {
+            areas
+                .entry((id, i))
+                .and_modify(|a| *a = a.union(r))
+                .or_insert(r);
         }
     }
 
@@ -251,6 +301,24 @@ pub(super) fn write_tree(
         }
         if let Some(l) = &lang {
             d.pair(Name(b"Lang"), Str(l));
+        }
+        // A figure's bounding box, on the page of its first content
+        // (ISO 32000-1, 14.8.5.4.3).
+        let area = pg.and_then(|p| Some((areas.get(&(id as StructId, p))?, pages[p].height)));
+        if let Some((&r, page_h)) = area.filter(|_| e.kind == Kind::Figure) {
+            let b = annot_rect(r, page_h);
+            d.insert(Name(b"A"))
+                .dict()
+                .pair(Name(b"O"), Name(b"Layout"))
+                .insert(Name(b"BBox"))
+                .array()
+                .items([b.x1, b.y1, b.x2, b.y2]);
+        }
+        if let Some(n) = e.numbering {
+            d.insert(Name(b"A"))
+                .dict()
+                .pair(Name(b"O"), Name(b"List"))
+                .pair(Name(b"ListNumbering"), Name(n.name()));
         }
         if e.scope.is_some() || e.row_span > 1 || e.col_span > 1 {
             let mut a = d.insert(Name(b"A")).dict();

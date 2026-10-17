@@ -7,7 +7,7 @@ use crate::icons::Icon;
 use crate::images::ImageSet;
 use crate::layout::Geometry;
 use crate::paint::{
-    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageContent,
+    self, ContentCtx, ContentPainter, DebugBoxes, DebugLine, FlowPart, Op, PageBand, PageContent,
 };
 use crate::schema::{Node, NodeKind};
 use crate::tag::{Plan, StructId};
@@ -73,6 +73,15 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
     fn link_owner(&self, node: &Node) -> Option<StructId> {
         self.plan?.link(node)
     }
+
+    fn tagged(&self) -> bool {
+        self.plan.is_some()
+    }
+
+    fn is_figure(&self, id: StructId) -> bool {
+        self.plan
+            .is_some_and(|p| p.elems[id as usize].kind == crate::tag::Kind::Figure)
+    }
 }
 
 pub(super) fn paint_page(
@@ -120,6 +129,7 @@ pub(super) fn paint_page(
             colors,
             numbers,
             page_box: Rect::new(0.0, 0.0, pw, ph),
+            plan,
         },
         images,
         fonts,
@@ -172,6 +182,7 @@ pub(super) fn paint_page(
     painter.text.page = Some(&page_text);
     paint_overlays(over, &mut painter, &mut page.ops, &mut debug);
     if let Some(header) = header {
+        page.ops.push(Op::Band(Some(PageBand::Header)));
         paint::paint_flow(
             header,
             FlowPart::All,
@@ -181,9 +192,11 @@ pub(super) fn paint_page(
             &mut page.ops,
             &mut debug,
         );
+        page.ops.push(Op::Band(None));
     }
     if let Some(footer) = footer {
         let fh = footer.nodes[0].geo.h;
+        page.ops.push(Op::Band(Some(PageBand::Footer)));
         paint::paint_flow(
             footer,
             FlowPart::All,
@@ -193,6 +206,7 @@ pub(super) fn paint_page(
             &mut page.ops,
             &mut debug,
         );
+        page.ops.push(Op::Band(None));
     }
 
     let mut labels = paint::DebugLabels::default();

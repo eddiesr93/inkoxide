@@ -7,7 +7,7 @@ use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::attach::FileRefs;
-use super::tag::{AnnotKind, AnnotTags};
+use super::tag::{self, AnnotKind, AnnotTags};
 use super::{
     annot_rect, content_bytes, path, round_pt, set_fill, EncodedPage, Out, Profile, Writer,
 };
@@ -29,13 +29,12 @@ pub(super) fn write_icons(
 ) -> Result<(), InkoxideError> {
     let Writer { pdf, alloc, out } = w;
     for (i, page) in pages.iter().enumerate() {
-        for (j, icon) in page.icons.iter().enumerate() {
+        for icon in &page.icons {
             let r = alloc.next();
             let ap = alloc.next();
-            let owner = page.tags.as_ref().and_then(|t| t.owners.icons[j]);
             let key = tags
                 .as_deref_mut()
-                .map(|t| t.add(r, i, owner, AnnotKind::Other));
+                .map(|t| t.add(r, i, icon.owner, AnnotKind::Other));
             // Inside the page, where viewers show it.
             let x = icon.x.min(page.width - ICON).max(0.0);
             let y = icon.y.min(page.height - ICON).max(0.0);
@@ -96,9 +95,7 @@ fn write_note(
     if note.open {
         a.pair(Name(b"Open"), true);
     }
-    if let Some(key) = struct_parent {
-        a.pair(Name(b"StructParent"), key);
-    }
+    tag::struct_parent(&mut a, struct_parent);
     a.appearance().normal().stream(ap);
     a.finish();
     let content = icon(&color, profile)?;
@@ -147,9 +144,7 @@ fn write_attachment(
         });
     w.pair(Name(b"FS"), annot.spec);
     w.insert(Name(b"AF")).array().item(annot.spec);
-    if let Some(key) = annot.struct_parent {
-        w.pair(Name(b"StructParent"), key);
-    }
+    tag::struct_parent(&mut w, annot.struct_parent);
     w.appearance().normal().stream(ap);
     w.finish();
     let content = file_icon(a.icon, &color, profile)?;

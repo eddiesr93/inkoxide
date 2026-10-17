@@ -36,17 +36,30 @@ only on demand, from the Actions tab, with the ID of that release run.
   `pdfa-1b` is a document 1b accepts, with fonts, forms, links,
   bookmarks and images; `pdfa-edge` holds the smallest page PDF/A
   allows, 3 × 3 points. With `VERAPDF` pointing at a veraPDF command
-  (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
-  output must pass veraPDF's profile for its level. The fixtures that
+  (`scripts/ci.sh` sets it when `verapdf` is on `PATH`; CI, which sets
+  `CI`, fails without it), every PDF/A output must pass veraPDF's
+  profile for its level. The fixtures that
   carry files render only as PDF/A-3b, and the other levels reject them
   with `PDFA_CONFLICT` at the first file (`ONLY_PDF_A_3B`).
 - `crates/core/tests/accessibility.rs`: `fixtures/docs/accessible.json`
   (from `scripts/fixtures/accessible.py`) as PDF/UA-1 and PDF/A-2a and
-  3a passes veraPDF; its structure tree, read back with qpdf, is in
-  document order, with its lists, table headers and spans, figures,
-  links, fields and notes; tagged output is the same on any number of
-  threads; a document without what PDF/UA requires fails with
-  `UA_CONFLICT` at its path.
+  3a passes veraPDF (and its PDF/UA-2 report is printed, not checked:
+  inkoxide writes PDF 1.7); its structure tree, read back with qpdf, is
+  in document order, with its lists and their numbering, table headers
+  and spans, figures and where they are, links and what they say, fields
+  and notes; images and links in text are elements in place among the
+  text; a split table's repeated header is read once, headers and
+  footers are pagination artifacts, and their annotations come in page
+  order; reading order is document order whatever `zIndex` and floats
+  draw first; tagged output is the same on any number of threads, and
+  reads and looks as untagged (with poppler); a document without what
+  PDF/UA requires fails with `UA_CONFLICT` at its path, and every
+  fixture under PDF/UA either does or passes veraPDF.
+- `crates/core/tests/output_hashes.rs`: every fixture's output, untagged
+  and tagged, has the SHA-256 pinned in `output_hashes.sha256` (but those
+  whose numbers depend on the platform's math library,
+  `fixtures/wasm-parity.json`). A change on purpose is blessed with
+  `INKOXIDE_BLESS=1 cargo test -p inkoxide --test output_hashes`.
 - `crates/core/tests/encryption.rs`: every fixture, encrypted, renders
   deterministically and, with `qpdf` installed, passes `qpdf --check`
   with either password; `qpdf --json` of it, decrypted, equals that of
@@ -270,7 +283,9 @@ writer never refuses transparency at 1b, which would mean validation
 missed it (for SVG, that its scan disagrees with the writer). What only
 a render knows is not a finding either: PDF/A-2b refusing files, a file
 `src` the store lacks (`ATTACHMENT_NOT_REGISTERED`), and XMP extensions
-without PDF/A to go in. Every
+without PDF/A to go in. A quarter of the documents also render tagged
+(an eighth as PDF/UA-1), and render or fail as untagged does, with the
+same code; PDF/UA may refuse more only with `UA_CONFLICT`. Every
 form script (`/JS`, read from the parsed object syntax, so a script
 written as a hex string is checked and a document title that looks like
 one is not) is a call of a standard form function (`AFNumber_Format`

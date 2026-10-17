@@ -105,6 +105,8 @@ const OPTION_TYPES = {
   creationDate: 'string',
   threads: 'number',
   subsetFonts: 'boolean',
+  tagged: 'boolean',
+  pdfUA: 'boolean',
 };
 
 const PERMISSION_TYPES = {

@@ -83,6 +83,9 @@ pub(crate) enum Op {
     Link {
         rect: Rect,
         target: Box<str>,
+        /// The text it covers, which says what it is in tagged output
+        /// (`None`: nothing to say, or untagged).
+        label: Option<Box<str>>,
         /// The structure element of its annotation in tagged output; `None`:
         /// the one whose content is being drawn ([`Op::Tag`]).
         owner: Option<crate::tag::StructId>,
@@ -111,6 +114,13 @@ pub(crate) enum Op {
     /// writer ends their marked content at each save level and starts it
     /// again after. Without tagging none is pushed.
     Tag(crate::tag::StructId),
+    /// In tagged output, where figure `owner` is on the page (page
+    /// coordinates, under the transform in effect): its bounding box.
+    /// Draws nothing.
+    FigureArea {
+        owner: crate::tag::StructId,
+        rect: Rect,
+    },
     EndTag,
     /// Inside an element's content, starts decoration: what is drawn until
     /// [`Op::EndDecoration`] is an artifact, and the element's content goes
@@ -119,6 +129,16 @@ pub(crate) enum Op {
     /// it.
     Decoration,
     EndDecoration,
+    /// Starts (`Some`) or ends a page's header or footer: the artifacts
+    /// drawn in it say so. Output without tagging ignores it.
+    Band(Option<PageBand>),
+}
+
+/// A band of a page, repeated on every page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PageBand {
+    Header,
+    Footer,
 }
 
 /// A glyph of `font` at `size`, drawn invisibly (text rendering mode 3)

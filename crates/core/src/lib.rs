@@ -115,8 +115,7 @@ impl PdfALevel {
     }
 
     /// The part of ISO 19005: 1, 2 or 3.
-    #[must_use]
-    pub fn part(self) -> u8 {
+    pub(crate) fn part(self) -> u8 {
         match self {
             Self::A1b => 1,
             Self::A2b | Self::A2a => 2,
@@ -125,8 +124,7 @@ impl PdfALevel {
     }
 
     /// Whether the level is "a" (accessible): tagged.
-    #[must_use]
-    pub fn accessible(self) -> bool {
+    pub(crate) fn accessible(self) -> bool {
         matches!(self, Self::A2a | Self::A3a)
     }
 
@@ -349,8 +347,7 @@ impl RenderOptions {
 
     /// Whether the output is tagged: [`tagged`](Self::tagged), PDF/UA or
     /// an accessible PDF/A level.
-    #[must_use]
-    pub fn is_tagged(&self) -> bool {
+    fn is_tagged(&self) -> bool {
         self.tagged || self.pdf_ua || (self.pdf_a && self.pdf_a_level.accessible())
     }
 
@@ -604,6 +601,5 @@ fn render_inner(
         marks: &marks,
         files: &files,
         plan: plan.as_ref(),
-        ua: options.pdf_ua,
     })
 }
