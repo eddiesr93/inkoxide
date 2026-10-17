@@ -1,7 +1,7 @@
 import type { FlatStyle } from '@inkoxide/style';
 import { DEFAULT_SANS } from '@inkoxide/style/internal';
 
-import type { TwUnits } from './parse.ts';
+import { PAGE_VARIANTS, type TwUnits } from './parse.ts';
 
 /**
  * The supported Tailwind subset, one entry per utility family. This table is the single source
@@ -787,8 +787,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   // Page variants
   {
     group: 'Page variants',
-    utilities:
-      '`sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, and `[@media(…)]:`',
+    utilities: PAGE_VARIANTS.map((v) => `\`${v.split(' … ').join('` … `')}\``).join(', '),
     maps: 'the class, on pages it matches',
     notes:
       "Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`).",

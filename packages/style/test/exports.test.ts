@@ -37,7 +37,6 @@ const DEPRECATED = ['ENUMS', 'Reader', 'evalDim', 'parseFontFamily', 'substitute
 const INTERNAL_VALUES = [
   'DEFAULT_SANS',
   'ENUMS',
-  'MAX_MEDIA_QUERY',
   'Reader',
   'UNITS_UNKNOWN',
   'VERTICAL_ALIGNS',

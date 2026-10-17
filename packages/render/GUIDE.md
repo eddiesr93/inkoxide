@@ -1114,7 +1114,8 @@ serves `Polyline` and `Polygon`, `GradientProps` both gradients, `SvgPresentatio
 attributes every SVG shape takes, and `SvgTextProps` the props of a `Text` in an `Svg`. Also
 exported:
 
-- styles and values: `Style`, `StyleProp`, `AbsoluteLength`, `Length`, `LengthPercent`,
+- styles and values: `Style`, `StyleProp`, `MediaStyle` (a `StyleProp` with `@media` blocks),
+  `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
   `Permissions` (of `<Document permissions>`), and `TextFormat`, the `format` of a `TextField`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,

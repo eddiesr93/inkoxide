@@ -359,6 +359,15 @@ describe('relative units in the style prop', () => {
     expect(text.runs[0]?.size).toBe(20);
   });
 
+  it('reads em in the element against the font size its block sets', () => {
+    const r = tree(
+      <View className="pt-[1em]" style={{ paddingLeft: '1em', '@media print': { fontSize: 20 } }}>
+        <Text>x</Text>
+      </View>,
+    );
+    expect(first<BoxNode>(r).style?.padding).toEqual({ top: 20, left: 20 });
+  });
+
   it('applies Tailwind page variants per page', () => {
     const Card = () => <View className="p-2 md:p-4 landscape:flex-row" />;
     const r = renderTemplate(
@@ -387,8 +396,15 @@ describe('relative units in the style prop', () => {
     // @ts-expect-error: `wide` is not a length.
     const bad = <View style={{ '@media (width > 9999in)': { width: 'wide' } }} />;
     expect(thrown(() => tree(bad)).message).toBe(
-      'Invalid style prop on <View>: width: wide (cannot evaluate "wide")',
+      'Invalid style prop on <View>: @media (width > 9999in): width: wide (cannot evaluate "wide")',
     );
+    // A value the engine would refuse, in a block no page matches.
+    expect(thrown(() => tree(<View style={{ '@media (width > 9999in)': { opacity: 1.5 } }} />)).message).toBe(
+      'Invalid style prop on <View>: @media (width > 9999in): opacity: must be <= 1',
+    );
+    expect(
+      thrown(() => tree(<View style={{ '@media screen': { '@media print': { width: 1 / 0 } } }} />)).message,
+    ).toBe('Invalid style prop on <View>: @media print: width: Infinity is not a finite number');
     expect(thrown(() => tree(<View style={{ '@media (hover: hover)': { width: 1 } }} />)).message).toBe(
       'Invalid style prop on <View>: @media (hover: hover): "hover" has no meaning in a PDF',
     );

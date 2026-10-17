@@ -48,7 +48,10 @@ mapped to engine styles), style objects are read with the same readers of
 lengths, keywords, colours, `flex`, transforms and positions from
 `@inkoxide/style` (`em`, `vw` and `vh` resolve against the element's font
 size and the page in both), and fonts are resolved against the font
-registry with CSS font matching. In development the tree is validated
+registry with CSS font matching. `@media` blocks of style objects and page
+variants of classes are answered there, for the page each element is on
+(`@inkoxide/style`'s `parseMedia`): the blocks and declarations that match
+are applied, the others only checked, so the document holds no query. In development the tree is validated
 against the JSON Schema, and errors carry the component stack.
 
 `@inkoxide/render` registers the bundled fonts with the engine once per

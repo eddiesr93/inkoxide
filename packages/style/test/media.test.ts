@@ -106,6 +106,17 @@ describe('parseMedia', () => {
     expect(error('(orientation: sideways)')).toContain('portrait or landscape');
     expect(error('(aspect-ratio: 0/1)')).toContain('two positive numbers');
     expect(error('   ')).toContain('the query is empty');
-    expect(error(`(width > ${'1'.repeat(MAX_MEDIA_QUERY)}pt)`)).toContain('at most 1000 characters');
+    expect(error('(min-width: 30em)')).toContain('use pt, mm, cm, in, px, pc or rem');
+    expect(error('(orientation > 1)')).toContain('orientation takes portrait or landscape, not a range');
+    expect(error('(min-orientation: portrait)')).toContain('unknown media feature "min-orientation"');
+    expect(error('(constructor)')).toContain('unknown media feature "constructor"');
+  });
+
+  it('reads a query of at most 1000 characters', () => {
+    // `(width > 1…1pt)`: 12 characters besides the digits.
+    const query = (length: number) => `(width > ${'1'.repeat(length - 12)}pt)`;
+    expect(query(MAX_MEDIA_QUERY)).toHaveLength(1000);
+    expect(parseMedia(query(MAX_MEDIA_QUERY)).matches(A4)).toBe(false);
+    expect(() => parseMedia(query(MAX_MEDIA_QUERY + 1))).toThrow('a query is at most 1000 characters');
   });
 });

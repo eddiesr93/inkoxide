@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { DEFAULT_THEME_CSS, TailwindCompiler } from '../src/compile.ts';
 import {
   initTailwind,
   parseColor,
@@ -8,6 +9,7 @@ import {
   tw,
   UnsupportedUtilityError,
 } from '../src/index.ts';
+import { mapClasses } from '../src/parse.ts';
 import { A4_UNITS, SUPPORTED, UNSUPPORTED } from '../src/supported.ts';
 
 beforeAll(async () => {
@@ -389,7 +391,7 @@ describe('page variants', () => {
       return '';
     })();
     expect(hover).toBe(
-      'the variant `hover:` has no meaning in a PDF (@media (hover: hover): "hover" has no meaning in a PDF); page variants work: sm: to 2xl:, max-*:, min-[…]:, max-[…]:, portrait:, landscape: and print:',
+      'the variant `hover:` has no meaning in a PDF (@media (hover: hover): "hover" has no meaning in a PDF); page variants work: sm: … 2xl:, max-sm: … max-2xl:, min-[…]:, max-[…]:, portrait:, landscape:, print:, [@media(…)]:',
     );
     expect(errorOf('focus:p-4').reason).toMatch(
       /^the variant `focus:` has no meaning in a PDF; page variants work/,
@@ -398,5 +400,37 @@ describe('page variants', () => {
       /^the variant `@sm:` has no meaning in a PDF \(@container \(width >= 24rem\)\);/,
     );
     expect(errorOf('md:not-a-class').reason).toMatch(/^not a Tailwind utility/);
+    // A page variant on a class that fails without it: the class's own reason.
+    expect(errorOf('md:space-x-2').reason).toMatch(/^it styles other elements .*; use gap instead/);
+    expect(errorOf('md:container').reason).toMatch(/^it sizes the element by the screen width/);
+  });
+
+  it('apply a custom variant under either of its @media', async () => {
+    const compiler = await TailwindCompiler.load(
+      `${DEFAULT_THEME_CSS}\n@custom-variant wide-or-landscape {\n  @media (width >= 600pt) { @slot; }\n  @media (orientation: landscape) { @slot; }\n}`,
+    );
+    const style = (units: typeof A5) =>
+      mapClasses(
+        compiler,
+        ['p-1', 'wide-or-landscape:p-4'],
+        (e) => {
+          throw e;
+        },
+        units,
+      ).style.paddingTop;
+    expect(style(A5)).toBe(3);
+    expect(style(LANDSCAPE)).toBe(12);
+    expect(style({ ...A5, page: { width: 612, height: 792 } })).toBe(12);
+    // Checked on every page: a mistake fails on a page neither matches.
+    expect(() =>
+      mapClasses(
+        compiler,
+        ['wide-or-landscape:w-[3ex]'],
+        (e) => {
+          throw e;
+        },
+        A5,
+      ),
+    ).toThrow(UnsupportedUtilityError);
   });
 });

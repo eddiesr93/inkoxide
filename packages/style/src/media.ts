@@ -102,7 +102,7 @@ function tokenize(s: string): Token[] {
 }
 
 /** Rounds to 1/100 pt, the precision of the page presets: `210mm` is A4's 595.28pt. */
-const round = (v: number): number => Math.round(v * 100) / 100;
+const toHundredths = (v: number): number => Math.round(v * 100) / 100;
 
 function compare(a: number, op: Op, b: number): boolean {
   switch (op) {
@@ -123,6 +123,75 @@ const FLIP: Record<Op, Op> = { '<': '>', '<=': '>=', '>': '<', '>=': '<=', '=': 
 
 /** A value a feature is compared with: a length in points, or a ratio. */
 type Value = { length: number } | { ratio: [number, number] };
+
+/** Units with no fixed size, named in their error. */
+const RELATIVE_UNITS = new Set(['em', 'vw', 'vh', '%', 'ex', 'ch', 'vmin', 'vmax']);
+
+/** A feature of the page: how it compares in a range, and what `name: value` means. */
+interface Feature {
+  /** `name op value`, the page's measure on the left; none for a feature with no range. */
+  range?: (op: Op, value: Value) => Test;
+  /** `name: value`. */
+  equals: (parser: Parser) => Test;
+}
+
+/** A side of the page, compared as a length. */
+function side(name: 'width' | 'height'): Feature {
+  const range = (op: Op, value: Value): Test => {
+    if (!('length' in value)) throw new ValueError(`${name} takes a length, like 210mm`);
+    const v = toHundredths(value.length);
+    return (p) => compare(toHundredths(p[name]), op, v);
+  };
+  return { range, equals: (parser) => range('=', parser.value()) };
+}
+
+const aspectRatio = (op: Op, value: Value): Test => {
+  if (!('ratio' in value)) throw new ValueError('aspect-ratio takes a ratio, like 16/9');
+  const [n, d] = value.ratio;
+  if (!(n > 0 && d > 0)) throw new ValueError('a ratio takes two positive numbers');
+  return (p) => compare(toHundredths(p.width) * d, op, toHundredths(p.height) * n);
+};
+
+/** What a page has. Every feature is non-zero on every page, so `(name)` always matches. */
+const FEATURES: ReadonlyMap<string, Feature> = new Map<string, Feature>([
+  ['width', side('width')],
+  ['height', side('height')],
+  ['aspect-ratio', { range: aspectRatio, equals: (parser) => aspectRatio('=', parser.value()) }],
+  [
+    'orientation',
+    {
+      equals(parser) {
+        const v = parser.ident();
+        if (v !== 'portrait' && v !== 'landscape') {
+          throw new ValueError(`orientation is portrait or landscape, not "${v}"`);
+        }
+        // A square page is portrait; sides compare to 1/100 pt, as lengths do.
+        return v === 'portrait'
+          ? (p) => toHundredths(p.height) >= toHundredths(p.width)
+          : (p) => toHundredths(p.width) > toHundredths(p.height);
+      },
+    },
+  ],
+]);
+
+/** The feature `name`; throws for one a page has not. */
+function feature(name: string): Feature {
+  const f = FEATURES.get(name);
+  if (f) return f;
+  if (SCREEN_FEATURES.has(name) || SCREEN_FEATURES.has(name.replace(/^(min|max)-/, ''))) {
+    throw new ValueError(`"${name}" has no meaning in a PDF`);
+  }
+  throw new ValueError(
+    `unknown media feature "${name}" (a page has ${[...FEATURES.keys()].join(', ').replace(/, (?=[^,]*$)/, ' and ')})`,
+  );
+}
+
+/** How feature `name` compares in a range. */
+function rangeOf(name: string): NonNullable<Feature['range']> {
+  const range = feature(name).range;
+  if (!range) throw new ValueError(`${name} takes portrait or landscape, not a range`);
+  return range;
+}
 
 class Parser {
   private i = 0;
@@ -167,23 +236,16 @@ class Parser {
   /** `[not|only]? type [and condition]?`, or a condition. */
   private query(): Test {
     const t = this.peek();
-    if (t?.t === 'ident' && t.v !== 'not') {
-      // `only` hid queries from old browsers; it changes nothing.
-      this.word('only');
-      const type = this.mediaType();
-      const rest = this.word('and') ? this.condition(false) : undefined;
-      return rest ? (p) => type && rest(p) : () => type;
-    }
-    if (t?.t === 'ident' && t.v === 'not') {
-      const after = this.tokens[this.i + 1];
-      if (after?.t === 'ident') {
-        this.i++;
-        const type = this.mediaType();
-        const rest = this.word('and') ? this.condition(false) : undefined;
-        return rest ? (p) => !(type && rest(p)) : () => !type;
-      }
-    }
-    return this.condition(true);
+    // `not` before a media type, not before a condition (`not (…)`).
+    const typed = t?.t === 'ident' && (t.v !== 'not' || this.tokens[this.i + 1]?.t === 'ident');
+    if (!typed) return this.condition(true);
+    const not = this.word('not');
+    // `only` hid queries from old browsers; it changes nothing.
+    if (!not) this.word('only');
+    const type = this.mediaType();
+    const rest = this.word('and') ? this.condition(false) : undefined;
+    const test: Test = rest ? (p) => type && rest(p) : () => type;
+    return not ? (p) => !test(p) : test;
   }
 
   private mediaType(): boolean {
@@ -241,14 +303,14 @@ class Parser {
       const t = this.peek();
       if (t?.t === ':') {
         this.i++;
-        return plain(name, this);
+        return this.equals(name);
       }
       if (t?.t === 'op') {
         this.i++;
-        const value = this.value();
-        return range(name, t.v, value);
+        return rangeOf(name)(t.v, this.value());
       }
-      return boolean(name);
+      feature(name);
+      return () => true;
     }
     // `value op name [op value]`.
     this.i--;
@@ -257,15 +319,25 @@ class Parser {
     if (op1.t !== 'op') throw new ValueError(`expected a comparison, found ${show(op1)}`);
     const nameTok = this.next();
     if (nameTok.t !== 'ident') throw new ValueError(`expected a media feature, found ${show(nameTok)}`);
-    const name = nameTok.v;
-    const lowTest = range(name, FLIP[op1.v], low);
+    const range = rangeOf(nameTok.v);
+    const lowTest = range(FLIP[op1.v], low);
     const op2 = this.peek();
     if (op2?.t !== 'op') return lowTest;
     this.i++;
     const sameWay = (a: Op, b: Op) => (a[0] === '<' && b[0] === '<') || (a[0] === '>' && b[0] === '>');
     if (!sameWay(op1.v, op2.v)) throw new ValueError('a range takes two "<" or two ">" comparisons');
-    const highTest = range(name, op2.v, this.value());
+    const highTest = range(op2.v, this.value());
     return (p) => lowTest(p) && highTest(p);
+  }
+
+  /** `name: value`: with a `min-` or `max-` prefix, a range. */
+  private equals(name: string): Test {
+    const prefix = /^(min|max)-/.exec(name)?.[1];
+    if (!prefix) return feature(name).equals(this);
+    // `min-orientation` and `min-hover` are named whole in their error.
+    const range = FEATURES.get(name.slice(prefix.length + 1))?.range;
+    if (!range) return feature(name).equals(this);
+    return range(prefix === 'min' ? '>=' : '<=', this.value());
   }
 
   /** A length (`48rem`, `210mm`, `0`), a ratio (`16/9`) or a bare number. */
@@ -282,9 +354,10 @@ class Parser {
     if (t.unit === '') return t.v === 0 ? { length: 0 } : { ratio: [t.v, 1] };
     const pt = PT_PER_UNIT[t.unit];
     if (pt === undefined) {
-      if (['em', 'vw', 'vh', '%', 'ex', 'ch', 'vmin', 'vmax'].includes(t.unit)) {
+      if (RELATIVE_UNITS.has(t.unit)) {
+        const units = Object.keys(PT_PER_UNIT);
         throw new ValueError(
-          `"${t.v}${t.unit}" has no fixed size in a media query; use pt, mm, cm, in, px or rem`,
+          `"${t.v}${t.unit}" has no fixed size in a media query; use ${units.slice(0, -1).join(', ')} or ${units.at(-1)}`,
         );
       }
       throw new ValueError(`unsupported unit "${t.unit}"`);
@@ -311,65 +384,6 @@ function show(t: Token): string {
     default:
       return `"${t.t}"`;
   }
-}
-
-/** Throws for a feature the page has not. */
-function known(name: string): never {
-  if (SCREEN_FEATURES.has(name) || SCREEN_FEATURES.has(name.replace(/^(min|max)-/, ''))) {
-    throw new ValueError(`"${name}" has no meaning in a PDF`);
-  }
-  throw new ValueError(
-    `unknown media feature "${name}" (a page has width, height, aspect-ratio and orientation)`,
-  );
-}
-
-/** The side of the page `name` measures. */
-function side(name: string): 'width' | 'height' | 'aspect-ratio' | undefined {
-  return name === 'width' || name === 'height' || name === 'aspect-ratio' ? name : undefined;
-}
-
-/** `name op value`, the page's measure on the left. */
-function range(name: string, op: Op, value: Value): Test {
-  const s = side(name);
-  if (!s) {
-    if (name === 'orientation') throw new ValueError('orientation takes portrait or landscape, not a range');
-    return known(name);
-  }
-  if (s === 'aspect-ratio') {
-    if (!('ratio' in value)) throw new ValueError('aspect-ratio takes a ratio, like 16/9');
-    const [n, d] = value.ratio;
-    if (!(n > 0 && d > 0)) throw new ValueError('a ratio takes two positive numbers');
-    return (p) => compare(round(p.width) * d, op, round(p.height) * n);
-  }
-  if (!('length' in value)) {
-    throw new ValueError(`${s} takes a length, like 210mm`);
-  }
-  const v = round(value.length);
-  return (p) => compare(round(p[s]), op, v);
-}
-
-/** `name: value`: `min-` and `max-` prefixes, and orientation. */
-function plain(name: string, parser: Parser): Test {
-  if (name === 'orientation') {
-    const v = parser.ident();
-    if (v !== 'portrait' && v !== 'landscape') {
-      throw new ValueError(`orientation is portrait or landscape, not "${v}"`);
-    }
-    // A square page is portrait; sides compare to 1/100 pt, as lengths do.
-    return v === 'portrait'
-      ? (p) => round(p.height) >= round(p.width)
-      : (p) => round(p.width) > round(p.height);
-  }
-  const prefix = /^(min|max)-/.exec(name)?.[1];
-  const base = prefix ? name.slice(prefix.length + 1) : name;
-  if (!side(base)) return known(name);
-  return range(base, prefix === 'min' ? '>=' : prefix === 'max' ? '<=' : '=', parser.value());
-}
-
-/** `(name)`: true when the feature is not zero, which every page's is. */
-function boolean(name: string): Test {
-  if (side(name) || name === 'orientation') return () => true;
-  return known(name);
 }
 
 /**

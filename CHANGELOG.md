@@ -12,11 +12,15 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 ### Added
 
 - `@media` for the page size. `@inkoxide/react` style objects take `'@media …'` blocks, and
-  `@inkoxide/tailwind` the page variants `sm:` to `2xl:`, `max-*:`, `min-[…]:`, `max-[…]:`,
-  `portrait:`, `landscape:`, `print:` and `[@media(…)]:`. A query reads the page's width and
-  height (margins included), `aspect-ratio` and `orientation`; features of screens (`hover`,
-  `prefers-color-scheme`) are errors. Each page answers the queries once, before layout, so the
-  engine and the schema do not change. `@inkoxide/react` exports the `MediaStyle` type.
+  `@inkoxide/tailwind` the page variants `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`,
+  `max-[…]:`, `portrait:`, `landscape:`, `print:` and `[@media(…)]:`, and a theme's
+  `@custom-variant` under one or several `@media`. A query reads the page's width and height
+  (margins included), `aspect-ratio` and `orientation`; features of screens (`hover`,
+  `prefers-color-scheme`) are errors, and so is a mistake in a block or class for another page
+  size. Each element's queries are answered for its page before layout, so the engine and the
+  schema do not change. `@inkoxide/react` and `@inkoxide/render` export the `MediaStyle` type, a
+  style object with `@media` blocks (`StyleProp` stays without them, so a style typed as `object`
+  still passes).
 
 - `inkoxide`: `PdfALevel` implements `FromStr` (`"2b".parse()`), with `ParsePdfALevelError`; the
   CLI and the Node and WebAssembly bindings read the level through it. An unknown `pdfA` level in

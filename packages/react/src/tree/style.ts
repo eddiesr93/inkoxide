@@ -30,6 +30,7 @@ import type {
   StyleProp,
   Style as StyleInput,
 } from '../components/index.ts';
+import { validateTree } from './validate.ts';
 
 /** A text property that cascades from an element to its content. */
 type InheritedKey = (typeof TEXT_INHERITED)[number];
@@ -541,16 +542,52 @@ export function withStyleProp(
   const { applied, checked } = styleList(style, page);
   const outer: Units = { em: parentSize, page };
   // The font size comes first: `em` in every other length depends on it.
-  const units: Units = { em: styleFontSize(style, parentSize, page) ?? base.fontSize ?? parentSize, page };
+  const units: Units = { em: fontSizeOf(applied, parentSize, page) ?? base.fontSize ?? parentSize, page };
   let s = base;
   for (const p of applied) s = over(s, fromStyleProp(p, units, outer));
-  // A block for another page size is read too: a mistake in it fails on every page.
-  for (const p of checked) fromStyleProp(p, units, outer);
+  assertFinite(s);
+  // A block for another page size is checked too: a mistake in it fails on every page.
+  for (const { query, style: p } of checked) {
+    try {
+      const flat = fromStyleProp(p, units, outer);
+      assertFinite(flat);
+      const problem = boxProblem(flat);
+      if (problem) throw new Error(problem);
+    } catch (e) {
+      throw new Error(`@media ${query}: ${(e as Error).message}`);
+    }
+  }
+  return s;
+}
+
+function assertFinite(s: FlatStyle): void {
   for (const [key, v] of Object.entries(s)) {
     const bad = nonFinite(v);
     if (bad !== undefined) throw new Error(`${key}: ${bad} is not a finite number`);
   }
-  return s;
+}
+
+/**
+ * The first problem the document schema finds in the box properties of `s` (`opacity: must be <=
+ * 1`), if any: those of a style that is not applied, which the engine never sees. Text properties
+ * are checked as they are read.
+ */
+function boxProblem(s: FlatStyle): string | undefined {
+  const style = computeBox(s, [0, 0, 0, 1], false);
+  if (!style) return undefined;
+  const at = 'pages[0].children[0].style';
+  const page = { size: { width: 1, height: 1 }, children: [{ type: 'box', style }] };
+  const [first] = validateTree({ version: 1, pages: [page] });
+  return (
+    first &&
+    `${first.path.startsWith(`${at}.`) ? first.path.slice(at.length + 1) : first.path}: ${first.message}`
+  );
+}
+
+/** A `@media` block of a `style` prop for another page size, and its query. */
+interface CheckedBlock {
+  query: string;
+  style: StyleProp;
 }
 
 /**
@@ -558,10 +595,13 @@ export function withStyleProp(
  * its `@media` blocks that match `page`, in the order written. The blocks that do not match are
  * `checked`, not applied.
  */
-function styleList(style: StyleInput, page: Units['page']): { applied: StyleProp[]; checked: StyleProp[] } {
+function styleList(
+  style: StyleInput,
+  page: Units['page'],
+): { applied: StyleProp[]; checked: CheckedBlock[] } {
   const applied: StyleProp[] = [];
-  const checked: StyleProp[] = [];
-  const add = (p: StyleProp, matches: boolean, depth: number) => {
+  const checked: CheckedBlock[] = [];
+  const add = (p: StyleProp, query: MediaQuery | undefined, matches: boolean, depth: number) => {
     if (depth > MAX_MEDIA_DEPTH) {
       throw new Error(`@media blocks nest at most ${MAX_MEDIA_DEPTH} deep`);
     }
@@ -573,21 +613,26 @@ function styleList(style: StyleInput, page: Units['page']): { applied: StyleProp
       own ??= { ...p };
       delete own[key];
       if (value === undefined) continue;
-      const query = mediaQuery(key.slice('@media'.length).trim());
+      const block = mediaQuery(key.slice('@media'.length).trim());
       if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         throw new Error(`${key}: a block takes a style object, not ${JSON.stringify(value)}`);
       }
-      blocks.push([query, value as StyleProp]);
+      blocks.push([block, value as StyleProp]);
     }
-    (matches ? applied : checked).push((own ?? p) as StyleProp);
-    for (const [query, block] of blocks) add(block, matches && query.matches(page), depth + 1);
+    const props = (own ?? p) as StyleProp;
+    if (matches) applied.push(props);
+    else checked.push({ query: query?.source ?? '', style: props });
+    for (const [block, value] of blocks) add(value, block, matches && block.matches(page), depth + 1);
   };
-  for (const p of Array.isArray(style) ? style : [style]) if (p) add(p as StyleProp, true, 0);
+  for (const p of Array.isArray(style) ? style : [style]) if (p) add(p as StyleProp, undefined, true, 0);
   return { applied, checked };
 }
 
 /** How deep `@media` blocks nest: a style object that holds itself would not end. */
 const MAX_MEDIA_DEPTH = 32;
+
+/** How many parsed queries are kept: more than a template has, not unbounded for data. */
+const MAX_CACHED_QUERIES = 256;
 
 /** Parsed media queries, by text: a template reads the same few on every element. */
 const MEDIA = new Map<string, MediaQuery>();
@@ -596,7 +641,7 @@ function mediaQuery(text: string): MediaQuery {
   let q = MEDIA.get(text);
   if (!q) {
     q = parseMedia(text);
-    if (MEDIA.size >= 256) MEDIA.clear();
+    if (MEDIA.size >= MAX_CACHED_QUERIES) MEDIA.clear();
     MEDIA.set(text, q);
   }
   return q;
@@ -608,8 +653,13 @@ export function styleFontSize(
   parentSize: number,
   page: Units['page'],
 ): number | undefined {
+  return fontSizeOf(styleList(style, page).applied, parentSize, page);
+}
+
+/** The font size the last of `list` to set one sets, in points. */
+function fontSizeOf(list: readonly StyleProp[], parentSize: number, page: Units['page']): number | undefined {
   let size: number | undefined;
-  for (const p of styleList(style, page).applied) {
+  for (const p of list) {
     const v = lengthOf('points', 'fontSize', p.fontSize, { em: parentSize, page });
     if (typeof v === 'number') size = v;
   }

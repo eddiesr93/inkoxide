@@ -130,7 +130,7 @@ that are supported and tested; each example is a unit test.
 
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
-| `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, and `[@media(…)]:` | the class, on pages it matches | `md:p-4` → `{"paddingTop":12,"paddingRight":12,"paddingBottom":12,"paddingLeft":12}` | Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`). |
+| `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, `[@media(…)]:` | the class, on pages it matches | `md:p-4` → `{"paddingTop":12,"paddingRight":12,"paddingBottom":12,"paddingLeft":12}` | Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`). |
 
 ## Not supported
 
