@@ -165,10 +165,12 @@ touches only that module: ttf-parser (font parsing) is used only in
 `fonts`, which gives the rest of the engine metrics, glyph ids and
 advances; rustybuzz (shaping) only in `text/prepare.rs`, which parses its
 shaping faces from the font bytes once per render and shares them between
-threads. One check knows rustybuzz without using it: `fonts/layout.rs`
-refuses at registration the fonts whose `GSUB` or `GPOS` coverage offsets
-rustybuzz would unwrap, read with ttf-parser, so replacing rustybuzz
-means checking that list again. `pdf` depends on `fonts` and `images`,
+threads. Two parts of `fonts/layout.rs` know rustybuzz without using it,
+reading with ttf-parser what it would: registration refuses the fonts
+whose `GSUB` or `GPOS` coverage offsets rustybuzz would unwrap, and
+`vertical_form` finds the glyphs whose `vert` form rustybuzz substitutes
+in vertical text (only `vert`, the feature it applies). Replacing
+rustybuzz means checking both again. `pdf` depends on `fonts` and `images`,
 never the reverse, and `text` does not depend on `pdf`: the pipeline asks
 `pdf` what a colour glyph's image (from `ColorGlyphs`) needs for PDF/A,
 and how many bytes the text of a node's images takes. `fonts`
@@ -207,12 +209,18 @@ none) and `avar` 2 (which ttf-parser does not read).
 
 SVG text goes through the same shaper. `images/svg_text` reads each
 `<text>` of an SVG once, when the SVG is decoded: the cascade of its text
-properties (simplecss and svgtypes are used only in its `extract.rs`, at
-the versions usvg uses), white space and character positions. Each render
+properties (simplecss and svgtypes are used only in `images/svg_text`, at
+the versions usvg uses: simplecss in `extract.rs`, svgtypes there and in
+`path.rs`, which reads the paths a `textPath` follows), white space and character positions. Each render
 lays the text out with its fonts before layout (`text/svg.rs`, one
 `TextShaper::prepare` call per chunk, so fallback fonts, bidi, the glyph
 limit and ToUnicode apply), replaces each `<text>` with a "probe" path
 over its ink, and converts the SVG again (cached by the rewritten source).
+Vertical text shapes its upright runs top to bottom (`ParaStyle::vertical`,
+the font's `vmtx`, `VORG` and `vert`) and its sideways runs as horizontal
+text, by the Unicode vertical orientation (`text/vertical.rs`, generated);
+text on a path follows the geometry `images/svg_text/path.rs` reads from
+the XML, with an arc-length table.
 usvg resolves the probes' paint; the PDF writer draws each probe's text in
 its place as PDF text (`pdf/svg.rs`). See
 [ADR 0001](adr/0001-svg-text-probes.md).

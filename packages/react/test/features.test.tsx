@@ -66,6 +66,7 @@ import {
   TextInput,
   type TextFormat,
   TotalPages,
+  TextPath,
   Tspan,
   type TspanProps,
   usePage,
@@ -1823,6 +1824,69 @@ describe('drawings', () => {
     ).toContain('<Tspan> goes inside a <Text> in an <Svg>');
     expect(svg(<Text style={{ color: 'red' }}>a</Text>)).toContain('style applies to <Text> outside <Svg>');
     expect(svg(<Text fontWeight={'heavyish' as never}>a</Text>)).toContain('fontWeight "heavyish"');
+  });
+
+  it('writes TextPath directly in SVG text, and vertical text', () => {
+    const r = tree(
+      <Svg width={200} height={100}>
+        <Defs>
+          <Path id="curve" d="M10 80 Q 100 0 190 80" />
+        </Defs>
+        <Text fontSize={12}>
+          <TextPath href="#curve" startOffset="50%" textAnchor="middle" side="right" method="stretch">
+            on a <Tspan fill="red">curve</Tspan>
+          </TextPath>
+        </Text>
+        <Text
+          x={20}
+          y={10}
+          writingMode="vertical-rl"
+          textOrientation="upright"
+          fontVariant="small-caps"
+          fontKerning="none"
+          fontFeatureSettings="'tnum'"
+        >
+          AB
+        </Text>
+      </Svg>,
+    );
+    const svg = decode(first<ImageNode>(r).data);
+    expect(svg).toContain(
+      `<textPath href="#curve" startOffset="50%" text-anchor="middle" side="right" method="stretch" font-family="'Inter'" font-weight="400">on a <tspan fill="red"`,
+    );
+    expect(svg).toContain(
+      'writing-mode="vertical-rl" text-orientation="upright" font-variant="small-caps" font-kerning="none" font-feature-settings=',
+    );
+    expect(r.validate()).toEqual([]);
+    const placed = (children: ReactNode) =>
+      thrown(() =>
+        tree(
+          <Svg width={10} height={10}>
+            {children}
+          </Svg>,
+        ),
+      ).message;
+    expect(placed(<TextPath href="#c">a</TextPath>)).toContain(
+      '<TextPath> goes directly inside a <Text> in an <Svg>',
+    );
+    expect(
+      placed(
+        <Text>
+          <Tspan>
+            <TextPath href="#c">a</TextPath>
+          </Tspan>
+        </Text>,
+      ),
+    ).toContain('<TextPath> goes directly inside a <Text> in an <Svg>');
+    expect(
+      thrown(() =>
+        tree(
+          <Text>
+            <TextPath href="#c">a</TextPath>
+          </Text>,
+        ),
+      ).message,
+    ).toContain('<TextPath> goes directly inside a <Text> in an <Svg>');
   });
 
   it('keeps the layout props of Svg out of the drawing', () => {

@@ -288,6 +288,8 @@ mod tests {
                     paints: vec!["fill:red;".into()],
                     adjust: Vec::new(),
                     rtl: false,
+                    writing: super::super::Writing::Horizontal,
+                    paths: Vec::new(),
                 })
                 .collect();
             let doc = SvgTextDoc {
@@ -304,6 +306,7 @@ mod tests {
                 scale_x: 1.0,
                 paint: 0,
                 text: (0, 0),
+                char: 0,
             };
             let laid = vec![
                 LaidText {
@@ -312,6 +315,7 @@ mod tests {
                     images: Vec::new(),
                     ink: Some([0.0, 0.0, 1.0, 1.0]),
                     text: String::new(),
+                    actual: Vec::new(),
                 };
                 n
             ];

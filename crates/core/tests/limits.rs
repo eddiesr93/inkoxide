@@ -487,6 +487,48 @@ fn render_svg(declared: &str, svg: &str) -> Result<Vec<u8>, InkoxideError> {
     )
 }
 
+/// The SVGs of a render use at most 64 different sets of font features in
+/// all, as the document's text does, whatever each uses alone.
+#[test]
+fn svgs_share_the_bound_on_feature_sets() {
+    let svg = |sets: std::ops::Range<usize>| {
+        let mut texts = String::new();
+        for i in sets {
+            let _ = write!(
+                texts,
+                r#"<text font-feature-settings="'tnum' {i}">a</text>"#
+            );
+        }
+        format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">{texts}</svg>"#)
+    };
+    let render_two = |a: &str, b: &str| {
+        let mut images = ImageStore::new();
+        images.insert("a", a.as_bytes().to_vec());
+        images.insert("b", b.as_bytes().to_vec());
+        let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+           "pages":[{"size":{"width":595,"height":842},"children":[
+             {"type":"image","src":"a","style":{"width":100,"height":100}},
+             {"type":"image","src":"b","style":{"width":100,"height":100}}]}]}"#;
+        let options = RenderOptions::default().with_threads(1);
+        inkoxide::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &images,
+        )
+    };
+    render_two(&svg(0..40), &svg(0..40)).unwrap();
+    render_two(&svg(0..40), &svg(24..64)).unwrap();
+    let err = render_two(&svg(0..40), &svg(40..80)).unwrap_err();
+    assert_eq!(err.code(), "IMAGE_ERROR", "{err}");
+    assert!(
+        err.to_string()
+            .contains("more than 64 different sets of font features"),
+        "{err}"
+    );
+}
+
 /// SVG text copied by `use` many times over is counted per copy: past a
 /// million characters the SVG fails, before anything is laid out or
 /// drawn.
@@ -682,10 +724,26 @@ fn svg_text_at_scale_renders_in_linear_time() {
         svg(&spans)
     };
     let comments = |n: usize| svg(&format!("<text>{}</text>", "a<!---->".repeat(n)));
+    // Runs of upright and sideways characters in turn, each shaped on its
+    // own.
+    let vertical = |n: usize| {
+        svg(&format!(
+            r#"<text writing-mode="tb">{}</text>"#,
+            "a§".repeat(n)
+        ))
+    };
+    // A character on each curve of a path.
+    let on_path = |n: usize| {
+        svg(&format!(
+            r##"<path id="p" d="M0 0{}"/><text font-size="1"><textPath href="#p">{}</textPath></text>"##,
+            "c1 -1 2 1 3 0".repeat(n),
+            "a".repeat(n)
+        ))
+    };
     let one_b = RenderOptions::default()
         .with_pdf_a(true)
         .with_pdf_a_level(PdfALevel::A1b);
-    let cases: [(&str, usize, Svg, RenderOptions); 4] = [
+    let cases: [(&str, usize, Svg, RenderOptions); 6] = [
         (
             "texts on one point",
             1_250,
@@ -703,6 +761,18 @@ fn svg_text_at_scale_renders_in_linear_time() {
             "text nodes between comments",
             12_500,
             &comments,
+            RenderOptions::default(),
+        ),
+        (
+            "vertical text in runs",
+            1_250,
+            &vertical,
+            RenderOptions::default(),
+        ),
+        (
+            "text along a path",
+            1_250,
+            &on_path,
             RenderOptions::default(),
         ),
     ];
@@ -839,4 +909,65 @@ fn instances_past_the_limit_are_refused_before_any_is_made() {
         );
         took
     });
+}
+
+/// The paths of SVG text are read once per element they refer to, with
+/// at most 100 000 segments in all: past that the SVG fails before
+/// anything is laid out.
+#[test]
+fn text_paths_are_read_once_and_bounded() {
+    let inter = r#"{"id":"Inter-Regular","family":"Inter"}"#;
+    let svg = |segments: usize, texts: usize| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><path id="p" d="M0 0{}"/></defs><text>{}</text></svg>"#,
+            "c1 -1 2 1 3 0".repeat(segments),
+            r##"<textPath href="#p">a</textPath>"##.repeat(texts)
+        )
+    };
+    let took = |segments, texts| {
+        let t = Instant::now();
+        render_svg(inter, &svg(segments, texts)).unwrap();
+        t.elapsed()
+    };
+    // Read once: the long path and the many texts cost what each does
+    // alone, where reading it per text would cost 10 000 times as much.
+    assert_as_fast(
+        "text paths",
+        || took(100_000, 1) + took(1, 10_000),
+        || took(100_000, 10_000),
+    );
+    let err = render_svg(inter, &svg(100_001, 1)).unwrap_err();
+    assert_eq!(err.code(), "INVALID_IMAGE", "{err}");
+    assert!(
+        err.to_string().contains("more than 100000 segments"),
+        "{err}"
+    );
+    // Copies of text on a path through `use` lay it out once.
+    let mut defs = r##"<path id="p" d="M0 0H1000"/><text id="l0"><textPath href="#p">on a path</textPath></text>"##.to_string();
+    for i in 1..=3 {
+        let uses = format!(r##"<use href="#l{}"/>"##, i - 1).repeat(10);
+        let _ = write!(defs, r#"<g id="l{i}">{uses}</g>"#);
+    }
+    render_svg(
+        inter,
+        &format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs>{defs}</defs><use href="#l3"/></svg>"##
+        ),
+    )
+    .unwrap();
+}
+
+/// Vertical SVG text shapes under the same glyph limit as other text.
+#[test]
+fn vertical_svg_text_spends_the_glyph_limit() {
+    let doubling = r#"{"id":"Doubling","family":"Doubling"}"#;
+    let line = vec!["A"; 300].join(" ");
+    for orientation in ["upright", "sideways"] {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text writing-mode="tb" text-orientation="{orientation}" font-family="Doubling">{line}</text></svg>"#
+        );
+        let err = render_svg(doubling, &svg).unwrap_err();
+        assert_eq!(err.code(), "FONT_ERROR", "{err}");
+        assert!(err.to_string().contains("glyphs"), "{err}");
+    }
 }

@@ -18,6 +18,7 @@ mod optimal;
 mod paint;
 mod prepare;
 mod svg;
+mod vertical;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -260,6 +261,8 @@ pub(crate) struct ParaStyle {
     /// The paragraph's language tag, normalised (`en-gb`), for hyphenation
     /// (patterns may still be missing; the hyphenator decides).
     pub lang: Option<String>,
+    /// Shaped top to bottom: upright runs of vertical SVG text.
+    pub vertical: bool,
 }
 
 impl ParaStyle {
@@ -285,6 +288,7 @@ impl ParaStyle {
                 .as_deref()
                 .or(doc_lang)
                 .and_then(hyphen::paragraph_tag),
+            vertical: false,
         }
     }
 }
@@ -453,6 +457,7 @@ impl TextShaper for RustybuzzShaper<'_, '_> {
             direction: style.direction,
             hyphenate: style.hyphenate,
             lang,
+            vertical: style.vertical,
             hyphenator: self.hyphenator,
             runs,
             objects: &self.objects,

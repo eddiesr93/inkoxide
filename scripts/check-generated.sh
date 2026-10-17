@@ -28,6 +28,7 @@ python3 scripts/fixtures/pagination.py >/dev/null
 python3 scripts/fixtures/tables.py >/dev/null
 python3 scripts/fixtures/emoji_fonts.py >/dev/null
 python3 scripts/fixtures/variable_fonts.py >/dev/null
+python3 scripts/fixtures/vertical_font.py >/dev/null
 python3 scripts/fixtures/accessible.py >/dev/null
 # Not scripts/fixtures/images.py: it needs Pillow, whose PNG bytes change
 # from one version to the next.
@@ -52,6 +53,7 @@ generated=(
   fixtures/fonts/VarTest-CFF2.otf
   fixtures/fonts/limits/var-avar2.ttf
   fixtures/fonts/limits/var-64-axes.ttf
+  fixtures/fonts/VertTest.ttf
 )
 
 if [[ $python_only == 0 ]]; then

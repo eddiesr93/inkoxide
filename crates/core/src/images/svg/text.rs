@@ -1,7 +1,7 @@
 //! SVG text converted again with a render's fonts: each text replaced
 //! with its placeholder, and the converted trees kept across renders.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::check::{check, Checked};
@@ -10,6 +10,7 @@ use super::{parse_nested, parse_xml, Nesting};
 use crate::images::svg_text::{Probes, SvgText, SvgTextDoc};
 use crate::images::ContentKey;
 use crate::lru::SharedLru;
+use crate::schema::FontFeature;
 use crate::text::LaidText;
 
 /// What converting an SVG with text again needs, with a render's fonts:
@@ -32,6 +33,20 @@ impl TextSource {
             text: checked.text,
             nested: checked.nested,
         })
+    }
+
+    /// Adds the different lists of OpenType features its text and its
+    /// nested SVGs' use to `sets`.
+    pub fn feature_sets(&self, sets: &mut HashSet<Arc<[FontFeature]>>) {
+        let spans = self.text.texts.iter().flat_map(|t| &t.spans);
+        sets.extend(
+            spans
+                .filter(|s| !s.features.is_empty())
+                .map(|s| s.features.clone()),
+        );
+        for n in &self.nested {
+            n.feature_sets(sets);
+        }
     }
 
     /// Approximate bytes it holds, its nested SVGs' included.

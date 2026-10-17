@@ -1047,6 +1047,14 @@ impl Svg<'_> {
         }
         let area = p.stroke_bounding_box();
         let bbox = Rect::new(area.left(), area.top(), area.right(), area.bottom());
+        // Text on a path and vertical text read in their logical order.
+        let actual = laid.actual.get(paint as usize).filter(|t| !t.is_empty());
+        if let Some(t) = actual {
+            let text = super::out::text_bytes(t);
+            cv.c.begin_marked_content_with_properties(Name(b"Span"))
+                .properties()
+                .pair(Name(b"ActualText"), Str(&text));
+        }
         let fill = |s: &mut Self, cv: &mut Canvas| -> Res {
             let Some(f) = p.fill() else { return Ok(()) };
             cv.c.save_state();
@@ -1074,7 +1082,11 @@ impl Svg<'_> {
             }
         }
         // Images have their own colours.
-        self.text_images(cv, laid, paint, fonts)
+        self.text_images(cv, laid, paint, fonts)?;
+        if actual.is_some() {
+            cv.c.end_marked_content();
+        }
+        Ok(())
     }
 
     /// The colour glyphs and emoji images of `laid` in paint style
@@ -1231,11 +1243,7 @@ impl Svg<'_> {
                 cv.c.set_font(Name(name.as_bytes()), 1.0);
                 font = Some(g0.font);
             }
-            let (sin, cos) = if g0.rotate == 0.0 {
-                (0.0, 1.0)
-            } else {
-                g0.rotate.to_radians().sin_cos()
-            };
+            let (sin, cos) = turn(g0.rotate);
             let (size, k) = (g0.size, g0.scale_x);
             // Text space is y up; SVG user space is y down.
             cv.c.set_text_matrix(
@@ -1546,6 +1554,18 @@ impl Svg<'_> {
     }
 }
 
+/// The sine and cosine of `degrees`, exact for quarter turns (sideways
+/// glyphs in vertical text), where `sin_cos` leaves a trace of rounding.
+fn turn(degrees: f32) -> (f32, f32) {
+    match degrees.rem_euclid(360.0) {
+        0.0 => (0.0, 1.0),
+        90.0 => (1.0, 0.0),
+        180.0 => (0.0, -1.0),
+        270.0 => (-1.0, 0.0),
+        d => d.to_radians().sin_cos(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
@@ -1663,6 +1683,147 @@ mod tests {
         assert!(out.contains("<0048>") && out.contains("<0069>"), "{out}");
         // The probe itself draws nothing.
         assert!(!out.contains(" re\nf"), "{out}");
+    }
+
+    /// A document showing `svg` with Inter Regular and `VertTest` declared,
+    /// rendered and inflated: its SVG's form only.
+    fn rendered_form(svg: &str) -> String {
+        let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},
+              {"id":"VertTest","family":"VertTest"}],
+            "pages":[{"size":{"width":200,"height":200},"children":[
+              {"type":"image","src":"svg"}]}]}"#;
+        let fonts = crate::test_fixtures::fonts(&["Inter-Regular", "VertTest"]);
+        let mut images = crate::ImageStore::new();
+        images.insert("svg", svg.as_bytes().to_vec());
+        let opts = crate::RenderOptions::default().with_compress(false);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &opts,
+            &fonts,
+            &images,
+        )
+        .unwrap();
+        let out = inflated(&pdf);
+        let form = out.split("/Subtype /Form").nth(1).expect(&out);
+        form.split("endobj").next().unwrap().to_string()
+    }
+
+    /// The text matrices of `form`, and the glyphs each shows (two bytes a
+    /// glyph, in the literal strings of the `TJ` that follows).
+    fn shown(form: &str) -> Vec<([f32; 6], usize)> {
+        let lines: Vec<&str> = form.lines().collect();
+        lines
+            .iter()
+            .enumerate()
+            .filter_map(|(i, l)| {
+                let m: Vec<f32> = l
+                    .strip_suffix(" Tm")?
+                    .split(' ')
+                    .map(|v| v.parse().unwrap())
+                    .collect();
+                let tj = lines[i + 1].strip_suffix(" TJ").unwrap();
+                Some(([m[0], m[1], m[2], m[3], m[4], m[5]], string_bytes(tj) / 2))
+            })
+            .collect()
+    }
+
+    /// The bytes of the literal strings in `tj`: an escape is one byte,
+    /// `\ddd` included.
+    fn string_bytes(tj: &str) -> usize {
+        let (mut bytes, mut inside) = (0, false);
+        let mut chars = tj.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '(' if !inside => inside = true,
+                ')' if inside => inside = false,
+                '\\' if inside => {
+                    bytes += 1;
+                    if chars.next().is_some_and(|d| d.is_digit(8)) {
+                        for _ in 0..2 {
+                            chars.next_if(|d| d.is_digit(8));
+                        }
+                    }
+                }
+                _ if inside => bytes += 1,
+                _ => {}
+            }
+        }
+        bytes
+    }
+
+    /// Text on a path: each glyph alone, turned by the path's tangent,
+    /// with its origin on the path, and the text in a span, as it reads.
+    #[test]
+    fn draws_each_glyph_on_a_path_turned_by_its_tangent() {
+        let form = rendered_form(&svg(
+            r##"<defs><path id="p" d="M10 40 A 30 30 0 0 1 70 40"/></defs>
+            <text font-family="Inter" font-size="10"><textPath href="#p">Arc</textPath></text>"##,
+        ));
+        assert!(form.contains("/ActualText (Arc)\n>> BDC"), "{form}");
+        let shown = shown(&form);
+        assert_eq!(shown.len(), 3, "{form}");
+        let mut angles = Vec::new();
+        for ([a, b, c, d, x, y], glyphs) in shown {
+            assert_eq!(glyphs, 1, "{form}");
+            // A rotation, at 10 pt, y down.
+            assert!((a + d).abs() < 1e-4 && (b - c).abs() < 1e-4, "{form}");
+            assert!((a.hypot(b) - 10.0).abs() < 1e-3, "{form}");
+            // On the arc, whose centre is (40, 40) and radius 30.
+            assert!(((x - 40.0).hypot(y - 40.0) - 30.0).abs() < 0.5, "{form}");
+            angles.push(b.atan2(a));
+        }
+        // Turning with the arc.
+        assert!(angles.windows(2).all(|w| w[1] > w[0]), "{angles:?}");
+    }
+
+    /// Vertical text: upright glyphs down one column, a Latin letter turned
+    /// a quarter turn exactly, and the text in a span in its logical order.
+    #[test]
+    fn draws_vertical_text_down_a_column() {
+        let form = rendered_form(&svg(
+            r#"<text x="50" y="5" font-family="VertTest" font-size="10" writing-mode="vertical-rl">縦A書</text>"#,
+        ));
+        assert!(
+            form.contains(&format!("{}\n>> BDC", actual_text("縦A書"))),
+            "{form}"
+        );
+        let shown = shown(&form);
+        let [(up1, 1), (side, 1), (up2, 1)] = shown[..] else {
+            panic!("{form}");
+        };
+        // Upright, centred on x = 50, going down.
+        assert_eq!(up1[..4], [10.0, 0.0, 0.0, -10.0], "{form}");
+        assert_eq!(up2[..4], up1[..4], "{form}");
+        assert_eq!((up1[4], up2[4]), (45.0, 45.0), "{form}");
+        assert!(up1[5] < side[5] && side[5] < up2[5], "{form}");
+        // Sideways: no trace of rounding in the matrix.
+        assert_eq!(side[..4], [0.0, 10.0, 10.0, 0.0], "{form}");
+        assert!(form.contains("0 10 10 0 "), "{form}");
+    }
+
+    /// Horizontal text reads as drawn: no span, one run.
+    #[test]
+    fn horizontal_text_needs_no_span() {
+        let form = rendered_form(&svg(
+            r#"<text x="5" y="20" font-family="Inter" font-size="10">Arc</text>"#,
+        ));
+        assert!(!form.contains("/Span"), "{form}");
+        assert_eq!(
+            shown(&form),
+            [([10.0, 0.0, 0.0, -10.0, 5.0, 20.0], 3)],
+            "{form}"
+        );
+    }
+
+    #[test]
+    fn quarter_turns_are_exact() {
+        assert_eq!(super::turn(0.0), (0.0, 1.0));
+        assert_eq!(super::turn(90.0), (1.0, 0.0));
+        assert_eq!(super::turn(-90.0), (-1.0, 0.0));
+        assert_eq!(super::turn(450.0), (1.0, 0.0));
+        let (sin, cos) = super::turn(30.0);
+        assert!((sin - 0.5).abs() < 1e-6 && (cos - 0.75f32.sqrt()).abs() < 1e-6);
     }
 
     /// Renders `svg` uncompressed after a line of page text, with Inter
