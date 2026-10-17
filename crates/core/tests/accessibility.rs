@@ -237,3 +237,46 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
         )
     );
 }
+
+/// Marked content and save levels nest (ISO 32000-1, 14.6): no `q` … `Q`
+/// pair holds the start or the end of a sequence without the other, on any
+/// page of the fixture, tagged.
+#[test]
+fn marked_content_nests_with_save_levels() {
+    let options = RenderOptions::default()
+        .with_pdf_ua(true)
+        .with_compress(false);
+    // And text drawn inside save levels of its own: a colour with alpha,
+    // a box with opacity, a link.
+    let inside = br#"{"version":1,"meta":{"title":"T","lang":"en"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+        "pages":[{"size":{"width":300,"height":300},"children":[
+          {"type":"text","runs":[{"text":"Half ","font":"Inter-Regular","size":9,"color":[0,0,0,0.5]},
+            {"text":"linked","font":"Inter-Regular","size":9,"link":"https://example.com"}]},
+          {"type":"box","style":{"opacity":0.5,"backgroundColor":[1,0,0,1]},"children":[
+            {"type":"text","runs":[{"text":"Veiled","font":"Inter-Regular","size":9}]}]}]}]}"#;
+    let mut pdf = render(&fixture(), &options).unwrap();
+    pdf.extend(render(inside, &options).unwrap());
+    let text = String::from_utf8_lossy(&pdf);
+    let mut streams = 0;
+    for stream in text.split("stream\n").skip(1) {
+        let Some(body) = stream.split("endstream").next() else {
+            continue;
+        };
+        if !body.contains(" BDC") {
+            continue;
+        }
+        streams += 1;
+        // Each frame: a save level (`q`) or a sequence (`BDC`, `BMC`).
+        let mut stack: Vec<&str> = Vec::new();
+        for token in body.split_ascii_whitespace() {
+            match token {
+                "q" | "BDC" | "BMC" => stack.push(if token == "q" { "q" } else { "mc" }),
+                "Q" => assert_eq!(stack.pop(), Some("q"), "a Q inside a sequence"),
+                "EMC" => assert_eq!(stack.pop(), Some("mc"), "an EMC inside a save level"),
+                _ => {}
+            }
+        }
+        assert!(stack.is_empty(), "{stack:?} left open");
+    }
+    assert!(streams >= 3, "{streams} tagged content streams");
+}
