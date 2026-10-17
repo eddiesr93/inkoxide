@@ -37,6 +37,11 @@ describe('the scanner', () => {
     expect([...found].some((t) => t.includes('$'))).toBe(false);
   });
 
+  it('reads escaped quotes and Svelte class directives', () => {
+    const found = tokens('const html = "<div class=\\"m-2 p-3\\">";\n<div class:p-4={on} />');
+    for (const cls of ['m-2', 'p-3', 'p-4']) expect(found.has(cls), cls).toBe(true);
+  });
+
   it('drops a bracket that never closes, at the end of its line', () => {
     const found = tokens('a[ b c\np-3');
     expect(found.has('p-3')).toBe(true);
@@ -56,6 +61,10 @@ describe('the scanner', () => {
       expect(sourceFiles([dir], new Set([join(dir, 'src')])).map((f) => f.slice(dir.length + 1))).toEqual([
         'f.md',
       ]);
+      // A folder named like build output is read below the root.
+      mkdirSync(join(dir, 'src/build'));
+      writeFileSync(join(dir, 'src/build/g.ts'), 'p-4');
+      expect(sourceFiles([dir]).map((f) => f.slice(dir.length + 1))).toContain('src/build/g.ts');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

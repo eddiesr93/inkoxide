@@ -80,6 +80,14 @@ A class the scan does not see is unknown in the browser: write each class whole
 (`bg-red-500`, not `` `bg-${color}-500` ``), or put it in `safelist`. It fails as an unknown
 class does, in strict mode with a message that says so.
 
+The scan reads the sources' text, not `.gitignore`: it leaves out `node_modules`, hidden
+directories and build output directly under a root (`dist`, `build`, `out`, …), and the
+bundle's output directory. A Vite dev server reads each file that changes; Rollup's and
+esbuild's watch modes scan again on each build, but watch only the files there were at the last
+scan. In a plain Rollup config, put the plugin before `@rollup/plugin-node-resolve`, so that it
+sees `@inkoxide/tailwind` first. `@inkoxide/tailwind/precompiled` has the entry's documented
+API; the deprecated `TailwindCompiler`, `SUPPORTED` and `UNSUPPORTED` are not in it.
+
 The plugin needs nothing beyond this package. In this repository's workspace, where packages are
 TypeScript sources, Vite loads a config that imports it with `--configLoader runner`.
 

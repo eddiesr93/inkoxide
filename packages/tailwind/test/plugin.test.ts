@@ -143,8 +143,11 @@ describe('the build plugin', () => {
     };
     const update = (text: string) =>
       plugin.handleHotUpdate({ file: join(dir, 'src/b.tsx'), server, read: () => text });
-    // A class it has, and a file it does not read: nothing.
+    // A class it has, a file it does not read, and one outside its sources: nothing.
     expect(await update('p-4')).toBeUndefined();
+    expect(
+      await plugin.handleHotUpdate({ file: join(tmpdir(), 'elsewhere.tsx'), server, read: () => 'm-3' }),
+    ).toBeUndefined();
     expect(
       await plugin.handleHotUpdate({ file: join(dir, 'x.css'), server, read: () => 'm-3' }),
     ).toBeUndefined();
