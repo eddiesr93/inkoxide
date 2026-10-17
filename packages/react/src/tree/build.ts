@@ -957,7 +957,7 @@ class Builder {
       }
       image[side] = v;
     }
-    if (typeof n.props.alt === 'string' && n.props.alt !== '') image.alt = n.props.alt;
+    this.alt(image, n);
     const run: TextRun = { image, font: this.font(ctx, n), size: ctx.fontSize };
     const align = own.verticalAlign ?? ctx.verticalAlign;
     if (align !== undefined && align !== 'baseline') run.verticalAlign = align as TextRun['verticalAlign'];
@@ -1210,8 +1210,14 @@ class Builder {
       node,
       this.placedImage(inst, own, (msg) => this.fail(inst, msg, { kind: 'props' })),
     );
+    this.alt(node, inst);
     this.flowProps(node, inst);
     return this.mark(node, inst);
+  }
+
+  /** An image's `alt` prop, onto `image` (a node or a run's image). */
+  private alt(image: { alt?: string }, inst: Instance): void {
+    if (typeof inst.props.alt === 'string' && inst.props.alt !== '') image.alt = inst.props.alt;
   }
 
   private field(inst: Instance, parent: TextCtx): FieldNode {
@@ -1369,6 +1375,7 @@ class Builder {
     const node: ImageNode = { type: 'image', data: svgDataUrl(markup) };
     const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };
     node.style = style;
+    this.alt(node, inst);
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }

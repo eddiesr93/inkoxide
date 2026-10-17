@@ -188,7 +188,9 @@ its place as PDF text (`pdf/svg.rs`). See
 for min-content / max-content / definite widths and gets the paragraph's
 size. Glyph → Unicode mappings are collected while shaping and become the
 ToUnicode CMaps, so text is selectable and searchable; colour glyphs carry
-theirs as `ActualText`.
+theirs as `ActualText`. Form fields are drawn without shaping: the glyphs
+their appearances show, and those embedded for editing, are added to the
+same maps when the PDF is written (`FontPrograms::field_text`).
 
 ## Pagination and paint
 

@@ -41,7 +41,7 @@ use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
 use crate::paint::FillRule;
-use crate::paint::{span, InvisibleGlyph, Op, TextGlyph, TextOp, NO_RADII};
+use crate::paint::{alt_span, InvisibleGlyph, Op, SpaceAt, TextGlyph, TextOp, NO_RADII};
 use crate::text::{ColorGlyphs, LaidText};
 use crate::{flate, InkoxideError};
 
@@ -123,19 +123,6 @@ fn drawable(images: &ImageSet, key: ImageKey) -> bool {
     )
 }
 
-/// The font of the invisible space in the span of an image in SVG text:
-/// `preferred` (the font of an emoji image's span), or the first font of
-/// the document with outlines and a space, preferring one without colour
-/// glyphs, as in page text.
-fn strut(fonts: &FontSet<'_>, preferred: Option<FontKey>) -> Option<FontKey> {
-    let spaced = |k: FontKey| InvisibleGlyph::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
-    let all = || 0..fonts.fonts.len() as FontKey;
-    preferred
-        .filter(|&k| spaced(k))
-        .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
-        .or_else(|| all().find(|&k| spaced(k)))
-}
-
 /// The images of `text` in paint style `paint` (`None`: all), as page text
 /// draws them, each with the frame of its glyph: its colour glyphs
 /// ([`ColorGlyphs::push`]) and emoji images, in spans with their text.
@@ -163,7 +150,7 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
             }],
         };
         let mut ops = Vec::new();
-        let strut = strut(res.fonts, None);
+        let strut = InvisibleGlyph::space_font(res.fonts, None);
         res.colors.push(
             op,
             strut,
@@ -182,15 +169,13 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
                     .paint_in(i.key, i.rect, i.placement, &NO_RADII, ops);
             }
         };
-        match i.text.as_deref().filter(|t| !t.is_empty()) {
-            Some(text) => {
-                let space = strut(res.fonts, Some(i.font)).and_then(|k| {
-                    InvisibleGlyph::space(res.fonts, k, i.size, (0.0, 0.0), i.rect.w)
-                });
-                span(&mut ops, text, space, draw);
-            }
-            None => draw(&mut ops),
-        }
+        let space = SpaceAt {
+            font: Some(i.font),
+            size: i.size,
+            at: (0.0, 0.0),
+            width: i.rect.w,
+        };
+        alt_span(&mut ops, res.fonts, i.text.as_deref(), space, draw);
         out.push((Frame::of(i.x, i.y, i.rotate, i.scale_x), ops));
     }
     out

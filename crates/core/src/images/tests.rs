@@ -314,8 +314,10 @@ fn painted_ops(node: &str) -> Vec<crate::paint::Op> {
         line_boxes: None,
         ctm: None,
     };
+    let no_fonts = crate::FontStore::new();
+    let fonts = crate::fonts::FontSet::load(&doc, &no_fonts).unwrap();
     let mut ops = Vec::new();
-    set.paint(&doc.pages[0].children[0], &geo, &ctx, &mut ops);
+    set.paint(&doc.pages[0].children[0], &geo, &ctx, &fonts, &mut ops);
     ops
 }
 

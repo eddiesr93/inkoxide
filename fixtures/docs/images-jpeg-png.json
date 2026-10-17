@@ -82,6 +82,7 @@
         {
          "type": "image",
          "src": "photo",
+         "alt": "Harbour photo",
          "fit": "fill",
          "style": {
           "width": 150,

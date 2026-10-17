@@ -17,6 +17,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - The `inkoxide` and `inkoxide-cli` crates have their crates.io metadata: a README each, the
   licence, keywords and categories. The packages leave out the tests and benchmarks, which read
   fixtures outside the crate.
+- `@inkoxide/render`: `<Svg>` and `<Canvas>` take `alt`, as `<Image>` does.
 
 ### Changed
 
@@ -31,6 +32,12 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
 - `@inkoxide/render/browser`: the types of `generate` take `signal` and `timeoutMs` (its
   `GenerateOptions` is `BrowserRenderOptions`); they already worked at run time.
+- `alt` on a block `<Image>` is no longer dropped: an image node takes `alt` (see the schema
+  changelog), and copying, searching and screen readers get it for the image, as they do for an
+  image in text.
+- The glyphs a form field shows, and those embedded for editing it, map to their characters in
+  the font's `ToUnicode` map: text extraction from field appearances works, and veraPDF's PDF/UA
+  check no longer reports them (ISO 14289-1, 7.21.7).
 
 ### Repository
 

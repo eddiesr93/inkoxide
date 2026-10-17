@@ -539,10 +539,7 @@ export interface ImageProps extends Omit<Flow, 'children'> {
    */
   src: ImageSrc;
   fit?: 'fill' | 'contain' | 'cover' | 'none';
-  /**
-   * Inside a `<Text>`: the text the image copies and searches as (its alternative text, at most
-   * 1024 characters).
-   */
+  /** The text the image copies and searches as: its alternative text, at most 1024 characters. */
   alt?: string;
 }
 
@@ -805,6 +802,8 @@ export interface SvgProps extends SvgPresentation {
   fixed?: boolean;
   /** Outlines the drawing's box. */
   debug?: boolean;
+  /** The text the drawing copies and searches as: its alternative text, at most 1024 characters. */
+  alt?: string;
 }
 
 export interface PathProps extends SvgPresentation {

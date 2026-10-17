@@ -247,9 +247,9 @@ fn wavy_decorations_are_drawn_where_the_page_shows_them() {
     }
 }
 
-/// The text of images in text counts as the file holds it: each image is
-/// in a span with its text, an inline image's `alt` or a colour glyph's
-/// text, UTF-16 in hex when it is not printable ASCII.
+/// The text of images counts as the file holds it: each image is in a span
+/// with its text, an image's `alt` or a colour glyph's text, UTF-16 in hex
+/// when it is not printable ASCII.
 #[test]
 fn image_text_repeated_on_every_page_is_counted() {
     let mut images = ImageStore::new();
@@ -289,9 +289,15 @@ fn image_text_repeated_on_every_page_is_counted() {
                "pages":[{{"size":{{"width":595,"height":842}},"children":[{children}]}}]}}"#
         )
     };
+    let block = |pages: &str| {
+        let one = format!(r#"{{"type":"image","src":"dot","alt":"{alt}","style":{{"width":1}}}}"#);
+        let images = [one.as_str(); 100].join(",");
+        format!(r#"{{"type":"box","break":{{"fixed":true}},{pages}"children":[{images}]}}"#)
+    };
     for (what, every, first_only) in [
         ("inline images", inline(""), inline(r#""pages":"first","#)),
         ("colour glyphs", emoji(""), emoji(r#""pages":"first","#)),
+        ("image nodes", block(""), block(r#""pages":"first","#)),
     ] {
         assert_bounded(what, 1000, |n| {
             let d = doc(&format!("{every},{}", tall(n)));

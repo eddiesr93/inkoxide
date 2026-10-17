@@ -751,6 +751,19 @@ fn named_bounds_match_schema() {
         "INVALID_VALUE",
         format!("{run}.image.alt"),
     ));
+    cases.push((
+        "/$defs/ImageNode/properties/alt/maxLength",
+        MAX_ALT as f64,
+        Box::new(move |n| {
+            doc(
+                "",
+                &format!(r#"{{"type":"image","src":"f","alt":"{}"}}"#, chars(n)),
+            )
+        }),
+        MAX_ALT as f64 + 1.0,
+        "INVALID_VALUE",
+        format!("{node}.alt"),
+    ));
     for (pointer, bound, make, past, code, path) in cases {
         let stated = s
             .pointer(pointer)

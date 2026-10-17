@@ -1354,6 +1354,24 @@ describe('notes', () => {
   });
 });
 
+describe('alternative text', () => {
+  it('reaches block images, Svg and Canvas, and an empty one is left out', () => {
+    const r = tree(
+      <View>
+        <Image src="logo" alt="Company logo" />
+        <Image src="logo" alt="" />
+        <Svg width={10} height={10} alt="A red square">
+          <Rect width={10} height={10} fill="red" />
+        </Svg>
+        <Canvas width={10} height={10} alt="A sketch" paint={(p) => p.rect(0, 0, 5, 5).fill('blue')} />
+      </View>,
+    );
+    const nodes = first<BoxNode>(r).children as ImageNode[];
+    expect(nodes.map((n) => n.alt)).toEqual(['Company logo', undefined, 'A red square', 'A sketch']);
+    expect(decode(nodes[2]!.data)).not.toContain('alt=');
+  });
+});
+
 describe('drawings', () => {
   it('serialises Svg primitives to an SVG image', () => {
     const r = tree(

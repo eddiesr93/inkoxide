@@ -76,11 +76,11 @@ def cell(label, img_node):
 FRAME = {"width": 150, "height": 90, "backgroundColor": [0.93, 0.93, 0.93, 1]}
 
 
-def img(src, fit="fill", **style):
+def img(src, fit="fill", alt=None, **style):
     """An image node; without `src` (None) for one that takes inline `data`."""
     s = dict(FRAME)
     s.update(style)
-    return {"type": "image", **({"src": src} if src else {}), "fit": fit, "style": s}
+    return {"type": "image", **({"src": src} if src else {}), **({"alt": alt} if alt else {}), "fit": fit, "style": s}
 
 
 row = lambda *c: {"type": "box", "style": {"flexDirection": "row", "gap": 16, "margin": {"bottom": 16}}, "children": list(c)}
@@ -96,7 +96,7 @@ doc = {
             "children": [
                 text("Images: JPEG passthrough, PNG with alpha, fit modes", 14, margin={"bottom": 12}),
                 row(
-                    cell("fill", img("photo", "fill")),
+                    cell("fill", img("photo", "fill", alt="Harbour photo")),
                     cell("contain", img("photo", "contain")),
                     cell("cover", img("photo", "cover")),
                 ),

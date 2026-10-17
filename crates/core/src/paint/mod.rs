@@ -142,6 +142,52 @@ impl InvisibleGlyph {
             width,
         })
     }
+
+    /// The font of the invisible space in the span of an image:
+    /// `preferred` (the text's own font), or the first font of the
+    /// document with outlines and a space, preferring one without colour
+    /// glyphs.
+    pub fn space_font(
+        fonts: &crate::fonts::FontSet<'_>,
+        preferred: Option<crate::fonts::FontKey>,
+    ) -> Option<crate::fonts::FontKey> {
+        let spaced = |k| Self::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
+        let all = || 0..fonts.fonts.len() as crate::fonts::FontKey;
+        preferred
+            .filter(|&k| spaced(k))
+            .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
+            .or_else(|| all().find(|&k| spaced(k)))
+    }
+}
+
+/// Where the invisible space of an image's span goes: in `font` (or
+/// another, [`InvisibleGlyph::space_font`]) at `size`, `width` wide on the
+/// baseline at `at`.
+#[derive(Clone, Copy)]
+pub(crate) struct SpaceAt {
+    pub font: Option<crate::fonts::FontKey>,
+    pub size: f32,
+    pub at: (f32, f32),
+    pub width: f32,
+}
+
+/// Pushes what `draw` draws; with a non-empty `alt`, inside a span with
+/// that text and the invisible space `space` describes.
+pub(crate) fn alt_span(
+    ops: &mut Vec<Op>,
+    fonts: &crate::fonts::FontSet<'_>,
+    alt: Option<&str>,
+    space: SpaceAt,
+    draw: impl FnOnce(&mut Vec<Op>),
+) {
+    match alt.filter(|a| !a.is_empty()) {
+        Some(alt) => {
+            let glyph = InvisibleGlyph::space_font(fonts, space.font)
+                .and_then(|k| InvisibleGlyph::space(fonts, k, space.size, space.at, space.width));
+            span(ops, alt, glyph, draw);
+        }
+        None => draw(ops),
+    }
 }
 
 /// Pushes what `draw` draws inside a span whose text is `actual_text`
