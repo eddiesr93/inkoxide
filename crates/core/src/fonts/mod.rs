@@ -17,11 +17,11 @@ mod layout;
 mod woff;
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
-use crate::schema::{Document, FontDecl, FontStyle};
+use crate::schema::{Document, FontDecl, FontStyle, FontVariation};
 use crate::InkoxideError;
 
 /// Metrics read once at registration, in font units unless noted.
@@ -54,7 +54,8 @@ pub(crate) struct FontMetrics {
     pub superscript_offset: f32,
     /// Em size of superscripts (OS/2 `ySuperscriptYSize`).
     pub superscript_size: f32,
-    /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType.
+    /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType. A
+    /// variable font's instances are TrueType, from CFF2 outlines too.
     pub cff: bool,
     /// Colour glyphs the engine draws: `COLR` layers or PNG bitmaps
     /// (`CBDT` or `sbix`). See `color.rs`.
@@ -111,10 +112,52 @@ pub struct FontData {
     /// SHA-256 of `bytes`: what caches that outlive the font key it by,
     /// so they need not keep its bytes to tell it from another.
     pub(crate) digest: [u8; 32],
+    /// The metrics of the font, or of a variable font's default instance.
     pub(crate) metrics: FontMetrics,
-    /// Compressed whole font program (see [`FontData::compressed_program`]),
-    /// computed on first use and shared by every later render.
-    compressed: OnceLock<Arc<[u8]>>,
+    /// A variable font's axes; empty for a static font.
+    pub(crate) axes: Box<[Axis]>,
+    /// `fvar` or CFF2 outlines: every program embedded is a static
+    /// TrueType instance, never the variable font itself.
+    pub(crate) variable: bool,
+    /// Compressed whole font program and its length (see
+    /// [`FontData::compressed_program`]), computed on first use and shared
+    /// by every later render.
+    compressed: OnceLock<(Arc<[u8]>, usize)>,
+    /// The instances made so far (see [`FontData::instance`]).
+    instances: Mutex<Vec<Arc<Instance>>>,
+}
+
+/// A variation axis of a variable font, in user space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Axis {
+    pub tag: [u8; 4],
+    pub min: f32,
+    pub default: f32,
+    pub max: f32,
+}
+
+/// Most axes a variable font may have: ttf-parser applies no variation to
+/// a font with more.
+const MAX_AXES: usize = 63;
+
+/// Most instances of one font kept: each keeps its metrics and, once
+/// embedded whole, its program.
+const MAX_INSTANCES: usize = 64;
+
+/// A static instance of a variable font: its location, and what differs
+/// there from the default.
+#[derive(Debug)]
+pub(crate) struct Instance {
+    /// Each axis value that is not the default, clamped to its axis, in
+    /// tag order: equal locations are equal coordinates.
+    pub coords: Box<[([u8; 4], f32)]>,
+    pub metrics: FontMetrics,
+    /// SHA-256 of the font's digest and the coordinates: what the program
+    /// caches key it by.
+    pub digest: [u8; 32],
+    /// Compressed whole program of the instance and its length, on first
+    /// use.
+    compressed: OnceLock<(Arc<[u8]>, usize)>,
 }
 
 impl FontData {
@@ -155,16 +198,16 @@ impl FontData {
         let face = ttf_parser::Face::parse(&bytes, 0)
             .map_err(|e| err(&format!("not a valid TrueType/OpenType font ({e})")))?;
         let tables = face.tables();
-        if face.is_variable() || tables.cff2.is_some() {
-            return Err(err(
-                "variable fonts are not supported; register a static instance",
-            ));
+        let variable = face.is_variable() || tables.cff2.is_some();
+        if let Some(problem) = variable.then(|| variable_problem(&face, &bytes)).flatten() {
+            return Err(err(problem));
         }
         // Parsed only with their companion tables (`CBLC`, `CPAL`).
         let bitmaps = tables.cbdt.is_some() || tables.sbix.is_some();
         let color = bitmaps || tables.colr.is_some();
-        let color_only = tables.glyf.is_none() && tables.cff.is_none() && bitmaps;
-        let cff = tables.glyf.is_none() && !color_only;
+        let outlines = tables.glyf.is_some() || tables.cff.is_some() || tables.cff2.is_some();
+        let color_only = !outlines && bitmaps;
+        let cff = tables.glyf.is_none() && tables.cff2.is_none() && !color_only;
         if cff && cff::reals_fit(&bytes) == Some(false) {
             return Err(err(
                 "the CFF table is malformed (a number in a DICT is out of range)",
@@ -188,103 +231,280 @@ impl FontData {
                  coverage table)"
             )));
         }
-
-        let upem = f32::from(face.units_per_em());
-        let bbox = face.global_bounding_box();
-        let ascender = f32::from(face.ascender());
-        let post_script_name = face
-            .names()
+        let axes = face
+            .variation_axes()
             .into_iter()
-            .find(|n| n.name_id == ttf_parser::name_id::POST_SCRIPT_NAME && n.is_unicode())
-            .and_then(|n| n.to_string())
-            .unwrap_or_else(|| id.to_string());
-        let underline = face.underline_metrics();
-        let strikeout = face.strikeout_metrics();
-        let x_height = face
-            .x_height()
-            .filter(|&h| h > 0)
-            .map(f32::from)
-            .or_else(|| {
-                let x = face.glyph_index('x')?;
-                face.glyph_bounding_box(x).map(|b| f32::from(b.y_max))
+            .map(|a| Axis {
+                tag: a.tag.to_bytes(),
+                min: a.min_value,
+                default: a.def_value,
+                max: a.max_value,
             })
-            .filter(|&h| h > 0.0)
-            .unwrap_or(upem * 0.5);
-        // Fonts without an OS/2 table, or with sizes of 0, get values close
-        // to what browsers use.
-        let script = |m: Option<ttf_parser::ScriptMetrics>, offset: f32| {
-            m.filter(|m| m.y_size > 0)
-                .map_or((upem * offset, upem * SCRIPT_SIZE), |m| {
-                    (f32::from(m.y_offset), f32::from(m.y_size))
-                })
-        };
-        let (subscript_offset, subscript_size) = script(face.subscript_metrics(), SUBSCRIPT_OFFSET);
-        let (superscript_offset, superscript_size) =
-            script(face.superscript_metrics(), SUPERSCRIPT_OFFSET);
-        let metrics = FontMetrics {
-            units_per_em: upem,
-            ascender,
-            descender: f32::from(face.descender()),
-            line_gap: f32::from(face.line_gap()),
-            cap_height: face.capital_height().map_or(ascender * 0.7, f32::from),
-            italic_angle: face.italic_angle(),
-            bbox: [
-                f32::from(bbox.x_min),
-                f32::from(bbox.y_min),
-                f32::from(bbox.x_max),
-                f32::from(bbox.y_max),
-            ],
-            weight: face.weight().to_number(),
-            is_italic: face.is_italic(),
-            is_fixed_pitch: face.is_monospaced(),
-            // OS/2 sFamilyClass (offset 30): IBM classes 1..=7 are serifs.
-            is_serif: face
-                .raw_face()
-                .table(ttf_parser::Tag::from_bytes(b"OS/2"))
-                .and_then(|t| t.get(30))
-                .is_some_and(|class| (1..=7).contains(class)),
-            post_script_name: sanitize_name(&post_script_name),
-            underline_position: underline.map_or(-upem * 0.1, |m| f32::from(m.position)),
-            underline_thickness: underline.map_or(upem * 0.05, |m| f32::from(m.thickness)),
-            strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
-            strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
-            x_height,
-            subscript_offset,
-            subscript_size,
-            superscript_offset,
-            superscript_size,
-            cff,
-            color,
-            color_only,
-        };
+            .collect();
+        let metrics = read_metrics(&face, id, cff, color, color_only);
         Ok(Self {
             digest: <sha2::Sha256 as sha2::Digest>::digest(&bytes).into(),
             bytes,
             metrics,
+            axes,
+            variable,
             compressed: OnceLock::new(),
+            instances: Mutex::new(Vec::new()),
         })
     }
 
-    /// The whole font program (`FontFile2`, or the CID-keyed CFF for
-    /// `FontFile3`), passed through `compress` on first use; later calls,
+    /// The instance at `variations` (user-space axis values; an axis the
+    /// font lacks is left out, a value is clamped to its axis), made once
+    /// and kept; `None` for the default location, a static font's only one.
+    pub(crate) fn instance(&self, variations: &[FontVariation]) -> Option<Arc<Instance>> {
+        let mut coords: Vec<([u8; 4], f32)> = Vec::new();
+        for axis in &self.axes {
+            // The last value written for the axis wins, as in CSS.
+            let Some(v) = variations
+                .iter()
+                .rev()
+                .find(|v| v.tag.as_bytes() == axis.tag)
+                .map(|v| v.value)
+                .filter(|v| v.is_finite())
+            else {
+                continue;
+            };
+            let v = v.clamp(axis.min.min(axis.max), axis.max.max(axis.min));
+            if v != axis.default && !coords.iter().any(|(t, _)| *t == axis.tag) {
+                coords.push((axis.tag, v));
+            }
+        }
+        if coords.is_empty() {
+            return None;
+        }
+        coords.sort_by_key(|(t, _)| *t);
+        let same = |i: &Instance| {
+            i.coords.len() == coords.len()
+                && i.coords
+                    .iter()
+                    .zip(&coords)
+                    .all(|(a, b)| a.0 == b.0 && a.1.to_bits() == b.1.to_bits())
+        };
+        let mut kept = self
+            .instances
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(i) = kept.iter().find(|i| same(i)) {
+            return Some(i.clone());
+        }
+        let instance = Arc::new(self.make_instance(coords.into_boxed_slice()));
+        if kept.len() >= MAX_INSTANCES {
+            kept.remove(0);
+        }
+        kept.push(instance.clone());
+        Some(instance)
+    }
+
+    fn make_instance(&self, coords: Box<[([u8; 4], f32)]>) -> Instance {
+        let base = &self.metrics;
+        let metrics = match ttf_parser::Face::parse(&self.bytes, 0) {
+            Ok(mut face) => {
+                for &(tag, v) in &coords {
+                    face.set_variation(ttf_parser::Tag::from_bytes(&tag), v);
+                }
+                let mut m = read_metrics(&face, "", base.cff, base.color, base.color_only);
+                let coord = |tag: &[u8; 4]| coords.iter().find(|(t, _)| t == tag).map(|(_, v)| *v);
+                m.weight =
+                    coord(b"wght").map_or(base.weight, |w| w.round().clamp(1.0, 1000.0) as u16);
+                m.italic_angle = coord(b"slnt").unwrap_or(base.italic_angle);
+                m.is_italic = base.is_italic
+                    || coord(b"ital").is_some_and(|v| v >= 0.5)
+                    || coord(b"slnt").is_some_and(|v| v != 0.0);
+                m.post_script_name = instance_name(&base.post_script_name, &coords);
+                m
+            }
+            // It parsed when it was registered.
+            Err(_) => base.clone(),
+        };
+        let mut h = <sha2::Sha256 as sha2::Digest>::new();
+        sha2::Digest::update(&mut h, self.digest);
+        for (tag, v) in &coords {
+            sha2::Digest::update(&mut h, tag);
+            sha2::Digest::update(&mut h, v.to_bits().to_be_bytes());
+        }
+        Instance {
+            coords,
+            metrics,
+            digest: sha2::Digest::finalize(h).into(),
+            compressed: OnceLock::new(),
+        }
+    }
+
+    /// The whole font program of `instance` (`None`: the default one),
+    /// and its length before `compress`: the font itself (`FontFile2`),
+    /// its CID-keyed CFF (`FontFile3`), or a variable font's instance over
+    /// every glyph. Passed through `compress` on first use; later calls,
     /// in this render or another, return that first result.
     pub(crate) fn compressed_program(
         &self,
+        instance: Option<&Instance>,
         compress: impl FnOnce(&[u8]) -> Result<Vec<u8>, InkoxideError>,
-    ) -> Result<Arc<[u8]>, InkoxideError> {
-        if let Some(c) = self.compressed.get() {
+    ) -> Result<(Arc<[u8]>, usize), InkoxideError> {
+        let cell = instance.map_or(&self.compressed, |i| &i.compressed);
+        if let Some(c) = cell.get() {
             return Ok(c.clone());
         }
-        let data: Arc<[u8]> = if self.metrics.cff {
+        let program: std::borrow::Cow<'_, [u8]> = if self.variable {
+            let all: Vec<u16> = (0..self.glyph_count()).collect();
+            let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&all);
+            let coords = instance.map_or(&[][..], |i| &i.coords);
+            subsetter::subset_with_variations(&self.bytes, 0, &subsetter_coords(coords), &remapper)
+                .map_err(|e| {
+                    InkoxideError::Font(format!(
+                        "font `{}`: its instance cannot be made ({e})",
+                        self.metrics.post_script_name
+                    ))
+                })?
+                .into()
+        } else if self.metrics.cff {
             // Checked at registration.
-            let program = cff::full_program(&self.bytes)
-                .ok_or_else(|| InkoxideError::Internal("CFF conversion failed".into()))?;
-            compress(&program)?.into()
+            cff::full_program(&self.bytes)
+                .ok_or_else(|| InkoxideError::Internal("CFF conversion failed".into()))?
+                .into()
         } else {
-            compress(&self.bytes)?.into()
+            (&self.bytes[..]).into()
         };
-        Ok(self.compressed.get_or_init(|| data).clone())
+        let data = (compress(&program)?.into(), program.len());
+        Ok(cell.get_or_init(|| data).clone())
     }
+
+    /// Number of glyphs in the font (0 when it no longer parses).
+    fn glyph_count(&self) -> u16 {
+        ttf_parser::Face::parse(&self.bytes, 0).map_or(0, |f| f.number_of_glyphs())
+    }
+}
+
+/// Coordinates as the subsetter takes them.
+fn subsetter_coords(coords: &[([u8; 4], f32)]) -> Vec<(subsetter::Tag, f32)> {
+    coords
+        .iter()
+        .map(|(tag, v)| (subsetter::Tag::new(tag), *v))
+        .collect()
+}
+
+/// The metrics of `face` at its variation coordinates (ttf-parser applies
+/// `MVAR`); `fallback_name` is the PostScript name of a font without one.
+fn read_metrics(
+    face: &ttf_parser::Face<'_>,
+    fallback_name: &str,
+    cff: bool,
+    color: bool,
+    color_only: bool,
+) -> FontMetrics {
+    let upem = f32::from(face.units_per_em());
+    let bbox = face.global_bounding_box();
+    let ascender = f32::from(face.ascender());
+    let post_script_name = face
+        .names()
+        .into_iter()
+        .find(|n| n.name_id == ttf_parser::name_id::POST_SCRIPT_NAME && n.is_unicode())
+        .and_then(|n| n.to_string())
+        .unwrap_or_else(|| fallback_name.to_string());
+    let underline = face.underline_metrics();
+    let strikeout = face.strikeout_metrics();
+    let x_height = face
+        .x_height()
+        .filter(|&h| h > 0)
+        .map(f32::from)
+        .or_else(|| {
+            let x = face.glyph_index('x')?;
+            face.glyph_bounding_box(x).map(|b| f32::from(b.y_max))
+        })
+        .filter(|&h| h > 0.0)
+        .unwrap_or(upem * 0.5);
+    // Fonts without an OS/2 table, or with sizes of 0, get values close
+    // to what browsers use.
+    let script = |m: Option<ttf_parser::ScriptMetrics>, offset: f32| {
+        m.filter(|m| m.y_size > 0)
+            .map_or((upem * offset, upem * SCRIPT_SIZE), |m| {
+                (f32::from(m.y_offset), f32::from(m.y_size))
+            })
+    };
+    let (subscript_offset, subscript_size) = script(face.subscript_metrics(), SUBSCRIPT_OFFSET);
+    let (superscript_offset, superscript_size) =
+        script(face.superscript_metrics(), SUPERSCRIPT_OFFSET);
+    FontMetrics {
+        units_per_em: upem,
+        ascender,
+        descender: f32::from(face.descender()),
+        line_gap: f32::from(face.line_gap()),
+        cap_height: face.capital_height().map_or(ascender * 0.7, f32::from),
+        italic_angle: face.italic_angle(),
+        bbox: [
+            f32::from(bbox.x_min),
+            f32::from(bbox.y_min),
+            f32::from(bbox.x_max),
+            f32::from(bbox.y_max),
+        ],
+        weight: face.weight().to_number(),
+        is_italic: face.is_italic(),
+        is_fixed_pitch: face.is_monospaced(),
+        // OS/2 sFamilyClass (offset 30): IBM classes 1..=7 are serifs.
+        is_serif: face
+            .raw_face()
+            .table(ttf_parser::Tag::from_bytes(b"OS/2"))
+            .and_then(|t| t.get(30))
+            .is_some_and(|class| (1..=7).contains(class)),
+        post_script_name: sanitize_name(&post_script_name),
+        underline_position: underline.map_or(-upem * 0.1, |m| f32::from(m.position)),
+        underline_thickness: underline.map_or(upem * 0.05, |m| f32::from(m.thickness)),
+        strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
+        strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
+        x_height,
+        subscript_offset,
+        subscript_size,
+        superscript_offset,
+        superscript_size,
+        cff,
+        color,
+        color_only,
+    }
+}
+
+/// Why variable font `face` (`bytes`) cannot be used, if it cannot: the
+/// two parsers that read it, ttf-parser for layout and skrifa (in the
+/// subsetter) for the outlines embedded, must agree on it.
+fn variable_problem(face: &ttf_parser::Face<'_>, bytes: &[u8]) -> Option<&'static str> {
+    let tables = face.tables();
+    if tables.glyf.is_none() && tables.cff2.is_none() {
+        return Some("variable fonts need TrueType (glyf) or CFF2 outlines");
+    }
+    if usize::from(face.variation_axes().len()) > MAX_AXES {
+        return Some("variable fonts with more than 63 axes are not supported");
+    }
+    let avar = face.raw_face().table(ttf_parser::Tag::from_bytes(b"avar"));
+    if avar.is_some_and(|t| t.get(..2) != Some(&[0, 1])) {
+        return Some("only version 1.0 of the avar table is supported (this font has another)");
+    }
+    let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&[0]);
+    if subsetter::subset_with_variations(bytes, 0, &[], &remapper).is_err() {
+        return Some("the outlines of the variable font cannot be read");
+    }
+    None
+}
+
+/// The PostScript name of an instance: the font's, and each coordinate
+/// with its axis (`Inter-Regular_650wght`, after Adobe Technical Note
+/// #5902), cut to 63 characters with a hash in place of the rest.
+fn instance_name(base: &str, coords: &[([u8; 4], f32)]) -> String {
+    let mut name = base.to_string();
+    for (tag, v) in coords {
+        let v = (f64::from(*v) * 1000.0).round() / 1000.0;
+        name.push('_');
+        name.push_str(&v.to_string());
+        name.extend(tag.iter().map(|&b| char::from(b)));
+    }
+    let name = sanitize_name(&name);
+    if name.len() <= 63 {
+        return name;
+    }
+    let hash = xxhash_rust::xxh3::xxh3_64(name.as_bytes());
+    format!("{}-{hash:016X}", &name[..46])
 }
 
 /// A font program cut down to some glyphs, uncompressed. Its CIDs are
@@ -299,9 +519,10 @@ pub(crate) struct Subset {
 }
 
 impl FontData {
-    /// The program with only `glyphs` (sorted); `None` when the subsetter
-    /// rejects the font.
-    pub(crate) fn subset(&self, glyphs: &[u16]) -> Option<Subset> {
+    /// The program of `instance` (`None`: the default one) with only
+    /// `glyphs` (sorted); `None` when the subsetter rejects the font. A
+    /// variable font's is a static TrueType instance.
+    pub(crate) fn subset(&self, instance: Option<&Instance>, glyphs: &[u16]) -> Option<Subset> {
         if self.metrics.cff {
             return Some(Subset {
                 program: cff::subset_program(&self.bytes, glyphs)?,
@@ -309,7 +530,13 @@ impl FontData {
             });
         }
         let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(glyphs);
-        let program = subsetter::subset(&self.bytes, 0, &remapper).ok()?;
+        let program = if self.variable {
+            let coords = instance.map_or(&[][..], |i| &i.coords);
+            subsetter::subset_with_variations(&self.bytes, 0, &subsetter_coords(coords), &remapper)
+        } else {
+            subsetter::subset(&self.bytes, 0, &remapper)
+        }
+        .ok()?;
         let max = glyphs.last().copied().unwrap_or(0);
         let mut map = vec![0u8; 2 * (usize::from(max) + 1)];
         for &g in glyphs {
@@ -360,7 +587,10 @@ impl FontStore {
     /// cannot be decoded, and for fonts that cannot be used:
     ///
     /// - font collections (`.ttc`): register each font on its own;
-    /// - variable fonts (and CFF2 outlines): register a static instance;
+    /// - variable fonts whose outlines are neither TrueType (`glyf`) nor
+    ///   CFF2, that have more than 63 axes or an `avar` table other than
+    ///   version 1.0, or whose outlines the instancer cannot read (others
+    ///   are accepted: a declaration's `variations` picks the instance);
     /// - fonts with neither TrueType (`glyf`) nor CFF outlines that can be
     ///   embedded, nor colour bitmaps (`CBDT` or `sbix`): a font with
     ///   colour bitmaps and no outlines is accepted, never embedded, and
@@ -420,7 +650,11 @@ type Needed = Arc<crate::error::Missing>;
 pub(crate) struct LoadedFont<'a> {
     /// The id the document declares it under.
     pub id: &'a str,
+    /// The id of the registered font it draws with.
+    source: &'a str,
     pub data: &'a FontData,
+    /// A variable font's instance, when not the default one.
+    pub instance: Option<Arc<Instance>>,
     face: ttf_parser::Face<'a>,
     /// For a deferred font that is not registered: another font's data
     /// stands in, it has no glyph, and asking for one notes it here.
@@ -428,6 +662,39 @@ pub(crate) struct LoadedFont<'a> {
 }
 
 impl LoadedFont<'_> {
+    /// Its metrics: the instance's, or the font's.
+    pub fn metrics(&self) -> &FontMetrics {
+        self.instance
+            .as_ref()
+            .map_or(&self.data.metrics, |i| &i.metrics)
+    }
+
+    /// The variation coordinates it draws at (empty: the default ones).
+    pub fn coords(&self) -> &[([u8; 4], f32)] {
+        self.instance.as_ref().map_or(&[], |i| &i.coords)
+    }
+
+    /// What tells its programs from those of other fonts and instances.
+    pub fn digest(&self) -> [u8; 32] {
+        self.instance
+            .as_ref()
+            .map_or(self.data.digest, |i| i.digest)
+    }
+
+    /// See [`FontData::subset`].
+    pub fn subset(&self, glyphs: &[u16]) -> Option<Subset> {
+        self.data.subset(self.instance.as_deref(), glyphs)
+    }
+
+    /// See [`FontData::compressed_program`].
+    pub fn compressed_program(
+        &self,
+        compress: impl FnOnce(&[u8]) -> Result<Vec<u8>, InkoxideError>,
+    ) -> Result<(Arc<[u8]>, usize), InkoxideError> {
+        self.data
+            .compressed_program(self.instance.as_deref(), compress)
+    }
+
     /// Whether it stands in for a deferred font that is not registered.
     pub fn is_deferred(&self) -> bool {
         self.deferred.is_some()
@@ -436,7 +703,7 @@ impl LoadedFont<'_> {
     /// Notes that the render needs the deferred font this stands in for.
     fn note_needed(&self) {
         if let Some(needed) = &self.deferred {
-            needed.note(self.id);
+            needed.note(self.source);
         }
     }
 
@@ -452,7 +719,7 @@ impl LoadedFont<'_> {
 
     /// Scale from font units to points at `size`.
     pub fn scale(&self, size: f32) -> f32 {
-        size / self.data.metrics.units_per_em
+        size / self.metrics().units_per_em
     }
 
     pub fn glyph(&self, c: char) -> Option<u16> {
@@ -575,34 +842,57 @@ impl<'a> FontSet<'a> {
         let needed = Needed::default();
         let missing = |id: &str| store.get(id).is_none() && deferred.iter().any(|d| d == id);
         // Any registered font of the document can stand in.
-        let stand_in = doc.fonts.iter().find_map(|d| store.get(&d.id));
+        let stand_in = doc.fonts.iter().find_map(|d| store.get(d.source()));
         let mut fonts = Vec::with_capacity(doc.fonts.len());
         let mut by_id = BTreeMap::new();
         for decl in &doc.fonts {
-            let is_deferred = missing(&decl.id);
+            let source = decl.source();
+            let is_deferred = missing(source);
             let data = if is_deferred {
                 stand_in.ok_or_else(|| {
+                    let mut fonts: Vec<String> = Vec::new();
+                    for d in &doc.fonts {
+                        if missing(d.source()) && !fonts.iter().any(|f| f == d.source()) {
+                            fonts.push(d.source().to_string());
+                        }
+                    }
                     InkoxideError::NotLoaded(crate::NotLoaded {
-                        fonts: doc
-                            .fonts
-                            .iter()
-                            .map(|d| d.id.clone())
-                            .filter(|id| missing(id))
-                            .collect(),
+                        fonts,
                         hyphenation: Vec::new(),
                     })
                 })?
             } else {
-                store.get(&decl.id).ok_or_else(|| {
-                    InkoxideError::Internal(format!("font `{}` vanished after validation", decl.id))
+                store.get(source).ok_or_else(|| {
+                    InkoxideError::Internal(format!("font `{source}` vanished after validation"))
                 })?
             };
-            let face = ttf_parser::Face::parse(&data.bytes, 0)
+            let mut face = ttf_parser::Face::parse(&data.bytes, 0)
                 .map_err(|_| InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id)))?;
+            let instance = match &decl.variations {
+                Some(v) if !is_deferred => {
+                    for v in v
+                        .iter()
+                        .filter(|v| !data.axes.iter().any(|a| a.tag == v.tag.as_bytes()))
+                    {
+                        tracing::warn!(
+                            "font `{}`: `{source}` has no `{}` axis; the value is ignored",
+                            decl.id,
+                            v.tag
+                        );
+                    }
+                    data.instance(v)
+                }
+                _ => None,
+            };
+            for &(tag, v) in instance.as_ref().map_or(&[][..], |i| &i.coords) {
+                face.set_variation(ttf_parser::Tag::from_bytes(&tag), v);
+            }
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
             fonts.push(LoadedFont {
                 id: &decl.id,
+                source,
                 data,
+                instance,
                 face,
                 deferred: is_deferred.then(|| needed.clone()),
             });
@@ -698,6 +988,131 @@ mod tests {
         assert_eq!(ids, ["NotoSans-Regular", "Inter-Regular"]);
     }
 
+    fn variations(pairs: &[(&str, f32)]) -> Vec<FontVariation> {
+        pairs
+            .iter()
+            .map(|(tag, value)| FontVariation {
+                tag: (*tag).to_string(),
+                value: *value,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn registers_variable_fonts_the_two_parsers_agree_on() {
+        let mut s = FontStore::new();
+        s.register("glyf", fixture("VarTest-glyf.ttf")).unwrap();
+        s.register("cff2", fixture("VarTest-CFF2.otf")).unwrap();
+        for id in ["glyf", "cff2"] {
+            let data = s.get(id).unwrap();
+            assert!(data.variable && !data.metrics.cff, "{id}");
+            let tags: Vec<[u8; 4]> = data.axes.iter().map(|a| a.tag).collect();
+            assert_eq!(tags, [*b"wght", *b"wdth"], "{id}");
+        }
+        for (file, why) in [
+            ("limits/var-avar2.ttf", "version 1.0 of the avar table"),
+            ("limits/var-64-axes.ttf", "more than 63 axes"),
+        ] {
+            let e = s.register("x", fixture(file)).unwrap_err().to_string();
+            assert!(e.contains(why), "{file}: {e}");
+        }
+    }
+
+    #[test]
+    fn instances_are_canonical_and_have_their_own_metrics() {
+        let mut s = FontStore::new();
+        s.register("v", fixture("VarTest-glyf.ttf")).unwrap();
+        let data = s.get("v").unwrap();
+        // The default location, an axis the font lacks, nothing.
+        assert!(data.instance(&variations(&[("wght", 400.0)])).is_none());
+        assert!(data.instance(&variations(&[("ZZZZ", 3.0)])).is_none());
+        assert!(data.instance(&[]).is_none());
+        // Clamped, defaults left out, the last value of an axis kept.
+        let a = data
+            .instance(&variations(&[
+                ("wght", 100.0),
+                ("wdth", 100.0),
+                ("wght", 2000.0),
+            ]))
+            .unwrap();
+        let b = data.instance(&variations(&[("wght", 900.0)])).unwrap();
+        assert!(Arc::ptr_eq(&a, &b));
+        assert_eq!(&*a.coords, &[(*b"wght", 900.0)]);
+        assert_eq!(a.metrics.weight, 900);
+        // MVAR moves the x-height and cap height.
+        assert_eq!((a.metrics.x_height, a.metrics.cap_height), (520.0, 710.0));
+        assert_eq!(data.metrics.x_height, 500.0);
+        assert_eq!(a.metrics.post_script_name, "VarTest-Regular_900wght");
+        assert_ne!(a.digest, data.digest);
+        let c = data
+            .instance(&variations(&[("wdth", 75.0), ("wght", 700.0)]))
+            .unwrap();
+        assert_eq!(&*c.coords, &[(*b"wdth", 75.0), (*b"wght", 700.0)]);
+        assert_eq!(c.metrics.post_script_name, "VarTest-Regular_75wdth_700wght");
+    }
+
+    #[test]
+    fn instances_embed_static_truetype_with_the_advances_layout_used() {
+        let mut store = FontStore::new();
+        store.register("glyf", fixture("VarTest-glyf.ttf")).unwrap();
+        store.register("cff2", fixture("VarTest-CFF2.otf")).unwrap();
+        let mut decls = Vec::new();
+        for source in ["glyf", "cff2"] {
+            for (i, v) in [
+                "",
+                r#""wght":100"#,
+                r#""wght":650,"wdth":60"#,
+                r#""wght":900"#,
+            ]
+            .iter()
+            .enumerate()
+            {
+                decls.push(format!(
+                    r#"{{"id":"{source}{i}","family":"V","source":"{source}","variations":{{{v}}}}}"#
+                ));
+            }
+        }
+        let json = format!(
+            r#"{{"version":1,"fonts":[{}],"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#,
+            decls.join(",")
+        );
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let set = FontSet::load(&doc, &store).unwrap();
+        for font in &set.fonts {
+            let glyphs: Vec<u16> = (0..font.glyph_count()).collect();
+            let sub = font.subset(&glyphs).unwrap();
+            let map = sub.cid_to_gid.as_deref().unwrap();
+            let face = ttf_parser::Face::parse(&sub.program, 0).unwrap();
+            assert!(
+                !face.is_variable() && face.tables().glyf.is_some(),
+                "{}",
+                font.id
+            );
+            for g in glyphs {
+                let new =
+                    u16::from_be_bytes([map[2 * usize::from(g)], map[2 * usize::from(g) + 1]]);
+                let embedded = face.glyph_hor_advance(ttf_parser::GlyphId(new)).unwrap();
+                assert_eq!(
+                    f32::from(embedded),
+                    font.advance(g),
+                    "{} glyph {g}",
+                    font.id
+                );
+            }
+            let (whole, length) = font.compressed_program(|p| Ok(p.to_vec())).unwrap();
+            let face = ttf_parser::Face::parse(&whole, 0).unwrap();
+            assert!(!face.is_variable() && face.number_of_glyphs() == font.glyph_count());
+            assert_eq!(length, whole.len());
+        }
+        // The stems grow with the weight.
+        let stem = |key: FontKey| {
+            let font = set.get(key);
+            font.glyph_bbox(font.glyph('I').unwrap()).unwrap()[2]
+        };
+        assert!(stem(1) < stem(0) && stem(0) < stem(3));
+        assert_eq!(stem(5), stem(1));
+    }
+
     #[test]
     fn registers_cff() {
         let mut s = FontStore::new();
@@ -706,7 +1121,7 @@ mod tests {
         let bold = s.get("Bold").unwrap();
         assert!(bold.metrics.cff);
         assert_eq!(bold.metrics.weight, 700);
-        let program = bold.compressed_program(|p| Ok(p.to_vec())).unwrap();
+        let (program, _) = bold.compressed_program(None, |p| Ok(p.to_vec())).unwrap();
         assert!(!program.is_empty());
     }
 
@@ -770,7 +1185,11 @@ mod tests {
         let (a, b) = (s.get("plain").unwrap(), s.get("web").unwrap());
         assert_eq!(format!("{:?}", a.metrics), format!("{:?}", b.metrics));
         assert_eq!(glyphs(&a.bytes), glyphs(&b.bytes));
-        assert!(!b.compressed_program(|p| Ok(p.to_vec())).unwrap().is_empty());
+        assert!(!b
+            .compressed_program(None, |p| Ok(p.to_vec()))
+            .unwrap()
+            .0
+            .is_empty());
     }
 
     #[test]

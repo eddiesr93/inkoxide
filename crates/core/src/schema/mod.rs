@@ -104,6 +104,28 @@ pub struct FontDecl {
     pub weight: u16,
     #[serde(default)]
     pub style: FontStyle,
+    /// The registered font it draws with; `id` when absent. One variable
+    /// font can then serve several declarations.
+    pub source: Option<String>,
+    /// A variable font's axis values (user space), in the order written:
+    /// the static instance it draws with.
+    #[serde(default, deserialize_with = "de::font_variations")]
+    pub variations: Option<Box<[FontVariation]>>,
+}
+
+impl FontDecl {
+    /// The id of the registered font it draws with.
+    pub fn source(&self) -> &str {
+        self.source.as_deref().unwrap_or(&self.id)
+    }
+}
+
+/// One axis value of a [`FontDecl`]'s `variations`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FontVariation {
+    /// Four printable ASCII characters, once validated.
+    pub tag: String,
+    pub value: f32,
 }
 
 fn default_weight() -> u16 {

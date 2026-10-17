@@ -241,6 +241,13 @@ pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
 pub(crate) const MAX_ORPHANS: u32 = 100;
 /// Most `fontFeatures` of a run.
 pub(crate) const MAX_FONT_FEATURES: usize = 32;
+/// Most axis values a font declaration's `variations` takes.
+pub(crate) const MAX_VARIATIONS: usize = 16;
+/// Largest axis value, either way: the range of the 16.16 numbers `fvar`
+/// stores.
+pub(crate) const MAX_VARIATION_VALUE: f32 = 32_767.0;
+/// Most font declarations with `variations`: each embeds a program.
+pub(crate) const MAX_FONT_INSTANCES: usize = 64;
 /// Largest value of a font feature.
 pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
 
@@ -403,16 +410,33 @@ impl<'a> Checker<'a> {
                     if !(1..=MAX_WEIGHT).contains(&f.weight) {
                         c.err(Code::OutOfRange, Some("weight"), format!("font weight must be within 1..={MAX_WEIGHT}"));
                     }
-                    if !c.fonts.contains(&f.id) && !c.deferred.contains(&f.id) {
+                    let (field, source) = match &f.source {
+                        Some(source) => (Some("source"), source),
+                        None => (Some("id"), &f.id),
+                    };
+                    if f.source.as_ref().is_some_and(|s| !c.id(Some("source"), s)) {
+                        // Reported by `id`.
+                    } else if !c.fonts.contains(source) && !c.deferred.contains(source) {
                         c.err(
                             Code::FontNotRegistered,
-                            Some("id"),
-                            format!("font `{}` is declared but no font data was registered under that id", f.id),
+                            field,
+                            format!("font `{source}` is declared but no font data was registered under that id"),
                         );
+                    }
+                    if let Some(v) = &f.variations {
+                        c.variations(v);
                     }
                 });
             });
             self.declared.insert(&f.id);
+        }
+        let instances = doc.fonts.iter().filter(|f| f.variations.is_some()).count();
+        if instances > MAX_FONT_INSTANCES {
+            self.err(
+                Code::OutOfRange,
+                Some("fonts"),
+                format!("at most {MAX_FONT_INSTANCES} fonts declare variations; this document has {instances}"),
+            );
         }
         if doc.fallback_fonts.len() > MAX_FALLBACK_FONTS {
             self.err(

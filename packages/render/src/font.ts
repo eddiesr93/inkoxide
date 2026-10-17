@@ -7,6 +7,7 @@
 import {
   type EmojiSource,
   familyKey,
+  fontVariationsValue,
   type FontWeightName,
   fonts,
   fontWeightValue,
@@ -32,9 +33,17 @@ export type FontWeight = number | FontWeightName;
 
 export interface FontSource {
   src: FontSrc;
-  /** 1–1000 or a CSS name (`'bold'`); default 400. */
-  fontWeight?: FontWeight;
+  /**
+   * 1–1000 or a CSS name (`'bold'`); default 400. A variable font takes a range,
+   * `[100, 900]`: each weight in it draws an instance of the font at that `wght`.
+   */
+  fontWeight?: FontWeight | readonly [FontWeight, FontWeight];
   fontStyle?: 'normal' | 'italic';
+  /**
+   * A variable font's axis values for every use of this face, as CSS `@font-face` takes them:
+   * `{ ital: 1 }` or `"'slnt' -10"`, so one file can serve as the italic too.
+   */
+  fontVariationSettings?: string | Readonly<Record<string, number>>;
 }
 
 /** One face (`src`) or several (`fonts`) of a family. */
@@ -46,7 +55,10 @@ export type FontRegistration =
 interface Face {
   family: string;
   weight: number;
+  /** A variable font's weights. */
+  weightRange?: readonly [number, number];
   style: 'normal' | 'italic';
+  variations?: Readonly<Record<string, number>>;
   /** The engine's font id, made from the family, weight and style. */
   id: string;
   src: FontSrc;
@@ -58,8 +70,8 @@ type FaceName = Pick<Face, 'family' | 'weight' | 'style'>;
 const faceKey = (f: FaceName): string => JSON.stringify([familyKey(f.family), f.weight, f.style]);
 
 /** `"Brand" 700 italic`, as messages name a face. */
-const faceLabel = (f: FaceName): string =>
-  `"${f.family}" ${f.weight}${f.style === 'italic' ? ' italic' : ''}`;
+const faceLabel = (f: FaceName & { weightRange?: readonly [number, number] }): string =>
+  `"${f.family}" ${f.weightRange ? f.weightRange.join('–') : f.weight}${f.style === 'italic' ? ' italic' : ''}`;
 
 const pending: Face[] = [];
 /** Faces registered through `Font.register`, by `faceKey`. */
@@ -80,6 +92,15 @@ function weightOf(w: FontWeight | undefined, family: string): number {
     throw new Error(`Font "${family}": fontWeight ${JSON.stringify(w)} is not 1–1000 or a CSS weight name.`);
   }
   return n;
+}
+
+/** A variable font's weights, `[100, 900]`, in order. */
+function rangeOf(range: readonly unknown[], family: string): readonly [number, number] {
+  if (range.length !== 2) throw new Error(`Font "${family}": a fontWeight range is two weights, [100, 900].`);
+  const [a, b] = range.map((w) => weightOf(w as FontWeight, family)) as [number, number];
+  if (a > b)
+    throw new Error(`Font "${family}": the fontWeight range [${a}, ${b}] goes from the lower weight.`);
+  return [a, b];
 }
 
 const describe = (src: FontSrc): string =>
@@ -152,10 +173,23 @@ export const Font = {
           `Font "${family}": src must be a path, a URL or the bytes (Uint8Array or ArrayBuffer), not ${what}.`,
         );
       }
-      const weight = weightOf(face.fontWeight, family);
+      const fw = face.fontWeight;
+      const weightRange = Array.isArray(fw) ? rangeOf(fw, family) : undefined;
+      const weight = weightRange
+        ? Math.min(Math.max(400, weightRange[0]), weightRange[1])
+        : weightOf(fw as FontWeight | undefined, family);
       const style = face.fontStyle ?? 'normal';
-      const id = `${family.trim().replace(/\s+/g, '-')}-${weight}${style === 'italic' ? '-italic' : ''}`;
+      const weights = weightRange ? weightRange.join('-') : String(weight);
+      const id = `${family.trim().replace(/\s+/g, '-')}-${weights}${style === 'italic' ? '-italic' : ''}`;
       const f: Face = { family, weight, style, id, src };
+      if (weightRange) f.weightRange = weightRange;
+      if (face.fontVariationSettings !== undefined) {
+        try {
+          f.variations = fontVariationsValue(face.fontVariationSettings);
+        } catch (e) {
+          throw new Error(`Font ${faceLabel(f)}: ${(e as Error).message}.`);
+        }
+      }
       const bundled = DEFAULT_FACES.find(
         (d) =>
           familyKey(d.family) === familyKey(family) && d.weight === weight && (d.style ?? 'normal') === style,
@@ -249,7 +283,17 @@ export function loadRegisteredFonts(): Promise<void> {
           );
           continue;
         }
-        fonts.register({ id: f.id, family: f.family, weight: f.weight, style: f.style }, bytes);
+        fonts.register(
+          {
+            id: f.id,
+            family: f.family,
+            weight: f.weight,
+            style: f.style,
+            ...(f.weightRange ? { weightRange: f.weightRange } : {}),
+            ...(f.variations ? { variations: f.variations } : {}),
+          },
+          bytes,
+        );
       }
     } finally {
       batches--;

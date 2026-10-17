@@ -69,8 +69,9 @@ pub(crate) struct Program {
 /// cost of embedding it.
 const SUBSET_BUDGET: usize = 32 << 20;
 
-/// The font's SHA-256 and the glyph set: two different fonts never share
-/// a subset, and a cached subset does not keep its font's bytes.
+/// The font's SHA-256 (with an instance's coordinates) and the glyph set:
+/// two different fonts or instances never share a subset, and a cached
+/// subset does not keep its font's bytes.
 type SubsetKey = ([u8; 32], Vec<u16>);
 
 pub(crate) static SUBSETS: SharedLru<SubsetKey, Program> = SharedLru::new(SUBSET_BUDGET);
@@ -83,7 +84,7 @@ pub(crate) fn program(
     subset: bool,
 ) -> Result<Program, InkoxideError> {
     if subset {
-        let key = (font.data.digest, used.iter().copied().collect::<Vec<u16>>());
+        let key = (font.digest(), used.iter().copied().collect::<Vec<u16>>());
         if let Some(p) = SUBSETS.get(&key) {
             return Ok(p);
         }
@@ -93,13 +94,14 @@ pub(crate) fn program(
             return Ok(p);
         }
         tracing::warn!(
-            font = font.data.metrics.post_script_name,
+            font = font.metrics().post_script_name,
             "subsetting failed; embedding the whole font"
         );
     }
+    let (data, length) = font.compressed_program(|p| deflate(p, flate::LEVEL))?;
     Ok(Program {
-        data: font.data.compressed_program(|p| deflate(p, flate::LEVEL))?,
-        length: font.data.bytes.len(),
+        data,
+        length,
         cid_to_gid: None,
         tag: "".into(),
     })
@@ -107,7 +109,7 @@ pub(crate) fn program(
 
 /// `None` when the subsetter rejects the font.
 fn make_subset(font: &LoadedFont<'_>, glyphs: &[u16]) -> Result<Option<Program>, InkoxideError> {
-    let Some(sub) = font.data.subset(glyphs) else {
+    let Some(sub) = font.subset(glyphs) else {
         return Ok(None);
     };
     let cid_to_gid = match &sub.cid_to_gid {
@@ -123,10 +125,15 @@ fn make_subset(font: &LoadedFont<'_>, glyphs: &[u16]) -> Result<Option<Program>,
 }
 
 /// Six uppercase letters derived from the font and the glyph set, so equal
-/// inputs give equal output and different subsets get different names.
+/// inputs give equal output and different subsets get different names. A
+/// variable font's instances also hash the font and its coordinates: two
+/// files may give their instances the same name.
 fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
     let mut h = xxhash_rust::xxh3::Xxh3::new();
-    h.update(font.data.metrics.post_script_name.as_bytes());
+    h.update(font.metrics().post_script_name.as_bytes());
+    if font.data.variable {
+        h.update(&font.digest());
+    }
     for g in glyphs {
         h.update(&g.to_le_bytes());
     }
@@ -180,7 +187,7 @@ pub(crate) fn write_font(
     // need none, and check that one present is complete.
     let cid_set_ref = (profile.cid_set() && !program.tag.is_empty()).then(|| alloc.next());
 
-    let m = &font.data.metrics;
+    let m = font.metrics();
     let to_1000 = 1000.0 / m.units_per_em;
     let tag = out.subset_tag(&program.tag, &m.post_script_name);
     let full_name = format!("{tag}{}", m.post_script_name);

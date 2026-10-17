@@ -132,7 +132,7 @@ pub(crate) fn paint(
     };
     if let Some(key) = font {
         let lf = fonts.get(key);
-        let m = &lf.data.metrics;
+        let m = lf.metrics();
         let scale = lf.scale(f.size);
         let (asc, desc) = (m.ascender * scale, -m.descender * scale);
         // A formatted value shows formatted, in red for a negative number

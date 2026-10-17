@@ -243,7 +243,7 @@ fn run_extent(r: &TextRun, fonts: &FontSet<'_>) -> (f32, f32) {
         return (r.size + shift, -shift);
     };
     let font = fonts.get(key);
-    let m = &font.data.metrics;
+    let m = font.metrics();
     let scale = font.scale(r.size);
     (m.ascender * scale + shift, -m.descender * scale - shift)
 }
@@ -476,7 +476,7 @@ fn paint_line(
         }
         if let Some(dec) = run.decoration.filter(|d| *d != Decoration::None) {
             let font = fonts.get(piece.font);
-            let m = &font.data.metrics;
+            let m = font.metrics();
             let scale = font.scale(run.size);
             let (pos, thick) = match dec {
                 Decoration::Underline => (m.underline_position, m.underline_thickness),

@@ -128,7 +128,9 @@ async function loadDocumentFonts(
   const fallbacks = new Set(doc.fallbackFonts);
   const deferred: Record<string, string> = {};
   const loads: Promise<void>[] = [];
-  for (const { id } of doc.fonts ?? []) {
+  // An instance (`source`) needs the font it draws with.
+  for (const { id: declared, source } of doc.fonts ?? []) {
+    const id = source ?? declared;
     const file = lazyFaces.get(id);
     if (file === undefined) continue;
     if (fallbacks.has(id)) {

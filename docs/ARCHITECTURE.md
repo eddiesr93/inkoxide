@@ -175,6 +175,17 @@ subsets font programs and caches the compressed whole program, and the PDF
 writer supplies the compression; the writer and `images` both compress
 through `flate.rs`.
 
+A variable font is registered once; each declaration with `variations`
+draws with an `Instance` of it (`fonts/mod.rs`): canonical coordinates
+(clamped, in tag order, defaults left out), metrics read by ttf-parser at
+those coordinates (it applies `MVAR`), and a digest that keys the program
+caches. Layout reads the ttf-parser face at the coordinates, and shaping
+gives rustybuzz the same ones. Every program embedded is the instance as
+static TrueType, made by subsetter's instancer (skrifa underneath), CFF2
+outlines included. Two parsers read the font, so registration refuses
+what they read differently: more than 63 axes (ttf-parser then applies
+none) and `avar` 2 (which ttf-parser does not read).
+
 SVG text goes through the same shaper. `images/svg_text` reads each
 `<text>` of an SVG once, when the SVG is decoded: the cascade of its text
 properties (simplecss and svgtypes are used only in its `extract.rs`, at

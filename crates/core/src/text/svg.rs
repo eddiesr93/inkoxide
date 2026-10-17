@@ -439,7 +439,7 @@ fn length_adjust(text: &SvgText, chunks: &mut [Chunk]) {
 /// How far the baseline of `span` sits below the text position, in user
 /// units (`resolve_baseline`).
 fn baseline_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
-    let m = &font.data.metrics;
+    let m = font.metrics();
     let scale = font.scale(span.size);
     let mut up = 0.0;
     for s in span.shift.iter().rev() {
@@ -607,7 +607,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             let font = fonts.get(run.font);
             let (rx, ry) = run.origin;
             let (rotate, w) = (run.rotate, run.width);
-            let m = &font.data.metrics;
+            let m = font.metrics();
             let scale = font.scale(span.size);
             let thick = m.underline_thickness * scale;
             for (on, offset, over) in [
@@ -644,7 +644,7 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
 /// The box of glyph `id`'s ink, in font units, y up: its outline, or the
 /// em box of a colour glyph without one.
 fn ink_box(font: &LoadedFont<'_>, id: u16) -> Option<[f32; 4]> {
-    let m = &font.data.metrics;
+    let m = font.metrics();
     font.glyph_bbox(id).or_else(|| {
         m.color
             .then(|| [0.0, m.descender, font.advance(id), m.ascender])

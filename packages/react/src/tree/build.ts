@@ -293,7 +293,12 @@ class Builder {
 
   private font(ctx: TextCtx, inst: Instance | undefined): string {
     if (ctx.fontId !== undefined) return ctx.fontId;
-    const r = this.opts.fonts.resolve(ctx.fontFamily, ctx.fontWeight, ctx.fontStyle);
+    const r = this.opts.fonts.resolve(
+      ctx.fontFamily,
+      ctx.fontWeight,
+      ctx.fontStyle,
+      ctx.fontVariationSettings,
+    );
     ctx.fontId = r.id;
     if (!r.exact && r.wanted && !this.warned.has(r.wanted)) {
       this.warned.add(r.wanted);
@@ -433,8 +438,13 @@ class Builder {
     return this.mark(doc, root);
   }
 
+  /** The fonts the tree uses, in the order they were registered, each face before its instances. */
   fontIds(): string[] {
-    return this.opts.fonts.ids().filter((id) => this.used.has(id));
+    const fonts = this.opts.fonts;
+    return fonts
+      .ids()
+      .flatMap((id) => [id, ...fonts.instancesOf(id).sort()])
+      .filter((id) => this.used.has(id));
   }
 
   private page(inst: Instance, parent: TextCtx): PageSpec {

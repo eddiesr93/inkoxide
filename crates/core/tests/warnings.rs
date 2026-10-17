@@ -119,3 +119,15 @@ fn text_that_does_not_hyphenate_does_not_warn() {
     let off = doc("", r#""hyphenate":false"#, "");
     assert_eq!(hyphenation_warnings(&off), 0);
 }
+
+#[test]
+fn an_axis_the_font_lacks_warns() {
+    let d = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter","variations":{"wght":700}}],
+        "pages":[{"size":{"width":595,"height":842},"children":[
+          {"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":12}]}]}]}"#;
+    let seen = warnings(d);
+    assert_eq!(
+        seen,
+        ["font `Inter-Regular`: `Inter-Regular` has no `wght` axis; the value is ignored"]
+    );
+}

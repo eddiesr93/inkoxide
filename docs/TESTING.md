@@ -140,6 +140,12 @@ only on demand, from the Actions tab, with the ID of that release run.
   work budget in `limits.rs`, and `colr-fanout-empty.ttf`, the same with a
   last level that paints nothing, so that only counting the paint graph
   stops it.
+- `fixtures/fonts/VarTest-glyf.ttf` and `VarTest-CFF2.otf`: variable
+  fonts written from scratch by `scripts/fixtures/variable_fonts.py`
+  (rectangle letters, `wght` and `wdth` axes, `gvar` or CFF2 `blend`,
+  `HVAR`, `MVAR` and `avar` 1.0), with `fixtures/docs/variable-fonts.json`;
+  the script also writes `fixtures/fonts/limits/var-avar2.ttf` and
+  `var-64-axes.ttf`, which registration must refuse.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool. They are the
   contract of `@inkoxide/wasm` too: `pnpm test` in `packages/wasm`

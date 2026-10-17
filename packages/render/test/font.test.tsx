@@ -62,6 +62,58 @@ afterAll(() => {
 });
 
 describe('Font.register', () => {
+  it('draws a variable font at each weight of its range, and at its fontVariationSettings', async () => {
+    const varFont = new URL('../../../fixtures/fonts/VarTest-glyf.ttf', import.meta.url);
+    Font.register({ family: 'Var Test', src: varFont, fontWeight: [100, 900] });
+    const el = (
+      <Document>
+        <Page>
+          <Text style={{ fontFamily: 'Var Test', fontWeight: 300 }}>HOTEL</Text>
+          <Text style={{ fontFamily: 'Var Test', fontWeight: 'bold' }}>HOTEL</Text>
+          <Text style={{ fontFamily: 'Var Test', fontVariationSettings: "'wdth' 60, 'wght' 650" }}>
+            HOTEL
+          </Text>
+        </Page>
+      </Document>
+    );
+    const pdf = await renderToBuffer(el);
+    const text = Buffer.from(pdf).toString('latin1');
+    for (const name of [
+      'VarTest-Regular_300wght',
+      'VarTest-Regular_700wght',
+      'VarTest-Regular_60wdth_650wght',
+    ]) {
+      expect(text).toContain(name);
+    }
+    const t = treeFonts(el);
+    expect(t.fonts?.filter((f) => f.source === 'Var-Test-100-900')).toEqual([
+      {
+        id: 'Var-Test-100-900@wdth=60,wght=650',
+        family: 'Var Test',
+        weight: 650,
+        source: 'Var-Test-100-900',
+        variations: { wdth: 60, wght: 650 },
+      },
+      {
+        id: 'Var-Test-100-900@wght=300',
+        family: 'Var Test',
+        weight: 300,
+        source: 'Var-Test-100-900',
+        variations: { wght: 300 },
+      },
+      {
+        id: 'Var-Test-100-900@wght=700',
+        family: 'Var Test',
+        weight: 700,
+        source: 'Var-Test-100-900',
+        variations: { wght: 700 },
+      },
+    ]);
+    expect(() => Font.register({ family: 'Var Bad', src: varFont, fontWeight: [900, 100] })).toThrow(
+      'the fontWeight range [900, 100] goes from the lower weight',
+    );
+  });
+
   it('adds a family from a path and resolves its weight by name', async () => {
     Font.register({ family: 'Brand', src: file('Inter-Bold.ttf'), fontWeight: 'bold' });
     const pdf = await renderToBuffer(<Doc family="Brand" weight={700} />);

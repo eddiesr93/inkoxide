@@ -24,6 +24,7 @@ const MAIN_VALUES = [
   'parseFlex',
   'parseFontFeatureSettings',
   'parseFontVariantNumeric',
+  'parseFontVariationSettings',
   'parseObjectPosition',
   'parseOrigin',
   'parseTransform',

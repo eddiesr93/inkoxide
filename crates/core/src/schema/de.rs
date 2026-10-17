@@ -11,9 +11,9 @@ use serde::Deserialize;
 
 use super::{
     BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
-    ColumnWidth, Corners, Field, FieldValue, FontFeature, ImageFit, ImageSource, InlineData, Node,
-    NodeKind, Note, ObjectPosition, OptEdges, PageFilter, PagePattern, RunAlign, RunImage, Style,
-    Table, TableRow, TextRun, TransformOp,
+    ColumnWidth, Corners, Field, FieldValue, FontFeature, FontVariation, ImageFit, ImageSource,
+    InlineData, Node, NodeKind, Note, ObjectPosition, OptEdges, PageFilter, PagePattern, RunAlign,
+    RunImage, Style, Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -616,6 +616,37 @@ pub(super) fn font_features<'de, D: Deserializer<'de>>(
         }
     }
     Option::<Features>::deserialize(d).map(|o| o.map(|f| f.0))
+}
+
+/// `deserialize_with` for [`FontDecl::variations`]: an object of axis tags
+/// to numbers, kept in the order written (validation checks the tags,
+/// values and count).
+///
+/// [`FontDecl::variations`]: super::FontDecl::variations
+pub(super) fn font_variations<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Box<[FontVariation]>>, D::Error> {
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = Box<[FontVariation]>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("an object of variation axis tags to numbers")
+        }
+        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut out = Vec::new();
+            while let Some((tag, value)) = map.next_entry::<String, f32>()? {
+                out.push(FontVariation { tag, value });
+            }
+            Ok(out.into_boxed_slice())
+        }
+    }
+    struct Variations(Box<[FontVariation]>);
+    impl<'de> Deserialize<'de> for Variations {
+        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            d.deserialize_map(V).map(Variations)
+        }
+    }
+    Option::<Variations>::deserialize(d).map(|o| o.map(|f| f.0))
 }
 
 /// `deserialize_with` for a list that, when present, has at least one item

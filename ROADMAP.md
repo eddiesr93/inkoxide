@@ -20,7 +20,8 @@ or should come sooner.
   by line, as text directly beside it does (the box is narrowed over its whole height now);
   `flexGrow` and `justifyContent` in a box with floats; `textWrap: 'balance'`; a
   `hyphenationPenalty` on `Text`.
-- **Variable fonts**, through a static instance chosen per weight.
+- **Variable fonts**: optical sizes chosen from the text size (`opsz`); `fontStretch`; weight
+  ranges for SVG text, which takes the nearest instance a document declares.
 - **SVG text**: text on a path (`<textPath>`) and vertical text; `font-variant`, `font-kerning`
   and `font-feature-settings`; font properties passed through `use`; `style` and `className` on
   the primitives inside `<Svg>`.

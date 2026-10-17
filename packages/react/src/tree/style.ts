@@ -1,6 +1,7 @@
 import type { Color, Style, TransformOp } from '@inkoxide/schema';
 import {
   BORDER_STYLES,
+  type FontVariationSettings,
   type BorderStyle,
   type ColorValue,
   type ObjectPosition,
@@ -10,6 +11,7 @@ import {
   parseOrigin,
   parseTransform,
   parseFontFeatureSettings,
+  parseFontVariationSettings,
   parseFontVariantNumeric,
   round,
   RUN_ALIGNS,
@@ -100,7 +102,12 @@ export function inherit(parent: TextCtx, own: FlatStyle, extra?: InheritExtra): 
   const c: TextCtx = { ...parent };
   if (changes) {
     // Another face: the builder resolves the font again.
-    if (own.fontFamily !== undefined || own.fontWeight !== undefined || own.fontStyle !== undefined) {
+    if (
+      own.fontFamily !== undefined ||
+      own.fontWeight !== undefined ||
+      own.fontStyle !== undefined ||
+      own.fontVariationSettings !== undefined
+    ) {
       c.fontId = undefined;
     }
     const set = c as Record<InheritedKey, unknown>;
@@ -744,6 +751,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     objectFit,
     objectPosition,
     fontFeatureSettings,
+    fontVariationSettings,
     fontVariantNumeric,
     verticalAlign,
     textWrap,
@@ -775,6 +783,8 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   if (objectPosition !== undefined) out.objectPosition = positionOf(objectPosition, units);
   if (fontFeatureSettings !== undefined)
     out.fontFeatureSettings = parseFontFeatureSettings('fontFeatureSettings', fontFeatureSettings);
+  if (fontVariationSettings !== undefined)
+    out.fontVariationSettings = parseFontVariationSettings('fontVariationSettings', fontVariationSettings);
   if (fontVariantNumeric !== undefined)
     out.fontVariantNumeric = parseFontVariantNumeric('fontVariantNumeric', fontVariantNumeric);
   for (const k of ['float', 'clear'] as const) {
@@ -924,6 +934,11 @@ const WEIGHTS: Readonly<Record<string, number>> = {
   heavy: 900,
   black: 900,
 } satisfies Record<FontWeightName, number>;
+
+/** Axis values from `fontVariationSettings` as a style or a font face takes it. */
+export function variationsOf(v: FontVariationSettings): Readonly<Record<string, number>> {
+  return parseFontVariationSettings('fontVariationSettings', v);
+}
 
 /** A numeric weight, or a CSS name (`'bold'`). */
 export function weightOf(w: number | string): number {
