@@ -59,7 +59,9 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
   static TrueType, never the variable font.
 - **Unsupported fonts.** These are rejected with `FONT_ERROR`: variable
   fonts with more than 63 axes, with an `avar` table other than version
-  1.0, or with outlines the instancer cannot read, font
+  1.0, or whose outlines the instancer cannot read (registration tries
+  the first glyph; another it cannot read fails the render with
+  `FONT_ERROR`), font
   collections (`.ttc`; register each font as its own file), fonts with
   neither TrueType nor embeddable CFF outlines, fonts without a
   Unicode `cmap`, fonts whose `GSUB` or `GPOS` lookups point to

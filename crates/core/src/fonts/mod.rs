@@ -314,7 +314,8 @@ impl FontData {
                 m.italic_angle = coord(b"slnt").unwrap_or(base.italic_angle);
                 m.is_italic = base.is_italic
                     || coord(b"ital").is_some_and(|v| v >= 0.5)
-                    || coord(b"slnt").is_some_and(|v| v != 0.0);
+                    // A negative slant leans forward, as italics do.
+                    || coord(b"slnt").is_some_and(|v| v < 0.0);
                 m.post_script_name = instance_name(&base.post_script_name, &coords);
                 m
             }

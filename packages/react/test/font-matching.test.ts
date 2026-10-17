@@ -88,4 +88,17 @@ describe('variable faces', () => {
     expect(r.resolve(['Var'], 900, 'normal', { wdth: 75 }).id).toBe('Static-900@wdth=75');
     expect(r.resolve(['Var'], 900, 'normal').id).toBe('Static-900');
   });
+
+  it('keep the instances used last, however many a long-running process meets', () => {
+    const r = registry();
+    const first = r.resolve(['Var'], 400, 'normal', { wdth: 0 }).id;
+    for (let i = 1; i <= 5000; i++) r.resolve(['Var'], 400, 'normal', { wdth: i });
+    const last = r.resolve(['Var'], 400, 'normal', { wdth: 5000 }).id;
+    expect(r.has(last)).toBe(true);
+    expect(r.decl(last)).toMatchObject({ source: 'Var', variations: { wdth: 5000 } });
+    // The first made room, and comes back when asked for again.
+    expect(r.has(first)).toBe(false);
+    expect(r.resolve(['Var'], 400, 'normal', { wdth: 0 }).id).toBe(first);
+    expect(r.has(first)).toBe(true);
+  });
 });

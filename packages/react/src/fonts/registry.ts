@@ -62,7 +62,11 @@ interface Instance {
   variations: Readonly<Record<string, number>>;
 }
 
-/** Most instances kept: a document declares one per weight and variation it uses. */
+/**
+ * Most instances, and resolved fonts, kept: a document declares one per weight and variation it
+ * uses (the engine takes 64), and a long-running server meets many more over time, so the
+ * least recently used make room.
+ */
 const MAX_INSTANCES = 4096;
 
 /**
@@ -190,6 +194,7 @@ export class FontRegistry {
     let hit = this.memo.get(key);
     if (!hit) {
       hit = this.match(families, weight, style, axes);
+      if (this.memo.size >= MAX_INSTANCES) this.memo.clear();
       this.memo.set(key, hit);
     }
     return hit;
@@ -234,13 +239,23 @@ export class FontRegistry {
     for (const [tag, v] of axes) variations[tag] = v;
     const sorted = Object.entries(variations).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const id = `${face.id}@${sorted.map(([t, v]) => `${t}=${v}`).join(',')}`;
-    if (!this.instances.has(id)) {
-      if (this.instances.size >= MAX_INSTANCES) throw new Error(`More than ${MAX_INSTANCES} font instances`);
-      const wght = variations.wght;
-      const declared =
-        wght !== undefined && Number.isFinite(wght) ? Math.min(Math.max(Math.round(wght), 1), 1000) : weight;
-      this.instances.set(id, { face, weight: declared, variations });
+    const known = this.instances.get(id);
+    if (known) {
+      // Most recently used last.
+      this.instances.delete(id);
+      this.instances.set(id, known);
+      return id;
     }
+    if (this.instances.size >= MAX_INSTANCES) {
+      const oldest = this.instances.keys().next().value as string;
+      this.instances.delete(oldest);
+      // Fonts resolved before may name it.
+      this.memo.clear();
+    }
+    const wght = variations.wght;
+    const declared =
+      wght !== undefined && Number.isFinite(wght) ? Math.min(Math.max(Math.round(wght), 1), 1000) : weight;
+    this.instances.set(id, { face, weight: declared, variations });
     return id;
   }
 }

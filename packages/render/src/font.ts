@@ -67,7 +67,9 @@ interface Face {
 type FaceName = Pick<Face, 'family' | 'weight' | 'style'>;
 
 /** What tells faces apart: family (ignoring ASCII case), weight and style. */
-const faceKey = (f: FaceName): string => JSON.stringify([familyKey(f.family), f.weight, f.style]);
+/** A face by what CSS matches it on; a variable face by its weight range. */
+const faceKey = (f: FaceName & { weightRange?: readonly [number, number] }): string =>
+  JSON.stringify([familyKey(f.family), f.weightRange ?? f.weight, f.style]);
 
 /** `"Brand" 700 italic`, as messages name a face. */
 const faceLabel = (f: FaceName & { weightRange?: readonly [number, number] }): string =>

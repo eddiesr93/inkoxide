@@ -257,6 +257,11 @@ describe('Font.register', () => {
     expect(() => Font.register({ family: 'Brand', src, fontWeight: 'heavyish' as never })).toThrow(
       'not 1–1000 or a CSS weight name',
     );
+    // A weight range is another face than a static weight in it.
+    Font.register({ family: 'Ranged', src: file('Inter-Regular.ttf') });
+    expect(() =>
+      Font.register({ family: 'Ranged', src: file('Inter-Regular.ttf'), fontWeight: [100, 900] }),
+    ).not.toThrow();
   });
 
   it('compares byte sources by their bytes, not their length', async () => {
