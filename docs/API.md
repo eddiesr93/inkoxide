@@ -24,7 +24,7 @@ versions; removing or renaming any of them is a major version.
 
 | Concept | Rust (`inkoxide`) | Node (`inkoxide`) |
 |---|---|---|
-| Register a font (TrueType, CFF OpenType, WOFF or WOFF2; not a `.ttc` collection) | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
+| Register a font (TrueType, CFF OpenType, WOFF or WOFF2, static or variable; not a `.ttc` collection) | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
 | Remove a font | `FontStore::unregister(id) -> bool` | `unregisterFont(id): boolean` |
 | Images | `ImageStore::insert(id, bytes)`, `remove(id) -> bool`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
@@ -267,6 +267,36 @@ run's font has it. A tag that is not four printable ASCII characters, or
 is set twice in a run, is `INVALID_VALUE`; a value or a count past its
 bound is `OUT_OF_RANGE`. In `@inkoxide/render`, `fontFeatureSettings` and
 `fontVariantNumeric` fill a run's `fontFeatures` (see
+[`GUIDE.md`](../packages/render/GUIDE.md)).
+
+## Variable fonts
+
+A variable font (TrueType with `gvar`, or CFF2) is registered once, with
+the same call as any font. Each [font declaration](SCHEMA.md#fontdecl)
+that draws with it names it in `source` and gives its axis values in
+`variations`; there is no other API. Layout, metrics (`MVAR`) and shaping
+read the font at that instance, and the PDF embeds the instance as static
+TrueType, a subset or (with `subset_fonts: false`) every glyph, never the
+variable font. The output stays deterministic: an instance's bytes depend
+only on the font and the clamped axis values.
+
+- A value is clamped to its axis, and a value at the axis's default is
+  dropped: `{"wght": 400}` on a font whose default is 400 is the default
+  instance, as no `variations` is.
+- An axis the font lacks is ignored, with a `tracing` warning at render
+  that names the font; `validate` does not read the font's axes.
+- A declaration takes at most 16 axes, each once, with a value within
+  ±32767 (`OUT_OF_RANGE`, or `INVALID_VALUE` for a tag that is not four
+  printable ASCII characters or that is given twice), and a document at
+  most 64 declarations with `variations`.
+- `register` refuses (`FONT_ERROR`) a variable font with more than 63
+  axes or an `avar` table other than version 1.0, which the two font
+  parsers would read differently. An instance that cannot be made fails
+  the render with `FONT_ERROR`.
+
+In `@inkoxide/render`, `Font.register` takes a weight range
+(`fontWeight: [100, 900]`) and `fontVariationSettings`, and the builder
+declares one instance per weight and settings a document uses (see
 [`GUIDE.md`](../packages/render/GUIDE.md)).
 
 ## Determinism
