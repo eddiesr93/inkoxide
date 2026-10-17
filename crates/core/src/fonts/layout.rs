@@ -93,3 +93,38 @@ fn chained_context(c: &ChainedContextLookup<'_>) -> bool {
 fn resolves<'a>(len: u16, get: impl Fn(u16) -> Option<Coverage<'a>>) -> bool {
     (0..len).all(|i| get(i).is_some())
 }
+
+/// Most lookups of the `vert` and `vrt2` features, and subtables of each,
+/// [`vertical_form`] reads: real fonts have a few; a crafted one could
+/// list thousands and make each question cost as much.
+const VERTICAL_LOOKUPS: usize = 64;
+
+/// Whether `glyph` has a vertical form: a single substitution of a lookup
+/// of the font's `vert` or `vrt2` feature covers it.
+pub(super) fn vertical_form(face: &ttf_parser::Face<'_>, glyph: ttf_parser::GlyphId) -> bool {
+    let Some(gsub) = face.tables().gsub else {
+        return false;
+    };
+    let tags = [
+        ttf_parser::Tag::from_bytes(b"vert"),
+        ttf_parser::Tag::from_bytes(b"vrt2"),
+    ];
+    let mut lookups: Vec<u16> = gsub
+        .features
+        .into_iter()
+        .filter(|f| tags.contains(&f.tag))
+        .flat_map(|f| f.lookup_indices)
+        .take(VERTICAL_LOOKUPS)
+        .collect();
+    lookups.sort_unstable();
+    lookups.dedup();
+    lookups
+        .into_iter()
+        .filter_map(|i| gsub.lookups.get(i))
+        .any(|l| {
+            l.subtables
+            .into_iter::<SubstitutionSubtable<'_>>()
+            .take(VERTICAL_LOOKUPS)
+            .any(|s| matches!(s, SubstitutionSubtable::Single(s) if s.coverage().contains(glyph)))
+        })
+}

@@ -1240,3 +1240,53 @@ fn an_instance_shapes_with_the_layout_at_its_axes() {
     assert!((regular[0].1 - 600.0).abs() < 0.5, "{regular:?}");
     assert!((bold[0].1 - 600.0).abs() < 0.5, "{bold:?}");
 }
+
+#[test]
+fn vertical_text_shapes_top_to_bottom_with_vertical_forms() {
+    let store = crate::test_fixtures::fonts(&["VertTest"]);
+    let json = r#"{"version":1,"fonts":[{"id":"VertTest","family":"Vert"}],
+        "pages":[{"size":{"width":10,"height":10}}]}"#;
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let set = crate::fonts::FontSet::load(&d, &store).unwrap();
+    let mut shaper = RustybuzzShaper::new(&set).unwrap();
+    let run = crate::schema::TextRun {
+        text: Some("縦書、「ー」。".into()),
+        font: "VertTest".into(),
+        size: 10.0,
+        color: None,
+        letter_spacing: None,
+        decoration: None,
+        decoration_color: None,
+        decoration_thickness: None,
+        decoration_style: None,
+        placeholder: None,
+        link: None,
+        hyphenate: Some(false),
+        vertical_align: None,
+        font_features: None,
+        image: None,
+        note: None,
+        attachment: None,
+    };
+    let mut style = ParaStyle::from_style(&crate::schema::Style::default(), None);
+    style.white_space = WhiteSpace::Pre;
+    style.vertical = true;
+    let vertical = shaper.prepare(std::slice::from_ref(&run), &style);
+    style.vertical = false;
+    let horizontal = shaper.prepare(std::slice::from_ref(&run), &style);
+    let ids = |p: &Prepared| p.glyphs.iter().map(|g| g.id).collect::<Vec<_>>();
+    // 、「ー」。 take their vertical forms; the ideographs stay.
+    let (v, h) = (ids(&vertical), ids(&horizontal));
+    assert_eq!((v[0], v[1]), (h[0], h[1]));
+    assert!(
+        v[2..].iter().zip(&h[2..]).all(|(a, b)| a != b),
+        "{v:?} {h:?}"
+    );
+    for g in &vertical.glyphs {
+        // A vertical advance of 1000 units, the origin half the em to the
+        // left and the em box's top (880) above.
+        assert!((g.advance - 10.0).abs() < 1e-4, "{g:?}");
+        assert!((g.x_offset + 5.0).abs() < 1e-4, "{g:?}");
+        assert!((g.y_offset + 8.8).abs() < 1e-4, "{g:?}");
+    }
+}

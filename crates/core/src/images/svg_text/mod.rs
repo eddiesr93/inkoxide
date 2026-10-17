@@ -13,6 +13,7 @@
 //! versions `usvg` uses, so selectors and values behave as they do there.
 
 mod extract;
+mod path;
 mod rewrite;
 #[cfg(test)]
 mod survival;
@@ -21,7 +22,10 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::schema::FontFeature;
+
 pub(crate) use extract::{extract, TextError, DEFAULT_FONT_SIZE};
+pub(crate) use path::TextPathGeom;
 pub(crate) use rewrite::{index_bits, most_bytes, rewrite, worst_case, Probes};
 
 /// `v` escaped for an XML attribute in double quotes, onto `out`.
@@ -60,6 +64,7 @@ impl SvgTextDoc {
                 .sum::<usize>()
         };
         let mut lists = HashSet::new();
+        let mut geoms = HashSet::new();
         let mut size =
             self.form.group_paint.capacity() + self.texts.capacity() * size_of::<SvgText>();
         for t in &self.texts {
@@ -69,9 +74,18 @@ impl SvgTextDoc {
                 + t.spans.capacity() * size_of::<SvgSpan>()
                 + t.paints.capacity() * size_of::<String>()
                 + strings(&t.paints)
-                + t.adjust.capacity() * size_of::<LengthAdjust>();
+                + t.adjust.capacity() * size_of::<LengthAdjust>()
+                + t.paths.capacity() * size_of::<TextPathSpec>();
+            for p in &t.paths {
+                if geoms.insert(Arc::as_ptr(&p.geom)) {
+                    size += p.geom.heap_size();
+                }
+            }
             for s in &t.spans {
                 size += s.shift.capacity() * size_of::<Shift>();
+                if lists.insert(Arc::as_ptr(&s.features).cast::<u8>()) {
+                    size += s.features.len() * size_of::<FontFeature>();
+                }
                 if lists.insert(Arc::as_ptr(&s.families).cast::<u8>()) {
                     size += strings(&s.families);
                 }
@@ -159,6 +173,52 @@ pub(crate) struct SvgText {
     pub adjust: Vec<LengthAdjust>,
     /// `direction: rtl` on the text element.
     pub rtl: bool,
+    /// `writing-mode` on the text element.
+    pub writing: Writing,
+    /// The paths of its `textPath` elements ([`SvgChar::path`]).
+    pub paths: Vec<TextPathSpec>,
+}
+
+/// A `textPath`: the path its characters go along, shared by those on the
+/// same element, and where they start on it.
+#[derive(Debug, Clone)]
+pub(crate) struct TextPathSpec {
+    pub geom: Arc<TextPathGeom>,
+    /// `startOffset`, in user units along the path.
+    pub start: f32,
+}
+
+/// The direction lines of a text go in (`writing-mode`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Writing {
+    Horizontal,
+    /// Down, characters upright or sideways by their `text-orientation`
+    /// (`vertical-rl`, `vertical-lr`, `tb`, `tb-rl`).
+    Vertical,
+    /// Down, every character sideways (`sideways-rl`).
+    SidewaysRl,
+    /// Up, every character turned a quarter to the left (`sideways-lr`).
+    SidewaysLr,
+}
+
+impl Writing {
+    /// How far the line turns from horizontal, in degrees clockwise.
+    pub fn turn(self) -> f32 {
+        match self {
+            Writing::Horizontal => 0.0,
+            Writing::Vertical | Writing::SidewaysRl => 90.0,
+            Writing::SidewaysLr => -90.0,
+        }
+    }
+}
+
+/// How characters stand in vertical text (`text-orientation`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Orientation {
+    /// By their Unicode `Vertical_Orientation`.
+    Mixed,
+    Upright,
+    Sideways,
 }
 
 /// A character and where it goes.
@@ -175,9 +235,12 @@ pub(crate) struct SvgChar {
     pub dy: f32,
     /// Degrees, clockwise.
     pub rotate: f32,
-    /// In a span that is not displayed (`display: none`): it takes a
-    /// position from the lists but is not drawn.
+    /// In a span that is not displayed (`display: none`), or on a path
+    /// that is not there: it takes a position from the lists but is not
+    /// drawn.
     pub hidden: bool,
+    /// On a path: index in [`SvgText::paths`].
+    pub path: Option<u16>,
 }
 
 /// The resolved text properties of an element that holds characters.
@@ -202,6 +265,12 @@ pub(crate) struct SvgSpan {
     pub underline: bool,
     pub overline: bool,
     pub line_through: bool,
+    /// `text-orientation`, in vertical text.
+    pub orientation: Orientation,
+    /// OpenType features from `font-feature-settings`, `font-kerning` and
+    /// `font-variant`, sorted by tag, shared by the spans that declare
+    /// the same; empty: the font's defaults.
+    pub features: Arc<[FontFeature]>,
     /// Index in [`SvgText::paints`].
     pub paint: u32,
 }

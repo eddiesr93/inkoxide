@@ -802,6 +802,13 @@ impl LoadedFont<'_> {
         self.face.glyph_index(c).map(|g| g.0)
     }
 
+    /// Whether `c` has a vertical form in this font, which its `vert`
+    /// feature substitutes (see `fonts/layout.rs`).
+    pub fn has_vertical_form(&self, c: char) -> bool {
+        self.glyph(c)
+            .is_some_and(|g| layout::vertical_form(&self.face, ttf_parser::GlyphId(g)))
+    }
+
     /// Number of glyphs in the font: its glyph ids are `0..glyph_count()`.
     pub fn glyph_count(&self) -> u16 {
         self.face.number_of_glyphs()

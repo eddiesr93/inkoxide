@@ -374,6 +374,19 @@ fn colour_emoji_and_images_extract_as_text() {
         ("images-jpeg-png", &["Harbour photo"]),
         // The text form fields show, from their appearances.
         ("forms", &["Chloë Dubois-Müller", "No. 2026/0815"]),
+        // Text on a path and vertical text, in their logical order.
+        (
+            "svg-text-path",
+            &[
+                "all the way round a circle",
+                "and under it",
+                "past the end is n\n",
+            ],
+        ),
+        (
+            "svg-text-vertical",
+            &["縦書文字、「テスト」。", "縦AB12書ー〈字", "AB縦書"],
+        ),
     ] {
         let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
         let pdf = inkoxide::render(
@@ -424,6 +437,12 @@ fn svg_text_maps_to_unicode() {
     let input = fs::read(root().join("fixtures/docs/svg-text.json")).unwrap();
     let mapped = mapped_text(&input);
     for c in "שלוםCLIP42H".chars() {
+        assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
+    }
+    // The vertical forms of punctuation map to their characters.
+    let input = fs::read(root().join("fixtures/docs/svg-text-vertical.json")).unwrap();
+    let mapped = mapped_text(&input);
+    for c in "、「」。ー縦".chars() {
         assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
     }
 }

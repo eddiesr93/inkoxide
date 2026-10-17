@@ -131,7 +131,7 @@ fn text(s: &mut Src, g: &mut Gen) {
     text_attributes(s, &mut g.out);
     g.out.push('>');
     for _ in 0..=s.below(4) {
-        match s.below(5) {
+        match s.below(6) {
             0 | 1 => g.out.push_str(words(s)),
             2 | 3 => {
                 let tag = s.pick(&["tspan", "tspan", "a"]);
@@ -140,15 +140,60 @@ fn text(s: &mut Src, g: &mut Gen) {
                 text_attributes(s, &mut g.out);
                 let _ = write!(g.out, ">{}</{tag}>", words(s));
             }
+            4 => text_path(s, g),
             _ if s.chaos => g.out.push_str(s.pick(&[
-                "<textPath href=\"#a\">on a path</textPath>",
-                "<tspan writing-mode=\"tb\">down</tspan>",
+                "<tspan><textPath href=\"#a\">nested</textPath></tspan>",
+                "<textPath href=\"#a\">a<textPath href=\"#b\">b</textPath></textPath>",
                 "<tref href=\"#a\"/>",
             ])),
             _ => g.out.push_str("&#x5D0;&#x627; 12"),
         }
     }
     g.out.push_str("</text>");
+}
+
+/// A `<textPath>`: on an element of the SVG (any, or none), or on its
+/// own path data, with the attributes text on a path reads.
+fn text_path(s: &mut Src, g: &mut Gen) {
+    g.out.push_str("<textPath");
+    match s.below(4) {
+        0 | 1 => {
+            let _ = write!(g.out, r##" href="#{}""##, s.pick(IDS));
+        }
+        2 => {
+            let _ = write!(g.out, r##" xlink:href="#{}""##, s.pick(IDS));
+        }
+        _ => {
+            let _ = write!(
+                g.out,
+                r#" path="{}""#,
+                s.pick(&[
+                    "M0 0C20 -20 40 20 60 0S100 20 120 0",
+                    "M10 10H90V90H10Z",
+                    "M0 0A30 30 0 1 1 0 1",
+                    "M5 5L5 5",
+                    "M0 0",
+                ])
+            );
+        }
+    }
+    for (name, values) in [
+        ("startOffset", &["10", "50%", "-20", "1e30", "-1e30%"][..]),
+        ("side", &["right", "left"]),
+        ("method", &["stretch", "align"]),
+        ("spacing", &["auto", "exact"]),
+        ("x", &["5", "1e30"]),
+    ] {
+        if s.below(3) == 0 {
+            let _ = write!(g.out, r#" {name}="{}""#, s.pick(values));
+        }
+    }
+    text_attributes(s, &mut g.out);
+    let _ = write!(g.out, ">{}", words(s));
+    if s.below(2) == 0 {
+        let _ = write!(g.out, r#"<tspan dy="-4" dx="3">{}</tspan>"#, words(s));
+    }
+    g.out.push_str("</textPath>");
 }
 
 /// 500 words.
@@ -163,6 +208,7 @@ fn words(s: &mut Src) -> &'static str {
         "مرحبا",
         "1.25",
         "\u{E000}x",
+        "縦書き、「テスト」。ー〈A1〉",
         LONG.as_str(),
     ])
 }
@@ -171,7 +217,7 @@ fn words(s: &mut Src) -> &'static str {
 fn text_attributes(s: &mut Src, out: &mut String) {
     let mut seen: Vec<&str> = Vec::new();
     for _ in 0..s.below(6) {
-        let (name, value) = match s.below(14) {
+        let (name, value) = match s.below(20) {
             0 => ("x", lengths(s)),
             1 => ("y", lengths(s)),
             2 => ("dx", lengths(s)),
@@ -185,6 +231,7 @@ fn text_attributes(s: &mut Src, out: &mut String) {
                     "roboto mono",
                     "Missing",
                     "monospace",
+                    "Vert Test, Inter",
                 ])
                 .into(),
             ),
@@ -228,10 +275,46 @@ fn text_attributes(s: &mut Src, out: &mut String) {
                 ])
                 .into(),
             ),
-            _ => (
+            13 => (
                 "lengthAdjust",
                 s.pick(&["spacing", "spacingAndGlyphs"]).into(),
             ),
+            14 => (
+                "writing-mode",
+                s.pick(&[
+                    "tb",
+                    "vertical-rl",
+                    "vertical-lr",
+                    "sideways-rl",
+                    "sideways-lr",
+                ])
+                .into(),
+            ),
+            15 => (
+                "text-orientation",
+                s.pick(&["mixed", "upright", "sideways"]).into(),
+            ),
+            16 => (
+                "glyph-orientation-vertical",
+                s.pick(&["0", "90", "auto"]).into(),
+            ),
+            17 => (
+                "font-feature-settings",
+                s.pick(&[
+                    "'tnum'",
+                    "'liga' off, 'smcp' 1",
+                    "'kern' 0",
+                    "'bad'",
+                    "normal",
+                ])
+                .into(),
+            ),
+            18 => (
+                "font-variant",
+                s.pick(&["small-caps", "none", "tabular-nums oldstyle-nums"])
+                    .into(),
+            ),
+            _ => ("font-kerning", s.pick(&["none", "normal"]).into()),
         };
         if !seen.contains(&name) {
             seen.push(name);

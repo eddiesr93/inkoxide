@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="320" viewBox="0 0 400 320" font-family="VertTest" font-size="22">
+  <rect x="0.5" y="0.5" width="399" height="319" rx="8" fill="#fbfbfd" stroke="#c9ccd6"/>
+  <text x="20" y="30" font-family="Inter" font-size="18" font-weight="bold" fill="#14287a">Vertical text</text>
+
+  <g stroke="#d5d8e0">
+    <line x1="40" y1="50" x2="40" y2="300"/>
+    <line x1="90" y1="50" x2="90" y2="300"/>
+    <line x1="140" y1="50" x2="140" y2="300"/>
+    <line x1="190" y1="50" x2="190" y2="300"/>
+    <line x1="240" y1="50" x2="240" y2="300"/>
+    <line x1="300" y1="50" x2="300" y2="300"/>
+    <line x1="350" y1="50" x2="350" y2="300"/>
+    <line x1="280" y1="175" x2="370" y2="175"/>
+  </g>
+
+  <text x="40" y="60" writing-mode="vertical-rl" fill="#1f2937">縦書文字、「テスト」。</text>
+  <text x="90" y="60" writing-mode="tb" fill="#0f766e">縦AB12書ー〈字</text>
+  <text x="140" y="60" writing-mode="vertical-rl" text-orientation="upright" fill="#9333ea">AB12</text>
+  <text x="190" y="60" writing-mode="sideways-rl" fill="#b91c1c">AB縦書</text>
+  <text x="240" y="290" writing-mode="sideways-lr" fill="#c2410c">AB縦書</text>
+  <text x="300" y="175" writing-mode="vertical-rl" text-anchor="middle" text-decoration="underline overline" fill="#14287a">縦書<tspan fill="#c0392b" dx="4" rotate="20">字</tspan></text>
+  <text x="350" y="60" writing-mode="vertical-rl" textLength="200" fill="#334155">テスト</text>
+</svg>
