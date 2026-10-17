@@ -78,11 +78,7 @@ describe('Font.register', () => {
     );
     const pdf = await renderToBuffer(el);
     const text = Buffer.from(pdf).toString('latin1');
-    for (const name of [
-      'VarTest-Regular_300wght',
-      'VarTest-Regular_700wght',
-      'VarTest-Regular_60wdth_650wght',
-    ]) {
+    for (const name of ['VarTest_300wght', 'VarTest_700wght', 'VarTest_60wdth_650wght']) {
       expect(text).toContain(name);
     }
     const t = treeFonts(el);
