@@ -501,7 +501,7 @@ describe('renderToBuffer', () => {
       [{ threads: 0 }, 'options.threads'],
       [{ threads: 1000 }, 'options.threads'],
       [{ threads: 1.5 }, 'options.threads'],
-      [{ pdfA: '2a' as '2b' }, 'options.pdfA'],
+      [{ pdfA: '2u' as '2b' }, 'options.pdfA'],
     ];
     for (const [opts, path] of cases) {
       const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, opts).catch((e: unknown) => e);

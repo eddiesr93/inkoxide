@@ -176,6 +176,18 @@ subsets font programs and caches the compressed whole program, and the PDF
 writer supplies the compression; the writer and `images` both compress
 through `flate.rs`.
 
+Tagged output (`tag.rs`, `pdf/tag.rs`) plans the structure from the
+document before layout: one element per node that is one (a paragraph, a
+heading, a figure, a table and its rows and cells, a field), keyed by the
+node's address, in document order, which is the reading order. Painting
+pushes `Op::Tag` around what a node's content painter draws; the writer
+opens a marked-content sequence with an MCID when something is drawn under
+a tag, and an artifact when something is drawn outside one (backgrounds,
+borders, headers, footers and nodes painted on every page, which the plan
+leaves out). Annotations take the element in effect, or one of their own.
+The tree, the parent tree and the elements are written last, so untagged
+output is byte for byte what it was.
+
 A variable font is registered once; each declaration with `variations`
 draws with an `Instance` of it (`fonts/mod.rs`): canonical coordinates
 (clamped, in tag order, defaults left out), metrics read by ttf-parser at

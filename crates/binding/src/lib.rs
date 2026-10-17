@@ -151,6 +151,8 @@ pub struct Options {
     pub subset_fonts: Option<bool>,
     pub pdf_a: Option<PdfA>,
     pub encryption: Option<EncryptionOptions>,
+    pub tagged: Option<bool>,
+    pub pdf_ua: Option<bool>,
 }
 
 /// `options.encryption`: mirrors Rust `Encryption`.
@@ -206,6 +208,8 @@ impl Options {
         if let Some(e) = self.encryption {
             core = core.with_encryption(encryption(e)?);
         }
+        core.tagged = self.tagged.unwrap_or(false);
+        core.pdf_ua = self.pdf_ua.unwrap_or(false);
         Ok((format, core))
     }
 }

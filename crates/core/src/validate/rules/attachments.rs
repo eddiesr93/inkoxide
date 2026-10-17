@@ -109,7 +109,7 @@ impl Checker<'_> {
         }
         let refused = match self.profile.level() {
             Some(PdfALevel::A1b) => Some("PDF/A-1b does not allow attachments"),
-            Some(PdfALevel::A2b) => Some(
+            Some(PdfALevel::A2b | PdfALevel::A2a) => Some(
                 "PDF/A-2b allows only PDF/A files as attachments, which Inkoxide cannot check; render PDF/A-3b",
             ),
             _ => None,

@@ -64,6 +64,12 @@ struct Output {
     /// under its whole file name (`invoice.xml`).
     #[arg(long, value_name = "DIR")]
     attachments: Vec<PathBuf>,
+    /// Write tagged PDF: a structure tree for screen readers and reflow.
+    #[arg(long)]
+    tagged: bool,
+    /// Write PDF/UA-1 (tagged, with the metadata it requires).
+    #[arg(long)]
+    pdf_ua: bool,
 }
 
 #[derive(Subcommand)]
@@ -86,7 +92,7 @@ enum Cmd {
         /// RFC 3339 creation date to embed.
         #[arg(long)]
         creation_date: Option<String>,
-        /// Write PDF/A, at LEVEL: 1b, 2b (the default) or 3b. The level
+        /// Write PDF/A, at LEVEL: 1b, 2b (the default), 2a, 3b or 3a. The level
         /// follows an equals sign (`--pdf-a=1b`), so `--pdf-a doc.json`
         /// writes PDF/A-2b.
         #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = str::parse::<PdfALevel>)]
@@ -277,7 +283,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
                 .with_hyphenation(load_hyphenation(&out)?)
-                .with_attachments(load_attachments(&out)?);
+                .with_attachments(load_attachments(&out)?)
+                .with_tagged(out.tagged)
+                .with_pdf_ua(out.pdf_ua);
             if let Some(level) = pdf_a {
                 opts = opts.with_pdf_a_level(level);
             }
@@ -319,7 +327,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
                 .with_hyphenation(load_hyphenation(&out)?)
-                .with_attachments(load_attachments(&out)?);
+                .with_attachments(load_attachments(&out)?)
+                .with_tagged(out.tagged)
+                .with_pdf_ua(out.pdf_ua);
             // Cold start: font registration plus the first render, which
             // also fills the process-wide caches.
             let cold = Instant::now();
@@ -456,8 +466,9 @@ mod tests {
         );
         // The level follows an equals sign.
         assert!(level(&["--pdf-a", "1b"]).is_err());
-        assert!(level(&["--pdf-a=2a"])
+        assert_eq!(level(&["--pdf-a=2a"]), Ok(Some(PdfALevel::A2a)));
+        assert!(level(&["--pdf-a=2u"])
             .unwrap_err()
-            .contains("unsupported PDF/A level `2a` (expected one of 1b, 2b, 3b)"));
+            .contains("unsupported PDF/A level `2u` (expected one of 1b, 2b, 2a, 3b, 3a)"));
     }
 }

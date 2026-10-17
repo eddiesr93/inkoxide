@@ -1,4 +1,4 @@
-import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
+import type { Break, Color, Meta, PageFilter, Role as SchemaRole, TransformOp } from '@inkoxide/schema';
 import type { BorderStyle, FlatStyle, FontFeatureSettings, FontVariationSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
@@ -364,8 +364,11 @@ export interface Permissions {
   documentAssembly?: boolean;
 }
 
+/** The part of a level b (`'2'` of `'2b'`). */
+type PartOf<L> = L extends `${infer Part}b` ? Part : never;
+
 /** A PDF/A part and conformance level; a bare part (`'PDF/A-2'`) is level b. */
-export type Conformance = `PDF/A-${PdfALevel}` | `PDF/A-${PdfALevel extends `${infer Part}b` ? Part : never}`;
+export type Conformance = `PDF/A-${PdfALevel}` | `PDF/A-${PartOf<PdfALevel>}`;
 
 export interface DocumentProps {
   title?: string;
@@ -413,6 +416,18 @@ export interface DocumentProps {
   ownerPassword?: string;
   /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
+  /**
+   * Write tagged PDF: a structure tree with the reading order (the order of the template) and
+   * what each element is (headings, paragraphs, figures with their `alt`, tables, lists), for
+   * screen readers and reflow. `pdfUA` and `'PDF/A-2a'` or `'PDF/A-3a'` imply it.
+   */
+  tagged?: boolean;
+  /**
+   * Write PDF/UA-1, the standard for accessible PDF: tagged, with a `title`, a `lang`, `alt` on
+   * every image that is not decoration and `label` on every field; without them the render
+   * fails with `UA_CONFLICT`.
+   */
+  pdfUA?: boolean;
   /**
    * Files the PDF carries, listed in the viewer's attachments panel; `<Attachment file>` shows
    * an icon that opens one. Under PDF/A, only `'PDF/A-3b'` allows them.
@@ -506,11 +521,24 @@ export interface PageInfo {
  */
 export type RenderProp = (page: PageInfo) => ReactNode;
 
+/**
+ * What an element is in tagged output (`<Document tagged>` or `pdfUA`): a heading, a paragraph,
+ * a section, a quote, a caption, a figure, a list (`list` holds `listItem`s, each a `label` and a
+ * `listBody`), or decoration (`artifact`), which screen readers skip.
+ */
+export type Role = SchemaRole;
+
 export interface ViewProps extends Flow {
   render?: RenderProp;
+  /** What the view is in tagged output; by default it is not an element of its own. */
+  role?: Role;
+  /** A `role="figure"` view's alternative text: what screen readers say for it. */
+  alt?: string;
 }
 
 export interface TextProps extends Flow {
+  /** What the text is in tagged output: `'h1'`–`'h6'`, `'caption'`, `'label'`…; default a paragraph. */
+  role?: Role;
   /**
    * Hyphenate this text (same as `hyphens-auto`). Needs patterns for its language, so set `lang` on
    * the text or the Document: without one, nothing is hyphenated and a warning says so. `false`
@@ -582,8 +610,13 @@ export interface ImageProps extends Omit<Flow, 'children'> {
    */
   src: ImageSrc;
   fit?: 'fill' | 'contain' | 'cover' | 'none';
-  /** The text the image copies and searches as: its alternative text, at most 1024 characters. */
+  /**
+   * The text the image copies and searches as: its alternative text, at most 1024 characters. In
+   * tagged output `""` makes it decoration; PDF/UA requires `alt` on every other image.
+   */
   alt?: string;
+  /** `'artifact'`: decoration in tagged output, as `alt=""`. */
+  role?: 'figure' | 'artifact';
 }
 
 export interface ImageBackgroundProps extends Flow {
@@ -618,6 +651,8 @@ export interface CellProps extends Common {
   colSpan?: number;
   rowSpan?: number;
   verticalAlign?: 'top' | 'middle' | 'bottom';
+  /** In tagged output, a header of its row; the cells of header rows head their columns. */
+  header?: boolean;
 }
 
 export interface SpacerProps {
@@ -644,6 +679,8 @@ interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fix
   name: string;
   readOnly?: boolean;
   required?: boolean;
+  /** What the field is for: what screen readers say, and the tooltip. PDF/UA requires it. */
+  label?: string;
 }
 
 export interface TextFieldProps extends FieldCommon {
@@ -856,6 +893,8 @@ export interface SvgProps extends SvgPresentation {
   debug?: boolean;
   /** The text the drawing copies and searches as: its alternative text, at most 1024 characters. */
   alt?: string;
+  /** `'artifact'`: decoration in tagged output. */
+  role?: 'figure' | 'artifact';
 }
 
 export interface PathProps extends SvgPresentation {

@@ -770,6 +770,25 @@ fn render_with(
         options = options.with_pdf_a_level(level);
     }
     let result = inkoxide::render(doc, format, &options, fonts, images);
+    // Tagging changes what is written, not what renders: a quarter of the
+    // documents render tagged too, and both render or fail alike; as
+    // PDF/UA, only `UA_CONFLICT` may refuse more.
+    if doc.len() % 4 == 1 {
+        let ua = doc.len() % 8 == 1;
+        let tagged = options.clone().with_tagged(true).with_pdf_ua(ua);
+        let other = inkoxide::render(doc, format, &tagged, fonts, images);
+        match (&result, &other) {
+            (Ok(_), Ok(pdf)) => assert!(pdf.starts_with(b"%PDF-")),
+            (_, Err(InkoxideError::Validation(e)))
+                if ua && e.code == ValidationCode::UaConflict => {}
+            (Err(a), Err(b)) => assert_eq!(a.code(), b.code(), "tagged: {b}; untagged: {a}"),
+            (a, b) => panic!(
+                "untagged {:?}, tagged {:?}",
+                a.as_ref().map(|_| ()),
+                b.as_ref().map(|_| ())
+            ),
+        }
+    }
     match &result {
         Ok(pdf) => {
             assert!(

@@ -40,6 +40,13 @@ only on demand, from the Actions tab, with the ID of that release run.
   output must pass veraPDF's profile for its level. The fixtures that
   carry files render only as PDF/A-3b, and the other levels reject them
   with `PDFA_CONFLICT` at the first file (`ONLY_PDF_A_3B`).
+- `crates/core/tests/accessibility.rs`: `fixtures/docs/accessible.json`
+  (from `scripts/fixtures/accessible.py`) as PDF/UA-1 and PDF/A-2a and
+  3a passes veraPDF; its structure tree, read back with qpdf, is in
+  document order, with its lists, table headers and spans, figures,
+  links, fields and notes; tagged output is the same on any number of
+  threads; a document without what PDF/UA requires fails with
+  `UA_CONFLICT` at its path.
 - `crates/core/tests/encryption.rs`: every fixture, encrypted, renders
   deterministically and, with `qpdf` installed, passes `qpdf --check`
   with either password; `qpdf --json` of it, decrypted, equals that of

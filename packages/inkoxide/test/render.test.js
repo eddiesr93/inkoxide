@@ -67,9 +67,10 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   );
   assert.ok(ink.renderSync(veiled, { pdfA: '2b' }).length > 0);
   assert.doesNotMatch(render(false), /GTS_PDFA1/);
+  assert.match(render('2a'), /<pdfaid:conformance>A<\/pdfaid:conformance>/);
   assert.throws(
-    () => render('2a'),
-    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfA' && /2a/.test(e.message),
+    () => render('2u'),
+    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfA' && /2u/.test(e.message),
   );
 });
 

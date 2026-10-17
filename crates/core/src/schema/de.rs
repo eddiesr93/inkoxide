@@ -13,7 +13,8 @@ use super::{
     Attachment, AttachmentDecl, BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles,
     Break, ColumnSpec, ColumnWidth, Corners, Field, FieldValue, FontFeature, FontVariation,
     ImageFit, ImageSource, InlineData, Node, NodeKind, Note, ObjectPosition, OptEdges, PageFilter,
-    PagePattern, Relationship, RunAlign, RunImage, Style, Table, TableRow, TextRun, TransformOp,
+    PagePattern, Relationship, Role, RunAlign, RunImage, Style, Table, TableRow, TextRun,
+    TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -768,9 +769,12 @@ impl NodeType {
     /// The properties a node of this type takes, besides `type` and `id`.
     pub(super) fn fields(self) -> impl Iterator<Item = &'static str> {
         let (common, own): (&[&str], &[&str]) = match self {
-            Self::Box => (COMMON, &["children", "backgroundImage"]),
-            Self::Text => (COMMON, &["runs"]),
-            Self::Image => (COMMON, &["src", "data", "fit", "objectPosition", "alt"]),
+            Self::Box => (COMMON, &["children", "backgroundImage", "role", "alt"]),
+            Self::Text => (COMMON, &["runs", "role"]),
+            Self::Image => (
+                COMMON,
+                &["src", "data", "fit", "objectPosition", "alt", "role"],
+            ),
             Self::Table => (COMMON, &["columns", "headerRows", "rows"]),
             Self::PageBreak => (&[], &[]),
             Self::Spacer => (COMMON, &[]),
@@ -813,6 +817,7 @@ pub struct RawNode {
     note: Option<Box<Note>>,
     attachment: Option<Box<Attachment>>,
     background_image: Option<Box<BackgroundImage>>,
+    role: Option<Role>,
 }
 
 /// Drops the spare capacity serde leaves when growing a `Vec` of unknown
@@ -858,6 +863,7 @@ impl TryFrom<RawNode> for Node {
             ("note", r.note.is_some()),
             ("attachment", r.attachment.is_some()),
             ("backgroundImage", r.background_image.is_some()),
+            ("role", r.role.is_some()),
         ];
         if let Some((field, _)) = present
             .iter()
@@ -873,6 +879,7 @@ impl TryFrom<RawNode> for Node {
         let kind = match r.ty {
             NodeType::Box => NodeKind::Box {
                 children: shrink(r.children.unwrap_or_default()),
+                alt: r.alt,
             },
             NodeType::Text => NodeKind::Text {
                 runs: shrink(r.runs.ok_or_else(|| missing("runs"))?),
@@ -908,6 +915,7 @@ impl TryFrom<RawNode> for Node {
             pages: r.pages,
             debug: r.debug.unwrap_or(false),
             background_image: r.background_image,
+            role: r.role,
             kind,
         })
     }

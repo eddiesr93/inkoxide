@@ -28,6 +28,7 @@ python3 scripts/fixtures/pagination.py >/dev/null
 python3 scripts/fixtures/tables.py >/dev/null
 python3 scripts/fixtures/emoji_fonts.py >/dev/null
 python3 scripts/fixtures/variable_fonts.py >/dev/null
+python3 scripts/fixtures/accessible.py >/dev/null
 # Not scripts/fixtures/images.py: it needs Pillow, whose PNG bytes change
 # from one version to the next.
 generated=(
@@ -46,6 +47,7 @@ generated=(
   fixtures/fonts/limits/colr-fanout.ttf
   fixtures/fonts/limits/colr-fanout-empty.ttf
   fixtures/docs/variable-fonts.json
+  fixtures/docs/accessible.json
   fixtures/fonts/VarTest-glyf.ttf
   fixtures/fonts/VarTest-CFF2.otf
   fixtures/fonts/limits/var-avar2.ttf

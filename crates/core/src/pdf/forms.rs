@@ -2,13 +2,14 @@
 //! per painted field op, and an appearance stream for every widget state
 //! (no `NeedAppearances`, so PDF/A-2b accepts the form).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType};
 use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::pdfa::limits::NAME as MAX_NAME;
+use super::tag::{AnnotKind, AnnotTags};
 use super::{
     font_name, round_pt, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc, Writer,
 };
@@ -16,6 +17,7 @@ use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
 use crate::schema::{FieldKind, FieldValue, BLACK};
+use crate::tag::StructId;
 use crate::InkoxideError;
 
 /// What the catalog's `/AcroForm` needs.
@@ -86,8 +88,23 @@ pub(super) fn write_fields(
     w: &mut Writer,
     ctx: &Ctx<'_, '_, '_>,
     annots: &mut [Vec<Ref>],
+    mut tags: Option<&mut AnnotTags>,
 ) -> Result<Option<Form>, InkoxideError> {
     let Writer { pdf, alloc, out } = w;
+    // In tagged output, the element of each widget, by its op.
+    let mut owners: HashMap<*const FieldOp, Option<StructId>> = HashMap::new();
+    for page in ctx.pages {
+        if let Some(t) = &page.tags {
+            for (f, owner) in page.fields.iter().zip(&t.owners.fields) {
+                owners.insert(std::ptr::from_ref(f), *owner);
+            }
+        }
+    }
+    let mut key = |r: Ref, page: usize, op: &FieldOp| {
+        let owner = owners.get(&std::ptr::from_ref(op)).copied().flatten();
+        tags.as_deref_mut()
+            .map(|t| t.add(r, page, owner, AnnotKind::Widget))
+    };
     // Widgets by field name, in order of first appearance.
     let mut order: Vec<&str> = Vec::new();
     let mut widgets_of: BTreeMap<&str, Vec<(usize, &FieldOp)>> = BTreeMap::new();
@@ -136,6 +153,9 @@ pub(super) fn write_fields(
             field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps, states.on[0]);
+            if let Some(k) = key(field_ref, widgets[0].0, first) {
+                annot.pair(Name(b"StructParent"), k);
+            }
             annot.finish();
             annots[widgets[0].0].push(field_ref);
             continue;
@@ -148,6 +168,9 @@ pub(super) fn write_fields(
             f.parent(field_ref);
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, (page, op), &aps, states.on[i]);
+            if let Some(k) = key(kid, page, op) {
+                annot.pair(Name(b"StructParent"), k);
+            }
             annot.finish();
             annots[page].push(kid);
             kids.push(kid);
@@ -247,6 +270,10 @@ fn field_entries(
     let op = widgets[0].1;
     let spec = &op.field;
     f.pair(Name(b"T"), Str(&out.text(name)));
+    // What screen readers and tooltips say for the field.
+    if let Some(label) = &spec.label {
+        f.pair(Name(b"TU"), Str(&out.text(label)));
+    }
     let mut flags = FieldFlags::empty();
     if spec.read_only {
         flags |= FieldFlags::READ_ONLY;

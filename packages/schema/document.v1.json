@@ -97,6 +97,27 @@
       "default": false,
       "description": "A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. On a text node it also outlines each line: its line box (dashed), its baseline, and the glyphs of each run on it, from the run font's ascender to its descender. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production."
     },
+    "Role": {
+      "enum": [
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "p",
+        "section",
+        "blockQuote",
+        "caption",
+        "figure",
+        "list",
+        "listItem",
+        "label",
+        "listBody",
+        "artifact"
+      ],
+      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent."
+    },
     "Meta": {
       "type": "object",
       "additionalProperties": false,
@@ -1487,6 +1508,11 @@
           "items": {
             "$ref": "#/$defs/Node"
           }
+        },
+        "header": {
+          "type": "boolean",
+          "default": false,
+          "description": "In tagged output, a header of its row (`TH`, scope row); the cells of the header rows are headers of their columns."
         }
       }
     },
@@ -1601,6 +1627,14 @@
         "debug": {
           "$ref": "#/$defs/Debug"
         },
+        "role": {
+          "$ref": "#/$defs/Role"
+        },
+        "alt": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "A `figure` box's alternative text: what screen readers say for it. Only with the role `figure`."
+        },
         "children": {
           "type": "array",
           "items": {
@@ -1644,6 +1678,9 @@
         "debug": {
           "$ref": "#/$defs/Debug"
         },
+        "role": {
+          "$ref": "#/$defs/Role"
+        },
         "runs": {
           "type": "array",
           "items": {
@@ -1683,6 +1720,9 @@
         "debug": {
           "$ref": "#/$defs/Debug"
         },
+        "role": {
+          "$ref": "#/$defs/Role"
+        },
         "src": {
           "$ref": "#/$defs/Id",
           "description": "Key into the render option `images`."
@@ -1708,7 +1748,7 @@
         "alt": {
           "type": "string",
           "maxLength": 1024,
-          "description": "Alternative text: what copying, searching and screen readers get for the image."
+          "description": "Alternative text: what copying, searching and screen readers get for the image. In tagged output, `\"\"` makes the image decoration; PDF/UA requires `alt` on every image that is not."
         }
       },
       "oneOf": [
@@ -2071,6 +2111,12 @@
         },
         "format": {
           "$ref": "#/$defs/FieldFormat"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it."
         }
       }
     },

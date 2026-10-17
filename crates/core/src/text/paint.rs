@@ -506,6 +506,7 @@ fn paint_line(
             ops.push(Op::Link {
                 rect: Rect::new(x0, cy + line.top, x1 - x0, line.height),
                 target: target.into(),
+                owner: None,
             });
         }
     }

@@ -12,6 +12,7 @@ mod notes;
 mod out;
 mod pdfa;
 mod svg;
+mod tag;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -61,6 +62,8 @@ pub(crate) struct EncodedPage {
     /// Icon annotations (text notes), at the corner the transform in
     /// effect puts them.
     pub icons: Vec<crate::icons::IconOp>,
+    /// In tagged output, the elements of its content and annotations.
+    pub tags: Option<content::PageTags>,
 }
 
 pub(crate) struct DocumentOut<'a> {
@@ -74,6 +77,10 @@ pub(crate) struct DocumentOut<'a> {
     pub marks: &'a Marks<'a>,
     /// The files the document carries.
     pub files: &'a [crate::attachments::PreparedFile],
+    /// The structure of tagged output.
+    pub plan: Option<&'a crate::tag::Plan>,
+    /// Writing PDF/UA-1.
+    pub ua: bool,
 }
 
 pub(crate) struct PdfWriterSink {
@@ -196,13 +203,14 @@ impl Writer {
 }
 
 impl PdfWriterSink {
-    /// Encodes one page; called from worker threads.
+    /// Encodes one page, tagged with `plan`; called from worker threads.
     pub fn encode_page(
         &self,
         page: &PageContent,
         fonts: &FontSet<'_>,
+        plan: Option<&crate::tag::Plan>,
     ) -> Result<EncodedPage, InkoxideError> {
-        content::encode_page(page, fonts, self.profile, self.compression)
+        content::encode_page(page, fonts, self.profile, self.compression, plan)
     }
 
     pub fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {

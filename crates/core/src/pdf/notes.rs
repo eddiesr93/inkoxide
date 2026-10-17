@@ -7,6 +7,7 @@ use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::attach::FileRefs;
+use super::tag::{AnnotKind, AnnotTags};
 use super::{
     annot_rect, content_bytes, path, round_pt, set_fill, EncodedPage, Out, Profile, Writer,
 };
@@ -23,20 +24,25 @@ pub(super) fn write_icons(
     (pages, page_refs): (&[EncodedPage], &[Ref]),
     annots: &mut [Vec<Ref>],
     files: &FileRefs<'_>,
+    mut tags: Option<&mut AnnotTags>,
     profile: Profile,
 ) -> Result<(), InkoxideError> {
     let Writer { pdf, alloc, out } = w;
     for (i, page) in pages.iter().enumerate() {
-        for icon in &page.icons {
+        for (j, icon) in page.icons.iter().enumerate() {
             let r = alloc.next();
             let ap = alloc.next();
+            let owner = page.tags.as_ref().and_then(|t| t.owners.icons[j]);
+            let key = tags
+                .as_deref_mut()
+                .map(|t| t.add(r, i, owner, AnnotKind::Other));
             // Inside the page, where viewers show it.
             let x = icon.x.min(page.width - ICON).max(0.0);
             let y = icon.y.min(page.height - ICON).max(0.0);
             let rect = annot_rect(Rect::new(x, y, ICON, ICON), page.height);
             match &icon.kind {
                 IconKind::Note(note) => {
-                    write_note(pdf, out, (r, ap), note, (rect, page_refs[i]), profile)?;
+                    write_note(pdf, out, (r, ap), note, (rect, page_refs[i]), key, profile)?;
                 }
                 IconKind::Attachment(a) => {
                     // Validation checked that the file is declared.
@@ -54,6 +60,7 @@ pub(super) fn write_icons(
                         contents,
                         rect,
                         page: page_refs[i],
+                        struct_parent: key,
                     };
                     write_attachment(pdf, out, &annot, a, profile)?;
                 }
@@ -71,6 +78,7 @@ fn write_note(
     (r, ap): (Ref, Ref),
     note: &Note,
     (rect, page_ref): (PdfRect, Ref),
+    struct_parent: Option<i32>,
     profile: Profile,
 ) -> Result<(), InkoxideError> {
     let color = note.color.unwrap_or(NOTE_YELLOW);
@@ -87,6 +95,9 @@ fn write_note(
     }
     if note.open {
         a.pair(Name(b"Open"), true);
+    }
+    if let Some(key) = struct_parent {
+        a.pair(Name(b"StructParent"), key);
     }
     a.appearance().normal().stream(ap);
     a.finish();
@@ -106,6 +117,8 @@ struct FileAnnot<'a> {
     contents: &'a str,
     rect: PdfRect,
     page: Ref,
+    /// Its key in the parent tree, in tagged output.
+    struct_parent: Option<i32>,
 }
 
 /// Writes attachment icon `a` as file attachment annotation `annot`.
@@ -134,6 +147,9 @@ fn write_attachment(
         });
     w.pair(Name(b"FS"), annot.spec);
     w.insert(Name(b"AF")).array().item(annot.spec);
+    if let Some(key) = annot.struct_parent {
+        w.pair(Name(b"StructParent"), key);
+    }
     w.appearance().normal().stream(ap);
     w.finish();
     let content = file_icon(a.icon, &color, profile)?;

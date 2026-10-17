@@ -83,6 +83,9 @@ pub(crate) enum Op {
     Link {
         rect: Rect,
         target: Box<str>,
+        /// The structure element of its annotation in tagged output; `None`:
+        /// the one whose content is being drawn ([`Op::Tag`]).
+        owner: Option<crate::tag::StructId>,
     },
     /// A form field widget (draws nothing here; the writer adds an
     /// annotation with its appearance, transformed like the content
@@ -103,6 +106,11 @@ pub(crate) enum Op {
     /// One glyph drawn invisibly, stretched to a width: text that can be
     /// selected and extracted where nothing shows it (see [`span`]).
     InvisibleText(InvisibleGlyph),
+    /// In tagged output, starts the content of a structure element: what
+    /// is drawn until [`Op::EndTag`] belongs to it. Tags enclose whole save
+    /// levels and do not nest. Without tagging none is pushed.
+    Tag(crate::tag::StructId),
+    EndTag,
 }
 
 /// A glyph of `font` at `size`, drawn invisibly (text rendering mode 3)
