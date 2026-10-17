@@ -183,20 +183,33 @@ fn load_hyphenation(out: &Output) -> Result<HyphenationStore, String> {
     Ok(store)
 }
 
-/// Regular files of `dir` as (stem, path), sorted for determinism.
+/// The most bytes a file of an `--attachments` directory may have: an
+/// attachment's limit. A larger one is left out, with a warning.
+const MAX_ATTACHMENT_FILE: u64 = 64 << 20;
+
 /// The files of the `--attachments` directories, by file name.
 fn load_attachments(out: &Output) -> Result<AttachmentStore, String> {
     let mut store = AttachmentStore::new();
     for dir in &out.attachments {
         for (_, path) in dir_files(dir)? {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                store.insert(name, read(&path)?);
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let len = fs::metadata(&path).map_or(0, |m| m.len());
+            if len > MAX_ATTACHMENT_FILE {
+                eprintln!(
+                    "warning: {}: larger than 64 MiB, the most an attachment may be; left out",
+                    path.display()
+                );
+                continue;
             }
+            store.insert(name, read(&path)?);
         }
     }
     Ok(store)
 }
 
+/// Regular files of `dir` as (stem, path), sorted for determinism.
 fn dir_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {

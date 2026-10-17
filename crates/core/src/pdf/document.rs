@@ -327,9 +327,14 @@ impl PdfWriterSink {
             h.update(&page.stream);
         }
         h.update(&xmp);
-        // Two documents that differ only in their files differ in `/ID`.
+        // Two documents that differ only in their files, or in their
+        // names and types, differ in `/ID`.
         for f in doc.files {
             h.update(&f.hash.to_le_bytes());
+            for part in [f.name.as_bytes(), f.mime_type.as_bytes()] {
+                h.update(&part.len().to_le_bytes());
+                h.update(part);
+            }
         }
         let id = h.digest128().to_be_bytes().to_vec();
         w.pdf.set_file_id((id.clone(), id));

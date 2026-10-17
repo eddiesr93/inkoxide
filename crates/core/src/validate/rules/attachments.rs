@@ -293,7 +293,7 @@ impl Checker<'_> {
             });
         }
         if self.rendering && self.level.is_none() && !schemas.is_empty() {
-            self.conflict.get_or_insert(ValidationError {
+            self.errors.push(ValidationError {
                 code: Code::InvalidValue,
                 path: "meta.xmpExtensions".into(),
                 message: "XMP extensions go in the PDF/A metadata: render PDF/A".into(),
