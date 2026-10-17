@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
+use super::emoji::{VS16, ZWJ};
 use crate::fonts::FontSet;
 use crate::images::{ImageKey, Placement};
 use crate::schema::{RunAlign, TextRun};
@@ -29,7 +30,7 @@ pub(crate) struct InlineObjects {
 /// An `emojiImages` key: the sequence without its emoji presentation
 /// selectors, which writers add or leave out.
 pub(crate) fn emoji_key(sequence: &str) -> String {
-    sequence.chars().filter(|&c| c != '\u{FE0F}').collect()
+    sequence.chars().filter(|&c| c != VS16).collect()
 }
 
 /// An image and its intrinsic size, in points.
@@ -67,11 +68,11 @@ impl InlineObjects {
                 continue;
             }
             let mut at = q.range.start;
-            for part in seq.split('\u{200D}') {
+            for part in seq.split(ZWJ) {
                 if let Some(object) = self.emoji_object(part, run) {
                     out.push((at..at + part.len(), object));
                 }
-                at += part.len() + '\u{200D}'.len_utf8();
+                at += part.len() + ZWJ.len_utf8();
             }
         }
         out

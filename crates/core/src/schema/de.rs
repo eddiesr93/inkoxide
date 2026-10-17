@@ -38,6 +38,16 @@ impl Default for LengthPercent {
     }
 }
 
+impl LengthPercent {
+    /// In points, a percentage taken of `of`.
+    pub fn resolve(self, of: f32) -> f32 {
+        match self {
+            LengthPercent::Points(v) => v,
+            LengthPercent::Percent(p) => p * of,
+        }
+    }
+}
+
 /// One grid track sizing value.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TrackBreadth {
@@ -136,8 +146,11 @@ fn percent(s: &str) -> Option<f32> {
     })
 }
 
+/// A `Deserialize` for `$ty` from a number or a string. The string arm
+/// gives `Option<$ty>` (`None`: "expected {expecting}"), or after
+/// `@result` a `Result<$ty, String>` with its own message.
 macro_rules! num_or_str_visitor {
-    ($ty:ident, $expecting:expr, |$v:ident| $num:expr, |$s:ident| $str:expr) => {
+    ($ty:ident, $expecting:expr, |$v:ident| $num:expr, |$s:ident| @result $str:expr) => {
         impl<'de> Deserialize<'de> for $ty {
             fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 struct V;
@@ -156,17 +169,18 @@ macro_rules! num_or_str_visitor {
                         self.visit_f64(v as f64)
                     }
                     fn visit_str<E: de::Error>(self, $s: &str) -> Result<$ty, E> {
-                        $str.ok_or_else(|| {
-                            E::custom(format_args!(
-                                "[INVALID_VALUE] expected {}, found \"{}\"",
-                                $expecting, $s
-                            ))
-                        })
+                        let r: Result<$ty, String> = $str;
+                        r.map_err(E::custom)
                     }
                 }
                 d.deserialize_any(V)
             }
         }
+    };
+    ($ty:ident, $expecting:expr, |$v:ident| $num:expr, |$s:ident| $str:expr) => {
+        num_or_str_visitor!($ty, $expecting, |$v| $num, |$s| @result $str.ok_or_else(|| {
+            format!("[INVALID_VALUE] expected {}, found \"{}\"", $expecting, $s)
+        }));
     };
 }
 
@@ -631,34 +645,27 @@ pub(super) fn grid_span<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u16>, 
     }
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub enum RawColumnWidth {
-    Num(f64),
-    Str(String),
-}
-
-impl TryFrom<RawColumnWidth> for ColumnWidth {
-    type Error = String;
-    fn try_from(raw: RawColumnWidth) -> Result<Self, String> {
-        match raw {
-            RawColumnWidth::Num(v) if v > 0.0 && v.is_finite() => Ok(ColumnWidth::Points(v as f32)),
-            RawColumnWidth::Num(v) => Err(format!(
-                "[OUT_OF_RANGE] column width must be a positive number, found {v}"
-            )),
-            RawColumnWidth::Str(s) if s == "auto" => Ok(ColumnWidth::Auto),
-            RawColumnWidth::Str(s) => match parse_suffixed(&s, "fr") {
-                Some(v) if v > 0.0 => Ok(ColumnWidth::Fr(v)),
-                Some(_) => Err(format!(
-                    "[OUT_OF_RANGE] column width must be positive, found \"{s}\""
-                )),
-                None => Err(format!(
-                    "[INVALID_VALUE] column width must be points, \"<n>fr\" or \"auto\", found \"{s}\""
-                )),
-            },
-        }
+num_or_str_visitor!(
+    ColumnWidth,
+    "points, \"<n>fr\" or \"auto\"",
+    |v| if v > 0.0 && v.is_finite() {
+        Ok(ColumnWidth::Points(v as f32))
+    } else {
+        Err(E::custom(format_args!(
+            "[OUT_OF_RANGE] column width must be a positive number, found {v}"
+        )))
+    },
+    |s| @result match parse_suffixed(s, "fr") {
+        _ if s == "auto" => Ok(ColumnWidth::Auto),
+        Some(v) if v > 0.0 => Ok(ColumnWidth::Fr(v)),
+        Some(_) => Err(format!(
+            "[OUT_OF_RANGE] column width must be positive, found \"{s}\""
+        )),
+        None => Err(format!(
+            "[INVALID_VALUE] column width must be points, \"<n>fr\" or \"auto\", found \"{s}\""
+        )),
     }
-}
+);
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -909,37 +916,23 @@ impl TryFrom<RawRunImage> for RunImage {
     }
 }
 
-/// A run's `verticalAlign` as written: a keyword or a number.
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub enum RawRunAlign {
-    Num(f64),
-    Str(String),
-}
-
-impl TryFrom<RawRunAlign> for RunAlign {
-    type Error = String;
-
-    fn try_from(raw: RawRunAlign) -> Result<Self, String> {
-        Ok(match raw {
-            // Bounded by validation.
-            RawRunAlign::Num(v) => RunAlign::Points(v as f32),
-            RawRunAlign::Str(s) => match s.as_str() {
-                "baseline" => RunAlign::Baseline,
-                "super" => RunAlign::Super,
-                "sub" => RunAlign::Sub,
-                "middle" => RunAlign::Middle,
-                "textTop" => RunAlign::TextTop,
-                "textBottom" => RunAlign::TextBottom,
-                "top" => RunAlign::Top,
-                "bottom" => RunAlign::Bottom,
-                _ => {
-                    return Err(format!(
-                        "[INVALID_VALUE] `verticalAlign` must be baseline, super, sub, middle, \
-                         textTop, textBottom, top, bottom or a number, found \"{s}\""
-                    ))
-                }
-            },
-        })
+num_or_str_visitor!(
+    RunAlign,
+    "baseline, super, sub, middle, textTop, textBottom, top, bottom or a number",
+    // Bounded by validation.
+    |v| Ok(RunAlign::Points(v as f32)),
+    |s| @result match s {
+        "baseline" => Ok(RunAlign::Baseline),
+        "super" => Ok(RunAlign::Super),
+        "sub" => Ok(RunAlign::Sub),
+        "middle" => Ok(RunAlign::Middle),
+        "textTop" => Ok(RunAlign::TextTop),
+        "textBottom" => Ok(RunAlign::TextBottom),
+        "top" => Ok(RunAlign::Top),
+        "bottom" => Ok(RunAlign::Bottom),
+        _ => Err(format!(
+            "[INVALID_VALUE] `verticalAlign` must be baseline, super, sub, middle, \
+             textTop, textBottom, top, bottom or a number, found \"{s}\""
+        )),
     }
-}
+);

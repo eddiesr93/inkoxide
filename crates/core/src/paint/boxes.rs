@@ -263,9 +263,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         let g = ln.geo;
         let (shift, extra) = self.mode.shifts(i);
         let (x, y, w, h) = (g.x + self.dx, g.y + shift + self.dy, g.w, g.h + extra);
-        let rotate = s.rotate.filter(|r| *r % 360.0 != 0.0);
-        let transform = s.transform.as_deref().filter(|t| !t.is_empty());
-        let own = (transform.is_some() || rotate.is_some()).then(|| box_transform(s, x, y, w, h));
+        let own = s.is_transformed().then(|| box_transform(s, x, y, w, h));
         // Its outline, which its content adds lines to.
         let outlined = (node.debug || self.debug.all).then_some(self.debug.boxes.len());
         if outlined.is_some() {
@@ -879,13 +877,6 @@ pub(crate) fn content_radii(s: &Style, g: &Geometry) -> Radii {
     inset_radii(&radii(s, g.w, g.h), inset)
 }
 
-fn resolve(v: LengthPercent, of: f32) -> f32 {
-    match v {
-        LengthPercent::Points(p) => p,
-        LengthPercent::Percent(p) => p * of,
-    }
-}
-
 fn rotation(deg: f32) -> [f32; 6] {
     // y-down space: positive angles turn clockwise, as in CSS.
     let (sin, cos) = deg.to_radians().sin_cos();
@@ -898,16 +889,14 @@ pub(crate) fn box_transform(s: &Style, x: f32, y: f32, w: f32, h: f32) -> [f32; 
     let [ox, oy] = s
         .transform_origin
         .unwrap_or([LengthPercent::Percent(0.5); 2]);
-    let (ox, oy) = (x + resolve(ox, w), y + resolve(oy, h));
+    let (ox, oy) = (x + ox.resolve(w), y + oy.resolve(h));
     let mut m = [1.0, 0.0, 0.0, 1.0, ox, oy];
     if let Some(deg) = s.rotate {
         m = mul(m, rotation(deg));
     }
     for op in s.transform.iter().flat_map(|t| t.iter()) {
         let t = match *op {
-            TransformOp::Translate([tx, ty]) => {
-                [1.0, 0.0, 0.0, 1.0, resolve(tx, w), resolve(ty, h)]
-            }
+            TransformOp::Translate([tx, ty]) => [1.0, 0.0, 0.0, 1.0, tx.resolve(w), ty.resolve(h)],
             TransformOp::Scale([sx, sy]) => [sx, 0.0, 0.0, sy, 0.0, 0.0],
             TransformOp::Rotate(deg) => rotation(deg),
             TransformOp::Skew([ax, ay]) => [

@@ -23,7 +23,8 @@ pub(crate) mod limits {
     pub const REAL: f32 = 32_767.0;
     /// Longest string, in bytes.
     pub const STRING: usize = 65_535;
-    /// Longest name, in bytes.
+    /// Longest name, in bytes (also ISO 32000-1, Annex C, which PDF/A-2
+    /// holds files to).
     pub const NAME: usize = 127;
     /// Most entries in an array.
     pub const ARRAY: usize = 8_191;
@@ -399,14 +400,7 @@ fn part(level: PdfALevel) -> &'static str {
 /// `2026-01-31T12:00:00+02:00`, the same instant as the info dictionary's
 /// `CreationDate`.
 fn xmp_date(t: Timestamp) -> String {
-    let (d, off) = (t.local, t.offset_minutes);
-    let zone = if off == 0 {
-        "Z".to_string()
-    } else {
-        let sign = if off < 0 { '-' } else { '+' };
-        let a = off.unsigned_abs();
-        format!("{sign}{:02}:{:02}", a / 60, a % 60)
-    };
+    let (d, zone) = (t.local, t.zone(':'));
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{zone}",
         d.year, d.month, d.day, d.hour, d.minute, d.second

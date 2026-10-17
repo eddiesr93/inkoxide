@@ -5,9 +5,7 @@
 //! the layout of large tables. Anything else goes to Taffy.
 
 use super::{AvailableSpace, CellSpace, Geometry, LeafMeasure, NodeIdx, Size, SubLayout, Tree};
-use crate::schema::{
-    AlignItems, AlignSelf, Display, Edges, LengthPercent, NodeKind, Style, VerticalAlign,
-};
+use crate::schema::{AlignItems, AlignSelf, Display, Edges, NodeKind, Style, VerticalAlign};
 
 /// A set height short of the content by less than this (points) is float
 /// noise: the content still fits.
@@ -41,19 +39,13 @@ pub(super) fn simple_cell(tree: &Tree<'_>, idx: NodeIdx) -> Option<(NodeIdx, Edg
     if !container_ok {
         return None;
     }
-    let side = |v: Option<LengthPercent>| match v {
-        None => Some(0.0),
-        Some(LengthPercent::Points(x)) => Some(x.max(0.0)),
-        Some(LengthPercent::Percent(_)) => None,
-    };
-    let pad = match &s.padding {
-        Some(p) => Edges {
-            top: side(p.top)?,
-            right: side(p.right)?,
-            bottom: side(p.bottom)?,
-            left: side(p.left)?,
-        },
-        None => Edges::default(),
+    // Not with a percentage: the cell's width is not known yet.
+    let p = s.padding.unwrap_or_default().resolve(None);
+    let pad = Edges {
+        top: p.top?,
+        right: p.right?,
+        bottom: p.bottom?,
+        left: p.left?,
     };
     Some((child, pad))
 }

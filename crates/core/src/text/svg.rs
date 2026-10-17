@@ -91,6 +91,14 @@ pub(crate) struct LaidText {
     pub text: String,
 }
 
+/// The items of `items` (in paint style order) drawn in paint style
+/// `paint`.
+fn of_paint<T>(items: &[T], paint: u32, paint_of: impl Fn(&T) -> u32) -> &[T] {
+    let start = items.partition_point(|i| paint_of(i) < paint);
+    let end = items.partition_point(|i| paint_of(i) <= paint);
+    &items[start..end]
+}
+
 impl LaidText {
     /// The text of glyph `g`, if it has any.
     pub fn glyph_text(&self, g: &SvgGlyph) -> Option<&str> {
@@ -100,16 +108,12 @@ impl LaidText {
 
     /// The glyphs drawn in paint style `paint`.
     pub fn glyphs_of(&self, paint: u32) -> &[SvgGlyph] {
-        let start = self.glyphs.partition_point(|g| g.paint < paint);
-        let end = self.glyphs.partition_point(|g| g.paint <= paint);
-        &self.glyphs[start..end]
+        of_paint(&self.glyphs, paint, |g| g.paint)
     }
 
     /// The decorations drawn in paint style `paint`.
     pub fn decorations_of(&self, paint: u32) -> &[SvgDecoration] {
-        let start = self.decorations.partition_point(|d| d.paint < paint);
-        let end = self.decorations.partition_point(|d| d.paint <= paint);
-        &self.decorations[start..end]
+        of_paint(&self.decorations, paint, |d| d.paint)
     }
 
     /// A layout without fonts: a glyph of each of `paints` paint styles
@@ -137,9 +141,7 @@ impl LaidText {
 
     /// The images drawn in paint style `paint`.
     pub fn images_of(&self, paint: u32) -> &[SvgImage] {
-        let start = self.images.partition_point(|i| i.paint < paint);
-        let end = self.images.partition_point(|i| i.paint <= paint);
-        &self.images[start..end]
+        of_paint(&self.images, paint, |i| i.paint)
     }
 }
 

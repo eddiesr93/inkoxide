@@ -123,6 +123,28 @@ fn invalid_values() {
         (C::InvalidType, "pages[0].children[0].style.opacity")
     );
 
+    // A value of the wrong type says what the property takes, not the
+    // name of a type inside the engine.
+    for (node, path) in [
+        (
+            r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9,"verticalAlign":true}]}"#,
+            "pages[0].children[0].runs[0].verticalAlign",
+        ),
+        (
+            r#"{"type":"table","columns":[{"width":true}],"rows":[]}"#,
+            "pages[0].children[0].columns[0].width",
+        ),
+    ] {
+        let errs = run(&doc(node));
+        assert_eq!(errs.len(), 1, "{errs:#?}");
+        assert_eq!(
+            (errs[0].code, errs[0].path.as_str()),
+            (C::InvalidType, path)
+        );
+        assert!(errs[0].message.contains("expected"), "{}", errs[0].message);
+        assert!(!errs[0].message.contains("untagged"), "{}", errs[0].message);
+    }
+
     let (code, path) = one(&doc(r#"{"type":"wat"}"#));
     assert_eq!(
         (code, path.as_str()),

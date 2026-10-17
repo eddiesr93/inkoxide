@@ -71,13 +71,6 @@ fn len_h(l: Option<Length>, parent_h: Option<f32>) -> Option<f32> {
     }
 }
 
-fn len_pct(l: LengthPercent, base: f32) -> f32 {
-    match l {
-        LengthPercent::Points(v) => v,
-        LengthPercent::Percent(p) => p * base,
-    }
-}
-
 /// What a child's style sets across its container, resolved against
 /// the width `w` its percentages are of.
 struct Across {
@@ -161,8 +154,8 @@ fn margins<const N: usize>(
 
 /// Padding and border of a box, against the container width `w`.
 fn insets(s: &Style, w: f32) -> (Edges<f32>, Edges<f32>) {
-    let p = s.padding.unwrap_or_default();
-    let pad = |v: Option<LengthPercent>| v.map_or(0.0, |l| len_pct(l, w).max(0.0));
+    let p = s.padding.unwrap_or_default().resolve(Some(w));
+    let pad = |v: Option<f32>| v.unwrap_or(0.0);
     let b = s.border_width.unwrap_or_default();
     let bor = |v: Option<f32>| v.unwrap_or(0.0).max(0.0);
     (
@@ -303,9 +296,20 @@ impl Container<'_, '_> {
         if self.leaf(c) {
             return Ok(a.clamp(self.fit_leaf(ctx, c, a, avail)?.width));
         }
+        Ok(a.clamp(self.shrink_to_fit(ctx, c, room)?))
+    }
+
+    /// The shrink-to-fit width of box `c` in `room`: its max-content
+    /// width, at most `room` but no less than its min-content width.
+    fn shrink_to_fit(
+        &self,
+        ctx: &mut LayoutCtx<'_>,
+        c: NodeIdx,
+        room: f32,
+    ) -> Result<f32, InkoxideError> {
         let lo = self.size(ctx, c, AvailableSpace::MinContent)?.width;
         let hi = self.size(ctx, c, AvailableSpace::MaxContent)?.width;
-        Ok(a.clamp(hi.min(lo.max(room))))
+        Ok(hi.min(lo.max(room)))
     }
 
     /// Leaf `c` measured in `room` for its margin box, within its own
@@ -775,10 +779,8 @@ fn absolute(
         (Some(w), ..) => a.clamp(w),
         (None, Some(l), Some(r)) => a.clamp(pw - l - r - ml - mr),
         _ => {
-            let lo = container.size(ctx, c, AvailableSpace::MinContent)?.width;
-            let hi = container.size(ctx, c, AvailableSpace::MaxContent)?.width;
             let room = pw - left.unwrap_or(0.0) - right.unwrap_or(0.0) - ml - mr;
-            a.clamp(hi.min(lo.max(room)))
+            a.clamp(container.shrink_to_fit(ctx, c, room)?)
         }
     };
     let mode = RootMode::Item {
@@ -828,11 +830,9 @@ pub(super) fn definite_content_height(tree: &Tree<'_>, idx: NodeIdx) -> Option<f
     let Some(Length::Points(h)) = s.height else {
         return None;
     };
-    let p = s.padding.unwrap_or_default();
-    let pad = |v: Option<LengthPercent>| match v {
-        Some(LengthPercent::Points(x)) => x.max(0.0),
-        _ => 0.0,
-    };
+    // A percentage of the width, unknown here, counts as nothing.
+    let p = s.padding.unwrap_or_default().resolve(None);
+    let pad = |v: Option<f32>| v.unwrap_or(0.0);
     let b = s.border_width.unwrap_or_default();
     let edges = pad(p.top) + pad(p.bottom) + b.top.unwrap_or(0.0) + b.bottom.unwrap_or(0.0);
     Some((h - edges).max(0.0))

@@ -343,8 +343,7 @@ pub(crate) fn moves_whole(node: &Node) -> bool {
     node.brk.fixed
         || s.floats().is_some()
         || s.position == Some(Position::Absolute)
-        || s.rotate.is_some_and(|r| r % 360.0 != 0.0)
-        || s.transform.as_ref().is_some_and(|t| !t.is_empty())
+        || s.is_transformed()
 }
 
 /// Whether node `c` takes part in pagination (not absolutely positioned,

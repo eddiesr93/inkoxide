@@ -8,16 +8,13 @@ use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType};
 use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
+use super::pdfa::limits::NAME as MAX_NAME;
 use super::{font_name, q, set_fill, show_text, EncodedPage, Out, Profile, RefAlloc};
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
 use crate::schema::{FieldKind, FieldValue, BLACK};
 use crate::InkoxideError;
-
-/// Longest PDF name, in bytes (ISO 32000-1, Annex C; PDF/A-2 holds files
-/// to it).
-const MAX_NAME: usize = 127;
 
 /// What the catalog's `/AcroForm` needs.
 pub(super) struct Form {
