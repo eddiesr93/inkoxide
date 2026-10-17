@@ -19,8 +19,8 @@ pub(crate) const MAX_REPEATED: u64 = 64 << 20;
 pub(super) const ITEM_BYTES: u64 = 16;
 
 /// a link (a linked run at worst puts one on every line, a line per
-/// character) or an image in text (an inline image or a colour glyph, in
-/// a span),
+/// character) or an image in a span with its text (an inline image, a
+/// colour glyph or an image node with `alt`),
 pub(super) const LINK_BYTES: u64 = 256;
 
 /// a `debug` outline, a form field widget or a background image,
@@ -178,6 +178,11 @@ pub(super) fn repeated(
                     }
                 }
                 NodeKind::Note(note) => size = size.saturating_add(note_bytes(note)),
+                // In a span with its text.
+                NodeKind::Image { alt: Some(alt), .. } => {
+                    let text = crate::pdf::written_text_len(alt) as u64;
+                    size = size.saturating_add(LINK_BYTES + text);
+                }
                 _ => {}
             }
         }

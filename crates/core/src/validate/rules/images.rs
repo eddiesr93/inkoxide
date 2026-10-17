@@ -1,6 +1,6 @@
 //! The checks of images: their sources, ids, data and placement.
 
-use super::{Checker, MAX_PAGE_EDGE, MAX_PERCENT};
+use super::{Checker, MAX_ALT, MAX_PAGE_EDGE, MAX_PERCENT};
 use crate::error::ValidationCode as Code;
 use crate::images::{ImageCrateDecoder, ImageData};
 use crate::schema::{ImageSource, LengthPercent, ObjectPosition};
@@ -15,6 +15,18 @@ impl Checker<'_> {
                 Ok(data) => self.image_data("data", data, None),
                 Err(e) => self.err(Code::InvalidImage, Some("data"), e),
             },
+        }
+    }
+
+    /// An image's alternative text, at `alt`: at most [`MAX_ALT`]
+    /// characters.
+    pub(super) fn alt(&mut self, alt: Option<&str>) {
+        if alt.is_some_and(|a| a.chars().count() > MAX_ALT) {
+            self.err(
+                Code::InvalidValue,
+                Some("alt"),
+                format!("alternative text is at most {MAX_ALT} characters"),
+            );
         }
     }
 

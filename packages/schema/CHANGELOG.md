@@ -7,6 +7,11 @@ version 2.
 
 ## Unreleased
 
+### Added
+
+- **`alt` on image nodes:** alternative text for an `image` node (at most 1024 characters), as a
+  run's `image` has: what copying, searching and screen readers get for the image.
+
 ## 2.5.1 - 2026-10-16
 
 Still document schema version 1.

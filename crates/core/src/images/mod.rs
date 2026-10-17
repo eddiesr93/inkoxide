@@ -508,17 +508,20 @@ impl ImageSet {
 
 impl ImageSet {
     /// Paints an image node into its content box according to `fit` and
-    /// `objectPosition`.
+    /// `objectPosition`, in a span with its alternative text when it has
+    /// one (with a space of `fonts` over the box, as an inline image's).
     pub fn paint(
         &self,
         node: &Node,
         geo: &crate::layout::Geometry,
         ctx: &crate::paint::ContentCtx<'_>,
+        fonts: &crate::fonts::FontSet<'_>,
         ops: &mut Vec<crate::paint::Op>,
     ) {
         let NodeKind::Image {
             fit,
             object_position,
+            alt,
             ..
         } = &node.kind
         else {
@@ -537,7 +540,16 @@ impl ImageSet {
         // `borderRadius` rounds the image without `overflow: hidden`.
         let radii = crate::paint::content_radii(&node.style, geo);
         let placement = ImagePlacement::new(*fit, *object_position);
-        self.paint_in(key, bx, placement, &radii, ops);
+        let draw = |ops: &mut Vec<crate::paint::Op>| self.paint_in(key, bx, placement, &radii, ops);
+        match alt.as_deref().filter(|a| !a.is_empty()) {
+            Some(alt) if bx.w > 0.0 && bx.h > 0.0 => {
+                use crate::paint::InvisibleGlyph;
+                let space = InvisibleGlyph::strut(fonts, None)
+                    .and_then(|k| InvisibleGlyph::space(fonts, k, bx.h, (bx.x, bx.y + bx.h), bx.w));
+                crate::paint::span(ops, alt, space, draw);
+            }
+            _ => draw(ops),
+        }
     }
 
     /// Paints image `key` into `bx` (page coordinates) as `placement`

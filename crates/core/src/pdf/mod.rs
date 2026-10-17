@@ -229,22 +229,29 @@ impl PdfWriterSink {
     fn font_programs(&self, doc: &DocumentOut<'_>) -> Result<FontPrograms, InkoxideError> {
         let mut used: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
         let mut editable = BTreeSet::new();
+        let mut field_text = UnicodeMap::default();
+        let mut buf = [0; 4];
         for page in doc.pages {
             for (key, glyphs) in &page.glyphs {
                 used.entry(*key).or_default().extend(glyphs);
             }
-            editable.extend(
-                page.fields
-                    .iter()
-                    .filter(|f| f.editable)
-                    .filter_map(|f| f.font),
-            );
+            for f in &page.fields {
+                let Some(font) = f.font else { continue };
+                if f.editable {
+                    editable.insert(font);
+                }
+                for &(glyph, c) in &f.chars {
+                    field_text.record(font, glyph, c.encode_utf8(&mut buf));
+                }
+            }
         }
         for key in editable {
             let font = doc.fonts.get(key);
-            used.entry(key)
-                .or_default()
-                .extend(crate::forms::edit_glyphs(font));
+            let glyphs = used.entry(key).or_default();
+            for (glyph, c) in crate::forms::edit_glyphs(font) {
+                glyphs.insert(glyph);
+                field_text.record(key, glyph, c.encode_utf8(&mut buf));
+            }
         }
         // The glyphs of SVG text laid out for the images painted: every
         // text, drawn or not, so a superset of what the forms show.
@@ -262,7 +269,11 @@ impl PdfWriterSink {
         } else {
             used.iter().map(program).collect::<Result<_, _>>()?
         };
-        Ok(FontPrograms { used, programs })
+        Ok(FontPrograms {
+            used,
+            programs,
+            field_text,
+        })
     }
 }
 
@@ -297,6 +308,9 @@ fn text_ink<'a>(doc: &DocumentOut<'a>) -> svg::TextInk<'a, 'a> {
 struct FontPrograms {
     used: BTreeMap<FontKey, BTreeSet<u16>>,
     programs: Vec<font::Program>,
+    /// The text of the glyphs form fields show or embed for editing, which
+    /// layout never shaped.
+    field_text: UnicodeMap,
 }
 
 fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {

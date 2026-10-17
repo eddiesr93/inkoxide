@@ -2084,7 +2084,12 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         "note" => {
             m.insert("note".into(), note(s));
         }
-        "image" => image_props(s, &mut m),
+        "image" => {
+            image_props(s, &mut m);
+            if s.chance(60) {
+                m.insert("alt".into(), json!(text(s)));
+            }
+        }
         "table" => {
             m.extend(table(s, depth, budget));
             if s.chance(60) {

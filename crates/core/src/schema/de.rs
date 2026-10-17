@@ -715,7 +715,7 @@ impl NodeType {
         let (common, own): (&[&str], &[&str]) = match self {
             Self::Box => (COMMON, &["children", "backgroundImage"]),
             Self::Text => (COMMON, &["runs"]),
-            Self::Image => (COMMON, &["src", "data", "fit", "objectPosition"]),
+            Self::Image => (COMMON, &["src", "data", "fit", "objectPosition", "alt"]),
             Self::Table => (COMMON, &["columns", "headerRows", "rows"]),
             Self::PageBreak => (&[], &[]),
             Self::Spacer => (COMMON, &[]),
@@ -748,6 +748,7 @@ pub struct RawNode {
     data: Option<String>,
     fit: Option<ImageFit>,
     object_position: Option<ObjectPosition>,
+    alt: Option<String>,
     columns: Option<Vec<ColumnSpec>>,
     #[serde(default, deserialize_with = "opt_int")]
     header_rows: Option<u32>,
@@ -792,6 +793,7 @@ impl TryFrom<RawNode> for Node {
             ("data", r.data.is_some()),
             ("fit", r.fit.is_some()),
             ("objectPosition", r.object_position.is_some()),
+            ("alt", r.alt.is_some()),
             ("columns", r.columns.is_some()),
             ("headerRows", r.header_rows.is_some()),
             ("rows", r.rows.is_some()),
@@ -823,6 +825,7 @@ impl TryFrom<RawNode> for Node {
                     source,
                     fit: r.fit.unwrap_or_default(),
                     object_position: r.object_position.unwrap_or_default(),
+                    alt: r.alt,
                 }
             }
             NodeType::Table => NodeKind::Table(Table {

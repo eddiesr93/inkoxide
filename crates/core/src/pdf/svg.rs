@@ -123,19 +123,6 @@ fn drawable(images: &ImageSet, key: ImageKey) -> bool {
     )
 }
 
-/// The font of the invisible space in the span of an image in SVG text:
-/// `preferred` (the font of an emoji image's span), or the first font of
-/// the document with outlines and a space, preferring one without colour
-/// glyphs, as in page text.
-fn strut(fonts: &FontSet<'_>, preferred: Option<FontKey>) -> Option<FontKey> {
-    let spaced = |k: FontKey| InvisibleGlyph::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
-    let all = || 0..fonts.fonts.len() as FontKey;
-    preferred
-        .filter(|&k| spaced(k))
-        .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
-        .or_else(|| all().find(|&k| spaced(k)))
-}
-
 /// The images of `text` in paint style `paint` (`None`: all), as page text
 /// draws them, each with the frame of its glyph: its colour glyphs
 /// ([`ColorGlyphs::push`]) and emoji images, in spans with their text.
@@ -163,7 +150,7 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
             }],
         };
         let mut ops = Vec::new();
-        let strut = strut(res.fonts, None);
+        let strut = InvisibleGlyph::strut(res.fonts, None);
         res.colors.push(
             op,
             strut,
@@ -184,7 +171,7 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
         };
         match i.text.as_deref().filter(|t| !t.is_empty()) {
             Some(text) => {
-                let space = strut(res.fonts, Some(i.font)).and_then(|k| {
+                let space = InvisibleGlyph::strut(res.fonts, Some(i.font)).and_then(|k| {
                     InvisibleGlyph::space(res.fonts, k, i.size, (0.0, 0.0), i.rect.w)
                 });
                 span(&mut ops, text, space, draw);

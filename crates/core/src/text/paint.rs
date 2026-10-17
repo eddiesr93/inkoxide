@@ -552,17 +552,10 @@ fn paint_object(
 
 /// The font of the invisible space in the span of an image drawn in run
 /// `run` (an inline object, a colour glyph): the run's own font, the
-/// paragraph's strut, which the line embeds anyway. When it has no
-/// outlines (it is never embedded) or no space, the first font of the
-/// document that has both, preferring one without colour glyphs.
+/// paragraph's strut, which the line embeds anyway, or another
+/// ([`InvisibleGlyph::strut`]).
 fn space_font(fonts: &FontSet<'_>, run: &TextRun) -> Option<FontKey> {
-    let spaced = |k: FontKey| InvisibleGlyph::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
-    let all = || 0..fonts.fonts.len() as FontKey;
-    fonts
-        .key(&run.font)
-        .filter(|&k| spaced(k))
-        .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
-        .or_else(|| all().find(|&k| spaced(k)))
+    InvisibleGlyph::strut(fonts, fonts.key(&run.font))
 }
 
 /// Draws image `key` in `rect` as `placement` says. With `text`, inside a

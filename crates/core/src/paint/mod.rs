@@ -142,6 +142,22 @@ impl InvisibleGlyph {
             width,
         })
     }
+
+    /// The font of the invisible space in the span of an image:
+    /// `preferred` (the text's own font), or the first font of the
+    /// document with outlines and a space, preferring one without colour
+    /// glyphs.
+    pub fn strut(
+        fonts: &crate::fonts::FontSet<'_>,
+        preferred: Option<crate::fonts::FontKey>,
+    ) -> Option<crate::fonts::FontKey> {
+        let spaced = |k| Self::space(fonts, k, 1.0, (0.0, 0.0), 1.0).is_some();
+        let all = || 0..fonts.fonts.len() as crate::fonts::FontKey;
+        preferred
+            .filter(|&k| spaced(k))
+            .or_else(|| all().find(|&k| !fonts.get(k).has_color() && spaced(k)))
+            .or_else(|| all().find(|&k| spaced(k)))
+    }
 }
 
 /// Pushes what `draw` draws inside a span whose text is `actual_text`

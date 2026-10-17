@@ -135,11 +135,24 @@ impl PdfWriterSink {
     ) -> Result<BTreeMap<FontKey, Ref>, InkoxideError> {
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
         for ((key, glyphs), program) in fonts.used.iter().zip(&fonts.programs) {
+            // Glyphs laid out keep their text; field glyphs add theirs.
+            let merged;
+            let unicode = match fonts.field_text.fonts.get(key) {
+                None => doc.unicode.fonts.get(key),
+                Some(fields) => {
+                    let mut all = doc.unicode.fonts.get(key).cloned().unwrap_or_default();
+                    for (glyph, text) in fields {
+                        all.entry(*glyph).or_insert_with(|| text.clone());
+                    }
+                    merged = all;
+                    Some(&merged)
+                }
+            };
             let embedded = font::Embedded {
                 font: doc.fonts.get(*key),
                 program,
                 used: glyphs,
-                unicode: doc.unicode.fonts.get(key),
+                unicode,
             };
             let r = font::write_font(w, &embedded, self.profile)?;
             font_refs.insert(*key, r);
