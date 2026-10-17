@@ -153,9 +153,11 @@ struct Marker<'p> {
     /// The element whose content is drawn now, and whether its sequence is
     /// open.
     tag: Option<(StructId, bool)>,
-    /// The save level an open artifact started at.
-    artifact: Option<usize>,
-    depth: usize,
+    /// Whether an artifact is open.
+    artifact: bool,
+    /// Spans open: they enclose whole save levels, and what they draw is in
+    /// the sequence open around them.
+    spans: usize,
 }
 
 impl Marker<'_> {
@@ -173,6 +175,9 @@ impl Marker<'_> {
     /// Before an operator that draws: in the sequence of the element drawn,
     /// else in an artifact.
     fn draw(&mut self, c: &mut Content) {
+        if self.spans > 0 {
+            return;
+        }
         match self.tag {
             Some((id, false)) => {
                 self.close_artifact(c);
@@ -183,24 +188,31 @@ impl Marker<'_> {
                 self.mcids.push(id);
                 self.tag = Some((id, true));
             }
-            None if self.artifact.is_none() => {
+            None if !self.artifact => {
                 c.begin_marked_content(Name(b"Artifact"));
-                self.artifact = Some(self.depth);
+                self.artifact = true;
             }
             _ => {}
         }
     }
 
     fn close_artifact(&mut self, c: &mut Content) {
-        if self.artifact.take().is_some() {
+        if std::mem::take(&mut self.artifact) {
             c.end_marked_content();
         }
     }
 
-    /// Before a `Q` that ends save level `self.depth`.
-    fn restore(&mut self, c: &mut Content) {
-        if self.artifact == Some(self.depth) {
-            self.close_artifact(c);
+    /// Before a `q` or a `Q`: a sequence never crosses one (ISO 32000-1,
+    /// 14.6: marked content and save levels nest). What the element draws
+    /// after it goes in a sequence of its own.
+    fn save_level(&mut self, c: &mut Content) {
+        if self.spans > 0 {
+            return;
+        }
+        self.close_artifact(c);
+        if let Some((id, true)) = self.tag {
+            c.end_marked_content();
+            self.tag = Some((id, false));
         }
     }
 }
@@ -388,8 +400,8 @@ pub(crate) fn marked_content_stream(
         plan,
         mcids: Vec::new(),
         tag: None,
-        artifact: None,
-        depth: 0,
+        artifact: false,
+        spans: 0,
     });
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, round_pt(page.height)]);
@@ -398,17 +410,17 @@ pub(crate) fn marked_content_stream(
             match op {
                 Op::Tag(id) => m.tag(&mut c, *id),
                 Op::EndTag => m.end_tag(&mut c),
-                Op::Save => m.depth += 1,
-                Op::Restore => {
-                    m.restore(&mut c);
-                    m.depth = m.depth.saturating_sub(1);
+                Op::Save | Op::Restore => m.save_level(&mut c),
+                Op::Span { .. } => {
+                    m.draw(&mut c);
+                    m.spans += 1;
                 }
+                Op::EndSpan => m.spans = m.spans.saturating_sub(1),
                 Op::FillRect { .. }
                 | Op::FillPath { .. }
                 | Op::StrokePath { .. }
                 | Op::Text(_)
                 | Op::Image { .. }
-                | Op::Span { .. }
                 | Op::InvisibleText(_) => m.draw(&mut c),
                 _ => {}
             }

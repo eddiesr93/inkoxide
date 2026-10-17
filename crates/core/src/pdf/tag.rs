@@ -117,8 +117,9 @@ pub(super) fn write_tree(
     }
     // Annotations: in their element, or in one of their own under the
     // element whose content they are in (a link in a paragraph), or under
-    // the document (a link in a header).
+    // the document after its content (a link in a header), in page order.
     let mut elem_of_annot = Vec::with_capacity(annots.entries.len());
+    let mut last = Vec::new();
     for a in &annots.entries {
         let kind = a.kind.elem();
         let into = match a.owner {
@@ -136,7 +137,11 @@ pub(super) fn write_tree(
                 }));
                 tree.kids.push(Vec::new());
                 let id = tree.elems.len() - 1;
-                tree.kids[parent as usize].push(Kid::Elem(id));
+                if owner.is_some() {
+                    tree.kids[parent as usize].push(Kid::Elem(id));
+                } else {
+                    last.push(Kid::Elem(id));
+                }
                 id
             }
         };
@@ -149,6 +154,7 @@ pub(super) fn write_tree(
             tree.kids[p as usize].push(Kid::Elem(id));
         }
     }
+    tree.kids[0].extend(last);
     // Which elements have content, at any depth: children come after
     // their parents.
     let mut kept = vec![false; tree.elems.len()];
@@ -196,10 +202,13 @@ pub(super) fn write_tree(
             nums.item(i as i32);
             let mut arr = nums.push().array();
             if let Some(tags) = &page.tags {
+                // An MCID's place is its index: one without an element
+                // keeps it, as null.
                 for &owner in &tags.mcids {
-                    if let Some(r) = refs[owner as usize] {
-                        arr.item(r);
-                    }
+                    match refs[owner as usize] {
+                        Some(r) => arr.item(r),
+                        None => arr.item(pdf_writer::Null),
+                    };
                 }
             }
             arr.finish();

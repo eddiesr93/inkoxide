@@ -1853,6 +1853,9 @@ fn field(s: &mut Src) -> Value {
             None => m.remove("value"),
         };
     }
+    if s.chance(60) {
+        m.insert("label".into(), json!(format!("L{}", text(s))));
+    }
     Value::Object(m)
 }
 
@@ -2113,6 +2116,9 @@ fn cell(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         }
         m.insert("style".into(), st);
     }
+    if s.chance(40) {
+        m.insert("header".into(), json!(true));
+    }
     let flow = std::mem::replace(&mut s.flow, false);
     let kids: Vec<Value> = (0..s.below(3))
         .map(|_| node(s, depth + 1, budget))
@@ -2181,6 +2187,26 @@ fn deep(s: &mut Src, budget: &mut usize) -> Value {
     inner
 }
 
+/// Every structure role a node takes.
+const ROLES: &[&str] = &[
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "p",
+    "section",
+    "blockQuote",
+    "caption",
+    "figure",
+    "list",
+    "listItem",
+    "label",
+    "listBody",
+    "artifact",
+];
+
 fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     if *budget == 0 || s.exhausted() {
         return json!({"type": "spacer"});
@@ -2243,6 +2269,19 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     }
     if kind != "pageBreak" && s.chance(16) {
         m.insert("pages".into(), page_filter(s));
+    }
+    // Tagged output: what each node is. Chaos puts any role anywhere.
+    if (matches!(kind, "box" | "text" | "image") || s.chaos) && s.chance(30) {
+        let role = match kind {
+            _ if s.chaos => s.pick(ROLES),
+            "text" => s.pick(&["h1", "h2", "h3", "p", "caption", "label", "artifact"]),
+            "image" => s.pick(&["figure", "artifact"]),
+            _ => s.pick(ROLES),
+        };
+        m.insert("role".into(), json!(role));
+        if kind == "box" && s.chance(2) {
+            m.insert("alt".into(), json!(text(s)));
+        }
     }
     match kind {
         "box" => {

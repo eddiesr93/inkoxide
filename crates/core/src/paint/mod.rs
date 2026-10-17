@@ -107,8 +107,9 @@ pub(crate) enum Op {
     /// selected and extracted where nothing shows it (see [`span`]).
     InvisibleText(InvisibleGlyph),
     /// In tagged output, starts the content of a structure element: what
-    /// is drawn until [`Op::EndTag`] belongs to it. Tags enclose whole save
-    /// levels and do not nest. Without tagging none is pushed.
+    /// is drawn until [`Op::EndTag`] belongs to it. Tags do not nest; the
+    /// writer ends their marked content at each save level and starts it
+    /// again after. Without tagging none is pushed.
     Tag(crate::tag::StructId),
     EndTag,
 }
