@@ -20,6 +20,8 @@ export interface CandidateCss {
 /** Why a class cannot be used, when Tailwind's output already says so. */
 export type CandidateProblem =
   | { kind: 'unknown' }
+  /** Not in the table a build made (`precompiled.ts`): unknown, or not seen. */
+  | { kind: 'unseen' }
   /** A media query around the rule that does not parse or reads the screen: why, quoting it. */
   | { kind: 'media'; message: string }
   /** An at-rule other than `@media` and `@supports` (`@container …`). */
@@ -68,8 +70,12 @@ export { DEFAULT_THEME_CSS };
 export class TailwindCompiler {
   private readonly cache = new Map<string, CandidateResult>();
   private readonly theme = new Map<string, string>();
+  // A field, not a parameter property: a build tool's config may load this file with Node's
+  // type stripping (`@inkoxide/tailwind/plugin`).
+  private readonly ds: DesignSystem;
 
-  private constructor(private readonly ds: DesignSystem) {
+  private constructor(ds: DesignSystem) {
+    this.ds = ds;
     for (const [key, entry] of ds.theme.entries()) {
       this.theme.set(key, entry.value);
     }
@@ -84,6 +90,11 @@ export class TailwindCompiler {
   /** A theme variable (`--spacing`, `--color-red-500`), unresolved. */
   themeValue(name: string): string | undefined {
     return this.theme.get(name);
+  }
+
+  /** The place of each class in Tailwind's stylesheet; none for one it does not order. */
+  ranks(classes: string[]): Map<string, bigint | null> {
+    return new Map(this.ds.getClassOrder(classes));
   }
 
   /** Sorts classes the way Tailwind orders them in its stylesheet (later wins on conflicts). */
@@ -109,7 +120,13 @@ export class TailwindCompiler {
   private compileOne(cls: string): CandidateResult {
     const [css] = this.ds.candidatesToCss([cls]);
     if (css == null) return { ok: false, problem: { kind: 'unknown' } };
-    const root = postcss.parse(css);
+    let root;
+    try {
+      root = postcss.parse(css);
+    } catch {
+      // Tailwind wrote what is not CSS (an arbitrary value with a stray quote): no class.
+      return { ok: false, problem: { kind: 'unknown' } };
+    }
     const out: CandidateCss = { decls: [], initials: [] };
     // The declarations of the first rule: a variant repeats them, a utility's own `@media` not.
     let first: string | undefined;

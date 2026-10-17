@@ -162,6 +162,12 @@ it.
   (`--breakpoint-a4: 595.28pt` gives `a4:` and `max-a4:`).
 - **Not supported:** variants for screens and states (`hover:`, `focus:`, `dark:`), container
   queries (`@sm:`), shadows, gradients and `space-*`/`divide-*` (use `gap-*` and borders). Using one throws and names the class; in production (`NODE_ENV=production`) it is logged once and ignored.
+- **In a browser**, the Tailwind compiler is about 90 KB to download with brotli. The build
+  plugin of `@inkoxide/tailwind` replaces it with a table of the classes your sources use, a
+  few KB ([`@inkoxide/tailwind` README](../tailwind/README.md#in-a-browser-bundle)):
+  `plugins: [inkoxideTailwind()]` in a Vite config. Then write each class whole: one put
+  together at run time (`` `bg-${color}-500` ``) is not in the table, unless it is in the
+  plugin's `safelist`.
 
 ## Fonts
 
@@ -1517,7 +1523,9 @@ cross-origin isolation (COOP and COEP).
 
 - Renders run in one worker, one at a time, on one thread: `threads` may only be `1`.
 - `renderToFile`, `renderToStream` and image files are not available.
-- The engine module is about 1.2 MB to download with brotli, once. A bundled font (65 to
+- The engine module is about 1.4 MB to download with brotli, once, and Tailwind's compiler
+  about 90 KB when templates use `className`, or a few KB with the [build plugin](#tailwind).
+  A bundled font (65 to
   245 KB with brotli) is downloaded when a document first draws with it: Noto Sans, the
   fallback, only for a character Inter lacks. A language's hyphenation patterns (1 to 350 KB)
   are downloaded when a document first hyphenates text in it.
