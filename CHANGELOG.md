@@ -32,8 +32,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - `@inkoxide/render/browser`: the types of `generate` take `signal` and `timeoutMs` (its
   `GenerateOptions` is `BrowserRenderOptions`); they already worked at run time.
 - `alt` on a block `<Image>`, and now on `<Svg>` and `<Canvas>`, is no longer dropped: an image
-  node takes `alt` (see the schema changelog), and copying, searching and screen readers get it for the image,
-  as they do for an image in text.
+  node takes `alt` (see the schema changelog), and copying, searching and screen readers get it
+  for the image, as they do for an image in text.
 - The glyphs a form field shows, and those embedded for editing it, map to their characters in
   the font's `ToUnicode` map: text extraction from field appearances works, and veraPDF's PDF/UA
   check no longer reports them (ISO 14289-1, 7.21.7).

@@ -373,9 +373,9 @@ fn msgpack_errors_match_json() {
     }
 }
 
-/// Colour emoji are images, but extract as their text (`ActualText`), and
-/// images, inline or not, as their alternative text: checked with poppler's
-/// `pdftotext` when it is installed.
+/// Colour emoji are images, but extract as their text (`ActualText`),
+/// images, inline or not, as their alternative text, and form fields as the
+/// text they show: checked with poppler's `pdftotext` when it is installed.
 #[test]
 fn colour_emoji_and_images_extract_as_text() {
     if !installed("pdftotext", "-v") {
@@ -401,6 +401,8 @@ fn colour_emoji_and_images_extract_as_text() {
         ("emoji-images", &["smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"]),
         ("text-inline-images", &["Logo"]),
         ("images-jpeg-png", &["Harbour photo"]),
+        // The text form fields show, from their appearances.
+        ("forms", &["Chloë Dubois-Müller", "No. 2026/0815"]),
     ] {
         let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
         let pdf = inkoxide::render(
