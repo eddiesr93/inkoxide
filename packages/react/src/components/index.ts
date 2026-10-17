@@ -2,7 +2,7 @@ import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/sche
 import type { BorderStyle, FlatStyle, FontFeatureSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
-import type { PdfALevel } from '../tree/build.ts';
+import type { PdfALevel } from '../tree/output.ts';
 
 /**
  * Host element types. Components are host elements, not function components: one fiber per
