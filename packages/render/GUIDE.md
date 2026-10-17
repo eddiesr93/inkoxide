@@ -1066,7 +1066,10 @@ or after a space, with the word after it. There it takes `backgroundColor` and n
 `data`, a `Uint8Array` or a string (its text, in UTF-8); `mimeType`, `description`,
 `relationship` (`'source'`, `'data'`, `'alternative'`, `'supplement'`) and `modified` (RFC 3339)
 are optional. A file is written once, compressed when that makes it smaller, and encrypted with
-the rest of an encrypted PDF. At most 1000 files, 64 MiB each and 256 MiB together. Inkoxide
+the rest of an encrypted PDF. The bytes go into the document tree as base64 `data`, so a stored
+`result.document` renders alone, its files with it, at 4/3 of their size; a document written as
+JSON names large files by `src` instead, with their bytes in the render option `attachments`.
+At most 1000 files, 64 MiB each and 256 MiB together. Inkoxide
 attaches the bytes it is given, whatever they are: a viewer may open an attached program or web
 page when the reader asks it to, so attach only files you would send on their own.
 

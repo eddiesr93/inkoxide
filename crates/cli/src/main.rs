@@ -183,11 +183,9 @@ fn load_hyphenation(out: &Output) -> Result<HyphenationStore, String> {
     Ok(store)
 }
 
-/// The most bytes a file of an `--attachments` directory may have: an
-/// attachment's limit. A larger one is left out, with a warning.
-const MAX_ATTACHMENT_FILE: u64 = 64 << 20;
-
-/// The files of the `--attachments` directories, by file name.
+/// The files of the `--attachments` directories, by file name. One over
+/// an attachment's limit (64 MiB) is not read: the store knows its size,
+/// and a document that uses it fails with `ATTACHMENT_TOO_LARGE`.
 fn load_attachments(out: &Output) -> Result<AttachmentStore, String> {
     let mut store = AttachmentStore::new();
     for dir in &out.attachments {
@@ -196,14 +194,11 @@ fn load_attachments(out: &Output) -> Result<AttachmentStore, String> {
                 continue;
             };
             let len = fs::metadata(&path).map_or(0, |m| m.len());
-            if len > MAX_ATTACHMENT_FILE {
-                eprintln!(
-                    "warning: {}: larger than 64 MiB, the most an attachment may be; left out",
-                    path.display()
-                );
-                continue;
+            if len > AttachmentStore::MAX_FILE_BYTES as u64 {
+                store.insert_too_large(name, len);
+            } else {
+                store.insert(name, read(&path)?);
             }
-            store.insert(name, read(&path)?);
         }
     }
     Ok(store)

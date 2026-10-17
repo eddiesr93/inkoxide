@@ -3,7 +3,7 @@
 
 mod attachments;
 #[cfg(test)]
-pub(crate) use attachments::{MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS};
+pub(crate) use attachments::{MAX_XMP_NAME, MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS, MAX_XMP_VALUE};
 mod fields;
 mod images;
 mod links;
@@ -24,7 +24,7 @@ use crate::schema::{
     is_area_name, parse_areas, BorderCollapse, Break, BreakMode, Document, FieldKind, FontFeature,
     Length, LengthPercent, Node, NodeKind, PageSpec, Position, Style, TrackBreadth, SCHEMA_VERSION,
 };
-use crate::{AttachmentStore, FontStore, ImageStore, PdfALevel};
+use crate::{AttachmentStore, FontStore, ImageStore};
 
 /// Stop collecting after this many problems; the rest is usually noise.
 const MAX_ERRORS: usize = 100;
@@ -108,7 +108,7 @@ pub(crate) fn check(
     let mut c = Checker {
         attachments,
         rendering: attachments.is_some(),
-        level: profile.level(),
+        profile,
         path: String::with_capacity(128),
         errors: Vec::new(),
         declared: BTreeSet::new(),
@@ -119,8 +119,6 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
-        pdf_a: profile.is_pdf_a(),
-        opaque: !profile.transparency(),
         conflict: None,
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
@@ -169,8 +167,10 @@ struct Checker<'a> {
     attachments: Option<&'a AttachmentStore>,
     /// Checking for a render, which knows its options.
     rendering: bool,
-    /// The PDF/A level rendered at.
-    level: Option<PdfALevel>,
+    /// The output rendered: plain PDF or a PDF/A level. At any level a
+    /// page that is too small is recorded, and at PDF/A-1b the first use of
+    /// transparency.
+    profile: Profile,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -178,14 +178,10 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
-    /// Rendering PDF/A, at any level: record a page that is too small.
-    pdf_a: bool,
-    /// Rendering PDF/A-1b: record the first use of transparency.
-    opaque: bool,
-    /// The first thing the PDF/A level does not allow, under `pdf_a`.
+    /// The first thing the PDF/A level does not allow.
     conflict: Option<ValidationError>,
     /// What needs transparency in each image checked (by content), under
-    /// `opaque`: an image used many times is scanned once.
+    /// PDF/A-1b: an image used many times is scanned once.
     image_transparency: HashMap<ContentKey<Arc<[u8]>>, Option<&'static str>>,
     /// The groups field names make: every name before one of its dots
     /// (`a` and `a.b` for `a.b.c`).
@@ -332,7 +328,7 @@ impl<'a> Checker<'a> {
     /// Under `opaque`, records `field` (of the current path) as the first
     /// use of transparency, unless there is one already. `what` needs it.
     fn transparent(&mut self, field: Option<&str>, what: &str) {
-        if !self.opaque || self.conflict.is_some() {
+        if self.profile.transparency() || self.conflict.is_some() {
             return;
         }
         let mut path = self.path.clone();
@@ -508,7 +504,10 @@ impl<'a> Checker<'a> {
                 });
             }
         }
-        if self.pdf_a && self.conflict.is_none() && s.width.min(s.height) < PDF_A_MIN_PAGE_EDGE {
+        if self.profile.is_pdf_a()
+            && self.conflict.is_none()
+            && s.width.min(s.height) < PDF_A_MIN_PAGE_EDGE
+        {
             self.conflict = Some(ValidationError {
                 code: Code::PdfaConflict,
                 path: format!("{}.size", self.path),

@@ -27,7 +27,7 @@ versions; removing or renaming any of them is a major version.
 | Register a font (TrueType, CFF OpenType, WOFF or WOFF2, static or variable; not a `.ttc` collection) | `FontStore::register(id, bytes) -> Result<(), InkoxideError>` | `registerFont(id, data): void` (process-wide) |
 | Remove a font | `FontStore::unregister(id) -> bool` | `unregisterFont(id): boolean` |
 | Images | `ImageStore::insert(id, bytes)`, `remove(id) -> bool`, passed to each call | `options.images: Record<string, Uint8Array>` per render |
-| Attachments (the files `attachments[].src` names) | `AttachmentStore::insert(id, bytes)`, `remove(id) -> bool`, via `RenderOptions::with_attachments` | `options.attachments: Record<string, Uint8Array>` per render |
+| Attachments (the files `attachments[].src` names) | `AttachmentStore::insert(id, bytes)`, `insert_too_large(id, len)` for a file over `AttachmentStore::MAX_FILE_BYTES`, `remove(id) -> bool`, via `RenderOptions::with_attachments` | `options.attachments: Record<string, Uint8Array>` per render |
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
 | Validate | `validate(doc, format, &fonts, &images) -> Vec<ValidationError>` | `validate(doc, format?, images?): ValidationError[]` |
 | Validate without the images | `validate_without_images(doc, format, &fonts) -> Vec<ValidationError>` | `validate(doc, format?)`, with no `images` |

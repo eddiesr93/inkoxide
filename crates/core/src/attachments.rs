@@ -55,9 +55,15 @@ impl InlineFile {
             .map_err(String::as_str)
     }
 
-    /// An upper bound of the decoded size, before decoding.
+    /// An upper bound of the decoded size, before decoding: the whitespace
+    /// the decoder skips (base64 in lines) is left out.
     pub(crate) fn max_len(&self) -> usize {
-        self.b64.len() / 4 * 3 + 3
+        let digits = self
+            .b64
+            .bytes()
+            .filter(|b| !b.is_ascii_whitespace())
+            .count();
+        digits / 4 * 3 + 3
     }
 }
 
@@ -65,10 +71,21 @@ impl InlineFile {
 /// names. Cloning is cheap: the bytes are shared.
 #[derive(Debug, Clone, Default)]
 pub struct AttachmentStore {
-    files: BTreeMap<String, Arc<[u8]>>,
+    files: BTreeMap<String, StoredFile>,
+}
+
+/// A file of an [`AttachmentStore`]: its bytes, or only the size of one
+/// too large to read.
+#[derive(Debug, Clone)]
+enum StoredFile {
+    Bytes(Arc<[u8]>),
+    TooLarge(u64),
 }
 
 impl AttachmentStore {
+    /// The most bytes of one file a document may use (64 MiB).
+    pub const MAX_FILE_BYTES: usize = MAX_ATTACHMENT_BYTES;
+
     /// An empty store.
     #[must_use]
     pub fn new() -> Self {
@@ -78,7 +95,17 @@ impl AttachmentStore {
     /// Adds (or replaces) file `id`. Its size is checked when a document
     /// uses it (`ATTACHMENT_TOO_LARGE`).
     pub fn insert(&mut self, id: impl Into<String>, bytes: impl Into<Arc<[u8]>>) {
-        self.files.insert(id.into(), bytes.into());
+        self.files
+            .insert(id.into(), StoredFile::Bytes(bytes.into()));
+    }
+
+    /// Adds (or replaces) file `id` by its size alone, `len` bytes, for a
+    /// file over an attachment's limit (64 MiB), not worth reading: a
+    /// document that uses it fails with `ATTACHMENT_TOO_LARGE`, as it would
+    /// with the bytes.
+    pub fn insert_too_large(&mut self, id: impl Into<String>, len: u64) {
+        let len = len.max(Self::MAX_FILE_BYTES as u64 + 1);
+        self.files.insert(id.into(), StoredFile::TooLarge(len));
     }
 
     /// Removes file `id`; returns whether it was present.
@@ -104,8 +131,20 @@ impl AttachmentStore {
         self.files.is_empty()
     }
 
+    /// The bytes of file `id`; none for one too large to read.
     pub(crate) fn get(&self, id: &str) -> Option<&Arc<[u8]>> {
-        self.files.get(id)
+        match self.files.get(id)? {
+            StoredFile::Bytes(bytes) => Some(bytes),
+            StoredFile::TooLarge(_) => None,
+        }
+    }
+
+    /// The size of file `id`, whether its bytes were read or not.
+    pub(crate) fn len_of(&self, id: &str) -> Option<u64> {
+        Some(match self.files.get(id)? {
+            StoredFile::Bytes(bytes) => bytes.len() as u64,
+            StoredFile::TooLarge(len) => *len,
+        })
     }
 }
 
@@ -139,51 +178,53 @@ pub(crate) struct PreparedFile {
 }
 
 /// The files of `decls`, each compressed at `level` (none: stored as they
-/// are) when that makes it smaller; dates default to `created`.
+/// are) when that makes it smaller, in `parallel` if asked; dates default
+/// to `created`.
 pub(crate) fn prepare(
     decls: &[AttachmentDecl],
     store: &AttachmentStore,
     level: Option<u32>,
     created: Option<Timestamp>,
+    parallel: bool,
 ) -> Result<Vec<PreparedFile>, InkoxideError> {
-    decls
-        .iter()
-        .map(|d| {
-            let bytes = bytes_of(d, store).ok_or_else(|| {
-                InkoxideError::Internal(format!(
-                    "attachment `{}` vanished after validation",
-                    d.name
-                ))
-            })?;
-            let packed = match level {
-                Some(level) => Some(
-                    crate::flate::deflate(bytes, level)
-                        .map_err(|e| InkoxideError::Pdf(format!("compression failed: {e}")))?,
-                )
-                .filter(|p| p.len() < bytes.len()),
-                None => None,
-            };
-            let compressed = packed.is_some();
-            Ok(PreparedFile {
-                name: d.name.clone(),
-                mime_type: d
-                    .mime_type
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_MIME_TYPE.into()),
-                description: d.description.clone(),
-                relationship: d.relationship,
-                modified: d
-                    .modified
-                    .as_deref()
-                    .and_then(crate::date::parse_rfc3339)
-                    .or(created),
-                data: packed.unwrap_or_else(|| bytes.to_vec()),
-                compressed,
-                size: bytes.len(),
-                hash: xxhash_rust::xxh3::xxh3_64(bytes),
-            })
+    let one = |d: &AttachmentDecl| {
+        let bytes = bytes_of(d, store).ok_or_else(|| {
+            InkoxideError::Internal(format!("attachment `{}` vanished after validation", d.name))
+        })?;
+        let packed = match level {
+            Some(level) => Some(
+                crate::flate::deflate(bytes, level)
+                    .map_err(|e| InkoxideError::Pdf(format!("compression failed: {e}")))?,
+            )
+            .filter(|p| p.len() < bytes.len()),
+            None => None,
+        };
+        let compressed = packed.is_some();
+        Ok(PreparedFile {
+            name: d.name.clone(),
+            mime_type: d
+                .mime_type
+                .clone()
+                .unwrap_or_else(|| DEFAULT_MIME_TYPE.into()),
+            description: d.description.clone(),
+            relationship: d.relationship,
+            modified: d
+                .modified
+                .as_deref()
+                .and_then(crate::date::parse_rfc3339)
+                .or(created),
+            data: packed.unwrap_or_else(|| bytes.to_vec()),
+            compressed,
+            size: bytes.len(),
+            hash: xxhash_rust::xxh3::xxh3_64(bytes),
         })
-        .collect()
+    };
+    if parallel {
+        use rayon::prelude::*;
+        decls.par_iter().map(one).collect()
+    } else {
+        decls.iter().map(one).collect()
+    }
 }
 
 #[cfg(test)]
@@ -214,7 +255,7 @@ mod tests {
                 Some("2026-01-02T03:04:05+02:00"),
             ),
         ];
-        let files = prepare(&decls, &store, Some(6), created).unwrap();
+        let files = prepare(&decls, &store, Some(6), created, true).unwrap();
         let [zeros, hi] = &files[..] else { panic!() };
         assert!(zeros.compressed && zeros.data.len() < 4096);
         assert_eq!(zeros.size, 4096);
@@ -226,7 +267,7 @@ mod tests {
         assert_eq!(hi.modified.unwrap().offset_minutes, 120);
         assert_ne!(zeros.hash, hi.hash);
         // Without compression, every file is stored as it is.
-        let stored = prepare(&decls, &store, None, None).unwrap();
+        let stored = prepare(&decls, &store, None, None, false).unwrap();
         assert!(stored
             .iter()
             .all(|f| !f.compressed && f.data.len() == f.size));
@@ -236,7 +277,7 @@ mod tests {
     #[test]
     fn prepare_reports_a_file_missing_from_the_store() {
         let decls = [decl("gone.bin", FileSource::Ref("gone".into()), None)];
-        let e = prepare(&decls, &AttachmentStore::new(), None, None).unwrap_err();
+        let e = prepare(&decls, &AttachmentStore::new(), None, None, false).unwrap_err();
         assert!(matches!(e, InkoxideError::Internal(_)), "{e}");
     }
 
@@ -247,6 +288,10 @@ mod tests {
             assert_eq!(&f.bytes().unwrap()[..], bytes);
             assert!(f.max_len() >= bytes.len(), "{b64}");
         }
+        // Base64 in lines: the bound counts the digits, not the breaks.
+        let lines = InlineFile::new(format!("{}\r\n", "QUFB".repeat(19)).repeat(100));
+        assert_eq!(lines.bytes().unwrap().len(), 5700);
+        assert_eq!(lines.max_len(), 5703);
         assert!(InlineFile::new("!!".into()).bytes().is_err());
     }
 }

@@ -311,8 +311,7 @@ impl PdfWriterSink {
             .pair(Name(b"DestOutputProfile"), profile);
         cat.finish();
         // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-        let extensions = doc.meta.xmp_extensions.as_deref().unwrap_or(&[]);
-        let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level, extensions);
+        let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level);
         w.out.metadata(&mut w.pdf, metadata, &xmp, |_| {});
         let icc = deflate(&pdfa::srgb_icc(), 9)?;
         w.out.icc_profile(&mut w.pdf, profile, &icc, |p| {
@@ -332,7 +331,9 @@ impl PdfWriterSink {
         for f in doc.files {
             h.update(&f.hash.to_le_bytes());
             for part in [f.name.as_bytes(), f.mime_type.as_bytes()] {
-                h.update(&part.len().to_le_bytes());
+                // As u64: a `usize` has 4 bytes in WebAssembly, and
+                // the browser writes the same bytes as Node.
+                h.update(&(part.len() as u64).to_le_bytes());
                 h.update(part);
             }
         }

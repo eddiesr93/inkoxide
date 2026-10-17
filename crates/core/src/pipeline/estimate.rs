@@ -2,6 +2,7 @@
 //! overlays, debug outlines), estimated before anything is painted.
 
 use super::{Cache, Laid};
+use crate::icons::Icon;
 use crate::layout::{NodeIdx, Part, Tree};
 use crate::schema::{Decoration, DecorationStyle, NodeKind, PageFilter, PagePattern, TextRun};
 use crate::text::WAVES_PER_GLYPH;
@@ -116,11 +117,8 @@ pub(super) fn repeated(
                     // hyphen or an ellipsis shows.
                     let mut pieces = None;
                     for r in runs {
-                        if let Some(note) = &r.note {
-                            size = size.saturating_add(note_bytes(note));
-                        }
-                        if let Some(a) = &r.attachment {
-                            size = size.saturating_add(attachment_bytes(a));
+                        if let Some(icon) = r.icon() {
+                            size = size.saturating_add(icon_bytes(icon));
                         }
                         // A placeholder shows a page number.
                         let chars = r.text.as_ref().map_or(8, String::len) as u64;
@@ -180,8 +178,10 @@ pub(super) fn repeated(
                         size = size.saturating_add(SCRIPT_BYTES);
                     }
                 }
-                NodeKind::Note(note) => size = size.saturating_add(note_bytes(note)),
-                NodeKind::Attachment(a) => size = size.saturating_add(attachment_bytes(a)),
+                NodeKind::Note(n) => size = size.saturating_add(icon_bytes(Icon::Note(n))),
+                NodeKind::Attachment(a) => {
+                    size = size.saturating_add(icon_bytes(Icon::Attachment(a)));
+                }
                 // In a span with its text.
                 NodeKind::Image { alt: Some(alt), .. } => {
                     let text = crate::pdf::written_text_len(alt) as u64;
@@ -202,28 +202,20 @@ pub(super) fn is_wavy(r: &TextRun) -> bool {
         && r.decoration_style == Some(DecorationStyle::Wavy)
 }
 
-/// Estimated output of a note, in bytes: its icon, and its text as the
-/// file holds it.
-pub(super) fn note_bytes(note: &crate::schema::Note) -> u64 {
-    let text = crate::pdf::written_text_len(&note.contents)
-        + note
-            .author
-            .as_deref()
-            .map_or(0, crate::pdf::written_text_len);
-    BOX_BYTES + text as u64
-}
-
-/// Estimated output of an attachment's icon, in bytes: its icon, and its
-/// text as the file holds it (its file's description or name at most a
-/// note's length).
-pub(super) fn attachment_bytes(a: &crate::schema::Attachment) -> u64 {
-    // A description: at most `MAX_NOTE` characters, each two UTF-16 units
-    // at most, in hex (see `written_text_len`).
-    const DESCRIPTION: usize = 2 + 2 * (2 + 4 * crate::validate::rules::MAX_NOTE + 32);
-    let text = a
-        .contents
-        .as_deref()
-        .map_or(DESCRIPTION, crate::pdf::written_text_len);
+/// Estimated output of an icon, in bytes: the annotation, and its text as
+/// the file holds it. An attachment's icon without text shows its file's
+/// description or name, at most a note's length.
+pub(super) fn icon_bytes(icon: Icon<'_>) -> u64 {
+    use crate::pdf::{most_written_text_len, written_text_len};
+    let text = match icon {
+        Icon::Note(n) => {
+            written_text_len(&n.contents) + n.author.as_deref().map_or(0, written_text_len)
+        }
+        Icon::Attachment(a) => a.contents.as_deref().map_or(
+            most_written_text_len(crate::validate::rules::MAX_NOTE),
+            written_text_len,
+        ),
+    };
     BOX_BYTES + text as u64
 }
 

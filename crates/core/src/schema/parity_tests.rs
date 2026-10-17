@@ -1072,7 +1072,9 @@ fn emoji_image_bounds_match_schema() {
 #[allow(clippy::cast_precision_loss)]
 fn attachment_bounds_match_schema() {
     use crate::attachments::{MAX_ATTACHMENTS, MAX_FILE_NAME, MAX_MIME_TYPE};
-    use crate::validate::rules::{MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS};
+    use crate::validate::rules::{
+        MAX_NOTE, MAX_XMP_NAME, MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS, MAX_XMP_VALUE,
+    };
     type Make = Box<dyn Fn(usize) -> String>;
     let s = schema();
     let doc = move |attachments: &str, meta: &str| {
@@ -1104,7 +1106,85 @@ fn attachment_bounds_match_schema() {
             .join(",");
         format!(r#""xmpExtensions":[{all}]"#)
     };
+    // One schema with property `property`, as the schema declares them.
+    let xmp = move |schema: &str, namespace: &str, property: &str| {
+        let s = format!(
+            r#"{{"schema":"{schema}","namespace":"{namespace}","prefix":"fx","properties":[{property}]}}"#
+        );
+        doc("", &format!(r#""xmpExtensions":[{s}]"#))
+    };
+    let property = move |name: &str, value: &str, description: &str| {
+        format!(r#"{{"name":"{name}","value":"{value}","description":"{description}"}}"#)
+    };
+    // A file and an icon on the page that opens it.
+    let icon = move |name: &str, contents: &str| {
+        format!(
+            r#"{{"version":1,"attachments":[{}],"pages":[{{{PAGE},"children":[{{"type":"attachment","attachment":{{"file":"{name}"{contents}}}}}]}}]}}"#,
+            file(name, "")
+        )
+    };
     let cases: Vec<(&str, usize, Make, &str, &str)> = vec![
+        (
+            "/$defs/AttachmentDecl/properties/description/maxLength",
+            MAX_NOTE,
+            Box::new(move |n| {
+                doc(
+                    &file("f", &format!(r#","description":"{}""#, "d".repeat(n))),
+                    "",
+                )
+            }),
+            "INVALID_VALUE",
+            "attachments[0].description",
+        ),
+        (
+            "/$defs/Attachment/properties/contents/maxLength",
+            MAX_NOTE,
+            Box::new(move |n| icon("f", &format!(r#","contents":"{}""#, "c".repeat(n)))),
+            "INVALID_VALUE",
+            "pages[0].children[0].attachment.contents",
+        ),
+        (
+            "/$defs/Attachment/properties/file/maxLength",
+            MAX_FILE_NAME,
+            Box::new(move |n| icon(&"f".repeat(n), "")),
+            "INVALID_VALUE",
+            "attachments[0].name",
+        ),
+        (
+            "/$defs/XmpSchema/properties/schema/maxLength",
+            MAX_XMP_NAME,
+            Box::new(move |n| xmp(&"s".repeat(n), "urn:x", "")),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].schema",
+        ),
+        (
+            "/$defs/XmpSchema/properties/namespace/maxLength",
+            MAX_XMP_NAME,
+            Box::new(move |n| xmp("s", &format!("urn:{}", "x".repeat(n - 4)), "")),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].namespace",
+        ),
+        (
+            "/$defs/XmpProperty/properties/name/maxLength",
+            MAX_XMP_NAME,
+            Box::new(move |n| xmp("s", "urn:x", &property(&"p".repeat(n), "v", "d"))),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].properties[0].name",
+        ),
+        (
+            "/$defs/XmpProperty/properties/value/maxLength",
+            MAX_XMP_VALUE,
+            Box::new(move |n| xmp("s", "urn:x", &property("p", &"v".repeat(n), "d"))),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].properties[0].value",
+        ),
+        (
+            "/$defs/XmpProperty/properties/description/maxLength",
+            MAX_XMP_NAME,
+            Box::new(move |n| xmp("s", "urn:x", &property("p", "v", &"d".repeat(n)))),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].properties[0].description",
+        ),
         (
             "/properties/attachments/maxItems",
             MAX_ATTACHMENTS,

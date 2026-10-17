@@ -20,6 +20,8 @@ pub(crate) const MAX_XMP_PROPERTIES: usize = 64;
 /// Longest namespace URI, schema description or property name, in
 /// characters.
 pub(crate) const MAX_XMP_NAME: usize = 512;
+/// Longest property value, in characters: as long as a note's text.
+pub(crate) const MAX_XMP_VALUE: usize = MAX_NOTE;
 
 /// Prefixes the XMP packet already binds, or XML reserves.
 const RESERVED_PREFIXES: &[&str] = &[
@@ -105,7 +107,7 @@ impl Checker<'_> {
                 ),
             );
         }
-        let refused = match self.level {
+        let refused = match self.profile.level() {
             Some(PdfALevel::A1b) => Some("PDF/A-1b does not allow attachments"),
             Some(PdfALevel::A2b) => Some(
                 "PDF/A-2b allows only PDF/A files as attachments, which Inkoxide cannot check; render PDF/A-3b",
@@ -151,7 +153,7 @@ impl Checker<'_> {
                 let Some(store) = self.attachments else {
                     return 0;
                 };
-                let Some(bytes) = store.get(id) else {
+                let Some(len) = store.len_of(id) else {
                     self.err(
                         Code::AttachmentNotRegistered,
                         Some("src"),
@@ -159,7 +161,7 @@ impl Checker<'_> {
                     );
                     return 0;
                 };
-                ("src", bytes.len())
+                ("src", usize::try_from(len).unwrap_or(usize::MAX))
             }
             FileSource::Inline(inline) => {
                 // Too large is told before decoding.
@@ -273,11 +275,11 @@ impl Checker<'_> {
                             if !is_xml_name(&p.name) || p.name.chars().count() > MAX_XMP_NAME {
                                 c.err(Code::InvalidValue, Some("name"), "a property name is an XML name");
                             }
-                            if p.value.chars().count() > MAX_NOTE {
+                            if p.value.chars().count() > MAX_XMP_VALUE {
                                 c.err(
                                     Code::InvalidValue,
                                     Some("value"),
-                                    format!("a value is at most {MAX_NOTE} characters"),
+                                    format!("a value is at most {MAX_XMP_VALUE} characters"),
                                 );
                             }
                             if long(&p.description) {
@@ -292,7 +294,7 @@ impl Checker<'_> {
                 }
             });
         }
-        if self.rendering && self.level.is_none() && !schemas.is_empty() {
+        if self.rendering && !self.profile.is_pdf_a() && !schemas.is_empty() {
             self.errors.push(ValidationError {
                 code: Code::InvalidValue,
                 path: "meta.xmpExtensions".into(),

@@ -19,6 +19,23 @@ pub(crate) struct IconOp {
     pub kind: IconKind,
 }
 
+/// A note or an attachment of the document, which an icon shows.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Icon<'a> {
+    Note(&'a Note),
+    Attachment(&'a Attachment),
+}
+
+impl Icon<'_> {
+    /// What the icon annotation holds, owned.
+    pub(crate) fn to_kind(self) -> IconKind {
+        match self {
+            Icon::Note(n) => IconKind::Note(n.clone()),
+            Icon::Attachment(a) => IconKind::Attachment(a.clone()),
+        }
+    }
+}
+
 /// What an icon annotation holds.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum IconKind {

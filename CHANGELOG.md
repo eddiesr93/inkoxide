@@ -15,11 +15,15 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   option `attachments`, or base64 `data`), listed in the viewer's attachments panel; `attachment`
   nodes and runs show an icon (a push pin, a paper clip, a chart or a tag) that opens one, and
   `meta.pageMode` takes `useAttachments`. Under PDF/A-3b they are associated files, and
-  `meta.xmpExtensions` declares and fills in XMP schemas, so a document can be a Factur-X or
-  ZUGFeRD e-invoice; PDF/A-1b and 2b refuse attachments. New validation codes
+  `meta.xmpExtensions` declares and fills in XMP schemas, such as the metadata a Factur-X or
+  ZUGFeRD e-invoice declares (the output passes veraPDF's PDF/A-3b profile; it is not checked
+  with a Factur-X validator); PDF/A-1b and 2b refuse attachments. New validation codes
   `UNKNOWN_ATTACHMENT`, `ATTACHMENT_NOT_REGISTERED` and `ATTACHMENT_TOO_LARGE`. Rust takes an
-  `AttachmentStore` in `RenderOptions::attachments`, the CLI `--attachments <DIR>`, and
-  `@inkoxide/render` `<Document attachments xmpExtensions>`, `<Attachment>`, `facturX()` and
+  `AttachmentStore` in `RenderOptions::attachments`, whose `insert_too_large` registers a file
+  over `AttachmentStore::MAX_FILE_BYTES` (64 MiB) by its size alone; the CLI takes
+  `--attachments <DIR>`, whose files are named by their file name, and does not read one over
+  the limit: a document that uses it fails with `ATTACHMENT_TOO_LARGE`. `@inkoxide/render`
+  takes `<Document attachments xmpExtensions>`, `<Attachment>`, `facturX()` and
   `facturXRelationship()`.
 
 - Variable fonts. `inkoxide` accepts TrueType (`gvar`) and CFF2 variable fonts, and a font

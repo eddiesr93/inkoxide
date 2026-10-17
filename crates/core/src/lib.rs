@@ -475,13 +475,6 @@ fn render_inner(
     }
     svg_text?;
     let compression = options.compress.then_some(options.compression_level.min(9));
-    // Prepared once: an encrypted render writes the document twice.
-    let files = attachments::prepare(
-        &document.attachments,
-        &options.attachments,
-        compression,
-        creation_date,
-    )?;
     let mut sink = PdfWriterSink {
         compression,
         subset_fonts: options.subset_fonts,
@@ -514,6 +507,15 @@ fn render_inner(
     }
     let (pages, marks, colors) = laid_out?;
     let unicode: UnicodeMap = text.into_unicode();
+    // After layout, which a missing font fails: compressed once, though an
+    // encrypted render writes the document twice.
+    let files = attachments::prepare(
+        &document.attachments,
+        &options.attachments,
+        compression,
+        creation_date,
+        parallel,
+    )?;
 
     sink.write(&DocumentOut {
         pages: &pages,

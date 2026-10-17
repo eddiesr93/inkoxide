@@ -13,6 +13,9 @@ use inkoxide::{
     AttachmentStore, Encryption, FontStore, ImageStore, InputFormat, PdfALevel, RenderOptions,
 };
 
+/// The creation date of the renders that give one.
+const CREATED: &str = "2026-10-08T00:00:00Z";
+
 /// The bytes of the XML file of the tests, and its base64.
 const XML: &str = "<?xml version=\"1.0\"?><Invoice><Total>9.70</Total></Invoice>";
 
@@ -105,6 +108,44 @@ fn detached(pdf: &Path, password: Option<&str>) -> Vec<(String, Vec<u8>)> {
     files
 }
 
+/// What qpdf reads of `pdf`'s files: the listing of each, with its dates,
+/// and the bytes of `factur-x.xml`.
+fn qpdf_files(pdf: &Path, password: Option<&str>) -> (String, Vec<u8>) {
+    let run = |args: &[&str]| {
+        let o = Command::new("qpdf")
+            .args(password.map(|p| format!("--password={p}")))
+            .args(args)
+            .arg(pdf)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        o.stdout
+    };
+    (
+        String::from_utf8(run(&["--list-attachments", "--verbose"])).unwrap(),
+        run(&["--show-attachment=factur-x.xml"]),
+    )
+}
+
+/// A file's `/ModDate` is its `modified`, or else the creation date:
+/// `factur-x.xml`'s under `/F` and `/UF`, and the two others'.
+fn assert_dates(listing: &str) {
+    assert_eq!(
+        listing
+            .matches("modification date: D:20261017090000Z")
+            .count(),
+        2,
+        "{listing}"
+    );
+    assert_eq!(
+        listing
+            .matches("modification date: D:20261008000000Z")
+            .count(),
+        4,
+        "{listing}"
+    );
+}
+
 fn expected_files() -> Vec<(String, Vec<u8>)> {
     vec![
         ("Grüße.txt".into(), b"hello world".to_vec()),
@@ -117,6 +158,7 @@ fn expected_files() -> Vec<(String, Vec<u8>)> {
 fn files_come_out_as_they_went_in() {
     let options = RenderOptions::default()
         .with_attachments(store())
+        .with_creation_date(CREATED)
         .with_compress(false);
     let pdf = render(&doc(""), &options).unwrap();
     let text = String::from_utf8_lossy(&pdf);
@@ -137,16 +179,27 @@ fn files_come_out_as_they_went_in() {
             .output()
             .unwrap();
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
+        let (listing, xml) = qpdf_files(&file, None);
+        assert_dates(&listing);
+        assert_eq!(xml, XML.as_bytes());
     }
     if installed("pdfdetach", "-v") {
         assert_eq!(detached(&file, None), expected_files());
     }
+    // Without a creation date, only a declared date is written.
+    let undated = RenderOptions::default()
+        .with_attachments(store())
+        .with_compress(false);
+    let undated = render(&doc(""), &undated).unwrap();
+    let text = String::from_utf8_lossy(&undated);
+    assert_eq!(text.matches("/ModDate").count(), 1, "{text}");
 }
 
 #[test]
 fn encrypted_files_decrypt_to_the_same_bytes() {
     let options = RenderOptions::default()
         .with_attachments(store())
+        .with_creation_date(CREATED)
         .with_encryption(
             Encryption::new()
                 .with_user_password("user")
@@ -156,17 +209,51 @@ fn encrypted_files_decrypt_to_the_same_bytes() {
     assert!(!pdf.windows(XML.len()).any(|w| w == XML.as_bytes()));
     let file = out_dir().join("encrypted.pdf");
     fs::write(&file, &pdf).unwrap();
+    if qpdf_available() {
+        let (listing, xml) = qpdf_files(&file, Some("user"));
+        assert_dates(&listing);
+        assert_eq!(xml, XML.as_bytes());
+    }
     if installed("pdfdetach", "-v") {
         assert_eq!(detached(&file, Some("user")), expected_files());
     }
 }
 
+/// Notes, a link, a field and a header, and no file: what attachments
+/// share their code with.
+const NO_FILES: &str = r#"{"version":1,"meta":{"title":"No files","lang":"en"},
+    "fonts":[{"id":"Inter-Regular","family":"Inter"}],
+    "pages":[{"size":{"width":300,"height":300},
+      "header":{"type":"text","runs":[{"text":"Header","font":"Inter-Regular","size":9}]},
+      "children":[
+        {"type":"note","note":{"contents":"A note"}},
+        {"type":"text","runs":[{"text":"A link","font":"Inter-Regular","size":12,"link":"https://example.com"},
+          {"note":{"contents":"Inline"},"font":"Inter-Regular","size":12}]},
+        {"type":"field","field":{"name":"f","kind":"text","value":"Zoë","font":"Inter-Regular","size":10},
+          "style":{"width":100,"height":20}}
+      ]}]}"#;
+
 #[test]
 fn documents_without_files_are_unchanged_by_the_option() {
-    let plain = r#"{"version":1,"pages":[{"size":{"width":100,"height":100}}]}"#;
-    let a = render(plain, &RenderOptions::default()).unwrap();
-    let b = render(plain, &RenderOptions::default().with_attachments(store())).unwrap();
-    assert_eq!(a, b);
+    for level in [None, Some(PdfALevel::A3b)] {
+        let mut options = RenderOptions::default().with_compress(false);
+        if let Some(level) = level {
+            options = options.with_pdf_a_level(level);
+        }
+        let a = render(NO_FILES, &options).unwrap();
+        let b = render(NO_FILES, &options.clone().with_attachments(store())).unwrap();
+        assert_eq!(a, b, "{level:?}");
+        let text = String::from_utf8_lossy(&a);
+        for key in [
+            "/EmbeddedFiles",
+            "/AF ",
+            "/FileAttachment",
+            "/AFRelationship",
+            "pdfaExtension",
+        ] {
+            assert!(!text.contains(key), "{level:?}: {key} without files");
+        }
+    }
 }
 
 /// Factur-X's metadata: the `fx` schema, declared for PDF/A.
@@ -247,6 +334,18 @@ fn levels_and_documents_that_cannot_carry_them_are_refused() {
             "attachments[0].src".into()
         )
     );
+    // A file the caller found too large to read.
+    let mut big = store();
+    big.insert_too_large("invoice-xml", 100 << 20);
+    let e = render(&doc(""), &RenderOptions::default().with_attachments(big)).unwrap_err();
+    let inkoxide::InkoxideError::Validation(v) = e else {
+        panic!("{e}")
+    };
+    assert_eq!(
+        (v.code.as_str(), v.path.as_str()),
+        ("ATTACHMENT_TOO_LARGE", "attachments[0].src")
+    );
+    assert!(v.message.contains("this one is 100 MiB"), "{}", v.message);
     let validated = inkoxide::validate(
         doc("").as_bytes(),
         InputFormat::Json,
@@ -323,4 +422,64 @@ fn bad_declarations_and_icons_are_reported_at_their_paths() {
         codes(&big, ""),
         one("ATTACHMENT_TOO_LARGE", "attachments[0].data")
     );
+}
+
+#[test]
+fn bad_xmp_extensions_are_reported_at_their_paths() {
+    let codes = |schemas: &str| -> Vec<(String, String)> {
+        let doc = format!(
+            r#"{{"version":1,"meta":{{"xmpExtensions":[{schemas}]}},
+               "pages":[{{"size":{{"width":100,"height":100}}}}]}}"#
+        );
+        inkoxide::validate(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &fonts(),
+            &ImageStore::new(),
+        )
+        .into_iter()
+        .map(|e| (e.code.as_str().to_string(), e.path))
+        .collect()
+    };
+    let schema = |prefix: &str, namespace: &str, property: &str| {
+        format!(
+            r#"{{"schema":"S","namespace":"{namespace}","prefix":"{prefix}",
+               "properties":[{{"name":"{property}","value":"v","description":"d"}}]}}"#
+        )
+    };
+    let one = |code: &str, path: &str| vec![(code.to_string(), path.to_string())];
+    assert_eq!(codes(&schema("fx", "urn:fx#", "Version")), []);
+    for (schemas, code, path) in [
+        (
+            schema("pdfaid", "urn:fx#", "Version"),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].prefix",
+        ),
+        (
+            schema("1fx", "urn:fx#", "Version"),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].prefix",
+        ),
+        (
+            format!(
+                "{},{}",
+                schema("fx", "urn:a#", "A"),
+                schema("fx", "urn:b#", "B")
+            ),
+            "DUPLICATE_ID",
+            "meta.xmpExtensions[1].prefix",
+        ),
+        (
+            schema("fx", "urn:f x#", "Version"),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].namespace",
+        ),
+        (
+            schema("fx", "urn:fx#", "Doc:Type"),
+            "INVALID_VALUE",
+            "meta.xmpExtensions[0].properties[0].name",
+        ),
+    ] {
+        assert_eq!(codes(&schemas), one(code, path), "{schemas}");
+    }
 }
