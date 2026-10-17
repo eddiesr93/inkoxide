@@ -67,8 +67,9 @@ pnpm test                  # the TypeScript packages
   ("Repeat table footers on every page", not "Fix tables").
 - The `ci` and `deny` workflows must pass, on Linux. `ci` runs formatting, clippy and the Rust
   tests; the TypeScript typecheck, lint, formatting and tests; the schema checks and the
-  generated files; and, in its `wasm` job, the WebAssembly build, its size budget, its parity
-  with the native build and the browser tests. `deny` runs `cargo-deny` on the dependencies.
+  generated files; and, in its `wasm` job, the WebAssembly builds (the one with threads on a
+  pinned nightly, see `scripts/build-wasm.sh`), their size budget, their parity with the native
+  build and with each other, and the browser tests. `deny` runs `cargo-deny` on the dependencies.
 - Rust is formatted with `cargo fmt` and linted with clippy (pedantic). TypeScript is
   formatted with oxfmt (`pnpm format`) and linted with oxlint (`pnpm lint`).
 

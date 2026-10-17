@@ -76,6 +76,26 @@ else
     exit 1
   fi
   node scripts/wasm-parity.mjs
+  # The module with threads, on the nightly of scripts/build-wasm.sh --threads.
+  nightly=$(sed -n 's/^NIGHTLY=//p' scripts/build-wasm.sh)
+  if ! rustup "+$nightly" component list --installed 2>/dev/null | grep -q '^rust-src'; then
+    echo "$nightly with rust-src is not installed; the module with threads skipped" \
+      "(rustup toolchain install $nightly --profile minimal --component rust-src)"
+  else
+    # Its build warns on every crate that the atomics feature is unstable: shown if it fails.
+    if ! out=$(scripts/build-wasm.sh --threads 2>&1); then
+      echo "$out"
+      exit 1
+    fi
+    node scripts/wasm-size.mjs | tail -1
+    if (cd packages/wasm && INKOXIDE_BINDING=wasm-threads node --test --test-reporter=tap ../inkoxide/test/*.test.js test/*.test.js) >"$log" 2>&1; then
+      grep -E '^# (pass|fail)' "$log"
+    else
+      cat "$log"
+      exit 1
+    fi
+    node scripts/wasm-parity.mjs --threads
+  fi
 fi
 
 step "TypeScript packages (typecheck, lint, tests)"

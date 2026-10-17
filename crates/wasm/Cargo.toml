@@ -17,4 +17,5 @@ workspace = true
 [dependencies]
 inkoxide.workspace = true
 inkoxide-binding.workspace = true
+rayon.workspace = true
 serde_json.workspace = true

@@ -729,6 +729,7 @@ version = "0.9.1"
 dependencies = [
  "inkoxide",
  "inkoxide-binding",
+ "rayon",
  "serde_json",
 ]
 

@@ -1,6 +1,6 @@
 // The page: the invoice in the browser's PDF viewer and a link that downloads it, both rendered
 // in the engine's Web Worker; and a few hooks for the tests.
-import { PdfDownloadLink, PdfViewer, renderToBuffer } from '@inkoxide/render/browser';
+import { engineStatus, PdfDownloadLink, PdfViewer, renderToBuffer } from '@inkoxide/render/browser';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -34,6 +34,14 @@ const hooks = {
       (e: unknown) => (e instanceof Error ? e.message : String(e)),
     );
   },
+  /** A render of the invoice: resolves to the code of the error it rejected with, or `rendered`. */
+  failedRender: async () =>
+    renderToBuffer(<Invoice {...sample} />, OPTIONS).then(
+      () => 'rendered',
+      (e: unknown) => (e as { code?: string } | undefined)?.code ?? String(e),
+    ),
+  /** The threads the engine renders with (1 without cross-origin isolation). */
+  threads: async () => engineStatus()?.threads ?? 0,
   /** A render with `timeoutMs: 0`: resolves to the name of the error it rejected with. */
   timedOutRender: async () =>
     renderToBuffer(<Invoice {...sample} />, { ...OPTIONS, timeoutMs: 0 }).then(

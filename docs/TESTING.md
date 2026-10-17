@@ -201,11 +201,14 @@ only on demand, from the Actions tab, with the ID of that release run.
   first): rendering, error shapes and the libuv thread pool. They are the
   contract of `@inkoxide/wasm` too: `pnpm test` in `packages/wasm`
   (`scripts/build-wasm.sh` first, with the `wasm32-unknown-unknown`
-  target) runs them against it, skipping the two about threads.
+  target) runs them against it, skipping the two about threads, and its own
+  tests of the pool in `packages/wasm/test`; `pnpm test:threads` runs them
+  against the module with threads (`scripts/build-wasm.sh --threads`), on a
+  pool of 3.
 - The WebAssembly build, in the `wasm` job of `ci.yml` and in
   `scripts/ci.sh`:
-  - `scripts/wasm-size.mjs` fails when the module is over its download
-    budget with brotli, and prints its sizes in the job summary;
+  - `scripts/wasm-size.mjs` fails when a module is over its download
+    budget with brotli, and prints their sizes in the job summary;
   - `scripts/wasm-parity.mjs` renders every fixture document, and every
     fixture image on a page, with both builds and compares the bytes.
     Those in `fixtures/wasm-parity.json` may differ in the last digits of
@@ -214,14 +217,22 @@ only on demand, from the Actions tab, with the ID of that release run.
     identifier, compared with their streams decompressed. It also registers
     the fuzz seed fonts, renders the attachments fixture as PDF/A-3b, and
     renders documents at the engine's limits from `limits.rs`, with both,
-    and compares the outcomes;
+    and compares the outcomes. With `--threads` it compares the module
+    with threads, without a pool and on pools of 3 and 8, with the
+    one-thread module, and every render must give the same bytes;
+  - `crates/wasm/src/threads.rs` and `alloc.rs` test natively the queue the
+    pool's threads wait on, their blocks of stack and thread-locals, and the
+    allocator's cache of blocks;
   - the engine's tests that need MessagePack are left out of a build
     without its feature (`--no-default-features`), which reads JSON only.
   - `examples/browser` (`pnpm test` there, after `pnpm exec playwright
     install`): Playwright renders the page's invoice in a worker in
     Chromium, Firefox and WebKit, under a strict Content Security Policy
     and without cross-origin isolation, and compares the PDF with the one
-    Node renders; a render's `signal` ends its worker.
+    Node renders; a render's `signal` ends its worker. `tests/threads.spec.ts`
+    does the same on the page served cross-origin isolated, where the
+    engine renders on a pool of threads, and checks that a bug on a pool
+    thread fails the render with `INTERNAL` and the next one renders.
 - `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
   the calling thread renders the bytes the main entry renders. It needs
   `scripts/build-wasm.sh` first, and skips without it outside CI.

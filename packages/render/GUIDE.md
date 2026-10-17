@@ -1485,10 +1485,11 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   render that times out rejects with a `DOMException` named `TimeoutError`.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
   first call count. The options (`BrowserOptions`): `wasm` is where the module comes from (a
-  URL, a `Response`, its bytes or a compiled `WebAssembly.Module`); `assets` is a folder to serve
-  the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/` from
-  `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s `hyphenation/` in
-  `hyphenation/` too; `worker: false` renders on the calling thread.
+  URL, a `Response`, its bytes or a compiled `WebAssembly.Module`), or `{ single, threads }`, each
+  of the two modules; `assets` is a folder to serve the bundled fonts and hyphenation patterns
+  from: `fonts/` and `hyphenation/` from `@inkoxide/render`'s `assets/`, with the `.bin` files of
+  `@inkoxide/wasm`'s `hyphenation/` in `hyphenation/` too; `threads` is how many threads renders
+  use ([below](#threads-in-the-browser)); `worker: false` renders on the calling thread.
 - **`clearCaches()`** empties the engine's caches of decoded images, font subsets and SVG text.
   The memory stays with the engine, which reuses it for the next renders; the PDFs are the
   same.
@@ -1516,11 +1517,41 @@ WOFF gives the same. Images come as bytes in `images`, or from the hosts allowed
 the page's origin (`worker-src 'self'`). `<PdfViewer>` shows the PDF from an object URL
 (`blob:`), as does a frame or an image given `usePdf().url`: allow it with `frame-src blob:`, and
 `img-src blob:` for an image. The policy of examples/browser allows both. Nothing needs `'unsafe-eval'`, and the page needs no
-cross-origin isolation (COOP and COEP).
+cross-origin isolation (COOP and COEP), unless it wants threads.
+
+### Threads in the browser
+
+On a page that is cross-origin isolated, the engine renders on a pool of threads, as on the
+server: shaping, painting and compression run on several cores. Serve the page with
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+on every response, a `304 Not Modified` included: WebKit refuses to start the engine's worker
+again from its cache when a 304 lacks them. `threads` (default `'auto'`) is then the number of
+cores, at most 8; `1` keeps one thread, and a number asks for that many (up to 256). The engine
+downloads its module with threads instead of the other, starts that many more workers, which
+share its memory, and `engineStatus().threads` tells how many it got. Without isolation, with
+`worker: false`, or where the browser cannot reserve the module's memory (at most 2 GiB), it
+renders on one thread. The PDFs are the same bytes either way.
+
+A long document gains most: the engine alone renders a 98-page report about 2.2 times as fast on
+4 threads and 2.9 times on 8 (measured in Node). A React document gains less, since its tree is
+built in JavaScript, on one thread: 1.3 times for the 43-page report of the benchmarks, on 4
+threads as on 8; a one-page invoice gains nothing. Give renders a `timeoutMs` with threads: a
+bug on a pool thread that cannot reach the page leaves its render waiting. Isolation
+also blocks resources from other origins that do not allow it (CORS, or a
+`Cross-Origin-Resource-Policy` header), such as images, fonts and embeds. A bug in the engine on
+one of its threads ends the worker, as `signal` does, and the render fails with `INTERNAL`.
+Where the pool's workers cannot start (a `worker-src` policy, or a bundler that does not copy the
+engine's nested worker), the engine renders on one thread.
 
 **What differs from Node.**
 
-- Renders run in one worker, one at a time, on one thread: `threads` may only be `1`.
+- Renders run in one worker, one at a time, on one thread unless the page is cross-origin
+  isolated ([threads](#threads-in-the-browser)); without a pool `threads` may only be `1`.
 - `renderToFile`, `renderToStream` and image files are not available.
 - The engine module is about 1.4 MB to download with brotli, once, and Tailwind's compiler
   about 90 KB when templates use `className`, or a few KB with the [build plugin](#tailwind).
@@ -1587,7 +1618,8 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 ## Limitations
 
-- **Browsers.** Renders run on one thread, in a worker (see [In the browser](#in-the-browser)).
+- **Browsers.** Renders run in a worker, on one thread unless the page is cross-origin isolated
+  (see [In the browser](#in-the-browser)).
   Browsers and Node are the runtimes supported; edge runtimes are not.
 - **Drawing.** Vertical SVG text on a path is not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).

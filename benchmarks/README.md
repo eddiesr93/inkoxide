@@ -25,5 +25,7 @@ pnpm --filter @inkoxide/benchmarks bench:browser   # prints them in each browser
 `bench:browser` needs Playwright's browsers (`pnpm --filter @inkoxide/benchmarks exec playwright
 install`). For each browser it loads the page three times in a fresh context: the first invoice
 from the start of navigation, the median of warm renders, the longest main-thread task
-(Chromium) and what the page downloaded, with brotli. Use a release build of the native binding:
+(Chromium) and what the page downloaded, with brotli; then the warm report on pools of 4 and 8
+threads, on the page, which it serves cross-origin isolated (after `scripts/build-wasm.sh
+--threads`). Use a release build of the native binding:
 `scripts/ci.sh` leaves a debug build.

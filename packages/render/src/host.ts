@@ -26,6 +26,8 @@ export interface EngineHost {
   start(): Promise<void>;
   /** The engine's version; after `start`. */
   version(): EngineVersion;
+  /** The threads a render uses, where the engine has a fixed number (in a browser); after `start`. */
+  threads?(): number;
   registerFont(id: string, bytes: Uint8Array): Promise<void>;
   registerHyphenationPatterns(lang: string, bytes: Uint8Array): Promise<void>;
   /** The problems of a JSON document, its image references checked against `images`. */

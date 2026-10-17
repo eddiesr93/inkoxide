@@ -4,7 +4,9 @@
 //   pnpm bench:browser [warm runs]       (after scripts/build-wasm.sh)
 // Cold: from the start of navigation to the first invoice, the download of the library, its
 // engine and fonts from localhost included; median of 3 page loads. Warm: median of N renders
-// after one, in the page (10 for the report).
+// after one, in the page (10 for the report). The page is cross-origin isolated, and renders on
+// one thread; then the report again on pools of 4 and 8 threads (after
+// scripts/build-wasm.sh --threads).
 import { readFileSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
@@ -46,7 +48,7 @@ interface Load {
   download: Download;
 }
 
-async function load(browser: Awaited<ReturnType<BrowserType['launch']>>): Promise<Load> {
+async function load(browser: Awaited<ReturnType<BrowserType['launch']>>, threads = 1): Promise<Load> {
   const context = await browser.newContext();
   const page = await context.newPage();
   const urls = new Set<string>();
@@ -57,7 +59,7 @@ async function load(browser: Awaited<ReturnType<BrowserType['launch']>>): Promis
   context.on('request', (r) => {
     if (r.url().startsWith(origin)) urls.add(new URL(r.url()).pathname);
   });
-  await page.goto(`${origin}/index.html?runs=${runs}`);
+  await page.goto(`${origin}/index.html?runs=${runs}&threads=${threads}`);
   const result = (
     await page.waitForFunction(() => (globalThis as { bench?: unknown }).bench, null, {
       timeout: 600_000,
@@ -121,6 +123,11 @@ try {
         `Downloaded, with brotli: ${mb(d.wasm + d.js + d.fonts)} (${mb(d.wasm)} WebAssembly, ` +
         `${mb(d.js)} JavaScript, ${mb(d.fonts)} fonts).\n`,
     );
+    const pooled = [1, 4, 8];
+    const report = [loads[0]?.result.warm.report.ms ?? 0];
+    for (const threads of pooled.slice(1)) report.push((await load(browser, threads)).result.warm.report.ms);
+    console.log(`| Threads | ${pooled.join(' | ')} |\n|---|${pooled.map(() => '---:').join('|')}|`);
+    console.log(`| report, warm | ${report.map(f).join(' | ')} |\n`);
     await browser.close();
   }
 } finally {

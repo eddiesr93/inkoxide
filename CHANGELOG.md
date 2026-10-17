@@ -11,6 +11,16 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Added
 
+- Threads in the browser. On a page that is cross-origin isolated, `@inkoxide/render/browser`
+  renders on a pool of Web Workers that share the engine's memory: its `threads` option is
+  `'auto'` by default (the number of cores, at most 8), and `engineStatus().threads` says how many
+  the engine got. The PDFs are the same bytes as on one thread. The engine alone renders a 98-page
+  report about 2.9 times as fast on 8 threads (in Node); a React document gains less (1.3 times
+  for a 43-page report in Chromium and WebKit). `@inkoxide/wasm` ships a second module, `inkoxide-threads.wasm`, which
+  `init(source, { threads })` loads and starts a pool for, and `threadCount()`; elsewhere it loads
+  the one-thread module as before. A bug in the engine on a pool thread ends the render's worker,
+  and the render fails with `INTERNAL`.
+
 - A Tailwind build plugin, so that a browser need not load Tailwind's compiler. In client
   bundles, `inkoxideTailwind()` (Vite, Rollup, Rolldown) and `inkoxideTailwindEsbuild()` from
   `@inkoxide/tailwind/plugin` point `@inkoxide/tailwind` at `@inkoxide/tailwind/precompiled`,
