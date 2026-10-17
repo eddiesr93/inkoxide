@@ -1,4 +1,5 @@
-//! Rejects fonts whose GSUB or GPOS lookups would panic the shaper.
+//! Reads fonts' layout tables: rejects fonts whose GSUB or GPOS lookups
+//! would panic the shaper, and finds the vertical forms of glyphs.
 //!
 //! rustybuzz 0.20.1 (pinned in Cargo.toml) unwraps coverage tables that
 //! ttf-parser reads lazily, through `LazyOffsetArray16::get`:
@@ -94,37 +95,34 @@ fn resolves<'a>(len: u16, get: impl Fn(u16) -> Option<Coverage<'a>>) -> bool {
     (0..len).all(|i| get(i).is_some())
 }
 
-/// Most lookups of the `vert` and `vrt2` features, and subtables of each,
-/// [`vertical_form`] reads: real fonts have a few; a crafted one could
-/// list thousands and make each question cost as much.
+/// Most features, lookups of the `vert` feature, and subtables of each,
+/// [`vertical_form`] reads: real fonts have a few dozen features and a few
+/// such lookups; a crafted one could list thousands and make each question
+/// cost as much.
+const VERTICAL_FEATURES: usize = 1024;
 const VERTICAL_LOOKUPS: usize = 64;
 
 /// Whether `glyph` has a vertical form: a single substitution of a lookup
-/// of the font's `vert` or `vrt2` feature covers it.
+/// of the font's `vert` feature covers it. Only `vert`: it is the feature
+/// the shaper applies to vertical text, and `vrt2` it does not.
 pub(super) fn vertical_form(face: &ttf_parser::Face<'_>, glyph: ttf_parser::GlyphId) -> bool {
     let Some(gsub) = face.tables().gsub else {
         return false;
     };
-    let tags = [
-        ttf_parser::Tag::from_bytes(b"vert"),
-        ttf_parser::Tag::from_bytes(b"vrt2"),
-    ];
+    let vert = ttf_parser::Tag::from_bytes(b"vert");
     let mut lookups: Vec<u16> = gsub
         .features
         .into_iter()
-        .filter(|f| tags.contains(&f.tag))
+        .take(VERTICAL_FEATURES)
+        .filter(|f| f.tag == vert)
         .flat_map(|f| f.lookup_indices)
         .take(VERTICAL_LOOKUPS)
         .collect();
     lookups.sort_unstable();
     lookups.dedup();
+    let covers = |s: SubstitutionSubtable<'_>| matches!(s, SubstitutionSubtable::Single(s) if s.coverage().contains(glyph));
     lookups
         .into_iter()
         .filter_map(|i| gsub.lookups.get(i))
-        .any(|l| {
-            l.subtables
-            .into_iter::<SubstitutionSubtable<'_>>()
-            .take(VERTICAL_LOOKUPS)
-            .any(|s| matches!(s, SubstitutionSubtable::Single(s) if s.coverage().contains(glyph)))
-        })
+        .any(|l| l.subtables.into_iter().take(VERTICAL_LOOKUPS).any(covers))
 }

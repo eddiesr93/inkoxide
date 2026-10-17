@@ -8,7 +8,9 @@ Unicode version, from https://www.unicode.org/Public/UCD/latest/ucd/).
   scripts/gen-vertical-orientation.py VerticalOrientation.txt "Unicode 17.0.0"
 
 Lines are `start..end ; value` or `code ; value`, with `#` comments; code
-points not listed are R (rotated).
+points not listed are R (rotated). The committed table was made, without a
+network, from the Unicode data ICU4X 2.2 ships (icu_properties_data 2.2.0),
+written out in that format, with the version text "as ICU4X 2.2 ships it".
 """
 import pathlib
 import sys
