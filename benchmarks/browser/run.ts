@@ -21,8 +21,13 @@ const COLD_LOADS = 3;
 const configFile = fileURLToPath(new URL('vite.config.ts', import.meta.url));
 const dist = fileURLToPath(new URL('dist/', import.meta.url));
 
-await build({ configFile, logLevel: 'warn' });
-const server = await preview({ configFile, preview: { port: 4180, strictPort: true } });
+// The runner loads the workspace's TypeScript packages the config imports.
+await build({ configFile, configLoader: 'runner', logLevel: 'warn' });
+const server = await preview({
+  configFile,
+  configLoader: 'runner',
+  preview: { port: 4180, strictPort: true },
+});
 const origin = 'http://localhost:4180';
 
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;

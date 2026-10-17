@@ -50,6 +50,15 @@ describe('unsupported utilities throw in strict mode', () => {
     }
   });
 
+  it('takes a class whose CSS Tailwind writes unclosed for an unknown one', async () => {
+    // Tailwind writes `font-family: 'a;`, which is not CSS.
+    const compiler = await TailwindCompiler.load();
+    for (const cls of ["font-['a]", "[--x:'a]", "content-['a]"]) {
+      expect(compiler.candidate(cls), cls).toEqual({ ok: false, problem: { kind: 'unknown' } });
+      expect(() => tw(`p-2 ${cls}`), cls).toThrow(UnsupportedUtilityError);
+    }
+  });
+
   it('ignores the class and warns once when not strict', () => {
     setTailwindStrict(false);
     const warn = console.warn;
