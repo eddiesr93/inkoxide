@@ -225,6 +225,14 @@ only on demand, from the Actions tab, with the ID of that release run.
 - `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
   the calling thread renders the bytes the main entry renders. It needs
   `scripts/build-wasm.sh` first, and skips without it outside CI.
+- `packages/tailwind/test`: `plugin.test.ts` builds a page with Vite and
+  esbuild and checks the browser bundle has the table of its classes and
+  none of Tailwind's compiler, the server bundle the compiler, and that a
+  dev server reloads the page when a file brings a new class;
+  `precompiled.test.ts` maps every class string of the mapper's tests, the
+  documented subset, the examples, benchmarks and React and render tests
+  through a table and through the compiler, and expects the same styles,
+  errors and order; `scan.test.ts` the scanner, and which files it reads.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
   Tailwind class mapping and `initTailwind` options, the React tree
   builder, `renderToBuffer`, `Font.register`, error messages, the

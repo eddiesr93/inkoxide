@@ -65,6 +65,10 @@ describe('the scanner', () => {
       mkdirSync(join(dir, 'src/build'));
       writeFileSync(join(dir, 'src/build/g.ts'), 'p-4');
       expect(sourceFiles([dir]).map((f) => f.slice(dir.length + 1))).toContain('src/build/g.ts');
+      // A file named as a source is read whatever its type.
+      expect(sourceFiles([join(dir, 'src/b.css')]).map((f) => f.slice(dir.length + 1))).toEqual([
+        'src/b.css',
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
