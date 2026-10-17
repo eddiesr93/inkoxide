@@ -32,9 +32,12 @@ function checked(fail: Fail, features: Record<string, number>): FontFeatures {
   return features;
 }
 
-function tagOf(fail: Fail, tag: string): string {
+/** `tag`, if it is an OpenType tag; `kind` and `example` say what it should be. */
+function tagOf(fail: Fail, tag: string, kind = 'feature', example = 'tnum'): string {
   if (!TAG.test(tag)) {
-    fail(`${JSON.stringify(tag)} is not a feature tag: four ASCII characters, such as "tnum"`);
+    fail(
+      `${JSON.stringify(tag)} is not ${kind === 'axis' ? 'an' : 'a'} ${kind} tag: four ASCII characters, such as "${example}"`,
+    );
   }
   return tag;
 }
@@ -101,8 +104,7 @@ export function parseFontVariationSettings(prop: string, value: FontVariationSet
   const fail: Fail = failing(prop, typeof value === 'string' ? value : JSON.stringify(value));
   const out: Record<string, number> = {};
   const set = (tag: string, v: unknown) => {
-    if (!TAG.test(tag))
-      fail(`${JSON.stringify(tag)} is not an axis tag: four ASCII characters, such as "wght"`);
+    tagOf(fail, tag, 'axis', 'wght');
     if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > MAX_VARIATION_VALUE) {
       fail(`the value of "${tag}" is a number within ±${MAX_VARIATION_VALUE}`);
     }

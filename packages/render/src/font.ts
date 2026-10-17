@@ -64,15 +64,18 @@ interface Face {
   src: FontSrc;
 }
 
-type FaceName = Pick<Face, 'family' | 'weight' | 'style'>;
+/** What names a face: its family, weight and style, and a variable face's weight range. */
+type FaceName = Pick<Face, 'family' | 'weight' | 'style'> & { weightRange?: readonly [number, number] };
 
-/** What tells faces apart: family (ignoring ASCII case), weight and style. */
-/** A face by what CSS matches it on; a variable face by its weight range. */
-const faceKey = (f: FaceName & { weightRange?: readonly [number, number] }): string =>
+/**
+ * What tells faces apart, as CSS matches them: family (ignoring ASCII case), weight (a variable
+ * face's range) and style.
+ */
+const faceKey = (f: FaceName): string =>
   JSON.stringify([familyKey(f.family), f.weightRange ?? f.weight, f.style]);
 
 /** `"Brand" 700 italic`, as messages name a face. */
-const faceLabel = (f: FaceName & { weightRange?: readonly [number, number] }): string =>
+const faceLabel = (f: FaceName): string =>
   `"${f.family}" ${f.weightRange ? f.weightRange.join('–') : f.weight}${f.style === 'italic' ? ' italic' : ''}`;
 
 const pending: Face[] = [];

@@ -110,6 +110,12 @@ fn fonts() -> FontStore {
     ))
     .unwrap();
     f.register("EmojiTest-COLR", bytes).unwrap();
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/fonts/VarTest-glyf.ttf"
+    ))
+    .unwrap();
+    f.register("VarTest-glyf", bytes).unwrap();
     f
 }
 
@@ -748,4 +754,54 @@ fn validation_and_render_agree_on_svg_text() {
         let rendered = render_svg(inter, &svg(copies));
         assert_eq!(rendered.is_ok(), valid, "{copies} copies: {rendered:?}");
     }
+}
+
+/// A document with `n` instances of VarTest-glyf, each setting a line.
+fn instances(n: usize) -> String {
+    let fonts: Vec<String> = (0..n)
+        .map(|i| {
+            let wght = 100.0 + 800.0 * i as f32 / n as f32;
+            format!(
+                r#"{{"id":"v{i}","family":"VarTest","source":"VarTest-glyf","variations":{{"wght":{wght},"wdth":{}}}}}"#,
+                50 + i % 50
+            )
+        })
+        .collect();
+    let lines: Vec<String> = (0..n)
+        .map(|i| format!(r#"{{"type":"text","runs":[{{"text":"HELLO HOTEL FILE TOE","font":"v{i}","size":10}}]}}"#))
+        .collect();
+    format!(
+        r#"{{"version":1,"fonts":[{}],"pages":[{{"size":{{"width":595,"height":842}},"children":[{}]}}]}}"#,
+        fonts.join(","),
+        lines.join(",")
+    )
+}
+
+#[test]
+fn instances_take_time_in_proportion_to_their_number() {
+    // Each instance is made, measured and embedded once: 64, the most a
+    // document declares, take about four times as long as 16.
+    assert_linear("instances", 16, |n| {
+        let d = instances(n);
+        let t = Instant::now();
+        render(&d, Some(1)).unwrap();
+        t.elapsed()
+    });
+}
+
+#[test]
+fn instances_past_the_limit_are_refused_before_any_is_made() {
+    assert_bounded("instances", 65, |n| {
+        let d = instances(n);
+        let t = Instant::now();
+        let err = render(&d, Some(1)).unwrap_err();
+        let took = t.elapsed();
+        assert_eq!(err.code(), "OUT_OF_RANGE", "{err}");
+        assert!(
+            err.to_string()
+                .contains("at most 64 fonts declare variations"),
+            "{err}"
+        );
+        took
+    });
 }

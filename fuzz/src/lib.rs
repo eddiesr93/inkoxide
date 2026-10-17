@@ -363,7 +363,8 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
 /// are reached from any input. Each font that registers sets a line of
 /// text, and is the fallback of a line in Inter with emoji sequences (a
 /// colour font's glyphs are drawn from its colour tables); same oracle as
-/// [`check`]. Returns how many registered.
+/// [`check`], and rendered again without subsetting, which embeds each
+/// font and instance whole. Returns how many registered.
 ///
 /// # Panics
 ///
@@ -391,7 +392,25 @@ pub fn check_font(bytes: &[u8]) -> usize {
         fonts.register("Inter-Regular", inter.to_vec()).unwrap();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
-            let _ = check_with(doc.as_bytes(), &fonts, &IMAGES, pdf_a);
+            let rendered = check_with(doc.as_bytes(), &fonts, &IMAGES, pdf_a);
+            // Without subsetting, the PDF embeds each font, and each
+            // instance, whole: no panic, and a render as the subset one.
+            let options = RenderOptions::default()
+                .with_compress(false)
+                .with_threads(1)
+                .with_subset_fonts(false);
+            let whole =
+                inkoxide::render(doc.as_bytes(), InputFormat::Json, &options, &fonts, &IMAGES);
+            if pdf_a.is_none() {
+                assert_eq!(
+                    rendered.is_ok(),
+                    whole.is_ok(),
+                    "subsetting changed whether a font renders"
+                );
+            }
+            if let Ok(pdf) = whole {
+                assert_finite_numbers(&pdf, true);
+            }
         }
     }
     registered
@@ -2552,6 +2571,10 @@ mod tests {
             // Alt on an image node (keys are sorted) and on an image in text.
             r#"[{"alt":"#,
             r#""image":{"alt":"#,
+            // Text at instances of the variable fonts, past an axis's end
+            // and in CFF2.
+            r#""font":"VarTest-max""#,
+            r#""font":"VarCFF2-100""#,
         ];
         // Boxes nested close to the parser's limit (keys are sorted).
         let deep = r#"{"children":["#.repeat(56);

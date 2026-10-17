@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Prints the download size of the WebAssembly engine (packages/wasm/inkoxide.wasm, from
 // scripts/build-wasm.sh) and fails when it is over BUDGET with brotli. The budget is a little over
-// 1.31 MB, the build without its hyphenation patterns, which it fetches as documents need them;
-// variable fonts (subsetter's instancer) took it from 1.18 MB. Raise it deliberately, in the pull
-// request that needs it. In CI the sizes also go to the job summary.
+// 1.32 MB, the build without its hyphenation patterns, which it fetches as documents need them,
+// and with variable fonts (subsetter's instancer), which took it from 1.18 MB. Raise it
+// deliberately, in the pull request that needs it. In CI the sizes also go to the job summary.
 //   node scripts/wasm-size.mjs
 import { appendFileSync, readFileSync } from 'node:fs';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';

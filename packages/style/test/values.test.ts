@@ -5,6 +5,7 @@ import {
   parseFlex,
   parseFontFeatureSettings,
   parseFontVariantNumeric,
+  parseFontVariationSettings,
   parseObjectPosition,
   parseOrigin,
   parseTransform,
@@ -302,6 +303,47 @@ describe('parseFontFeatureSettings', () => {
       expect(() => read(bad), JSON.stringify(bad)).toThrow(UnsupportedValueError);
       expect(() => read(bad), JSON.stringify(bad)).toThrow(/^fontFeatureSettings: /);
     }
+  });
+});
+
+describe('parseFontVariationSettings', () => {
+  const read = (v: Parameters<typeof parseFontVariationSettings>[1]) =>
+    parseFontVariationSettings('fontVariationSettings', v);
+
+  it('reads the CSS syntax and an object of axis values', () => {
+    expect(read(`'wght' 650, "wdth" 75.5, 'slnt' -10, 'opsz' 1e1, 'GRAD' .5`)).toEqual({
+      wght: 650,
+      wdth: 75.5,
+      slnt: -10,
+      opsz: 10,
+      GRAD: 0.5,
+    });
+    expect(read('normal')).toEqual({});
+    // A later value wins.
+    expect(read(`'wght' 300, 'wght' 700`)).toEqual({ wght: 700 });
+    expect(read({ wght: 650, ital: 1 })).toEqual({ wght: 650, ital: 1 });
+  });
+
+  it('rejects what is not a variation setting, naming the property', () => {
+    for (const bad of [
+      'wght 650',
+      `'wght'`,
+      `'wgh' 650`,
+      `'wght' bold`,
+      `'wght' 32768`,
+      `'wght' -32768`,
+      `'wght' 650,`,
+      { wght: Number.NaN },
+      { wght: Number.POSITIVE_INFINITY },
+      { wght: '650' as unknown as number },
+      { wghts: 650 },
+      ['wght'] as unknown as string,
+      Object.fromEntries(Array.from({ length: 17 }, (_, k) => [`a${String(k).padStart(3, '0')}`, 1])),
+    ]) {
+      expect(() => read(bad), JSON.stringify(bad)).toThrow(UnsupportedValueError);
+      expect(() => read(bad), JSON.stringify(bad)).toThrow(/^fontVariationSettings: /);
+    }
+    expect(() => read(`'wgh' 1`)).toThrow(/is not an axis tag/);
   });
 });
 

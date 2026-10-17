@@ -51,7 +51,9 @@ only on demand, from the Actions tab, with the ID of that release run.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, in SVG text too, copies
   of SVG text, the work budget of one `COLR` glyph, deepest accepted
-  nesting on a small stack). SVG text at scale (thousands of texts on
+  nesting on a small stack). Variable font instances render in time
+  linear in their number, up to the 64 a document declares, and more are
+  refused before any is made. SVG text at scale (thousands of texts on
   one point, of spans with their own paint, of text nodes) renders in
   linear time and bounded memory, measured with a counting allocator;
   its placeholders are bounded before they are written; and validation
@@ -143,9 +145,17 @@ only on demand, from the Actions tab, with the ID of that release run.
 - `fixtures/fonts/VarTest-glyf.ttf` and `VarTest-CFF2.otf`: variable
   fonts written from scratch by `scripts/fixtures/variable_fonts.py`
   (rectangle letters, `wght` and `wdth` axes, `gvar` or CFF2 `blend`,
-  `HVAR`, `MVAR` and `avar` 1.0), with `fixtures/docs/variable-fonts.json`;
-  the script also writes `fixtures/fonts/limits/var-avar2.ttf` and
-  `var-64-axes.ttf`, which registration must refuse.
+  `HVAR`, `MVAR` and `avar` 1.0), with `fixtures/docs/variable-fonts.json`,
+  and `VarTest-layout.ttf`, the glyf one with a `GSUB` whose `rvrn` varies
+  (FeatureVariations) and a `GPOS` kerning with a variation device, which
+  the shaping tests read at instances, and `VarTest-COLRv1.ttf`, a square
+  whose `COLR` v1 colour fades with `wght` (`PaintVarSolid`);
+  the script also writes, in `fixtures/fonts/limits/`, fonts registration
+  must refuse: `var-avar2.ttf` (`avar` 2.0), `var-64-axes.ttf`,
+  `var-no-gvar.ttf` (`fvar` and `glyf`, no `gvar`), `var-gvar-cut.ttf`
+  (a `gvar` cut short) and `var-cff-and-cff2.otf` (a `CFF ` table beside
+  `CFF2`). An instance at an axis the font lacks draws without it, with a
+  warning.
 - `packages/inkoxide/test`: the Node binding (`scripts/build-node.sh`
   first): rendering, error shapes and the libuv thread pool. They are the
   contract of `@inkoxide/wasm` too: `pnpm test` in `packages/wasm`
@@ -214,8 +224,8 @@ the `ci` workflow builds them and runs clippy on them):
   a unit test checks that every seed validates, so each reaches layout.
 - `render_tree`: a structure-aware generator of schema-shaped documents
   (edge values, long words, mixed scripts, big tables, form fields, page
-  filters, document metadata, and boxes nested up to and past the
-  parser's limit of 128 levels). A unit test checks that its valid
+  filters, document metadata, text at variable font instances, and boxes
+  nested up to and past the parser's limit of 128 levels). A unit test checks that its valid
   documents reach the newer parts of the schema; extend its list with the
   generator.
 - `render_svg`: raw bytes registered as an image and drawn twice; seeded

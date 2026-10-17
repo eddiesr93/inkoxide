@@ -131,7 +131,7 @@ fn make_subset(font: &LoadedFont<'_>, glyphs: &[u16]) -> Result<Option<Program>,
 fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
     let mut h = xxhash_rust::xxh3::Xxh3::new();
     h.update(font.metrics().post_script_name.as_bytes());
-    if font.data.variable {
+    if font.data.outlines == crate::fonts::Outlines::Variable {
         h.update(&font.digest());
     }
     for g in glyphs {
@@ -199,7 +199,7 @@ pub(crate) fn write_font(
         .descendant_font(cid)
         .to_unicode(cmap_ref);
 
-    let cff = m.cff;
+    let cff = font.data.outlines == crate::fonts::Outlines::Cff;
     let mut c = pdf.cid_font(cid);
     c.subtype(if cff {
         CidFontType::Type0

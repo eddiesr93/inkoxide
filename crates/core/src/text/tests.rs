@@ -1196,3 +1196,47 @@ fn a_long_pretty_paragraph_beside_a_float_is_set_optimally() {
         assert!(l.lines.len() > 30);
     }
 }
+
+#[test]
+fn an_instance_shapes_with_the_layout_at_its_axes() {
+    // VarTest-layout turns I into L from wght 900 (`rvrn`), and kerns T
+    // before O more as it grows bolder (`GPOS` with a variation device):
+    // the shaper reads both at the instance's axes.
+    let mut s = FontStore::new();
+    s.register(
+        "VarTest-layout",
+        crate::test_fixtures::fixture("fonts/VarTest-layout.ttf"),
+    )
+    .unwrap();
+    let shaped = |variations: &str| {
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"v","family":"V","source":"VarTest-layout"{variations}}}],
+                "pages":[{{"size":{{"width":600,"height":800}},"children":[
+                {{"type":"text","runs":[{{"text":"TOI","font":"v","size":1000}}]}}]}}]}}"#
+        );
+        let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+        let fonts = FontSet::load(&d, &s).unwrap();
+        let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+        let node = &d.pages[0].children[0];
+        cache.layout(node, f32::INFINITY);
+        let (p, _) = cache.prepared(node).unwrap();
+        p.glyphs
+            .iter()
+            .map(|g| (g.id, g.advance))
+            .collect::<Vec<_>>()
+    };
+    let (t, o, i, l) = (8, 7, 5, 6);
+    let regular = shaped("");
+    let bold = shaped(r#","variations":{"wght":900}"#);
+    let heavy_but_not_900 = shaped(r#","variations":{"wght":800}"#);
+    assert_eq!(regular.iter().map(|g| g.0).collect::<Vec<_>>(), [t, o, i]);
+    assert_eq!(
+        heavy_but_not_900.iter().map(|g| g.0).collect::<Vec<_>>(),
+        [t, o, i]
+    );
+    assert_eq!(bold.iter().map(|g| g.0).collect::<Vec<_>>(), [t, o, l]);
+    // T's advance: its own (560 + stem 90 at the default, 190 at wght
+    // 900), less the kerning, -50 at the default and -150 at wght 900.
+    assert!((regular[0].1 - 600.0).abs() < 0.5, "{regular:?}");
+    assert!((bold[0].1 - 600.0).abs() < 0.5, "{bold:?}");
+}

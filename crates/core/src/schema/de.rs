@@ -595,27 +595,11 @@ pub(super) fn opt_int<'de, D: Deserializer<'de>, T: TryFrom<i128>>(
 pub(super) fn font_features<'de, D: Deserializer<'de>>(
     d: D,
 ) -> Result<Option<Box<[FontFeature]>>, D::Error> {
-    struct V;
-    impl<'de> Visitor<'de> for V {
-        type Value = Box<[FontFeature]>;
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("an object of OpenType feature tags to integers")
-        }
-        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-            let mut out = Vec::new();
-            while let Some((tag, Int(value))) = map.next_entry::<String, Int<u32>>()? {
-                out.push(FontFeature { tag, value });
-            }
-            Ok(out.into_boxed_slice())
-        }
-    }
-    struct Features(Box<[FontFeature]>);
-    impl<'de> Deserialize<'de> for Features {
-        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            d.deserialize_map(V).map(Features)
-        }
-    }
-    Option::<Features>::deserialize(d).map(|o| o.map(|f| f.0))
+    tag_map(
+        d,
+        "an object of OpenType feature tags to integers",
+        |tag, Int(value)| FontFeature { tag, value },
+    )
 }
 
 /// `deserialize_with` for [`FontDecl::variations`]: an object of axis tags
@@ -626,27 +610,64 @@ pub(super) fn font_features<'de, D: Deserializer<'de>>(
 pub(super) fn font_variations<'de, D: Deserializer<'de>>(
     d: D,
 ) -> Result<Option<Box<[FontVariation]>>, D::Error> {
-    struct V;
-    impl<'de> Visitor<'de> for V {
-        type Value = Box<[FontVariation]>;
+    tag_map(
+        d,
+        "an object of variation axis tags to numbers",
+        |tag, value| FontVariation { tag, value },
+    )
+}
+
+/// An optional object of tags to values, as `make` turns each entry into
+/// a `T`, in the order written.
+fn tag_map<'de, D, V, T>(
+    d: D,
+    expecting: &'static str,
+    make: fn(String, V) -> T,
+) -> Result<Option<Box<[T]>>, D::Error>
+where
+    D: Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    struct Entries<V, T> {
+        expecting: &'static str,
+        make: fn(String, V) -> T,
+    }
+    impl<'de, V: Deserialize<'de>, T> Visitor<'de> for Entries<V, T> {
+        type Value = Box<[T]>;
         fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("an object of variation axis tags to numbers")
+            f.write_str(self.expecting)
         }
         fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
             let mut out = Vec::new();
-            while let Some((tag, value)) = map.next_entry::<String, f32>()? {
-                out.push(FontVariation { tag, value });
+            while let Some((tag, value)) = map.next_entry::<String, V>()? {
+                out.push((self.make)(tag, value));
             }
             Ok(out.into_boxed_slice())
         }
     }
-    struct Variations(Box<[FontVariation]>);
-    impl<'de> Deserialize<'de> for Variations {
-        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            d.deserialize_map(V).map(Variations)
+    impl<'de, V: Deserialize<'de>, T> de::DeserializeSeed<'de> for Entries<V, T> {
+        type Value = Box<[T]>;
+        fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            d.deserialize_map(self)
         }
     }
-    Option::<Variations>::deserialize(d).map(|o| o.map(|f| f.0))
+    struct Optional<V, T>(Entries<V, T>);
+    impl<'de, V: Deserialize<'de>, T> Visitor<'de> for Optional<V, T> {
+        type Value = Option<Box<[T]>>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str(self.0.expecting)
+        }
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_some<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            de::DeserializeSeed::deserialize(self.0, d).map(Some)
+        }
+    }
+    d.deserialize_option(Optional(Entries { expecting, make }))
 }
 
 /// `deserialize_with` for a list that, when present, has at least one item

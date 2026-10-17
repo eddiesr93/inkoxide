@@ -10,10 +10,21 @@ no third-party artwork), so they are small and free of licences:
   map that bends `wght`, and three named instances;
 - fixtures/fonts/VarTest-CFF2.otf: the same letters as CFF2 outlines with
   `blend`, the same axes, `HVAR` and `avar`;
+- fixtures/fonts/VarTest-layout.ttf: VarTest-glyf with layout tables that
+  vary: `GSUB` with `rvrn`, whose FeatureVariations turn I into L from
+  wght 900, and `GPOS` with `kern`, T before O, whose kerning grows with
+  wght through a VariationIndex device into `GDEF`'s variation store;
+- fixtures/fonts/VarTest-COLRv1.ttf: a square (U+25A0) in COLR v1 whose
+  colour fades with wght (PaintVarSolid), and outlines that do not vary;
 - fixtures/fonts/limits/var-avar2.ttf: VarTest-glyf with an `avar` 2.0
   table, which the engine refuses;
 - fixtures/fonts/limits/var-64-axes.ttf: VarTest-glyf with 64 axes, which
   the engine refuses;
+- fixtures/fonts/limits/var-no-gvar.ttf: VarTest-glyf without `gvar`, and
+  fixtures/fonts/limits/var-gvar-cut.ttf with its `gvar` cut short, which
+  the engine refuses;
+- fixtures/fonts/limits/var-cff-and-cff2.otf: VarTest-CFF2 with a `CFF `
+  table too, which the engine refuses: CFF, read first, has no variations;
 - fixtures/docs/variable-fonts.json: both fonts at several instances, and
   SVG text matched to the nearest declared one.
 
@@ -223,16 +234,125 @@ def name():
     return struct.pack(">HHH", 0, len(records), 6 + 12 * len(records)) + entries + data
 
 
-def glyf_font(avar_version=1, extra_axes=0):
+# --- Layout tables that vary ------------------------------------------------
+
+GID = {n: i + 2 for i, n in enumerate(NAMES)}
+# T before O kerns by KERN at the default, and by KERN + KERN_BOLD at wght 900.
+KERN, KERN_BOLD = -50, -100
+
+
+def coverage(gids):
+    return struct.pack(">HH", 1, len(gids)) + b"".join(struct.pack(">H", g) for g in gids)
+
+
+def layout_lists(feature, lookup):
+    """A ScriptList with DFLT, a FeatureList with `feature` (a tag and the
+    indices of its lookups) and a LookupList with `lookup`, each to be
+    placed at an offset of its own."""
+    tag, lookups = feature
+    langsys = struct.pack(">HHHH", 0, 0xFFFF, 1, 0)
+    script = struct.pack(">HH", 4, 0) + langsys
+    script_list = struct.pack(">H4sH", 1, b"DFLT", 8) + script
+    feature_table = struct.pack(">HH", 0, len(lookups)) + b"".join(struct.pack(">H", i) for i in lookups)
+    feature_list = struct.pack(">H4sH", 1, tag, 8) + feature_table
+    lookup_list = struct.pack(">HH", 1, 4) + lookup
+    return script_list, feature_list, lookup_list
+
+
+def lookup(kind, subtable):
+    return struct.pack(">HHHH", kind, 0, 1, 8) + subtable
+
+
+def gsub():
+    """GSUB 1.1 with `rvrn` and no lookups, and a FeatureVariations record
+    that, from wght 0.8 (normalised), swaps in a feature with a lookup
+    turning I into L."""
+    single = struct.pack(">HHHH", 2, 8, 1, GID["L"]) + coverage([GID["I"]])
+    script_list, feature_list, lookup_list = layout_lists((b"rvrn", []), lookup(1, single))
+    condition = struct.pack(">HH", 1, 0) + f2dot14(0.8) + f2dot14(1.0)
+    condition_set = struct.pack(">HI", 1, 6) + condition
+    alternate = struct.pack(">HHH", 0, 1, 0)
+    substitution = struct.pack(">HHHHI", 1, 0, 1, 0, 12) + alternate
+    variations_body_off = 8 + 8
+    variations = (struct.pack(">HHI", 1, 0, 1)
+                  + struct.pack(">II", variations_body_off, variations_body_off + len(condition_set))
+                  + condition_set + substitution)
+    header_len = 14
+    script_off = header_len
+    feature_off = script_off + len(script_list)
+    lookup_off = feature_off + len(feature_list)
+    variations_off = lookup_off + len(lookup_list)
+    return (struct.pack(">HHHHHI", 1, 1, script_off, feature_off, lookup_off, variations_off)
+            + script_list + feature_list + lookup_list + variations)
+
+
+def gpos():
+    """GPOS with `kern`: T before O, its advance adjusted by KERN and a
+    VariationIndex device into GDEF's store. A pair of classes (PairPos
+    format 2): ttf-parser 0.25 finds no device table from the glyph pairs
+    of format 1, whose offsets it reads within the pair records."""
+    # Class 1 of the first glyphs is T, of the second O; class 0 the rest.
+    # Each record: XAdvance and XAdvDevice for the first glyph.
+    header_len, records_len = 16, 4 * 4
+    device_off = header_len + records_len
+    coverage_off = device_off + 6
+    class1_off = coverage_off + 6
+    class2_off = class1_off + 8
+    records = struct.pack(">hHhH", 0, 0, 0, 0) + struct.pack(">hHhH", 0, 0, KERN, device_off)
+    pair_pos = (struct.pack(">HHHHHHHH", 2, coverage_off, 0x0044, 0, class1_off, class2_off, 2, 2)
+                + records + struct.pack(">HHH", 0, 0, 0x8000) + coverage([GID["T"]])
+                + struct.pack(">HHHH", 1, GID["T"], 1, 1) + struct.pack(">HHHH", 1, GID["O"], 1, 1))
+    script_list, feature_list, lookup_list = layout_lists((b"kern", [0]), lookup(2, pair_pos))
+    header_len = 10
+    script_off = header_len
+    feature_off = script_off + len(script_list)
+    lookup_off = feature_off + len(feature_list)
+    return struct.pack(">HHHHH", 1, 0, script_off, feature_off, lookup_off) + script_list + feature_list + lookup_list
+
+
+def gdef(extra_axes=0):
+    """GDEF 1.3 with nothing but the item variation store of the kerning."""
+    store = item_variation_store([[0, KERN_BOLD, 0]], extra_axes)
+    return struct.pack(">HHHHHHHI", 1, 3, 0, 0, 0, 0, 0, 18) + store
+
+
+def glyf_font(avar_version=1, extra_axes=0, gvar_len=None, layout=False):
+    variations = gvar(extra_axes=extra_axes)
     extra = {
         "fvar": fvar(extra_axes),
-        "gvar": gvar(extra_axes=extra_axes),
+        "gvar": variations[:gvar_len],
         "HVAR": hvar(extra_axes),
         "MVAR": mvar(extra_axes),
         "avar": avar(avar_version, extra_axes),
         "name": name(),
     }
+    if layout:
+        extra.update({"GSUB": gsub(), "GPOS": gpos(), "GDEF": gdef(extra_axes)})
+    if gvar_len == 0:
+        del extra["gvar"]
     return ef.outline_font("VarTest", DEFAULT, MAPPING, extra)
+
+
+def colr_font():
+    """A square whose COLR v1 paint (PaintVarSolid) fades from opaque at
+    the default to half at wght 900, with an empty `gvar`: the outlines do
+    not vary."""
+    glyphs = [ef.Glyph(".notdef", [ef.rect(50, 0, 450, 700)], 500), ef.Glyph("square", [ef.rect(100, 0, 900, 800)], 1000)]
+    # Alpha deltas in F2Dot14, per region: wght at -1, wght at +1, wdth at -1.
+    store = item_variation_store([[0, -8192, 0]])
+    v1 = {1: ("glyph", 1, ("varsolid", 0, 1.0, 0))}
+    gvar_empty = (struct.pack(">HHHHIHHI", 1, 0, 2, 0, 20, len(glyphs), 0, 20 + 2 * (len(glyphs) + 1))
+                  + b"\0" * (2 * (len(glyphs) + 1)))
+    extra = {
+        "fvar": fvar(),
+        "gvar": gvar_empty,
+        # DeltaSetIndexMap format 0, one-byte entries: variation index 0 is
+        # outer 0, inner 0.
+        "COLR": ef.colrv1({}, v1, {}, var_map=struct.pack(">BBHB", 0, 0, 1, 0), var_store=store),
+        "CPAL": ef.cpal([(30, 120, 200, 255)]),
+        "name": name(),
+    }
+    return ef.outline_font("VarTest", glyphs, {0x25A0: 1}, extra)
 
 
 # --- CFF2 -------------------------------------------------------------------
@@ -321,7 +441,7 @@ def cff2_table():
     return header + top(cs_off, fd_off, vs_off) + global_subrs + vstore + charstrings + fdarray + private
 
 
-def cff2_font():
+def cff2_font(cff=False):
     bounds = [g.bounds() for g in DEFAULT if g.contours]
     total = (min(b[0] for b in bounds), min(b[1] for b in bounds), max(b[2] for b in bounds), max(b[3] for b in bounds))
     tables = {
@@ -338,6 +458,9 @@ def cff2_font():
         "HVAR": hvar(),
         "avar": avar(),
     }
+    if cff:
+        # A CFF header and nothing else.
+        tables["CFF "] = bytes([1, 0, 4, 4])
     out = ef.sfnt(tables)
     # OpenType with CFF outlines: the sfnt version is 'OTTO'.
     return b"OTTO" + out[4:]
@@ -389,8 +512,14 @@ def main():
     outputs = {
         FONTS / "VarTest-glyf.ttf": glyf_font(),
         FONTS / "VarTest-CFF2.otf": cff2_font(),
+        FONTS / "VarTest-layout.ttf": glyf_font(layout=True),
+        FONTS / "VarTest-COLRv1.ttf": colr_font(),
         FONTS / "limits" / "var-avar2.ttf": glyf_font(avar_version=2),
         FONTS / "limits" / "var-64-axes.ttf": glyf_font(extra_axes=62),
+        FONTS / "limits" / "var-no-gvar.ttf": glyf_font(gvar_len=0),
+        # Into its glyph offsets.
+        FONTS / "limits" / "var-gvar-cut.ttf": glyf_font(gvar_len=24),
+        FONTS / "limits" / "var-cff-and-cff2.otf": cff2_font(cff=True),
     }
     for path, data in outputs.items():
         path.write_bytes(data)

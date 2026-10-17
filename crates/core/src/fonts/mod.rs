@@ -54,15 +54,26 @@ pub(crate) struct FontMetrics {
     pub superscript_offset: f32,
     /// Em size of superscripts (OS/2 `ySuperscriptYSize`).
     pub superscript_size: f32,
-    /// CFF outlines (embedded as `CIDFontType0C`) rather than TrueType. A
-    /// variable font's instances are TrueType, from CFF2 outlines too.
-    pub cff: bool,
     /// Colour glyphs the engine draws: `COLR` layers or PNG bitmaps
     /// (`CBDT` or `sbix`). See `color.rs`.
     pub color: bool,
-    /// Colour glyphs and no outlines: the font is never embedded, and its
-    /// glyphs without colour are not drawn.
-    pub color_only: bool,
+}
+
+/// The outlines of a font, and so how its programs are embedded. A font
+/// with several kinds is read as the subsetter reads it: TrueType, then
+/// CFF, then CFF2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Outlines {
+    /// TrueType (`glyf`): the font itself, as `FontFile2`.
+    TrueType,
+    /// CFF: a CID-keyed CFF program, as `FontFile3` (`CIDFontType0C`).
+    Cff,
+    /// A variable font's, TrueType or CFF2: static TrueType instances, as
+    /// `FontFile2`, never the variable font itself.
+    Variable,
+    /// None, only colour bitmaps (`CBDT` or `sbix`): the font is never
+    /// embedded, and its glyphs without colour are not drawn.
+    None,
 }
 
 /// Defaults of the script metrics, in ems, for fonts without them: close
@@ -116,9 +127,7 @@ pub struct FontData {
     pub(crate) metrics: FontMetrics,
     /// A variable font's axes; empty for a static font.
     pub(crate) axes: Box<[Axis]>,
-    /// `fvar` or CFF2 outlines: every program embedded is a static
-    /// TrueType instance, never the variable font itself.
-    pub(crate) variable: bool,
+    pub(crate) outlines: Outlines,
     /// Compressed whole font program and its length (see
     /// [`FontData::compressed_program`]), computed on first use and shared
     /// by every later render.
@@ -142,7 +151,17 @@ const MAX_AXES: usize = 63;
 
 /// Most instances of one font kept: each keeps its metrics and, once
 /// embedded whole, its program.
-const MAX_INSTANCES: usize = 64;
+const MAX_KEPT_INSTANCES: usize = 64;
+
+/// An axis tag and a user-space value on it.
+pub(crate) type Coord = ([u8; 4], f32);
+
+/// Sets `face` to `coords`.
+fn set_coords(face: &mut ttf_parser::Face<'_>, coords: &[Coord]) {
+    for &(tag, v) in coords {
+        face.set_variation(ttf_parser::Tag::from_bytes(&tag), v);
+    }
+}
 
 /// A static instance of a variable font: its location, and what differs
 /// there from the default.
@@ -150,7 +169,7 @@ const MAX_INSTANCES: usize = 64;
 pub(crate) struct Instance {
     /// Each axis value that is not the default, clamped to its axis, in
     /// tag order: equal locations are equal coordinates.
-    pub coords: Box<[([u8; 4], f32)]>,
+    pub coords: Box<[Coord]>,
     pub metrics: FontMetrics,
     /// SHA-256 of the font's digest and the coordinates: what the program
     /// caches key it by.
@@ -170,7 +189,7 @@ impl FontData {
     /// Whether the font has outlines. One without (colour bitmaps only) is
     /// never embedded, and its glyphs without colour are not drawn.
     pub(crate) fn has_outlines(&self) -> bool {
-        !self.metrics.color_only
+        self.outlines != Outlines::None
     }
 
     /// The first character of `text` the font has no glyph for, control
@@ -198,22 +217,11 @@ impl FontData {
         let face = ttf_parser::Face::parse(&bytes, 0)
             .map_err(|e| err(&format!("not a valid TrueType/OpenType font ({e})")))?;
         let tables = face.tables();
-        let variable = face.is_variable() || tables.cff2.is_some();
-        if let Some(problem) = variable.then(|| variable_problem(&face, &bytes)).flatten() {
-            return Err(err(problem));
-        }
         // Parsed only with their companion tables (`CBLC`, `CPAL`).
         let bitmaps = tables.cbdt.is_some() || tables.sbix.is_some();
         let color = bitmaps || tables.colr.is_some();
-        let outlines = tables.glyf.is_some() || tables.cff.is_some() || tables.cff2.is_some();
-        let color_only = !outlines && bitmaps;
-        let cff = tables.glyf.is_none() && tables.cff2.is_none() && !color_only;
-        if cff && cff::reals_fit(&bytes) == Some(false) {
-            return Err(err(
-                "the CFF table is malformed (a number in a DICT is out of range)",
-            ));
-        }
-        if cff && (tables.cff.is_none() || cff::full_program(&bytes).is_none()) {
+        let outlines = outlines(&face, &bytes).map_err(err)?;
+        if outlines == Outlines::None && !bitmaps {
             return Err(err(
                 "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
                  bitmaps (CBDT or sbix)",
@@ -241,13 +249,13 @@ impl FontData {
                 max: a.max_value,
             })
             .collect();
-        let metrics = read_metrics(&face, id, cff, color, color_only);
+        let metrics = read_metrics(&face, id, color);
         Ok(Self {
             digest: <sha2::Sha256 as sha2::Digest>::digest(&bytes).into(),
             bytes,
             metrics,
             axes,
-            variable,
+            outlines,
             compressed: OnceLock::new(),
             instances: Mutex::new(Vec::new()),
         })
@@ -256,8 +264,18 @@ impl FontData {
     /// The instance at `variations` (user-space axis values; an axis the
     /// font lacks is left out, a value is clamped to its axis), made once
     /// and kept; `None` for the default location, a static font's only one.
-    pub(crate) fn instance(&self, variations: &[FontVariation]) -> Option<Arc<Instance>> {
-        let mut coords: Vec<([u8; 4], f32)> = Vec::new();
+    /// `unknown` is told each tag the font has no axis for.
+    pub(crate) fn instance(
+        &self,
+        variations: &[FontVariation],
+        mut unknown: impl FnMut(&str),
+    ) -> Option<Arc<Instance>> {
+        for v in variations {
+            if !self.axes.iter().any(|a| a.tag == v.tag.as_bytes()) {
+                unknown(&v.tag);
+            }
+        }
+        let mut coords: Vec<Coord> = Vec::new();
         for axis in &self.axes {
             // The last value written for the axis wins, as in CSS.
             let Some(v) = variations
@@ -293,30 +311,26 @@ impl FontData {
             return Some(i.clone());
         }
         let instance = Arc::new(self.make_instance(coords.into_boxed_slice()));
-        if kept.len() >= MAX_INSTANCES {
+        if kept.len() >= MAX_KEPT_INSTANCES {
             kept.remove(0);
         }
         kept.push(instance.clone());
         Some(instance)
     }
 
-    fn make_instance(&self, coords: Box<[([u8; 4], f32)]>) -> Instance {
+    fn make_instance(&self, coords: Box<[Coord]>) -> Instance {
         let base = &self.metrics;
         let metrics = match ttf_parser::Face::parse(&self.bytes, 0) {
             Ok(mut face) => {
-                for &(tag, v) in &coords {
-                    face.set_variation(ttf_parser::Tag::from_bytes(&tag), v);
-                }
-                let mut m = read_metrics(&face, "", base.cff, base.color, base.color_only);
+                set_coords(&mut face, &coords);
+                let mut m = read_metrics(&face, "", base.color);
                 let coord = |tag: &[u8; 4]| coords.iter().find(|(t, _)| t == tag).map(|(_, v)| *v);
                 m.weight =
                     coord(b"wght").map_or(base.weight, |w| w.round().clamp(1.0, 1000.0) as u16);
                 m.italic_angle = coord(b"slnt").unwrap_or(base.italic_angle);
-                m.is_italic = base.is_italic
-                    || coord(b"ital").is_some_and(|v| v >= 0.5)
-                    // A negative slant leans forward, as italics do.
-                    || coord(b"slnt").is_some_and(|v| v < 0.0);
-                m.post_script_name = instance_name(&base.post_script_name, &coords);
+                m.is_italic = base.is_italic || leans(coord(b"ital"), coord(b"slnt"));
+                m.post_script_name =
+                    instance_name(&name_prefix(&face, &base.post_script_name), &coords);
                 m
             }
             // It parsed when it was registered.
@@ -350,11 +364,10 @@ impl FontData {
         if let Some(c) = cell.get() {
             return Ok(c.clone());
         }
-        let program: std::borrow::Cow<'_, [u8]> = if self.variable {
+        let program: std::borrow::Cow<'_, [u8]> = if self.outlines == Outlines::Variable {
             let all: Vec<u16> = (0..self.glyph_count()).collect();
             let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&all);
-            let coords = instance.map_or(&[][..], |i| &i.coords);
-            subsetter::subset_with_variations(&self.bytes, 0, &subsetter_coords(coords), &remapper)
+            self.instance_program(instance, &remapper)
                 .map_err(|e| {
                     InkoxideError::Font(format!(
                         "font `{}`: its instance cannot be made ({e})",
@@ -362,7 +375,7 @@ impl FontData {
                     ))
                 })?
                 .into()
-        } else if self.metrics.cff {
+        } else if self.outlines == Outlines::Cff {
             // Checked at registration.
             cff::full_program(&self.bytes)
                 .ok_or_else(|| InkoxideError::Internal("CFF conversion failed".into()))?
@@ -380,23 +393,37 @@ impl FontData {
     }
 }
 
-/// Coordinates as the subsetter takes them.
-fn subsetter_coords(coords: &[([u8; 4], f32)]) -> Vec<(subsetter::Tag, f32)> {
-    coords
-        .iter()
-        .map(|(tag, v)| (subsetter::Tag::new(tag), *v))
-        .collect()
+impl FontData {
+    /// The glyphs `remapper` keeps of variable font instance `instance`
+    /// (`None`: the default one), as a static TrueType program.
+    fn instance_program(
+        &self,
+        instance: Option<&Instance>,
+        remapper: &subsetter::GlyphRemapper,
+    ) -> Result<Vec<u8>, subsetter::Error> {
+        let coords: Vec<(subsetter::Tag, f32)> = instance
+            .map_or(&[][..], |i| &i.coords)
+            .iter()
+            .map(|(tag, v)| (subsetter::Tag::new(tag), *v))
+            .collect();
+        subsetter::subset_with_variations(&self.bytes, 0, &coords, remapper)
+    }
+}
+
+/// The start of the PostScript names of `face`'s instances: its
+/// variations PostScript name prefix (name ID 25), or else `name`.
+fn name_prefix(face: &ttf_parser::Face<'_>, name: &str) -> String {
+    face.names()
+        .into_iter()
+        .find(|n| n.name_id == 25 && n.is_unicode())
+        .and_then(|n| n.to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// The metrics of `face` at its variation coordinates (ttf-parser applies
 /// `MVAR`); `fallback_name` is the PostScript name of a font without one.
-fn read_metrics(
-    face: &ttf_parser::Face<'_>,
-    fallback_name: &str,
-    cff: bool,
-    color: bool,
-    color_only: bool,
-) -> FontMetrics {
+fn read_metrics(face: &ttf_parser::Face<'_>, fallback_name: &str, color: bool) -> FontMetrics {
     let upem = f32::from(face.units_per_em());
     let bbox = face.global_bounding_box();
     let ascender = f32::from(face.ascender());
@@ -461,38 +488,83 @@ fn read_metrics(
         subscript_size,
         superscript_offset,
         superscript_size,
-        cff,
         color,
-        color_only,
     }
 }
 
-/// Why variable font `face` (`bytes`) cannot be used, if it cannot: the
-/// two parsers that read it, ttf-parser for layout and skrifa (in the
-/// subsetter) for the outlines embedded, must agree on it.
-fn variable_problem(face: &ttf_parser::Face<'_>, bytes: &[u8]) -> Option<&'static str> {
-    let tables = face.tables();
-    if tables.glyf.is_none() && tables.cff2.is_none() {
-        return Some("variable fonts need TrueType (glyf) or CFF2 outlines");
+/// The outlines of `face` (`bytes`), or why they cannot be used. A
+/// variable font's are read by two parsers, ttf-parser for layout and
+/// skrifa (in the subsetter) for the outlines embedded, which must agree
+/// on it.
+fn outlines(face: &ttf_parser::Face<'_>, bytes: &[u8]) -> Result<Outlines, &'static str> {
+    let raw = |tag: &[u8; 4]| face.raw_face().table(ttf_parser::Tag::from_bytes(tag));
+    // By the tables present, as the subsetter picks them, parsed or not.
+    let has = |tag: &[u8; 4]| raw(tag).is_some();
+    if !face.is_variable() && !has(b"CFF2") {
+        if has(b"glyf") {
+            return Ok(Outlines::TrueType);
+        }
+        if !has(b"CFF ") {
+            return Ok(Outlines::None);
+        }
+        if cff::reals_fit(bytes) == Some(false) {
+            return Err("the CFF table is malformed (a number in a DICT is out of range)");
+        }
+        if cff::full_program(bytes).is_none() {
+            return Err(
+                "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
+                 bitmaps (CBDT or sbix)",
+            );
+        }
+        return Ok(Outlines::Cff);
+    }
+    // The subsetter reads CFF before CFF2, and CFF has no variations.
+    if !has(b"glyf") && (has(b"CFF ") || !has(b"CFF2")) {
+        return Err("variable fonts need TrueType (glyf) or CFF2 outlines");
+    }
+    if has(b"glyf") && !has(b"gvar") {
+        return Err("a variable font with TrueType outlines needs a gvar table");
+    }
+    if has(b"gvar") && face.tables().gvar.is_none() {
+        return Err("the gvar table is malformed");
     }
     if usize::from(face.variation_axes().len()) > MAX_AXES {
-        return Some("variable fonts with more than 63 axes are not supported");
+        return Err("variable fonts with more than 63 axes are not supported");
     }
-    let avar = face.raw_face().table(ttf_parser::Tag::from_bytes(b"avar"));
-    if avar.is_some_and(|t| t.get(..2) != Some(&[0, 1])) {
-        return Some("only version 1.0 of the avar table is supported (this font has another)");
+    if raw(b"avar").is_some_and(|t| t.get(..2) != Some(&[0, 1])) {
+        return Err("only version 1.0 of the avar table is supported (this font has another)");
     }
+    // Away from the default location, where the variation data are read.
+    let coords: Vec<(subsetter::Tag, f32)> = face
+        .variation_axes()
+        .into_iter()
+        .filter_map(|a| {
+            let v = if a.max_value == a.def_value {
+                a.min_value
+            } else {
+                a.max_value
+            };
+            (v != a.def_value).then(|| (subsetter::Tag::new(&a.tag.to_bytes()), v))
+        })
+        .collect();
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&[0]);
-    if subsetter::subset_with_variations(bytes, 0, &[], &remapper).is_err() {
-        return Some("the outlines of the variable font cannot be read");
+    if subsetter::subset_with_variations(bytes, 0, &coords, &remapper).is_err() {
+        return Err("the outlines of the variable font cannot be read");
     }
-    None
+    Ok(Outlines::Variable)
 }
 
-/// The PostScript name of an instance: the font's, and each coordinate
-/// with its axis (`Inter-Regular_650wght`, after Adobe Technical Note
-/// #5902), cut to 63 characters with a hash in place of the rest.
-fn instance_name(base: &str, coords: &[([u8; 4], f32)]) -> String {
+/// Whether an instance at `ital` and `slnt` is italic: from `ital` 0.5,
+/// or at any slant, either way, as italics lean.
+fn leans(ital: Option<f32>, slnt: Option<f32>) -> bool {
+    ital.is_some_and(|v| v >= 0.5) || slnt.is_some_and(|v| v != 0.0)
+}
+
+/// The PostScript name of an instance: `base`, the font's prefix (see
+/// [`name_prefix`]), and each coordinate with its axis (`Inter_650wght`,
+/// after Adobe Technical Note #5902), cut to 63 characters with a hash in
+/// place of the rest.
+fn instance_name(base: &str, coords: &[Coord]) -> String {
     let mut name = base.to_string();
     for (tag, v) in coords {
         let v = (f64::from(*v) * 1000.0).round() / 1000.0;
@@ -524,16 +596,15 @@ impl FontData {
     /// `glyphs` (sorted); `None` when the subsetter rejects the font. A
     /// variable font's is a static TrueType instance.
     pub(crate) fn subset(&self, instance: Option<&Instance>, glyphs: &[u16]) -> Option<Subset> {
-        if self.metrics.cff {
+        if self.outlines == Outlines::Cff {
             return Some(Subset {
                 program: cff::subset_program(&self.bytes, glyphs)?,
                 cid_to_gid: None,
             });
         }
         let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(glyphs);
-        let program = if self.variable {
-            let coords = instance.map_or(&[][..], |i| &i.coords);
-            subsetter::subset_with_variations(&self.bytes, 0, &subsetter_coords(coords), &remapper)
+        let program = if self.outlines == Outlines::Variable {
+            self.instance_program(instance, &remapper)
         } else {
             subsetter::subset(&self.bytes, 0, &remapper)
         }
@@ -671,7 +742,7 @@ impl LoadedFont<'_> {
     }
 
     /// The variation coordinates it draws at (empty: the default ones).
-    pub fn coords(&self) -> &[([u8; 4], f32)] {
+    pub fn coords(&self) -> &[Coord] {
         self.instance.as_ref().map_or(&[], |i| &i.coords)
     }
 
@@ -870,24 +941,15 @@ impl<'a> FontSet<'a> {
             let mut face = ttf_parser::Face::parse(&data.bytes, 0)
                 .map_err(|_| InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id)))?;
             let instance = match &decl.variations {
-                Some(v) if !is_deferred => {
-                    for v in v
-                        .iter()
-                        .filter(|v| !data.axes.iter().any(|a| a.tag == v.tag.as_bytes()))
-                    {
-                        tracing::warn!(
-                            "font `{}`: `{source}` has no `{}` axis; the value is ignored",
-                            decl.id,
-                            v.tag
-                        );
-                    }
-                    data.instance(v)
-                }
+                Some(v) if !is_deferred => data.instance(v, |tag| {
+                    tracing::warn!(
+                        "font `{}`: `{source}` has no `{tag}` axis; the value is ignored",
+                        decl.id
+                    );
+                }),
                 _ => None,
             };
-            for &(tag, v) in instance.as_ref().map_or(&[][..], |i| &i.coords) {
-                face.set_variation(ttf_parser::Tag::from_bytes(&tag), v);
-            }
+            set_coords(&mut face, instance.as_ref().map_or(&[][..], |i| &i.coords));
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
             fonts.push(LoadedFont {
                 id: &decl.id,
@@ -1006,17 +1068,32 @@ mod tests {
         s.register("cff2", fixture("VarTest-CFF2.otf")).unwrap();
         for id in ["glyf", "cff2"] {
             let data = s.get(id).unwrap();
-            assert!(data.variable && !data.metrics.cff, "{id}");
+            assert_eq!(data.outlines, Outlines::Variable, "{id}");
             let tags: Vec<[u8; 4]> = data.axes.iter().map(|a| a.tag).collect();
             assert_eq!(tags, [*b"wght", *b"wdth"], "{id}");
         }
         for (file, why) in [
             ("limits/var-avar2.ttf", "version 1.0 of the avar table"),
             ("limits/var-64-axes.ttf", "more than 63 axes"),
+            ("limits/var-no-gvar.ttf", "needs a gvar table"),
+            ("limits/var-gvar-cut.ttf", "the gvar table is malformed"),
+            (
+                "limits/var-cff-and-cff2.otf",
+                "TrueType (glyf) or CFF2 outlines",
+            ),
         ] {
             let e = s.register("x", fixture(file)).unwrap_err().to_string();
             assert!(e.contains(why), "{file}: {e}");
         }
+    }
+
+    #[test]
+    fn an_instance_is_italic_at_ital_or_any_slant() {
+        assert!(!leans(None, None));
+        assert!(!leans(Some(0.4), Some(0.0)));
+        assert!(leans(Some(0.5), None));
+        assert!(leans(None, Some(-12.0)));
+        assert!(leans(None, Some(8.0)));
     }
 
     #[test]
@@ -1025,31 +1102,36 @@ mod tests {
         s.register("v", fixture("VarTest-glyf.ttf")).unwrap();
         let data = s.get("v").unwrap();
         // The default location, an axis the font lacks, nothing.
-        assert!(data.instance(&variations(&[("wght", 400.0)])).is_none());
-        assert!(data.instance(&variations(&[("ZZZZ", 3.0)])).is_none());
-        assert!(data.instance(&[]).is_none());
+        assert!(data
+            .instance(&variations(&[("wght", 400.0)]), |_| {})
+            .is_none());
+        assert!(data
+            .instance(&variations(&[("ZZZZ", 3.0)]), |_| {})
+            .is_none());
+        assert!(data.instance(&[], |_| {}).is_none());
         // Clamped, defaults left out, the last value of an axis kept.
         let a = data
-            .instance(&variations(&[
-                ("wght", 100.0),
-                ("wdth", 100.0),
-                ("wght", 2000.0),
-            ]))
+            .instance(
+                &variations(&[("wght", 100.0), ("wdth", 100.0), ("wght", 2000.0)]),
+                |_| {},
+            )
             .unwrap();
-        let b = data.instance(&variations(&[("wght", 900.0)])).unwrap();
+        let b = data
+            .instance(&variations(&[("wght", 900.0)]), |_| {})
+            .unwrap();
         assert!(Arc::ptr_eq(&a, &b));
         assert_eq!(&*a.coords, &[(*b"wght", 900.0)]);
         assert_eq!(a.metrics.weight, 900);
         // MVAR moves the x-height and cap height.
         assert_eq!((a.metrics.x_height, a.metrics.cap_height), (520.0, 710.0));
         assert_eq!(data.metrics.x_height, 500.0);
-        assert_eq!(a.metrics.post_script_name, "VarTest-Regular_900wght");
+        assert_eq!(a.metrics.post_script_name, "VarTest_900wght");
         assert_ne!(a.digest, data.digest);
         let c = data
-            .instance(&variations(&[("wdth", 75.0), ("wght", 700.0)]))
+            .instance(&variations(&[("wdth", 75.0), ("wght", 700.0)]), |_| {})
             .unwrap();
         assert_eq!(&*c.coords, &[(*b"wdth", 75.0), (*b"wght", 700.0)]);
-        assert_eq!(c.metrics.post_script_name, "VarTest-Regular_75wdth_700wght");
+        assert_eq!(c.metrics.post_script_name, "VarTest_75wdth_700wght");
     }
 
     #[test]
@@ -1120,7 +1202,7 @@ mod tests {
         s.register("Bold", fixture("InterDisplay-Bold.otf"))
             .unwrap();
         let bold = s.get("Bold").unwrap();
-        assert!(bold.metrics.cff);
+        assert_eq!(bold.outlines, Outlines::Cff);
         assert_eq!(bold.metrics.weight, 700);
         let (program, _) = bold.compressed_program(None, |p| Ok(p.to_vec())).unwrap();
         assert!(!program.is_empty());
@@ -1129,16 +1211,15 @@ mod tests {
     #[test]
     fn registers_colour_fonts_with_and_without_outlines() {
         let mut s = FontStore::new();
-        for (id, file, color_only) in [
-            ("colr", "EmojiTest-COLR.ttf", false),
-            ("cbdt", "EmojiTest-CBDT.ttf", true),
-            ("sbix", "EmojiTest-sbix.ttf", true),
+        for (id, file, outlines) in [
+            ("colr", "EmojiTest-COLR.ttf", Outlines::TrueType),
+            ("cbdt", "EmojiTest-CBDT.ttf", Outlines::None),
+            ("sbix", "EmojiTest-sbix.ttf", Outlines::None),
         ] {
             s.register(id, fixture(file)).unwrap();
-            let m = &s.get(id).unwrap().metrics;
-            assert!(m.color, "{id}");
-            assert_eq!(m.color_only, color_only, "{id}");
-            assert!(!m.cff, "{id}");
+            let data = s.get(id).unwrap();
+            assert!(data.metrics.color, "{id}");
+            assert_eq!(data.outlines, outlines, "{id}");
         }
         s.register("inter", fixture("Inter-Regular.ttf")).unwrap();
         assert!(!s.get("inter").unwrap().metrics.color);
@@ -1227,7 +1308,7 @@ mod tests {
         assert_same_font(&otf, web.clone());
         let mut s = FontStore::new();
         s.register("Bold", web).unwrap();
-        assert!(s.get("Bold").unwrap().metrics.cff);
+        assert_eq!(s.get("Bold").unwrap().outlines, Outlines::Cff);
     }
 
     #[test]

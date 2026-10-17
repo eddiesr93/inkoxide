@@ -16,8 +16,11 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   text is shaped and measured at that instance, and the PDF embeds it as a static TrueType
   subset, never the variable font. `Font.register` takes a weight range (`fontWeight: [100,
   900]`) and `fontVariationSettings`, and styles and Tailwind's `[font-variation-settings:…]`
-  take `fontVariationSettings`. A variable font with more than 63 axes or an `avar` table of
-  version 2 is refused. The WebAssembly engine grows by about 130 KB with brotli, for the
+  take `fontVariationSettings`. `@inkoxide/style` exports `parseFontVariationSettings` and the
+  types `FontVariationSettings` and `FontVariations`, and `@inkoxide/react` exports
+  `fontVariationsValue`. An axis the font does not have is left out, with a warning. A variable
+  font with more than 63 axes or an `avar` table of version 2 is refused, and so is one whose
+  outlines the instancer cannot vary (CFF with CFF2, or `glyf` without `gvar`). The WebAssembly engine grows by about 140 KB with brotli, for the
   instancer.
 
 - `@media` for the page size. `@inkoxide/react` style objects take `'@media …'` blocks, and

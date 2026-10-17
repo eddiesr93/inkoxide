@@ -89,6 +89,35 @@ describe('variable faces', () => {
     expect(r.resolve(['Var'], 900, 'normal').id).toBe('Static-900');
   });
 
+  it('draw every weight of a 100 to 900 range, in steps of 50, at that weight', () => {
+    const r = new FontRegistry().register({ id: 'Inter', family: 'Inter', weightRange: [100, 900] });
+    for (let w = 100; w <= 900; w += 50) {
+      expect(r.resolve(['Inter'], w, 'normal'), String(w)).toEqual({ id: `Inter@wght=${w}`, exact: true });
+      expect(r.decl(`Inter@wght=${w}`).weight ?? 400, String(w)).toBe(w);
+    }
+  });
+
+  it('stand at the end of their range nearer the weight, as CSS orders faces', () => {
+    const r = new FontRegistry()
+      .register({ id: 'Light', family: 'F', weightRange: [100, 300] })
+      .register({ id: 'Heavy', family: 'F', weightRange: [600, 900] });
+    // From 400 to 500: up to 500 first, then lighter, then heavier.
+    expect(r.resolve(['F'], 450, 'normal').id).toBe('Light@wght=300');
+    // Under 400 lighter first, over 500 heavier first.
+    expect(r.resolve(['F'], 350, 'normal').id).toBe('Light@wght=300');
+    expect(r.resolve(['F'], 550, 'normal').id).toBe('Heavy@wght=600');
+    const heavyOnly = new FontRegistry().register({ id: 'Heavy', family: 'F', weightRange: [600, 900] });
+    expect(heavyOnly.resolve(['F'], 450, 'normal')).toEqual({
+      id: 'Heavy@wght=600',
+      exact: false,
+      wanted: 'F 450',
+    });
+  });
+
+  it('refuse a face id with an @, which instances use', () => {
+    expect(() => new FontRegistry().register({ id: 'Var@wght=400', family: 'Var' })).toThrow(/has an @/);
+  });
+
   it('keep the instances used last, however many a long-running process meets', () => {
     const r = registry();
     const first = r.resolve(['Var'], 400, 'normal', { wdth: 0 }).id;
