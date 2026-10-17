@@ -118,7 +118,7 @@ fn known(name: &str) -> Option<&'static str> {
 
 /// Reads every `<text>` of `doc`. Returns them, and how many elements it
 /// matched against the style sheets, for the caller to charge
-/// (`images/svg.rs`): the checks charged each element's `style` already.
+/// (`images/svg/check.rs`): the checks charged each element's `style` already.
 /// Stops once the texts keep more than `max_bytes` of property values
 /// (font families, paint, the placeholders' attributes and effects).
 pub(crate) fn extract(
