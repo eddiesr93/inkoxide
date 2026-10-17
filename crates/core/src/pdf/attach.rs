@@ -117,3 +117,66 @@ fn relationship(r: Relationship) -> &'static [u8] {
         Relationship::Unspecified => b"Unspecified",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(name: &str) -> PreparedFile {
+        PreparedFile {
+            name: name.into(),
+            mime_type: "text/plain".into(),
+            description: None,
+            relationship: Relationship::Unspecified,
+            modified: None,
+            data: Vec::new(),
+            compressed: false,
+            size: 0,
+            hash: 0,
+        }
+    }
+
+    fn utf16(s: &str) -> Vec<u8> {
+        [0xFE, 0xFF]
+            .into_iter()
+            .chain(s.encode_utf16().flat_map(u16::to_be_bytes))
+            .collect()
+    }
+
+    #[test]
+    fn name_tree_keys_are_sorted_bytes_ascii_or_all_utf16() {
+        let refs = [Ref::new(1), Ref::new(2), Ref::new(3)];
+        let ascii = [file("b.xml"), file("a.pdf"), file("C.txt")];
+        assert_eq!(
+            name_tree(&ascii, &refs, <[u8]>::to_vec),
+            [
+                (b"C.txt".to_vec(), Ref::new(3)),
+                (b"a.pdf".to_vec(), Ref::new(2)),
+                (b"b.xml".to_vec(), Ref::new(1)),
+            ]
+        );
+        // One name outside printable ASCII makes every key UTF-16.
+        let mixed = [file("é.xml"), file("b.xml"), file("Z\t.txt")];
+        assert_eq!(
+            name_tree(&mixed, &refs, <[u8]>::to_vec),
+            [
+                (utf16("Z\t.txt"), Ref::new(3)),
+                (utf16("b.xml"), Ref::new(2)),
+                (utf16("é.xml"), Ref::new(1)),
+            ]
+        );
+        // Keys are sorted as written, then encoded (encrypted).
+        let tree = name_tree(&ascii, &refs, |k| k.iter().rev().copied().collect());
+        assert_eq!(tree[0], (b"txt.C".to_vec(), Ref::new(3)));
+    }
+
+    #[test]
+    fn ascii_names_replace_each_other_character() {
+        assert_eq!(
+            ascii_name("Rechnung März 2026.xml"),
+            "Rechnung M_rz 2026.xml"
+        );
+        assert_eq!(ascii_name("a\tb\u{1F600}.txt"), "a_b_.txt");
+        assert_eq!(ascii_name("~!.csv"), "~!.csv");
+    }
+}

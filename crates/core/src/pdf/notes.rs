@@ -495,6 +495,63 @@ mod tests {
     }
 
     #[test]
+    fn an_attachment_icon_opens_its_file() {
+        let icon = |a: &str| format!(r#"{{"type":"attachment","attachment":{a}}}"#);
+        let doc = format!(
+            r#"{{"version":1,"attachments":[
+                 {{"name":"a.txt","data":"aGk=","description":"Data (raw)"}},
+                 {{"name":"b.txt","data":"aGk="}}],
+               "pages":[{{"size":{{"width":200,"height":200}},"children":[{},{},{}]}}]}}"#,
+            icon(r#"{"file":"a.txt"}"#),
+            icon(r#"{"file":"b.txt","icon":"tag","color":[1,0,0,1]}"#),
+            icon(r#"{"file":"a.txt","contents":"Open me"}"#),
+        );
+        let options = crate::RenderOptions::default().with_compress(false);
+        let pdf = crate::render(
+            doc.as_bytes(),
+            crate::InputFormat::Json,
+            &options,
+            &crate::FontStore::new(),
+            &crate::ImageStore::new(),
+        )
+        .unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        let annots: Vec<&str> = pdf
+            .split("/Subtype /FileAttachment")
+            .skip(1)
+            .map(|a| a.split("endobj").next().unwrap())
+            .collect();
+        assert_eq!(annots.len(), 3, "{pdf}");
+        // The description, else the file name; blue and a push pin by
+        // default; each opens its file specification.
+        for (annot, entries) in annots.iter().zip([
+            &[
+                "/Contents (Data (raw))",
+                "/C [0.3 0.55 0.9]",
+                "/Name /PushPin",
+            ][..],
+            &["/Contents (b.txt)", "/C [1 0 0]", "/Name /Tag"],
+            &["/Contents (Open me)"],
+        ]) {
+            for entry in entries.iter().chain(&["/FS ", "/AF [", "/F 28", "/AP <<"]) {
+                assert!(annot.contains(entry), "{entry}: {annot}");
+            }
+        }
+        let spec = |annot: &str| {
+            annot
+                .split("/FS ")
+                .nth(1)
+                .unwrap()
+                .split(" R")
+                .next()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(spec(annots[0]), spec(annots[2]));
+        assert_ne!(spec(annots[0]), spec(annots[1]));
+    }
+
+    #[test]
     fn pdf_a_keeps_the_appearance_and_the_print_flag() {
         let pdf = render("", &note(r#"{"contents":"x"}"#), 1, true);
         assert!(pdf.contains("/F 28") && pdf.contains("/AP <<"), "{pdf}");
