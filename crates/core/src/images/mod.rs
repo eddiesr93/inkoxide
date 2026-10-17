@@ -29,7 +29,7 @@ pub(crate) use decode::{
 };
 pub(crate) use probe::{probe, ProbeError};
 
-use crate::geom::Rect;
+use crate::geom::{Rect, CLIP_EPS};
 use crate::layout::{AvailableSpace, Size};
 use crate::schema::{
     ImageFit, ImageSource, LengthPercent, Node, NodeKind, ObjectPosition, PageSpec,
@@ -594,8 +594,6 @@ pub(crate) fn fit_rect(
     bx: Rect,
     (iw, ih): (f32, f32),
 ) -> (Rect, bool) {
-    /// Overflow below this (points) is rounding, not worth a clip.
-    const CLIP_EPS: f32 = 1e-3;
     let Rect { x, y, w, h } = bx;
     if iw <= 0.0 || ih <= 0.0 {
         return (bx, false);
@@ -613,35 +611,23 @@ pub(crate) fn fit_rect(
         ImageFit::None => (iw, ih),
     };
     let (rx, ry) = (place(x, position.x, w - dw), place(y, position.y, h - dh));
-    let clip = dw > w + CLIP_EPS
-        || dh > h + CLIP_EPS
-        || rx < x - CLIP_EPS
-        || ry < y - CLIP_EPS
-        || rx + dw > x + w + CLIP_EPS
-        || ry + dh > y + h + CLIP_EPS;
-    (Rect::new(rx, ry, dw, dh), clip)
+    let rect = Rect::new(rx, ry, dw, dh);
+    let clip = dw > w + CLIP_EPS || dh > h + CLIP_EPS || rect.overflows(bx);
+    (rect, clip)
 }
 
-/// Start of an image along one axis: the box's start plus the offset.
-/// Validation bounds `objectPosition`, so this stays finite for a validated
-/// document; should a placement still overflow `f32` (a caller that skipped
-/// validation), the image is centred instead, so that `inf` or `NaN` never
+/// Start of an image along one axis: the box's start plus the offset `p`
+/// within the free space (box minus image; negative when the image is
+/// larger), where a percentage lines up that point of the image with that
+/// point of the box. Validation bounds `objectPosition`, so this stays
+/// finite for a validated document; should a placement still overflow
+/// `f32` (a caller that skipped validation), the image is centred instead, so that `inf` or `NaN` never
 /// reaches the content stream, where it would make the PDF invalid.
 fn place(start: f32, p: LengthPercent, free: f32) -> f32 {
-    [start + offset(p, free), start + free / 2.0]
+    [start + p.resolve(free), start + free / 2.0]
         .into_iter()
         .find(|v| v.is_finite())
         .unwrap_or(start)
-}
-
-/// Offset of an image from the start edge of its box along one axis, given
-/// the free space (box minus image; negative when the image is larger): a
-/// percentage lines up that point of the image with that point of the box.
-fn offset(p: LengthPercent, free: f32) -> f32 {
-    match p {
-        LengthPercent::Points(v) => v,
-        LengthPercent::Percent(f) => free * f,
-    }
 }
 
 /// Transform mapping the image unit square onto `rect` in layout space

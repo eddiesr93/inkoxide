@@ -320,8 +320,6 @@ impl ViewBox {
     /// SVG's viewport there (as CSS draws an SVG image with `object-fit:
     /// fill`), and whether to clip to `bx`.
     pub fn place(&self, size: (f32, f32), bx: Rect) -> (Rect, bool) {
-        /// Overflow below this (points) is rounding, not worth a clip.
-        const CLIP_EPS: f32 = 1e-3;
         let (w, h) = size;
         let (fx, fy, fw, fh) = self.fit((0.0, 0.0, w, h));
         let (tx, ty, tw, th) = self.fit((bx.x, bx.y, bx.w, bx.h));
@@ -332,11 +330,7 @@ impl ViewBox {
         } else {
             bx
         };
-        let clip = rect.x < bx.x - CLIP_EPS
-            || rect.y < bx.y - CLIP_EPS
-            || rect.x + rect.w > bx.x + bx.w + CLIP_EPS
-            || rect.y + rect.h > bx.y + bx.h + CLIP_EPS;
-        (rect, clip)
+        (rect, rect.overflows(bx))
     }
 }
 

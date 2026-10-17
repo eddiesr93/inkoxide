@@ -187,14 +187,7 @@ impl Crypt {
     /// encrypted, so the tag must not tell which glyphs the file uses.
     pub fn subset_tag(&self, tag: &str, font: &str) -> String {
         let mac = hmac(&self.tag_key, &[font.as_bytes(), b"\0", tag.as_bytes()]);
-        let mut v = u64::from_be_bytes(mac[..8].try_into().unwrap_or_default());
-        let mut out = String::with_capacity(7);
-        for _ in 0..6 {
-            out.push(char::from(b'A' + (v % 26) as u8));
-            v /= 26;
-        }
-        out.push('+');
-        out
+        super::font::letters_tag(u64::from_be_bytes(mac[..8].try_into().unwrap_or_default()))
     }
 
     /// The data of stream object `r`, encrypted.

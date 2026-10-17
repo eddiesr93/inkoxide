@@ -8,7 +8,7 @@
 //! inline objects) needs no special case. A chunk it cannot set
 //! within its tolerances, or past its caps, is broken first fit instead.
 
-use super::lines::Breaker;
+use super::lines::{Breaker, HYPHEN};
 use super::{BreakKind, BreakPoint, WIDTH_EPS};
 use crate::schema::{TextAlign, TextWrap};
 
@@ -173,7 +173,7 @@ impl Chunk {
         };
         let font = b.para.fonts.get(seg.font);
         let id = p.glyphs[at - 1].id;
-        font.glyph('-') == Some(id) || font.glyph('\u{2010}') == Some(id)
+        font.glyph('-') == Some(id) || font.glyph(HYPHEN) == Some(id)
     }
 
     /// One pass at `tolerance`: the best lines, or why there are none:

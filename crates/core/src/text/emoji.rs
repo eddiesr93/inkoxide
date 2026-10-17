@@ -15,9 +15,9 @@ use unicode_properties::{EmojiStatus, UnicodeEmoji};
 
 use crate::fonts::{FontKey, FontSet};
 
-const ZWJ: char = '\u{200D}';
+pub(super) const ZWJ: char = '\u{200D}';
 const VS15: char = '\u{FE0E}';
-const VS16: char = '\u{FE0F}';
+pub(super) const VS16: char = '\u{FE0F}';
 const KEYCAP: char = '\u{20E3}';
 const CANCEL_TAG: char = '\u{E007F}';
 

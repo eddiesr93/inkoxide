@@ -40,9 +40,19 @@ use crate::fonts::{FontKey, FontSet};
 use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
+use crate::paint::FillRule;
 use crate::paint::{span, InvisibleGlyph, Op, TextGlyph, TextOp, NO_RADII};
 use crate::text::{ColorGlyphs, LaidText};
 use crate::{flate, InkoxideError};
+
+impl From<usvg::FillRule> for FillRule {
+    fn from(rule: usvg::FillRule) -> Self {
+        match rule {
+            usvg::FillRule::NonZero => FillRule::NonZero,
+            usvg::FillRule::EvenOdd => FillRule::EvenOdd,
+        }
+    }
+}
 
 /// Most path segments one SVG may emit, copies included.
 const MAX_SEGMENTS: usize = 5_000_000;
@@ -834,10 +844,7 @@ impl Svg<'_> {
             match clip_kind(cp, |p| self.probe(p).is_some()) {
                 Clip::Simple(path, rule) => {
                     self.emit_path(&mut cv.c, &path)?;
-                    match rule {
-                        usvg::FillRule::NonZero => cv.c.clip_nonzero(),
-                        usvg::FillRule::EvenOdd => cv.c.clip_even_odd(),
-                    };
+                    super::clip(&mut cv.c, rule.into());
                     cv.c.end_path();
                 }
                 Clip::Empty => {
@@ -966,10 +973,7 @@ impl Svg<'_> {
                 Node::Path(p) if at.clip => {
                     if let (true, Some(fill)) = (p.is_visible(), p.fill()) {
                         self.emit_path(&mut cv.c, p.data())?;
-                        match fill.rule() {
-                            usvg::FillRule::NonZero => cv.c.fill_nonzero(),
-                            usvg::FillRule::EvenOdd => cv.c.fill_even_odd(),
-                        };
+                        super::fill(&mut cv.c, fill.rule().into());
                     }
                 }
                 Node::Path(p) => self.path(cv, p, at)?,
@@ -992,10 +996,7 @@ impl Svg<'_> {
             cv.c.save_state();
             s.set_paint(cv, f.paint(), f.opacity().get(), false, bbox, at)?;
             s.emit_path(&mut cv.c, p.data())?;
-            match f.rule() {
-                usvg::FillRule::NonZero => cv.c.fill_nonzero(),
-                usvg::FillRule::EvenOdd => cv.c.fill_even_odd(),
-            };
+            super::fill(&mut cv.c, f.rule().into());
             cv.c.restore_state();
             Ok(())
         };
@@ -1269,37 +1270,23 @@ impl Svg<'_> {
             );
             let loaded = fonts.ink.fonts.get(g0.font);
             let em = size * k;
-            let mut shown = cv.c.show_positioned();
-            let mut items = shown.items();
-            let mut buf: Vec<u8> = Vec::new();
-            let mut pen = g0.x;
-            let start = i;
-            while i < glyphs.len() {
-                let g = glyphs[i];
-                let same = g.font == g0.font
-                    && g.size == size
-                    && g.scale_x == k
-                    && g.y == g0.y
-                    && g.rotate == 0.0
-                    && g0.rotate == 0.0;
-                if i > start && !same {
-                    break;
-                }
-                let delta = g.x - pen;
-                if delta.abs() > super::KERN_EPS && em != 0.0 {
-                    if !buf.is_empty() {
-                        items.show(Str(&buf));
-                        buf.clear();
-                    }
-                    items.adjust(number(-delta * 1000.0 / em));
-                }
-                buf.extend_from_slice(&g.id.to_be_bytes());
-                pen = g.x + loaded.advance(g.id) * loaded.scale(em);
-                i += 1;
-            }
-            if !buf.is_empty() {
-                items.show(Str(&buf));
-            }
+            // Up to the next glyph in another font, size or line, or
+            // rotated: each rotated glyph is shown alone.
+            let end = glyphs[i + 1..]
+                .iter()
+                .position(|g| {
+                    g.font != g0.font
+                        || g.size != size
+                        || g.scale_x != k
+                        || g.y != g0.y
+                        || g.rotate != 0.0
+                        || g0.rotate != 0.0
+                })
+                .map_or(glyphs.len(), |n| i + 1 + n);
+            let run = glyphs[i..end].iter();
+            let run = run.map(|g| (g.id, g.x, loaded.advance(g.id) * loaded.scale(em)));
+            super::show_kerned(&mut cv.c, g0.x, em, number, run);
+            i = end;
         }
         cv.c.end_text();
         Ok(())

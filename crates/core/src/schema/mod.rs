@@ -656,8 +656,7 @@ pub struct RunImage {
 /// Where a run sits on its line (CSS `vertical-align` on an inline box):
 /// its baseline on the line's, or moved up or down. The values after
 /// `Sub` place images (validation keeps them to image runs).
-#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
-#[serde(try_from = "de::RawRunAlign")]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum RunAlign {
     #[default]
     Baseline,
@@ -688,8 +687,7 @@ pub struct FontFeature {
     pub value: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(try_from = "de::RawColumnWidth")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ColumnWidth {
     Points(f32),
     Fr(f32),
@@ -931,6 +929,25 @@ pub struct OptEdges<T> {
     pub left: Option<T>,
 }
 
+impl OptEdges<LengthPercent> {
+    /// Each side in points, at least 0 (0 when not set), a percentage
+    /// taken of `w`, the width of the containing block (on every side, as
+    /// in CSS); `None` for a percentage when `w` is unknown.
+    pub fn resolve(&self, w: Option<f32>) -> Edges<Option<f32>> {
+        let side = |v: Option<LengthPercent>| match v {
+            None => Some(0.0),
+            Some(LengthPercent::Points(x)) => Some(x.max(0.0)),
+            Some(l) => w.map(|w| l.resolve(w).max(0.0)),
+        };
+        Edges {
+            top: side(self.top),
+            right: side(self.right),
+            bottom: side(self.bottom),
+            left: side(self.left),
+        }
+    }
+}
+
 impl<T: Copy> OptEdges<T> {
     pub fn get(&self, default: T) -> [T; 4] {
         [
@@ -1099,6 +1116,13 @@ pub struct Style {
 }
 
 impl Style {
+    /// Whether `rotate` or `transform` moves the box: a rotation that is
+    /// not a whole turn, or any transform function.
+    pub fn is_transformed(&self) -> bool {
+        self.rotate.is_some_and(|r| r % 360.0 != 0.0)
+            || self.transform.as_ref().is_some_and(|t| !t.is_empty())
+    }
+
     /// The side the box floats to, when it floats.
     pub fn floats(&self) -> Option<Float> {
         self.float.filter(|f| *f != Float::None)

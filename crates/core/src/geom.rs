@@ -3,6 +3,9 @@
 
 use crate::schema::Edges;
 
+/// Overflow below this (points) is rounding, not worth a clip.
+pub(crate) const CLIP_EPS: f32 = 1e-3;
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) struct Rect {
     pub x: f32,
@@ -24,6 +27,15 @@ impl Rect {
             (self.w - e.left - e.right).max(0.0),
             (self.h - e.top - e.bottom).max(0.0),
         )
+    }
+
+    /// Whether this sticks out of `outer` on some side by more than
+    /// [`CLIP_EPS`]: content drawn here needs a clip to `outer`.
+    pub fn overflows(self, outer: Rect) -> bool {
+        self.x < outer.x - CLIP_EPS
+            || self.y < outer.y - CLIP_EPS
+            || self.x + self.w > outer.x + outer.w + CLIP_EPS
+            || self.y + self.h > outer.y + outer.h + CLIP_EPS
     }
 
     /// Grown by `e` on each side (shrunk where negative, to no less than

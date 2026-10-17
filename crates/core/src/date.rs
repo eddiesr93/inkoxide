@@ -8,6 +8,20 @@ pub(crate) struct Timestamp {
     pub offset_minutes: i16,
 }
 
+impl Timestamp {
+    /// The offset from UTC as PDF and XMP dates end: `Z`, or the sign,
+    /// hours, `sep` and minutes (`+02'00` with `'`, `+02:00` with `:`).
+    pub fn zone(&self, sep: char) -> String {
+        let off = self.offset_minutes;
+        if off == 0 {
+            return "Z".to_string();
+        }
+        let sign = if off < 0 { '-' } else { '+' };
+        let a = off.unsigned_abs();
+        format!("{sign}{:02}{sep}{:02}", a / 60, a % 60)
+    }
+}
+
 /// A date and time without an offset, as a form field value holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct LocalDateTime {

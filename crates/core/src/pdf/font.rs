@@ -130,7 +130,12 @@ fn subset_tag(font: &LoadedFont<'_>, glyphs: &[u16]) -> String {
     for g in glyphs {
         h.update(&g.to_le_bytes());
     }
-    let mut v = h.digest();
+    letters_tag(h.digest())
+}
+
+/// A subset tag made from `v`: six uppercase letters (its base-26 digits)
+/// and a `+`.
+pub(crate) fn letters_tag(mut v: u64) -> String {
     let mut tag = String::with_capacity(7);
     for _ in 0..6 {
         tag.push(char::from(b'A' + (v % 26) as u8));

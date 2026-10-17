@@ -842,14 +842,7 @@ fn write_outline(
 /// hand: `pdf_writer::Date` takes the offset's sign from its hours, so an
 /// offset under an hour west of UTC (`-00:30`) would come out east of it.
 fn pdf_date(t: Timestamp) -> String {
-    let (d, off) = (t.local, t.offset_minutes);
-    let zone = if off == 0 {
-        "Z".to_string()
-    } else {
-        let sign = if off < 0 { '-' } else { '+' };
-        let a = off.unsigned_abs();
-        format!("{sign}{:02}'{:02}", a / 60, a % 60)
-    };
+    let (d, zone) = (t.local, t.zone('\''));
     format!(
         "D:{:04}{:02}{:02}{:02}{:02}{:02}{zone}",
         d.year, d.month, d.day, d.hour, d.minute, d.second
@@ -971,34 +964,68 @@ fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool
             i += 1;
             continue;
         }
-        let mut shown = c.show_positioned();
-        let mut items = shown.items();
-        let mut buf: Vec<u8> = Vec::new();
-        let mut pen = g0.x;
-        while i < glyphs.len() && glyphs[i].y_offset == 0.0 {
-            let g = glyphs[i];
-            if skip_notdef && g.id == 0 {
-                i += 1;
-                continue;
-            }
-            let delta = g.x - pen;
-            if delta.abs() > KERN_EPS {
-                if !buf.is_empty() {
-                    items.show(Str(&buf));
-                    buf.clear();
-                }
-                // TJ adjustments are in thousandths of text space, inverted.
-                items.adjust(q(-delta * 1000.0 / t.size));
-            }
-            buf.extend_from_slice(&g.id.to_be_bytes());
-            pen = g.x + font.advance(g.id) * scale;
-            i += 1;
-        }
-        if !buf.is_empty() {
-            items.show(Str(&buf));
-        }
+        // Up to the next glyph moved up or down.
+        let end = glyphs[i..]
+            .iter()
+            .position(|g| g.y_offset != 0.0)
+            .map_or(glyphs.len(), |n| i + n);
+        let run = glyphs[i..end]
+            .iter()
+            .filter(|g| !(skip_notdef && g.id == 0));
+        let run = run.map(|g| (g.id, g.x, font.advance(g.id) * scale));
+        show_kerned(c, g0.x, t.size, q, run);
+        i = end;
     }
     c.end_text();
+}
+
+/// Shows `glyphs` (id, x, advance, in points) as one `TJ` array, the pen
+/// starting at `x`, with an adjustment wherever a glyph is not where the
+/// previous one's advance ends (kerning, letter spacing). `em` is the
+/// text space unit in points, and `round` rounds the adjustments.
+fn show_kerned(
+    c: &mut Content,
+    x: f32,
+    em: f32,
+    round: fn(f32) -> f32,
+    glyphs: impl IntoIterator<Item = (u16, f32, f32)>,
+) {
+    let mut shown = c.show_positioned();
+    let mut items = shown.items();
+    let mut buf: Vec<u8> = Vec::new();
+    let mut pen = x;
+    for (id, x, advance) in glyphs {
+        let delta = x - pen;
+        if delta.abs() > KERN_EPS && em != 0.0 {
+            if !buf.is_empty() {
+                items.show(Str(&buf));
+                buf.clear();
+            }
+            // TJ adjustments are in thousandths of text space, inverted.
+            items.adjust(round(-delta * 1000.0 / em));
+        }
+        buf.extend_from_slice(&id.to_be_bytes());
+        pen = x + advance;
+    }
+    if !buf.is_empty() {
+        items.show(Str(&buf));
+    }
+}
+
+/// Fills the current path with `rule`.
+fn fill(c: &mut Content, rule: FillRule) {
+    match rule {
+        FillRule::NonZero => c.fill_nonzero(),
+        FillRule::EvenOdd => c.fill_even_odd(),
+    };
+}
+
+/// Intersects the clip with the current path, with `rule`.
+fn clip(c: &mut Content, rule: FillRule) {
+    match rule {
+        FillRule::NonZero => c.clip_nonzero(),
+        FillRule::EvenOdd => c.clip_even_odd(),
+    };
 }
 
 fn set_fill(c: &mut Content, color: &Color) {
@@ -1052,10 +1079,7 @@ pub(crate) fn content_stream(
             }
             Op::ClipPath { path: p, rule } => {
                 path(&mut c, &p.segs);
-                match rule {
-                    FillRule::NonZero => c.clip_nonzero(),
-                    FillRule::EvenOdd => c.clip_even_odd(),
-                };
+                clip(&mut c, *rule);
                 c.end_path();
             }
             Op::FillRect { rect, color } => {
@@ -1070,10 +1094,7 @@ pub(crate) fn content_stream(
             } => {
                 set_fill(&mut c, color);
                 path(&mut c, &p.segs);
-                match rule {
-                    FillRule::NonZero => c.fill_nonzero(),
-                    FillRule::EvenOdd => c.fill_even_odd(),
-                };
+                fill(&mut c, *rule);
             }
             Op::StrokePath {
                 path: p,

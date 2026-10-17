@@ -12,6 +12,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - The `inkoxide` and `inkoxide-cli` crates have their crates.io metadata: a README each, the
   licence, keywords and categories. The packages leave out the tests and benchmarks, which read
   fixtures outside the crate.
+- A run's `verticalAlign` or a table column's `width` of the wrong type (`true`, an object) is
+  reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
 
 ## 0.9.1 - 2026-10-16
 
