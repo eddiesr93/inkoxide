@@ -38,8 +38,8 @@ Inkoxide does the typesetting of a PDF: text shaping, line breaking, layout, pag
 output, in native code. Documents are written as React components with
 [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render), styled with Tailwind
 classes or style objects, or built as JSON by any program and rendered with
-[`inkoxide`](https://www.npmjs.com/package/inkoxide). A one-page invoice renders in about a
-millisecond; a 98-page report with 40 tables in about 130 ms.
+[`inkoxide`](https://www.npmjs.com/package/inkoxide). Render times, on the server and in the
+browser, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Features
 
@@ -165,28 +165,20 @@ MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and 
 | [`@inkoxide/tailwind`](packages/tailwind) | Optional: Tailwind class strings (`className`) to engine styles, with the Tailwind v4 compiler |
 | [`@inkoxide/style`](packages/style) | Style values: CSS lengths, colours and transforms read into engine styles |
 | [`inkoxide`](packages/inkoxide) | The engine for Node.js: a JSON or MessagePack document tree in, PDF bytes out |
+| [`@inkoxide/wasm`](packages/wasm) | The engine as WebAssembly, for browsers: a JSON document tree in, PDF bytes out |
 | [`@inkoxide/schema`](packages/schema) | TypeScript types and JSON Schema of the document tree |
 | [`inkoxide` crate](crates/core) | The engine as a Rust library |
 
 ## Performance
 
-Median render times after warm-up:
-
-| Document | Pages | All cores | One thread | Machine |
-|---|---:|---:|---:|---|
-| Invoice, from React | 1 | 1.5 ms | 1.2 ms | Apple M4 Pro, Node 24 |
-| Report, from React: 40 sections, 1,000 table rows | 43 | 41 ms | 54 ms | Apple M4 Pro, Node 24 |
-| Report, from React, in the browser (WebAssembly, in a worker) | 43 | | 56 ms | Apple M4 Pro, Chromium 153 |
-| Report, from JSON: 40 tables, header, footer | 98 | 130 ms | 277 ms | 4-vCPU Xeon container |
-
 Layout and PDF writing run in parallel across pages, and fonts are parsed once per process.
-[docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the methodology, per-stage profiles and comparisons
-with other libraries, on the server and in the browser.
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the render times, on the server and in the browser,
+with the machines and the methodology.
 
 ## Platforms
 
-Prebuilt binaries; npm installs the one for the current platform. Every package needs
-Node.js 22 or later and is an ES module.
+Prebuilt binaries; npm installs the one for the current platform. The packages are ES modules.
+The Node packages declare Node.js 22 or later (`engines`), and CI tests them on Node 22.
 
 | OS | Architectures |
 |---|---|

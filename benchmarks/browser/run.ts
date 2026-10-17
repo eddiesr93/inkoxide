@@ -52,7 +52,7 @@ async function load(browser: Awaited<ReturnType<BrowserType['launch']>>): Promis
   context.on('request', (r) => {
     if (r.url().startsWith(origin)) urls.add(new URL(r.url()).pathname);
   });
-  await page.goto(`${origin}/inkoxide.html?runs=${runs}`);
+  await page.goto(`${origin}/index.html?runs=${runs}`);
   const result = (
     await page.waitForFunction(() => (globalThis as { bench?: unknown }).bench, null, {
       timeout: 600_000,

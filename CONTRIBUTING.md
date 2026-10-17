@@ -30,9 +30,10 @@ a document goes from React to PDF.
 ```sh
 cargo test --workspace     # the engine
 pnpm test                  # the TypeScript packages
-scripts/ci.sh --quick      # formatting, tests and schema checks
-scripts/ci.sh              # everything, including clippy and the visual diff
 ```
+
+`scripts/ci.sh` runs every check a pull request must pass, and the slower ones;
+[docs/TESTING.md](docs/TESTING.md) describes it and each test suite.
 
 - **Engine changes** need a test: a unit test next to the code, or a fixture in
   `fixtures/docs/` when the change affects output.
@@ -40,10 +41,19 @@ scripts/ci.sh              # everything, including clippy and the visual diff
   and when the new output is right, regenerate the references with
   `scripts/update-expected.sh` (on Linux) and commit them with the change.
 - **Schema changes** start in `packages/schema/document.v1.json`. Then update the serde structs
-  in `crates/core/src/schema/`, run `node scripts/gen-schema-types.mjs`,
-  `python3 scripts/gen-schema-doc.py` and `python3 scripts/gen-fuzz-dict.py`,
-  teach the fuzz generator (`fuzz/src/lib.rs`) the new properties, and add
-  an entry to `packages/schema/CHANGELOG.md`. Changes must be backwards compatible within schema version 1.
+  in `crates/core/src/schema/`, and regenerate the files made from the schema:
+  `node scripts/gen-schema-types.mjs` (`packages/schema/index.d.ts`),
+  `node scripts/gen-schema-validator.mjs` (`packages/react/src/tree/schema-validator.ts`),
+  `python3 scripts/gen-schema-doc.py` (`docs/SCHEMA.md`) and
+  `python3 scripts/gen-fuzz-dict.py` (`fuzz/render_json.dict`). Teach the fuzz generator
+  (`fuzz/src/lib.rs`) the new properties, and add an entry to `packages/schema/CHANGELOG.md`.
+  Changes must be backwards compatible within schema version 1.
+- **Generated files** are committed. `scripts/check-generated.sh` runs every generator and fails
+  when one of their files changed: besides the schema files above, the fixtures that
+  `scripts/fixtures/` generates, the version `@inkoxide/react` reports
+  (`scripts/gen-react-version.mjs`), the Tailwind theme (`scripts/gen-tailwind-theme.mjs`) and
+  `docs/TAILWIND_SUPPORT.md` (`scripts/gen-tailwind-docs.ts`). After it fails, the regenerated
+  files are in place: review and commit them.
 - **React and Tailwind changes** need a test in `packages/*/test`. A new Tailwind utility
   belongs in `packages/tailwind/src/supported.ts`; its examples are tests, and
   `pnpm exec tsx scripts/gen-tailwind-docs.ts` regenerates `docs/TAILWIND_SUPPORT.md`.
@@ -55,41 +65,16 @@ scripts/ci.sh              # everything, including clippy and the visual diff
 
 - Keep each pull request to one change, with a title that says what it does
   ("Repeat table footers on every page", not "Fix tables").
-- The `ci` workflow must pass. It runs formatting, clippy, the Rust and TypeScript tests and
-  the schema checks on Linux.
+- The `ci` and `deny` workflows must pass, on Linux. `ci` runs formatting, clippy and the Rust
+  tests; the TypeScript typecheck, lint, formatting and tests; the schema checks and the
+  generated files; and, in its `wasm` job, the WebAssembly build, its size budget, its parity
+  with the native build and the browser tests. `deny` runs `cargo-deny` on the dependencies.
 - Rust is formatted with `cargo fmt` and linted with clippy (pedantic). TypeScript is
   formatted with oxfmt (`pnpm format`) and linted with oxlint (`pnpm lint`).
 
 ## Releasing
 
-Maintainers release from `main`:
-
-1. Bump the version of `inkoxide`, `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/react`,
-   `@inkoxide/tailwind` and `@inkoxide/style` together (the Cargo workspace and the six
-   `package.json` files; `scripts/check-versions.py` checks them), since they share one version,
-   and run `node scripts/gen-react-version.mjs`. Bump `@inkoxide/schema` only if the schema changed; it has its own
-   version. Move the "Unreleased" entries in [CHANGELOG.md](CHANGELOG.md) and
-   [packages/schema/CHANGELOG.md](packages/schema/CHANGELOG.md) under the new versions.
-2. Dispatch the `release` workflow, first with `dry_run` on. It stops unless the `ci` workflow
-   passed for the commit (a dry run only warns). It builds the native bindings on every platform
-   and the WebAssembly engine, and publishes every package whose version is not on npm yet, in
-   dependency order: `@inkoxide/wasm` with the engine packages, before `@inkoxide/render`. npm trusts
-   the workflow (trusted publishing), so no token is involved and every package is published
-   with provenance. A real release publishes from the `release` environment, which admits only
-   `main`; npm trusts that environment alone. Then it tags the commit and creates the GitHub
-   release from the newest changelog section: `v0.2.0` for a heading `## 0.2.0 - <date>`,
-   `@inkoxide/render@0.1.1` for `## @inkoxide/render 0.1.1 - <date>`.
-
-A new package needs its trusted publisher on npm (the `release.yml` workflow and the `release`
-environment) before the workflow can publish it. Where npm lets that be set only on a package
-that exists, the maintainer publishes its first version by hand, from the staged copy
-(`node scripts/npm-release.mjs <bin-dir> <staging-dir>`), then sets the trusted publisher.
-
-The workflow also publishes the crates `inkoxide` and `inkoxide-cli` to crates.io, after the npm
-packages and with the versions not on crates.io yet. crates.io trusts the workflow too: each crate
-has a trusted publisher there for `release.yml` and the `release` environment. A new crate is
-published by hand the first time (`cargo publish -p <crate>`), since crates.io sets a trusted
-publisher only on a crate that exists. The other crates are not published.
+Maintainers release as [docs/RELEASING.md](docs/RELEASING.md) describes.
 
 ## Licence
 

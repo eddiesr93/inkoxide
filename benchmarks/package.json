@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Inkoxide's benchmarks, on the server and in the browser.",
   "scripts": {
-    "invoice": "tsx invoice-inkoxide.tsx",
+    "invoice": "tsx invoice.tsx",
     "bench": "NODE_ENV=production tsx bench.tsx",
     "bench:browser": "tsx browser/run.ts"
   },

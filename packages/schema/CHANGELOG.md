@@ -295,6 +295,15 @@ Still document schema version 1.
   states the engine's existing bounds of `lineHeight` (at most 100), `letterSpacing` (±1000)
   and `textIndent` (±10000).
 
+## 2.0.0 - 2026-10-11
+
+Still document schema version 1; documents do not change. Released with `inkoxide` 0.2.0.
+
+### Breaking
+
+- **ES modules only:** the package is an ES module (`"type": "module"`) and needs Node.js 22 or
+  later. Replace `require('@inkoxide/schema')` with `import … from '@inkoxide/schema'`.
+
 ## 1.0.0 - 2026-10-11
 
 Schema version 1, the first release.

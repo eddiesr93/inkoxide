@@ -83,6 +83,11 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   `borderBottom`, `borderLeft` take CSS strings (`'1px solid #e5e7eb'`, `'2pt dashed red'`,
   `'none'`); a missing style is solid and a missing colour is the text colour. A side wins over
   `border`, and `borderWidth`, `borderColor`, `borderStyle` and the per-side keys win over both.
+  `inset` sets `top`, `right`, `bottom` and `left` at once (one value, or
+  `{ top, right, bottom, left }`), and those keys win over it.
+- **Indents.** `textIndent` (`indent-*`) indents the first line of a `Text`. A negative value is
+  a hanging indent: the first line starts that far before the others, so give the `Text` as
+  much `paddingLeft` (`-indent-4 pl-4`).
 - **CSS names.** `textDecoration` takes `'underline'`, `'line-through'` or both; a run has one
   line, so `'underline line-through'` draws the line-through. `textDecorationColor`,
   `textDecorationStyle` and `textDecorationThickness` are the same as `decorationColor`,
@@ -511,7 +516,12 @@ page. Lengths are points or strings with a unit:
 </Table>
 ```
 
-- **Columns.** Widths are fractions (`'1fr'`) or points.
+- **Columns.** Widths are fractions (`'1fr'`), points, or `'auto'`: as wide as
+  its content, narrowed toward its longest word when the room runs short.
+- **Borders.** Adjacent cell borders merge into one by default (`borderCollapse: 'collapse'`):
+  the wider wins. With `borderCollapse: 'separate'` (`border-separate`), each cell draws its own
+  borders, background and radius, `borderSpacing` (`border-spacing-*`) apart and from the
+  table's edge. Both go on the `Table`.
 - **Pagination.** Header rows repeat on every page. Rows split across pages, and a row taller
   than a page splits inside its cells.
 - **Cells.** `colSpan`, `rowSpan` and `verticalAlign` are available on `Cell`. The columns set a
@@ -597,7 +607,8 @@ PDF/A-2b and 3b allow all of these. The a and u levels (`'PDF/A-2a'`, `'PDF/A-3u
 PDF, which is not supported yet: they fail with `TEMPLATE_ERROR`.
 
 `conformance` is not part of the document tree: to render a stored `result.document` again at
-the same level, pass `pdfA` to `renderDocument`.
+the same level, pass `pdfA` to [`renderDocument`](#serving-templates), from
+`@inkoxide/render/templates`.
 
 ### Passwords and permissions
 
@@ -690,7 +701,7 @@ reader without it may do:
   It is inherited, so `<Page style={{ textWrap: 'pretty' }}>` sets it for a page. `'wrap'` is
   the default and fills lines in turn; `'balance'` is not supported yet. Text with
   `whitespace-nowrap` or `whitespace-pre`, and very long paragraphs past the limits in the
-  [schema](../../docs/SCHEMA.md), break first fit.
+  [schema](https://github.com/eddiesr93/inkoxide/blob/main/docs/SCHEMA.md), break first fit.
 - **Orphans and widows:** `orphans={2}` and `widows={2}` keep at least two lines of a paragraph
   together at the foot and the head of a page.
 
@@ -735,7 +746,8 @@ reader without it may do:
 <Canvas width={120} height={60} paint={(p, w, h) => p.moveTo(0, h).lineTo(w, 0).lineWidth(2).stroke('#4f46e5')} />
 ```
 
-The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`). `Canvas`
+The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`);
+`visibility="hidden"` leaves a shape undrawn, as in SVG. `Canvas`
 draws in code with a pdfkit-style painter. An SVG file can also go straight into
 `<Image src={svgBytes} />`.
 
@@ -885,9 +897,10 @@ In an SVG, whether in `<Svg>` or an image file:
 ```
 
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
-must be unique, except for radio buttons of one group. `TextField` also takes `multiline`,
-`maxLength` and `password`; size, border, background and text style come from the classes.
-`TextInput` is another name for `TextField`.
+must be unique, except for radio buttons of one group. Every field takes `readOnly` (viewers do
+not let the user change it) and `required` (it must be filled in before the form is
+submitted). `TextField` also takes `multiline`, `maxLength` and `password`; size, border,
+background and text style come from the classes. `TextInput` is another name for `TextField`.
 
 A field's text, its value and the options of a `Select` or `List`, is drawn with the field's own
 font only, a glyph per character, as viewers redraw it while the user types: no fallback fonts,
@@ -1039,11 +1052,14 @@ without `root`). A fractional timeout is rounded up to a whole millisecond.
 **`Font.registerHyphenationCallback(fn)`** splits words for hyphenation with your own function;
 `null` removes it. See [Text: hyphenation and direction](#text-hyphenation-and-direction).
 
+**`Font.registerEmojiSource(source)`** draws emoji from images: `{ url, format? }` or
+`{ builder }`; `null` removes it. See [Fonts](#fonts).
+
 **`StyleSheet.create(styles)`** returns the styles unchanged, with their types.
 
 **`init()`** loads Tailwind's compiler (when `@inkoxide/tailwind` is installed), the engine and
-the fonts. The first render does it anyway; call it at server startup so the first request does not wait (about 160 ms). It resolves
-to the same status as `engineStatus()`.
+the fonts. The first render does it anyway; call it at server startup so the first request does
+not wait. It resolves to the same status as `engineStatus()`.
 
 **Health checks.** `version()` returns `{ engine, schema, gitSha }`: the engine's version, the
 document schema version it reads and the commit it was built from. `engineStatus()` returns
@@ -1127,16 +1143,23 @@ JSON with only its fields that are set (`res.status(e.status).json(e)`): `code`,
 or the stack. Two more codes come from [templates](#serving-templates): `INVALID_DATA` (400) and
 `UNKNOWN_TEMPLATE` (404).
 
-`Font.register` and `Font.registerHyphenationCallback` check their arguments when you call them
-and throw a plain `Error` straight away: a missing family name or `src`, a `src` that is not a
-path, a URL or bytes, an unknown weight, a face already registered from another source, a face
-the bundled fonts have, or a family whose font id another family has.
+`Font.register`, `Font.registerHyphenationCallback` and `Font.registerEmojiSource` check their
+arguments when you call them and throw a plain `Error` straight away: a missing family name or
+`src`, a `src` that is not a path, a URL or bytes, an unknown weight, a face already registered
+from another source, a face the bundled fonts have, a family whose font id another family has, a
+callback that is not a function, or an emoji source with neither a `url` string nor a `builder`
+function.
 
 ## Serving templates
 
 An advanced API, for a server that renders templates by id from JSON data, such as
 `POST /pdf/invoice`. It lives in its own entry, `@inkoxide/render/templates`, and checks the
-data with a [zod](https://zod.dev) schema before React renders anything.
+data with a [zod](https://zod.dev) 4 schema before React renders anything. Install zod to write
+the schemas:
+
+```sh
+npm install zod
+```
 
 ```tsx
 import { readFileSync } from 'node:fs';
@@ -1241,32 +1264,42 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
 }
 ```
 
-- **`usePdf(element, options?)`** renders when the component mounts and returns `{ blob, url,
-  loading, error, update }`; `update(element?)` renders again. A render that starts stops the
-  one still running, and the object URL is revoked when a new one replaces it.
-- **`<PdfDownloadLink>`** is a link that downloads the PDF, and **`<PdfViewer>`** an `<iframe>`
-  with the browser's own viewer. Each renders when it mounts: give it another `key` to render
-  again.
+- **`usePdf(element?, options?)`** renders when the component mounts and returns `{ blob, url,
+  loading, error, update }` (`UsePdfResult`); `update(element?)` renders again. Without an
+  element nothing renders until `update(element)`. A render that starts stops the one still
+  running, and the object URL is revoked when a new one replaces it and on unmount. `options`
+  are those of `renderToBuffer` below, read when a render starts.
+- **`<PdfDownloadLink>`** is a link that downloads the PDF: `document`, `fileName` (default
+  `'document.pdf'`), `options` and the props of an `<a>`; its children may be a function of the
+  `usePdf` result. **`<PdfViewer>`** is an `<iframe>` with the browser's own viewer: `document`,
+  `options`, `fallback` (shown until the first render has finished, and when it failed),
+  `title` (default `'PDF'`) and the props of an `<iframe>`. Each renders when it mounts: give it
+  another `key` to render again. Their props are `PdfDownloadLinkProps` and `PdfViewerProps`.
 - **`renderToBuffer`** and **`renderToBlob`** render outside React components, and **`generate`**
-  renders a [template](#serving-templates). A `signal` in their options, or `timeoutMs` (a time
-  in ms), stops a render: its worker ends, and the next render starts a new one. A render that
-  times out rejects with a `DOMException` named `TimeoutError`.
+  renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
+  `GenerateOptions` for `generate`) are those of the Node entry, with a `signal` or `timeoutMs`
+  (a time in ms) that stops a render: its worker ends, and the next render starts a new one. A
+  render that times out rejects with a `DOMException` named `TimeoutError`.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
-  first call count. `wasm` is where the module comes from (a URL, a `Response`, its bytes or a
-  compiled `WebAssembly.Module`); `assets` is a folder to serve the bundled fonts and
-  hyphenation patterns from: `fonts/` and `hyphenation/` from `@inkoxide/render`'s `assets/`,
-  with the `.bin` files of `@inkoxide/wasm`'s `hyphenation/` in `hyphenation/` too;
-  `worker: false` renders on the calling thread.
+  first call count. The options (`BrowserOptions`): `wasm` is where the module comes from (a
+  URL, a `Response`, its bytes or a compiled `WebAssembly.Module`); `assets` is a folder to serve
+  the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/` from
+  `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s `hyphenation/` in
+  `hyphenation/` too; `worker: false` renders on the calling thread.
 - **`clearCaches()`** empties the engine's caches of decoded images, font subsets and SVG text.
   The memory stays with the engine, which reuses it for the next renders; the PDFs are the
   same.
 
 **Setting up.** Bundlers copy the module, the worker and the bundled fonts, which the packages
-refer to with `new URL(…, import.meta.url)`. With Vite, set `worker: { format: 'es' }`, and
-leave `@inkoxide/render` and `@inkoxide/wasm` out of `optimizeDeps`, so that those URLs stay
-next to their files.
-[examples/browser](https://github.com/eddiesr93/inkoxide/tree/main/examples/browser) is a page
-set up that way.
+refer to with `new URL(…, import.meta.url)`. With Vite, set `worker: { format: 'es' }` for the
+engine's module worker. For the dev server, also add
+`optimizeDeps: { exclude: ['@inkoxide/wasm'] }`: pre-bundling moves the module away from its
+`hyphenation/` folder, and a document that hyphenates a language other than English then fails
+with `INTERNAL` (`engineCode` `NOT_LOADED`). [examples/browser](https://github.com/eddiesr93/inkoxide/tree/main/examples/browser)
+is a Vite page; its `vite.config.ts` sets `worker.format`, the policy below, and an alias that
+points `@inkoxide/render` at `@inkoxide/render/browser`, so that components written for Node
+import unchanged. To use the engine without React, with document trees as JSON, see
+[`@inkoxide/wasm`](https://github.com/eddiesr93/inkoxide/blob/main/packages/wasm/README.md).
 
 **Fonts and images.** A bundled font is downloaded the first time a document uses it, as a
 TrueType file, for the same PDF as on the server. `Font.register` takes a URL (relative to the
@@ -1277,7 +1310,9 @@ WOFF gives the same. Images come as bytes in `images`, or from the hosts allowed
 `localImages` is not available.
 
 **Content Security Policy.** The engine needs `script-src 'wasm-unsafe-eval'` and a worker of
-the page's origin (`worker-src 'self'`). Nothing needs `'unsafe-eval'`, and the page needs no
+the page's origin (`worker-src 'self'`). `<PdfViewer>` shows the PDF from an object URL
+(`blob:`), as does a frame or an image given `usePdf().url`: allow it with `frame-src blob:`, and
+`img-src blob:` for an image. The policy of examples/browser allows both. Nothing needs `'unsafe-eval'`, and the page needs no
 cross-origin isolation (COOP and COEP).
 
 **What differs from Node.**
@@ -1305,8 +1340,9 @@ Yes: import from `@inkoxide/render/browser`, and install `@inkoxide/wasm`, the e
 WebAssembly. See [In the browser](#in-the-browser).
 
 **The install worked, but the engine does not load.**
-The engine ships as one package per platform: macOS (arm64, x64), Linux x64 (glibc and musl),
-Linux arm64 (glibc) and Windows x64. npm installs the right one as an optional dependency, so it
+The engine ships as one package per platform
+([Platforms](https://github.com/eddiesr93/inkoxide#platforms)). npm installs the right one as an
+optional dependency, so it
 is missing if you install with `--omit=optional`, or copy `node_modules` from one platform to
 another (from macOS into a Linux Docker image, say). Run `npm install` on the platform that runs
 the code.
@@ -1321,8 +1357,8 @@ the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyph
 built-in ones, and `engineStatus().warnings` says so.
 
 **Do I need Tailwind installed?**
-Only to style with `className`: then `npm install @inkoxide/tailwind`. It brings the Tailwind
-compiler, so there is no config and no CSS build. Without it, style with `style`.
+Only to style with `className`: install `@inkoxide/tailwind` ([Tailwind](#tailwind)). It brings
+the Tailwind compiler, so there is no config and no CSS build. Without it, style with `style`.
 
 **Can I use my own components and hooks?**
 Yes. A document is ordinary React: components, props, context, `.map` and conditionals all work,

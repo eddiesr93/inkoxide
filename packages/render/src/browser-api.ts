@@ -3,11 +3,18 @@
  * that can be stopped, and the PDF as a `Blob`.
  */
 import type { ReactElement } from 'react';
+import type { z } from 'zod';
 
 import { type BrowserOptions, configureBrowser } from './browser-host.ts';
 import type { EngineStatus } from './engine.ts';
-import { init as start, renderToBuffer as render, type RenderToBufferOptions } from './pipeline.ts';
-import type { Abortable } from './types.ts';
+import {
+  generate as runTemplate,
+  init as start,
+  renderToBuffer as render,
+  type RenderToBufferOptions,
+  type TemplateLike,
+} from './pipeline.ts';
+import type { Abortable, RenderResult } from './types.ts';
 
 export { type BrowserOptions, clearCaches } from './browser-host.ts';
 
@@ -37,3 +44,16 @@ export async function renderToBlob(element: ReactElement, opts: BrowserRenderOpt
   const pdf = await render(element, opts);
   return new Blob([pdf as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
 }
+
+/** The options of `generate`: those of `renderToBuffer`, with a `signal` or `timeoutMs` that stops the render. */
+export type GenerateOptions = BrowserRenderOptions;
+
+/**
+ * Checks `data` against the template's schema and renders it, in a Web Worker: the templates
+ * entry's `generate`, with options that stop it as `renderToBuffer`'s do.
+ */
+export const generate: <S extends z.ZodType>(
+  t: TemplateLike<S>,
+  data: unknown,
+  opts?: GenerateOptions,
+) => Promise<RenderResult> = runTemplate;

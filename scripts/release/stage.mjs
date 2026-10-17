@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, write
 import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { failer, readJson, REPOSITORY, REPOSITORY_GIT_URL, ROOT, writeJson } from './common.mjs';
+import { failer, readJson, REPOSITORY_GIT_URL, ROOT, writeJson } from './common.mjs';
 
 const OUT = join(ROOT, 'tmp', 'release');
 const TSC = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
@@ -29,79 +29,15 @@ const fail = failer('stage');
  *   I/O or globals);
  * - `assets`: the fonts and hyphenation patterns of @inkoxide/render;
  * - `extras`: files and directories of packages/<name> published next to `dist`, which its
- *   README links through jsDelivr;
- * - `readme`: the npm README of a package without a README.md of its own.
+ *   README links through jsDelivr.
+ *
+ * Every package publishes its packages/<name>/README.md as its npm README.
  */
 const PACKAGES = [
-  {
-    name: 'style',
-    sideEffects: false,
-    readme: {
-      blurb:
-        'Reads CSS values into Inkoxide styles: lengths, colours, `flex`, transforms, transform ' +
-        'origins and object positions. `@inkoxide/react` uses it for `style` props and ' +
-        '`@inkoxide/tailwind` for classes. To make PDFs, install `@inkoxide/render`.',
-      install: 'npm install @inkoxide/style',
-      example: `import { parseColor, parseTransform, PT_PER_UNIT } from '@inkoxide/style';
-
-parseColor('#f80'); // [1, 0.533333, 0, 1]
-parseTransform('transform', 'rotate(10deg) translate(4px, 50%)'); // [{ rotate: 10 }, { translate: [3, '50%'] }]
-PT_PER_UNIT.mm; // 2.834645669291339 (72 / 25.4)`,
-    },
-  },
-  {
-    // Not side-effect free: importing @tailwindcss/node registers module resolution hooks.
-    name: 'tailwind',
-    readme: {
-      blurb:
-        'Turns Tailwind class strings into Inkoxide style objects, using the real Tailwind v4 compiler. ' +
-        'Unsupported classes throw outside production and are ignored with a warning in production. ' +
-        'Install it next to `@inkoxide/render` to style with `className`; without it, `style` works alone.',
-      install: 'npm install @inkoxide/tailwind',
-      example: `import { DEFAULT_THEME_CSS, initTailwind, setTailwindStrict, tw } from '@inkoxide/tailwind';
-
-await initTailwind(); // once per process
-const style = tw('p-4 text-lg font-bold text-slate-700');
-console.log(style); // { paddingTop: 12, …, fontSize: 13.5, fontWeight: 700, color: […] }
-
-// \`em\`, \`vw\` and \`vh\` in arbitrary values resolve against the units you give, in points:
-// the inherited font size (and the element's, when something else sets it) and the page size.
-tw('w-[2em] h-[10vh]', { parentFontSize: 12, page: { width: 595.28, height: 841.89 } }); // { width: 24, height: 84.189 }
-
-// Options, all optional: \`css\`, a theme (extend the bundled one: its font stacks name the
-// bundled fonts); \`base\`, the directory its @imports resolve from; \`strict\` (default: outside
-// production); and \`cacheSize\`, how many class strings are cached (default 5000).
-await initTailwind({
-  css: DEFAULT_THEME_CSS + '@theme { --color-accent: #1e4a99; }',
-  strict: true,
-  cacheSize: 10000,
-});
-setTailwindStrict(false); // log unsupported classes once instead of throwing
-tw.warm(['p-4 text-lg', 'flex gap-2']); // map known class strings ahead, e.g. at server start
-tw.cacheSize(); // 2: the class strings cached`,
-    },
-  },
-  {
-    name: 'react',
-    sideEffects: false,
-    readme: {
-      blurb:
-        'React components and a custom reconciler that build Inkoxide document trees. ' +
-        'Style with `style`, or with `className` when `@inkoxide/tailwind` is installed; fonts come ' +
-        'from a registry. ' +
-        'To make PDFs, install `@inkoxide/render`, which re-exports these components.',
-      install: 'npm install @inkoxide/react',
-      example: `import { readFileSync } from 'node:fs';
-import { createElement as h } from 'react';
-import { Document, Page, Text, fonts, renderToTree } from '@inkoxide/react';
-
-fonts.register({ id: 'Inter-Regular', family: 'Inter' }, readFileSync('Inter-Regular.ttf'));
-const doc = await renderToTree(
-  h(Document, null, h(Page, { size: 'A4', margin: '20mm' }, h(Text, { style: { fontSize: 18 } }, 'Hello'))),
-);
-console.log(JSON.stringify(doc)); // an Inkoxide document (schema v1); @inkoxide/render turns it into a PDF`,
-    },
-  },
+  { name: 'style', sideEffects: false },
+  // Not side-effect free: importing @tailwindcss/node registers module resolution hooks.
+  { name: 'tailwind' },
+  { name: 'react', sideEffects: false },
   { name: 'render', assets: true, extras: ['media', 'GUIDE.md'] },
 ];
 
@@ -331,30 +267,16 @@ function withPublishedExtras(text, pkg, extras) {
   return text.replace(new RegExp(`(src="|\\]\\()(${names})`, 'g'), `$1${base}$2`);
 }
 
-function readme({ name, extras = [], readme: r }, pkg) {
+/** packages/<name>/README.md, the package's npm README. */
+function readmePath(name) {
   const own = join(ROOT, 'packages', name, 'README.md');
-  if (existsSync(own)) return withPublishedExtras(readFileSync(own, 'utf8'), pkg, extras);
-  if (!r) fail(`@inkoxide/${name} has no README.md and no readme in PACKAGES.`);
-  return `# ${pkg.name}
+  if (!existsSync(own))
+    fail(`@inkoxide/${name} has no README.md: write packages/${name}/README.md, its npm README.`);
+  return own;
+}
 
-${r.blurb}
-
-Part of [Inkoxide](${REPOSITORY}). Requires Node.js ${NODE_ENGINE}; ES modules only.
-
-\`\`\`sh
-${r.install}
-\`\`\`
-
-## Usage
-
-\`\`\`js
-${r.example}
-\`\`\`
-
-## Licence
-
-MIT
-`;
+function readme({ name, extras = [] }, pkg) {
+  return withPublishedExtras(readFileSync(readmePath(name), 'utf8'), pkg, extras);
 }
 
 /** Files a package's README may link that only reach npm when its entry publishes them. */
@@ -364,6 +286,7 @@ async function stage(entry) {
   const { name, assets, extras = [] } = entry;
   const pkgDir = join(ROOT, 'packages', name);
   const pkg = readJson(join(pkgDir, 'package.json'));
+  readmePath(name);
   for (const f of PUBLISHABLE) {
     if (existsSync(join(pkgDir, f)) && !extras.includes(f)) {
       fail(`packages/${name}/${f} exists but is not published: add it to the package's extras in PACKAGES.`);

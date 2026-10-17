@@ -9,18 +9,40 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ## Unreleased
 
-- The `inkoxide` and `inkoxide-cli` crates have their crates.io metadata: a README each, the
-  licence, keywords and categories. The packages leave out the tests and benchmarks, which read
-  fixtures outside the crate.
-- A run's `verticalAlign` or a table column's `width` of the wrong type (`true`, an object) is
-  reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
+### Added
+
 - `inkoxide`: `PdfALevel` implements `FromStr` (`"2b".parse()`), with `ParsePdfALevelError`; the
   CLI and the Node and WebAssembly bindings read the level through it. An unknown `pdfA` level in
   the bindings now says `(expected one of 1b, 2b, 3b); pdfA also takes true or false`.
+- The `inkoxide` and `inkoxide-cli` crates have their crates.io metadata: a README each, the
+  licence, keywords and categories. The packages leave out the tests and benchmarks, which read
+  fixtures outside the crate.
+
+### Changed
+
 - `@inkoxide/react`: `textWrap: 'balance'` and a negative `flexGrow` or `flexShrink` are refused
   with the same message as their Tailwind classes, from `@inkoxide/style`
   (`textWrap: balance (not supported yet; pretty evens lines)`, `flexGrow: -1 (cannot be
   negative)`); a `flexGrow` of `NaN` is refused too.
+
+### Fixed
+
+- A run's `verticalAlign` or a table column's `width` of the wrong type (`true`, an object) is
+  reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
+- `@inkoxide/render/browser`: the types of `generate` take `signal` and `timeoutMs` (its
+  `GenerateOptions` is `BrowserRenderOptions`); they already worked at run time.
+
+### Repository
+
+- The release workflow publishes the crates `inkoxide` and `inkoxide-cli` to crates.io, in a
+  `crates` job after the npm packages, with trusted publishing: crates.io trusts the workflow, and
+  the job's token is short-lived. A version already on crates.io is skipped (#137).
+- The documentation is reorganised and brought up to date. The implemented plans in `docs/plans/`
+  are removed: what they left for later is in [ROADMAP.md](ROADMAP.md), and the design of
+  rendering in the browser is [ADR 0002](docs/adr/0002-browser-rendering.md). Releasing is
+  described in [docs/RELEASING.md](docs/RELEASING.md). `@inkoxide/react`, `@inkoxide/tailwind`
+  and `@inkoxide/style` have READMEs, and `packages/schema/EXAMPLES.md` has examples of forms,
+  notes, grids, floats, inline images and font features. The benchmark files lose their `-inkoxide` suffix.
 
 ## 0.9.1 - 2026-10-16
 

@@ -6,6 +6,9 @@ Security fixes are made for the latest release of each package.
 
 ## Reporting a vulnerability
 
+A crash, a hang, unbounded memory use, a network request or a file read that the caller did not
+allow is a security issue.
+
 Please do not open a public issue. Report it privately through
 [GitHub's private vulnerability reporting](https://github.com/eddiesr93/inkoxide/security/advisories/new),
 with the input that triggers it and the version you used. You will get a reply within a week.
@@ -60,8 +63,5 @@ does not do:
   of another file encrypted with that password by comparing the bytes.
 
 The derivation is not the standard's random one. It has been reviewed internally but has not
-had an independent cryptography review yet. Passwords never appear in errors, logs or `Debug`
-output.
-
-A crash, a hang, unbounded memory use, a network request or a file read that the caller did not
-allow is a security issue. Please report it as above.
+had an independent cryptography review yet; [docs/ENCRYPTION_REVIEW.md](docs/ENCRYPTION_REVIEW.md)
+describes it for one. Passwords never appear in errors, logs or `Debug` output.

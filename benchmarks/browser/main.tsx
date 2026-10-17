@@ -1,7 +1,7 @@
 // @inkoxide/render/browser: the engine as WebAssembly, rendering in its Web Worker.
 import * as ink from '@inkoxide/render/browser';
 
-import { Invoice } from '../documents/invoice-inkoxide.tsx';
+import { Invoice } from '../documents/invoice.tsx';
 import { Report } from '../documents/report.tsx';
 import invoice from '../invoice.json';
 import { measure } from './measure.ts';

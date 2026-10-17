@@ -12,8 +12,12 @@ missing tool fails it. `scripts/ci.sh` runs the same checks and more
 
 ```sh
 scripts/ci.sh          # everything
-scripts/ci.sh --quick  # formatting, tests and schema checks
+scripts/ci.sh --quick  # everything but clippy, cargo-deny, the fuzz smoke and the visual diff
 ```
+
+`.github/workflows/test-windows.yml` runs the Node binding tests on
+Windows against the binary a release run built. It builds nothing and runs
+only on demand, from the Actions tab, with the ID of that release run.
 
 ## Suites
 
@@ -80,6 +84,26 @@ scripts/ci.sh --quick  # formatting, tests and schema checks
   the engine accept the same percentages, `fr` sizes and integers.
 - `crates/core/tests/threads.rs`: concurrent one-thread renders each run
   on their calling thread, at the same time.
+- `crates/core/tests/clear_caches.rs`: after `clear_caches`, a render
+  with something in every shared cache (a font subset, a JPEG, an SVG
+  with text) gives the same bytes as before.
+- `crates/core/tests/deferred_fonts.rs`: with `deferred_fonts`, a render
+  that needs none of them renders the bytes it would with them
+  registered, and one that does (a character only a deferred fallback
+  has, or a run in a deferred font) fails with `NOT_LOADED` naming it. A
+  missing font that is not deferred is still `FONT_NOT_REGISTERED`.
+- `crates/core/tests/warnings.rs`: a text node or a run that hyphenates
+  without a language logs one `tracing` warning, and text with a
+  language, or that does not hyphenate, logs none.
+- `crates/core/tests/builtin_hyphenation.rs`: built-in patterns given at
+  run time, as the WebAssembly build gets them. `builtin_hyphenation_file`
+  names the file of a tag, and `register_builtin` rejects a file that is
+  not the language's. Without the `embedded-hyphenation` feature, a render
+  that needs patterns it has not been given fails with `NOT_LOADED` naming
+  them, and renders once they are registered; with the feature, it renders
+  as it is. Both PDFs must match the digest in
+  `builtin_hyphenation.sha256`. `ci.yml` and `scripts/ci.sh` run it
+  without default features as well.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.
 - `scripts/visual-diff.py`: rasterises fixture PDFs and compares them with
   `fixtures/expected/*.png`; `scripts/update-expected.sh` regenerates the
