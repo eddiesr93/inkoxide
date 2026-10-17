@@ -35,7 +35,7 @@ pub(crate) mod limits {
 }
 
 /// What the output's conformance asks of the writer: plain PDF, or
-/// PDF/A. Every part of the writer that differs between them asks this.
+/// PDF/A, and PDF/UA. Every part of the writer that differs between them asks this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Profile {
     level: Option<PdfALevel>,
@@ -63,6 +63,13 @@ impl Profile {
     /// annotations that print, no `.notdef` glyphs, no CMYK.
     pub fn is_pdf_a(self) -> bool {
         self.level.is_some()
+    }
+
+    /// Whether `.notdef` glyphs are left out of the text drawn, the next
+    /// glyph keeping its position: PDF/A and PDF/UA forbid them
+    /// (ISO 19005-2, 6.2.11.8; ISO 14289-1, 7.21.8).
+    pub fn skips_notdef(self) -> bool {
+        self.is_pdf_a() || self.ua
     }
 
     /// The PDF/A level written; `None` for plain PDF.
@@ -356,7 +363,7 @@ pub(crate) fn xmp(
         let _ = writeln!(d, "<{name}>{}</{name}>", escape(value));
     };
     if let Some(level) = level {
-        prop("pdfaid:part", part(level));
+        prop("pdfaid:part", &level.part().to_string());
         prop(
             "pdfaid:conformance",
             if level.accessible() { "A" } else { "B" },
@@ -495,15 +502,6 @@ fn extension_descriptions(extensions: &[XmpSchema], ua: bool) -> String {
         d.push_str("</rdf:Description>\n");
     }
     d
-}
-
-/// The ISO 19005 part of `level` (`pdfaid:part`).
-fn part(level: PdfALevel) -> &'static str {
-    match level {
-        PdfALevel::A1b => "1",
-        PdfALevel::A2b | PdfALevel::A2a => "2",
-        PdfALevel::A3b | PdfALevel::A3a => "3",
-    }
 }
 
 /// `2026-01-31T12:00:00+02:00`, the same instant as the info dictionary's
@@ -645,6 +643,13 @@ mod tests {
             assert_eq!(p.max_real(), super::super::MAX_NUMBER);
             assert_eq!(p.max_array(), None);
         }
+    }
+
+    #[test]
+    fn pdf_a_and_pdf_ua_leave_notdef_out() {
+        assert!(!Profile::default().skips_notdef());
+        assert!(Profile::default().with_ua(true).skips_notdef());
+        assert!(Profile::new(Some(PdfALevel::A2b)).skips_notdef());
     }
 
     #[test]

@@ -4,7 +4,9 @@
 use super::{Cache, Laid};
 use crate::icons::Icon;
 use crate::layout::{NodeIdx, Part, Tree};
+use crate::pdf::{most_written_text_len, written_text_len};
 use crate::schema::{Decoration, DecorationStyle, NodeKind, PageFilter, PagePattern, TextRun};
+use crate::tag::{LinkText, MAX_LINK_TEXT};
 use crate::text::WAVES_PER_GLYPH;
 use crate::InkoxideError;
 
@@ -90,11 +92,12 @@ pub(super) fn repeated(
     text: &Cache<'_, '_, '_>,
 ) -> u64 {
     // What tagging adds to an annotation, and to a link with target `t`
-    // (its `/Contents`, where it goes).
+    // whose text takes `label` bytes (its `/Contents`: that text, or where
+    // it goes).
     let tag = if tagged { TAG_BYTES } else { 0 };
-    let link_tag = |t: &str| {
+    let link_tag = |t: &str, label: usize| {
         if tagged {
-            TAG_BYTES + crate::pdf::written_text_len(t) as u64
+            TAG_BYTES + written_text_len(t).max(label) as u64
         } else {
             0
         }
@@ -117,7 +120,14 @@ pub(super) fn repeated(
                 pages = pages.min(most);
             }
             if let Some(target) = &n.link {
-                size += LINK_BYTES + crate::pdf::written_uri_len(target) as u64 + link_tag(target);
+                let label = if tagged {
+                    LinkText::of(n).finish().map_or(0, |l| written_text_len(&l))
+                } else {
+                    0
+                };
+                size += LINK_BYTES
+                    + crate::pdf::written_uri_len(target) as u64
+                    + link_tag(target, label);
             }
             if n.background_image.is_some() {
                 size += BOX_BYTES;
@@ -130,6 +140,14 @@ pub(super) fn repeated(
                     // segment, plus one per line where a segment wraps or a
                     // hyphen or an ellipsis shows.
                     let mut pieces = None;
+                    // A link's text: the text of the linked runs it covers,
+                    // a space between them.
+                    let linked: usize = runs
+                        .iter()
+                        .filter(|r| r.link.is_some())
+                        .map(|r| r.text.as_ref().map_or(0, |t| t.chars().count() + 1))
+                        .sum();
+                    let label = most_written_text_len(linked.min(MAX_LINK_TEXT));
                     for r in runs {
                         if let Some(icon) = r.icon() {
                             size = size.saturating_add(icon_bytes(icon) + tag);
@@ -150,7 +168,8 @@ pub(super) fn repeated(
                                         (p.segments.len() + 2 * l.lines.len()) as u64
                                     })
                             });
-                            let uri = crate::pdf::written_uri_len(target) as u64 + link_tag(target);
+                            let uri = crate::pdf::written_uri_len(target) as u64
+                                + link_tag(target, label);
                             size = size.saturating_add(chars.min(most).saturating_mul(uri));
                         }
                     }
@@ -168,7 +187,7 @@ pub(super) fn repeated(
                     size = size.saturating_add(colored * LINK_BYTES);
                     size = size.saturating_add(
                         text.image_texts(n)
-                            .map(|t| crate::pdf::written_text_len(t) as u64)
+                            .map(|t| written_text_len(t) as u64)
                             .sum(),
                     );
                     if debug {
@@ -198,7 +217,7 @@ pub(super) fn repeated(
                 }
                 // In a span with its text.
                 NodeKind::Image { alt: Some(alt), .. } => {
-                    let text = crate::pdf::written_text_len(alt) as u64;
+                    let text = written_text_len(alt) as u64;
                     size = size.saturating_add(LINK_BYTES + text);
                 }
                 _ => {}
@@ -220,7 +239,6 @@ pub(super) fn is_wavy(r: &TextRun) -> bool {
 /// the file holds it. An attachment's icon without text shows its file's
 /// description or name, at most a note's length.
 pub(super) fn icon_bytes(icon: Icon<'_>) -> u64 {
-    use crate::pdf::{most_written_text_len, written_text_len};
     let text = match icon {
         Icon::Note(n) => {
             written_text_len(&n.contents) + n.author.as_deref().map_or(0, written_text_len)

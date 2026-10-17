@@ -9,6 +9,7 @@ mod images;
 mod links;
 mod styles;
 mod tables;
+mod tagging;
 mod text;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -111,6 +112,7 @@ pub(crate) fn check(
         profile,
         decoration: 0,
         last_heading: None,
+        structure: tagging::Structure::default(),
         path: String::with_capacity(128),
         errors: Vec::new(),
         declared: BTreeSet::new(),
@@ -179,6 +181,8 @@ struct Checker<'a> {
     decoration: u32,
     /// The level of the last heading, in document order.
     last_heading: Option<u8>,
+    /// Where the node checked is in the structure of tagged output.
+    structure: tagging::Structure,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -702,81 +706,16 @@ impl<'a> Checker<'a> {
         if self.errors.len() >= MAX_ERRORS {
             return;
         }
-        let decoration = node.brk.fixed || node.role == Some(crate::schema::Role::Artifact);
+        let decoration = node.is_decoration();
         self.decoration += u32::from(decoration);
-        if self.profile.ua() && !self.in_fixed && self.decoration == 0 {
-            self.ua_node(node);
+        if self.profile.ua() {
+            self.ua_node(node, !self.in_fixed && self.decoration == 0);
         }
+        let outer = self.structure;
+        self.structure = outer.enter(node);
         self.node_body(node, ctx);
+        self.structure = outer;
         self.decoration -= u32::from(decoration);
-    }
-
-    /// What PDF/UA-1 asks of a node that tagged output reads: alternative
-    /// text on images (in text too) and figures, labels on fields, and headings that go
-    /// down one level at a time from `h1`. The first thing it lacks is the
-    /// render's conflict.
-    fn ua_node(&mut self, node: &Node) {
-        use crate::schema::Role;
-        let lacks = |c: &mut Self, field: &str, message: String| {
-            if c.conflict.is_none() {
-                c.conflict = Some(ValidationError {
-                    code: Code::UaConflict,
-                    path: format!("{}.{field}", c.path),
-                    message,
-                });
-            }
-        };
-        match &node.kind {
-            NodeKind::Image { alt: None, .. } => lacks(
-                self,
-                "alt",
-                "PDF/UA requires alternative text on an image: `alt`, or \"\" for decoration"
-                    .into(),
-            ),
-            NodeKind::Text { runs } => {
-                if let Some(i) = runs
-                    .iter()
-                    .position(|r| r.image.as_ref().is_some_and(|im| im.alt.is_none()))
-                {
-                    lacks(
-                        self,
-                        &format!("runs[{i}].image.alt"),
-                        "PDF/UA requires alternative text on an image: `alt`, or \"\" for decoration"
-                            .into(),
-                    );
-                }
-            }
-            NodeKind::Box { alt: None, .. } if node.role == Some(Role::Figure) => lacks(
-                self,
-                "alt",
-                "PDF/UA requires alternative text on a figure: `alt`".into(),
-            ),
-            NodeKind::Field(f) if f.label.is_none() => lacks(
-                self,
-                "field.label",
-                "PDF/UA requires a label on a form field: what it is for".into(),
-            ),
-            _ => {}
-        }
-        if let Some(level) = node.role.and_then(Role::heading) {
-            let ok = match self.last_heading {
-                None => level == 1,
-                Some(prev) => level <= prev + 1,
-            };
-            if !ok {
-                let after = self
-                    .last_heading
-                    .map_or("the start".to_string(), |p| format!("h{p}"));
-                lacks(
-                    self,
-                    "role",
-                    format!(
-                        "PDF/UA headings go down one level at a time from h1: h{level} after {after}"
-                    ),
-                );
-            }
-            self.last_heading = Some(level);
-        }
     }
 
     fn node_body(&mut self, node: &Node, ctx: Ctx) {

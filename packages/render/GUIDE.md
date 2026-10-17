@@ -1067,19 +1067,21 @@ or after a space, with the word after it. There it takes `backgroundColor` and n
 `tagged` writes **tagged PDF**: a structure tree that tells screen readers, reflowing viewers
 and text extraction what each part of the page is, in reading order. `pdfUA` writes
 **PDF/UA-1** (ISO 14289-1), the standard for accessible PDF, which is tagged and also needs a
-`title`, a `lang`, alternative text on every image that is not decoration and a `label` on every
-field: without one, the render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the
-component that lacks it. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
+`title`, a `lang`, alternative text on every image that is not decoration, a `label` on every
+field (in a `Header` or `fixed` too), headings in order and lists made of items: without one, the
+render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the component that lacks it. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
 options `tagged` and `pdfUA` do the same and win over the props.
 
 - **What is what.** A `Text` is a paragraph, an `Image`, `Svg` or `Canvas` a figure with its
   `alt`, a `Table` a table (its header rows head their columns; `<Cell header>` heads its row;
   spans are kept), a field a form field with its `label`, a `Note` or an `Attachment` an
-  annotation, and a link a link. A `View` is not an element: its children belong to its parent.
+  annotation, and a link a link, which screen readers announce by its text. An image with `alt`
+  inside a `Text` is a figure in place, and a link inside one a link. A `View` is not an element: its children belong to its parent.
   `role` says otherwise: `'h1'` to `'h6'` for headings (PDF/UA wants them to go down one level at
   a time from `h1`), `'section'`, `'blockQuote'`, `'caption'`, `'figure'` (a `View` drawn as one
   figure, with `alt`), `'list'`, `'listItem'`, `'label'` and `'listBody'` for lists, or
-  `'artifact'` for decoration that screen readers skip.
+  `'artifact'` for decoration that screen readers skip. A `'listItem'` belongs in a `'list'` and a
+  `'listBody'` in a `'listItem'`; the list's numbering is read from its labels (`1.`, `a)`, `•`).
 - **Decoration.** `alt=""` makes an image decoration. Backgrounds, borders, rules, `Header`s,
   `Footer`s and `fixed` elements (painted on every page), and repeated table header rows are
   decoration too.

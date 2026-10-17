@@ -9,12 +9,14 @@ use pdf_writer::{Content, Name, Str};
 use crate::fonts::{FontKey, FontSet};
 use crate::geom::{apply, mul, Rect};
 use crate::images::ImageKey;
-use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, TextGlyph, TextOp};
+use crate::paint::{
+    FillRule, InvisibleGlyph, Op, PageBand, PageContent, PathSeg, TextGlyph, TextOp,
+};
 use crate::schema::Color;
 use crate::tag::{Plan, StructId};
 use crate::InkoxideError;
 
-use super::{content_bytes, deflate, out, round_pt, round_to, EncodedPage, Profile};
+use super::{content_bytes, deflate, out, round_pt, round_to, EncodedPage, LinkArea, Profile};
 
 /// A glyph closer than this (points) to where the previous glyph's advance
 /// puts it needs no `TJ` adjustment.
@@ -36,7 +38,7 @@ pub(super) fn encode_page(
     let mut links = Vec::new();
     let mut fields = Vec::new();
     let mut icons = Vec::new();
-    let mut owners = AnnotOwners::default();
+    let mut figures = Vec::new();
     // The element whose content is drawn.
     let mut owner: Option<StructId> = None;
     // Links and widgets are areas on the page: they cover where the
@@ -46,6 +48,9 @@ pub(super) fn encode_page(
     for op in &page.ops {
         match op {
             Op::Tag(id) => owner = Some(*id),
+            Op::FigureArea { owner, rect } => {
+                figures.push((*owner, ctm.map_or(*rect, |m| bounds(m, *rect))));
+            }
             Op::EndTag => owner = None,
             Op::Save => saved.push(ctm),
             Op::Restore => ctm = saved.pop().flatten(),
@@ -71,11 +76,14 @@ pub(super) fn encode_page(
             Op::Link {
                 rect,
                 target,
+                label,
                 owner: own,
-            } => {
-                links.push((ctm.map_or(*rect, |m| bounds(m, *rect)), target.clone()));
-                owners.links.push(own.or(owner));
-            }
+            } => links.push(LinkArea {
+                rect: ctm.map_or(*rect, |m| bounds(m, *rect)),
+                target: target.clone(),
+                label: label.clone(),
+                owner: plan.and(own.or(owner)),
+            }),
             Op::Field(f) => {
                 if let Some(font) = f.font {
                     let used = glyphs.entry(font).or_default();
@@ -86,8 +94,8 @@ pub(super) fn encode_page(
                 }
                 let mut f = (**f).clone();
                 f.ctm = ctm;
+                f.owner = plan.and(owner);
                 fields.push(f);
-                owners.fields.push(owner);
             }
             // An icon stays upright and the same size: only its corner
             // moves.
@@ -96,14 +104,13 @@ pub(super) fn encode_page(
                 if let Some(m) = ctm {
                     (i.x, i.y) = apply(m, (i.x, i.y));
                 }
+                i.owner = plan.and(owner);
                 icons.push(i);
-                owners.icons.push(owner);
             }
             _ => {}
         }
     }
     let (raw, mcids) = marked_content_stream(page, fonts, profile, plan)?;
-    let tags = plan.map(|_| PageTags { mcids, owners });
     let stream = match compression {
         Some(level) => deflate(&raw, level)?,
         None => raw,
@@ -119,26 +126,9 @@ pub(super) fn encode_page(
         links,
         fields,
         icons,
-        tags,
+        mcids: plan.map(|_| mcids),
+        figures,
     })
-}
-
-/// What a tagged page's structure needs: the element of each
-/// marked-content sequence, by MCID, and of each annotation.
-#[derive(Debug, Default)]
-pub(crate) struct PageTags {
-    pub mcids: Vec<StructId>,
-    pub owners: AnnotOwners,
-}
-
-/// The element of each annotation of a page, in the order of `links`,
-/// `fields` and `icons`; `None` for an annotation in decoration (a header),
-/// which gets an element of its own.
-#[derive(Debug, Default)]
-pub(crate) struct AnnotOwners {
-    pub links: Vec<Option<StructId>>,
-    pub fields: Vec<Option<StructId>>,
-    pub icons: Vec<Option<StructId>>,
 }
 
 /// Marked content in a tagged content stream: each element's content in a
@@ -155,6 +145,8 @@ struct Marker<'p> {
     tag: Option<(StructId, bool)>,
     /// Whether an artifact is open.
     artifact: bool,
+    /// The header or footer drawn now, whose artifacts say so.
+    band: Option<PageBand>,
     /// The element whose content goes on after the decoration drawn now.
     resume: Option<StructId>,
     /// Spans open: they enclose whole save levels, and what they draw is in
@@ -191,10 +183,34 @@ impl Marker<'_> {
                 self.tag = Some((id, true));
             }
             None if !self.artifact => {
-                c.begin_marked_content(Name(b"Artifact"));
+                match self.band {
+                    // ISO 32000-1, 14.8.2.2.2.
+                    Some(band) => {
+                        let subtype: &[u8] = match band {
+                            PageBand::Header => b"Header",
+                            PageBand::Footer => b"Footer",
+                        };
+                        c.begin_marked_content_with_properties(Name(b"Artifact"))
+                            .properties()
+                            .pair(Name(b"Type"), Name(b"Pagination"))
+                            .pair(Name(b"Subtype"), Name(subtype));
+                    }
+                    None => {
+                        c.begin_marked_content(Name(b"Artifact"));
+                    }
+                }
                 self.artifact = true;
             }
             _ => {}
+        }
+    }
+
+    /// Starts or ends a header or footer: its artifacts are apart from the
+    /// others.
+    fn band(&mut self, c: &mut Content, band: Option<PageBand>) {
+        if self.band != band {
+            self.close_artifact(c);
+            self.band = band;
         }
     }
 
@@ -269,7 +285,7 @@ pub(super) fn font_name(key: FontKey) -> String {
 
 /// Text ops: one `TJ` per stretch of glyphs on the baseline, with kerning
 /// adjustments wherever our positions differ from the font's advances.
-/// With `skip_notdef` (PDF/A), `.notdef` glyphs are left out and the next
+/// With `skip_notdef` (PDF/A, PDF/UA), `.notdef` glyphs are left out and the next
 /// glyph keeps its position.
 pub(super) fn show_text(
     c: &mut Content,
@@ -436,6 +452,7 @@ pub(crate) fn marked_content_stream(
         mcids: Vec::new(),
         tag: None,
         artifact: false,
+        band: None,
         resume: None,
         spans: 0,
     });
@@ -454,13 +471,22 @@ pub(crate) fn marked_content_stream(
                     m.spans += 1;
                 }
                 Op::EndSpan => m.spans = m.spans.saturating_sub(1),
+                Op::Band(band) => m.band(&mut c, *band),
                 Op::FillRect { .. }
                 | Op::FillPath { .. }
                 | Op::StrokePath { .. }
                 | Op::Text(_)
                 | Op::Image { .. }
                 | Op::InvisibleText(_) => m.draw(&mut c),
-                _ => {}
+                // Nothing drawn: state, clips and annotations.
+                Op::Transform(_)
+                | Op::ClipRect(_)
+                | Op::ClipPath { .. }
+                | Op::SetOpacity(_)
+                | Op::Link { .. }
+                | Op::Field(_)
+                | Op::Icon(_)
+                | Op::FigureArea { .. } => {}
             }
         }
         match op {
@@ -527,11 +553,13 @@ pub(crate) fn marked_content_stream(
             | Op::Tag(_)
             | Op::EndTag
             | Op::Decoration
-            | Op::EndDecoration => {}
+            | Op::EndDecoration
+            | Op::Band(_)
+            | Op::FigureArea { .. } => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a(), plan.is_some()),
+            Op::Text(t) => show_text(&mut c, t, fonts, profile.skips_notdef(), plan.is_some()),
             Op::Image { key, matrix } => {
                 c.save_state();
                 c.transform(matrix.map(round_pt));

@@ -19,6 +19,7 @@ use crate::schema::{
     Color, Decoration, DecorationStyle, Node, NodeKind, Placeholder, RunAlign, TextAlign, TextRun,
     TextWrap, BLACK,
 };
+use crate::tag::{LinkText, Plan, RunTag, StructId};
 
 /// Page numbers substituted for placeholders on the page being painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +51,8 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     /// The page's area, in page coordinates: decorations are drawn only
     /// where the page shows them.
     pub page_box: Rect,
+    /// The structure of tagged output, with the elements of runs.
+    pub plan: Option<&'c Plan>,
 }
 
 /// What a line's pieces are drawn with besides their glyphs: page
@@ -62,6 +65,8 @@ struct Ink<'x> {
     images: &'x ImageSet,
     colors: &'x ColorGlyphs,
     view: Option<Rect>,
+    /// In tagged output, the paragraph's element and those of its runs.
+    tags: Option<(StructId, Option<&'x [RunTag]>)>,
 }
 
 impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
@@ -108,6 +113,9 @@ impl<S: TextShaper> TextPainter<'_, '_, '_, '_, S> {
             images: self.images,
             colors: self.colors,
             view: view(self.page_box, ctx.ctm),
+            tags: ctx
+                .tag
+                .map(|id| (id, self.plan.and_then(|plan| plan.runs(node)))),
         };
         for (li, line) in layout.lines.iter().enumerate() {
             let shift = ctx.line_shifts.get(li).copied().unwrap_or(ctx.shift);
@@ -414,16 +422,28 @@ fn paint_line(
         };
     let baseline = cy + line.top + line.ascent;
     // Link areas of the line, adjacent pieces of one target merged
-    // (adjacent pieces abut exactly).
-    let mut links: Vec<(f32, f32, &str)> = Vec::new();
+    // (adjacent pieces abut exactly), with the runs they cover.
+    let mut links: Vec<(f32, f32, &str, Vec<u16>)> = Vec::new();
     let mut painted = PaintedLine {
         top: cy + line.top,
         baseline,
         pieces: Vec::with_capacity(pieces.len()),
     };
 
+    // In tagged output, the element whose content is drawn: the
+    // paragraph's, or a run's own (a link, an image).
+    let mut tag = ink.tags.map(|(id, _)| id);
+    let run_tags = ink.tags.and_then(|(_, runs)| runs);
     for piece in pieces {
         let run = &runs[piece.run as usize];
+        let run_tag = run_tags.map_or_else(RunTag::default, |t| t[piece.run as usize]);
+        if let Some((para, _)) = ink.tags {
+            let want = run_tag.content.unwrap_or(para);
+            if tag != Some(want) {
+                ops.push(Op::Tag(want));
+                tag = Some(want);
+            }
+        }
         if let Some(icon) = run.icon() {
             // It takes no room: its icon hangs from the line's top.
             crate::notes::paint_at(icon, (x, cy + line.top), ops);
@@ -431,10 +451,13 @@ fn paint_line(
         }
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
-                Some((_, x1, t)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {
+                Some((_, x1, t, covered)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {
                     *x1 = x + piece.width;
+                    if covered.last() != Some(&piece.run) {
+                        covered.push(piece.run);
+                    }
                 }
-                _ => links.push((x, x + piece.width, target)),
+                _ => links.push((x, x + piece.width, target, vec![piece.run])),
             }
         }
         if let Some(o) = piece.object {
@@ -443,6 +466,9 @@ fn paint_line(
             let line_box = (cy + line.top, line.height);
             let rect = object_rect(object, run, fonts, (x, baseline), line_box);
             painted.pieces.push((piece.run, rect));
+            if let Some(owner) = run_tag.content.filter(|&c| Some(c) != run_tag.link) {
+                ops.push(Op::FigureArea { owner, rect });
+            }
             paint_object(object, rect, run, fonts, ink.images, baseline, ops);
             x += piece.width;
             continue;
@@ -505,12 +531,23 @@ fn paint_line(
         }
         x += piece_width;
     }
-    for (x0, x1, target) in links {
+    if let Some((para, _)) = ink.tags.filter(|&(para, _)| tag != Some(para)) {
+        ops.push(Op::Tag(para));
+    }
+    for (x0, x1, target, covered) in links {
         if x1 > x0 {
+            // In its run's `Link` element.
+            let owner = run_tags.and_then(|t| t[usize::from(covered[0])].link);
+            // What it says it is: the text of its runs.
+            let mut label = LinkText::default();
+            for r in covered {
+                label.push(runs[r as usize].text.as_deref().unwrap_or_default());
+            }
             ops.push(Op::Link {
                 rect: Rect::new(x0, cy + line.top, x1 - x0, line.height),
                 target: target.into(),
-                owner: None,
+                label: label.finish(),
+                owner,
             });
         }
     }

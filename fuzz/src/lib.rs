@@ -2279,8 +2279,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
             _ => s.pick(ROLES),
         };
         m.insert("role".into(), json!(role));
-        if kind == "box" && s.chance(2) {
-            m.insert("alt".into(), json!(text(s)));
+        // A figure box takes `alt`; now and then another box has one too.
+        if kind == "box" && ((role == "figure" && s.chance(70)) || s.chance(2)) {
+            m.insert("alt".into(), json!(format!("Box {}", text(s))));
         }
     }
     match kind {
@@ -2781,6 +2782,13 @@ mod tests {
             r#""type":"attachment""#,
             r#""attachments":[{"#,
             r#""xmpExtensions":[{"#,
+            // Tagged output: roles, a figure box's alt, a field's label and
+            // a header cell.
+            r#""role":""#,
+            r#""role":"listItem""#,
+            r#""alt":"Box "#,
+            r#""label":"L"#,
+            r#""header":true"#,
         ];
         // Boxes nested close to the parser's limit (keys are sorted).
         let deep = r#"{"children":["#.repeat(56);

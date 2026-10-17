@@ -616,15 +616,15 @@ class Builder {
     }
   }
 
-  /**
-   * The props of an element in the flow. A per-page wrapper (`stackVariants`) takes the ones in
-   * `FlowKey` from its variants, so a prop written here belongs there or with `style` and `debug`.
-   */
   /** An element's `role` prop, onto `node`: what it is in tagged output. */
   private role(node: { role?: BoxNode['role'] }, inst: Instance): void {
     if (typeof inst.props.role === 'string') node.role = inst.props.role as BoxNode['role'];
   }
 
+  /**
+   * The props of an element in the flow. A per-page wrapper (`stackVariants`) takes the ones in
+   * `FlowKey` from its variants, so a prop written here belongs there or with `style` and `debug`.
+   */
   private flowProps(
     node: Partial<Pick<BoxNode, FlowKey>> & { style?: Style; debug?: boolean },
     inst: Instance,

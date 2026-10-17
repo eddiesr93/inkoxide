@@ -388,32 +388,6 @@ impl Checker<'_> {
         self.errors.len() == errors
     }
 
-    /// A node's `role`: one its type can have. A text is a heading, a
-    /// paragraph, a caption, a label, a quote or decoration; an image a
-    /// figure or decoration; a box anything.
-    pub(super) fn role(&mut self, role: crate::schema::Role, kind: &crate::schema::NodeKind) {
-        use crate::schema::{NodeKind, Role};
-        let ok = match kind {
-            NodeKind::Box { .. } => true,
-            NodeKind::Text { .. } => {
-                role.heading().is_some()
-                    || matches!(
-                        role,
-                        Role::P | Role::Caption | Role::Label | Role::BlockQuote | Role::Artifact
-                    )
-            }
-            NodeKind::Image { .. } => matches!(role, Role::Figure | Role::Artifact),
-            _ => false,
-        };
-        if !ok {
-            self.err(
-                Code::InvalidValue,
-                Some("role"),
-                "a text takes h1 to h6, p, caption, label, blockQuote or artifact; an image figure or artifact",
-            );
-        }
-    }
-
     pub(super) fn note(&mut self, n: &Note) {
         if !(1..=MAX_NOTE).contains(&n.contents.chars().count()) {
             self.err(

@@ -216,9 +216,8 @@ impl PdfWriterSink {
         let mut annots: Vec<Vec<Ref>> = Vec::with_capacity(doc.pages.len());
         for (i, page) in doc.pages.iter().enumerate() {
             let mut refs = Vec::new();
-            for (j, link) in page.links.iter().enumerate() {
+            for link in &page.links {
                 let r = w.alloc.next();
-                let owner = page.tags.as_ref().and_then(|t| t.owners.links[j]);
                 // Recorded only when written: an anchor may have no
                 // destination.
                 let key = tags.as_deref().map(tag::AnnotTags::peek);
@@ -232,7 +231,7 @@ impl PdfWriterSink {
                     key,
                 ) {
                     if let Some(t) = tags.as_deref_mut() {
-                        t.add(r, i, owner, tag::AnnotKind::Link);
+                        t.add(r, i, link.owner, tag::AnnotKind::Link);
                     }
                     refs.push(r);
                 }
@@ -277,7 +276,7 @@ impl PdfWriterSink {
             .map(|level| (level, w.alloc.next(), w.alloc.next()));
         let intent = pdf_a.map(|_| (w.out.text("sRGB"), w.out.text("sRGB IEC61966-2.1")));
         // PDF/UA without PDF/A: metadata of its own (ISO 14289-1, 7.1).
-        let ua_metadata = (pdf_a.is_none() && doc.ua).then(|| w.alloc.next());
+        let ua_metadata = (pdf_a.is_none() && self.profile.ua()).then(|| w.alloc.next());
         let embedded = attach::name_tree(doc.files, nav.files, |key| w.out.bytes(key));
         let mut cat = w.pdf.catalog(catalog);
         cat.pages(nav.pages);
@@ -369,7 +368,13 @@ impl PdfWriterSink {
             .pair(Name(b"DestOutputProfile"), profile);
         cat.finish();
         // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-        let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, Some(level), doc.ua);
+        let xmp = pdfa::xmp(
+            doc.meta,
+            producer,
+            doc.creation_date,
+            Some(level),
+            self.profile.ua(),
+        );
         w.out.metadata(&mut w.pdf, metadata, &xmp, |_| {});
         let icc = deflate(&pdfa::srgb_icc(), 9)?;
         w.out.icc_profile(&mut w.pdf, profile, &icc, |p| {
@@ -496,7 +501,7 @@ fn write_pages(
         if !annots[i].is_empty() {
             p.annotations(annots[i].iter().copied());
         }
-        if page.tags.is_some() {
+        if page.mcids.is_some() {
             p.pair(Name(b"StructParents"), i32::try_from(i).unwrap_or(i32::MAX));
             if !annots[i].is_empty() {
                 // Annotations are visited in the order of the structure.

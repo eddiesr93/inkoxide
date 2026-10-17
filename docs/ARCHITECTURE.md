@@ -179,14 +179,20 @@ through `flate.rs`.
 Tagged output (`tag.rs`, `pdf/tag.rs`) plans the structure from the
 document before layout: one element per node that is one (a paragraph, a
 heading, a figure, a table and its rows and cells, a field), keyed by the
-node's address, in document order, which is the reading order. Painting
-pushes `Op::Tag` around what a node's content painter draws; the writer
-opens a marked-content sequence with an MCID when something is drawn under
-a tag, and an artifact when something is drawn outside one (backgrounds,
-borders, headers, footers and nodes painted on every page, which the plan
-leaves out). Annotations take the element in effect, or one of their own.
-The tree, the parent tree and the elements are written last, so untagged
-output is byte for byte what it was.
+node's address, in document order, which is the reading order, and one
+per link and per image with `alt` in a paragraph's runs. Painting pushes
+`Op::Tag` around what a node's content painter draws (and the text
+painter switches to a run's element and back), and `Op::FigureArea` where
+a figure is; the writer opens a marked-content sequence with an MCID when
+something is drawn under a tag, and an artifact when something is drawn
+outside one (backgrounds, borders, headers and footers, which
+`Op::Band` makes pagination artifacts, and nodes painted on every page,
+which the plan leaves out). Annotations carry their element (`LinkArea`,
+`FieldOp` and `IconOp` take it from the page encoding), or get one of
+their own. The tree, the parent tree and the elements are written last;
+an element's kids are in document order, but the links and figures of a
+paragraph, which sit among its text as they are drawn. Untagged output is
+byte for byte what it was (`tests/output_hashes.rs` pins it).
 
 A variable font is registered once; each declaration with `variations`
 draws with an `Instance` of it (`fonts/mod.rs`): canonical coordinates

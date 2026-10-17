@@ -313,6 +313,7 @@ fn painted_ops(node: &str) -> Vec<crate::paint::Op> {
         opacity: 1.0,
         line_boxes: None,
         ctm: None,
+        tag: None,
     };
     let no_fonts = crate::FontStore::new();
     let fonts = crate::fonts::FontSet::load(&doc, &no_fonts).unwrap();
