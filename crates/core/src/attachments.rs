@@ -185,3 +185,68 @@ pub(crate) fn prepare(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn decl(name: &str, source: FileSource, modified: Option<&str>) -> AttachmentDecl {
+        AttachmentDecl {
+            name: name.into(),
+            source,
+            mime_type: None,
+            description: None,
+            relationship: Relationship::Data,
+            modified: modified.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn prepare_compresses_only_what_gets_smaller() {
+        let mut store = AttachmentStore::new();
+        store.insert("zeros", vec![0u8; 4096]);
+        let created = crate::date::parse_rfc3339("2026-10-08T00:00:00Z");
+        let decls = [
+            decl("zeros.bin", FileSource::Ref("zeros".into()), None),
+            decl(
+                "hi.txt",
+                FileSource::Inline(InlineFile::new("aGk=".into())),
+                Some("2026-01-02T03:04:05+02:00"),
+            ),
+        ];
+        let files = prepare(&decls, &store, Some(6), created).unwrap();
+        let [zeros, hi] = &files[..] else { panic!() };
+        assert!(zeros.compressed && zeros.data.len() < 4096);
+        assert_eq!(zeros.size, 4096);
+        assert_eq!(zeros.mime_type, DEFAULT_MIME_TYPE);
+        assert_eq!(zeros.modified, created);
+        // Two bytes deflate to more than two.
+        assert!(!hi.compressed);
+        assert_eq!((&hi.data[..], hi.size), (&b"hi"[..], 2));
+        assert_eq!(hi.modified.unwrap().offset_minutes, 120);
+        assert_ne!(zeros.hash, hi.hash);
+        // Without compression, every file is stored as it is.
+        let stored = prepare(&decls, &store, None, None).unwrap();
+        assert!(stored
+            .iter()
+            .all(|f| !f.compressed && f.data.len() == f.size));
+        assert_eq!(stored[0].modified, None);
+    }
+
+    #[test]
+    fn prepare_reports_a_file_missing_from_the_store() {
+        let decls = [decl("gone.bin", FileSource::Ref("gone".into()), None)];
+        let e = prepare(&decls, &AttachmentStore::new(), None, None).unwrap_err();
+        assert!(matches!(e, InkoxideError::Internal(_)), "{e}");
+    }
+
+    #[test]
+    fn inline_files_decode_once_within_their_bound() {
+        for (b64, bytes) in [("", &b""[..]), ("aGk=", b"hi"), ("aGVsbG8=", b"hello")] {
+            let f = InlineFile::new(b64.into());
+            assert_eq!(&f.bytes().unwrap()[..], bytes);
+            assert!(f.max_len() >= bytes.len(), "{b64}");
+        }
+        assert!(InlineFile::new("!!".into()).bytes().is_err());
+    }
+}

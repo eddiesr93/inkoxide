@@ -1,0 +1,386 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Attachments",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  }
+ ],
+ "attachments": [
+  {
+   "name": "invoice.xml",
+   "data": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPGludm9pY2UgbnVtYmVyPSIyMDI2LTExNyI+PHRvdGFsIGN1cnJlbmN5PSJFVVIiPjIxLjAwPC90b3RhbD48L2ludm9pY2U+Cg==",
+   "mimeType": "text/xml",
+   "relationship": "data",
+   "description": "Invoice data",
+   "modified": "2026-10-17T09:00:00Z"
+  },
+  {
+   "name": "items.csv",
+   "data": "aXRlbSxxdHkscHJpY2UKUGFwZXIsMiw0LjUwCkluaywxLDEyLjAwCg==",
+   "mimeType": "text/csv",
+   "relationship": "supplement"
+  },
+  {
+   "name": "Notă.txt",
+   "data": "UGzEg3RpdCDDrm4gYXZhbnMuCg==",
+   "mimeType": "text/plain"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 300
+   },
+   "margin": {
+    "top": 48,
+    "right": 32,
+    "bottom": 32,
+    "left": 32
+   },
+   "header": {
+    "type": "box",
+    "style": {
+     "flexDirection": "row",
+     "justifyContent": "space-between",
+     "alignItems": "center",
+     "padding": {
+      "top": 16,
+      "left": 32,
+      "right": 32
+     }
+    },
+    "children": [
+     {
+      "type": "text",
+      "runs": [
+       {
+        "text": "Invoice 2026-117",
+        "font": "Inter-Regular",
+        "size": 9,
+        "color": [
+         0.42,
+         0.44,
+         0.5,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "type": "box",
+      "style": {
+       "width": 20,
+       "height": 20
+      },
+      "children": [
+       {
+        "type": "attachment",
+        "attachment": {
+         "file": "items.csv",
+         "icon": "paperclip",
+         "contents": "Line items"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Files in this document",
+       "font": "Inter-Bold",
+       "size": 16
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 6
+      },
+      "lineHeight": 1.5
+     },
+     "runs": [
+      {
+       "text": "The invoice data travels with the PDF:",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "attachment": {
+        "file": "invoice.xml",
+        "icon": "graph"
+       },
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 16
+      },
+      "lineHeight": 1.5
+     },
+     "runs": [
+      {
+       "text": "So does a note, which opens from its icon:",
+       "font": "Inter-Regular",
+       "size": 11
+      },
+      {
+       "attachment": {
+        "file": "Notă.txt",
+        "icon": "tag",
+        "color": [
+         0.85,
+         0.35,
+         0.2,
+         1
+        ]
+       },
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row"
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "column",
+        "alignItems": "center",
+        "width": 70
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 20,
+          "height": 20
+         },
+         "children": [
+          {
+           "type": "attachment",
+           "attachment": {
+            "file": "invoice.xml",
+            "icon": "pushPin"
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "margin": {
+           "top": 4
+          }
+         },
+         "runs": [
+          {
+           "text": "pushPin",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "column",
+        "alignItems": "center",
+        "width": 70
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 20,
+          "height": 20
+         },
+         "children": [
+          {
+           "type": "attachment",
+           "attachment": {
+            "file": "invoice.xml",
+            "icon": "paperclip",
+            "color": [
+             0.85,
+             0.35,
+             0.2,
+             1
+            ]
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "margin": {
+           "top": 4
+          }
+         },
+         "runs": [
+          {
+           "text": "paperclip",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "column",
+        "alignItems": "center",
+        "width": 70
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 20,
+          "height": 20
+         },
+         "children": [
+          {
+           "type": "attachment",
+           "attachment": {
+            "file": "invoice.xml",
+            "icon": "graph",
+            "color": [
+             0.2,
+             0.6,
+             0.4,
+             1
+            ]
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "margin": {
+           "top": 4
+          }
+         },
+         "runs": [
+          {
+           "text": "graph",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "box",
+       "style": {
+        "flexDirection": "column",
+        "alignItems": "center",
+        "width": 70
+       },
+       "children": [
+        {
+         "type": "box",
+         "style": {
+          "width": 20,
+          "height": 20
+         },
+         "children": [
+          {
+           "type": "attachment",
+           "attachment": {
+            "file": "invoice.xml",
+            "icon": "tag",
+            "color": [
+             0.5,
+             0.4,
+             0.8,
+             1
+            ]
+           }
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "style": {
+          "margin": {
+           "top": 4
+          }
+         },
+         "runs": [
+          {
+           "text": "tag",
+           "font": "Inter-Regular",
+           "size": 9,
+           "color": [
+            0.42,
+            0.44,
+            0.5,
+            1
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
