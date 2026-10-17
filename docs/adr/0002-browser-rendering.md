@@ -1,6 +1,6 @@
 # 2. Rendering in the browser with the engine as WebAssembly
 
-Status: accepted, 2026-10-15; shipped in 0.9.0.
+Status: accepted, 2026-10-15; shipped in 0.9.0. Threads: [ADR 0003](0003-browser-threads.md).
 
 ## Context
 

@@ -17,6 +17,7 @@
       "default": "./index.js"
     },
     "./inkoxide.wasm": "./inkoxide.wasm",
+    "./inkoxide-threads.wasm": "./inkoxide-threads.wasm",
     "./package.json": "./package.json",
     "./hyphenation/*": "./hyphenation/*"
   },
@@ -25,12 +26,15 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "thread.js",
     "inkoxide.wasm",
+    "inkoxide-threads.wasm",
     "hyphenation"
   ],
   "scripts": {
     "build": "../../scripts/build-wasm.sh",
-    "test": "INKOXIDE_BINDING=wasm node --test ../inkoxide/test/*.test.js"
+    "test": "INKOXIDE_BINDING=wasm node --test ../inkoxide/test/*.test.js && node --test test/*.test.js",
+    "test:threads": "INKOXIDE_BINDING=wasm-threads node --test ../inkoxide/test/*.test.js"
   },
   "devDependencies": {
     "ajv": "8.20.0"

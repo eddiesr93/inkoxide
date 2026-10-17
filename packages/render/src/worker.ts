@@ -14,7 +14,11 @@ const OPS = {
   validate: engine.validate,
   render: engine.render,
   version: engine.version,
+  threadCount: engine.threadCount,
   clearCaches: engine.clearCaches,
+  // Test hook, not public API: a panic on a thread of the engine's pool, which never returns
+  // (examples/browser/tests/threads.spec.ts).
+  __testPoolPanic: () => (engine.InkoxideError as unknown as { __testPoolPanic(): void }).__testPoolPanic(),
 } as const;
 
 export type Op = keyof typeof OPS;
