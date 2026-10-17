@@ -368,7 +368,7 @@ pub fn render(
     // Rayon resumes a worker's panic, with its payload, in the thread that
     // waits for it, so this also catches panics in parallel sections. The
     // inputs are only read, and the process-wide caches recover from a
-    // lock poisoned by a panic (lru.rs, images/svg.rs).
+    // lock poisoned by a panic (lru.rs, images/svg/limits.rs).
     catch_unwind(AssertUnwindSafe(|| match options.threads {
         None => render_inner(doc, format, options, fonts, images, true),
         // Outside a pool, rayon would use the global one: run every
