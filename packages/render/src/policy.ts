@@ -65,10 +65,12 @@ export function checkOptionTypes(opts: RenderOpts & Abortable): void {
   if (!absent(o.pdfA) && typeof o.pdfA !== 'boolean' && typeof o.pdfA !== 'string') {
     rejectType('pdfA', 'a boolean or a string', o.pdfA);
   }
-  if (!absent(o.images)) {
-    if (!isObject(o.images)) rejectType('images', 'an object', o.images);
-    for (const [id, bytes] of Object.entries(o.images)) {
-      if (!(bytes instanceof Uint8Array)) rejectType(`images.${id}`, 'a Uint8Array', bytes);
+  for (const key of ['images', 'attachments'] as const) {
+    const files = o[key];
+    if (absent(files)) continue;
+    if (!isObject(files)) rejectType(key, 'an object', files);
+    for (const [id, bytes] of Object.entries(files)) {
+      if (!(bytes instanceof Uint8Array)) rejectType(`${key}.${id}`, 'a Uint8Array', bytes);
     }
   }
   checkEncryptionTypes(o.encryption);

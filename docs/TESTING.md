@@ -37,7 +37,9 @@ only on demand, from the Actions tab, with the ID of that release run.
   bookmarks and images; `pdfa-edge` holds the smallest page PDF/A
   allows, 3 × 3 points. With `VERAPDF` pointing at a veraPDF command
   (`scripts/ci.sh` sets it when `verapdf` is on `PATH`), every PDF/A
-  output must pass veraPDF's profile for its level.
+  output must pass veraPDF's profile for its level. The fixtures that
+  carry files render only as PDF/A-3b, and the other levels reject them
+  with `PDFA_CONFLICT` at the first file (`ONLY_PDF_A_3B`).
 - `crates/core/tests/encryption.rs`: every fixture, encrypted, renders
   deterministically and, with `qpdf` installed, passes `qpdf --check`
   with either password; `qpdf --json` of it, decrypted, equals that of
@@ -48,6 +50,15 @@ only on demand, from the Actions tab, with the ID of that release run.
   permission flags qpdf reports, wrong passwords, a file with an owner
   password only, canary strings that must not appear in plain text, and
   errors that name the option but never the password.
+- `crates/core/tests/attachments.rs`: files a PDF carries come out as
+  they went in, through `pdfdetach` and qpdf (`--list-attachments`,
+  `--show-attachment`), encrypted or not, with their `/ModDate` (the
+  declared date, or else the creation date); the PDF/A-3b output, with
+  Factur-X metadata, passes veraPDF, and the files change the file
+  identifier. A document without files renders the same bytes with or
+  without a store, and none of the attachments' objects. Also levels
+  that refuse files, a file too large to read, and bad declarations,
+  icons and XMP extensions at their paths.
 - `crates/core/tests/limits.rs`: memory guards (page limit, content
   repeated on every page, glyphs from shaping, in SVG text too, copies
   of SVG text, the work budget of one `COLR` glyph, deepest accepted
@@ -170,8 +181,9 @@ only on demand, from the Actions tab, with the ID of that release run.
     Those in `fixtures/wasm-parity.json` may differ in the last digits of
     numbers (trigonometry in usvg uses another libm there) and in the file
     identifier, compared with their streams decompressed. It also registers
-    the fuzz seed fonts, and renders documents at the engine's limits from
-    `limits.rs`, with both, and compares the outcomes;
+    the fuzz seed fonts, renders the attachments fixture as PDF/A-3b, and
+    renders documents at the engine's limits from `limits.rs`, with both,
+    and compares the outcomes;
   - the engine's tests that need MessagePack are left out of a build
     without its feature (`--no-default-features`), which reads JSON only.
   - `examples/browser` (`pnpm test` there, after `pnpm exec playwright
@@ -248,7 +260,10 @@ is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
 which only a PDF/A-1b render reports (by input length, a quarter of the
 inputs render as plain PDF and a quarter at each PDF/A level); the
 writer never refuses transparency at 1b, which would mean validation
-missed it (for SVG, that its scan disagrees with the writer); every
+missed it (for SVG, that its scan disagrees with the writer). What only
+a render knows is not a finding either: PDF/A-2b refusing files, a file
+`src` the store lacks (`ATTACHMENT_NOT_REGISTERED`), and XMP extensions
+without PDF/A to go in. Every
 form script (`/JS`, read from the parsed object syntax, so a script
 written as a hex string is checked and a document title that looks like
 one is not) is a call of a standard form function (`AFNumber_Format`

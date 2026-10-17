@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use crate::date::Timestamp;
 use pdf_writer::Limits;
 
-use crate::schema::Meta;
+use crate::schema::{Meta, XmpSchema};
 use crate::{InkoxideError, PdfALevel};
 
 /// Shortest page side PDF/A allows, in points, at every level: PDF/A-1
@@ -328,7 +328,9 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
 }
 
 /// The XMP packet for the catalog `/Metadata` stream. Every entry mirrors
-/// the information dictionary, as PDF/A requires.
+/// the information dictionary, as PDF/A requires. The properties of
+/// `meta.xmpExtensions` follow, with the PDF/A extension schema that declares them
+/// (ISO 19005-2, 6.6.2.3).
 pub(crate) fn xmp(
     meta: &Meta,
     producer: &str,
@@ -381,11 +383,71 @@ pub(crate) fn xmp(
          xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" \
          xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\">\n\
          {d}</rdf:Description>\n\
+         {}\
          </rdf:RDF>\n\
          </x:xmpmeta>\n\
-         <?xpacket end=\"w\"?>"
+         <?xpacket end=\"w\"?>",
+        extension_descriptions(meta.xmp_extensions.as_deref().unwrap_or(&[]))
     )
     .into_bytes()
+}
+
+/// The `rdf:Description`s of `extensions`: the PDF/A extension schema
+/// that declares their properties (all Text, external), and each schema's
+/// values.
+fn extension_descriptions(extensions: &[XmpSchema]) -> String {
+    if extensions.is_empty() {
+        return String::new();
+    }
+    let mut d = String::from(
+        "<rdf:Description rdf:about=\"\" \
+         xmlns:pdfaExtension=\"http://www.aiim.org/pdfa/ns/extension/\" \
+         xmlns:pdfaSchema=\"http://www.aiim.org/pdfa/ns/schema#\" \
+         xmlns:pdfaProperty=\"http://www.aiim.org/pdfa/ns/property#\">\n\
+         <pdfaExtension:schemas><rdf:Bag>\n",
+    );
+    for s in extensions {
+        let _ = write!(
+            d,
+            "<rdf:li rdf:parseType=\"Resource\">\n\
+             <pdfaSchema:schema>{}</pdfaSchema:schema>\n\
+             <pdfaSchema:namespaceURI>{}</pdfaSchema:namespaceURI>\n\
+             <pdfaSchema:prefix>{}</pdfaSchema:prefix>\n\
+             <pdfaSchema:property><rdf:Seq>\n",
+            escape(&s.schema),
+            escape(&s.namespace),
+            escape(&s.prefix)
+        );
+        for p in &s.properties {
+            let _ = write!(
+                d,
+                "<rdf:li rdf:parseType=\"Resource\">\n\
+                 <pdfaProperty:name>{}</pdfaProperty:name>\n\
+                 <pdfaProperty:valueType>Text</pdfaProperty:valueType>\n\
+                 <pdfaProperty:category>external</pdfaProperty:category>\n\
+                 <pdfaProperty:description>{}</pdfaProperty:description>\n\
+                 </rdf:li>\n",
+                escape(&p.name),
+                escape(&p.description)
+            );
+        }
+        d.push_str("</rdf:Seq></pdfaSchema:property>\n</rdf:li>\n");
+    }
+    d.push_str("</rdf:Bag></pdfaExtension:schemas>\n</rdf:Description>\n");
+    for s in extensions {
+        let _ = writeln!(
+            d,
+            "<rdf:Description rdf:about=\"\" xmlns:{}=\"{}\">",
+            escape(&s.prefix),
+            escape(&s.namespace)
+        );
+        for p in &s.properties {
+            let (prefix, name) = (escape(&s.prefix), escape(&p.name));
+            let _ = writeln!(d, "<{prefix}:{name}>{}</{prefix}:{name}>", escape(&p.value));
+        }
+        d.push_str("</rdf:Description>\n");
+    }
+    d
 }
 
 /// The ISO 19005 part of `level` (`pdfaid:part`).

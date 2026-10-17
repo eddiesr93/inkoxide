@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Checks that the WebAssembly build of the engine behaves as the native one:
 // - every fixtures/docs document, and every fixture image alone on a page, renders to the same
-//   bytes. Those listed in fixtures/wasm-parity.json may differ only in numbers, by at most 1e-6
+//   bytes, and the one with files as PDF/A-3b too, whose file identifier hashes them. Those listed in fixtures/wasm-parity.json may differ only in numbers, by at most 1e-6
 //   relative, and in the file identifier, compared with their streams decompressed. Whether
 //   they differ depends on the platform's math library: on Linux they are identical, on macOS
 //   they differ in the last digits;
@@ -204,6 +204,17 @@ for (const f of files('fixtures/docs', ['.json'])) {
     }
   }
 }
+
+// PDF/A, whose file identifier hashes the document's files and their names: the fixture with
+// files, at the one level that takes them.
+sameRender(
+  'attachments as PDF/A-3b',
+  'attachments',
+  allowed.docs,
+  both((b) =>
+    b.renderSync(read('fixtures/docs', 'attachments.json'), { creationDate: CREATION_DATE, pdfA: '3b' }),
+  ),
+);
 
 // Documents at the engine's limits (crates/core/tests/limits.rs).
 const page = (children, fonts = [{ id: 'Inter-Regular', family: 'Inter' }], extra = {}) =>

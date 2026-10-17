@@ -14,6 +14,7 @@ import { type SchemaProblem, validateTree } from './tree/validate.ts';
 export type { CanvasGradient, CanvasTextOptions, Painter } from './canvas.ts';
 export * from './components/index.ts';
 export { TemplateError, type TemplateErrorKind } from './errors.ts';
+export { facturX, type FacturXOptions, type FacturXProfile, facturXRelationship } from './facturx.ts';
 export * from './fonts/index.ts';
 export { usePage } from './page.ts';
 export { innermostComponent } from './reconciler/instance.ts';

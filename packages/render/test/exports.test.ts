@@ -13,6 +13,7 @@ import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
 
 const MAIN_VALUES = [
+  'Attachment',
   'Canvas',
   'Cell',
   'Checkbox',
@@ -61,6 +62,8 @@ const MAIN_VALUES = [
   'View',
   'countPages',
   'engineStatus',
+  'facturX',
+  'facturXRelationship',
   'init',
   'renderToBuffer',
   'renderToFile',
@@ -71,6 +74,8 @@ const MAIN_VALUES = [
 
 const MAIN_TYPES = [
   'AbsoluteLength',
+  'AttachmentFile',
+  'AttachmentProps',
   'BookmarkProp',
   'BreakProp',
   'CanvasGradient',
@@ -87,6 +92,8 @@ const MAIN_TYPES = [
   'EmojiSource',
   'EngineStatus',
   'EngineVersion',
+  'FacturXOptions',
+  'FacturXProfile',
   'FieldProps',
   'FieldSetProps',
   'FontRegistration',

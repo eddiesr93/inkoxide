@@ -1,8 +1,8 @@
 //! Icon annotations: annotations a viewer shows as an icon of a fixed
-//! size at a point, which painting hands to the PDF writer. A text note is
-//! the one kind so far; file attachments would be another.
+//! size at a point, which painting hands to the PDF writer: text notes and
+//! file attachments.
 
-use crate::schema::Note;
+use crate::schema::{Attachment, Note};
 
 /// Side of an icon, points. Viewers draw it this size at any zoom.
 pub(crate) const ICON: f32 = 20.0;
@@ -19,9 +19,28 @@ pub(crate) struct IconOp {
     pub kind: IconKind,
 }
 
+/// A note or an attachment of the document, which an icon shows.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Icon<'a> {
+    Note(&'a Note),
+    Attachment(&'a Attachment),
+}
+
+impl Icon<'_> {
+    /// What the icon annotation holds, owned.
+    pub(crate) fn to_kind(self) -> IconKind {
+        match self {
+            Icon::Note(n) => IconKind::Note(n.clone()),
+            Icon::Attachment(a) => IconKind::Attachment(a.clone()),
+        }
+    }
+}
+
 /// What an icon annotation holds.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum IconKind {
     /// A text note (`/Subtype /Text`).
     Note(Note),
+    /// A file attachment (`/Subtype /FileAttachment`).
+    Attachment(Attachment),
 }

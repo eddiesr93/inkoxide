@@ -78,7 +78,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     let mut last_was_space = true;
     for run in opts.runs {
         let start = text.len();
-        if run.note.is_some() {
+        if run.is_icon() {
             // White space collapses across a note as if it were not there.
             text.push_str(NOTE_TEXT);
             ranges.push((start, text.len()));
@@ -190,7 +190,7 @@ fn itemize(
         let Some(primary) = fonts.key(&run.font) else {
             continue;
         };
-        if run.note.is_some() {
+        if run.is_icon() {
             // No glyphs: its place in the line (see `prepare`).
             segs.push(Segment::new(ri, primary, level_at(start), start..end));
             continue;
@@ -610,7 +610,7 @@ pub(crate) fn prepare(
             continue;
         }
         let run = &opts.runs[seg.run as usize];
-        if run.note.is_some() {
+        if run.is_icon() {
             // A note: an object cluster that takes no room.
             let first = glyphs.len() as u32;
             glyphs.push(Glyph {
@@ -946,6 +946,7 @@ mod tests {
         TextRun {
             image: None,
             note: None,
+            attachment: None,
             text: Some(text.into()),
             font: "f".into(),
             size: 10.0,

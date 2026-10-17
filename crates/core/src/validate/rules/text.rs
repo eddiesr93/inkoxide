@@ -104,15 +104,20 @@ impl Checker<'_> {
                 Some("image"),
                 "a run takes one of `text`, `placeholder` and `image`",
             ),
-            (None, None, None) if r.note.is_none() => self.err(
+            (None, None, None) if !r.is_icon() => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder`, an `image` or a `note`)",
+                "a run requires `text` (or a `placeholder`, an `image`, a `note` or an `attachment`)",
             ),
-            (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.note.is_some() => self.err(
+            (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.is_icon() => self.err(
                 Code::InvalidValue,
-                Some("note"),
-                "a run takes one of `text`, `placeholder`, `image` and `note`",
+                Some(if r.note.is_some() { "note" } else { "attachment" }),
+                "a run takes one of `text`, `placeholder`, `image`, `note` and `attachment`",
+            ),
+            _ if r.note.is_some() && r.attachment.is_some() => self.err(
+                Code::InvalidValue,
+                Some("attachment"),
+                "a run takes one of `text`, `placeholder`, `image`, `note` and `attachment`",
             ),
             _ => {}
         }
@@ -121,6 +126,9 @@ impl Checker<'_> {
         }
         if let Some(note) = &r.note {
             self.at("note", |c| c.note(note));
+        }
+        if let Some(a) = &r.attachment {
+            self.at("attachment", |c| c.attachment(a));
         }
         match r.vertical_align {
             Some(RunAlign::Points(v)) if !(v.abs() <= MAX_PAGE_EDGE) => self.err(

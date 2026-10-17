@@ -1,4 +1,6 @@
 import type {
+  AttachmentDecl,
+  AttachmentNode,
   BackgroundImage,
   BoxNode,
   Color,
@@ -26,6 +28,7 @@ import { createElement } from 'react';
 import { type DrawingFont, Painter } from '../canvas.ts';
 import {
   type AbsoluteLength,
+  type AttachmentFile,
   type BookmarkProp,
   type BreakProp,
   type FieldProps,
@@ -81,7 +84,7 @@ import {
   usesPatterns,
   withStyleProp,
 } from './style.ts';
-import { type SvgTextFonts, svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
+import { base64, type SvgTextFonts, svgDataUrl, svgDocument, svgMarkup } from './svg.ts';
 import { Hyphenator, transformText } from './text.ts';
 import { type FlowKey, stackVariants } from './variants.ts';
 
@@ -406,6 +409,8 @@ class Builder {
     // Checked against the schema's values with the rest of the document.
     if (typeof p.pageMode === 'string') meta.pageMode = p.pageMode as Meta['pageMode'];
     if (typeof p.pageLayout === 'string') meta.pageLayout = p.pageLayout as Meta['pageLayout'];
+    if (p.xmpExtensions !== undefined) meta.xmpExtensions = p.xmpExtensions as Meta['xmpExtensions'];
+    const attachments = this.attachments(root);
     this.docLang = meta.lang;
     this.debugAll = p.debug === true;
     const ctx: TextCtx = {
@@ -433,6 +438,7 @@ class Builder {
       fonts: fontIds.map((id) => this.opts.fonts.decl(id)),
       ...(fallbackFonts.length > 0 ? { fallbackFonts } : {}),
       ...(Object.keys(this.emoji).length > 0 ? { emojiImages: this.emoji } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       pages: pages as [PageSpec, ...PageSpec[]],
     };
     return this.mark(doc, root);
@@ -738,6 +744,8 @@ class Builder {
         return this.fieldSet(inst, () => this.box(inst, ctx));
       case HOST.Note:
         return this.note(inst, ctx);
+      case HOST.Attachment:
+        return this.attachment(inst, ctx);
       case HOST.Text:
         return this.text(inst, ctx);
       case HOST.Field:
@@ -917,6 +925,9 @@ class Builder {
         case HOST.Note:
           out.push(this.inlineNote(n, ctx));
           break;
+        case HOST.Attachment:
+          out.push(this.inlineAttachment(n, ctx));
+          break;
         case HOST.PageNumber:
         case HOST.TotalPages:
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
@@ -980,11 +991,26 @@ class Builder {
    * of the line where it is. Its `backgroundColor` is its colour.
    */
   private inlineNote(n: Instance, ctx: TextCtx): TextRun {
+    const note = this.noteOf(n, this.inlineIconColor(n, ctx, 'A <Note>'));
+    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
+  }
+
+  /** An `<Attachment>` in a `<Text>`: a run that takes no room, as a `<Note>` in a line is. */
+  private inlineAttachment(n: Instance, ctx: TextCtx): TextRun {
+    const attachment = this.attachmentOf(n, this.inlineIconColor(n, ctx, 'An <Attachment>'));
+    return this.mark({ attachment, font: this.font(ctx, n), size: ctx.fontSize }, n);
+  }
+
+  /**
+   * The colour of an icon in a line (`what`, a `<Note>` or an `<Attachment>`): its
+   * `backgroundColor`, the only style that applies to it.
+   */
+  private inlineIconColor(n: Instance, ctx: TextCtx, what: string): Color | undefined {
     const prop =
       BLOCK_ONLY.find((k) => blockOnly(n.props, k)) ??
       (['fixed', 'href'] as const).find((k) => n.props[k] !== undefined);
     if (prop) {
-      this.fail(n, `A <Note> inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
+      this.fail(n, `${what} inside <Text> is part of the line, so \`${prop}\` does not apply to it.`, {
         kind: 'props',
       });
     }
@@ -994,12 +1020,11 @@ class Builder {
       const { init, from } = this.source(n, own, bad[0]);
       this.fail(
         n,
-        `A <Note> inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${from}).`,
+        `${what} inside <Text> is part of the line: it takes only backgroundColor, its colour, not "${bad.join(', ')}" (from ${from}).`,
         init,
       );
     }
-    const note = this.noteOf(n, boxStyle(own, ctx.color)?.backgroundColor);
-    return this.mark({ note, font: this.font(ctx, n), size: ctx.fontSize }, n);
+    return boxStyle(own, ctx.color)?.backgroundColor;
   }
 
   /**
@@ -1307,17 +1332,75 @@ class Builder {
 
   /** A `<Note>`: its text children are its contents, and its background colour its colour. */
   private note(inst: Instance, ctx: TextCtx): NoteNode {
+    return this.iconNode(inst, ctx, (color) => ({ type: 'note', note: this.noteOf(inst, color) }));
+  }
+
+  /** An `<Attachment>`: an icon that takes no room, at the top-left corner of its box. */
+  private attachment(inst: Instance, ctx: TextCtx): AttachmentNode {
+    return this.iconNode(inst, ctx, (color) => ({
+      type: 'attachment',
+      attachment: this.attachmentOf(inst, color),
+    }));
+  }
+
+  /** The node `make` gives an icon, with its background colour; its box takes the rest of its style. */
+  private iconNode<N extends NoteNode | AttachmentNode>(
+    inst: Instance,
+    ctx: TextCtx,
+    make: (color: Color | undefined) => N,
+  ): N {
     const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
     const { backgroundColor, ...style } = boxStyle(own, ctx.color) ?? {};
-    const node: NoteNode = { type: 'note', note: this.noteOf(inst, backgroundColor) };
+    const node = make(backgroundColor);
     if (Object.keys(style).length > 0) node.style = style;
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }
 
+  /** `<Document attachments>`: each file with its bytes inline, so the document renders alone. */
+  private attachments(root: Instance): AttachmentDecl[] {
+    const files = root.props.attachments as readonly AttachmentFile[] | undefined;
+    if (files === undefined) return [];
+    if (!Array.isArray(files))
+      this.fail(root, '<Document attachments> takes an array of files.', { kind: 'props' });
+    return files.map((f, i) => {
+      if (typeof f !== 'object' || f === null || typeof f.name !== 'string') {
+        this.fail(root, `<Document attachments>[${i}] needs a name.`, { kind: 'props' });
+      }
+      const bytes = typeof f.data === 'string' ? new TextEncoder().encode(f.data) : f.data;
+      if (!(bytes instanceof Uint8Array)) {
+        this.fail(root, `<Document attachments>[${i}] (${f.name}): data is a Uint8Array or a string.`, {
+          kind: 'props',
+        });
+      }
+      const decl: AttachmentDecl = { name: f.name, data: base64(bytes) };
+      if (f.mimeType !== undefined) decl.mimeType = f.mimeType;
+      if (f.description !== undefined) decl.description = f.description;
+      if (f.relationship !== undefined) decl.relationship = f.relationship;
+      if (f.modified !== undefined) decl.modified = f.modified;
+      return decl;
+    });
+  }
+
+  /** What an `<Attachment>` holds: `file`, `icon`, its text children and `color`. */
+  private attachmentOf(inst: Instance, color: Color | undefined): AttachmentNode['attachment'] {
+    const p = inst.props;
+    if (typeof p.file !== 'string' || p.file === '') {
+      this.fail(inst, '<Attachment> needs file: the name of a file in <Document attachments>.', {
+        kind: 'props',
+      });
+    }
+    const out: AttachmentNode['attachment'] = { file: p.file };
+    if (typeof p.icon === 'string') out.icon = p.icon as AttachmentNode['attachment']['icon'];
+    const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
+    if (contents !== '') out.contents = contents;
+    if (color) out.color = color;
+    return out;
+  }
+
   /** What a `<Note>` holds: its text children, `author`, `open`, and `color`. */
-  private noteOf(inst: Instance, color: NoteNode['note']['color']): NoteNode['note'] {
+  private noteOf(inst: Instance, color: Color | undefined): NoteNode['note'] {
     const contents = inst.children.map((c) => (c.kind === 'text' ? c.text : '')).join('');
     if (contents === '') {
       this.fail(inst, '<Note> needs text: <Note>Check the totals</Note>.', { kind: 'props' });

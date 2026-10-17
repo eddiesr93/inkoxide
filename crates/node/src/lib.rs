@@ -80,6 +80,8 @@ pub struct RenderOptions {
     pub pdf_a: Option<Either<bool, String>>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,
+    /// The bytes of the files `attachments[].src` names, by id.
+    pub attachments: Option<HashMap<String, Uint8Array>>,
     /// Encrypt the PDF (default: not encrypted).
     pub encryption: Option<EncryptionOptions>,
 }
@@ -149,6 +151,7 @@ impl From<PermissionOptions> for inkoxide_binding::PermissionOptions {
 impl RenderJob {
     fn new(doc: Either<Uint8Array, String>, options: Option<RenderOptions>) -> Result<Self> {
         let mut images = ImageStore::new();
+        let mut attachments = inkoxide::AttachmentStore::new();
         let mut shared = inkoxide_binding::Options::default();
         if let Some(o) = options {
             shared = inkoxide_binding::Options {
@@ -173,11 +176,17 @@ impl RenderJob {
                     images.insert(id, bytes.to_vec());
                 }
             }
+            if let Some(map) = o.attachments {
+                for (id, bytes) in map {
+                    attachments.insert(id, bytes.to_vec());
+                }
+            }
         }
         let hyphenation = HYPHENATION.read().map(|h| h.clone()).unwrap_or_default();
         let (format, core) = shared
             .into_core(hyphenation, MAX_THREADS)
             .map_err(js_error)?;
+        let core = core.with_attachments(attachments);
         Ok(Self {
             doc: input_bytes(doc),
             format,
