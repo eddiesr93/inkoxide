@@ -531,6 +531,13 @@ fn drops_what_is_off_the_path_and_goes_on_after_it() {
         r##"<path id="p" d="M0 20H100"/><text font-size="10"><textPath href="#p" startOffset="-100">aa</textPath></text>"##,
     );
     assert!(t.glyphs.is_empty());
+    // A start past f32, either way, hides it all as one within it does.
+    for start in ["1e30", "1e39", "-1e39", "1e39%"] {
+        let t = laid(&format!(
+            r##"<path id="p" d="M0 20H100"/><text font-size="10"><textPath href="#p" startOffset="{start}">aa</textPath></text>"##
+        ));
+        assert!(t.glyphs.is_empty(), "{start}: {:?}", t.glyphs);
+    }
 }
 
 #[test]

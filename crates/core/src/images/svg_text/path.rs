@@ -5,7 +5,7 @@
 //!
 //! The table has a fixed number of pieces per curve, each measured with
 //! Gauss–Legendre quadrature: the work is bounded and the same on every
-//! machine, where an adaptive arc length could recurse deep on a crafted
+//! machine, where an adaptive arc length could recurse deep on a sharp
 //! cusp.
 
 use std::str::FromStr;

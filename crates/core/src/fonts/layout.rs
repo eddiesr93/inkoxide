@@ -97,7 +97,7 @@ fn resolves<'a>(len: u16, get: impl Fn(u16) -> Option<Coverage<'a>>) -> bool {
 
 /// Most features, lookups of the `vert` feature, and subtables of each,
 /// [`vertical_form`] reads: real fonts have a few dozen features and a few
-/// such lookups; a crafted one could list thousands and make each question
+/// such lookups; a malformed one could list thousands and make each question
 /// cost as much.
 const VERTICAL_FEATURES: usize = 1024;
 const VERTICAL_LOOKUPS: usize = 64;

@@ -331,7 +331,8 @@ enum ShapingCause {
 type WordKey = (FontKey, Option<rustybuzz::Direction>, FeatureSet, Box<str>);
 
 /// Index of a run's OpenType features in [`ShapeCache::features`]; 0 is
-/// none. Validation bounds the different sets of a document.
+/// none. Validation bounds the different sets of a document's text, and
+/// `ImageSet::lay_out_text` those of its SVGs.
 type FeatureSet = u16;
 
 /// Shaping faces of a render's fonts, indexed by [`FontKey`]: parsed once

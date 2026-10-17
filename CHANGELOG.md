@@ -21,7 +21,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   `<TextPath>`, and `writingMode`, `textOrientation`, `fontFeatureSettings`, `fontVariant` and
   `fontKerning` on SVG text. Vertical text on a path fails with `INVALID_IMAGE`, as do the text
   paths of an SVG with more than 100,000 segments in all, and an SVG's text with more than 64
-  different sets of font features.
+  different sets of font features; the SVGs of a render with more than 64 in all fail with
+  `IMAGE_ERROR`.
 
 - Tagged PDF and PDF/UA-1. The render option `tagged` writes a structure tree in document
   order: paragraphs, headings, lists (with the numbering their labels show), sections, figures
