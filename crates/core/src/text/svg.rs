@@ -588,8 +588,8 @@ fn baseline_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
     down - up
 }
 
-/// How far the central baseline of `span` sits below its alphabetic
-/// one: the middle of the font's ascender and descender.
+/// How far the alphabetic baseline of `span` sits below its central one:
+/// the middle of the font's ascender and descender.
 fn central_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
     let m = font.metrics();
     (m.ascender + m.descender) * font.scale(span.size) / 2.0

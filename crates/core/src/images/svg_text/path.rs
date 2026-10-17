@@ -162,17 +162,17 @@ impl TextPathGeom {
                 at += length;
             }
         }
+        // Points and lengths go out as f32: what overflows it is no path.
+        let fits = |v: f64| v.abs() <= f64::from(f32::MAX);
         let finite = segments.iter().all(|s| {
             let (a, b) = s.ends();
             let c = match s {
                 Segment::Cubic(p) => [p[1], p[2]],
                 Segment::Line(..) => [a, b],
             };
-            [a, b, c[0], c[1]]
-                .iter()
-                .all(|p| p[0].is_finite() && p[1].is_finite())
+            [a, b, c[0], c[1]].iter().all(|p| fits(p[0]) && fits(p[1]))
         });
-        (finite && at.is_finite() && at > 0.0).then_some(Self {
+        (finite && fits(at) && at > 0.0).then_some(Self {
             segments,
             pieces,
             length: at as f32,
@@ -585,6 +585,9 @@ mod tests {
         )
         .is_none());
         assert!(geom(r#"<rect width="0" height="10"/>"#, false).is_none());
+        // Finite, but past what f32 holds: its length, or a point.
+        assert!(geom(r#"<path d="M0 0H10" transform="scale(1e100)"/>"#, false).is_none());
+        assert!(geom(r#"<path d="M1e100 0h10"/>"#, false).is_none());
     }
 
     #[test]

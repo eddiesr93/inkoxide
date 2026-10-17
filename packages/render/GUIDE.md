@@ -843,8 +843,9 @@ copied.
   forms when the font has them (`、` `「` `ー`), with its vertical metrics; Latin letters and
   digits lie sideways, as in browsers. `textOrientation="upright"` stands every character,
   `"sideways"` turns every one, and `writingMode="sideways-rl"` turns every one too
-  (`sideways-lr` goes up). The anchor and `textLength` act down the column, and the
-  underline goes on the left, the overline on the right.
+  (`sideways-lr` goes up). The anchor and `textLength` act down the column
+  (`spacingAndGlyphs` stretches sideways glyphs, and spaces upright ones), and the underline
+  goes on the left, the overline on the right.
 - **Text on a path**: a `TextPath` directly inside the `Text` sets its characters along the
   path or shape `href` names (`href="#curve"`, in `Defs`), or along its own `path` data, each
   turned with the curve, from `startOffset` (a length or a percentage of the path's length).
