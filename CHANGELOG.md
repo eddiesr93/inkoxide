@@ -11,6 +11,17 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Added
 
+- Tagged PDF and PDF/UA-1. The render option `tagged` writes a structure tree in document
+  order: paragraphs, headings, lists, sections, figures with their alternative text, tables with
+  header cells and spans, links, form fields and annotations, with everything else (backgrounds,
+  borders, headers, footers, fixed elements, repeated header rows) marked as decoration.
+  `pdfUA` writes PDF/UA-1, with its metadata, and refuses a document without a title, a
+  language, alternative text on its images, labels on its fields or headings in order
+  (`UA_CONFLICT`). New PDF/A levels 2a and 3a are tagged. Nodes take `role`, `figure` boxes
+  `alt`, table cells `header` and fields `label`; `@inkoxide/render` takes them as props, with
+  `<Document tagged pdfUA>` and `conformance="PDF/A-2a"`. The CLI takes `--tagged` and
+  `--pdf-ua`. Untagged output is unchanged.
+
 - File attachments. A document's `attachments` are files the PDF carries (from the render
   option `attachments`, or base64 `data`), listed in the viewer's attachments panel; `attachment`
   nodes and runs show an icon (a push pin, a paper clip, a chart or a tag) that opens one, and
@@ -51,7 +62,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 - `inkoxide`: `PdfALevel` implements `FromStr` (`"2b".parse()`), with `ParsePdfALevelError`; the
   CLI and the Node and WebAssembly bindings read the level through it. An unknown `pdfA` level in
-  the bindings now says `(expected one of 1b, 2b, 3b); pdfA also takes true or false`.
+  the bindings now says `(expected one of 1b, 2b, 2a, 3b, 3a); pdfA also takes true or false`.
 - The `inkoxide` and `inkoxide-cli` crates have their crates.io metadata: a README each, the
   licence, keywords and categories. The packages leave out the tests and benchmarks, which read
   fixtures outside the crate.
@@ -70,6 +81,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   reported as `INVALID_TYPE` with what it takes, instead of naming a type inside the engine.
 - `@inkoxide/render/browser`: the types of `generate` take `signal` and `timeoutMs` (its
   `GenerateOptions` is `BrowserRenderOptions`); they already worked at run time.
+- `@inkoxide/react` keeps `alt=""` in the document: in tagged output it makes an image decoration.
 - `alt` on a block `<Image>` is no longer dropped: an image node takes `alt` (see the schema
   changelog), and copying, searching and screen readers get it for the image, as they do for an
   image in text.

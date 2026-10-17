@@ -17,6 +17,7 @@ pub(super) fn write_link(
     (rect, target): &(Rect, Box<str>),
     (marks, pages): (&Marks<'_>, &[Ref]),
     profile: Profile,
+    struct_parent: Option<i32>,
 ) -> bool {
     let dest = match target.strip_prefix('#') {
         Some(id) => match marks.anchors.get(id) {
@@ -26,12 +27,20 @@ pub(super) fn write_link(
         None => None,
     };
     let uri = dest.is_none().then(|| w.out.bytes(&uri_bytes(target)));
+    // Tagged, a link says where it goes (ISO 14289-1, 7.18.5).
+    let contents = struct_parent.map(|_| w.out.text(link_text(target)));
     let mut a = w.pdf.annotation(r);
     a.subtype(AnnotationType::Link)
         .rect(annot_rect(*rect, page_h))
         .border(0.0, 0.0, 0.0, None);
     if profile.is_pdf_a() {
         a.flags(AnnotationFlags::PRINT);
+    }
+    if let Some(key) = struct_parent {
+        a.pair(Name(b"StructParent"), key);
+    }
+    if let Some(c) = &contents {
+        a.pair(Name(b"Contents"), Str(c));
     }
     let mut action = a.action();
     match dest {
@@ -46,6 +55,11 @@ pub(super) fn write_link(
         }
     }
     true
+}
+
+/// What a link's `/Contents` says: where it goes.
+fn link_text(target: &str) -> &str {
+    target.strip_prefix("mailto:").unwrap_or(target)
 }
 
 /// An annotation's `/Rect`: `r` (page coordinates, top-left origin) in

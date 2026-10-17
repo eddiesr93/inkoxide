@@ -84,7 +84,9 @@ How it differs from the Node package:
 | `threads` / `with_threads` | `threads` | all cores | Worker threads for this render. `1` runs it on the calling thread (in Node, its libuv thread) with no parallelism inside, so concurrent renders do not wait for each other; a larger number uses a pool of that size, shared by renders that ask for the same number and kept for the life of the process. A pool has at most 256 threads. Rust: `0` is `1`, and a number above 256 uses the 256-thread pool; Node: an integer from 1 to 256, other values are `INVALID_ARGUMENT` |
 | `subset_fonts` / `with_subset_fonts` | `subsetFonts` | `true` | Embed only the glyphs used |
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A, at `pdf_a_level` (Node: `true` is PDF/A-2b). PDF/A forbids scripts, so text fields with a `format` keep their formatted text and value but not the form scripts that format what the user types |
-| `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '3b'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b or 3b (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
+| `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '2a' \| '3b' \| '3a'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b, 2a, 3b or 3a (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
+| `tagged` / `with_tagged` | `tagged` | `false` | Write tagged PDF: a structure tree in document order, with roles (`role`), alternative text (`alt`), table headers and field labels, and the rest marked as artifacts. PDF/UA and the "a" levels imply it |
+| `pdf_ua` / `with_pdf_ua` | `pdfUA` | `false` | Write PDF/UA-1: tagged, with XMP metadata (`pdfuaid`), the title shown as the window title, link descriptions and field labels. A document without a title, a language, `alt` on its images and `figure` boxes, labels on its fields, or headings in order fails with `UA_CONFLICT`; encryption must keep `contentAccessibility` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
 | `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
 | `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
@@ -118,13 +120,16 @@ const pdf = await render(JSON.stringify(doc), { threads: 1, creationDate: '2026-
 With `pdfA` (Rust: `pdf_a`), the file is PDF/A, for archiving: XMP
 metadata that mirrors the document information, an sRGB output intent and
 a file identifier. CMYK JPEGs are converted to RGB, and `.notdef` glyphs
-are left out. Every level is "b": the pages look the same in every reader.
+are left out. The "b" levels make the pages look the same in every reader;
+the "a" levels are tagged too (see `tagged`).
 
 | Level | Node | Rust | Notes |
 |---|---|---|---|
 | PDF/A-2b | `true` or `'2b'` | `PdfALevel::A2b` (default) | Based on PDF 1.7 |
 | PDF/A-3b | `'3b'` | `PdfALevel::A3b` | PDF/A-2b, with the document's `attachments` as associated files (`/AF`) |
 | PDF/A-1b | `'1b'` | `PdfALevel::A1b` | Based on PDF 1.4, for archives that require it. Font subsets list their glyphs (`CIDSet`) |
+| PDF/A-2a | `'2a'` | `PdfALevel::A2a` | PDF/A-2b, tagged |
+| PDF/A-3a | `'3a'` | `PdfALevel::A3a` | PDF/A-3b, tagged |
 
 In Rust, `PdfALevel::ALL` lists the levels, `as_str` gives a level's
 short name (`"1b"`, `"2b"`, `"3b"`, as Node and the CLI take it) and

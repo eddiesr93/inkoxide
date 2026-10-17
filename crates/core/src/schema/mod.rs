@@ -356,7 +356,48 @@ pub struct Node {
     pub debug: bool,
     /// An image behind a box's children (boxed: rare). Only boxes take one.
     pub background_image: Option<Box<BackgroundImage>>,
+    /// What the node is in tagged output (a heading, a list item…).
+    pub role: Option<Role>,
     pub kind: NodeKind,
+}
+
+/// What a node is in the structure of tagged output: a structure element
+/// of PDF 1.7, or decoration (`Artifact`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Role {
+    H1,
+    H2,
+    H3,
+    H4,
+    H5,
+    H6,
+    P,
+    Section,
+    BlockQuote,
+    Caption,
+    Figure,
+    List,
+    ListItem,
+    Label,
+    ListBody,
+    /// Decoration: neither it nor its content is read.
+    Artifact,
+}
+
+impl Role {
+    /// The heading level, for a heading.
+    pub fn heading(self) -> Option<u8> {
+        match self {
+            Self::H1 => Some(1),
+            Self::H2 => Some(2),
+            Self::H3 => Some(3),
+            Self::H4 => Some(4),
+            Self::H5 => Some(5),
+            Self::H6 => Some(6),
+            _ => None,
+        }
+    }
 }
 
 impl Node {
@@ -391,7 +432,7 @@ impl Node {
     /// A box's children, or a table's rows.
     fn parts(&self) -> (&[Node], &[TableRow]) {
         match &self.kind {
-            NodeKind::Box { children } => (children, &[]),
+            NodeKind::Box { children, .. } => (children, &[]),
             NodeKind::Table(t) => (&[], &t.rows),
             _ => (&[], &[]),
         }
@@ -461,6 +502,8 @@ fn one_u8() -> u8 {
 pub enum NodeKind {
     Box {
         children: Vec<Node>,
+        /// A `figure` box's alternative text.
+        alt: Option<String>,
     },
     Text {
         runs: Vec<TextRun>,
@@ -538,6 +581,8 @@ pub struct Field {
     pub color: Option<Color>,
     /// Text: how the value shows and is typed (boxed: rare).
     pub format: Option<Box<FieldFormat>>,
+    /// What the field is for, which screen readers say (`/TU`).
+    pub label: Option<String>,
 }
 
 impl Field {
@@ -855,6 +900,10 @@ pub struct TableCell {
     pub style: NodeStyle,
     #[serde(default, deserialize_with = "de::shrunk")]
     pub children: Vec<Node>,
+    /// A header of its row, in tagged output (`TH`, scope row); the cells
+    /// of the header rows are column headers.
+    #[serde(default)]
+    pub header: bool,
 }
 
 fn one() -> u32 {

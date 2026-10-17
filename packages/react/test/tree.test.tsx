@@ -838,6 +838,8 @@ describe('pages, images and structure', () => {
       ['PDF/A-2b', '2b'],
       ['PDF/A-3', '3b'],
       ['PDF/A-3b', '3b'],
+      ['PDF/A-2a', '2a'],
+      ['PDF/A-3a', '3a'],
     ]) {
       const r = output(conformance);
       expect(r.output).toEqual({ pdfA });
@@ -845,11 +847,13 @@ describe('pages, images and structure', () => {
       // Rebuilds for the page count keep it.
       expect(r.rebuild(2).output).toEqual({ pdfA });
     }
-    for (const level of ['PDF/A-2a', 'PDF/A-3u', 'PDF/A-1a']) {
-      expect(() => output(level)).toThrow(/the a and u levels need tagged PDF.*use 'PDF\/A-\db'/);
+    for (const level of ['PDF/A-3u', 'PDF/A-1a']) {
+      expect(() => output(level)).toThrow(/the u levels and PDF\/A-1a are not supported; use 'PDF\/A-\db'/);
     }
     for (const bad of ['PDF/A-4', 'pdf/a-2b', 'PDF/UA-1', '2b', true]) {
-      expect(() => output(bad)).toThrow(/is not a PDF\/A level: use 'PDF\/A-1b', 'PDF\/A-2b' or 'PDF\/A-3b'/);
+      expect(() => output(bad)).toThrow(
+        /is not a PDF\/A level: use 'PDF\/A-1b', 'PDF\/A-2b', 'PDF\/A-2a', 'PDF\/A-3b' or 'PDF\/A-3a'/,
+      );
     }
   });
 

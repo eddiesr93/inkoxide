@@ -404,6 +404,8 @@ class Builder {
     }
     const fail = (message: string): never => this.fail(root, message);
     if (p.conformance !== undefined) this.output.pdfA = documentConformance(p.conformance, fail);
+    if (p.tagged === true) this.output.tagged = true;
+    if (p.pdfUA === true) this.output.pdfUA = true;
     const encryption = documentEncryption(p, fail);
     if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.
@@ -618,6 +620,11 @@ class Builder {
    * The props of an element in the flow. A per-page wrapper (`stackVariants`) takes the ones in
    * `FlowKey` from its variants, so a prop written here belongs there or with `style` and `debug`.
    */
+  /** An element's `role` prop, onto `node`: what it is in tagged output. */
+  private role(node: { role?: BoxNode['role'] }, inst: Instance): void {
+    if (typeof inst.props.role === 'string') node.role = inst.props.role as BoxNode['role'];
+  }
+
   private flowProps(
     node: Partial<Pick<BoxNode, FlowKey>> & { style?: Style; debug?: boolean },
     inst: Instance,
@@ -801,6 +808,8 @@ class Builder {
       inst.type === HOST.FieldSet
     ) {
       this.flowProps(node, inst);
+      this.role(node, inst);
+      if (typeof inst.props.alt === 'string') node.alt = inst.props.alt;
     } else {
       // <Header> and <Footer>.
       if (isFixed(inst)) {
@@ -835,6 +844,7 @@ class Builder {
     const style = textNodeStyle(boxStyle(own, ctx.color), own, ctx, this.docLang);
     if (style) node.style = style;
     this.flowProps(node, inst);
+    this.role(node, inst);
     return this.mark(node, inst);
   }
 
@@ -1181,6 +1191,7 @@ class Builder {
     commonProps(cell, inst);
     if (typeof p.colSpan === 'number' && p.colSpan !== 1) cell.colSpan = p.colSpan;
     if (typeof p.rowSpan === 'number' && p.rowSpan !== 1) cell.rowSpan = p.rowSpan;
+    if (p.header === true) cell.header = true;
     if (runAlignOf(own) !== undefined) {
       const { init, from } = this.source(inst, own, 'verticalAlign');
       this.fail(
@@ -1246,13 +1257,17 @@ class Builder {
       this.placedImage(inst, own, (msg) => this.fail(inst, msg, { kind: 'props' })),
     );
     this.alt(node, inst);
+    this.role(node, inst);
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }
 
-  /** An image's `alt` prop, onto `image` (a node or a run's image). */
+  /**
+   * An image's `alt` prop, onto `image` (a node or a run's image). `""` is kept: in tagged
+   * output it makes the image decoration.
+   */
   private alt(image: { alt?: string }, inst: Instance): void {
-    if (typeof inst.props.alt === 'string' && inst.props.alt !== '') image.alt = inst.props.alt;
+    if (typeof inst.props.alt === 'string') image.alt = inst.props.alt;
   }
 
   private field(inst: Instance, parent: TextCtx): FieldNode {
@@ -1304,6 +1319,7 @@ class Builder {
     }
     if (p.readOnly) field.readOnly = true;
     if (p.required) field.required = true;
+    if (typeof p.label === 'string') field.label = p.label;
     if (p.kind === 'text' || p.kind === 'select' || p.kind === 'list') field.font = this.font(ctx, inst);
     if (ctx.fontSize !== 10) field.size = ctx.fontSize;
     if (!sameColor(ctx.color, [0, 0, 0, 1])) field.color = ctx.color;
@@ -1469,6 +1485,7 @@ class Builder {
     const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };
     node.style = style;
     this.alt(node, inst);
+    this.role(node, inst);
     this.flowProps(node, inst);
     return this.mark(node, inst);
   }

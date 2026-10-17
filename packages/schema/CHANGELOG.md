@@ -9,6 +9,8 @@ version 2.
 
 ### Added
 
+- **Tagged output:** `role` on box, text and image nodes; `alt` on boxes with the role `figure`;
+  `header` on table cells; `label` on form fields. Without tagging they change nothing.
 - **Attachments:** `attachments` at the top of a document (files with a `name`, `src` or `data`,
   and optional `mimeType`, `description`, `relationship` and `modified`), the `attachment` node
   type and run property, `useAttachments` in `meta.pageMode`, and `meta.xmpExtensions`.

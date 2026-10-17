@@ -62,6 +62,7 @@ const BOX_KEYS: Record<SvgBoxProp, true> = {
   fixed: true,
   debug: true,
   alt: true,
+  role: true,
 };
 /**
  * Props the builder reads from `<Svg>` for its node, beyond `SvgProps`: the aliases of `break`,

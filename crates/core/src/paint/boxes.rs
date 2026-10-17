@@ -69,6 +69,18 @@ pub(crate) trait ContentPainter {
     /// placeholders show them, and nodes shown on some pages only are
     /// painted by them.
     fn numbers(&self) -> PageNumbers;
+
+    /// In tagged output, the structure element the content of `node`
+    /// belongs to; `None` for decoration, or without tagging.
+    fn owner(&self, _node: &Node) -> Option<crate::tag::StructId> {
+        None
+    }
+
+    /// In tagged output, the structure element of the link annotation of
+    /// box `node`.
+    fn link_owner(&self, _node: &Node) -> Option<crate::tag::StructId> {
+        None
+    }
 }
 
 /// Which part of a flow to paint.
@@ -279,6 +291,7 @@ impl BoxPainter<'_, '_, '_, '_> {
                 let link = Op::Link {
                     rect: Rect::new(x, top, w, bottom - top),
                     target: target.clone(),
+                    owner: self.content.link_owner(node),
                 };
                 // Under the box's own transform, even when it is invisible
                 // (opacity 0 still takes clicks, as in CSS).
@@ -348,11 +361,22 @@ impl BoxPainter<'_, '_, '_, '_> {
             line_boxes: self.tree.wraps.get(&i).map(|b| &**b),
             ctm: self.ctm,
         };
+        // Repeated header rows are decoration: the first ones are read.
+        let tag = match self.mode {
+            Mode::Header { .. } => None,
+            _ => self.content.owner(node),
+        };
+        if let Some(id) = tag {
+            self.ops.push(Op::Tag(id));
+        }
         match outlined.and_then(|k| self.debug.boxes.get_mut(k)) {
             Some(b) => self
                 .content
                 .paint_outlined(node, &g, &ctx, self.ops, &mut b.lines),
             None => self.content.paint(node, &g, &ctx, self.ops),
+        }
+        if tag.is_some() {
+            self.ops.push(Op::EndTag);
         }
         let tree = self.tree;
         if reordered(tree, i) {

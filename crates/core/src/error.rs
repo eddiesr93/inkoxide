@@ -94,6 +94,12 @@ validation_codes! {
     /// [`render`](crate::render) reports it: [`validate`](crate::validate)
     /// does not know the level.
     PdfaConflict = "PDFA_CONFLICT",
+    /// The document lacks something PDF/UA-1 requires: a title, a
+    /// language, alternative text on an image or a `figure` box, a label
+    /// on a form field, or headings that go down one level at a time from
+    /// `h1`. Only [`render`](crate::render) reports it, with
+    /// [`RenderOptions::pdf_ua`](crate::RenderOptions::pdf_ua).
+    UaConflict = "UA_CONFLICT",
 }
 
 impl fmt::Display for ValidationCode {

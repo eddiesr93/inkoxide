@@ -109,6 +109,8 @@ pub(crate) fn check(
         attachments,
         rendering: attachments.is_some(),
         profile,
+        decoration: 0,
+        last_heading: None,
         path: String::with_capacity(128),
         errors: Vec::new(),
         declared: BTreeSet::new(),
@@ -167,10 +169,16 @@ struct Checker<'a> {
     attachments: Option<&'a AttachmentStore>,
     /// Checking for a render, which knows its options.
     rendering: bool,
-    /// The output rendered: plain PDF or a PDF/A level. At any level a
-    /// page that is too small is recorded, and at PDF/A-1b the first use of
-    /// transparency.
+    /// The output rendered: plain PDF or a PDF/A level, and PDF/UA-1 or
+    /// not. At any PDF/A level a page that is too small is recorded, at
+    /// PDF/A-1b the first use of transparency, and under PDF/UA-1 the first
+    /// thing it lacks.
     profile: Profile,
+    /// Inside so many nodes that tagged output leaves out as decoration
+    /// (painted on every page, or with the role `artifact`).
+    decoration: u32,
+    /// The level of the last heading, in document order.
+    last_heading: Option<u8>,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -394,6 +402,20 @@ impl<'a> Checker<'a> {
             self.errors
                 .push(unsupported_version(&doc.version.to_string()));
             return;
+        }
+        if self.profile.ua() {
+            for (field, missing) in [
+                ("title", doc.meta.title.as_deref().is_none_or(str::is_empty)),
+                ("lang", doc.meta.lang.as_deref().is_none_or(str::is_empty)),
+            ] {
+                if missing && self.conflict.is_none() {
+                    self.conflict = Some(ValidationError {
+                        code: Code::UaConflict,
+                        path: format!("meta.{field}"),
+                        message: format!("PDF/UA requires the document's {field}"),
+                    });
+                }
+            }
         }
         if let Some(date) = &doc.meta.creation_date {
             if parse_rfc3339(date).is_none() {
@@ -680,6 +702,71 @@ impl<'a> Checker<'a> {
         if self.errors.len() >= MAX_ERRORS {
             return;
         }
+        let decoration = node.brk.fixed || node.role == Some(crate::schema::Role::Artifact);
+        self.decoration += u32::from(decoration);
+        if self.profile.ua() && !self.in_fixed && self.decoration == 0 {
+            self.ua_node(node);
+        }
+        self.node_body(node, ctx);
+        self.decoration -= u32::from(decoration);
+    }
+
+    /// What PDF/UA-1 asks of a node that tagged output reads: alternative
+    /// text on images and figures, labels on fields, and headings that go
+    /// down one level at a time from `h1`. The first thing it lacks is the
+    /// render's conflict.
+    fn ua_node(&mut self, node: &Node) {
+        use crate::schema::Role;
+        let lacks = |c: &mut Self, field: &str, message: String| {
+            if c.conflict.is_none() {
+                c.conflict = Some(ValidationError {
+                    code: Code::UaConflict,
+                    path: format!("{}.{field}", c.path),
+                    message,
+                });
+            }
+        };
+        match &node.kind {
+            NodeKind::Image { alt: None, .. } => lacks(
+                self,
+                "alt",
+                "PDF/UA requires alternative text on an image: `alt`, or \"\" for decoration"
+                    .into(),
+            ),
+            NodeKind::Box { alt: None, .. } if node.role == Some(Role::Figure) => lacks(
+                self,
+                "alt",
+                "PDF/UA requires alternative text on a figure: `alt`".into(),
+            ),
+            NodeKind::Field(f) if f.label.is_none() => lacks(
+                self,
+                "field.label",
+                "PDF/UA requires a label on a form field: what it is for".into(),
+            ),
+            _ => {}
+        }
+        if let Some(level) = node.role.and_then(Role::heading) {
+            let ok = match self.last_heading {
+                None => level == 1,
+                Some(prev) => level <= prev + 1,
+            };
+            if !ok {
+                let after = self
+                    .last_heading
+                    .map_or("the start".to_string(), |p| format!("h{p}"));
+                lacks(
+                    self,
+                    "role",
+                    format!(
+                        "PDF/UA headings go down one level at a time from h1: h{level} after {after}"
+                    ),
+                );
+            }
+            self.last_heading = Some(level);
+        }
+    }
+
+    fn node_body(&mut self, node: &Node, ctx: Ctx) {
         if let Some(id) = &node.id {
             self.id(Some("id"), id);
         }
@@ -770,8 +857,22 @@ impl<'a> Checker<'a> {
             });
         }
 
+        if let Some(role) = node.role {
+            self.role(role, &node.kind);
+        }
+
         match &node.kind {
-            NodeKind::Box { children } => self.children(Some(&node.style), children, inner),
+            NodeKind::Box { children, alt } => {
+                self.children(Some(&node.style), children, inner);
+                self.alt(alt.as_deref());
+                if alt.is_some() && node.role != Some(crate::schema::Role::Figure) {
+                    self.err(
+                        Code::InvalidValue,
+                        Some("alt"),
+                        "only a box with the role `figure` takes `alt`",
+                    );
+                }
+            }
             NodeKind::Text { runs } => {
                 self.at("runs", |c| {
                     for (i, r) in runs.iter().enumerate() {
