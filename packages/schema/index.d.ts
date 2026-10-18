@@ -837,6 +837,10 @@ export interface ImageNode {
    * Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred.
    */
   objectPosition?: ObjectPosition;
+  /**
+   * Alternative text: what copying, searching and screen readers get for the image.
+   */
+  alt?: string;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

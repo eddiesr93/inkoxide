@@ -22,7 +22,7 @@ pub(super) struct Content<'x, T: ContentPainter> {
 impl<T: ContentPainter> ContentPainter for Content<'_, T> {
     fn paint(&mut self, node: &Node, geo: &Geometry, ctx: &ContentCtx<'_>, ops: &mut Vec<Op>) {
         match node.kind {
-            NodeKind::Image { .. } => self.images.paint(node, geo, ctx, ops),
+            NodeKind::Image { .. } => self.images.paint(node, geo, ctx, self.fonts, ops),
             NodeKind::Field(ref f) => crate::forms::paint(f, geo, ctx, self.fonts, ops),
             NodeKind::Note(ref n) => crate::notes::paint(n, geo, ctx, ops),
             _ => self.text.paint(node, geo, ctx, ops),

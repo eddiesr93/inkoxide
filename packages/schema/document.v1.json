@@ -1613,6 +1613,11 @@
         "objectPosition": {
           "$ref": "#/$defs/ObjectPosition",
           "description": "Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred."
+        },
+        "alt": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "Alternative text: what copying, searching and screen readers get for the image."
         }
       },
       "oneOf": [

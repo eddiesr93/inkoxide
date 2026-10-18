@@ -373,11 +373,11 @@ fn msgpack_errors_match_json() {
     }
 }
 
-/// Colour emoji are images, but extract as their text (`ActualText`), and
-/// inline images as their alternative text: checked with poppler's
-/// `pdftotext` when it is installed.
+/// Colour emoji are images, but extract as their text (`ActualText`),
+/// images, inline or not, as their alternative text, and form fields as the
+/// text they show: checked with poppler's `pdftotext` when it is installed.
 #[test]
-fn colour_emoji_and_inline_images_extract_as_text() {
+fn colour_emoji_and_images_extract_as_text() {
     if !installed("pdftotext", "-v") {
         return;
     }
@@ -400,6 +400,9 @@ fn colour_emoji_and_inline_images_extract_as_text() {
         ),
         ("emoji-images", &["smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"]),
         ("text-inline-images", &["Logo"]),
+        ("images-jpeg-png", &["Harbour photo"]),
+        // The text form fields show, from their appearances.
+        ("forms", &["Chloë Dubois-Müller", "No. 2026/0815"]),
     ] {
         let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
         let pdf = inkoxide::render(
@@ -425,15 +428,62 @@ fn colour_emoji_and_inline_images_extract_as_text() {
     }
 }
 
+/// An image taller than a page draws on each page it crosses, but its
+/// alternative text goes with its first part only.
+#[test]
+fn split_image_alt_is_written_once() {
+    let (fonts, images) = stores();
+    let doc = br#"{"version":1,"pages":[{"size":{"width":200,"height":200},"children":[
+        {"type":"image","src":"photo","alt":"Harbour","style":{"width":150,"height":500}}]}]}"#;
+    let opts = RenderOptions::default().with_compress(false);
+    let pdf = inkoxide::render(doc, InputFormat::Json, &opts, &fonts, &images).unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert!(
+        count(b"/Type /Page\n") + count(b"/Type /Page ") >= 3,
+        "the image splits"
+    );
+    assert_eq!(count(b"/ActualText"), 1);
+}
+
 /// The text of an SVG image is PDF text: the fonts' `ToUnicode` maps hold
 /// its characters, those only the SVG has too (its Hebrew, its digits, the
 /// capitals of its clip path).
 #[test]
 fn svg_text_maps_to_unicode() {
-    let (fonts, images) = stores();
     let input = fs::read(root().join("fixtures/docs/svg-text.json")).unwrap();
+    let mapped = mapped_text(&input);
+    for c in "שלוםCLIP42H".chars() {
+        assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
+    }
+}
+
+/// The glyphs form fields show, and those embedded to edit them, map to
+/// their characters too, though layout never shaped them.
+#[test]
+fn form_field_glyphs_map_to_unicode() {
+    let field = |field: &str| format!(r#"{{"type":"field","field":{field}}}"#);
+    let doc = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+           "pages":[{{"size":{{"width":300,"height":300}},"children":[{},{}]}}]}}"#,
+        field(
+            r#"{"name":"a","kind":"text","font":"Inter-Regular","value":"Zoë Ζωή","readOnly":true}"#
+        ),
+        field(r#"{"name":"b","kind":"select","font":"Inter-Regular","options":["Ωmega"]}"#),
+    );
+    let mapped = mapped_text(doc.as_bytes());
+    // The value shown (Greek is outside what is embedded for editing), an
+    // option, and the Latin range embedded for editing.
+    for c in "ZoëΖωήΩmega€Șț~".chars() {
+        assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
+    }
+}
+
+/// The text the `ToUnicode` maps of the fonts of document `input` map
+/// glyphs to.
+fn mapped_text(input: &[u8]) -> String {
+    let (fonts, images) = stores();
     let options = RenderOptions::default().with_compress(false);
-    let pdf = inkoxide::render(&input, InputFormat::Json, &options, &fonts, &images).unwrap();
+    let pdf = inkoxide::render(input, InputFormat::Json, &options, &fonts, &images).unwrap();
     let pdf = String::from_utf8_lossy(&pdf);
     let mut mapped = String::new();
     for block in pdf.split("beginbfchar").skip(1) {
@@ -448,9 +498,7 @@ fn svg_text_maps_to_unicode() {
             mapped.push_str(&String::from_utf16_lossy(&units));
         }
     }
-    for c in "שלוםCLIP42H".chars() {
-        assert!(mapped.contains(c), "{c} is not mapped: {mapped}");
-    }
+    mapped
 }
 
 /// SVG text draws a colour font's glyphs as images, in spans with their

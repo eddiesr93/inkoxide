@@ -335,6 +335,23 @@ impl UnicodeMap {
         self.fonts.get(&font)?.get(&gid).map(String::as_str)
     }
 
+    /// The mappings of `font`, with `extra`'s added for the glyphs this map
+    /// has none for; borrowed when `extra` has nothing for the font.
+    pub fn font_with<'a>(
+        &'a self,
+        font: FontKey,
+        extra: &UnicodeMap,
+    ) -> Option<std::borrow::Cow<'a, BTreeMap<u16, String>>> {
+        let Some(more) = extra.fonts.get(&font) else {
+            return self.fonts.get(&font).map(std::borrow::Cow::Borrowed);
+        };
+        let mut all = self.fonts.get(&font).cloned().unwrap_or_default();
+        for (gid, text) in more {
+            all.entry(*gid).or_insert_with(|| text.clone());
+        }
+        Some(std::borrow::Cow::Owned(all))
+    }
+
     /// Adds `other`'s mappings, keeping the first mapping of each glyph.
     pub fn merge_first(&mut self, other: UnicodeMap) {
         for (font, map) in other.fonts {

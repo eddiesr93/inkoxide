@@ -2084,7 +2084,12 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         "note" => {
             m.insert("note".into(), note(s));
         }
-        "image" => image_props(s, &mut m),
+        "image" => {
+            image_props(s, &mut m);
+            if s.chance(60) {
+                m.insert("alt".into(), json!(text(s)));
+            }
+        }
         "table" => {
             m.extend(table(s, depth, budget));
             if s.chance(60) {
@@ -2494,6 +2499,9 @@ mod tests {
             r#""pageMode":"#,
             r#""pageLayout":"twoPage"#,
             r#""EmojiTest-sbix"]"#,
+            // Alt on an image node (keys are sorted) and on an image in text.
+            r#"[{"alt":"#,
+            r#""image":{"alt":"#,
         ];
         // Boxes nested close to the parser's limit (keys are sorted).
         let deep = r#"{"children":["#.repeat(56);

@@ -54,6 +54,9 @@ pub(crate) struct FieldOp {
     pub editable: bool,
     /// The glyphs of a select's or a list's options.
     pub option_glyphs: Vec<u16>,
+    /// Each glyph of `text` and `option_glyphs` with its character, for its
+    /// font's `ToUnicode` map: they are looked up by character, not shaped.
+    pub glyph_chars: Vec<(u16, char)>,
     /// A list box: the rows of its selected options in view, in widget
     /// coordinates (top-left origin), filled behind the text.
     pub highlights: Vec<Rect>,
@@ -117,6 +120,7 @@ pub(crate) fn paint(
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
     let mut text = Vec::new();
     let mut option_glyphs = Vec::new();
+    let mut glyph_chars = Vec::new();
     let editable = f.is_text_like() && !f.read_only;
     let line_h = f.size * LINE_HEIGHT;
     let (selected, top_index, highlights) = if f.kind == FieldKind::List {
@@ -170,6 +174,7 @@ pub(crate) fn paint(
             let mut glyphs = Vec::new();
             for c in line.chars() {
                 let Some(id) = lf.glyph(c) else { continue };
+                glyph_chars.push((id, c));
                 glyphs.push(TextGlyph {
                     id,
                     x: pen,
@@ -191,7 +196,11 @@ pub(crate) fn paint(
         if editable {
             // A choice shows any option, whatever its script.
             for o in &f.options {
-                option_glyphs.extend(o.chars().filter_map(|c| lf.glyph(c)));
+                for c in o.chars() {
+                    let Some(id) = lf.glyph(c) else { continue };
+                    option_glyphs.push(id);
+                    glyph_chars.push((id, c));
+                }
             }
         }
     }
@@ -202,6 +211,7 @@ pub(crate) fn paint(
         text,
         editable: editable && font.is_some(),
         option_glyphs,
+        glyph_chars,
         highlights,
         selected,
         top_index,
@@ -262,13 +272,14 @@ fn list_rows(
     (top, rows)
 }
 
-/// The glyphs of `font` for the characters of `EDIT_RANGES`, embedded for
-/// the editable text, select and list fields set in it.
-pub(crate) fn edit_glyphs<'f>(font: &'f LoadedFont<'_>) -> impl Iterator<Item = u16> + 'f {
+/// The glyphs of `font` for the characters of `EDIT_RANGES`, each with
+/// its character, embedded for the editable text, select and list fields
+/// set in it.
+pub(crate) fn edit_glyphs<'f>(font: &'f LoadedFont<'_>) -> impl Iterator<Item = (u16, char)> + 'f {
     EDIT_RANGES
         .iter()
         .flat_map(|&(a, b)| a..=b)
-        .filter_map(|c| font.glyph(c))
+        .filter_map(|c| Some((font.glyph(c)?, c)))
 }
 
 #[cfg(test)]
@@ -312,7 +323,8 @@ mod tests {
         let mut op = *op;
         // What the writer embeds for it.
         if op.editable {
-            op.option_glyphs.extend(edit_glyphs(fonts.get(0)));
+            op.option_glyphs
+                .extend(edit_glyphs(fonts.get(0)).map(|(g, _)| g));
         }
         (op, glyphs.collect())
     }

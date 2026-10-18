@@ -353,6 +353,8 @@ pub enum NodeKind {
         source: ImageSource,
         fit: ImageFit,
         object_position: ObjectPosition,
+        /// What text extraction gets for the image.
+        alt: Option<String>,
     },
     Table(Table),
     PageBreak,

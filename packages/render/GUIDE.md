@@ -280,12 +280,15 @@ const logo = readFileSync('logo.png');
 - **Size.** An `Image` with no `width` or `height` is as big as the image is (96 dpi), but no
   wider than the room it has: when the image is wider, it is scaled down to fit, keeping its
   aspect ratio. CSS would let it overflow. With one of them, the other follows the ratio.
+- **Alternative text.** `alt` is the text the image copies and searches as, and what screen
+  readers say for it: `<Image src={chart} alt="Revenue by month, rising from 12k to 30k" />`. It
+  takes at most 1024 characters; `<Svg>` and `<Canvas>` take it too.
 - **Images in text.** An `Image` inside a `Text` sits in the line, like a character: lines break
   before and after it. With neither `width` nor `height` it is 1em high (the text's size) and as
   wide as its aspect ratio gives; with one of them (in points or em), the other follows the
   ratio. Percentages and box styles (margins, padding, borders) are errors there. `fit`,
-  `objectFit` and `objectPosition` work as on a block image, `alt` is the text it copies and
-  searches as, and a `Link` around it makes it a link. `verticalAlign` places it: `baseline` (the
+  `objectFit`, `objectPosition` and `alt` work as on a block image, and a `Link` around it makes
+  it a link. `verticalAlign` places it: `baseline` (the
   default, its bottom on the baseline), `middle` (its middle half an x-height above the
   baseline), `text-top` and `text-bottom` (its top at the font's ascender, its bottom at its
   descender), `top` and `bottom` (at the line's top or bottom), `super` and `sub`, or a number of

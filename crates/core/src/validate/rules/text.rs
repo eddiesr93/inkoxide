@@ -2,8 +2,8 @@
 //! OpenType features.
 
 use super::{
-    Checker, MAX_ALT, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS,
-    MAX_FEATURE_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE,
+    Checker, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS, MAX_FEATURE_VALUE,
+    MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{FontFeature, RunAlign, RunImage, TextRun};
@@ -38,17 +38,7 @@ impl Checker<'_> {
                 );
             }
         }
-        if image
-            .alt
-            .as_ref()
-            .is_some_and(|a| a.chars().count() > MAX_ALT)
-        {
-            self.err(
-                Code::InvalidValue,
-                Some("alt"),
-                format!("alternative text is at most {MAX_ALT} characters"),
-            );
-        }
+        self.alt(image.alt.as_deref());
     }
 
     pub(super) fn run(&mut self, r: &TextRun) {

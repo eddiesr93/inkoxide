@@ -747,10 +747,12 @@ impl<'a> Checker<'a> {
             NodeKind::Image {
                 source,
                 object_position,
+                alt,
                 ..
             } => {
                 self.object_position(object_position);
                 self.image_source(source);
+                self.alt(alt.as_deref());
             }
             NodeKind::Table(t) => self.table(t),
             NodeKind::PageBreak => {
