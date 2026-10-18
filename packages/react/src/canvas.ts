@@ -445,7 +445,7 @@ export class Painter {
     this.state.font =
       this.fonts.byId(name) ??
       (standard
-        ? { family: [name.split('-')[0] ?? name, ...around], weight: standard[0], style: standard[1] }
+        ? { family: around, weight: standard[0], style: standard[1] }
         : { family: [name], weight: 400, style: 'normal' });
     if (size !== undefined) this.state.fontSize = size;
     return this;

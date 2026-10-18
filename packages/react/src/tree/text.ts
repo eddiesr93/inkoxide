@@ -1,6 +1,9 @@
 import type { HyphenationCallback } from '../components/index.ts';
-import type { TemplateErrorInit } from '../errors.ts';
+import type { Fail } from '../errors.ts';
 import type { TextCtx } from './style.ts';
+
+/** How many language tags are kept: more than a template has, not unbounded for data. */
+const MAX_CACHED_LOCALES = 256;
 
 const locales = new Map<string, string | undefined>();
 
@@ -18,6 +21,7 @@ function caseLocale(lang: string | undefined): string | undefined {
     } catch {
       // Not a BCP 47 tag.
     }
+    if (locales.size >= MAX_CACHED_LOCALES) locales.clear();
     locales.set(lang, ok);
   }
   return locales.get(lang);
@@ -44,9 +48,6 @@ export function transformText(text: string, how: TextCtx['textTransform'], tag: 
 /** A word as a hyphenation callback sees it: letters, their marks, and soft hyphens. */
 const WORD = /[\p{L}\p{M}\u00AD]+/gu;
 const SHY = '\u00AD';
-
-/** Reports a callback that throws or returns parts that are not the word. */
-type Fail = (message: string, init: TemplateErrorInit) => never;
 
 /** Hyphenation callbacks applied to text, each distinct word asked once per callback per build. */
 export class Hyphenator {

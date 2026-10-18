@@ -546,7 +546,10 @@ export interface PageProps {
   orientation?: 'portrait' | 'landscape';
   /** One length for all sides or per side (points, or `'15mm'`). */
   margin?: Edges<Length>;
-  /** Text utilities set the defaults inherited by the page's content; `bg-*` sets the page background. */
+  /**
+   * Text utilities set the defaults inherited by the page's content; `bg-*` sets the page
+   * background, which is opaque: a colour with opacity is drawn on white.
+   */
   className?: string;
   style?: Style;
   /** Outlines the page's margins and the boxes of every element on it, header and footer included. */

@@ -252,6 +252,12 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Changed
 
+- `@inkoxide/react` refuses what the guide says it refuses and used to ignore: `className`,
+  `style` and `id` on `<Document>`, `id` on `<Page>`, any prop on `<PageNumber>` and
+  `<TotalPages>`, `role` on a `<Text>`, `<Link>` or `<Image>` inside a `<Text>`, and
+  `verticalAlign` on a `<View>` or a `<Text>` where it places nothing (`top`, `middle`, `bottom`
+  on either, any value on a `View`).
+
 - Colour glyphs in text are the glyphs of Type 3 fonts, one per colour font for each 255 of its
   glyphs, instead of an image and an invisible space each: a glyph's image is in the PDF once,
   and the text copies and searches through the font's `ToUnicode` map. Colour glyphs in the
@@ -272,6 +278,24 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Fixed
 
+- `@inkoxide/react`: a page background with opacity (`bg-transparent`, `bg-black/5`) is drawn on
+  white. The engine paints a page background opaque, so it was the colour without its opacity:
+  solid black for `bg-transparent`.
+- `@inkoxide/react`: `float` and `clear` on an element with a `render` prop that differs by page
+  stay in the layout, on the wrapper of its variants; a template that rendered on one page was
+  refused as soon as it had two.
+- `@inkoxide/react`: a word that JSX splits over several strings (`{fruit}s pie`) is cased by
+  `capitalize` and handed to `hyphenationCallback` whole.
+- `@inkoxide/react`: an `<Svg>` and a `<Canvas>` take the text colour and the font of their own
+  classes, and `currentColor` in a drawing is the text colour around it, not black.
+- `@inkoxide/react`: a pdfkit standard font name in a `<Canvas>` (`p.font('Helvetica-Bold')`)
+  takes the canvas's family in that weight without a warning that the standard font is not
+  registered, and a family registered as `Helvetica` or `Times` no longer wins over it.
+- `@inkoxide/react`: rendering with a `FontRegistry` that has no font is a `TemplateError` of
+  kind `props` with the component stack, instead of a plain `Error`; an invalid `<Document>` prop
+  (`conformance`, `pdfUA`, `userPassword`) is of kind `props` too, not `structure`.
+- `@inkoxide/react`: bound the box styles it keeps for each text colour, and the language tags it
+  keeps, so that a long-running process does not keep more with every render.
 - An SVG whose tags nest more than 256 levels deep is refused (`IMAGE_ERROR`)
   before its XML is parsed.
 - A class for which Tailwind writes CSS that does not parse is an unknown class in

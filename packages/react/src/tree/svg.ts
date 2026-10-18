@@ -103,6 +103,8 @@ export interface SvgTextFonts {
   font: DrawingFont;
   /** Its font size in points. */
   size: number;
+  /** Its text colour, which `currentColor` in the drawing is. */
+  color: Color;
   /** The registered face for `font` (marked as used): its family, weight, style and width. */
   face(font: DrawingFont, inst: Instance): DrawingFont;
   /** The style of the classes `className` of `inst`. */
@@ -300,6 +302,10 @@ export function svgMarkup(
     if (own[k] !== undefined) paints[k] = CLASS_SVG[k]?.(own[k]);
   }
   a += attrs(paints, CHILD_SKIP);
+  // SVG's own `currentColor` is black: say the text colour around the drawing where it is another.
+  if (inst.props.color === undefined && text.color.some((v, i) => v !== (i === 3 ? 1 : 0))) {
+    a += ` color="${svgColor(text.color)}"`;
+  }
   if (inst.children.some(hasText) && inst.props.fontSize === undefined) {
     a += ` font-size="${text.size}"`;
   }

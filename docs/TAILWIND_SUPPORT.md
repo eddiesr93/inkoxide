@@ -115,7 +115,7 @@ that are supported and tested; each example is a unit test.
 | `italic`, `not-italic` | run `font` (style) | `italic` → `{"fontStyle":"italic"}` |  |
 | `text-{colour}`, `text-[#…]` | run `color` | `text-black` → `{"color":[0,0,0,1]}` |  |
 | `text-left`, `text-center`, `text-right`, `text-justify`, `text-start`, `text-end` | `textAlign` | `text-left` → `{"textAlign":"left"}` |  |
-| `leading-*` | `lineHeight` | `leading-none` → `{"lineHeight":{"mult":1}}` | Unitless values are multipliers; lengths (`leading-6`) are divided by the text size. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5). |
+| `leading-*` | `lineHeight` | `leading-none` → `{"lineHeight":{"mult":1}}` | Unitless values are multipliers; lengths (`leading-6`) are divided by the text size, so a larger run on the line makes it taller. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5). |
 | `tracking-*` | run `letterSpacing` | `tracking-wide` → `{"letterSpacing":{"em":0.025}}` |  |
 | `font-features-[…]` | run `fontFeatures` | `font-features-['tnum','ss01']` → `{"fontFeatureSettings":{"tnum":1,"ss01":1}}` | CSS `font-feature-settings`, with `_` for spaces: `font-features-['tnum','ss01']`. |
 | `[font-variation-settings:…]` | `fontVariationSettings` | `[font-variation-settings:'wdth'_75]` → `{"fontVariationSettings":{"wdth":75}}` | Axis values of a variable font, as an arbitrary property with `_` for spaces: `[font-variation-settings:'wdth'_75]`. A `wght` in it wins over the weight. |

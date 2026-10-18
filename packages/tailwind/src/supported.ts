@@ -690,7 +690,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     utilities: '`leading-*`',
     maps: '`lineHeight`',
     notes:
-      "Unitless values are multipliers; lengths (`leading-6`) are divided by the text size. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5).",
+      "Unitless values are multipliers; lengths (`leading-6`) are divided by the text size, so a larger run on the line makes it taller. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5).",
     examples: {
       'leading-none': { lineHeight: { mult: 1 } },
       'leading-relaxed': { lineHeight: { mult: 1.625 } },

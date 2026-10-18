@@ -19,6 +19,9 @@ export interface TemplateErrorInit {
   cause?: unknown;
 }
 
+/** Throws the template error of a prop (or whatever the caller checks), with `message`. */
+export type Fail = (message: string, init?: TemplateErrorInit) => never;
+
 /**
  * An error in a template, with the React component stack that leads to the offending element
  * and, for Tailwind problems, the class string.

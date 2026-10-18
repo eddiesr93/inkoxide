@@ -40,7 +40,7 @@ import {
   type RenderProp,
   type Style as StyleInput,
 } from '../components/index.ts';
-import { TemplateError, type TemplateErrorInit } from '../errors.ts';
+import { type Fail, TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
 import { PageContext, RenderCall } from '../page.ts';
 import {
@@ -80,6 +80,7 @@ import {
   callbackOf,
   hasInherited,
   inherit,
+  onWhite,
   resolveColor,
   runAlignOf,
   type TextCtx,
@@ -312,6 +313,13 @@ class Builder {
 
   private font(ctx: TextCtx, inst: Instance | undefined): string {
     if (ctx.fontId !== undefined) return ctx.fontId;
+    if (this.opts.fonts.ids().length === 0) {
+      this.fail(
+        inst,
+        'No fonts are registered: add one with fonts.register({ id, family }, bytes), or pass a FontRegistry that has one as the `fonts` option.',
+        { kind: 'props' },
+      );
+    }
     const r = this.opts.fonts.resolve(
       ctx.fontFamily,
       ctx.fontWeight,
@@ -375,6 +383,35 @@ class Builder {
     this.fail(inst, `<${name}> does not take \`${shown}\`: ${why}`, { kind: 'props' });
   }
 
+  /** `<PageNumber>` and `<TotalPages>` take no props: style the `<Text>` around them. */
+  private noProps(inst: Instance): void {
+    const key = Object.keys(inst.props).find((k) => k !== 'children' && inst.props[k] !== undefined);
+    if (key === undefined) return;
+    this.fail(
+      inst,
+      `<${HOST_NAME[inst.type]}> takes no props, so \`${key}\` has no effect. Style the <Text> around it.`,
+      { kind: 'props' },
+    );
+  }
+
+  /**
+   * `verticalAlign` places the content of a `<Cell>` (`top`, `middle`, `bottom`) or a run on its line
+   * (`super`, `sub`, `baseline`): on a box, or on a `<Text>` with a cell's value, it would do nothing.
+   */
+  private noCellAlign(inst: Instance, s: FlatStyle): void {
+    const v = s.verticalAlign;
+    if (v === undefined || (inst.type === HOST.Text && runAlignOf(s) !== undefined)) return;
+    const { init, from } = this.source(inst, s, 'verticalAlign');
+    const name = HOST_NAME[inst.type];
+    this.fail(
+      inst,
+      inst.type === HOST.Text
+        ? `verticalAlign "${v}" (from ${from}) applies to a <Cell>, not <Text>: a <Text> takes 'super', 'sub' or 'baseline'.`
+        : `verticalAlign "${v}" (from ${from}) applies to a <Cell> or to a run in a <Text>, not <${name}>.`,
+      init,
+    );
+  }
+
   private noTextOnly(inst: Instance, s: FlatStyle): void {
     const [k, ...more] = textOnlyKeys(s);
     if (k === undefined) return;
@@ -405,6 +442,15 @@ class Builder {
       if (p[key] !== undefined)
         this.fail(root, `<Document ${key}> is not supported: ${why}.`, { kind: 'props' });
     }
+    for (const key of ['className', 'style', 'id'] as const) {
+      if (p[key] !== undefined) {
+        this.fail(
+          root,
+          `<Document> does not take \`${key}\`: it is not an element with a box. Put it on a <Page> or an element inside one.`,
+          { kind: 'props' },
+        );
+      }
+    }
     const meta: Meta = {};
     for (const k of [
       'title',
@@ -419,7 +465,7 @@ class Builder {
       const v = p[k];
       if (typeof v === 'string') meta[k] = v;
     }
-    const fail = (message: string): never => this.fail(root, message);
+    const fail: Fail = (message, init) => this.fail(root, message, { kind: 'props', ...init });
     if (p.conformance !== undefined) this.output.pdfA = documentConformance(p.conformance, fail);
     if (p.tagged === true) this.output.tagged = true;
     const pdfUA = documentPdfUa(p.pdfUA, fail);
@@ -484,6 +530,9 @@ class Builder {
       size = { width: size.height, height: size.width };
     }
     this.pageBox = size;
+    if (inst.props.id !== undefined) {
+      this.fail(inst, '<Page> does not take `id`: put it on an element inside it.', { kind: 'props' });
+    }
     this.noFlowProps(inst);
     const own = this.styleOf(inst, parent);
     this.noTextOnly(inst, own);
@@ -526,7 +575,7 @@ class Builder {
       spec.margin = { ...spec.margin, [k]: pt };
     }
     if (own.backgroundColor !== undefined) {
-      spec.background = resolveColor(own.backgroundColor, ctx.color);
+      spec.background = onWhite(resolveColor(own.backgroundColor, ctx.color));
     }
     if (this.debugAll || inst.props.debug === true) spec.debug = true;
     const flow: Node[] = [];
@@ -815,6 +864,7 @@ class Builder {
   ): SchemaNode {
     const own = { ...defaults, ...this.styleOf(inst, parent) };
     this.noTextOnly(inst, own);
+    this.noCellAlign(inst, own);
     const ctx = inherit(parent, own);
     const node: BoxNode = { type: 'box' };
     const style = boxStyle(own, ctx.color);
@@ -847,6 +897,7 @@ class Builder {
 
   private text(inst: Instance, parent: TextCtx, content: readonly Node[] = inst.children): TextNode {
     const own = this.styleOf(inst, parent);
+    this.noCellAlign(inst, own);
     const p = inst.props;
     const ctx = inherit(parent, own, {
       verticalAlign: runAlignOf(own),
@@ -881,11 +932,18 @@ class Builder {
     owner: Instance,
     para: { patterns: boolean; lang: string | undefined } = { patterns: usesPatterns(ctx), lang: ctx.lang },
   ): void {
-    for (const n of nodes) {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i] as Node;
       if (n.kind === 'text') {
-        if (n.text === '') continue;
+        // JSX splits `{fruit}s pie` into several strings: a word is cased and hyphenated whole.
+        let raw = n.text;
+        for (let next = nodes[i + 1]; next?.kind === 'text'; next = nodes[i + 1]) {
+          raw += next.text;
+          i++;
+        }
+        if (raw === '') continue;
         // The callback sees the words as displayed, after `textTransform`.
-        const text = transformText(n.text, ctx.textTransform, ctx.lang);
+        const text = transformText(raw, ctx.textTransform, ctx.lang);
         // The engine does not break `pre` and `nowrap` text, so the callback is not asked.
         const cb = ctx.whiteSpace === 'pre' || ctx.whiteSpace === 'nowrap' ? undefined : callbackOf(ctx);
         const patterns = usesPatterns(ctx) && ctx.lang === para.lang;
@@ -960,6 +1018,7 @@ class Builder {
           break;
         case HOST.PageNumber:
         case HOST.TotalPages:
+          this.noProps(n);
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
           break;
         default:
@@ -1252,12 +1311,7 @@ class Builder {
    * An image's source and placement, as an image node, an image run and a background image take
    * them: its `src` prop (resolved), and `fit` and `objectPosition` from its props and style.
    */
-  private placedImage(
-    inst: Instance,
-    own: FlatStyle,
-    fail: (message: string) => never,
-    component?: string,
-  ): BackgroundImage {
+  private placedImage(inst: Instance, own: FlatStyle, fail: Fail, component?: string): BackgroundImage {
     const src = this.imageTable.resolve(inst.props.src, fail, component);
     const image: BackgroundImage = 'data' in src ? { data: src.data } : { src: src.src };
     const fit = (inst.props.fit as BackgroundImage['fit']) ?? own.objectFit;
@@ -1370,6 +1424,7 @@ class Builder {
         stretch: ctx.fontStretch ?? 100,
       },
       size: ctx.fontSize,
+      color: ctx.color,
       face: (font, inst) => {
         const own = {
           ...ctx,
@@ -1492,6 +1547,8 @@ class Builder {
   private drawing(inst: Instance, ctx: TextCtx): ImageNode {
     const own = this.styleOf(inst, ctx);
     this.noTextOnly(inst, own);
+    // Its own text colour and font utilities are what the drawing's `currentColor` and text inherit.
+    const around = inherit(ctx, own);
     const p = inst.props;
     const name = HOST_NAME[inst.type];
     if (p.width === undefined || p.height === undefined) {
@@ -1504,7 +1561,7 @@ class Builder {
     if (inst.type === HOST.Canvas) {
       const paint = p.paint as ((painter: Painter, w: number, h: number) => void) | undefined;
       if (typeof paint !== 'function') this.fail(inst, '<Canvas> needs a paint function.', { kind: 'props' });
-      const text = this.svgText(ctx);
+      const text = this.svgText(around);
       const painter = new Painter({
         font: text.font,
         byId: (id) => {
@@ -1520,10 +1577,10 @@ class Builder {
       }
       markup = svgDocument(w, h, painter.toSvgBody());
     } else {
-      markup = svgMarkup(inst, w, h, this.svgText(ctx), own);
+      markup = svgMarkup(inst, w, h, this.svgText(around), own);
     }
     const node: ImageNode = { type: 'image', data: svgDataUrl(markup) };
-    const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };
+    const style: Style = { width: w, height: h, ...boxStyle(own, around.color) };
     node.style = style;
     this.alt(node, inst);
     this.role(node, inst);

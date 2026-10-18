@@ -37,7 +37,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | Component | What it is |
 |---|---|
 | `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` and `flattenAlpha` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword`, `permissions` and `entropy` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
-| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
+| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. A `bg-*` class sets its background, which is opaque: a colour with opacity (`bg-black/5`, `bg-transparent`) is drawn on white. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
@@ -72,9 +72,11 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   `fontSize`, the inherited one; in `lineHeight` and `letterSpacing`, the size of the text they
   apply to, so they scale with each run), `vw` and `vh` (1% of the page's width and height), or a
   percentage. `lineHeight` is a multiplier of the text size (`1.4`, `'140%'`, `'1.4em'`) or a
-  length (`'14pt'`). `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
-  other. A class's arbitrary value (`w-[…]`) takes the same syntax and reads the same. A page's
-  `size` takes the units that do not depend on the font or the page.
+  length (`'14pt'`), which is read as that multiple of the text's own size: a larger run on the
+  line makes the line taller than the length. `calc()` adds lengths (`'calc(10mm + 1em)'`) or
+  percentages, but not one to the other. A class's arbitrary value (`w-[…]`) takes the same
+  syntax and reads the same. A page's `size` takes the units that do not depend on the font or
+  the page.
   Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
   the element's own size. A percentage height needs a parent with a set height; a child of the
   `Page` takes it of the page.
@@ -384,9 +386,9 @@ const logo = readFileSync('logo.png');
   ```
 
 - **Background images.** `ImageBackground` is a `View` with an image behind its children. It
-  takes the props of a `View` and `src` in any form `Image` takes; `fit`, `objectFit` and
-  `objectPosition` (and the `object-*` classes) place the image as on an `Image`, `fill` by
-  default. The image fills the padding box, inside the borders, as a CSS `background-image`
+  takes the props of a `View`, except `render`, and `src` in any form `Image` takes; `fit`,
+  `objectFit` and `objectPosition` (and the `object-*` classes) place the image as on an `Image`,
+  `fill` by default. The image fills the padding box, inside the borders, as a CSS `background-image`
   does: it is drawn over the background colour and under the borders and the children, and
   clipped to the box, rounded by `borderRadius`. A box split across pages is sliced with its
   image, like its background colour. `source`, `imageStyle` and `srcSet` throw: pass the image
@@ -837,7 +839,9 @@ reader without it may do:
   superscripts and subscripts, for text of its size; `'baseline'` puts it back. The size stays
   the one you set: give the superscript a smaller `fontSize`. The line grows to fit it, as in
   CSS. A `Text` inside a superscript stays on its baseline. On a `Cell`, `verticalAlign` places
-  the content (`top`, `middle`, `bottom`), and `super` or `sub` there is an error.
+  the content (`top`, `middle`, `bottom`), and `super` or `sub` there is an error. On a `View` or
+  a `Text` it would place nothing, so `top`, `middle` and `bottom` there, and any value on a
+  `View`, are errors too.
 - **OpenType features.** `fontFeatureSettings` takes a CSS string
   (`"'tnum' 1, 'liga' off"`), a list of tags to turn on (`['tnum', 'smcp']`), or an object of
   tags to values or switches (`{ tnum: 1, liga: false, salt: 2 }`): 1 turns a feature on, 0
@@ -869,7 +873,9 @@ utilities that draw: `fill-*`, `stroke-*` (colours, `none`, `current`), `stroke-
 the SVG attributes CSS sets (`style={{ fill: 'teal', strokeWidth: 2 }}`). As in CSS, the
 classes win over the attributes and `style` over both, and other utilities or keys are an
 error. On the `<Svg>`, `fill-*`, `stroke-*` and `stroke-<n>` set the paint the drawing
-inherits; on any other component they are an error. `Canvas`
+inherits, and a text colour (what `currentColor` is) and the font utilities are the text style of
+its text, over the ones around it; on any other component `fill-*`, `stroke-*` and `stroke-<n>`
+are an error. `Canvas`
 draws in code with a pdfkit-style painter. An SVG file can also go straight into
 `<Image src={svgBytes} />`.
 
@@ -1399,7 +1405,7 @@ Node's `UV_THREADPOOL_SIZE` (default 4) caps how many renders run at the same ti
 
 Mistakes fail loudly, with the component that caused them: a style key or value an element
 cannot use, and a prop it would ignore (`<Page wrap={false}>`, `href` on a `Cell` or a
-`Header`, `className` on an SVG shape, `render` on an `Image`). An error inside a `render` prop
+`Header`, `id` on a `Page`, `render` on an `Image`). An error inside a `render` prop
 names the components around it too. A `View` inside a `Text`:
 
 ```tsx
@@ -1410,7 +1416,7 @@ stops the render with:
 
 ```
 RenderError: <View> cannot be inside <Text>. A Text contains only strings, numbers,
-<Text>, <Link>, <Image>, <Note>, <PageNumber> and <TotalPages>.
+<Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber> and <TotalPages>.
     in View
     in Text
     in Page
