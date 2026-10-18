@@ -260,6 +260,11 @@ pub(crate) const MAX_LETTER_SPACING: f32 = 1000.0;
 pub(crate) const MAX_LINE_HEIGHT: f32 = 100.0;
 /// Largest `textIndent` either way, in points.
 pub(crate) const MAX_TEXT_INDENT: f32 = 10_000.0;
+/// Largest `hyphenationPenalty`: from it on, a hyphenation point is no
+/// break (TeX's infinite penalty).
+pub(crate) const MAX_HYPHENATION_PENALTY: f32 = 10_000.0;
+/// Most corners of a `shapeOutside` polygon.
+pub(crate) const MAX_POLYGON_POINTS: usize = 1000;
 /// Largest `orphans` and `widows`.
 pub(crate) const MAX_ORPHANS: u32 = 100;
 /// Most `fontFeatures` of a run.
@@ -611,8 +616,8 @@ impl<'a> Checker<'a> {
     /// Checks the floated children of a box with `parent` style (`None`:
     /// the page): they float in a column only, a box holds at most
     /// [`MAX_FLOATS`], and a box with floats lays its children out in
-    /// order, so it takes no `justifyContent` or `alignContent` and they
-    /// no `flexGrow` or `flexBasis`.
+    /// order, so it takes no `alignContent`, they no `flexBasis`, and a
+    /// float, shrink-to-fit, no `flexGrow`.
     fn floats(&mut self, parent: Option<&Style>, children: &[Node]) {
         let floated = |n: &Node| {
             n.style.floats().is_some() && n.style.display != Some(crate::schema::Display::None)
@@ -629,40 +634,29 @@ impl<'a> Checker<'a> {
             );
         }
         let column = parent.is_none_or(Style::column);
-        if let Some(p) = parent.filter(|_| column) {
-            for (name, set) in [
-                ("justifyContent", p.justify_content.is_some()),
-                ("alignContent", p.align_content.is_some()),
-            ] {
-                if set {
-                    self.at("style", |c| {
-                        c.err(
-                            Code::StyleNotApplicable,
-                            Some(name),
-                            format!("`{name}` does not apply to a box with floated children: they stack in order"),
-                        );
-                    });
-                }
-            }
+        if column && parent.is_some_and(|p| p.align_content.is_some()) {
+            self.at("style", |c| {
+                c.err(
+                    Code::StyleNotApplicable,
+                    Some("alignContent"),
+                    "`alignContent` does not apply to a box with floated children: they stack in one column",
+                );
+            });
         }
         self.at("children", |c| {
             for (i, n) in children.iter().enumerate() {
                 c.at_index(i, |c| {
                     let s = &n.style;
                     if column {
-                        for (name, set) in [
-                            ("flexGrow", s.flex_grow.is_some()),
-                            ("flexBasis", s.flex_basis.is_some()),
-                        ] {
-                            if set {
-                                c.at("style", |c| {
-                                    c.err(
-                                        Code::StyleNotApplicable,
-                                        Some(name),
-                                        format!("`{name}` does not apply in a box with floated children"),
-                                    );
-                                });
-                            }
+                        let problem = if s.flex_basis.is_some() {
+                            Some(("flexBasis", "`flexBasis` does not apply in a box with floated children"))
+                        } else if s.flex_grow.is_some() && floated(n) {
+                            Some(("flexGrow", "a float does not grow: it is as wide and as tall as its content"))
+                        } else {
+                            None
+                        };
+                        if let Some((name, message)) = problem {
+                            c.at("style", |c| c.err(Code::StyleNotApplicable, Some(name), message));
                         }
                     }
                     if !floated(n) {

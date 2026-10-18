@@ -100,13 +100,21 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   `View`, a `Page` or a `Cell` puts it at that side, as narrow as its content unless it has a
   width, at or below where it comes in the flow. Text after it wraps beside it line by line, in
   its own box: a `Text` with a width, an `alignSelf` or auto side margins keeps the box it would
-  have without the float, and its lines take the room the float leaves in it. A box after it is
-  narrowed to the room beside the floats over its whole height, or moves below them when its
-  content does not fit there. `clear: 'left'`, `'right'` or `'both'` moves an element below the
-  floats before it, and a parent is as tall as its floats. A float moves to the next page with
-  the lines beside it. Floats are rectangles (`shapeOutside` is not supported), do not float
-  inside rows or grids, and a box with floats lays its children out top to bottom: `flexGrow`,
-  `flexBasis`, `justifyContent` and `alignContent` are errors there.
+  have without the float, and its lines take the room the float leaves in it. A column `View`
+  after it, with children and no floats of its own, keeps its width too and lays its children
+  out beside the floats, so that its text wraps beside them in turn (8 such `View`s deep). Other
+  boxes after it (an `Image`, a row, a grid, a table, a `View` with `overflow: 'hidden'` or an
+  `aspectRatio`) are narrowed to the room beside the floats over their whole height, or move
+  below them when their content does not fit there. `shapeOutside` gives a float a shape for
+  the lines beside it to wrap around, as CSS `shape-outside`: `'circle(50%)'`,
+  `'ellipse(40% 50% at left)'`, `'inset(0 0 20% round 8pt)'` or `'polygon(0 0, 100% 0, 0 100%)'`
+  in its margin box (`[shape-outside:circle(50%)]` as a class), and `shapeMargin` keeps the lines
+  that far from it; the float is still placed, and boxes narrowed, by its margin box.
+  `clear: 'left'`, `'right'` or `'both'` moves an element below the floats before it, and a
+  parent is as tall as its floats. A float moves to the next page with the lines beside it.
+  Floats do not float inside rows or grids, and a box with floats lays its children out top to
+  bottom: the room they leave goes to `flexGrow` and `justifyContent`, and `flexGrow` on a
+  float, `flexBasis` on the box's children and `alignContent` are errors.
 - **Opacity.** `opacity` applies to each element, not to an element and its children as one
   group, as CSS does: where children overlap, each shows through the others. `opacity: 0`
   draws nothing, and leaves out the links, form fields and notes of everything inside the
@@ -761,9 +769,17 @@ reader without it may do:
   over the whole paragraph instead of filling each in turn, as TeX does: lines come out more
   even, with fewer hyphens, and the spaces of justified lines may also shrink by up to a third.
   It is inherited, so `<Page style={{ textWrap: 'pretty' }}>` sets it for a page. `'wrap'` is
-  the default and fills lines in turn; `'balance'` is not supported yet. Text with
+  the default and fills lines in turn. Text with
   `whitespace-nowrap` or `whitespace-pre`, and very long paragraphs past the limits in the
   [schema](https://github.com/eddiesr93/inkoxide/blob/main/docs/SCHEMA.md), break first fit.
+  `hyphenationPenalty={n}` on a `Text` (or in its style, inherited) says how much `pretty`
+  avoids hyphens: 50 by default, 0 hyphenates as readily as it breaks at a space, and higher
+  values give fewer hyphens and looser lines; 10 000 never breaks a word at a hyphenation point,
+  whatever `textWrap`.
+- **Balanced headings.** `textWrap: 'balance'` (the class `text-balance`) breaks a heading or a
+  caption into as many lines as it would take anyway, but makes them about as long as each
+  other, instead of a full line and a word or two on the next. Text of one line or more than
+  ten, beside a float, or with a word wider than its line breaks as `'wrap'`.
 - **Orphans and widows:** `orphans={2}` and `widows={2}` keep at least two lines of a paragraph
   together at the foot and the head of a page.
 

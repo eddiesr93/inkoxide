@@ -316,6 +316,43 @@ One transform function, as an object with exactly one key. Lengths are points or
 
 Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (exactly 2 items)) or `{scale}` (`scale`: array of `number` (each ≥ -1000000, ≤ 1000000) (exactly 2 items)) or `{rotate}` (`rotate`: `number` (≥ -1000000, ≤ 1000000)) or `{skew}` (`skew`: array of `number` (each > -90, < 90) (exactly 2 items)) or `{matrix}` (`matrix`: array of `number` (each ≥ -1000000, ≤ 1000000) (exactly 6 items))
 
+### ShapeOutside
+
+A float's shape, as an object with exactly one key, in its margin box: lengths are points, percentages are of the margin box's width (`x`, `rx`, `left`, `right`) or height (`y`, `ry`, `top`, `bottom`). The shape is clipped to the margin box.
+
+Type: `{circle}` (`circle`: [`ShapeCircle`](#shapecircle)) or `{ellipse}` (`ellipse`: [`ShapeEllipse`](#shapeellipse)) or `{inset}` (`inset`: [`ShapeInset`](#shapeinset)) or `{polygon}` (`polygon`: array of array of [`LengthPercent`](#lengthpercent) (each exactly 2 items) (min items 3, max items 1000))
+
+### ShapeCircle
+
+CSS `circle()`.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `radius` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  | A percentage is of the margin box's diagonal over √2, as in CSS. By default, to the margin box's closest side. |
+| `at` | array of [`LengthPercent`](#lengthpercent) |  | exactly 2 items; The centre, [x, y]. By default, the middle of the margin box. |
+
+### ShapeEllipse
+
+CSS `ellipse()`.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `rx` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  | The horizontal radius. By default, to the closest of the left and right sides. |
+| `ry` | [`NonNegativeLengthPercent`](#nonnegativelengthpercent) |  | The vertical radius. By default, to the closest of the top and bottom sides. |
+| `at` | array of [`LengthPercent`](#lengthpercent) |  | exactly 2 items; The centre, [x, y]. By default, the middle of the margin box. |
+
+### ShapeInset
+
+CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not set.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `top` | [`LengthPercent`](#lengthpercent) |  |  |
+| `right` | [`LengthPercent`](#lengthpercent) |  |  |
+| `bottom` | [`LengthPercent`](#lengthpercent) |  |  |
+| `left` | [`LengthPercent`](#lengthpercent) |  |  |
+| `radius` | [`NonNegative`](#nonnegative) |  | default `0`; Points the corners are rounded by; at most half the rectangle's width and height. |
+
 ### Style
 
 | Property | Type | Required | Notes |
@@ -356,8 +393,10 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `justifyItems` | `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: default inline-axis alignment of the items. |
 | `justifySelf` | `"auto"` \| `"flex-start"` \| `"flex-end"` \| `"center"` \| `"baseline"` \| `"stretch"` \| `"start"` \| `"end"` |  | Grid only: inline-axis alignment of this item. |
 | `overflow` | `"visible"` \| `"hidden"` |  | default `"visible"` |
-| `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
+| `float` | `"left"` \| `"right"` \| `"none"` |  | default `"none"`; Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as in CSS. Lines of text after it wrap beside it: beside its margin box, or around its `shapeOutside`. A column box after it with children and no floats of its own, without `overflow: hidden` or `aspectRatio`, keeps its width and lays its children out beside it, so its lines wrap beside it too (to a depth of 8 such boxes). Other boxes after it are narrowed to the room beside its margin box, or move below it when their min-content width does not fit there, as CSS does with boxes that make a block formatting context. The parent's height includes its floats, and the room the floats leave goes to `flexGrow` and `justifyContent` as in a column box. A float takes no `flexGrow`; its parent takes no `alignContent`, and the parent's children no `flexBasis`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page. |
 | `clear` | `"left"` \| `"right"` \| `"both"` \| `"none"` |  | default `"none"`; Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides. |
+| `shapeOutside` | [`ShapeOutside`](#shapeoutside) |  | Floats only. The shape lines beside the float wrap around, instead of its margin box, as CSS `shape-outside` with a basic shape: a line takes the room of the shape's widest part beside it, so lines come closer where the shape narrows. Only lines: the float is placed, and boxes beside it are narrowed, by its margin box. The shape is followed in strips at least 2 points high, at most 128 a float; past 4096 strips in one box, a float's lines wrap beside its margin box. |
+| `shapeMargin` | [`NonNegative`](#nonnegative) |  | default `0`; Floats with a `shapeOutside` only. Points the lines beside the float keep from its shape, within its margin box. |
 | `backgroundColor` | [`Color`](#color) |  |  |
 | `opacity` | `number` |  | ≥ 0, ≤ 1; Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |
@@ -375,7 +414,8 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `hyphenate` | `boolean` |  | text nodes only. Hyphenates the words in the language of the node (`lang`, or `meta.lang`); with no language, nothing is hyphenated and the render logs a warning. A word wider than its line breaks between any two characters, hyphenated or not. |
 | `lang` | `string` |  | text nodes only; BCP-47, selects hyphenation patterns |
 | `whiteSpace` | `"normal"` \| `"pre"` \| `"nowrap"` \| `"pre-wrap"` \| `"pre-line"` |  | text nodes only. `normal` collapses spaces and keeps newlines as breaks (as `pre-line`); `pre-wrap` keeps spaces and tabs and wraps. As in CSS, only spaces, tabs and line breaks collapse: other space characters (thin, em, figure, no-break, …) keep their width, and only the breaking ones are break opportunities. `pre` and `pre-wrap` advance a tab to the next tab stop (CSS `tab-size: 8`): stops are 8 spaces of the tab's font apart, from the start of the line (a line `pre-wrap` wraps keeps the stops of the line it continues), and a tab narrower than half a `0` goes on to the next stop. |
-| `textWrap` | `"wrap"` \| `"pretty"` |  | default `"wrap"`; text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` is reserved. |
+| `textWrap` | `"wrap"` \| `"pretty"` \| `"balance"` |  | default `"wrap"`; text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` (for headings and captions) breaks each stretch first fit into as many lines as `wrap` does, in the narrowest width that keeps that many, so its lines are of about the same length; a stretch of one line or more than 10, beside a float, or with a word wider than its line breaks as `wrap`. |
+| `hyphenationPenalty` | `number` |  | ≥ 0, ≤ 10000, default `50`; text nodes only. How much `textWrap: pretty` avoids breaking at a hyphenation point (a soft hyphen, or one `hyphenate` finds): the demerits of such a break, as TeX's `\hyphenpenalty`. 0 hyphenates as readily as it breaks at a space; higher values give fewer hyphens and looser lines. From 10 000, a hyphenation point is no break, whatever `textWrap`; below it, `wrap` and `balance` ignore it. |
 | `textIndent` | `number` |  | ≥ -10000, ≤ 10000; text nodes only; indent of the first line in points (negative: hanging indent) |
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |

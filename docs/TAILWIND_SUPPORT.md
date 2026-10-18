@@ -25,7 +25,8 @@ that are supported and tested; each example is a unit test.
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
 | `flex`, `grid`, `hidden` | `display` | `flex` → `{"display":"flex"}` | `View` is already `flex` + column. `block`, `inline` and `contents` are not supported. |
-| `float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none` | `float`, `clear` | `float-left` → `{"float":"left"}` | In a column `View`, a `Page` or a table cell (not in a row or a grid, and not on a cell itself): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported. |
+| `float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none` | `float`, `clear` | `float-left` → `{"float":"left"}` | In a column `View`, a `Page` or a table cell (not in a row or a grid, and not on a cell itself): text after a float wraps beside it, and so does the text of a column `View` after it; an `overflow-hidden` box, a row, a grid or an image after it is narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported. |
+| `[shape-outside:…]`, `[shape-margin:…]` | `shapeOutside`, `shapeMargin` | `[shape-outside:circle(50%)]` → `{"shapeOutside":{"circle":{"radius":"50%"}}}` | Arbitrary properties on a float, as Tailwind has no utilities for them: `circle()`, `ellipse()`, `inset()` and `polygon()`, with `_` for spaces. Lines beside the float wrap around the shape; the float is placed, and boxes beside it narrowed, by its margin box. |
 | `overflow-hidden`, `overflow-visible`, `overflow-clip` | `overflow` | `overflow-hidden` → `{"overflow":"hidden"}` |  |
 | `align-top`, `align-middle`, `align-bottom` | `verticalAlign` (on `Cell`) | `align-top` → `{"verticalAlign":"top"}` |  |
 
@@ -124,7 +125,7 @@ that are supported and tested; each example is a unit test.
 | `uppercase`, `lowercase`, `capitalize`, `normal-case` | run `text` (transformed by the tree builder with the document `lang`) | `uppercase` → `{"textTransform":"uppercase"}` |  |
 | `truncate`, `line-clamp-N`, `line-clamp-none` | `maxLines` + `ellipsis` | `truncate` → `{"maxLines":1,"ellipsis":true}` |  |
 | `whitespace-normal`, `whitespace-nowrap`, `whitespace-pre`, `whitespace-pre-wrap`, `whitespace-pre-line` | `whiteSpace` | `whitespace-normal` → `{"whiteSpace":"normal"}` |  |
-| `text-wrap`, `text-pretty`, `text-nowrap` | `textWrap`, `whiteSpace` | `text-wrap` → `{"textWrap":"wrap"}` | `text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`. |
+| `text-wrap`, `text-pretty`, `text-balance`, `text-nowrap` | `textWrap`, `whiteSpace` | `text-wrap` → `{"textWrap":"wrap"}` | `text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-balance` makes the lines of a heading about as long as each other (`textWrap: balance`); `text-nowrap` is `whiteSpace: nowrap`. |
 | `hyphens-auto`, `hyphens-manual`, `hyphens-none` | `hyphenate` | `hyphens-auto` → `{"hyphenate":true}` | The `hyphenate` prop on `Text` does the same. Soft hyphens (U+00AD) always work. |
 
 ## Page variants
@@ -157,7 +158,6 @@ that are supported and tested; each example is a unit test.
 | `text-ellipsis` | `text-overflow` alone; use `truncate` or `line-clamp-N`. |
 | `float-start` | `float-start` and `float-end`: boxes have no direction; use `float-left` or `float-right`. |
 | `clear-end` | `clear-start` and `clear-end`; use `clear-left`, `clear-right` or `clear-both`. |
-| `text-balance` | `text-wrap: balance`; `text-pretty` evens lines. |
 | `object-scale-down` | `object-fit: scale-down`. |
 | `object-[right_1rem_top]` | `object-position` with edge offsets. |
 | `not-a-class` | Classes Tailwind does not know. |

@@ -2188,7 +2188,7 @@ fn a_document_uses_a_bounded_number_of_feature_sets() {
 }
 
 #[test]
-fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
+fn text_wrap_and_hyphenation_penalty_are_for_text_nodes() {
     let text = |v: &str| {
         doc(&format!(
             r#"{{"type":"text","style":{{"textWrap":{v}}},"runs":[{{"text":"x","font":"Inter-Regular","size":10}}]}}"#
@@ -2196,12 +2196,35 @@ fn text_wrap_is_wrap_or_pretty_on_text_nodes() {
     };
     assert_eq!(run(&text(r#""wrap""#)), vec![]);
     assert_eq!(run(&text(r#""pretty""#)), vec![]);
-    // `balance` is reserved.
+    assert_eq!(run(&text(r#""balance""#)), vec![]);
     assert_eq!(
-        one(&text(r#""balance""#)),
+        one(&text(r#""even""#)),
         (
             C::InvalidValue,
             "pages[0].children[0].style.textWrap".into()
+        )
+    );
+    let penalty = |v: &str| {
+        doc(&format!(
+            r#"{{"type":"text","style":{{"hyphenationPenalty":{v}}},"runs":[{{"text":"x","font":"Inter-Regular","size":10}}]}}"#
+        ))
+    };
+    assert_eq!(run(&penalty("0")), vec![]);
+    assert_eq!(run(&penalty("10000")), vec![]);
+    for v in ["-1", "10001"] {
+        assert_eq!(
+            one(&penalty(v)),
+            (
+                C::OutOfRange,
+                "pages[0].children[0].style.hyphenationPenalty".into()
+            )
+        );
+    }
+    assert_eq!(
+        one(&doc(r#"{"type":"box","style":{"hyphenationPenalty":50}}"#)),
+        (
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.hyphenationPenalty".into()
         )
     );
     assert_eq!(
@@ -2440,12 +2463,15 @@ fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
 }
 
 #[test]
-fn floats_go_in_column_boxes_with_children_that_do_not_grow() {
-    let ok = doc(r#"{"type":"box","children":[
+fn floats_go_in_column_boxes_and_do_not_grow() {
+    let ok = doc(
+        r#"{"type":"box","style":{"justifyContent":"center","height":100},"children":[
             {"type":"box","style":{"float":"left","width":10,"height":10}},
+            {"type":"box","style":{"flexGrow":1}},
             {"type":"text","style":{"clear":"both"},"runs":[{"text":"x","font":"Inter-Regular","size":10}]},
             {"type":"box","style":{"float":"none","flexShrink":1}}]},
-           {"type":"image","src":"logo","style":{"float":"right","width":20}}"#);
+           {"type":"image","src":"logo","style":{"float":"right","width":20}}"#,
+    );
     assert_eq!(run(&ok), vec![]);
     let float = r#"{"type":"box","style":{"float":"left"}}"#;
     for (json, code, path) in [
@@ -2455,9 +2481,14 @@ fn floats_go_in_column_boxes_with_children_that_do_not_grow() {
             "pages[0].children[0].children[0].style.float",
         ),
         (
-            format!(r#"{{"type":"box","style":{{"justifyContent":"center"}},"children":[{float}]}}"#),
+            format!(r#"{{"type":"box","style":{{"alignContent":"center"}},"children":[{float}]}}"#),
             C::StyleNotApplicable,
-            "pages[0].children[0].style.justifyContent",
+            "pages[0].children[0].style.alignContent",
+        ),
+        (
+            r#"{"type":"box","children":[{"type":"box","style":{"float":"left","flexGrow":1}}]}"#.into(),
+            C::StyleNotApplicable,
+            "pages[0].children[0].children[0].style.flexGrow",
         ),
         (
             format!(r#"{{"type":"box","children":[{float},{{"type":"box","style":{{"flexBasis":10}}}}]}}"#),
@@ -2490,6 +2521,91 @@ fn floats_go_in_column_boxes_with_children_that_do_not_grow() {
         (code, path.as_str()),
         (C::InvalidNode, "pages[0].children[0].children[0]")
     );
+}
+
+#[test]
+fn shapes_are_for_floats_and_bounded() {
+    use crate::validate::rules::MAX_POLYGON_POINTS;
+    let float = |style: &str| {
+        doc(&format!(
+            r#"{{"type":"box","style":{{"float":"left",{style}}}}}"#
+        ))
+    };
+    for style in [
+        r#""shapeOutside":{"circle":{}}"#,
+        r#""shapeOutside":{"circle":{"radius":"50%","at":["50%",10]}},"shapeMargin":4"#,
+        r#""shapeOutside":{"ellipse":{"rx":10,"ry":"20%","at":[-5,"110%"]}}"#,
+        r#""shapeOutside":{"inset":{"top":5,"left":"10%","radius":8}}"#,
+        r#""shapeOutside":{"polygon":[[0,0],["100%",0],["50%","100%"]]}"#,
+    ] {
+        assert_eq!(run(&float(style)), vec![], "{style}");
+    }
+    let style = "pages[0].children[0].style";
+    for (s, code, path) in [
+        (
+            r#""shapeOutside":{"circle":{"radius":-1}}"#,
+            C::OutOfRange,
+            "shapeOutside.circle.radius",
+        ),
+        (
+            r#""shapeOutside":{"ellipse":{"at":[1,2e9]}}"#,
+            C::OutOfRange,
+            "shapeOutside.ellipse.at[1]",
+        ),
+        (
+            r#""shapeOutside":{"inset":{"radius":-2}}"#,
+            C::OutOfRange,
+            "shapeOutside.inset.radius",
+        ),
+        (
+            r#""shapeOutside":{"polygon":[[0,0],[1,1]]}"#,
+            C::OutOfRange,
+            "shapeOutside.polygon",
+        ),
+        (
+            r#""shapeOutside":{"polygon":[[0,0],[1,1],[2,"-20000%"]]}"#,
+            C::OutOfRange,
+            "shapeOutside.polygon[2][1]",
+        ),
+        (
+            r#""shapeOutside":{"circle":{}},"shapeMargin":-1"#,
+            C::OutOfRange,
+            "shapeMargin",
+        ),
+        (r#""shapeMargin":1"#, C::StyleNotApplicable, "shapeMargin"),
+        (
+            r#""shapeOutside":{"circle":{},"inset":{}}"#,
+            C::InvalidValue,
+            "shapeOutside",
+        ),
+        (
+            r#""shapeOutside":{"star":{}}"#,
+            C::InvalidValue,
+            "shapeOutside",
+        ),
+        (
+            r#""shapeOutside":{"circle":{"r":1}}"#,
+            C::UnknownField,
+            "shapeOutside.circle.r",
+        ),
+    ] {
+        assert_eq!(one(&float(s)), (code, format!("{style}.{path}")), "{s}");
+    }
+    let (code, path) = one(&doc(
+        r#"{"type":"box","style":{"shapeOutside":{"circle":{}}}}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (
+            C::StyleNotApplicable,
+            "pages[0].children[0].style.shapeOutside"
+        )
+    );
+    let polygon = vec!["[0,0]"; MAX_POLYGON_POINTS + 1].join(",");
+    let (code, _) = one(&float(&format!(
+        r#""shapeOutside":{{"polygon":[{polygon}]}}"#
+    )));
+    assert_eq!(code, C::OutOfRange);
 }
 
 #[test]

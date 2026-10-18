@@ -186,6 +186,20 @@ describe('paint styles', () => {
     expect(thrown(() => tree(<View style={{ width: '3ex' as never }} />)).message).toContain(
       'width: 3ex (unsupported unit "ex")',
     );
+    // A float's shape, as CSS or as the schema's object.
+    const shaped = tree(
+      <View style={{ float: 'left', shapeOutside: 'circle(50% at left)', shapeMargin: '2mm' }} />,
+    );
+    expect(first<BoxNode>(shaped).style).toEqual({
+      float: 'left',
+      shapeOutside: { circle: { radius: '50%', at: [0, '50%'] } },
+      shapeMargin: 5.669291,
+    });
+    const object = tree(<View style={{ float: 'right', shapeOutside: { inset: { top: 4 } } }} />);
+    expect(first<BoxNode>(object).style?.shapeOutside).toEqual({ inset: { top: 4 } });
+    expect(first<BoxNode>(tree(<View style={{ float: 'left', shapeOutside: 'none' }} />)).style).toEqual({
+      float: 'left',
+    });
     // Keywords in either order; names of Object.prototype are not keywords.
     const centerLeft = tree(<View style={{ transformOrigin: 'center left', rotate: 10 }} />);
     expect(first<BoxNode>(centerLeft).style?.transformOrigin).toEqual([0, '50%']);
@@ -2584,18 +2598,22 @@ describe('props and style values that would do nothing', () => {
     );
   });
 
-  it('rejects hyphenationPenalty on a Text and on a run', () => {
-    const block = thrown(() => tree(<Text {...{ hyphenationPenalty: 100 }}>x</Text>));
-    expect(block.message).toMatch(/^<Text hyphenationPenalty> is not supported/);
-    expect(block.componentStack).toMatch(/^\n {4}in Text\n {4}in Page/);
+  it('passes hyphenationPenalty from a Text, its style and the page, but not from a run', () => {
+    const style = (el: ReactNode) => first<TextNode>(tree(el)).style;
+    expect(style(<Text hyphenationPenalty={200}>x</Text>)?.hyphenationPenalty).toBe(200);
+    expect(style(<Text style={{ hyphenationPenalty: 0 }}>x</Text>)?.hyphenationPenalty).toBe(0);
+    const fromPage = first<TextNode>(tree(<Text>x</Text>, { page: { style: { hyphenationPenalty: 300 } } }));
+    expect(fromPage.style?.hyphenationPenalty).toBe(300);
+    // 50 is the engine's default.
+    expect(style(<Text hyphenationPenalty={50}>x</Text>)?.hyphenationPenalty).toBeUndefined();
     const run = thrown(() =>
       tree(
         <Text>
-          a <Text {...{ hyphenationPenalty: 100 }}>b</Text>
+          a <Text hyphenationPenalty={100}>b</Text>
         </Text>,
       ),
     );
-    expect(run.message).toMatch(/^<Text hyphenationPenalty> is not supported/);
+    expect(run.message).toMatch(/so `hyphenationPenalty` has nothing to apply to/);
   });
 
   it('rejects the props of an element in the flow on a Header, a Footer, a Row and a Cell', () => {

@@ -421,6 +421,7 @@ fn shape<S: TextShaper>(
         white_space: WhiteSpace::Pre,
         // One line: nothing to break.
         text_wrap: TextWrap::Wrap,
+        hyphenation_penalty: super::HYPHENATION_PENALTY,
         indent: 0.0,
         direction: if text.rtl {
             Direction::Rtl

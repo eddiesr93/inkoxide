@@ -289,7 +289,8 @@
         "padding": {
          "top": 4,
          "left": 4
-        }
+        },
+        "overflow": "hidden"
        },
        "children": [
         {
@@ -314,7 +315,8 @@
          0.9,
          0.85,
          1
-        ]
+        ],
+        "overflow": "hidden"
        },
        "children": [
         {
@@ -432,6 +434,136 @@
            "style": {
             "textAlign": "justify"
            }
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     }
+    },
+    {
+     "type": "box",
+     "style": {
+      "margin": {
+       "bottom": 12
+      }
+     },
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 80,
+        "height": 80,
+        "borderRadius": 40,
+        "backgroundColor": [
+         0.9,
+         0.5,
+         0.15,
+         1
+        ],
+        "margin": {
+         "right": 6
+        },
+        "shapeOutside": {
+         "circle": {}
+        },
+        "shapeMargin": 6
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "float": "right",
+        "width": 70,
+        "height": 90,
+        "borderRadius": 24,
+        "backgroundColor": [
+         0.1,
+         0.55,
+         0.55,
+         1
+        ],
+        "margin": {
+         "left": 6
+        },
+        "shapeOutside": {
+         "inset": {
+          "radius": 24
+         }
+        },
+        "shapeMargin": 4
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "In olden times when wishing still helped one, there lived a king whose daughters were all beautiful, but the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain.",
+         "font": "Inter-Regular",
+         "size": 8
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "children": [
+      {
+       "type": "box",
+       "style": {
+        "float": "left",
+        "width": 60,
+        "height": 28,
+        "backgroundColor": [
+         0.16,
+         0.38,
+         0.75,
+         1
+        ],
+        "margin": {
+         "right": 8
+        }
+       }
+      },
+      {
+       "type": "box",
+       "style": {
+        "backgroundColor": [
+         0.93,
+         0.93,
+         0.95,
+         1
+        ],
+        "padding": {
+         "top": 4,
+         "bottom": 4
+        }
+       },
+       "children": [
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "A box beside a float keeps its width; its text wraps beside the float line by line, and returns to the full width below it, as in CSS.",
+           "font": "Inter-Regular",
+           "size": 8
+          }
+         ]
+        },
+        {
+         "type": "text",
+         "runs": [
+          {
+           "text": "So does the text of the boxes inside it, here a second paragraph in the same box.",
+           "font": "Inter-Regular",
+           "size": 8
           }
          ]
         }

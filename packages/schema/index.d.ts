@@ -145,6 +145,55 @@ export type TrackSize =
       max?: never;
     };
 /**
+ * A float's shape, as an object with exactly one key, in its margin box: lengths are points, percentages are of the margin box's width (`x`, `rx`, `left`, `right`) or height (`y`, `ry`, `top`, `bottom`). The shape is clipped to the margin box.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "ShapeOutside".
+ */
+export type ShapeOutside =
+  | {
+      circle: ShapeCircle;
+      ellipse?: never;
+      inset?: never;
+      polygon?: never;
+    }
+  | {
+      ellipse: ShapeEllipse;
+      circle?: never;
+      inset?: never;
+      polygon?: never;
+    }
+  | {
+      inset: ShapeInset;
+      circle?: never;
+      ellipse?: never;
+      polygon?: never;
+    }
+  | {
+      /**
+       * Its corners, [x, y] each, in order; the region they enclose, whichever way they wind.
+       *
+       * @minItems 3
+       * @maxItems 1000
+       */
+      polygon: [
+        [LengthPercent, LengthPercent],
+        [LengthPercent, LengthPercent],
+        [LengthPercent, LengthPercent],
+        ...[LengthPercent, LengthPercent][]
+      ];
+      circle?: never;
+      ellipse?: never;
+      inset?: never;
+    };
+/**
+ * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%). In `gap`, `rowGap` and `columnGap`, a percentage is of the box's own content box instead, as in CSS: a column gap of its width, a row gap of its height.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "LengthPercent".
+ */
+export type LengthPercent = number | Percent;
+/**
  * One radius for every corner, or one per corner (a missing corner is square). Radii that would overlap are scaled down together, as in CSS.
  *
  * This interface was referenced by `Document`'s JSON-Schema
@@ -230,13 +279,6 @@ export type TransformOp =
       rotate?: never;
       skew?: never;
     };
-/**
- * Points (within ±1000000) or a percentage of the containing block's width (within ±10000%). In `gap`, `rowGap` and `columnGap`, a percentage is of the box's own content box instead, as in CSS: a column gap of its width, a row gap of its height.
- *
- * This interface was referenced by `Document`'s JSON-Schema
- * via the `definition` "LengthPercent".
- */
-export type LengthPercent = number | Percent;
 /**
  * Link target. `#id` jumps to the top of the first node with that `id` in the page body (the flow or an overlay): a node in a header or footer, or hidden by `display: none`, is not a destination (`UNKNOWN_ANCHOR` if there is none). Anything else must be an absolute URI with a scheme (`https:`, `mailto:`, …) and opens in the viewer. `javascript:` is rejected.
  *
@@ -745,13 +787,21 @@ export interface Style {
     'auto' | 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch' | 'start' | 'end';
   overflow?: 'visible' | 'hidden';
   /**
-   * Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as CSS floats rectangles: lines of text after it wrap beside it, and boxes after it are narrowed to the room beside it, or move below it when their min-content width does not fit there. The parent's height includes its floats. Its children take no `flexGrow` or `flexBasis`, and it takes no `justifyContent` or `alignContent`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page.
+   * Children of a column box (not of a row, grid, wrapping or reversed box, and not a table cell itself) only; not with `position: absolute`. Floats the node to that side of its parent's content box, shrink-to-fit, at or below where it occurs, as in CSS. Lines of text after it wrap beside it: beside its margin box, or around its `shapeOutside`. A column box after it with children and no floats of its own, without `overflow: hidden` or `aspectRatio`, keeps its width and lays its children out beside it, so its lines wrap beside it too (to a depth of 8 such boxes). Other boxes after it are narrowed to the room beside its margin box, or move below it when their min-content width does not fit there, as CSS does with boxes that make a block formatting context. The parent's height includes its floats, and the room the floats leave goes to `flexGrow` and `justifyContent` as in a column box. A float takes no `flexGrow`; its parent takes no `alignContent`, and the parent's children no `flexBasis`. At most 1000 floated children per box. A float forces no page break: `break.before` or `break.after` `"page"` on it, or on a node inside it, and a `pageBreak` node inside it, are rejected. A float moves to the next page with the lines beside it, and is sliced when taller than a page.
    */
   float?: 'left' | 'right' | 'none';
   /**
    * Puts the node's border box below the margin boxes of the earlier floats of its parent on these sides.
    */
   clear?: 'left' | 'right' | 'both' | 'none';
+  /**
+   * Floats only. The shape lines beside the float wrap around, instead of its margin box, as CSS `shape-outside` with a basic shape: a line takes the room of the shape's widest part beside it, so lines come closer where the shape narrows. Only lines: the float is placed, and boxes beside it are narrowed, by its margin box. The shape is followed in strips at least 2 points high, at most 128 a float; past 4096 strips in one box, a float's lines wrap beside its margin box.
+   */
+  shapeOutside?: ShapeOutside;
+  /**
+   * Floats with a `shapeOutside` only. Points the lines beside the float keep from its shape, within its margin box.
+   */
+  shapeMargin?: NonNegative;
   backgroundColor?: Color;
   /**
    * Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them.
@@ -812,9 +862,13 @@ export interface Style {
    */
   whiteSpace?: 'normal' | 'pre' | 'nowrap' | 'pre-wrap' | 'pre-line';
   /**
-   * text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` is reserved.
+   * text nodes only. How lines break: `wrap` fills each line in turn (first fit); `pretty` chooses the breaks over each stretch of the paragraph between forced breaks to make its lines even (Knuth and Plass's total fit, as TeX), with fewer hyphens, and lets the spaces of justified lines shrink by up to a third. A stretch with more than 20 000 break opportunities, or past 512 open breakpoints or 2 097 152 lines tried in the paragraph, falls back to `wrap`, as do `pre` and `nowrap` text, justified text without spaces, and a word wider than its line. `balance` (for headings and captions) breaks each stretch first fit into as many lines as `wrap` does, in the narrowest width that keeps that many, so its lines are of about the same length; a stretch of one line or more than 10, beside a float, or with a word wider than its line breaks as `wrap`.
    */
-  textWrap?: 'wrap' | 'pretty';
+  textWrap?: 'wrap' | 'pretty' | 'balance';
+  /**
+   * text nodes only. How much `textWrap: pretty` avoids breaking at a hyphenation point (a soft hyphen, or one `hyphenate` finds): the demerits of such a break, as TeX's `\hyphenpenalty`. 0 hyphenates as readily as it breaks at a space; higher values give fewer hyphens and looser lines. From 10 000, a hyphenation point is no break, whatever `textWrap`; below it, `wrap` and `balance` ignore it.
+   */
+  hyphenationPenalty?: number;
   /**
    * text nodes only; indent of the first line in points (negative: hanging indent)
    */
@@ -876,6 +930,64 @@ export interface GridPlacement {
   start?: number;
   end?: number;
   span?: number;
+}
+/**
+ * CSS `circle()`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "ShapeCircle".
+ */
+export interface ShapeCircle {
+  /**
+   * A percentage is of the margin box's diagonal over √2, as in CSS. By default, to the margin box's closest side.
+   */
+  radius?: NonNegativeLengthPercent;
+  /**
+   * The centre, [x, y]. By default, the middle of the margin box.
+   *
+   * @minItems 2
+   * @maxItems 2
+   */
+  at?: [LengthPercent, LengthPercent];
+}
+/**
+ * CSS `ellipse()`.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "ShapeEllipse".
+ */
+export interface ShapeEllipse {
+  /**
+   * The horizontal radius. By default, to the closest of the left and right sides.
+   */
+  rx?: NonNegativeLengthPercent;
+  /**
+   * The vertical radius. By default, to the closest of the top and bottom sides.
+   */
+  ry?: NonNegativeLengthPercent;
+  /**
+   * The centre, [x, y]. By default, the middle of the margin box.
+   *
+   * @minItems 2
+   * @maxItems 2
+   */
+  at?: [LengthPercent, LengthPercent];
+}
+/**
+ * CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not set.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "ShapeInset".
+ */
+export interface ShapeInset {
+  top?: LengthPercent;
+  right?: LengthPercent;
+  bottom?: LengthPercent;
+  left?: LengthPercent;
+  /**
+   * Points the corners are rounded by; at most half the rectangle's width and height.
+   */
+  radius?: NonNegative;
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema

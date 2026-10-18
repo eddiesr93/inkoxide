@@ -6,6 +6,7 @@ import {
   parseFontVariationSettings,
   parseObjectPosition,
   parseOrigin,
+  parseShape,
   parseTransform,
   round,
   splitTopLevel,
@@ -513,6 +514,13 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       if (v.startsWith('inline-')) throw r.error(`${prop}: ${v} (use left or right)`);
       if (prop === 'float') s.float = r.oneOf('float', v);
       else s.clear = r.oneOf('clear', v);
+      return;
+    case 'shape-outside':
+      if (v === 'none') delete s.shapeOutside;
+      else s.shapeOutside = parseShape(prop, v, units);
+      return;
+    case 'shape-margin':
+      s.shapeMargin = r.points(v);
       return;
     case 'text-wrap':
       // `text-nowrap` is white space that does not wrap.

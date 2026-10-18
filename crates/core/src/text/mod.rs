@@ -50,6 +50,12 @@ const GLYPH_OBJECT: u8 = 8;
 
 /// Tolerance for float noise when comparing widths.
 const WIDTH_EPS: f32 = 1e-3;
+/// Demerits of a break at a hyphenation point, by default (TeX's
+/// `\hyphenpenalty`).
+const HYPHENATION_PENALTY: f32 = 50.0;
+/// A `hyphenationPenalty` from which a hyphenation point is no break
+/// (TeX's infinite penalty).
+const NO_HYPHENATION: f32 = 10_000.0;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Glyph {
@@ -254,6 +260,8 @@ pub(crate) struct ParaStyle {
     pub ellipsis: bool,
     pub white_space: WhiteSpace,
     pub text_wrap: TextWrap,
+    /// Demerits of a break at a hyphenation point, for `pretty`.
+    pub hyphenation_penalty: f32,
     pub indent: f32,
     pub direction: Direction,
     /// Whether the paragraph's words are hyphenated; a run's own
@@ -281,6 +289,7 @@ impl ParaStyle {
             ellipsis: s.ellipsis.unwrap_or(false),
             white_space,
             text_wrap: s.text_wrap.unwrap_or(TextWrap::Wrap),
+            hyphenation_penalty: s.hyphenation_penalty.unwrap_or(HYPHENATION_PENALTY),
             indent: s.text_indent.unwrap_or(0.0),
             direction: s.direction.unwrap_or(Direction::Ltr),
             hyphenate: s.hyphenate == Some(true),
@@ -301,6 +310,22 @@ pub(crate) struct Para<'p> {
     pub runs: &'p [TextRun],
     pub style: &'p ParaStyle,
     pub fonts: &'p FontSet<'p>,
+}
+
+impl Para<'_> {
+    /// The break opportunities, when they are not the prepared ones: with
+    /// a `hyphenationPenalty` of 10 000 or more, those at hyphenation
+    /// points are left out.
+    pub fn breaks(&self) -> Option<Vec<BreakPoint>> {
+        (self.style.hyphenation_penalty >= NO_HYPHENATION).then(|| {
+            self.prepared
+                .breaks
+                .iter()
+                .filter(|b| b.kind != BreakKind::Hyphen)
+                .copied()
+                .collect()
+        })
+    }
 }
 
 /// How far `run`'s baseline sits above the line's, in points (negative:

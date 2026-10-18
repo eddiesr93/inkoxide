@@ -114,6 +114,19 @@ fn structs_match_schema() {
         Some("GridPlacement"),
         &node(r#"{"type":"box","style":{"gridRow":{@"span":1}}}"#),
     );
+    for (def, shape) in [
+        ("ShapeCircle", "circle"),
+        ("ShapeEllipse", "ellipse"),
+        ("ShapeInset", "inset"),
+    ] {
+        check(
+            &s,
+            Some(def),
+            &node(&format!(
+                r#"{{"type":"box","style":{{"float":"left","shapeOutside":{{"{shape}":{{@"at":[0,0]}}}}}}}}"#
+            )),
+        );
+    }
     check(
         &s,
         Some("EdgesLengthPercent"),

@@ -1201,6 +1201,7 @@ const TEXT_ONLY: &[&str] = &[
     "lang",
     "whiteSpace",
     "textWrap",
+    "hyphenationPenalty",
     "textIndent",
     "orphans",
     "widows",
@@ -1347,8 +1348,9 @@ fn prop(s: &mut Src, name: &str) -> Value {
         "ellipsis" | "hyphenate" => json!(s.chance(128)),
         "lang" => e(s, &["fr", "en", "en-US", "de", "xx", ""]),
         "whiteSpace" => e(s, &["normal", "nowrap", "pre", "pre-wrap", "pre-line"]),
-        "textWrap" if s.chaos && s.chance(10) => json!("balance"),
-        "textWrap" => e(s, &["wrap", "pretty", "pretty"]),
+        "textWrap" => e(s, &["wrap", "pretty", "pretty", "balance"]),
+        "hyphenationPenalty" if s.chaos && s.chance(10) => json!(20_000),
+        "hyphenationPenalty" => json!([0, 50, 500, 10_000][s.below(4)]),
         "orphans" | "widows" => match s.below(8) {
             0 => json!(100),
             1 if s.chaos => json!(s.pick(&[0, 101, -1])),
@@ -1676,9 +1678,71 @@ fn font_features(s: &mut Src) -> Value {
     Value::Object(m)
 }
 
+/// A float's `shapeOutside`: each basic shape, in or past the margin
+/// box; chaos makes polygons of too few or too many corners.
+fn shape(s: &mut Src) -> Value {
+    // Points or a percentage, in the margin box or past it; chaos takes
+    // any length.
+    fn len(s: &mut Src) -> Value {
+        if s.chaos {
+            length_pct(s)
+        } else if s.chance(128) {
+            json!(format!("{}%", s.below(130)))
+        } else {
+            json!(s.below(300) as f64 - 20.0)
+        }
+    }
+    fn point(s: &mut Src) -> Value {
+        json!([len(s), len(s)])
+    }
+    let mut m = Map::new();
+    match s.below(4) {
+        0 => {
+            if s.chance(128) {
+                m.insert("radius".into(), json!(format!("{}%", s.below(80))));
+            }
+            if s.chance(128) {
+                m.insert("at".into(), point(s));
+            }
+            json!({ "circle": m })
+        }
+        1 => {
+            for k in ["rx", "ry"] {
+                if s.chance(128) {
+                    m.insert(k.into(), json!(s.below(200)));
+                }
+            }
+            if s.chance(128) {
+                m.insert("at".into(), point(s));
+            }
+            json!({ "ellipse": m })
+        }
+        2 => {
+            for k in ["top", "right", "bottom", "left"] {
+                if s.chance(128) {
+                    m.insert(k.into(), len(s));
+                }
+            }
+            if s.chance(128) {
+                m.insert("radius".into(), json!(s.below(60)));
+            }
+            json!({ "inset": m })
+        }
+        _ => {
+            let n = if s.chaos && s.chance(32) {
+                s.pick(&[1, 2, 1001])
+            } else {
+                3 + s.below(8)
+            };
+            json!({ "polygon": (0..n).map(|_| point(s)).collect::<Vec<_>>() })
+        }
+    }
+}
+
 /// Makes box `m` a float container: a column, with floats among its
-/// `kids` and text after them to wrap, and no `flexGrow` or `flexBasis`
-/// on its children (chaos keeps some, and some row parents).
+/// `kids`, some with a shape, and text after them to wrap, directly and
+/// in a box, and no `alignContent` on it or `flexBasis` on its children
+/// (chaos keeps some, and some row parents).
 fn floats(
     s: &mut Src,
     m: &mut Map<String, Value>,
@@ -1688,19 +1752,12 @@ fn floats(
 ) {
     if !s.chaos {
         if let Some(Value::Object(st)) = m.get_mut("style") {
-            for k in [
-                "display",
-                "flexDirection",
-                "flexWrap",
-                "justifyContent",
-                "alignContent",
-            ] {
+            for k in ["display", "flexDirection", "flexWrap", "alignContent"] {
                 st.remove(k);
             }
         }
         for k in kids.iter_mut() {
             if let Some(Value::Object(st)) = k.get_mut("style") {
-                st.remove("flexGrow");
                 st.remove("flexBasis");
             }
         }
@@ -1735,6 +1792,13 @@ fn floats(
                 if s.chance(128) {
                     st.insert("height".into(), json!(5 + s.below(150)));
                 }
+                if s.chance(96) {
+                    st.insert("shapeOutside".into(), shape(s));
+                    if s.chance(128) {
+                        let margin = if s.chaos { num(s) } else { json!(s.below(20)) };
+                        st.insert("shapeMargin".into(), margin);
+                    }
+                }
             }
         }
         let at = s.below(kids.len() + 1);
@@ -1744,7 +1808,15 @@ fn floats(
         .map(|_| text(s))
         .collect::<Vec<_>>()
         .join(" ");
-    kids.push(json!({"type": "text", "runs": [{"text": words, "font": "Inter-Regular", "size": 6 + s.below(14)}]}));
+    let text = json!({"type": "text", "runs": [{"text": words, "font": "Inter-Regular", "size": 6 + s.below(14)}]});
+    if s.chance(96) {
+        // Its lines wrap beside the floats too, inside its padding.
+        kids.push(
+            json!({"type": "box", "style": {"padding": edges(s, nonneg)}, "children": [text]}),
+        );
+    } else {
+        kids.push(text);
+    }
     if s.chance(64) {
         kids.push(json!({"type": "box", "style": {"clear": s.pick(&["left", "right", "both"]), "height": 10}}));
     }
@@ -2769,6 +2841,10 @@ mod tests {
             "beautiful. In olden",
             r#""float":"left""#,
             r#""clear":""#,
+            r#""shapeOutside":{"polygon":"#,
+            r#""shapeMargin":"#,
+            r#""textWrap":"balance""#,
+            r#""hyphenationPenalty":"#,
             r#""backgroundImage":{"#,
             r#""fallbackFonts":["EmojiTest-CBDT""#,
             r#""image":{"src":"#,

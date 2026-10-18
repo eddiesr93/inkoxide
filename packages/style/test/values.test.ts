@@ -8,6 +8,7 @@ import {
   parseFontVariationSettings,
   parseObjectPosition,
   parseOrigin,
+  parseShape,
   parseTransform,
   PT_PER_UNIT,
   UnsupportedValueError,
@@ -168,6 +169,48 @@ describe('parseOrigin', () => {
   it('rejects names that are not keywords', () => {
     for (const bad of ['left toString', 'constructor', 'valueOf top', 'center __proto__']) {
       expect(() => origin(bad), bad).toThrow(UnsupportedValueError);
+    }
+  });
+});
+
+describe('parseShape', () => {
+  const shape = (v: string) => parseShape('shapeOutside', v, { em: 10, vw: 400, vh: 800 });
+
+  it('reads the basic shapes', () => {
+    expect(shape('circle()')).toEqual({ circle: {} });
+    expect(shape('circle(closest-side at top left)')).toEqual({ circle: { at: [0, 0] } });
+    expect(shape('circle(2em at 25% 10pt) margin-box')).toEqual({ circle: { radius: 20, at: ['25%', 10] } });
+    expect(shape('ellipse(40% 50% at right)')).toEqual({
+      ellipse: { rx: '40%', ry: '50%', at: ['100%', '50%'] },
+    });
+    expect(shape('inset(5pt)')).toEqual({ inset: { top: 5, right: 5, bottom: 5, left: 5 } });
+    expect(shape('inset(1pt 2pt 3pt round 4pt)')).toEqual({
+      inset: { top: 1, right: 2, bottom: 3, left: 2, radius: 4 },
+    });
+    expect(shape('polygon(evenodd, 0 0, 100% 0, 50% 100%)')).toEqual({
+      polygon: [
+        [0, 0],
+        ['100%', 0],
+        ['50%', '100%'],
+      ],
+    });
+  });
+
+  it('rejects what the engine cannot express', () => {
+    for (const bad of [
+      'url(a.png)',
+      'circle(50%) border-box',
+      'circle(farthest-side)',
+      'circle(-5pt)',
+      'circle(1pt 2pt)',
+      'ellipse(10pt)',
+      'inset(1pt 2pt 3pt 4pt 5pt)',
+      'inset(0 round 1pt 2pt)',
+      'polygon(0 0, 1pt 1pt)',
+      'polygon(0 0 0, 1pt 1pt, 2pt 2pt)',
+      'path("M0 0")',
+    ]) {
+      expect(() => shape(bad), bad).toThrow(UnsupportedValueError);
     }
   });
 });

@@ -13,6 +13,7 @@ import {
   OBJECT_FITS,
   type ObjectFit,
   type ObjectPosition,
+  type ShapeOutside,
   type TextDecoration,
   type TextTransform,
   type TextWrap,
@@ -74,7 +75,7 @@ export const ENUMS = {
   borderStyle: BORDER_STYLES,
   gridAutoFlow: ['row', 'column', 'row dense', 'column dense'],
   whiteSpace: ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],
-  textWrap: ['wrap', 'pretty'],
+  textWrap: ['wrap', 'pretty', 'balance'],
   decorationStyle: ['solid', 'double', 'dotted', 'dashed', 'wavy'],
   direction: ['ltr', 'rtl'],
   textTransform: ['none', 'uppercase', 'lowercase', 'capitalize'],
@@ -129,10 +130,8 @@ export class Reader {
     return v;
   }
 
-  /** A `text-wrap` mode; `balance` is reserved, not supported yet. */
+  /** A `text-wrap` mode. */
   textWrap(value: string): TextWrap {
-    if (value.trim() === 'balance')
-      throw this.error(`${this.prop}: balance (not supported yet; pretty evens lines)`);
     return this.oneOf('textWrap', value);
   }
 
@@ -396,6 +395,90 @@ export function parseTransform(prop: string, value: string, units?: Units): Tran
     }
   }
   return out;
+}
+
+/**
+ * Parses CSS `shape-outside` with a basic shape: `circle()`, `ellipse()`, `inset()` (corners
+ * rounded by one length) or `polygon()`, in the margin box (`margin-box`, the default, may
+ * follow). Lengths take `em`, `vw` and `vh` against `units`. `none` is the caller's to handle.
+ */
+export function parseShape(prop: string, value: string, units?: Units): ShapeOutside {
+  const r = new Reader(prop, units);
+  const parts = splitTopLevel(value.trim(), ' ');
+  const box = parts[1];
+  if (parts.length > 2 || (box !== undefined && box !== 'margin-box')) {
+    throw r.error(
+      `${prop}: ${value} (one basic shape, in the margin-box; images and other boxes are not supported)`,
+    );
+  }
+  const m = /^([a-z]+)\((.*)\)$/.exec(parts[0] ?? '');
+  if (!m?.[1] || m[2] === undefined)
+    throw r.error(`${prop}: ${value} (expected circle(), ellipse(), inset() or polygon())`);
+  const [, name, args] = m;
+  // `<radii> at <position>`, for circles and ellipses.
+  const words = splitTopLevel(args, ' ');
+  const at = words.indexOf('at');
+  const radii = at < 0 ? words : words.slice(0, at);
+  const position = (): { at?: [LenPercent, LenPercent] } => {
+    if (at < 0) return {};
+    const p = words.slice(at + 1);
+    if (p.length === 0 || p.length > 2) throw r.error(`${prop}: ${value} (a position is one or two values)`);
+    return { at: parseOrigin(prop, p.join(' '), units) };
+  };
+  const radius = (v: string): LenPercent | undefined => {
+    if (v === 'closest-side') return undefined;
+    if (v === 'farthest-side') throw r.error(`${prop}: ${value} (farthest-side is not supported)`);
+    const l = r.lenPercent(v);
+    if (typeof l === 'number' ? l < 0 : l.startsWith('-'))
+      throw r.error(`${prop}: ${value} (a radius cannot be negative)`);
+    return l;
+  };
+  switch (name) {
+    case 'circle': {
+      if (radii.length > 1) throw r.error(`${prop}: ${value} (a circle has one radius)`);
+      const rad = radii[0] === undefined ? undefined : radius(radii[0]);
+      return { circle: { ...(rad === undefined ? {} : { radius: rad }), ...position() } };
+    }
+    case 'ellipse': {
+      if (radii.length === 1 || radii.length > 2)
+        throw r.error(`${prop}: ${value} (an ellipse has two radii, or none)`);
+      const [rx, ry] = radii.map(radius);
+      return {
+        ellipse: { ...(rx === undefined ? {} : { rx }), ...(ry === undefined ? {} : { ry }), ...position() },
+      };
+    }
+    case 'inset': {
+      const round = words.indexOf('round');
+      const sides = (round < 0 ? words : words.slice(0, round)).map((v) => r.lenPercent(v));
+      const corners = round < 0 ? [] : words.slice(round + 1);
+      if (sides.length === 0 || sides.length > 4)
+        throw r.error(`${prop}: ${value} (inset() takes 1 to 4 offsets)`);
+      if (round >= 0 && corners.length !== 1) {
+        throw r.error(
+          `${prop}: ${value} (one radius after round; per-corner and elliptical radii are not supported)`,
+        );
+      }
+      const [top, right = top, bottom = top, left = right] = sides as [LenPercent, ...LenPercent[]];
+      const rad = corners[0] === undefined ? undefined : r.radius(corners[0]);
+      return { inset: { top, right, bottom, left, ...(rad === undefined ? {} : { radius: rad }) } };
+    }
+    case 'polygon': {
+      const points = splitTopLevel(args);
+      // The fill rule does not change the room a shape takes.
+      if (points[0] === 'nonzero' || points[0] === 'evenodd') points.shift();
+      if (points.length < 3) throw r.error(`${prop}: ${value} (a polygon has at least 3 corners)`);
+      const corners = points.map((p): [LenPercent, LenPercent] => {
+        const xy = splitTopLevel(p, ' ');
+        if (xy.length !== 2) throw r.error(`${prop}: ${value} (a polygon's corners are x y pairs)`);
+        return [r.lenPercent(xy[0] as string), r.lenPercent(xy[1] as string)];
+      });
+      return {
+        polygon: corners as [[LenPercent, LenPercent], [LenPercent, LenPercent], [LenPercent, LenPercent]],
+      };
+    }
+    default:
+      throw r.error(`${prop}: ${name}() (supported: circle(), ellipse(), inset(), polygon())`);
+  }
 }
 
 /** The position keywords of each axis, as the share of the box each stands for. */

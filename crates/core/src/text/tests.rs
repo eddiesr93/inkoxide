@@ -870,6 +870,106 @@ fn justified_pretty_lines_may_shrink_their_spaces_by_a_third() {
     assert!(shrunk > 0);
 }
 
+const HEADING: &str = "Quarterly results for the northern region, with notes on the outlook";
+
+#[test]
+fn balanced_lines_are_as_many_as_first_fit_and_even() {
+    let s = store();
+    for (width, style) in [
+        (200.0, r#""textWrap":"balance""#),
+        (150.0, r#""textWrap":"balance","textAlign":"center""#),
+        (260.0, r#""textWrap":"balance","textIndent":20"#),
+    ] {
+        let (greedy_texts, greedy) = lines(&doc(&para(HEADING, "")), &s, width);
+        let (texts, l) = lines(&doc(&para(HEADING, style)), &s, width);
+        assert_eq!(texts.join(" "), greedy_texts.join(" "));
+        assert_eq!(l.lines.len(), greedy.lines.len(), "{width}: {texts:?}");
+        assert_fits(&l, width);
+        // The widest line is narrower than first fit's, and the last line
+        // longer: the room is shared out.
+        let widest = |l: &LineLayout| {
+            l.lines
+                .iter()
+                .map(|x| x.width + x.indent)
+                .fold(0.0, f32::max)
+        };
+        assert!(
+            widest(&l) < widest(&greedy),
+            "{width}: {texts:?} / {greedy_texts:?}"
+        );
+        let last = |l: &LineLayout| l.lines.last().unwrap().width;
+        assert!(
+            last(&l) > last(&greedy),
+            "{width}: {texts:?} / {greedy_texts:?}"
+        );
+    }
+}
+
+#[test]
+fn balance_leaves_alone_what_it_cannot_even_out() {
+    let s = store();
+    let balance = r#""textWrap":"balance""#;
+    // One line, a paragraph of more than ten lines, and a word wider than
+    // its line break as first fit does.
+    for (text, width) in [
+        (HEADING, 1000.0),
+        (PROSE, 120.0),
+        ("Unbreakable words", 30.0),
+    ] {
+        let (greedy, _) = lines(&doc(&para(text, "")), &s, width);
+        let (texts, _) = lines(&doc(&para(text, balance)), &s, width);
+        assert_eq!(texts, greedy, "{width}");
+    }
+    // Beside a band, too.
+    let boxes = banded(200.0, &[(0.0, 30.0, 80.0, 0.0)]);
+    let (greedy, _) = lines_in(&doc(&para(HEADING, "")), &s, &boxes);
+    let (texts, _) = lines_in(&doc(&para(HEADING, balance)), &s, &boxes);
+    assert_eq!(texts, greedy);
+    // Each chunk between forced breaks is balanced on its own.
+    let text = format!("{HEADING}\\n{HEADING}");
+    let (one, _) = lines(&doc(&para(HEADING, balance)), &s, 200.0);
+    let (texts, _) = lines(&doc(&para(&text, balance)), &s, 200.0);
+    assert_eq!(texts, [one.clone(), one].concat());
+}
+
+#[test]
+fn the_hyphenation_penalty_sets_how_much_pretty_avoids_hyphens() {
+    let s = store();
+    let style =
+        |penalty: &str| format!(r#""hyphenate":true,"lang":"en","textAlign":"justify"{penalty}"#);
+    let hyphens = |penalty: &str, width: f32| {
+        let (_, l) = lines(&pretty(doc(&para(PROSE, &style(penalty)))), &s, width);
+        l.lines.iter().filter(|x| x.hyphen.is_some()).count()
+    };
+    let (mut cheap, mut default, mut dear) = (0, 0, 0);
+    for width in [120.0, 140.0, 170.0, 200.0] {
+        cheap += hyphens(r#","hyphenationPenalty":0"#, width);
+        default += hyphens("", width);
+        dear += hyphens(r#","hyphenationPenalty":1000"#, width);
+        // From 10 000, a hyphenation point is no break.
+        assert_eq!(
+            hyphens(r#","hyphenationPenalty":10000"#, width),
+            0,
+            "{width}"
+        );
+    }
+    assert!(
+        cheap >= default && default >= dear,
+        "{cheap} {default} {dear}"
+    );
+    assert!(cheap > dear, "{cheap} {dear}");
+    // First fit does not weigh breaks, but from 10 000 it does not
+    // hyphenate either.
+    let first_fit = |penalty: &str| lines(&doc(&para(PROSE, &style(penalty))), &s, 140.0).1;
+    let hyphens = |l: LineLayout| l.lines.iter().filter(|x| x.hyphen.is_some()).count();
+    assert!(hyphens(first_fit("")) > 0);
+    assert_eq!(
+        hyphens(first_fit(r#","hyphenationPenalty":1000"#)),
+        hyphens(first_fit(""))
+    );
+    assert_eq!(hyphens(first_fit(r#","hyphenationPenalty":10000"#)), 0);
+}
+
 /// Lays out a text node of `runs` (JSON) with `style` at `width`, with
 /// image `logo` (160 × 160 px, 120 pt) for its image runs: the line texts
 /// (an object as `#`), the layout and the objects.

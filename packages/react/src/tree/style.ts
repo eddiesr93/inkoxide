@@ -9,6 +9,7 @@ import {
   parseFlex,
   parseObjectPosition,
   parseOrigin,
+  parseShape,
   parseTransform,
   parseFontFeatureSettings,
   parseFontVariationSettings,
@@ -91,6 +92,7 @@ export interface InheritExtra {
   direction?: FlatStyle['direction'];
   orphans?: number | undefined;
   widows?: number | undefined;
+  hyphenationPenalty?: number | undefined;
 }
 
 /** The context of an element's content: the parent's, overridden by the element's own style. */
@@ -127,6 +129,7 @@ export function inherit(parent: TextCtx, own: FlatStyle, extra?: InheritExtra): 
     if (extra.direction !== undefined) c.direction = extra.direction;
     if (extra.orphans !== undefined) c.orphans = extra.orphans;
     if (extra.widows !== undefined) c.widows = extra.widows;
+    if (extra.hyphenationPenalty !== undefined) c.hyphenationPenalty = extra.hyphenationPenalty;
   }
   return c;
 }
@@ -181,6 +184,8 @@ const SIMPLE_KEYS = [
   'overflow',
   'float',
   'clear',
+  'shapeOutside',
+  'shapeMargin',
   'opacity',
   'transformOrigin',
   'zIndex',
@@ -445,7 +450,10 @@ export function textNodeStyle(
   if (own.maxLines !== undefined) set('maxLines', own.maxLines);
   if (own.ellipsis) set('ellipsis', true);
   if (ctx.whiteSpace !== undefined && ctx.whiteSpace !== 'normal') set('whiteSpace', ctx.whiteSpace);
-  if (ctx.textWrap === 'pretty') set('textWrap', 'pretty');
+  if (ctx.textWrap !== undefined && ctx.textWrap !== 'wrap') set('textWrap', ctx.textWrap);
+  if (ctx.hyphenationPenalty !== undefined && ctx.hyphenationPenalty !== 50) {
+    set('hyphenationPenalty', ctx.hyphenationPenalty);
+  }
   // A hyphenation callback replaces the patterns: the engine would break the words it keeps whole.
   if (usesPatterns(ctx)) set('hyphenate', true);
   if (ctx.lang !== undefined && ctx.lang !== docLang) set('lang', ctx.lang);
@@ -758,6 +766,8 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     translate,
     transform,
     transformOrigin,
+    shapeOutside,
+    shapeMargin,
     fontWeight,
     top,
     right,
@@ -909,6 +919,10 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     out.transformOrigin = parseOrigin('transformOrigin', transformOrigin, units);
   else if (transformOrigin !== undefined)
     out.transformOrigin = transformOrigin.map((v) => lengthOf('lenPercent', 'transformOrigin', v, units));
+  if (typeof shapeOutside === 'string') {
+    if (shapeOutside.trim() !== 'none') out.shapeOutside = parseShape('shapeOutside', shapeOutside, units);
+  } else if (shapeOutside !== undefined) out.shapeOutside = shapeOutside;
+  if (shapeMargin !== undefined) out.shapeMargin = lengthOf('points', 'shapeMargin', shapeMargin, units);
   for (const k of Object.keys(out)) {
     if (out[k] === undefined) delete out[k];
     else if (!KNOWN_KEYS.has(k)) throw new Error(`unknown style property "${k}"`);
