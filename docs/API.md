@@ -422,8 +422,9 @@ only on the font and the clamped axis values.
   Matching follows CSS: the family, then the width (`stretch`, 100 when
   absent), the style, the weight.
 - Each of those instances is embedded as one of the declaration's, at most
-  64 per declaration (the smallest values first); text past them draws at
-  the declaration's own.
+  64 per declaration (the smallest values first) and 1024 in a document
+  (those of the first declarations first); text past them draws at the
+  declaration's own.
 - An instance's `FontBBox` holds its own outlines, which a heavy instance
   draws outside the default instance's `head` box.
 - `register` refuses (`FONT_ERROR`) a variable font with more than 63

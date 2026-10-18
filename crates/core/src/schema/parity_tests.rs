@@ -1055,6 +1055,16 @@ fn integer_bounds_match_schema() {
     }
 }
 
+/// The bound of `fonts` is the schema's.
+#[test]
+fn font_bound_matches_schema() {
+    use crate::validate::rules::MAX_FONTS;
+    assert_eq!(
+        bound(&schema(), "/properties/fonts/maxItems"),
+        MAX_FONTS as i64
+    );
+}
+
 /// The bound of `fallbackFonts` is the schema's.
 #[test]
 fn fallback_font_bound_matches_schema() {

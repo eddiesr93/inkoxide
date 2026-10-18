@@ -221,10 +221,11 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   a percentage) and `weightRange` and `stretchRange`, as CSS `@font-face` does: SVG text is
   matched by `font-stretch` too (the family, then the width, the style, the weight, as CSS
   does) and draws at its own weight and width within the ranges. At most 64 such instances per
-  declaration. `@inkoxide/react` and `@inkoxide/render` have `fontStretch` in styles, on SVG
-  text and in `Font.register` (a width or a range, `[75, 100]`, drawn at its `wdth`), and
-  `@inkoxide/tailwind` reads `font-stretch-*`. An instance's `FontBBox` holds its own outlines;
-  it was the default instance's, which a heavy instance can exceed.
+  declaration, and 1024 in a document. `@inkoxide/react` and `@inkoxide/render` have
+  `fontStretch` in styles, on SVG text and in `Font.register` (a width or a range, `[75, 100]`,
+  drawn at its `wdth`), and `@inkoxide/tailwind` reads `font-stretch-*`. An instance's
+  `FontBBox` holds its own outlines; it was the default instance's, which a heavy instance can
+  exceed.
 - PDF/A-1b takes images with alpha. One whose alpha is only clear or opaque, as a GIF's
   transparency, is written with a stencil mask, which PDF/A-1b allows; it was refused. The new
   `flattenAlpha` render option (`flatten_alpha` in Rust, `<Document flattenAlpha>` in
@@ -265,6 +266,9 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   whole height, or moved below it. Boxes with `overflow: 'hidden'` or an `aspectRatio`, rows,
   grids, images and tables are still narrowed or moved below, as CSS does with boxes that make
   a block formatting context: give a box `overflow: 'hidden'` to keep the old layout.
+- A document declares at most 256 fonts (`OUT_OF_RANGE` at `fonts`; `maxItems` in the schema):
+  each declaration is parsed for layout and for shaping in every render, and past 65 536 of
+  them text drew in the wrong font.
 
 ### Fixed
 
@@ -316,6 +320,9 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - An SVG whose `viewBox` width or height is zero or negative fails with `INVALID_IMAGE`, as one
   under 0.00001 did, instead of being drawn as if it had no `viewBox`; a nested SVG image is
   left out.
+- A font with colour bitmaps (`CBDT` or `sbix`) whose CFF outlines cannot be embedded registers
+  and draws its colour glyphs, as a bitmap font without outlines does; it was refused with an
+  error that said it had no colour bitmaps.
 
 ### Repository
 

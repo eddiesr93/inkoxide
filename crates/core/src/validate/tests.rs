@@ -2519,6 +2519,25 @@ fn fallback_fonts_are_limited() {
 }
 
 #[test]
+fn font_declarations_are_limited() {
+    use crate::validate::rules::MAX_FONTS;
+    let with = |n: usize| {
+        let fonts: Vec<String> = (0..n)
+            .map(|i| format!(r#"{{"id":"f{i}","family":"Inter","source":"Inter-Regular"}}"#))
+            .collect();
+        format!(
+            r#"{{"version":1,"fonts":[{}],"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#,
+            fonts.join(",")
+        )
+    };
+    assert_eq!(run(&with(MAX_FONTS)), vec![]);
+    assert_eq!(
+        one(&with(MAX_FONTS + 1)),
+        (C::OutOfRange, "fonts".to_string())
+    );
+}
+
+#[test]
 fn emoji_images_are_checked() {
     let with = |map: &str| {
         format!(

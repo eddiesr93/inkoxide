@@ -266,8 +266,10 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   italic as well. Each combination a document uses is a static instance, embedded as TrueType
   (CFF2 outlines too), so viewers show exactly what was laid out. TrueType (`gvar`) and CFF2
   variable fonts work; one with more than 63 axes or an `avar` table other than version 1.0 is
-  refused when it loads. A document uses at most 64 instances (`OUT_OF_RANGE` at `fonts`). Text
-  in an `<Svg>` takes the nearest instance the document declares.
+  refused when it loads. A document uses at most 64 instances picked by a weight, a width or
+  `fontVariationSettings` (`OUT_OF_RANGE` at `fonts`). Optical sizes add at most 64 instances
+  to each face or instance, and 1024 to a document; text at a size past them draws at its
+  face's own. Text in an `<Svg>` takes the nearest instance the document declares.
 - **Colour emoji.** Register a colour emoji font, such as Noto Color Emoji, and list it in
   [`fallbackFonts`](#links-bookmarks-and-metadata):
 

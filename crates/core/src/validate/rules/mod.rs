@@ -246,6 +246,9 @@ pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
 /// Longest alternative text of an inline image, in characters.
 pub(crate) const MAX_ALT: usize = 1024;
+/// Most font declarations (`fonts`): each is parsed for layout and for
+/// shaping in every render.
+pub(crate) const MAX_FONTS: usize = 256;
 /// Most entries of `fallbackFonts`.
 pub(crate) const MAX_FALLBACK_FONTS: usize = 256;
 /// Most entries of `emojiImages`.
@@ -485,6 +488,16 @@ impl<'a> Checker<'a> {
                 Code::OutOfRange,
                 Some("fonts"),
                 format!("at most {MAX_FONT_INSTANCES} fonts declare variations; this document has {instances}"),
+            );
+        }
+        if doc.fonts.len() > MAX_FONTS {
+            self.err(
+                Code::OutOfRange,
+                Some("fonts"),
+                format!(
+                    "at most {MAX_FONTS} font declarations; this document has {}",
+                    doc.fonts.len()
+                ),
             );
         }
         if doc.fallback_fonts.len() > MAX_FALLBACK_FONTS {

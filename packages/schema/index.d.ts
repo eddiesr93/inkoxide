@@ -330,6 +330,8 @@ export interface Document {
   meta?: Meta;
   /**
    * Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early.
+   *
+   * @maxItems 256
    */
   fonts?: FontDecl[];
   /**
@@ -610,7 +612,7 @@ export interface FontDecl {
     [k: string]: number | undefined;
   };
   /**
-   * Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first), and text of another size draws at the declaration's own.
+   * Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first) and 1024 in a document (those of the first declarations first), and text of another size draws at the declaration's own.
    */
   opticalSizing?: 'auto' | 'none';
 }

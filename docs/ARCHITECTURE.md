@@ -242,8 +242,9 @@ size of its font size (`opsz`, unless the declaration sets it or
 matched by, within the declaration's `weightRange` and `stretchRange`.
 Before shaping, `text::font_asks` collects what the document asks (the
 sizes of its runs, the spans of its SVG text) and `FontSet::add_variants`
-makes those instances, in order of key and coordinates, at most 64 per
-declaration, as fonts of their own: their keys follow the declarations',
+makes those instances, in order of key and coordinates (those of deferred
+fonts last, so that a missing one moves no other key), at most 64 per
+declaration and 1024 in all, as fonts of their own: their keys follow the declarations',
 so the shaper loads a face for each, and itemizing swaps a run's font for
 its variant. An instance's `FontBBox` is the union of `head`'s box and its
 glyphs' boxes at its coordinates, of every glyph, so that an encrypted

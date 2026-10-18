@@ -47,6 +47,8 @@ version 2.
   both from its first button only. Each button's `label` is kept (`/Contents` of its widget).
 - **Time formats:** a `time` format refuses a date without a time (`INVALID_VALUE`), as
   documented; it took one as midnight.
+- **Font declarations:** `fonts` holds at most 256 declarations (`maxItems`). Each costs memory
+  in every render, and past 65 536 of them text drew in another declaration's font.
 
 ## 2.5.1 - 2026-10-16
 
