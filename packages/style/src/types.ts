@@ -4,6 +4,7 @@ import type {
   GridPlacement,
   ImageNode,
   ObjectPosition,
+  ShapeOutside,
   Style,
   TemplateTrack,
   TextRun,
@@ -46,7 +47,7 @@ export type Direction = NonNullable<Style['direction']>;
 export type RunAlign = NonNullable<TextRun['verticalAlign']>;
 export const RUN_ALIGNS = ['baseline', 'super', 'sub'] as const satisfies readonly RunAlign[];
 
-export type { ObjectPosition, TransformOp };
+export type { ObjectPosition, ShapeOutside, TransformOp };
 
 /**
  * The style of one element, flattened: what `tw()` reads from a class string and the React tree
@@ -104,6 +105,10 @@ export interface FlatStyle {
   float?: Style['float'];
   /** Moves the element below the floats before it on these sides. */
   clear?: Style['clear'];
+  /** Floats only: the shape the lines beside the float wrap around, as CSS `shape-outside`. */
+  shapeOutside?: ShapeOutside;
+  /** Floats with a `shapeOutside` only: the points lines keep from the shape. */
+  shapeMargin?: number;
   backgroundColor?: ColorValue;
   opacity?: number;
   borderTopWidth?: number;
@@ -164,9 +169,14 @@ export interface FlatStyle {
   decorationStyle?: DecorationStyle;
   textTransform?: TextTransform;
   whiteSpace?: WhiteSpace;
-  /** How lines break: first fit (`wrap`), or even lines over the paragraph (`pretty`). */
+  /**
+   * How lines break: first fit (`wrap`), even lines over the paragraph (`pretty`), or first fit
+   * in lines of about the same length (`balance`).
+   */
   textWrap?: TextWrap;
   hyphenate?: boolean;
+  /** How much `pretty` avoids hyphens: 0 to 10 000 (no hyphenation), default 50. */
+  hyphenationPenalty?: number;
   /** Points; negative for a hanging indent. */
   textIndent?: number;
   direction?: Direction;
@@ -212,6 +222,7 @@ export const TEXT_INHERITED = [
   'whiteSpace',
   'textWrap',
   'hyphenate',
+  'hyphenationPenalty',
   'textIndent',
   'direction',
   'orphans',

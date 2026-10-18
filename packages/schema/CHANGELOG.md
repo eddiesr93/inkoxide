@@ -25,6 +25,20 @@ version 2.
 - **Error codes:** `UNKNOWN_ATTACHMENT`, `ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE` and
   `UA_CONFLICT`. `PDFA_CONFLICT` also covers `attachments` under PDF/A-1b, 2b and 2a, and
   `DUPLICATE_ID` an attachment `name` or an XMP schema `prefix` declared twice.
+- **Text:** `"balance"` for `textWrap`, and `hyphenationPenalty` (0 to 10 000, default 50) on
+  text nodes.
+- **Floats:** `shapeOutside` (a circle, an ellipse, an inset or a polygon of 3 to 1000 corners,
+  in the float's margin box) and `shapeMargin`, on floats only; `justifyContent` on a box with
+  floats, and `flexGrow` on its children that are not floats, which were rejected.
+- **Definitions:** `ShapeOutside`, `ShapeCircle`, `ShapeEllipse` and `ShapeInset`.
+
+### Fixed
+
+- **Boxes beside floats:** a column box after a float, with children and no floats of its own,
+  without `overflow: "hidden"` or `aspectRatio`, lays its children out beside the float, as CSS
+  does, so that its text wraps beside the float line by line; it was narrowed to the room beside
+  the float over its whole height, or moved below it. Other boxes are narrowed or moved below
+  as before; `overflow: "hidden"` keeps a box so.
 
 ## 2.5.1 - 2026-10-16
 

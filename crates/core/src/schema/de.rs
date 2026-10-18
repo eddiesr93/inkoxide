@@ -13,8 +13,8 @@ use super::{
     Attachment, AttachmentDecl, BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles,
     Break, ColumnSpec, ColumnWidth, Corners, Field, FieldValue, FontFeature, FontVariation,
     ImageFit, ImageSource, InlineData, Node, NodeKind, Note, ObjectPosition, OptEdges, PageFilter,
-    PagePattern, Relationship, Role, RunAlign, RunImage, Style, Table, TableRow, TextRun,
-    TransformOp,
+    PagePattern, Relationship, Role, RunAlign, RunImage, ShapeOutside, Style, Table, TableRow,
+    TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -377,6 +377,44 @@ impl<'de> Deserialize<'de> for TransformOp {
                     return Err(de::Error::custom(ONE_KEY));
                 }
                 Ok(op)
+            }
+        }
+        d.deserialize_map(V)
+    }
+}
+
+impl<'de> Deserialize<'de> for ShapeOutside {
+    /// An object with exactly one key, as [`TransformOp`].
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = ShapeOutside;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a shape: an object with one key")
+            }
+            fn visit_map<A: de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<ShapeOutside, A::Error> {
+                const ONE_KEY: &str = "[INVALID_VALUE] a shape is an object with exactly one key: `circle`, `ellipse`, `inset` or `polygon`";
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom(ONE_KEY));
+                };
+                let shape = match key.as_str() {
+                    "circle" => ShapeOutside::Circle(map.next_value()?),
+                    "ellipse" => ShapeOutside::Ellipse(map.next_value()?),
+                    "inset" => ShapeOutside::Inset(map.next_value()?),
+                    "polygon" => ShapeOutside::Polygon(map.next_value()?),
+                    _ => {
+                        return Err(de::Error::custom(format_args!(
+                            "[INVALID_VALUE] unknown shape `{key}`, expected `circle`, `ellipse`, `inset` or `polygon`"
+                        )))
+                    }
+                };
+                if map.next_key::<de::IgnoredAny>()?.is_some() {
+                    return Err(de::Error::custom(ONE_KEY));
+                }
+                Ok(shape)
             }
         }
         d.deserialize_map(V)
@@ -795,7 +833,8 @@ pub struct RawNode {
     #[serde(rename = "type")]
     ty: NodeType,
     id: Option<String>,
-    style: Option<Style>,
+    /// Boxed: the parser's frame for each level of nesting holds it.
+    style: Option<Box<Style>>,
     #[serde(rename = "break")]
     brk: Option<Break>,
     link: Option<Box<str>>,
@@ -908,7 +947,10 @@ impl TryFrom<RawNode> for Node {
         };
         Ok(Node {
             id: r.id,
-            style: r.style.map(super::NodeStyle::new).unwrap_or_default(),
+            style: r
+                .style
+                .map(|s| super::NodeStyle::new(*s))
+                .unwrap_or_default(),
             brk: r.brk.unwrap_or_default(),
             link: r.link,
             bookmark: r.bookmark,

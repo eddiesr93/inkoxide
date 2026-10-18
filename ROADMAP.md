@@ -18,10 +18,6 @@ or should come sooner.
 - **PDF/A-1b**: images with partial alpha flattened onto white, as an option, and binary alpha
   written as a stencil mask, which PDF/A-1b allows; both are refused now. A `validate` that knows
   the PDF/A level, so that it reports what only `render` reports now.
-- **Layout**: `shapeOutside` on floats; text in a box beside a float that wraps around it line
-  by line, as text directly beside it does (the box is narrowed over its whole height now);
-  `flexGrow` and `justifyContent` in a box with floats; `textWrap: 'balance'`; a
-  `hyphenationPenalty` on `Text`.
 - **Variable fonts**: optical sizes chosen from the text size (`opsz`); `fontStretch`; weight
   ranges for SVG text, which takes the nearest instance a document declares; an instance's
   `FontBBox` from its own outlines (it is the default instance's, from `head`, now, which a heavy

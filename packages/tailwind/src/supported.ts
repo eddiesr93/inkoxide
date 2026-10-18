@@ -54,13 +54,39 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       '`float-left`, `float-right`, `float-none`, `clear-left`, `clear-right`, `clear-both`, `clear-none`',
     maps: '`float`, `clear`',
     notes:
-      'In a column `View`, a `Page` or a table cell (not in a row or a grid, and not on a cell itself): text after a float wraps beside it, boxes after it are narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported.',
+      'In a column `View`, a `Page` or a table cell (not in a row or a grid, and not on a cell itself): text after a float wraps beside it, and so does the text of a column `View` after it; an `overflow-hidden` box, a row, a grid or an image after it is narrowed beside it or moved below it. `float-start`, `float-end`, `clear-start` and `clear-end` are not supported.',
     examples: {
       'float-left': { float: 'left' },
       'float-right': { float: 'right' },
       'float-none': { float: 'none' },
       'clear-both': { clear: 'both' },
       'clear-left': { clear: 'left' },
+    },
+  },
+  {
+    group: 'Layout',
+    utilities: '`[shape-outside:…]`, `[shape-margin:…]`',
+    maps: '`shapeOutside`, `shapeMargin`',
+    notes:
+      'Arbitrary properties on a float, as Tailwind has no utilities for them: `circle()`, `ellipse()`, `inset()` and `polygon()`, with `_` for spaces. Lines beside the float wrap around the shape; the float is placed, and boxes beside it narrowed, by its margin box.',
+    examples: {
+      '[shape-outside:circle(50%)]': { shapeOutside: { circle: { radius: '50%' } } },
+      '[shape-outside:ellipse(40%_50%_at_left)] [shape-margin:6pt]': {
+        shapeOutside: { ellipse: { rx: '40%', ry: '50%', at: [0, '50%'] } },
+        shapeMargin: 6,
+      },
+      '[shape-outside:inset(0_0_20%_round_8pt)]': {
+        shapeOutside: { inset: { top: 0, right: 0, bottom: '20%', left: 0, radius: 8 } },
+      },
+      '[shape-outside:polygon(0_0,100%_0,0_100%)]': {
+        shapeOutside: {
+          polygon: [
+            [0, 0],
+            ['100%', 0],
+            [0, '100%'],
+          ],
+        },
+      },
     },
   },
   {
@@ -774,13 +800,14 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Text',
-    utilities: '`text-wrap`, `text-pretty`, `text-nowrap`',
+    utilities: '`text-wrap`, `text-pretty`, `text-balance`, `text-nowrap`',
     maps: '`textWrap`, `whiteSpace`',
     notes:
-      '`text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`.',
+      '`text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-balance` makes the lines of a heading about as long as each other (`textWrap: balance`); `text-nowrap` is `whiteSpace: nowrap`.',
     examples: {
       'text-wrap': { textWrap: 'wrap' },
       'text-pretty': { textWrap: 'pretty' },
+      'text-balance': { textWrap: 'balance' },
       'text-nowrap': { whiteSpace: 'nowrap' },
     },
   },
@@ -856,7 +883,6 @@ export const UNSUPPORTED: ReadonlyArray<{ example: string; why: string }> = [
     example: 'clear-end',
     why: '`clear-start` and `clear-end`; use `clear-left`, `clear-right` or `clear-both`.',
   },
-  { example: 'text-balance', why: '`text-wrap: balance`; `text-pretty` evens lines.' },
   { example: 'object-scale-down', why: '`object-fit: scale-down`.' },
   { example: 'object-[right_1rem_top]', why: '`object-position` with edge offsets.' },
   { example: 'not-a-class', why: 'Classes Tailwind does not know.' },

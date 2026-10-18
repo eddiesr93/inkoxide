@@ -24,8 +24,11 @@ const MAX_EVALUATIONS: u32 = 1 << 21;
 const TOLERANCES: [f64; 2] = [1.26, 10.0];
 /// Demerits of every line (TeX's `\linepenalty`).
 const LINE_PENALTY: f64 = 10.0;
-/// Penalty of a break that shows a hyphen, or follows one.
-const HYPHEN_PENALTY: f64 = 50.0;
+/// Penalty of a break after a hyphen in the text (TeX's
+/// `\exhyphenpenalty`); one at a hyphenation point is the paragraph's
+/// `hyphenationPenalty`.
+const EXPLICIT_HYPHEN_PENALTY: f64 = 50.0;
+
 /// Two lines in a row ending in a hyphen (`\doublehyphendemerits`).
 const DOUBLE_HYPHEN: f64 = 10_000.0;
 /// The line before the last ending in a hyphen (`\finalhyphendemerits`).
@@ -215,10 +218,15 @@ impl Chunk {
             .filter(|br| br.glyph as usize > self.start && (br.glyph as usize) < self.end)
             .map(|br| (br.glyph as usize, br.kind))
             .chain(std::iter::once((self.end, BreakKind::Mandatory)));
+        let hyphenation = b.para.style.hyphenation_penalty;
         for (pos, kind) in candidates {
             let forced = kind == BreakKind::Mandatory;
             let flagged = kind == BreakKind::Hyphen || (!forced && Self::after_hyphen(b, pos));
-            let penalty = if flagged { HYPHEN_PENALTY } else { 0.0 };
+            let penalty = match kind {
+                BreakKind::Hyphen => f64::from(hyphenation),
+                _ if flagged => EXPLICIT_HYPHEN_PENALTY,
+                _ => 0.0,
+            };
             // Best way to break here, per (line, fitness class).
             let mut best: Vec<(usize, u8, f64, usize, f32)> = Vec::new();
             let mut done: Vec<usize> = Vec::new();

@@ -1043,7 +1043,7 @@ kebab_enum!(WhiteSpace {
     PreWrap = "pre-wrap",
     PreLine = "pre-line",
 });
-kebab_enum!(TextWrap { Wrap = "wrap", Pretty = "pretty" });
+kebab_enum!(TextWrap { Wrap = "wrap", Pretty = "pretty", Balance = "balance" });
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
@@ -1103,6 +1103,50 @@ pub enum TransformOp {
     Rotate(f32),
     Skew([f32; 2]),
     Matrix([f32; 6]),
+}
+
+/// The shape that lines beside a float wrap around (`shapeOutside`), in
+/// the float's margin box: lengths are points or percentages of it.
+/// Read from an object with exactly one key (`de.rs`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShapeOutside {
+    Circle(ShapeCircle),
+    Ellipse(ShapeEllipse),
+    Inset(ShapeInset),
+    /// Its corners, at least 3.
+    Polygon(Vec<[LengthPercent; 2]>),
+}
+
+/// A circle: its radius (a percentage of the margin box's diagonal over
+/// √2; by default to the closest side) and its centre (by default the
+/// middle).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapeCircle {
+    pub radius: Option<LengthPercent>,
+    pub at: Option<[LengthPercent; 2]>,
+}
+
+/// An ellipse: its radii (percentages of the margin box's width and
+/// height; by default to the closest sides) and its centre.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapeEllipse {
+    pub rx: Option<LengthPercent>,
+    pub ry: Option<LengthPercent>,
+    pub at: Option<[LengthPercent; 2]>,
+}
+
+/// A rectangle inset from the margin box's sides (0 when not set), with
+/// corners rounded by `radius` points.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapeInset {
+    pub top: Option<LengthPercent>,
+    pub right: Option<LengthPercent>,
+    pub bottom: Option<LengthPercent>,
+    pub left: Option<LengthPercent>,
+    pub radius: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
@@ -1260,6 +1304,12 @@ pub struct Style {
     pub float: Option<Float>,
     /// Moves the box below the floats before it on these sides.
     pub clear: Option<Clear>,
+    /// A float's shape for the lines beside it to wrap around, instead of
+    /// its margin box.
+    pub shape_outside: Option<ShapeOutside>,
+    /// How far the lines beside a float keep from its `shapeOutside`,
+    /// points.
+    pub shape_margin: Option<f32>,
 
     // Visual
     pub background_color: Option<Color>,
@@ -1288,9 +1338,12 @@ pub struct Style {
     pub hyphenate: Option<bool>,
     pub lang: Option<String>,
     pub white_space: Option<WhiteSpace>,
-    /// How lines break: first fit (`wrap`), or over the whole paragraph
-    /// (`pretty`).
+    /// How lines break: first fit (`wrap`), over the whole paragraph
+    /// (`pretty`), or first fit in lines of even widths (`balance`).
     pub text_wrap: Option<TextWrap>,
+    /// Demerits of a break at a hyphenation point, for `pretty` (TeX's
+    /// `\hyphenpenalty`); 10 000 or more forbids it.
+    pub hyphenation_penalty: Option<f32>,
     /// Indent of the first line, points (negative: hanging).
     pub text_indent: Option<f32>,
     pub direction: Option<Direction>,
@@ -1341,6 +1394,7 @@ impl Style {
             ("lang", self.lang.is_some()),
             ("whiteSpace", self.white_space.is_some()),
             ("textWrap", self.text_wrap.is_some()),
+            ("hyphenationPenalty", self.hyphenation_penalty.is_some()),
             ("textIndent", self.text_indent.is_some()),
             ("direction", self.direction.is_some()),
             ("orphans", self.orphans.is_some()),

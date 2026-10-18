@@ -2,12 +2,13 @@
 //! templates, transforms, and each style property.
 
 use super::{
-    Alpha, Checker, Len, MAX_LINE_HEIGHT, MAX_NUMBER, MAX_ORPHANS, MAX_PERCENT, MAX_TEXT_INDENT,
+    Alpha, Checker, Len, MAX_HYPHENATION_PENALTY, MAX_LINE_HEIGHT, MAX_NUMBER, MAX_ORPHANS,
+    MAX_PERCENT, MAX_POLYGON_POINTS, MAX_TEXT_INDENT,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{
-    is_area_name, parse_areas, BorderRadius, Color, GridTrack, OptEdges, RepeatCount, Style,
-    TrackBreadth, TrackSize, TransformOp,
+    is_area_name, parse_areas, BorderRadius, Color, GridTrack, LengthPercent, OptEdges,
+    RepeatCount, ShapeOutside, Style, TrackBreadth, TrackSize, TransformOp,
 };
 
 impl Checker<'_> {
@@ -190,6 +191,30 @@ impl Checker<'_> {
                 }
             });
         }
+        if s.floats().is_none() {
+            for (name, set) in [
+                ("shapeOutside", s.shape_outside.is_some()),
+                ("shapeMargin", s.shape_margin.is_some()),
+            ] {
+                if set {
+                    self.err(
+                        Code::StyleNotApplicable,
+                        Some(name),
+                        format!("`{name}` only applies to floats"),
+                    );
+                }
+            }
+        } else if s.shape_outside.is_none() && s.shape_margin.is_some() {
+            self.err(
+                Code::StyleNotApplicable,
+                Some("shapeMargin"),
+                "`shapeMargin` only applies with a `shapeOutside`",
+            );
+        }
+        if let Some(shape) = &s.shape_outside {
+            self.at("shapeOutside", |c| c.shape(shape));
+        }
+        self.non_neg("shapeMargin", s.shape_margin);
         if let Some(origin) = &s.transform_origin {
             self.at("transformOrigin", |c| {
                 for (i, v) in origin.iter().enumerate() {
@@ -280,6 +305,15 @@ impl Checker<'_> {
                 Code::OutOfRange,
                 Some("textIndent"),
                 format!("must be within [-{MAX_TEXT_INDENT}, {MAX_TEXT_INDENT}]"),
+            );
+        }
+        if s.hyphenation_penalty
+            .is_some_and(|v| !(0.0..=MAX_HYPHENATION_PENALTY).contains(&v))
+        {
+            self.err(
+                Code::OutOfRange,
+                Some("hyphenationPenalty"),
+                format!("must be within [0, {MAX_HYPHENATION_PENALTY}]"),
             );
         }
         for (name, v) in [("orphans", s.orphans), ("widows", s.widows)] {
@@ -385,6 +419,62 @@ impl Checker<'_> {
                     "with an auto-fill / auto-fit repeat, every track needs a fixed size (points or a percentage) as its minimum or maximum",
                 );
             }
+        }
+    }
+
+    /// A float's shape: lengths as everywhere, radii not negative, and a
+    /// polygon of 3 to [`MAX_POLYGON_POINTS`] corners.
+    pub(super) fn shape(&mut self, shape: &ShapeOutside) {
+        let xy = |c: &mut Self, p: [LengthPercent; 2]| {
+            for (i, v) in p.into_iter().enumerate() {
+                c.at_index(i, |c| c.len(None, v, true));
+            }
+        };
+        let point = |c: &mut Self, name: &str, at: Option<[LengthPercent; 2]>| {
+            if let Some(at) = at {
+                c.at(name, |c| xy(c, at));
+            }
+        };
+        let radius = |c: &mut Self, name: &str, r: Option<LengthPercent>| {
+            if let Some(r) = r {
+                c.len(Some(name), r, false);
+            }
+        };
+        match shape {
+            ShapeOutside::Circle(s) => self.at("circle", |c| {
+                radius(c, "radius", s.radius);
+                point(c, "at", s.at);
+            }),
+            ShapeOutside::Ellipse(s) => self.at("ellipse", |c| {
+                radius(c, "rx", s.rx);
+                radius(c, "ry", s.ry);
+                point(c, "at", s.at);
+            }),
+            ShapeOutside::Inset(s) => self.at("inset", |c| {
+                for (name, v) in [
+                    ("top", s.top),
+                    ("right", s.right),
+                    ("bottom", s.bottom),
+                    ("left", s.left),
+                ] {
+                    if let Some(v) = v {
+                        c.len(Some(name), v, true);
+                    }
+                }
+                c.non_neg("radius", s.radius);
+            }),
+            ShapeOutside::Polygon(points) => self.at("polygon", |c| {
+                if !(3..=MAX_POLYGON_POINTS).contains(&points.len()) {
+                    c.err(
+                        Code::OutOfRange,
+                        None,
+                        format!("a polygon has 3 to {MAX_POLYGON_POINTS} corners"),
+                    );
+                }
+                for (k, &p) in points.iter().enumerate() {
+                    c.at_index(k, |c| xy(c, p));
+                }
+            }),
         }
     }
 

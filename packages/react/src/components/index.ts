@@ -1,4 +1,12 @@
-import type { Break, Color, Meta, PageFilter, Role as SchemaRole, TransformOp } from '@inkoxide/schema';
+import type {
+  Break,
+  Color,
+  Meta,
+  PageFilter,
+  Role as SchemaRole,
+  ShapeOutside,
+  TransformOp,
+} from '@inkoxide/schema';
 import type { BorderStyle, FlatStyle, FontFeatureSettings, FontVariationSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
@@ -121,6 +129,8 @@ export interface StyleProp extends Omit<
   | 'translate'
   | 'transform'
   | 'transformOrigin'
+  | 'shapeOutside'
+  | 'shapeMargin'
   | 'objectPosition'
   | 'fontFeatureSettings'
   | 'fontVariationSettings'
@@ -232,14 +242,24 @@ export interface StyleProp extends Omit<
   fontVariationSettings?: FontVariationSettings;
   /**
    * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
-   * breaks over the whole paragraph for even lines. Inherited. `'balance'` is not supported yet.
+   * breaks over the whole paragraph for even lines; `'balance'` makes the lines of a heading or a
+   * caption about as long as each other. Inherited.
    */
-  textWrap?: FlatStyle['textWrap'] | 'balance';
+  textWrap?: FlatStyle['textWrap'];
   translate?: [LengthPercent, LengthPercent];
   /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
   transform?: TransformOp[] | string;
   /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
   transformOrigin?: [LengthPercent, LengthPercent] | string;
+  /**
+   * Floats only: the shape the lines beside the float wrap around, in its margin box, as CSS
+   * `shape-outside` (`'circle(50%)'`, `'ellipse(40% 50% at left)'`, `'inset(0 0 20% 0 round 8pt)'`,
+   * `'polygon(0 0, 100% 0, 0 100%)'`) or the schema's object (`{ circle: {} }`). Only lines follow
+   * it: the float is placed, and boxes beside it narrowed, by its margin box.
+   */
+  shapeOutside?: ShapeOutside | string;
+  /** Floats with a `shapeOutside` only: how far lines keep from the shape, within the margin box. */
+  shapeMargin?: number | string;
   /**
    * `Image` and `ImageBackground` only: where a `contain`, `cover` or `none` image sits in its
    * box, as CSS `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default
@@ -561,6 +581,12 @@ export interface TextProps extends Flow {
   orphans?: number;
   /** Minimum lines carried to the top of the next page (default 1). */
   widows?: number;
+  /**
+   * How much `textWrap: 'pretty'` avoids breaking at a hyphenation point: 0 to 10 000, default
+   * 50 (TeX's `\hyphenpenalty`). Higher values give fewer hyphens and looser lines; 10 000 never
+   * breaks a word at one, whatever `textWrap`. Inherited, and `style` takes it too.
+   */
+  hyphenationPenalty?: number;
   render?: RenderProp;
 }
 

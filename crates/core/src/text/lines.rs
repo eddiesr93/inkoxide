@@ -5,12 +5,18 @@ use super::{
     baseline_shift, optimal, BreakKind, BreakPoint, ExtraGlyph, Line, LineLayout, Para, WIDTH_EPS,
 };
 use crate::layout::{LineBox, LineBoxes};
-use crate::schema::RunAlign;
+use crate::schema::{RunAlign, TextWrap};
 
 /// Shown at the end of a truncated line; three dots in fonts without it.
 pub(super) const ELLIPSIS: char = '\u{2026}';
 /// Shown at a hyphenation break; a hyphen-minus in fonts without it.
 pub(super) const HYPHEN: char = '\u{2010}';
+/// Most lines `textWrap: balance` evens out: a longer chunk is broken
+/// first fit (as in Firefox; CSS lets browsers set the limit).
+const MAX_BALANCED_LINES: usize = 10;
+/// Steps of the search for a balanced chunk's width: each halves the
+/// interval, so the width is found to within a millionth of the line.
+const BALANCE_STEPS: u32 = 20;
 
 /// Breaks `para` into lines in `boxes`: no wider than their box
 /// (`f32::INFINITY` wide for max-content), each chunk between forced breaks
@@ -36,21 +42,28 @@ pub(super) fn break_chunks(
     let n = p.glyphs.len();
     let mut start = 0usize;
     let mut first = 0usize;
+    let kept;
+    let breaks = match para.breaks() {
+        Some(b) => {
+            kept = b;
+            &kept[..]
+        }
+        None => &p.breaks[..],
+    };
     // Chunks end at each forced break and at the end of the paragraph.
-    let ends = p
-        .breaks
+    let ends = breaks
         .iter()
         .enumerate()
         .filter(|(_, br)| br.kind == BreakKind::Mandatory)
         .map(|(i, br)| (br.glyph as usize, i))
-        .chain(std::iter::once((n, p.breaks.len())));
+        .chain(std::iter::once((n, breaks.len())));
     for (end, last) in ends {
         if end <= start {
             continue;
         }
         // The opportunities inside the chunk.
-        let inside = &p.breaks[first..last];
-        first = (last + 1).min(p.breaks.len());
+        let inside = &breaks[first..last];
+        first = (last + 1).min(breaks.len());
         match optimal::lines(&b, start, end, inside, &mut budget) {
             Ok(lines) => {
                 for (s, e, kind) in lines {
@@ -59,7 +72,14 @@ pub(super) fn break_chunks(
                 chunk(Ok(()));
             }
             Err(why) => {
-                b.greedy(start, end, inside);
+                match b.balanced(start, end, inside) {
+                    Some(cap) => {
+                        b.cap = cap;
+                        b.greedy(start, end, inside);
+                        b.cap = f32::INFINITY;
+                    }
+                    None => b.greedy(start, end, inside),
+                }
                 chunk(Err(why));
             }
         }
@@ -82,6 +102,8 @@ pub(super) struct Breaker<'a, 'p> {
     line_boxes: Vec<LineBox>,
     /// Top of the next line.
     y: f32,
+    /// Widest a line may be, below its box's width: a balanced chunk's.
+    cap: f32,
 }
 
 impl<'a, 'p> Breaker<'a, 'p> {
@@ -107,6 +129,7 @@ impl<'a, 'p> Breaker<'a, 'p> {
             lines: Vec::new(),
             line_boxes: Vec::new(),
             y: 0.0,
+            cap: f32::INFINITY,
         }
     }
 
@@ -142,7 +165,12 @@ impl<'a, 'p> Breaker<'a, 'p> {
     /// box, less the indent on the first line (which a hanging indent
     /// widens).
     pub fn limit_at(&self, index: usize, y: f32) -> f32 {
-        let w = self.box_at(y).width;
+        self.room(index, y, self.cap)
+    }
+
+    /// [`Self::limit_at`] in a box no wider than `cap`.
+    fn room(&self, index: usize, y: f32, cap: f32) -> f32 {
+        let w = self.box_at(y).width.min(cap);
         if index == 0 {
             w - self.para.style.indent
         } else {
@@ -232,6 +260,81 @@ impl<'a, 'p> Breaker<'a, 'p> {
         }
         self.y += line.height;
         self.lines.push(line);
+    }
+
+    /// The width that balances glyphs `start..end` (`textWrap: balance`):
+    /// the narrowest at which first fit breaks them into as many lines as
+    /// in their box, so the lines are as even as first fit makes them.
+    /// `None` when there is nothing to balance: one line, more than
+    /// [`MAX_BALANCED_LINES`], bands (floats) beside them, or a word wider
+    /// than its line.
+    fn balanced(&self, start: usize, end: usize, inside: &[BreakPoint]) -> Option<f32> {
+        let style = self.para.style;
+        if style.text_wrap != TextWrap::Balance || !style.wrap() || self.banded() {
+            return None;
+        }
+        let full = self.boxes.width;
+        if !full.is_finite() {
+            return None;
+        }
+        let lines = self.first_fit_lines(start, end, inside, full)?;
+        if !(2..=MAX_BALANCED_LINES).contains(&lines) {
+            return None;
+        }
+        // First fit makes no fewer lines in a narrower box: search for the
+        // narrowest that still makes `lines`.
+        let (mut narrow, mut wide) = (0.0f32, full);
+        for _ in 0..BALANCE_STEPS {
+            let mid = f32::midpoint(narrow, wide);
+            if self.first_fit_lines(start, end, inside, mid) == Some(lines) {
+                wide = mid;
+            } else {
+                narrow = mid;
+            }
+        }
+        Some(wide)
+    }
+
+    /// How many lines first fit breaks glyphs `start..end` into, in a box
+    /// no wider than `cap`, without bands; `None` past
+    /// [`MAX_BALANCED_LINES`], or when a word does not fit.
+    fn first_fit_lines(
+        &self,
+        start: usize,
+        end: usize,
+        inside: &[BreakPoint],
+        cap: f32,
+    ) -> Option<usize> {
+        let mut start = start;
+        let mut lines = 0usize;
+        let mut last_fit: Option<usize> = None;
+        let mut bi = 0usize;
+        loop {
+            let (pos, kind) = match inside.get(bi) {
+                Some(b) => (b.glyph as usize, b.kind),
+                None => (end, BreakKind::Mandatory),
+            };
+            if pos <= start {
+                bi += 1;
+                continue;
+            }
+            let limit = self.room(self.lines.len() + lines, self.y, cap);
+            if self.width(start, pos) + self.hyphen_width(pos, kind) <= limit + WIDTH_EPS {
+                if kind == BreakKind::Mandatory {
+                    return Some(lines + 1);
+                }
+                last_fit = Some(pos);
+                bi += 1;
+                continue;
+            }
+            // As in `greedy`: the line ends at the last break that fit, and
+            // the same opportunity is tried on the next line.
+            start = last_fit.take()?;
+            lines += 1;
+            if lines >= MAX_BALANCED_LINES {
+                return None;
+            }
+        }
     }
 
     /// Breaks glyphs `start..end`, a chunk ended by a forced break or the
@@ -374,8 +477,10 @@ pub(crate) fn min_content(para: &Para<'_>) -> f32 {
     } = *para;
     let mut min_content = 0.0f32;
     let mut start = 0usize;
-    let ends = p
-        .breaks
+    let kept = para.breaks();
+    let ends = kept
+        .as_deref()
+        .unwrap_or(&p.breaks)
         .iter()
         .map(|b| (b.glyph as usize, b.kind))
         .chain(std::iter::once((p.glyphs.len(), BreakKind::Mandatory)));

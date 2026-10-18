@@ -104,6 +104,23 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   licence, keywords and categories. The packages leave out the tests and benchmarks, which read
   fixtures outside the crate.
 - `@inkoxide/render`: `<Svg>` and `<Canvas>` take `alt`, as `<Image>` does.
+- `textWrap: 'balance'` (`text-balance`): the lines of a heading or a caption come out about
+  as long as each other. Each stretch between forced breaks is broken first fit into as many
+  lines as `wrap` gives, in the narrowest width that keeps that many; a stretch of one line or
+  more than 10, beside a float, or with a word wider than its line breaks as `wrap`.
+- `hyphenationPenalty` (a style, and a prop of `<Text>` in `@inkoxide/react` and
+  `@inkoxide/render`, which rejected it): how much `textWrap: 'pretty'` avoids breaking at a
+  hyphenation point, 0 to 10 000, default 50, as TeX's `\hyphenpenalty`. From 10 000, a word is
+  never broken at a hyphenation point, whatever `textWrap`.
+- `shapeOutside` and `shapeMargin` on floats (a style; `shapeOutside` and `shapeMargin` in the
+  `style` prop of `@inkoxide/react`, as CSS strings or objects; `[shape-outside:…]` and
+  `[shape-margin:…]` as Tailwind arbitrary properties): the lines beside a float wrap around a
+  circle, an ellipse, a rounded inset or a polygon in its margin box instead of the box, as CSS
+  `shape-outside` with a basic shape. The float is still placed, and boxes beside it narrowed,
+  by its margin box. `@inkoxide/style` has `parseShape`.
+- `flexGrow` and `justifyContent` in a box with floats: the room a box of known height leaves
+  goes to auto margins, else to the children that grow, else around and between the children
+  as `justifyContent` says, as in a column box. `flexGrow` on a float itself is refused.
 - Romanian hyphenation (`ro`, `ro-MD`). hyph-utf8's Romanian patterns have no licence, so the
   engine hyphenates Romanian by the syllable rules of DOOM2: a hyphen goes only between the
   consonants that separate two vowels (`ca-li-ta-te`, `în-tre-prin-de-re`, `sculp-tor`,
@@ -113,10 +130,15 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Changed
 
-- `@inkoxide/react`: `textWrap: 'balance'` and a negative `flexGrow` or `flexShrink` are refused
-  with the same message as their Tailwind classes, from `@inkoxide/style`
-  (`textWrap: balance (not supported yet; pretty evens lines)`, `flexGrow: -1 (cannot be
-  negative)`); a `flexGrow` of `NaN` is refused too.
+- `@inkoxide/react`: a negative `flexGrow` or `flexShrink` is refused with the same message as
+  its Tailwind class, from `@inkoxide/style` (`flexGrow: -1 (cannot be negative)`); a `flexGrow`
+  of `NaN` is refused too.
+- A column box after a float, with children and no floats of its own, keeps its width and lays
+  its children out beside the float, so that its text wraps beside the float line by line, as
+  CSS does (to a depth of 8 such boxes). It was narrowed to the room beside the float over its
+  whole height, or moved below it. Boxes with `overflow: 'hidden'` or an `aspectRatio`, rows,
+  grids, images and tables are still narrowed or moved below, as CSS does with boxes that make
+  a block formatting context: give a box `overflow: 'hidden'` to keep the old layout.
 
 ### Fixed
 

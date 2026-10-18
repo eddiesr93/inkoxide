@@ -367,11 +367,11 @@ describe('textWrap', () => {
     expect(first<TextNode>(plain).style?.textWrap).toBeUndefined();
   });
 
-  it('rejects balance, which is reserved', () => {
-    expect(() => render(<Text style={{ textWrap: 'balance' }}>a</Text>)).toThrow(
-      /textWrap: balance \(not supported yet/,
+  it('passes balance, from style and classes', () => {
+    expect(first<TextNode>(render(<Text style={{ textWrap: 'balance' }}>a</Text>)).style?.textWrap).toBe(
+      'balance',
     );
-    expect(() => render(<Text className="text-balance">a</Text>)).toThrow(/text-balance/);
+    expect(first<TextNode>(render(<Text className="text-balance">a</Text>)).style?.textWrap).toBe('balance');
   });
 });
 

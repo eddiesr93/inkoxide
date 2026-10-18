@@ -76,7 +76,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
-| Floats | `layout/flow.rs`, `layout/float.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them, boxes narrowed |
+| Floats | `layout/flow.rs`, `layout/float.rs`, `layout/shape.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them (around a `shapeOutside`, in strips), column boxes laid out beside them with the floats seeded in, other boxes narrowed |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks; page numbers (`pipeline/numbering.rs`) |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
 | PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, the structure tree of tagged PDF and PDF/UA (`pdf/tag.rs`), PDF/A-1b, 2b, 2a, 3b and 3a, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
@@ -128,10 +128,12 @@ Op::Text in a colour font ─▶ ColorGlyphs ─▶ Op::Span + Op::Image + Op::I
 
 `break_lines` breaks each chunk between forced breaks on its own, first
 fit (`lines.rs`) or, for `textWrap: pretty`, with Knuth and Plass's
-total fit (`optimal.rs`), which falls back to first fit past its caps.
-Lines are laid in `LineBoxes` (`layout/float.rs`): the content width,
-and bands where floats take room on a side, where each line finds its
-box at its own top. A float container's layout records the line boxes of
+total fit (`optimal.rs`), which falls back to first fit past its caps;
+`textWrap: balance` searches for the narrowest width at which first fit
+gives as many lines. Lines are laid in `LineBoxes` (`layout/float.rs`):
+the content width, and bands where floats take room on a side, one per
+float or, for a float with a `shapeOutside`, one per strip of its shape
+(`layout/shape.rs`), where each line finds its box at its own top. A float container's layout records the line boxes of
 the text beside its floats (`Tree.wraps`); pagination, page numbers and
 the painter look the lines up in them.
 

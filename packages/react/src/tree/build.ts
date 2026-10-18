@@ -208,14 +208,6 @@ class Builder {
 
   /** The element's own style: its classes, then its `style` prop. `parent` is the inherited context. */
   private styleOf(inst: Instance, parent: TextCtx): FlatStyle {
-    // Every `Text`, a paragraph or a run, has its style read here.
-    if (inst.type === HOST.Text && inst.props.hyphenationPenalty !== undefined) {
-      this.fail(
-        inst,
-        "<Text hyphenationPenalty> is not supported: lines break first fit, or with textWrap: 'pretty'. To keep words whole, use hyphenate={false} or a hyphenationCallback.",
-        { kind: 'props' },
-      );
-    }
     const className = inst.props.className as string | undefined;
     const style = inst.props.style as StyleInput | undefined;
     const invalidStyle = (e: unknown): never =>
@@ -837,6 +829,7 @@ class Builder {
       direction: p.dir as TextCtx['direction'],
       orphans: p.orphans as number | undefined,
       widows: p.widows as number | undefined,
+      hyphenationPenalty: p.hyphenationPenalty as number | undefined,
     });
     const node: TextNode = { type: 'text', runs: [] };
     this.checkHyphenateLang(ctx, inst);

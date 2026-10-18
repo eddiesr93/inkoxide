@@ -27,6 +27,7 @@ const MAIN_VALUES = [
   'parseFontVariationSettings',
   'parseObjectPosition',
   'parseOrigin',
+  'parseShape',
   'parseTransform',
   'round',
   'splitTopLevel',

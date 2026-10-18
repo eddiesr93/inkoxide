@@ -5,10 +5,13 @@
 //! heights. A paragraph's lines are as wide as its content box, less, over
 //! the vertical ranges where a float sits beside it, the room that takes
 //! on either side: [`LineBoxes`] holds those ranges; without any, every
-//! line is as wide as the content box.
+//! line is as wide as the content box. A float with a `shapeOutside`
+//! takes the room of its shape from lines, strip by strip
+//! ([`super::shape`]), and that of its margin box from everything else.
 
 use std::sync::Arc;
 
+use super::shape::Strip;
 use super::width_key;
 use crate::schema::Clear;
 
@@ -129,14 +132,15 @@ pub(crate) enum Side {
 }
 
 /// A float placed in its container: its side and its margin box, in the
-/// container's content box.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// container's content box, and the strips of its shape, if it has one.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Placed {
     pub side: Side,
     pub x: f32,
     pub y: f32,
     pub w: f32,
     pub h: f32,
+    pub shape: Option<Arc<[Strip]>>,
 }
 
 impl Placed {
@@ -148,6 +152,10 @@ impl Placed {
 /// Height a zero-height float or box counts as when looking for room, so
 /// that it still meets the floats at its top.
 const MIN_HEIGHT: f32 = 1e-3;
+
+/// Most shape strips the floats of one container have; floats beyond
+/// that take the room of their margin box from lines too.
+const MAX_SHAPE_STRIPS: usize = 4096;
 
 /// The floats of one container, in its content box `width` wide.
 #[derive(Debug, Clone)]
@@ -161,16 +169,47 @@ pub(crate) struct FloatContext {
     /// The top of the last float placed: a later float goes no higher
     /// (CSS 2.2 §9.5.1, rule 5).
     last_top: f32,
+    /// The shape strips of the floats placed and seeded.
+    strips: usize,
 }
 
 impl FloatContext {
+    #[cfg(test)]
     pub fn new(width: f32) -> Self {
+        Self::seeded(width, Vec::new())
+    }
+
+    /// The floats of a box laid out beside its container's `floats`
+    /// (from [`Self::seeds`]): lines in it wrap beside them, `clear`
+    /// moves below them, and its own go no higher than they do.
+    pub fn seeded(width: f32, floats: Vec<Placed>) -> Self {
+        let last_top = floats.iter().map(|f| f.y).fold(f32::NEG_INFINITY, f32::max);
+        let strips = floats
+            .iter()
+            .filter_map(|f| f.shape.as_ref())
+            .map(|s| s.len())
+            .sum();
         Self {
             width,
-            floats: Vec::new(),
+            floats,
             retired: [None; 2],
-            last_top: f32::NEG_INFINITY,
+            last_top,
+            strips,
         }
+    }
+
+    /// The floats reaching below `y`, in a box whose content box starts at
+    /// (`x`, `y`) in the container: moved to its coordinates.
+    pub fn seeds(&self, x: f32, y: f32) -> Vec<Placed> {
+        self.floats
+            .iter()
+            .filter(|f| f.bottom() > y && f.h > 0.0)
+            .map(|f| Placed {
+                x: f.x - x,
+                y: f.y - y,
+                ..f.clone()
+            })
+            .collect()
     }
 
     /// The room the floats take beside `y..y + h`: on the left, up to the
@@ -259,38 +298,67 @@ impl FloatContext {
 
     /// Places a float of margin box `w` × `h` on `side`, its top no higher
     /// than `min_y` (where it occurs in the flow) nor than earlier floats,
-    /// and returns it.
-    pub fn place(&mut self, side: Side, w: f32, h: f32, min_y: f32) -> Placed {
+    /// with the strips of its shape while they are within bounds, and
+    /// returns it.
+    pub fn place(
+        &mut self,
+        side: Side,
+        (w, h): (f32, f32),
+        min_y: f32,
+        shape: Option<Arc<[Strip]>>,
+    ) -> Placed {
         let (y, taken) = self.fit(w, h, min_y.max(self.last_top));
         let x = match side {
             Side::Left => taken.left,
             Side::Right => self.width - taken.right - w,
         };
-        let placed = Placed { side, x, y, w, h };
+        let shape = shape.filter(|s| self.strips + s.len() <= MAX_SHAPE_STRIPS);
+        self.strips += shape.as_ref().map_or(0, |s| s.len());
+        let placed = Placed {
+            side,
+            x,
+            y,
+            w,
+            h,
+            shape,
+        };
         self.last_top = y;
-        self.floats.push(placed);
+        self.floats.push(placed.clone());
         placed
     }
 
     /// The bands the floats make in a box whose content box starts at
     /// (`x`, `y`) in the container and is `w` wide, relative to it: only
-    /// the floats reaching below `y`, sorted by top.
+    /// the floats reaching below `y`, one band a strip of those with a
+    /// shape, sorted by top.
     pub fn bands(&self, x: f32, y: f32, w: f32) -> Vec<Band> {
+        // The band of a float's part from `top` to `bottom` of its margin
+        // box, taking room from `l` to `r` of it.
+        let band = |f: &Placed, top: f32, bottom: f32, (l, r): (f32, f32)| {
+            let (left, right) = match f.side {
+                Side::Left => ((f.x + r - x).max(0.0), 0.0),
+                Side::Right => (0.0, (x + w - f.x - l).max(0.0)),
+            };
+            (left > 0.0 || right > 0.0).then_some(Band {
+                top: f.y + top - y,
+                bottom: f.y + bottom - y,
+                left,
+                right,
+            })
+        };
         let mut bands: Vec<Band> = self
             .floats
             .iter()
             .filter(|f| f.bottom() > y && f.h > 0.0)
-            .filter_map(|f| {
-                let (left, right) = match f.side {
-                    Side::Left => ((f.x + f.w - x).max(0.0), 0.0),
-                    Side::Right => (0.0, (x + w - f.x).max(0.0)),
-                };
-                (left > 0.0 || right > 0.0).then_some(Band {
-                    top: f.y - y,
-                    bottom: f.bottom() - y,
-                    left,
-                    right,
-                })
+            .flat_map(|f| match &f.shape {
+                Some(strips) => strips
+                    .iter()
+                    .filter(|s| f.y + s.bottom > y)
+                    .filter_map(|s| band(f, s.top, s.bottom, s.extent?))
+                    .collect(),
+                None => band(f, 0.0, f.h, (0.0, f.w))
+                    .into_iter()
+                    .collect::<Vec<_>>(),
             })
             .collect();
         bands.sort_by(|a, b| a.top.total_cmp(&b.top));
@@ -305,15 +373,15 @@ mod tests {
     #[test]
     fn floats_stack_side_by_side_then_wrap_below() {
         let mut c = FloatContext::new(100.0);
-        let a = c.place(Side::Left, 40.0, 20.0, 0.0);
-        let b = c.place(Side::Left, 40.0, 30.0, 0.0);
+        let a = c.place(Side::Left, (40.0, 20.0), 0.0, None);
+        let b = c.place(Side::Left, (40.0, 30.0), 0.0, None);
         assert_eq!((a.x, a.y, b.x, b.y), (0.0, 0.0, 40.0, 0.0));
         // No room for a third beside them: below the shorter one, `b`
         // still takes the room it needs; below both, it fits.
-        let d = c.place(Side::Left, 40.0, 10.0, 0.0);
+        let d = c.place(Side::Left, (40.0, 10.0), 0.0, None);
         assert_eq!((d.x, d.y), (0.0, 30.0));
         // A right float goes no higher than `d`, and takes the room there.
-        let r = c.place(Side::Right, 15.0, 10.0, 0.0);
+        let r = c.place(Side::Right, (15.0, 10.0), 0.0, None);
         assert_eq!((r.x, r.y), (85.0, 30.0));
         let insets = |left, right| Insets { left, right };
         assert_eq!(c.band(0.0, 5.0), insets(80.0, 0.0));
@@ -325,8 +393,8 @@ mod tests {
     #[test]
     fn a_later_float_goes_no_higher_than_an_earlier_one() {
         let mut c = FloatContext::new(100.0);
-        c.place(Side::Left, 30.0, 50.0, 10.0);
-        let r = c.place(Side::Right, 30.0, 10.0, 0.0);
+        c.place(Side::Left, (30.0, 50.0), 10.0, None);
+        let r = c.place(Side::Right, (30.0, 10.0), 0.0, None);
         assert_eq!(r.y, 10.0);
     }
 
@@ -334,8 +402,8 @@ mod tests {
     fn clear_goes_below_the_floats_of_its_sides() {
         let mut c = FloatContext::new(100.0);
         assert_eq!(c.clear_y(Clear::Both), None);
-        c.place(Side::Left, 30.0, 50.0, 0.0);
-        c.place(Side::Right, 30.0, 20.0, 0.0);
+        c.place(Side::Left, (30.0, 50.0), 0.0, None);
+        c.place(Side::Right, (30.0, 20.0), 0.0, None);
         assert_eq!(c.clear_y(Clear::Left), Some(50.0));
         assert_eq!(c.clear_y(Clear::Right), Some(20.0));
         assert_eq!(c.clear_y(Clear::Both), Some(50.0));
@@ -345,8 +413,8 @@ mod tests {
     #[test]
     fn retired_floats_still_count_for_clear_only() {
         let mut c = FloatContext::new(100.0);
-        c.place(Side::Left, 30.0, 50.0, 0.0);
-        c.place(Side::Right, 30.0, 20.0, 0.0);
+        c.place(Side::Left, (30.0, 50.0), 0.0, None);
+        c.place(Side::Right, (30.0, 20.0), 0.0, None);
         c.retire(20.0);
         // The right float is done with: no longer active, still cleared.
         assert_eq!(c.floats.len(), 1);
@@ -364,18 +432,18 @@ mod tests {
         assert_eq!(c.clear_y(Clear::Both), Some(50.0));
         assert_eq!(c.clear_y(Clear::Left), Some(50.0));
         // A later float still goes no higher than the earlier ones.
-        assert_eq!(c.place(Side::Left, 10.0, 10.0, 0.0).y, 0.0);
+        assert_eq!(c.place(Side::Left, (10.0, 10.0), 0.0, None).y, 0.0);
     }
 
     #[test]
     fn zero_size_and_too_wide_floats_are_placed() {
         let mut c = FloatContext::new(100.0);
-        let z = c.place(Side::Left, 0.0, 0.0, 5.0);
+        let z = c.place(Side::Left, (0.0, 0.0), 5.0, None);
         assert_eq!((z.x, z.y), (0.0, 5.0));
-        let a = c.place(Side::Left, 60.0, 10.0, 5.0);
+        let a = c.place(Side::Left, (60.0, 10.0), 5.0, None);
         // Wider than the room beside `a`, and than the container: below
         // every float, at its side.
-        let w = c.place(Side::Right, 150.0, 10.0, 5.0);
+        let w = c.place(Side::Right, (150.0, 10.0), 5.0, None);
         assert_eq!((w.x, w.y), (-50.0, a.bottom()));
         // Bands of a box beside them, relative to its content box.
         let bands = c.bands(10.0, 5.0, 80.0);

@@ -15,6 +15,7 @@
 mod fast;
 pub(crate) mod float;
 mod flow;
+mod shape;
 mod style;
 pub(crate) mod table;
 

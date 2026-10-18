@@ -17,6 +17,7 @@ export const BLOCK_ONLY = [
   'dir',
   'orphans',
   'widows',
+  'hyphenationPenalty',
   'break',
   'wrap',
   'minPresenceAhead',
