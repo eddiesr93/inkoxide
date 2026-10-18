@@ -1,4 +1,4 @@
-import type { FontStretch } from '@inkoxide/style';
+import type { Color, FlatStyle, FontStretch } from '@inkoxide/style';
 import { parseFontFamily } from '@inkoxide/style/internal';
 
 import { type DrawingFont, escapeXml, quotedFamily } from '../canvas.ts';
@@ -105,6 +105,8 @@ export interface SvgTextFonts {
   size: number;
   /** The registered face for `font` (marked as used): its family, weight, style and width. */
   face(font: DrawingFont, inst: Instance): DrawingFont;
+  /** The style of the classes `className` of `inst`. */
+  classes(inst: Instance, className: string): FlatStyle;
   fail(inst: Instance, message: string): never;
 }
 
@@ -121,6 +123,123 @@ function fontOf(font: DrawingFont, props: Record<string, unknown>): DrawingFont 
   return out;
 }
 
+/** The keys a `style` object takes: the SVG attributes CSS can also set. */
+const STYLE_KEYS: ReadonlySet<string> = new Set([
+  'fill',
+  'fillOpacity',
+  'fillRule',
+  'stroke',
+  'strokeWidth',
+  'strokeOpacity',
+  'strokeLinecap',
+  'strokeLinejoin',
+  'strokeDasharray',
+  'strokeDashoffset',
+  'strokeMiterlimit',
+  'opacity',
+  'transform',
+  'clipPath',
+  'clipRule',
+  'markerStart',
+  'markerMid',
+  'markerEnd',
+  'visibility',
+  'color',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'fontStretch',
+  'textAnchor',
+  'dominantBaseline',
+  'letterSpacing',
+  'wordSpacing',
+  'textDecoration',
+  'direction',
+  'writingMode',
+  'textOrientation',
+  'fontFeatureSettings',
+  'fontVariant',
+  'fontKerning',
+  'baselineShift',
+  'alignmentBaseline',
+]);
+
+/** `c` as an SVG colour. */
+function svgColor(c: Color): string {
+  const [r, g, b] = c.slice(0, 3).map((v) => Math.round(v * 255));
+  const a = Math.round((c[3] ?? 1) * 1000) / 1000;
+  return a === 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`;
+}
+
+const paint = (v: unknown): string =>
+  v === 'none' || v === 'currentColor' ? (v as string) : svgColor(v as Color);
+const same = (v: unknown): unknown => v;
+
+/** What each key of a class style is as an SVG attribute (keyed by its prop name). */
+const CLASS_SVG: Readonly<Record<string, (v: unknown) => unknown>> = {
+  fill: paint,
+  stroke: paint,
+  strokeWidth: same,
+  opacity: same,
+  color: (v) => svgColor(v as Color),
+  fontFamily: (v) => (v as string[]).map(quotedFamily).join(', '),
+  fontSize: same,
+  fontWeight: same,
+  fontStyle: same,
+  fontStretch: same,
+  letterSpacing: (v) => {
+    const l = v as { pt: number } | { em: number };
+    return 'em' in l ? `${l.em}em` : l.pt;
+  },
+  textDecoration: (v) => (v === 'lineThrough' ? 'line-through' : v),
+  // Set with the size by `text-*`; SVG text is one line.
+  lineHeight: () => undefined,
+};
+
+/** What the classes of `n` set, as SVG props. */
+function classProps(n: Instance, className: string, text: SvgTextFonts): Record<string, unknown> {
+  const s = text.classes(n, className);
+  const bad = Object.keys(s).filter((k) => CLASS_SVG[k] === undefined);
+  if (bad.length > 0) {
+    text.fail(
+      n,
+      `className="${className}" on <${HOST_NAME[n.type]}> inside <Svg>: ${bad.join(', ')} ${bad.length === 1 ? 'does' : 'do'} not apply to a drawing, which takes fill-*, stroke-*, stroke-<n>, opacity-*, a text colour and font utilities.`,
+    );
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(s)) out[k] = CLASS_SVG[k]?.(v);
+  return out;
+}
+
+/**
+ * The props of `n` as SVG attributes: its own, then what its `className` sets over them, then its
+ * `style`, as CSS applies them.
+ */
+function ownProps(n: Instance, text: SvgTextFonts): Record<string, unknown> {
+  const { className, style, ...props } = n.props;
+  const name = HOST_NAME[n.type];
+  if (typeof className === 'string' && className.trim() !== '') {
+    Object.assign(props, classProps(n, className, text));
+  } else if (className !== undefined && typeof className !== 'string') {
+    text.fail(n, `className on <${name}> inside <Svg> is a string of classes.`);
+  }
+  if (style === undefined || style === null) return props;
+  if (typeof style !== 'object' || Array.isArray(style)) {
+    text.fail(n, `style on <${name}> inside <Svg> is an object of SVG attributes ({ fill: 'teal' }).`);
+  }
+  for (const [k, v] of Object.entries(style as Record<string, unknown>)) {
+    if (!STYLE_KEYS.has(k)) {
+      text.fail(
+        n,
+        `style on <${name}> inside <Svg> does not take ${k}: it takes the SVG attributes CSS sets (fill, stroke, strokeWidth, opacity, fontSize, …).`,
+      );
+    }
+    if (v !== undefined) props[k] = v;
+  }
+  return props;
+}
+
 function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean): string {
   if (n.kind === 'text') {
     if (!inText) throw new Error('Internal error: the reconciler let text into an <Svg>.');
@@ -129,23 +248,14 @@ function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean
   const isText = n.type === HOST.Text || n.type === HOST.Tspan || n.type === HOST.TextPath;
   const tag = n.type === HOST.Text ? 'text' : SVG_TAGS[n.type];
   if (tag === undefined) throw new Error(`Internal error: the reconciler let <${n.type}> into an <Svg>.`);
+  const props = ownProps(n, text);
   let inner: DrawingFont;
   try {
-    inner = fontOf(font, n.props);
+    inner = fontOf(font, props);
   } catch (e) {
     return text.fail(n, (e as Error).message);
   }
   const name = HOST_NAME[n.type];
-  for (const key of ['style', 'className'] as const) {
-    if (n.props[key] !== undefined) {
-      text.fail(
-        n,
-        isText
-          ? `${key} applies to <Text> outside <Svg>; SVG text takes SVG attributes (fill, fontSize, …).`
-          : `<${name}> inside <Svg> does not take ${key}: it takes SVG attributes (fill, stroke, strokeWidth, …).`,
-      );
-    }
-  }
   const layout = LAYOUT_ONLY.find((k) => n.props[k] !== undefined);
   if (layout !== undefined) {
     const where = layout === 'render' ? 'a <View> around the <Svg>' : 'the <Svg>';
@@ -154,12 +264,12 @@ function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean
   let a: string;
   if (isText) {
     const face = text.face(inner, n);
-    a = attrs(n.props, TEXT_SKIP);
+    a = attrs(props, TEXT_SKIP);
     a += ` font-family="${escapeXml(quotedFamily(face.family[0] ?? ''))}" font-weight="${face.weight}"`;
     if (face.style === 'italic') a += ' font-style="italic"';
     if (face.stretch !== undefined && face.stretch !== 100) a += ` font-stretch="${face.stretch}%"`;
   } else {
-    a = attrs(n.props, CHILD_SKIP);
+    a = attrs(props, CHILD_SKIP);
   }
   const body = n.children.map((c) => element(c, inner, text, inText || isText)).join('');
   return body === '' ? `<${tag}${a}/>` : `<${tag}${a}>${body}</${tag}>`;
@@ -170,13 +280,26 @@ const hasText = (n: Node): boolean =>
   n.kind === 'element' && (n.type === HOST.Text || n.children.some(hasText));
 
 /**
- * The SVG document of an `<Svg>` element, sized `width` × `height` points. Its text is written
- * with the faces `text` resolves, at the size around it unless it sets one.
+ * The SVG document of an `<Svg>` element, sized `width` × `height` points, with the paint of its
+ * own style `own`. Its text is written with the faces `text` resolves, at the size around it
+ * unless it sets one.
  */
-export function svgMarkup(inst: Instance, width: number, height: number, text: SvgTextFonts): string {
+export function svgMarkup(
+  inst: Instance,
+  width: number,
+  height: number,
+  text: SvgTextFonts,
+  own: FlatStyle = {},
+): string {
   const font = fontOf(text.font, inst.props);
   const body = inst.children.map((c) => element(c, font, text, false)).join('');
   let a = attrs(inst.props, BOX_PROPS);
+  // The paint its classes or style set, which the drawing inherits.
+  const paints: Record<string, unknown> = {};
+  for (const k of ['fill', 'stroke', 'strokeWidth'] as const) {
+    if (own[k] !== undefined) paints[k] = CLASS_SVG[k]?.(own[k]);
+  }
+  a += attrs(paints, CHILD_SKIP);
   if (inst.children.some(hasText) && inst.props.fontSize === undefined) {
     a += ` font-size="${text.size}"`;
   }

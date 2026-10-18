@@ -53,6 +53,8 @@ pub(crate) struct SvgGlyph {
     pub text: (u32, u32),
     /// Its cluster's first character, in [`SvgText::chars`].
     pub char: u32,
+    /// Standing upright in vertical text.
+    pub upright: bool,
 }
 
 /// An underline, overline or line-through: a quadrilateral, filled.
@@ -147,6 +149,7 @@ impl LaidText {
             paint,
             text: (0, 0),
             char: 0,
+            upright: false,
         };
         Self {
             glyphs: (0..paints as u32).map(glyph).collect(),
@@ -707,6 +710,7 @@ fn put_cluster(
             paint: span.paint,
             text: (start, out.text.len() as u32),
             char: c.char as u32,
+            upright: c.upright,
         };
         let bbox = *boxes
             .entry((c.font, id))
@@ -855,6 +859,10 @@ fn place_on_path(
 fn place_vertical(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
     let line = text.writing.line_angle();
     place_chunks(text, chunks, fonts, |chunk, (x0, y0), p| {
+        if let Some(path) = chunk.path {
+            let path = &text.paths[usize::from(path)];
+            return place_vertical_on_path(text, chunk, path, fonts, p);
+        }
         // A point `along` the line and `across` it (down from the glyphs'
         // view), in user space, after the shifts so far.
         let at = |along: f32, across: f32, (sx, sy): (f32, f32)| {
@@ -883,6 +891,50 @@ fn place_vertical(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> Laid
         }
         Some(at(along, 0.0, shift))
     })
+}
+
+/// Places the clusters of a chunk of vertical text on a path, as
+/// [`place_on_path`] places horizontal ones: the line runs along the
+/// path, each cluster at the middle of its advance on it, sideways ones
+/// turned to the path's direction and upright ones standing across it,
+/// a quarter turn back. `dy` moves along the path and `dx` across it, as
+/// they move along and across a vertical line.
+fn place_vertical_on_path(
+    text: &SvgText,
+    chunk: &Chunk,
+    path: &TextPathSpec,
+    fonts: &FontSet<'_>,
+    p: &mut Placing,
+) -> Option<(f32, f32)> {
+    let mut along = chunk.y.unwrap_or(0.0) + path.start + anchored(chunk);
+    let mut across = 0.0;
+    let mut end = None;
+    for c in &chunk.clusters {
+        let ch = text.chars[c.char];
+        along += ch.dy;
+        across += ch.dx;
+        let half = c.advance / 2.0;
+        if let Some(at) = path.geom.at(along + half) {
+            let span = &text.spans[c.span];
+            let font = fonts.get(c.font);
+            let down = baseline_drop(span, font);
+            let point = |off: f32| {
+                let (ux, uy) = geom::rotate((-half, across + off), at.angle);
+                (at.x + ux, at.y + uy)
+            };
+            let baseline = point(down);
+            if c.upright {
+                let origin = point(down - central_drop(span, font));
+                p.put((c, span, font), origin, at.angle - 90.0 + ch.rotate);
+            } else {
+                p.put((c, span, font), baseline, at.angle + ch.rotate);
+            }
+            decorate(&mut p.runs, c, true, baseline, at.angle);
+            end = Some((at.x + c.advance, at.y));
+        }
+        along += c.advance;
+    }
+    end
 }
 
 /// Each probe draws one paint style: stable sorts keep the order.

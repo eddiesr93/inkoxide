@@ -383,6 +383,17 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Visual',
+    utilities: '`fill-*`, `stroke-*` (colours, `none`, `current`), `stroke-<n>`',
+    maps: '`fill`, `stroke`, `strokeWidth`: elements inside an `<Svg>` only',
+    examples: {
+      'fill-[#ff0000]': { fill: [1, 0, 0, 1] },
+      'fill-none stroke-current': { fill: 'none', stroke: 'currentColor' },
+      'stroke-2': { strokeWidth: 2 },
+      'stroke-[1.5px]': { strokeWidth: 1.5 },
+    },
+  },
+  {
+    group: 'Visual',
     utilities: '`rotate-*`, `-rotate-*`',
     maps: '`rotate`',
     examples: {

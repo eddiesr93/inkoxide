@@ -19,8 +19,9 @@
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::ops::Range;
 
-use super::{push_escaped, ProbeForm, ProbeShape, SvgText, SvgTextDoc};
+use super::{push_escaped, ProbeForm, ProbeShape, SvgText, SvgTextDoc, UseCopy};
 use crate::text::LaidText;
 
 /// Largest probe coordinate: the SVG checks refuse path data beyond 1e7.
@@ -51,10 +52,18 @@ const GROUP_MARKUP: usize = 24;
 /// The most bytes the placeholders of `doc` take in the rewritten source,
 /// whatever their layout.
 pub(crate) fn most_bytes(doc: &SvgTextDoc) -> usize {
-    doc.texts.iter().fold(0usize, |sum, t| {
+    let texts = doc.texts.iter().fold(0usize, |sum, t| {
         sum.saturating_add(text_bytes(t, &doc.form))
-    })
+    });
+    let copies = doc.copies.iter().fold(DEFS.len(), |sum, c| {
+        let hrefs = c.hrefs.len() * (c.id.len() + 1);
+        sum.saturating_add(c.range.len() + c.id.len() + 8 + hrefs)
+    });
+    texts.saturating_add(copies)
 }
+
+/// What holds the copies of [`SvgTextDoc::copies`].
+const DEFS: &str = "<defs></defs>";
 
 fn text_bytes(text: &SvgText, form: &ProbeForm) -> usize {
     let effects = escaped_len(&text.effects);
@@ -209,43 +218,123 @@ pub(crate) fn rewrite(
     first: u32,
     (probes, bits): (&mut Probes, u32),
 ) -> String {
-    let mut out = String::with_capacity(source.len().saturating_add(most_bytes(doc)));
-    let mut at = 0;
-    for (k, (text, laid)) in doc.texts.iter().zip(laid).enumerate() {
-        out.push_str(&source[at..text.range.start]);
+    assemble(source, doc, |out, k| {
+        let (text, laid) = (&doc.texts[k], &laid[k]);
         let text_index = first + k as u32;
         let paints = match laid.ink {
             Some(_) => paints_of(laid),
             None => Vec::new(),
         };
         let ink = laid.ink.unwrap_or_default();
-        placeholder(&mut out, text, &doc.form, &paints, &mut |paint| {
+        placeholder(out, text, &doc.form, &paints, &mut |paint| {
             let r = corners(ink, probes.len() as u32, bits);
             probes.insert(r.map(f32::to_bits), (text_index, paint));
             Geometry::Corners(r)
         });
-        at = text.range.end;
+    })
+}
+
+/// An edit of the source: a text replaced by its placeholder, a `use`
+/// pointed at its copy, or the copies put in.
+enum Edit {
+    Text(usize),
+    Href(usize),
+    Copies,
+}
+
+/// `source` with each text of `doc` replaced by what `put` writes for
+/// it (by its index), each `use` with a copy ([`SvgTextDoc::copies`])
+/// naming the copy, and the copies, with their texts so replaced, in a
+/// `defs` at the end of the root element.
+fn assemble(source: &str, doc: &SvgTextDoc, mut put: impl FnMut(&mut String, usize)) -> String {
+    let mut out = String::with_capacity(source.len().saturating_add(most_bytes(doc)));
+    // The texts are in source order, and so are the `use` elements.
+    let hrefs = doc
+        .copies
+        .iter()
+        .enumerate()
+        .flat_map(|(c, copy)| copy.hrefs.iter().map(move |r| (r.clone(), Edit::Href(c))));
+    let mut texts = (0..doc.in_place())
+        .map(|k| (doc.texts[k].range.clone(), Edit::Text(k)))
+        .peekable();
+    let mut hrefs = hrefs
+        .chain((!doc.copies.is_empty()).then_some((doc.copies_at..doc.copies_at, Edit::Copies)))
+        .peekable();
+    let mut at = 0;
+    loop {
+        let next = match (texts.peek(), hrefs.peek()) {
+            (Some(t), Some(h)) if h.0.start < t.0.start => hrefs.next(),
+            (Some(_), _) => texts.next(),
+            (None, Some(_)) => hrefs.next(),
+            (None, None) => break,
+        };
+        let Some((range, edit)) = next else { break };
+        out.push_str(&source[at..range.start]);
+        match edit {
+            Edit::Text(k) => put(&mut out, k),
+            Edit::Href(c) => {
+                out.push('#');
+                out.push_str(&doc.copies[c].id);
+            }
+            Edit::Copies => {
+                out.push_str("<defs>");
+                for copy in &doc.copies {
+                    copy_of(&mut out, source, doc, copy, &mut put);
+                }
+                out.push_str("</defs>");
+            }
+        }
+        at = range.end;
     }
     out.push_str(&source[at..]);
     out
+}
+
+/// The copy `copy` of an element: its source, under the copy's id, the
+/// ids in it left out and its texts replaced by what `put` writes.
+fn copy_of(
+    out: &mut String,
+    source: &str,
+    doc: &SvgTextDoc,
+    copy: &UseCopy,
+    put: &mut impl FnMut(&mut String, usize),
+) {
+    let mut edits: Vec<(Range<usize>, Option<usize>)> = copy
+        .texts
+        .clone()
+        .map(|k| (doc.texts[k].range.clone(), Some(k)))
+        .chain(copy.ids.iter().map(|r| (r.clone(), None)))
+        .collect();
+    if let Some(r) = &copy.own_id {
+        edits.push((r.clone(), None));
+    }
+    edits.sort_by_key(|e| e.0.start);
+    let mut at = copy.range.start;
+    for (range, text) in edits {
+        out.push_str(&source[at..range.start]);
+        match text {
+            Some(k) => put(out, k),
+            None if Some(&range) == copy.own_id.as_ref() => {
+                out.push_str("id=\"");
+                out.push_str(&copy.id);
+                out.push('"');
+            }
+            None => {}
+        }
+        at = range.end;
+    }
+    out.push_str(&source[at..copy.range.end]);
 }
 
 /// `source` with each text of `doc` replaced by the placeholder that
 /// costs the SVG checks most: every paint style, the widest geometry.
 /// The caller bounds [`most_bytes`] first.
 pub(crate) fn worst_case(source: &str, doc: &SvgTextDoc) -> String {
-    let mut out = String::with_capacity(source.len().saturating_add(most_bytes(doc)));
-    let mut at = 0;
-    for text in &doc.texts {
-        out.push_str(&source[at..text.range.start]);
+    assemble(source, doc, |out, k| {
+        let text = &doc.texts[k];
         let paints: Vec<u32> = (0..text.paints.len() as u32).collect();
-        placeholder(&mut out, text, &doc.form, &paints, &mut |_| {
-            Geometry::Widest
-        });
-        at = text.range.end;
-    }
-    out.push_str(&source[at..]);
-    out
+        placeholder(out, text, &doc.form, &paints, &mut |_| Geometry::Widest);
+    })
 }
 
 #[cfg(test)]
@@ -295,6 +384,8 @@ mod tests {
             let doc = SvgTextDoc {
                 texts,
                 form: ProbeForm::default(),
+                copies: Vec::new(),
+                copies_at: 0,
             };
             let glyph = crate::text::SvgGlyph {
                 font: 0,
@@ -307,6 +398,7 @@ mod tests {
                 paint: 0,
                 text: (0, 0),
                 char: 0,
+                upright: false,
             };
             let laid = vec![
                 LaidText {

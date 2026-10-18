@@ -327,6 +327,20 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     case 'background-color':
       s.backgroundColor = r.color(v);
       return;
+    case 'fill':
+    case 'stroke': {
+      const paint = v === 'none' ? 'none' : r.color(v);
+      if (prop === 'fill') s.fill = paint;
+      else s.stroke = paint;
+      return;
+    }
+    case 'stroke-width': {
+      // The drawing's units, which SVG writes as numbers or pixels.
+      const n = r.num(v.replace(/px$/, ''));
+      if (n < 0) throw r.error(`stroke-width: ${v} (not negative)`);
+      s.strokeWidth = n;
+      return;
+    }
     case 'opacity': {
       const n = r.num(v);
       if (n < 0 || n > 1) throw r.error(`opacity: ${v} (between 0 and 1, or 0% and 100%)`);

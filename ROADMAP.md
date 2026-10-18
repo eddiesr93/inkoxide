@@ -18,6 +18,3 @@ or should come sooner.
 - **PDF/A-1b**: images with partial alpha flattened onto white, as an option, and binary alpha
   written as a stencil mask, which PDF/A-1b allows; both are refused now. A `validate` that knows
   the PDF/A level, so that it reports what only `render` reports now.
-- **SVG text**: vertical text on a path; `Identity-V` fonts for vertical text, so that each
-  glyph needs no text matrix of its own; font properties passed through `use`; `style` and
-  `className` on the primitives inside `<Svg>`.

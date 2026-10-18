@@ -285,10 +285,12 @@ impl PdfWriterSink {
         }
         // The glyphs of SVG text laid out for the images painted: every
         // text, drawn or not, so a superset of what the forms show.
-        for (glyphs, _) in svg_text_uses(doc) {
-            for (font, glyph) in glyphs {
+        let mut vertical = BTreeSet::new();
+        for uses in svg_text_uses(doc) {
+            for (font, glyph) in uses.glyphs {
                 used.entry(font).or_default().insert(glyph);
             }
+            vertical.extend(uses.upright);
         }
         // Subsetting and compression are independent per font.
         let program = |(key, glyphs): (&FontKey, &BTreeSet<u16>)| {
@@ -303,15 +305,14 @@ impl PdfWriterSink {
             used,
             programs,
             field_text,
+            vertical,
         })
     }
 }
 
 /// What the text of each SVG painted in `doc` draws besides itself
 /// ([`svg::text_uses`]).
-fn svg_text_uses<'a>(
-    doc: &'a DocumentOut<'a>,
-) -> impl Iterator<Item = (Vec<(FontKey, u16)>, Vec<ImageKey>)> + 'a {
+fn svg_text_uses<'a>(doc: &'a DocumentOut<'a>) -> impl Iterator<Item = svg::TextUses> + 'a {
     let painted: BTreeSet<ImageKey> = doc.pages.iter().flat_map(|p| &p.images).copied().collect();
     painted.into_iter().filter_map(move |key| {
         let crate::images::ImageBody::Svg {
@@ -341,6 +342,8 @@ struct FontPrograms {
     /// The text of the glyphs form fields show or embed for editing, which
     /// layout never shaped.
     field_text: UnicodeMap,
+    /// The fonts SVG text draws upright glyphs in.
+    vertical: BTreeSet<FontKey>,
 }
 
 fn deflate(data: &[u8], level: u32) -> Result<Vec<u8>, InkoxideError> {

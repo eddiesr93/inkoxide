@@ -44,8 +44,37 @@ fn push_escaped(out: &mut String, v: &str) {
 /// The text elements of one SVG document.
 #[derive(Debug, Default)]
 pub(crate) struct SvgTextDoc {
+    /// The texts where they are, in source order, then those of each of
+    /// [`Self::copies`].
     pub texts: Vec<SvgText>,
     pub form: ProbeForm,
+    /// The copies that `use` elements draw of elements with text, where
+    /// they give the text other properties (fonts, sizes, …) than the
+    /// element's own place does, in source order of the `use`.
+    pub copies: Vec<UseCopy>,
+    /// Where the copies go: the start of the root element's end tag.
+    pub copies_at: usize,
+}
+
+/// An element with text that a `use` draws with other text properties
+/// than where the element is: a copy of it, its texts laid out as the
+/// `use` passes its properties down, goes into the document under an id
+/// of its own, and the `use` names that id instead.
+#[derive(Debug, Clone)]
+pub(crate) struct UseCopy {
+    /// The values of the `use`'s `href` attributes.
+    pub hrefs: Vec<Range<usize>>,
+    /// The element's bytes in the source.
+    pub range: Range<usize>,
+    /// Its `id` attribute, which the copy's replaces (none when the
+    /// element is a text, whose placeholder has the copy's id).
+    pub own_id: Option<Range<usize>>,
+    /// The `id` attributes of the elements in it, left out of the copy.
+    pub ids: Vec<Range<usize>>,
+    /// The copy's id.
+    pub id: String,
+    /// Its texts in [`SvgTextDoc::texts`], in source order.
+    pub texts: Range<usize>,
 }
 
 impl SvgTextDoc {
@@ -53,6 +82,13 @@ impl SvgTextDoc {
     /// paint style.
     pub fn most_probes(&self) -> usize {
         self.texts.iter().map(|t| t.paints.len()).sum()
+    }
+
+    /// How many of [`Self::texts`] are where they are in the source.
+    pub fn in_place(&self) -> usize {
+        self.copies
+            .first()
+            .map_or(self.texts.len(), |c| c.texts.start)
     }
 
     /// Approximate bytes these texts hold, each font family list the
@@ -65,8 +101,13 @@ impl SvgTextDoc {
         };
         let mut lists = HashSet::new();
         let mut geoms = HashSet::new();
-        let mut size =
-            self.form.group_paint.capacity() + self.texts.capacity() * size_of::<SvgText>();
+        let mut size = self.form.group_paint.capacity()
+            + self.texts.capacity() * size_of::<SvgText>()
+            + self.copies.capacity() * size_of::<UseCopy>();
+        for c in &self.copies {
+            size += c.id.capacity()
+                + (c.hrefs.capacity() + c.ids.capacity()) * size_of::<Range<usize>>();
+        }
         for t in &self.texts {
             size += t.attrs.capacity()
                 + t.effects.capacity()

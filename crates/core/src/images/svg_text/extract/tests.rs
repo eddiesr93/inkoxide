@@ -367,11 +367,11 @@ fn reads_text_paths() {
     let hidden: Vec<bool> = t.chars.iter().map(|c| c.hidden).collect();
     assert_eq!(string(&t), "abcde");
     assert_eq!(hidden, [true, true, true, false, true]);
-    // Vertical text on a path is refused.
-    let e = error(
+    // Vertical text goes on a path too.
+    let t = one(
         r##"<path id="p" d="M0 0H10"/><text writing-mode="tb"><textPath href="#p">a</textPath></text>"##,
     );
-    assert!(e.contains("vertical SVG text on a path"), "{e}");
+    assert_eq!((t.paths.len(), t.chars[0].path), (1, Some(0)));
 }
 
 #[test]
@@ -493,4 +493,54 @@ fn reads_font_features() {
         let _ = write!(many, r#"<text font-feature-settings="'tnum' {i}">a</text>"#);
     }
     assert!(error(&many).contains("different sets of font features"));
+}
+
+/// The text in what a `use` copies inherits from the `use`, as in a
+/// browser: the `use`'s fonts, then its ancestors'.
+#[test]
+fn copies_by_use_take_the_fonts_of_the_use() {
+    let t = texts(
+        r##"<defs><g id="g" font-weight="bold"><text>a<tspan font-size="50%">b</tspan></text></g></defs>
+           <g font-family="Mono" font-stretch="condensed">
+             <use href="#g" font-size="30" text-decoration="underline"/>
+           </g>
+           <use href="#g"/><use href="#g" font-size="16"/><use xlink:href="#g" font-size="8"
+             xmlns:xlink="http://www.w3.org/1999/xlink"/>"##,
+    );
+    // The text where it is, and the copies of the first and the last
+    // `use`: the others give it nothing new.
+    assert_eq!(t.len(), 3);
+    let at = |t: &SvgText, k: usize| t.spans[k].clone();
+    assert_eq!((at(&t[0], 0).size, at(&t[0], 0).weight), (16.0, 700));
+    assert!(!t[0].attrs.contains("id"));
+    let copy = at(&t[1], 0);
+    assert_eq!((copy.size, copy.weight, copy.stretch), (30.0, 700, 75.0));
+    assert_eq!(&*copy.families, ["Mono"]);
+    assert!(copy.underline);
+    assert_eq!(at(&t[1], 1).size, 15.0);
+    assert_eq!(at(&t[2], 0).size, 8.0);
+}
+
+#[test]
+fn copies_by_use_go_into_the_source_under_ids_of_their_own() {
+    let src = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="g"><path id="p" d="M0 0"/><text id="t">a</text></g></defs><use href="#g" font-size="30"/><text id="inkoxide-use-0">b</text></svg>"##;
+    let doc = Document::parse(src).unwrap();
+    let (doc_text, _) = extract(&doc, usize::MAX).unwrap();
+    assert_eq!(doc_text.copies.len(), 1);
+    let copy = &doc_text.copies[0];
+    // The id is not one the SVG has.
+    assert_eq!(copy.id, "inkoxide-use-0_");
+    let out = super::super::rewrite::worst_case(src, &doc_text);
+    let parsed = Document::parse(&out).unwrap();
+    let ids: Vec<_> = parsed
+        .descendants()
+        .filter_map(|n| n.attribute("id"))
+        .collect();
+    assert_eq!(ids, ["g", "p", "t", "inkoxide-use-0", "inkoxide-use-0_"]);
+    let used = parsed
+        .descendants()
+        .find(|n| n.has_tag_name("use"))
+        .unwrap();
+    assert_eq!(used.attribute("href"), Some("#inkoxide-use-0_"));
+    assert!(out.len() <= src.len() + super::super::rewrite::most_bytes(&doc_text));
 }

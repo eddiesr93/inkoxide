@@ -70,19 +70,16 @@ fn reads_text_and_rejects_garbage() {
     let text = text.unwrap();
     assert!(text.text.texts.is_empty());
     assert_eq!(text.nested[0].text.texts.len(), 1);
-    // Text on a path and vertical text are read; vertical text on a path
-    // says it is not supported.
+    // Text on a path and vertical text are read, vertical text on a path
+    // too.
     for body in [
         "<path id='p' d='M0 0H9'/><text><textPath href='#p'>Hi</textPath></text>",
         "<text writing-mode='tb'>Hi</text>",
+        "<path id='p' d='M0 0H9'/><text writing-mode='tb'><textPath href='#p'>Hi</textPath></text>",
     ] {
         let (_, _, text) = parse_text(svg(body).as_bytes()).unwrap();
         assert_eq!(text.unwrap().text.texts.len(), 1, "{body}");
     }
-    let e = rejected(&svg(
-        "<path id='p' d='M0 0H9'/><text writing-mode='tb'><textPath href='#p'>Hi</textPath></text>",
-    ));
-    assert!(e.contains("vertical SVG text on a path"), "{e}");
 }
 
 #[test]

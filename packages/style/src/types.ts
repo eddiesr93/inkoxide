@@ -194,6 +194,14 @@ export interface FlatStyle {
   // Text, not inherited (the Text node that carries the class).
   maxLines?: number;
   ellipsis?: boolean;
+
+  // The drawing inside an `<Svg>`: its shapes and text.
+  /** How shapes and SVG text are filled (`fill-*`); `none` leaves them empty. */
+  fill?: ColorValue | 'none';
+  /** How shapes and SVG text are stroked (`stroke-*`); `none` leaves them unstroked. */
+  stroke?: ColorValue | 'none';
+  /** The stroke's width in the drawing's units (`stroke-<n>`). */
+  strokeWidth?: number;
 }
 
 export type FlatStyleKey = keyof FlatStyle;
@@ -237,3 +245,6 @@ export const TEXT_INHERITED = [
 
 /** Keys that only mean something on a `Text` node. */
 export const TEXT_ONLY = ['maxLines', 'ellipsis'] as const satisfies readonly FlatStyleKey[];
+
+/** Keys that only mean something on the elements inside an `<Svg>`. */
+export const SVG_ONLY = ['fill', 'stroke', 'strokeWidth'] as const satisfies readonly FlatStyleKey[];

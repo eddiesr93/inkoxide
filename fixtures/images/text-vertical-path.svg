@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200" font-family="VertTest" font-size="20">
+  <rect x="0.5" y="0.5" width="399" height="199" rx="8" fill="#fbfbfd" stroke="#c9ccd6"/>
+  <defs>
+    <path id="arc" d="M40 30 C 140 30 160 170 60 180"/>
+    <g id="label"><text x="0" y="0" fill="#0f766e">AB12</text></g>
+  </defs>
+  <use href="#arc" fill="none" stroke="#d5d8e0"/>
+  <text writing-mode="vertical-rl" fill="#1f2937"><textPath href="#arc">縦書AB文字テスト</textPath></text>
+  <path id="line" d="M220 40 H 380" stroke="#d5d8e0"/>
+  <text writing-mode="vertical-rl" fill="#9333ea"><textPath href="#line" startOffset="10">縦書12</textPath></text>
+  <use href="#label" x="220" y="120"/>
+  <use href="#label" x="220" y="170" font-family="Inter" font-weight="bold" font-size="24"/>
+</svg>

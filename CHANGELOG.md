@@ -38,10 +38,22 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   `startOffset` and `side`. Both read in order when the PDF's text is extracted. SVG text also
   takes `font-feature-settings`, `font-variant` and `font-kerning`. `@inkoxide/render` has
   `<TextPath>`, `writingMode` on SVG `<Text>`, and `textOrientation`, `fontFeatureSettings`,
-  `fontVariant` and `fontKerning` on SVG text. Vertical text on a path fails with `INVALID_IMAGE`, as do the text
-  paths of an SVG with more than 100,000 segments in all, and an SVG's text with more than 64
-  different sets of font features; the SVGs of a render with more than 64 in all fail with
+  `fontVariant` and `fontKerning` on SVG text. Vertical text goes along a path too, upright
+  characters standing across it. A column of upright characters is one run of PDF text, in a
+  vertical (`Identity-V`) font over the same embedded font. The text paths of an SVG with more
+  than 100,000 segments in all fail with `INVALID_IMAGE`, as does an SVG's text with more than
+  64 different sets of font features; the SVGs of a render with more than 64 in all fail with
   `IMAGE_ERROR`.
+
+- Font properties set on an SVG `<use>` reach the text it copies, as in browsers: the copy is
+  laid out with them (up to 64 such copies an SVG).
+
+- `className` and `style` on the shapes and text inside an `<Svg>` (`@inkoxide/render`): the
+  classes take `fill-*`, `stroke-*`, `stroke-<n>`, `opacity-*`, a text colour and the font
+  utilities, `style` the SVG attributes CSS sets, and both win over the attributes, as in CSS.
+  `fill-*`, `stroke-*` and `stroke-<n>` on the `<Svg>` set the paint its drawing inherits.
+  `@inkoxide/tailwind` reads `fill`, `stroke` and `stroke-width` (`fill`, `stroke` and
+  `strokeWidth` in the flat style, which `@inkoxide/style` lists as `SVG_ONLY`).
 
 - Tagged PDF and PDF/UA-1. The render option `tagged` writes a structure tree in document
   order: paragraphs, headings, lists (with the numbering their labels show), sections, figures

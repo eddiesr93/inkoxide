@@ -29,7 +29,8 @@ Components take `className`, `style` and `id`, and those with a box also take `d
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
 `Page` has no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
 take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
-`transform`, `id`) instead of `className` and `style`; and a `Text` or `Link` inside a `Text`,
+`transform`, `id`), and their `className` and `style` set SVG presentation
+([Drawing](#drawing-svg-and-canvas)); and a `Text` or `Link` inside a `Text`,
 a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
 `href`, `lang`, `hyphenate` and `hyphenationCallback` (props such as `id`, `bookmark`, `pages` or `render` are an error there).
 
@@ -834,7 +835,13 @@ reader without it may do:
 ```
 
 The SVG primitives take SVG attributes in camelCase (`strokeWidth`, `stopColor`);
-`visibility="hidden"` leaves a shape undrawn, as in SVG. `Canvas`
+`visibility="hidden"` leaves a shape undrawn, as in SVG. Their `className` takes the Tailwind
+utilities that draw: `fill-*`, `stroke-*` (colours, `none`, `current`), `stroke-<n>`,
+`opacity-*`, a text colour (what `currentColor` is) and the font utilities; their `style` takes
+the SVG attributes CSS sets (`style={{ fill: 'teal', strokeWidth: 2 }}`). As in CSS, the
+classes win over the attributes and `style` over both, and other utilities or keys are an
+error. On the `<Svg>`, `fill-*`, `stroke-*` and `stroke-<n>` set the paint the drawing
+inherits; on any other component they are an error. `Canvas`
 draws in code with a pdfkit-style painter. An SVG file can also go straight into
 `<Image src={svgBytes} />`.
 
@@ -869,8 +876,8 @@ copied.
   `baselineShift` (`super`, `sub` or a length) and `alignmentBaseline`, which places the span
   on another baseline than the text's `dominantBaseline`. `fontFeatureSettings`
   (`"'tnum', 'liga' off"`), `fontVariant` (`small-caps`, `tabular-nums`, …) and `fontKerning`
-  (`none`) choose OpenType features, as in CSS. A `Text` in an `<Svg>` takes these SVG props:
-  `style` and `className` are for text outside drawings.
+  (`none`) choose OpenType features, as in CSS. A `Text` in an `<Svg>` takes these SVG props,
+  and its `className` and `style` set them as on the shapes (`className="text-xs font-bold"`).
 - **Vertical text**: `writingMode="vertical-rl"` (or `vertical-lr`, the same for one line) sets
   the text down a column centred on its `x`: CJK characters stand upright, in their vertical
   forms when the font has them (`、` `「` `ー`), with its vertical metrics; Latin letters and
@@ -883,8 +890,8 @@ copied.
   path or shape `href` names (`href="#curve"`, in `Defs`), or along its own `path` data, each
   turned with the curve, from `startOffset` (a length or a percentage of the path's length).
   `side="right"` follows the path the other way; what goes past its end is not drawn.
-  `method` and `spacing` are accepted and do nothing, as in browsers. Vertical text on a path
-  is not supported.
+  `method` and `spacing` are accepted and do nothing, as in browsers. Vertical text goes along
+  a path too, upright characters standing across it.
 - Strings, `Tspan` and `TextPath` go in it; anything else is an error.
 
 ```tsx
@@ -979,12 +986,14 @@ In an SVG, whether in `<Svg>` or an image file:
   `sideways-rl` or `sideways-lr`, with `text-orientation` and `glyph-orientation-vertical`) and
   text on a path (`<textPath>` on a `path` or basic shape, or with its own `path` data) are
   laid out as described above, and read in their order when the PDF's text is copied or
-  extracted. Vertical text on a path fails the render with `INVALID_IMAGE`: convert it to
-  outlines in your design tool, as for the text paths of an SVG that has more than 100,000
-  path segments in all. An SVG's text uses at most 64 different sets of font features, and so do the SVGs of a
-  document in all.
-  `font-stretch` is ignored, and font properties set on a `<use>` do not reach the text it
-  copies (its fill and stroke do). A `<text>` element that an XML entity expands to fails with `INVALID_IMAGE` too:
+  extracted; a column of upright characters is one run of PDF text, in a vertical
+  (`Identity-V`) font. The text paths of an SVG that has more than 100,000 path segments in
+  all fail the render with `INVALID_IMAGE`: convert them to outlines in your design tool. An
+  SVG's text uses at most 64 different sets of font features, and so do the SVGs of a
+  document in all. Font properties set on a `<use>` reach the text it copies, as in browsers;
+  past the 64th `<use>` of an SVG that sets other fonts than the text's own, and in a `<use>` or
+  element with text that an XML entity writes, the copy keeps the text's own. A `<text>`
+  element that an XML entity expands to fails with `INVALID_IMAGE`:
   write the element in the SVG itself. An entity inside a `<text>` that is in the SVG
   (`<text>&co; report</text>`) is fine. An `!important` rule that names both `path` and
   `polygon` also sets the paint of the SVG's text. Colour emoji fonts draw in colour, and emoji the document maps to images (`emojiImages`) are those
@@ -1666,7 +1675,7 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 - **Browsers.** Renders run in a worker, on one thread unless the page is cross-origin isolated
   (see [In the browser](#in-the-browser)).
   Browsers and Node are the runtimes supported; edge runtimes are not.
-- **Drawing.** Vertical SVG text on a path is not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
+- **Drawing.** SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely
   positioned, rotated or transformed element, table rows tied by a `rowSpan`) is cut at the

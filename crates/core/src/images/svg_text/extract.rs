@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
+use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -15,7 +16,7 @@ use usvg::roxmltree::{Document, Node, NodeId};
 use super::path::{self, TextPathGeom, MAX_TEXT_PATH_SEGMENTS};
 use super::{
     Anchor, Baseline, LengthAdjust, ProbeForm, ProbeShape, Shift, SvgChar, SvgSpan, SvgText,
-    SvgTextDoc, TextOrientation, TextPathSpec, Writing,
+    SvgTextDoc, TextOrientation, TextPathSpec, UseCopy, Writing,
 };
 use crate::images::svg::{iri, SVG_NS, XLINK_NS};
 use crate::schema::FontFeature;
@@ -154,8 +155,146 @@ pub(crate) fn extract(
         }
         texts.push(read_text(n, &mut cascade, viewport)?);
     }
+    let source = doc.input_text();
+    let mut copies = Vec::new();
+    for u in root.descendants().filter(|n| is_svg(*n, "use")) {
+        if copies.len() >= MAX_USE_COPIES {
+            break;
+        }
+        let mut id = format!("inkoxide-use-{}", copies.len());
+        while cascade.element(&id).is_some() {
+            id.push('_');
+        }
+        if let Some(copy) = use_copy(u, &mut cascade, viewport, &mut texts, source, id)? {
+            copies.push(copy);
+        }
+    }
+    let end = root.range().end;
+    let copies_at = source[..end].rfind("</").unwrap_or(end);
     let work = cascade.work;
-    Ok((SvgTextDoc { texts, form }, work))
+    Ok((
+        SvgTextDoc {
+            texts,
+            form,
+            copies,
+            copies_at,
+        },
+        work,
+    ))
+}
+
+/// Most `use` elements that draw a copy of the text they name with
+/// properties of their own ([`UseCopy`]); the others draw it as it is.
+const MAX_USE_COPIES: usize = 64;
+
+/// The text properties a `use` element gives the text in the element it
+/// names, where they differ from the element's own place: the copy that
+/// draws them, its texts read into `texts`. `None` for a `use` that names
+/// no text, gives it nothing new, or that an entity wrote.
+fn use_copy<'a, 'i>(
+    u: Node<'a, 'i>,
+    cascade: &mut Cascade<'a, 'i>,
+    viewport: (f32, f32),
+    texts: &mut Vec<SvgText>,
+    source: &str,
+    id: String,
+) -> Result<Option<UseCopy>, TextError> {
+    // A `use` in a text is not drawn.
+    if u.ancestors().skip(1).any(|a| is_svg(a, "text")) {
+        return Ok(None);
+    }
+    let href = u
+        .attribute("href")
+        .or_else(|| u.attribute((XLINK_NS, "href")));
+    let Some(target) = href.and_then(iri).and_then(|id| cascade.element(id)) else {
+        return Ok(None);
+    };
+    if !matches!(target.tag_name().namespace(), None | Some(SVG_NS))
+        || u.ancestors().any(|a| a == target)
+    {
+        return Ok(None);
+    }
+    let inner: Vec<Node<'a, 'i>> = target
+        .descendants()
+        .filter(|n| is_svg(*n, "text") && !n.ancestors().skip(1).any(|a| is_svg(a, "text")))
+        .collect();
+    if inner.is_empty() {
+        return Ok(None);
+    }
+    let here = text_context(cascade, target);
+    cascade.via = Some((target.id(), u));
+    let there = text_context(cascade, target);
+    cascade.via = None;
+    if here == there {
+        return Ok(None);
+    }
+    // Copied from the source as written.
+    let range = target.range();
+    let hrefs: Vec<_> = u
+        .attributes()
+        .filter(|a| a.name() == "href" && matches!(a.namespace(), None | Some(XLINK_NS)))
+        .collect();
+    let written = |r: Range<usize>, v: &str| source.get(r).is_some_and(|s| s == v);
+    if !source
+        .get(range.clone())
+        .is_some_and(|s| s.starts_with('<') && s.ends_with('>'))
+        || !hrefs.iter().all(|a| written(a.range_value(), a.value()))
+    {
+        return Ok(None);
+    }
+    let in_text = |at: usize| inner.iter().any(|t| t.range().contains(&at));
+    let mut own_id = None;
+    let mut ids = Vec::new();
+    for e in target.descendants().filter(Node::is_element) {
+        if in_text(e.range().start) {
+            continue;
+        }
+        for a in e.attributes() {
+            if a.name() == "id" && a.namespace().is_none() {
+                if e == target {
+                    own_id = Some(a.range());
+                } else {
+                    ids.push(a.range());
+                }
+            }
+        }
+    }
+    cascade.keep(range.len() + id.len())?;
+    cascade.via = Some((target.id(), u));
+    cascade.copy_id = id;
+    let first = texts.len();
+    for t in inner {
+        let read = read_text(t, cascade, viewport);
+        if read.is_err() {
+            cascade.via = None;
+        }
+        texts.push(read?);
+    }
+    cascade.via = None;
+    Ok(Some(UseCopy {
+        hrefs: hrefs
+            .iter()
+            .map(usvg::roxmltree::Attribute::range_value)
+            .collect(),
+        range,
+        own_id,
+        ids,
+        id: std::mem::take(&mut cascade.copy_id),
+        texts: first..texts.len(),
+    }))
+}
+
+/// What element `n` passes down to its text: each text property it
+/// inherits, and its font size and weight.
+fn text_context<'a, 'i>(cascade: &mut Cascade<'a, 'i>, n: Node<'a, 'i>) -> Vec<Option<String>> {
+    let mut out: Vec<Option<String>> = TEXT
+        .iter()
+        .filter(|p| !matches!(**p, "font-size" | "font-weight"))
+        .map(|p| cascade.inherited(n, p))
+        .collect();
+    out.push(Some(cascade.font_size(n).to_bits().to_string()));
+    out.push(Some(cascade.font_weight(n).to_string()));
+    out
 }
 
 /// What reading the text cost.
@@ -220,6 +359,11 @@ struct Cascade<'a, 'i> {
     /// different lists.
     features: HashMap<FeatureDecls, Arc<[FontFeature]>>,
     feature_sets: HashSet<Arc<[FontFeature]>>,
+    /// While reading the texts of a `use` copy: the element the `use`
+    /// refers to, whose parent the cascade takes to be the `use`, as in
+    /// the copy's tree, and the copy's id.
+    via: Option<(NodeId, Node<'a, 'i>)>,
+    copy_id: String,
 }
 
 /// The inherited values of `font-kerning`, `font-variant` and
@@ -261,7 +405,30 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
             segments: MAX_TEXT_PATH_SEGMENTS,
             features: HashMap::new(),
             feature_sets: HashSet::new(),
+            via: None,
+            copy_id: String::new(),
         }
+    }
+
+    /// `n`'s parent element as the cascade sees it: in a `use` copy, the
+    /// referenced element's is the `use`.
+    fn parent(&self, n: Node<'a, 'i>) -> Option<Node<'a, 'i>> {
+        match self.via {
+            Some((root, by)) if n.id() == root => Some(by),
+            _ => n.parent_element(),
+        }
+    }
+
+    /// `n` and its ancestor elements, nearest first, through
+    /// [`Self::parent`].
+    fn lineage(&self, n: Node<'a, 'i>) -> Vec<Node<'a, 'i>> {
+        let mut out = Vec::new();
+        let mut at = Some(n).filter(Node::is_element);
+        while let Some(a) = at {
+            out.push(a);
+            at = self.parent(a);
+        }
+        out
     }
 
     /// The OpenType features of `n`: `font-kerning` and `font-variant`,
@@ -444,16 +611,14 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
 
     /// An inherited property: from `n` or its nearest ancestor that sets it.
     fn inherited(&mut self, n: Node<'a, 'i>, prop: &str) -> Option<String> {
-        n.ancestors()
-            .filter(Node::is_element)
-            .find_map(|a| self.own(a, prop))
+        self.lineage(n).into_iter().find_map(|a| self.own(a, prop))
     }
 
     /// A property that is not inherited, but that `usvg` takes from the
     /// direct parent when `n` does not set it.
     fn own_or_parent(&mut self, n: Node<'a, 'i>, prop: &str) -> Option<String> {
         self.own(n, prop)
-            .or_else(|| n.parent_element().and_then(|p| self.own(p, prop)))
+            .or_else(|| self.parent(n).and_then(|p| self.own(p, prop)))
     }
 
     /// Counts `bytes` more kept, failing past the most allowed.
@@ -529,7 +694,7 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
 
     /// `n`'s font size in user units (`usvg`'s `resolve_font_size`).
     fn font_size(&mut self, n: Node<'a, 'i>) -> f32 {
-        let chain: Vec<_> = n.ancestors().filter(Node::is_element).collect();
+        let chain = self.lineage(n);
         let mut size = DEFAULT_FONT_SIZE;
         for a in chain.into_iter().rev() {
             let Some(v) = self.own(a, "font-size") else {
@@ -547,7 +712,7 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
     /// `n`'s font weight (`usvg`'s `resolve_font_weight`, with any number
     /// from 1 to 1000).
     fn font_weight(&mut self, n: Node<'a, 'i>) -> u16 {
-        let chain: Vec<_> = n.ancestors().filter(Node::is_element).collect();
+        let chain = self.lineage(n);
         let mut w: u16 = 400;
         for a in chain.into_iter().rev() {
             let Some(v) = self.own(a, "font-weight") else {
@@ -999,12 +1164,6 @@ fn read_text<'a, 'i>(
     let mut off_path = vec![false; total];
     for e in elems.iter().filter(|e| e.text_path) {
         let direct = e.node.parent_element() == Some(text);
-        if direct && !writing.is_horizontal() {
-            return Err(TextError::Unsupported(
-                "vertical SVG text on a path is not supported; convert the text to outlines (paths)"
-                    .into(),
-            ));
-        }
         let spec = if direct {
             cascade.text_path(e.node, (vw, vh))?
         } else {
@@ -1134,8 +1293,17 @@ fn read_text<'a, 'i>(
 
     // The placeholder: what the element keeps, and its effects.
     let mut attrs = String::new();
-    for name in std::iter::once("id").chain(CONDITIONS.iter().copied()) {
-        if let Some(v) = text.attribute(name) {
+    // In a `use` copy, the copy's id is on the element copied; the
+    // elements in it have none.
+    let id = match cascade.via {
+        Some((root, _)) => (text.id() == root).then_some(cascade.copy_id.as_str()),
+        None => text.attribute("id"),
+    };
+    if let Some(v) = id {
+        let _ = write!(attrs, " id=\"{}\"", escape(v));
+    }
+    for name in CONDITIONS {
+        if let Some(v) = text.attribute(*name) {
             let _ = write!(attrs, " {name}=\"{}\"", escape(v));
         }
     }
@@ -1156,7 +1324,10 @@ fn read_text<'a, 'i>(
         range: text.range(),
         attrs,
         effects,
-        in_clip: text.ancestors().any(|a| is_svg(a, "clipPath")),
+        in_clip: cascade
+            .lineage(text)
+            .into_iter()
+            .any(|a| is_svg(a, "clipPath")),
         chars,
         spans,
         paints,
@@ -1205,8 +1376,8 @@ fn span_props<'a, 'i>(
     };
     let mut dominant = cascade.own_or_parent(n, "dominant-baseline");
     if dominant.as_deref() == Some("no-change") {
-        dominant = n
-            .parent_element()
+        dominant = cascade
+            .parent(n)
             .and_then(|p| cascade.own_or_parent(p, "dominant-baseline"));
     }
     let alignment = cascade.own_or_parent(n, "alignment-baseline");
@@ -1256,7 +1427,7 @@ fn span_props<'a, 'i>(
     // A decoration set on any ancestor applies (`resolve_decoration`).
     let weight = cascade.font_weight(n);
     let mut decoration = |kind: &str| {
-        n.ancestors().filter(Node::is_element).any(|a| {
+        cascade.lineage(n).into_iter().any(|a| {
             cascade
                 .own(a, "text-decoration")
                 .is_some_and(|v| v.split(' ').any(|w| w == kind))

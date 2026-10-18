@@ -219,6 +219,10 @@ const FIXTURE_IMAGES: &[(&str, &[u8])] = &[
         "text-vertical",
         include_bytes!("../../fixtures/images/text-vertical.svg"),
     ),
+    (
+        "text-vertical-path",
+        include_bytes!("../../fixtures/images/text-vertical-path.svg"),
+    ),
 ];
 
 pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {

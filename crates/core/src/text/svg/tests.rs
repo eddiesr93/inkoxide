@@ -394,6 +394,33 @@ fn lays_latin_sideways_in_mixed_orientation() {
 }
 
 #[test]
+fn vertical_text_goes_along_a_path() {
+    // Down a straight path, as down a column from its start.
+    let on_path = laid_with(
+        VERT,
+        r##"<path id="p" d="M50 10V200"/><text font-size="10" font-family="Vert" writing-mode="vertical-rl"><textPath href="#p">縦AB書</textPath></text>"##,
+    );
+    let line = column("", "縦AB書");
+    assert_eq!(on_path.glyphs.len(), line.glyphs.len());
+    for (p, l) in on_path.glyphs.iter().zip(&line.glyphs) {
+        assert!(
+            close(p.x, l.x) && close(p.y, l.y) && close(p.rotate, l.rotate),
+            "{p:?} {l:?}"
+        );
+    }
+    // Along a path to the right, upright glyphs turn a quarter back and
+    // sideways ones lie on it as horizontal text does.
+    let right = laid_with(
+        VERT,
+        r##"<path id="p" d="M10 50H200"/><text font-size="10" font-family="Vert" writing-mode="vertical-rl"><textPath href="#p">縦A</textPath></text>"##,
+    );
+    let rot: Vec<f32> = right.glyphs.iter().map(|g| g.rotate).collect();
+    assert_eq!(rot, [-90.0, 0.0]);
+    assert!(right.glyphs[1].x > right.glyphs[0].x);
+    assert_eq!(right.text, "縦A");
+}
+
+#[test]
 fn sideways_modes_turn_every_character() {
     let rl = laid_with(
         VERT,

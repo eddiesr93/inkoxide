@@ -82,6 +82,7 @@ that are supported and tested; each example is a unit test.
 |---|---|---|---|
 | `bg-*` (colour, `/alpha`, arbitrary) | `backgroundColor` (page background on `Page`) | `bg-white` → `{"backgroundColor":[1,1,1,1]}` | Tailwind colours are oklch; they are converted to sRGB and clamped. |
 | `opacity-*` | `opacity` | `opacity-50` → `{"opacity":0.5}` |  |
+| `fill-*`, `stroke-*` (colours, `none`, `current`), `stroke-<n>` | `fill`, `stroke`, `strokeWidth`: elements inside an `<Svg>` only | `fill-[#ff0000]` → `{"fill":[1,0,0,1]}` |  |
 | `rotate-*`, `-rotate-*` | `rotate` | `rotate-45` → `{"rotate":45}` |  |
 | `translate-*`, `translate-x-*`, `translate-y-*`, `-translate-*` | `transform` (`translate`) | `translate-x-2` → `{"translate":[6,0]}` | Percentages are of the element's own box, as in CSS. |
 | `scale-*`, `scale-x-*`, `scale-y-*` | `transform` (`scale`) | `scale-110` → `{"scale":[1.1,1.1]}` |  |

@@ -22,7 +22,7 @@ import type {
   TextNode,
   TextRun,
 } from '@inkoxide/schema';
-import { round, type FlatStyle, type Units } from '@inkoxide/style';
+import { round, SVG_ONLY, type FlatStyle, type Units } from '@inkoxide/style';
 import { createElement } from 'react';
 
 import { type DrawingFont, Painter } from '../canvas.ts';
@@ -225,27 +225,8 @@ class Builder {
       } catch (e) {
         invalidStyle(e);
       }
-      let classes: FlatStyle | string;
-      try {
-        classes = classStyle(className, { parentFontSize: parent.fontSize, fontSize, page: this.pageBox });
-      } catch (e) {
-        if (isUnsupportedClass(e)) {
-          this.fail(inst, `${e.message}. In className="${className}" on <${HOST_NAME[inst.type]}>.`, {
-            kind: 'tailwind',
-            className,
-            cause: e,
-          });
-        }
-        throw e;
-      }
-      if (typeof classes === 'string') {
-        this.fail(inst, `className="${className}" on <${HOST_NAME[inst.type]}> needs Tailwind: ${classes}.`, {
-          kind: 'tailwind',
-          className,
-        });
-      }
-      s = classes;
-      this.classStyles.set(inst, classes);
+      s = this.classesOf(inst, className, parent.fontSize, fontSize);
+      this.classStyles.set(inst, s);
     }
     if (style) {
       try {
@@ -261,6 +242,18 @@ class Builder {
         { kind: 'props' },
       );
     }
+    if (inst.type !== HOST.Svg) {
+      for (const key of SVG_ONLY) {
+        if (s[key] !== undefined) {
+          const { init, from } = this.source(inst, s, key);
+          this.fail(
+            inst,
+            `${key} (from ${from}) applies to an <Svg> and the elements inside it, not <${HOST_NAME[inst.type]}>.`,
+            init,
+          );
+        }
+      }
+    }
     if (inst.type !== HOST.Image && inst.type !== HOST.ImageBackground) {
       for (const key of ['objectFit', 'objectPosition'] as const) {
         if (s[key] !== undefined) {
@@ -271,6 +264,30 @@ class Builder {
       }
     }
     return s;
+  }
+
+  /** The style of the classes `className` of `inst`, `em` being `fontSize` (else `parentFontSize`). */
+  private classesOf(inst: Instance, className: string, parentFontSize: number, fontSize?: number): FlatStyle {
+    let classes: FlatStyle | string;
+    try {
+      classes = classStyle(className, { parentFontSize, fontSize, page: this.pageBox });
+    } catch (e) {
+      if (isUnsupportedClass(e)) {
+        this.fail(inst, `${e.message}. In className="${className}" on <${HOST_NAME[inst.type]}>.`, {
+          kind: 'tailwind',
+          className,
+          cause: e,
+        });
+      }
+      throw e;
+    }
+    if (typeof classes === 'string') {
+      this.fail(inst, `className="${className}" on <${HOST_NAME[inst.type]}> needs Tailwind: ${classes}.`, {
+        kind: 'tailwind',
+        className,
+      });
+    }
+    return classes;
   }
 
   /**
@@ -1355,6 +1372,7 @@ class Builder {
         };
         return faceOf(this.opts.fonts.decl(this.font({ ...own, fontId: undefined }, inst)));
       },
+      classes: (inst, className) => this.classesOf(inst, className, ctx.fontSize),
       fail: (inst, message) => this.fail(inst, message, { kind: 'props' }),
     };
   }
@@ -1494,7 +1512,7 @@ class Builder {
       }
       markup = svgDocument(w, h, painter.toSvgBody());
     } else {
-      markup = svgMarkup(inst, w, h, this.svgText(ctx));
+      markup = svgMarkup(inst, w, h, this.svgText(ctx), own);
     }
     const node: ImageNode = { type: 'image', data: svgDataUrl(markup) };
     const style: Style = { width: w, height: h, ...boxStyle(own, ctx.color) };

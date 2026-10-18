@@ -2,7 +2,10 @@
 //! TrueType program (`FontFile2`), or a `CIDFontType0` descendant and a
 //! CID-keyed CFF program (`FontFile3` / `CIDFontType0C`); `W`
 //! widths for used glyphs (for every glyph when encrypted) and a
-//! `ToUnicode` `CMap`.
+//! `ToUnicode` `CMap`. A font SVG text draws upright in columns has a
+//! second Type0 font over the same descendant, `Identity-V`, with the
+//! font's vertical metrics in `DW2` (none per glyph: content streams
+//! adjust the positions, so an encrypted file tells no more).
 //!
 //! With `subset_fonts` (the default), programs are subset to the glyphs
 //! used (`fonts` does the subsetting; this module compresses and writes).
@@ -177,22 +180,50 @@ pub(crate) struct Embedded<'f, 'a> {
     pub used: &'f BTreeSet<u16>,
     /// The text of each glyph, for `ToUnicode`.
     pub unicode: Option<&'f BTreeMap<u16, String>>,
+    /// SVG text draws glyphs of it upright.
+    pub vertical: bool,
 }
 
-/// Writes all objects of one font; returns the Type0 font reference.
-/// Under PDF/A-1 a subset's descriptor lists its CIDs, and the widths
-/// keep to its array limit.
+/// The Type0 fonts of one embedded font.
+pub(crate) struct FontRefs {
+    /// `Identity-H`.
+    pub horizontal: Ref,
+    /// `Identity-V`, for glyphs drawn upright in a column.
+    pub vertical: Option<VerticalFont>,
+}
+
+/// A font's `Identity-V` Type0 font. A glyph's origin is half its width
+/// (`W`) left of its point in the column and `vy` below it; the next
+/// point is `advance` down. Thousandths of the font size.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct VerticalFont {
+    pub font: Ref,
+    pub vy: f32,
+    pub advance: f32,
+}
+
+/// The width of glyph `g` of `font` in its `W` array: thousandths of the
+/// font size, rounded to thousandths.
+pub(crate) fn pdf_width(font: &LoadedFont<'_>, g: u16) -> f32 {
+    let to_1000 = 1000.0 / font.metrics().units_per_em;
+    (font.advance(g) * to_1000 * 1000.0).round() / 1000.0
+}
+
+/// Writes all objects of one font; returns its Type0 fonts. Under
+/// PDF/A-1 a subset's descriptor lists its CIDs, and the widths keep to
+/// its array limit.
 pub(crate) fn write_font(
     w: &mut Writer,
     embedded: &Embedded<'_, '_>,
     profile: Profile,
-) -> Result<Ref, InkoxideError> {
+) -> Result<FontRefs, InkoxideError> {
     let Writer { pdf, alloc, out } = w;
     let Embedded {
         font,
         program,
         used,
         unicode,
+        vertical,
     } = *embedded;
     let type0 = alloc.next();
     let cid = alloc.next();
@@ -203,6 +234,7 @@ pub(crate) fn write_font(
     // Only a subset needs one (ISO 19005-1, 6.3.5); PDF/A-2 and later
     // need none, and check that one present is complete.
     let cid_set_ref = (profile.cid_set() && !program.tag.is_empty()).then(|| alloc.next());
+    let vtype0 = vertical.then(|| alloc.next());
 
     let m = font.metrics();
     let to_1000 = 1000.0 / m.units_per_em;
@@ -215,6 +247,13 @@ pub(crate) fn write_font(
         .encoding_predefined(Name(b"Identity-H"))
         .descendant_font(cid)
         .to_unicode(cmap_ref);
+    if let Some(r) = vtype0 {
+        pdf.type0_font(r)
+            .base_font(Name(name))
+            .encoding_predefined(Name(b"Identity-V"))
+            .descendant_font(cid)
+            .to_unicode(cmap_ref);
+    }
 
     let cff = font.data.outlines == crate::fonts::Outlines::Cff;
     let mut c = pdf.cid_font(cid);
@@ -225,7 +264,7 @@ pub(crate) fn write_font(
     })
     .base_font(Name(name));
     system_info(c.insert(Name(b"CIDSystemInfo")), &identity(out));
-    let width = |g: u16| (font.advance(g) * to_1000 * 1000.0).round() / 1000.0;
+    let width = |g: u16| pdf_width(font, g);
     // Dictionaries are not encrypted, so an encrypted file lists the
     // widths of the whole font: those of the glyphs used would tell
     // which they are.
@@ -258,6 +297,17 @@ pub(crate) fn write_font(
                 WidthEntry::Same(first, last, width) => w.same(first, last, width),
             };
         }
+    }
+    // The metrics of most upright glyphs, so that a column of them needs
+    // few adjustments.
+    let (vy, advance) = if vertical {
+        let (vy, advance) = font.vertical_metrics();
+        ((vy * to_1000).round(), (advance * to_1000).round())
+    } else {
+        (0.0, 0.0)
+    };
+    if vertical {
+        c.insert(Name(b"DW2")).array().items([vy, -advance]);
     }
     c.finish();
 
@@ -343,7 +393,10 @@ pub(crate) fn write_font(
         system_info(c.insert(Name(b"CIDSystemInfo")), &info);
     });
 
-    Ok(type0)
+    Ok(FontRefs {
+        horizontal: type0,
+        vertical: vtype0.map(|font| VerticalFont { font, vy, advance }),
+    })
 }
 
 /// One entry of a `W` array.
