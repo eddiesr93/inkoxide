@@ -243,8 +243,9 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   it lacks. Under part 2, so does a `#id` link to decoration (a `fixed`
   node, one with the role `artifact`, or a node inside one) or a
   bookmark on it: part 2 links and bookmarks go to a structure element,
-  which decoration has none of. Only `render` reports it. An encrypted
-  file must keep `contentAccessibility`.
+  which decoration has none of. `render` reports it, and so does
+  `validate` given the render's options. An encrypted file must keep
+  `contentAccessibility`.
 
 Without these options the output does not change. A tagged file is the
 same on any number of threads, draws the same pixels and extracts the
@@ -472,7 +473,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
-| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use. `validate` reports it with the render's options |
+| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use; a colour glyph that needs transparency is found once the text is shaped, after the rest, and named only when nothing else conflicts. `validate` reports it with the render's options, but for colour glyphs |
 | `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA requires, at either part (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. `validate` reports it with the render's options |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |

@@ -403,9 +403,10 @@ fn named_bounds_match_schema() {
     use crate::validate::rules::{
         MAX_ALT, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS,
         MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTIONS, MAX_FIELD_OPTION_LEN,
-        MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_LINE_HEIGHT,
-        MAX_LINK, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_NUMBER, MAX_ORPHANS, MAX_PAGE_EDGE,
-        MAX_TEXT_INDENT, MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT,
+        MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_HYPHENATION_PENALTY,
+        MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_LINK, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_NUMBER,
+        MAX_ORPHANS, MAX_PAGE_EDGE, MAX_POLYGON_POINTS, MAX_STRETCH, MAX_TEXT_INDENT,
+        MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -463,6 +464,61 @@ fn named_bounds_match_schema() {
             f64::from(MAX_WEIGHT) + 1.0,
             "OUT_OF_RANGE",
             "fonts[0].weight".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/weightRange/items/maximum",
+            f64::from(MAX_WEIGHT),
+            Box::new(|v| {
+                doc(
+                    &format!(r#"{{"id":"f","family":"F","weightRange":[1,{v}]}}"#),
+                    "",
+                )
+            }),
+            f64::from(MAX_WEIGHT) + 0.5,
+            "OUT_OF_RANGE",
+            "fonts[0].weightRange".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/stretch/minimum",
+            f64::from(MIN_STRETCH),
+            Box::new(|v| doc(&format!(r#"{{"id":"f","family":"F","stretch":{v}}}"#), "")),
+            f64::from(MIN_STRETCH) - 0.5,
+            "OUT_OF_RANGE",
+            "fonts[0].stretch".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/stretch/maximum",
+            f64::from(MAX_STRETCH),
+            Box::new(|v| doc(&format!(r#"{{"id":"f","family":"F","stretch":{v}}}"#), "")),
+            f64::from(MAX_STRETCH) + 0.5,
+            "OUT_OF_RANGE",
+            "fonts[0].stretch".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/stretchRange/items/minimum",
+            f64::from(MIN_STRETCH),
+            Box::new(|v| {
+                doc(
+                    &format!(r#"{{"id":"f","family":"F","stretchRange":[{v},100]}}"#),
+                    "",
+                )
+            }),
+            f64::from(MIN_STRETCH) - 0.5,
+            "OUT_OF_RANGE",
+            "fonts[0].stretchRange".into(),
+        ),
+        (
+            "/$defs/FontDecl/properties/stretchRange/items/maximum",
+            f64::from(MAX_STRETCH),
+            Box::new(|v| {
+                doc(
+                    &format!(r#"{{"id":"f","family":"F","stretchRange":[100,{v}]}}"#),
+                    "",
+                )
+            }),
+            f64::from(MAX_STRETCH) + 0.5,
+            "OUT_OF_RANGE",
+            "fonts[0].stretchRange".into(),
         ),
         (
             "/$defs/Field/properties/name/maxLength",
@@ -751,6 +807,14 @@ fn named_bounds_match_schema() {
             format!("{style}.textIndent"),
         ),
         (
+            "/$defs/Style/properties/hyphenationPenalty/maximum",
+            f64::from(MAX_HYPHENATION_PENALTY),
+            Box::new(|v| text(&format!(r#""hyphenationPenalty":{v}"#), "")),
+            f64::from(MAX_HYPHENATION_PENALTY) + 0.5,
+            "OUT_OF_RANGE",
+            format!("{style}.hyphenationPenalty"),
+        ),
+        (
             "/$defs/Style/properties/orphans/maximum",
             f64::from(MAX_ORPHANS),
             Box::new(|v| text(&format!(r#""orphans":{v}"#), "")),
@@ -848,6 +912,19 @@ fn named_bounds_match_schema() {
         MAX_ALT as f64 + 1.0,
         "INVALID_VALUE",
         format!("{node}.alt"),
+    ));
+    cases.push((
+        "/$defs/ShapeOutside/oneOf/3/properties/polygon/maxItems",
+        MAX_POLYGON_POINTS as f64,
+        Box::new(move |n| {
+            let corners = vec!["[0,0]"; n as usize].join(",");
+            boxed(&format!(
+                r#""style":{{"float":"left","shapeOutside":{{"polygon":[{corners}]}}}}"#
+            ))
+        }),
+        MAX_POLYGON_POINTS as f64 + 1.0,
+        "OUT_OF_RANGE",
+        format!("{style}.shapeOutside.polygon"),
     ));
     for (pointer, bound, make, past, code, path) in cases {
         let stated = s

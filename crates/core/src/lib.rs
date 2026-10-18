@@ -310,8 +310,9 @@ pub struct RenderOptions {
     /// (default [`PdfUaPart::Ua1`]).
     pub pdf_ua_part: PdfUaPart,
     /// Files that the document's `attachments` name by `src` (default:
-    /// none). Validation cannot see them: a `src` missing from here is
-    /// reported by [`render`] (`ATTACHMENT_NOT_REGISTERED`).
+    /// none). A `src` missing from here is `ATTACHMENT_NOT_REGISTERED`, in
+    /// [`render`] and [`validate_with_options`]; [`validate`] does not see
+    /// them.
     pub attachments: AttachmentStore,
 }
 

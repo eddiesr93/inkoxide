@@ -340,6 +340,13 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   was added.
 - Table header rows as tall as the page are not repeated; each page the table continued on was
   pushed down past room kept for them, which left pages holding only the header.
+- `@inkoxide/wasm`: a table cell whose `colSpan` or `rowSpan` near its bound (4294967295) reaches
+  past the table is `INVALID_TABLE`, as in Node and Rust.
+- At PDF/A-1b, a colour glyph that needs transparency in the text of an inline SVG image is
+  reported at the image's `data`; the path named `src`, which the image does not have.
+- A page's `header` or `footer` is checked as a page child is: a `gridArea` (no grid holds it)
+  is `INVALID_VALUE`, and as a float it takes no absolute position, `flexGrow` or `flexBasis`;
+  they were accepted.
 
 ### Repository
 

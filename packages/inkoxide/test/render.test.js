@@ -411,6 +411,34 @@ test('out-of-range numeric options are INVALID_ARGUMENT, not converted', async (
   assert.throws(() => ink.renderSync(doc, { creationDate: 'yesterday' }), rejected('creationDate'));
 });
 
+test('a span at the integer bound is INVALID_TABLE in every binding', () => {
+  const table = (rows) =>
+    JSON.stringify({
+      version: 1,
+      pages: [
+        {
+          size: { width: 100, height: 100 },
+          children: [{ type: 'table', columns: [{ width: 10 }, { width: 10 }], rows }],
+        },
+      ],
+    });
+  // What these spans reach is past a 32-bit usize, as in WebAssembly.
+  const wide = table([{ cells: [{}, { colSpan: 4294967295 }] }]);
+  const tall = table([{ cells: [{}, {}] }, { cells: [{ rowSpan: 4294967295 }, {}] }]);
+  assert.deepStrictEqual(
+    ink.validate(wide).map((e) => [e.code, e.path]),
+    [['INVALID_TABLE', 'pages[0].children[0].rows[0].cells[1]']],
+  );
+  assert.deepStrictEqual(
+    ink.validate(tall).map((e) => [e.code, e.path]),
+    [['INVALID_TABLE', 'pages[0].children[0].rows[1].cells[0].rowSpan']],
+  );
+  assert.throws(
+    () => ink.renderSync(tall),
+    (e) => e.code === 'INVALID_TABLE',
+  );
+});
+
 test('validate without images still finds the problems after many image references', () => {
   const children = Array.from({ length: 100 }, () => ({ type: 'image', src: 'logo' }));
   children.push({ type: 'text', runs: [{ text: 'x', font: 'nope', size: 10 }] });

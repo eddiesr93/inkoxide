@@ -18,6 +18,11 @@ version 2.
 - **`source` and `variations` on font declarations:** a declaration draws with the registered
   font `source` (default: its `id`), at the axis values of `variations` when that font is
   variable.
+- **`weightRange`, `stretch`, `stretchRange` and `opticalSizing` on font declarations:** a
+  variable font's weights and widths, lowest first, as CSS `@font-face` takes them (SVG text of
+  a weight or width in the range draws at it); the width SVG text's `font-stretch` is matched
+  against (a percentage from 1 to 1000, default 100); and whether text in a font with an `opsz`
+  axis draws at the optical size of its font size (`auto`, the default) or not (`none`).
 - **`alt` on image nodes:** alternative text for an `image` node (at most 1024 characters), as a
   run's `image` has: what copying, searching and screen readers get for the image.
 - **Definitions:** `Role`, `AttachmentNode`, `Attachment`, `AttachmentDecl`, `XmpSchema` and
@@ -65,6 +70,9 @@ version 2.
 - **Tables:** header rows as tall as the page (with those of the tables around them) are not
   repeated; room was kept for them on every continuation page, which left pages with only the
   header.
+- **Headers and footers:** a page's `header` or `footer` is checked as a page child is: a
+  `gridArea` is `INVALID_VALUE`, as no grid holds it, and a floated one takes no `position:
+  "absolute"`, `flexGrow` or `flexBasis`. They were accepted.
 
 ## 2.5.1 - 2026-10-16
 

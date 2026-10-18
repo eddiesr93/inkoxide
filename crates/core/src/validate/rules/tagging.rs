@@ -108,7 +108,13 @@ impl Checker<'_> {
             ),
             _ => {}
         }
-        if let Some(level) = node.role.and_then(Role::heading) {
+        // A heading inside an element that holds content (a paragraph, a
+        // figure) makes no element of its own: it is not in the order.
+        let heading = node
+            .role
+            .and_then(Role::heading)
+            .filter(|_| !self.structure.merged);
+        if let Some(level) = heading {
             let ok = match self.last_heading {
                 None => level == 1,
                 Some(prev) => level <= prev + 1,

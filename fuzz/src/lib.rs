@@ -318,8 +318,9 @@ const INSTANCES: &[(&str, &str, u16, &str)] = &[
 ];
 
 /// The `fonts` of a document that declares every fixture font, the
-/// [`INSTANCES`], and a variable font's weights and widths, which SVG text
-/// draws at its own and runs at their size's optical size.
+/// [`INSTANCES`], a variable font's weights and widths, which SVG text
+/// draws at its own and runs at their size's optical size, and an `opsz`
+/// font at a width of its own, drawn at its default optical size.
 fn fixture_fonts() -> Vec<Value> {
     let fonts = FIXTURE_FONTS
         .iter()
@@ -332,7 +333,9 @@ fn fixture_fonts() -> Vec<Value> {
     });
     let ranged = json!({"id": "VarTest-range", "family": "VarRange", "source": "VarTest-glyf",
         "weightRange": [100, 900], "stretchRange": [50, 100]});
-    fonts.chain(instances).chain([ranged]).collect()
+    let fixed = json!({"id": "VarTest-fixed", "family": "VarFixed", "source": "VarTest-opsz",
+        "stretch": 75, "opticalSizing": "none"});
+    fonts.chain(instances).chain([ranged, fixed]).collect()
 }
 
 /// Renders `doc` encrypted: it must render exactly when `plain`, its
@@ -1546,12 +1549,13 @@ fn link(s: &mut Src) -> Value {
 /// A fixture font, or one the document does not declare.
 fn font(s: &mut Src) -> Value {
     let declared = FIXTURE_FONTS.len() + INSTANCES.len();
-    let i = s.below(declared + 2);
+    let i = s.below(declared + 3);
     let font = FIXTURE_FONTS
         .get(i)
         .map(|f| f.0)
         .or_else(|| INSTANCES.get(i - FIXTURE_FONTS.len()).map(|f| f.0))
         .or_else(|| (i == declared).then_some("VarTest-range"))
+        .or_else(|| (i == declared + 1).then_some("VarTest-fixed"))
         .unwrap_or("Missing");
     json!(font)
 }
@@ -2950,6 +2954,8 @@ mod tests {
             // and in CFF2.
             r#""font":"VarTest-max""#,
             r#""font":"VarCFF2-100""#,
+            // A declaration with `stretch` and `opticalSizing: "none"`.
+            r#""font":"VarTest-fixed""#,
             // Files, their icons and the PDF/A metadata that describes them.
             r#""type":"attachment""#,
             r#""attachments":[{"#,

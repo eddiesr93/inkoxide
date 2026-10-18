@@ -372,6 +372,19 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
             doc(meta, &format!("{},{}", text("h1"), text("h3"))),
             "pages[0].children[1].role",
         ),
+        // A heading inside a figure makes no element: the file's first
+        // heading is this h2.
+        (
+            doc(
+                meta,
+                &format!(
+                    r#"{{"type":"box","role":"figure","alt":"A","children":[{}]}},{}"#,
+                    text("h1"),
+                    text("h2")
+                ),
+            ),
+            "pages[0].children[1].role",
+        ),
     ] {
         assert_eq!(
             refused(d, &ua),
@@ -383,6 +396,12 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
     let list = r#"{"type":"box","role":"list","children":[{"type":"box","children":[
         {"type":"box","role":"listItem","children":[{"type":"box","role":"listBody","children":[]}]}]}]}"#;
     render(doc(meta, list).as_bytes(), &ua).unwrap();
+    // Nor does a heading inside a heading count after it.
+    let nested = format!(
+        r#"{{"type":"box","role":"h1","children":[{}]}}"#,
+        text("h3")
+    );
+    render(doc(meta, &nested).as_bytes(), &ua).unwrap();
     // Decoration needs none of it, and tagging alone needs no title.
     let decorative = doc(meta, &image.replace("\"data\"", r#""alt":"","data""#));
     render(decorative.as_bytes(), &ua).unwrap();

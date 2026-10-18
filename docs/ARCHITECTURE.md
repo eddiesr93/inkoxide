@@ -101,8 +101,8 @@ pub fn clear_caches();
 ```
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
-`PdfALevel` and its `ParsePdfALevelError`, `Encryption`, `Permissions`,
-`Printing`, `InputFormat`, `FontStore`, `ImageStore`, `AttachmentStore`, `HyphenationStore`,
+`PdfALevel` and its `ParsePdfALevelError`, `PdfUaPart` and its `ParsePdfUaPartError`,
+`Encryption`, `Permissions`, `Printing`, `InputFormat`, `FontStore`, `ImageStore`, `AttachmentStore`, `HyphenationStore`,
 `InkoxideError` and its `NotLoaded`, `ValidationError`, `ValidationCode`),
 `builtin_hyphenation_file`, and the constants `ENGINE_VERSION` and
 `SCHEMA_VERSION`. `JSON_ONLY`, the message the bindings share for

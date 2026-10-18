@@ -80,7 +80,7 @@ export type Length = number | Percent | 'auto';
  */
 export type Percent = string;
 /**
- * Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
+ * Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum, and one of the repeated `tracks` a fixed size above 0 (its fixed maximum, or else its minimum).
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TemplateTrack".
