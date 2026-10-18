@@ -21,6 +21,7 @@ Inkoxide is designed to render documents built from untrusted data:
   every night with JSON, structured documents, SVG images and fonts as input.
 - Documents are validated before rendering, and page counts, nesting depth, image sizes, SVG
   complexity and the colour glyphs drawn from fonts are limited, so hostile input fails with an error instead of exhausting memory.
+  Attachments are limited to 1000 files, 64 MiB each and 256 MiB in all.
 - `@inkoxide/render` does not fetch remote images unless the caller allows their origins (an
   entry without a port allows only its scheme's default port), and does not follow a redirect from an allowed URL, since its target could be outside them. Each
   download has a timeout and a size limit. It does not read image files unless the caller allows their folders (`localImages`). An allowed
@@ -29,10 +30,14 @@ Inkoxide is designed to render documents built from untrusted data:
   it, and do not tell a missing file from one outside the folders.
 - A function or promise `<Image src>` that does not settle in time fails the render.
 - In a browser (`@inkoxide/wasm`, `@inkoxide/render/browser`) the engine and its limits are the
-  same, and an instance has at most 4 GiB of memory. Renders run in a Web Worker, which a
-  `signal` ends. Remote images stay off unless allowed, as on a server, since the requests come
-  from the user's network; they are sent without cookies or credentials. The page needs
-  `script-src 'wasm-unsafe-eval'`, and nothing needs `'unsafe-eval'`.
+  same, and an instance has at most 4 GiB of memory (2 GiB with threads). Renders run in a Web
+  Worker, which a `signal` ends. Remote images stay off unless allowed, as on a server, since the
+  requests come from the user's network; they are sent without cookies or credentials. The page
+  needs `script-src 'wasm-unsafe-eval'` and `worker-src 'self'`, and nothing needs
+  `'unsafe-eval'`. Threads need a cross-origin isolated page (`Cross-Origin-Opener-Policy` and
+  `Cross-Origin-Embedder-Policy`). With `@inkoxide/wasm` and threads, a pool thread reports a bug
+  on a `BroadcastChannel` (`trapChannel`), which every context of the origin can read and post to:
+  give it a name of its own.
 
 ## Encryption
 

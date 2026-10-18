@@ -35,8 +35,8 @@ content streams and compression run in parallel (about 68% of a render's instruc
   one-thread module, and where the pool's workers cannot start it renders on one thread;
   `threadCount()` says what it got. An explicit size may go up to 256, as natively.
 - **`wasm32-unknown-unknown`, rebuilt on a pinned nightly.** `scripts/build-wasm.sh --threads`
-  builds the standard library with `-Zbuild-std` on `nightly-2026-07-09` (with its `rust-src`), with
-  `+atomics,+bulk-memory`. It is the target and the maths of the one-thread module, and its
+  builds the standard library with `-Zbuild-std` on `nightly-2026-07-09` (with its `rust-src`;
+  `scripts/build-wasm.sh --toolchain` prints it), with `+atomics,+bulk-memory`. It is the target and the maths of the one-thread module, and its
   output is the same, byte for byte, which `scripts/wasm-parity.mjs --threads` checks on every
   fixture, the fuzz seeds and the documents at the limits, with no pool and with pools of 3 and 8.
   The nightly builds only this module. `wasm32-wasip1-threads` was not tried: it needs a WASI

@@ -80,7 +80,7 @@ export interface RenderOptions {
    * Write PDF/A (archival): XMP metadata, an sRGB output intent and a
    * file identifier. CMYK JPEGs are converted to RGB. `true` writes
    * PDF/A-2b; `'3b'` writes PDF/A-3b, which may carry embedded files;
-   * `'1b'` writes PDF/A-1b; `'2a'` and `'3a'` are 2b and 3b, tagged.
+   * `'1b'` writes PDF/A-1b; `'2a'` and `'3a'` write PDF/A-2a and 3a: 2b and 3b, tagged.
    * Another string is `INVALID_ARGUMENT`.
    * Default `false`.
    */
@@ -94,8 +94,9 @@ export interface RenderOptions {
   tagged?: boolean;
   /**
    * Write PDF/UA-1 (ISO 14289-1): tagged, with the metadata it asks for. A document without a
-   * title, a language, `alt` on its images or `label` on its fields fails with `UA_CONFLICT`.
-   * Default `false`.
+   * title, a language, `alt` on its images and figures or `label` on its fields, with headings
+   * that skip a level, or with a `listItem` outside a `list` (a `listBody` outside a
+   * `listItem`), fails with `UA_CONFLICT`. Default `false`.
    */
   pdfUA?: boolean;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
@@ -183,8 +184,10 @@ export function unregisterHyphenationPatterns(lang: string): boolean;
  * there and decode. Inline images (`data`) are always checked. Returns at
  * most 100 problems; one in the document's structure is returned alone. An
  * empty array means the document is valid; `render` can still fail on an
- * option, the page limit, the limit on content repeated on every page or a
- * font that cannot be embedded.
+ * option, the page limit, the limit on content repeated on every page, a
+ * font that cannot be embedded, what its PDF/A level or PDF/UA does not
+ * allow (`PDFA_CONFLICT`, `UA_CONFLICT`), or an attachment's `src` file
+ * missing from its `attachments` or too large.
  */
 export function validate(
   doc: Uint8Array | string,

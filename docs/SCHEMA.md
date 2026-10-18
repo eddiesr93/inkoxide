@@ -58,7 +58,7 @@
 | `INVALID_TYPE` | Wrong JSON type |
 | `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays), or a forced break where it would do nothing (see `Break.before`) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
-| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group), or used both for a field and for a group of fields (`a` and `a.b`) |
+| `DUPLICATE_ID` | Font id declared twice, attachment `name` or XMP schema `prefix` declared twice, or form field `name` used twice (except by the buttons of one radio group), or used both for a field and for a group of fields (`a` and `a.b`) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
@@ -71,8 +71,8 @@
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b and 2b, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
-| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA-1 requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`). Only a render reports it, at the first such thing |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b, 2b and 2a, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
+| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA-1 requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`, a `listItem` inside a `list` and a `listBody` inside a `listItem`). Only a render reports it, at the first such thing |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -92,7 +92,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 | `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | max items 256; Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`; an id listed again is skipped. |
 | `emojiImages` | `object` |  | max properties 4096; Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the run's baseline (which its `verticalAlign` raises or lowers), and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
-| `attachments` | array of [`AttachmentDecl`](#attachmentdecl) |  | max items 1000; Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b allows them; PDF/A-1b and PDF/A-2b refuse them (`PDFA_CONFLICT`). |
+| `attachments` | array of [`AttachmentDecl`](#attachmentdecl) |  | max items 1000; Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b and PDF/A-3a allow them; PDF/A-1b, PDF/A-2b and PDF/A-2a refuse them (`PDFA_CONFLICT`). |
 | `pages` | array of [`PageSpec`](#pagespec) | yes | min items 1 |
 
 ## Definitions
@@ -124,7 +124,7 @@ Type: `boolean` (default `false`)
 
 ### Role
 
-What the node is in tagged output (render option `tagged` or `pdfUA`): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
 
 Type: `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"p"` \| `"section"` \| `"blockQuote"` \| `"caption"` \| `"figure"` \| `"list"` \| `"listItem"` \| `"label"` \| `"listBody"` \| `"artifact"`
 
@@ -666,7 +666,7 @@ A file the PDF carries. Exactly one of `src` and `data`.
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `string` matching `^[^/\\\u0000-\u001f\u007f]+$` | yes | min length 1, max length 255; The file name viewers show and save it under, unique in the document: no `/`, `\\` or control characters. `attachment` icons name the file by it. |
+| `name` | `string` matching `^[^/\\\u0000-\u001f\u007f-\u009f]+$` | yes | min length 1, max length 255; The file name viewers show and save it under, unique in the document: no `/`, `\\` or control characters. `attachment` icons name the file by it. |
 | `src` | [`Id`](#id) |  | Key into the render option `attachments`. |
 | `data` | `string` |  | The file's bytes, base64-encoded. |
 | `mimeType` | `string` matching `^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,62}/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,62}$` |  | max length 127, default `"application/octet-stream"`; The file's MIME type (`text/xml`, `application/pdf`). |
@@ -680,7 +680,7 @@ A file the PDF carries. Exactly one of `src` and `data`.
 |---|---|---|---|
 | `schema` | `string` | yes | min length 1, max length 512; What the schema is (`Factur-X PDFA Extension Schema`). |
 | `namespace` | `string` matching `^\S+$` | yes | min length 1, max length 512; The namespace URI of its properties. |
-| `prefix` | `string` matching `^[A-Za-z_][A-Za-z0-9_.-]*$` | yes | The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`). |
+| `prefix` | `string` matching `^[A-Za-z_][A-Za-z0-9_.-]*$` | yes | The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `xmlns`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`). |
 | `properties` | array of [`XmpProperty`](#xmpproperty) | yes | max items 64 |
 
 ### XmpProperty

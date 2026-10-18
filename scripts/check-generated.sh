@@ -51,8 +51,13 @@ generated=(
   fixtures/docs/accessible.json
   fixtures/fonts/VarTest-glyf.ttf
   fixtures/fonts/VarTest-CFF2.otf
+  fixtures/fonts/VarTest-layout.ttf
+  fixtures/fonts/VarTest-COLRv1.ttf
   fixtures/fonts/limits/var-avar2.ttf
   fixtures/fonts/limits/var-64-axes.ttf
+  fixtures/fonts/limits/var-no-gvar.ttf
+  fixtures/fonts/limits/var-gvar-cut.ttf
+  fixtures/fonts/limits/var-cff-and-cff2.otf
   fixtures/fonts/VertTest.ttf
 )
 

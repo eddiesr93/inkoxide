@@ -17,7 +17,7 @@ export interface FacturXOptions {
 /**
  * The metadata of a Factur-X (or ZUGFeRD 2) e-invoice, for `<Document xmpExtensions>`: the `fx`
  * schema with the invoice's file name, type, version and profile. The document also needs
- * `conformance="PDF/A-3b"` and the XML in `attachments`, named `fileName`, with
+ * `conformance="PDF/A-3b"` (or `"PDF/A-3a"`) and the XML in `attachments`, named `fileName`, with
  * `mimeType: 'text/xml'` and the relationship of `facturXRelationship(profile)`.
  */
 export function facturX(opts: FacturXOptions): XmpSchema {

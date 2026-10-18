@@ -49,7 +49,7 @@ How it differs from `inkoxide`:
   first time a document hyphenates text in it, and the fonts of its `deferredFonts` option (id →
   URL) that a document draws with, or needs as a fallback. `renderSync` cannot fetch, and fails
   with `NOT_LOADED`: call `loadHyphenation(['de'])` first, or use `render`.
-- **`init(source?)`** takes a URL, a `Response`, the bytes or a compiled
+- **`init(source?, options?)`** takes a URL, a `Response`, the bytes or a compiled
   `WebAssembly.Module`, of either module. On one thread it needs no cross-origin isolation; a
   Content Security Policy needs `script-src 'wasm-unsafe-eval'`.
 - **A bug in the engine** (`INTERNAL`) ends its instance: the next call runs in
@@ -63,7 +63,7 @@ How it differs from `inkoxide`:
 (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
 require-corp`, on every response), or in Node, `init` can start a pool of
 threads: it then loads `inkoxide-threads.wasm`, which shares its memory with
-that many Web Workers (`thread.js`), and renders spread their pages over them,
+that many Web Workers (`thread.js`; worker threads in Node), and renders spread their pages over them,
 for the same bytes:
 
 ```js

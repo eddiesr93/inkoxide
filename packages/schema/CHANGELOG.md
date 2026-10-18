@@ -20,6 +20,11 @@ version 2.
   variable.
 - **`alt` on image nodes:** alternative text for an `image` node (at most 1024 characters), as a
   run's `image` has: what copying, searching and screen readers get for the image.
+- **Definitions:** `Role`, `AttachmentNode`, `Attachment`, `AttachmentDecl`, `XmpSchema` and
+  `XmpProperty`.
+- **Error codes:** `UNKNOWN_ATTACHMENT`, `ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE` and
+  `UA_CONFLICT`. `PDFA_CONFLICT` also covers `attachments` under PDF/A-1b, 2b and 2a, and
+  `DUPLICATE_ID` an attachment `name` or an XMP schema `prefix` declared twice.
 
 ## 2.5.1 - 2026-10-16
 

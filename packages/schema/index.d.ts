@@ -253,7 +253,7 @@ export type Link = string;
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
 /**
- * What the node is in tagged output (render option `tagged` or `pdfUA`): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+ * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Role".
@@ -303,7 +303,7 @@ export interface Document {
     [k: string]: Id | undefined;
   };
   /**
-   * Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b allows them; PDF/A-1b and PDF/A-2b refuse them (`PDFA_CONFLICT`).
+   * Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b and PDF/A-3a allow them; PDF/A-1b, PDF/A-2b and PDF/A-2a refuse them (`PDFA_CONFLICT`).
    *
    * @maxItems 1000
    */
@@ -495,7 +495,7 @@ export interface XmpSchema {
    */
   namespace: string;
   /**
-   * The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`).
+   * The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `xmlns`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`).
    */
   prefix: string;
   /**

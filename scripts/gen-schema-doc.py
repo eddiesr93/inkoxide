@@ -75,7 +75,7 @@ INTRO = """# Document schema v1
 | `INVALID_TYPE` | Wrong JSON type |
 | `INVALID_VALUE` | Value not in the allowed set / wrong format; a string too short or too long; an array with more items than its fixed length; `break` where pagination does not apply (headers, footers, table cells, fixed overlays), or a forced break where it would do nothing (see `Break.before`) |
 | `OUT_OF_RANGE` | Number outside its allowed range; page margins that leave no room for content |
-| `DUPLICATE_ID` | Font id declared twice, or form field `name` used twice (except by the buttons of one radio group), or used both for a field and for a group of fields (`a` and `a.b`) |
+| `DUPLICATE_ID` | Font id declared twice, attachment `name` or XMP schema `prefix` declared twice, or form field `name` used twice (except by the buttons of one radio group), or used both for a field and for a group of fields (`a` and `a.b`) |
 | `UNKNOWN_FONT` | Font id not declared in `fonts` |
 | `FONT_NOT_REGISTERED` | Declared font has no registered bytes |
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
@@ -88,8 +88,8 @@ INTRO = """# Document schema v1
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b and 2b, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
-| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA-1 requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`). Only a render reports it, at the first such thing |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b, 2b and 2a, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
+| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA-1 requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`, a `listItem` inside a `list` and a `listBody` inside a `listItem`). Only a render reports it, at the first such thing |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100

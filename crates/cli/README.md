@@ -19,8 +19,10 @@ inkoxide validate invoice.json --fonts fonts/
 inkoxide bench invoice.json --fonts fonts/ --iterations 50
 ```
 
-`inkoxide render --help` lists the options: PDF/A (`--pdf-a=1b`, `2b` or `3b`), the creation date,
-hyphenation patterns, the number of threads, and PNG output through `pdftoppm`.
+`inkoxide render --help` lists the options: PDF/A (`--pdf-a=1b`, `2b`, `2a`, `3b` or `3a`), tagged
+PDF (`--tagged`) and PDF/UA-1 (`--pdf-ua`), the files of the document's attachments
+(`--attachments <DIR>`, registered under their file name), the creation date, hyphenation patterns,
+the number of threads, and PNG output through `pdftoppm`.
 
 The document format is described in
 [docs/SCHEMA.md](https://github.com/eddiesr93/inkoxide/blob/main/docs/SCHEMA.md).

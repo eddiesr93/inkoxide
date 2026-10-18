@@ -50,7 +50,8 @@ validation_codes! {
     /// A number is outside its allowed range, or page margins leave no room
     /// for content.
     OutOfRange = "OUT_OF_RANGE",
-    /// A font id is declared twice, or a form field name is used twice
+    /// A font id is declared twice, an attachment `name` or an XMP schema
+    /// `prefix` is declared twice, or a form field name is used twice
     /// (other than by the buttons of one radio group), or used both for a
     /// field and for a group of fields (`a` and `a.b`).
     DuplicateId = "DUPLICATE_ID",
@@ -90,14 +91,16 @@ validation_codes! {
     /// transparency (a colour with alpha, an `opacity`, `debug` outlines,
     /// an image with an alpha channel, an SVG drawn with opacity, a mask or
     /// a blend mode, an isolated group, a clip path of more than one path,
-    /// or a colour glyph that needs transparency). Only
+    /// or a colour glyph that needs transparency); under PDF/A-1b, 2b and
+    /// 2a, `attachments`. Only
     /// [`render`](crate::render) reports it: [`validate`](crate::validate)
     /// does not know the level.
     PdfaConflict = "PDFA_CONFLICT",
     /// The document lacks something PDF/UA-1 requires: a title, a
     /// language, alternative text on an image or a `figure` box, a label
-    /// on a form field, or headings that go down one level at a time from
-    /// `h1`. Only [`render`](crate::render) reports it, with
+    /// on a form field, headings that go down one level at a time from
+    /// `h1`, or lists made of items (a `listItem` inside a `list`, a
+    /// `listBody` inside a `listItem`). Only [`render`](crate::render) reports it, with
     /// [`RenderOptions::pdf_ua`](crate::RenderOptions::pdf_ua).
     UaConflict = "UA_CONFLICT",
 }

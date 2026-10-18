@@ -37,9 +37,10 @@ types, discriminated by `type`.
 
 Two rules cannot be expressed in TypeScript:
 
-- A text run has exactly one of `text`, `placeholder`, `image` and `note`.
-- An `image` node, a `backgroundImage` and the `image` of a run each have
-  exactly one of `src` or `data`.
+- A text run has exactly one of `text`, `placeholder`, `image`, `note` and
+  `attachment`.
+- An `image` node, a `backgroundImage`, the `image` of a run and an
+  attachment (`AttachmentDecl`) each have exactly one of `src` or `data`.
 
 All of them are optional in the types. The engine and ajv report a
 document that breaks either rule.

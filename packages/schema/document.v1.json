@@ -49,7 +49,7 @@
       "items": {
         "$ref": "#/$defs/AttachmentDecl"
       },
-      "description": "Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b allows them; PDF/A-1b and PDF/A-2b refuse them (`PDFA_CONFLICT`)."
+      "description": "Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b and PDF/A-3a allow them; PDF/A-1b, PDF/A-2b and PDF/A-2a refuse them (`PDFA_CONFLICT`)."
     },
     "pages": {
       "type": "array",
@@ -116,7 +116,7 @@
         "listBody",
         "artifact"
       ],
-      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first."
+      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first."
     },
     "Meta": {
       "type": "object",
@@ -2323,7 +2323,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 255,
-          "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f]+$",
+          "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+$",
           "description": "The file name viewers show and save it under, unique in the document: no `/`, `\\\\` or control characters. `attachment` icons name the file by it."
         },
         "src": {
@@ -2402,7 +2402,7 @@
         "prefix": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$",
-          "description": "The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`)."
+          "description": "The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `xmlns`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`)."
         },
         "properties": {
           "type": "array",

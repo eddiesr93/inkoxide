@@ -401,10 +401,10 @@ export interface DocumentProps {
   /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */
   debug?: boolean;
   /**
-   * Write PDF/A, for archiving: `'PDF/A-2b'` (or `'PDF/A-2'`), `'PDF/A-3b'` or `'PDF/A-1b'`.
-   * PDF/A-1b has no transparency: a render fails with `PDFA_CONFLICT` at the first colour with
-   * alpha, `opacity`, image with an alpha channel or `debug` outline. The render option `pdfA`
-   * wins over this prop. Default: plain PDF.
+   * Write PDF/A, for archiving: `'PDF/A-2b'` (or `'PDF/A-2'`), `'PDF/A-3b'`, `'PDF/A-1b'`, or
+   * `'PDF/A-2a'` and `'PDF/A-3a'`, which are tagged. PDF/A-1b has no transparency: a render
+   * fails with `PDFA_CONFLICT` at the first colour with alpha, `opacity`, image with an alpha
+   * channel or `debug` outline. The render option `pdfA` wins over this prop. Default: plain PDF.
    */
   conformance?: Conformance;
   /**
@@ -431,12 +431,12 @@ export interface DocumentProps {
   pdfUA?: boolean;
   /**
    * Files the PDF carries, listed in the viewer's attachments panel; `<Attachment file>` shows
-   * an icon that opens one. Under PDF/A, only `'PDF/A-3b'` allows them.
+   * an icon that opens one. Under PDF/A, only `'PDF/A-3b'` and `'PDF/A-3a'` allow them.
    */
   attachments?: readonly AttachmentFile[];
   /**
    * XMP schemas the PDF/A metadata declares and fills in, such as `facturX()`'s for an
-   * e-invoice. Needs `conformance`.
+   * e-invoice. Needs PDF/A: `conformance`, or the render option `pdfA`.
    */
   xmpExtensions?: Meta['xmpExtensions'];
   children?: ReactNode;

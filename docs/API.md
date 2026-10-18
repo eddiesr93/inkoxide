@@ -77,8 +77,9 @@ How it differs from the Node package:
   unwind: the call fails with `INTERNAL`, and the next one runs in a new instance with the fonts
   and hyphenation patterns registered so far. The engine's own limits return their errors, as
   in Node.
-- **Memory** grows to at most 4 GiB and is not given back; the process-wide caches keep a quarter
-  of their Node budgets.
+- **Memory** grows to at most 4 GiB (2 GiB in the module with threads, or less on a device that
+  cannot reserve that much) and is not given back; the process-wide caches keep a quarter of their
+  Node budgets.
 - **Output.** A render has the bytes Node renders, except that numbers computed with
   trigonometry in a dependency (the angle of an SVG marker) can differ in the last digits.
   `scripts/wasm-parity.mjs` checks every fixture.
@@ -96,6 +97,7 @@ How it differs from the Node package:
 | `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '2a' \| '3b' \| '3a'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b, 2a, 3b or 3a (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
 | `tagged` / `with_tagged` | `tagged` | `false` | Write tagged PDF: a structure tree in document order, with roles (`role`), alternative text (`alt`), table headers and field labels, and the rest marked as artifacts. PDF/UA and the "a" levels imply it |
 | `pdf_ua` / `with_pdf_ua` | `pdfUA` | `false` | Write PDF/UA-1: tagged, with XMP metadata (`pdfuaid`), the title shown as the window title, link descriptions and field labels. A document without a title, a language, `alt` on its images and `figure` boxes, labels on its fields, or headings in order fails with `UA_CONFLICT`; encryption must keep `contentAccessibility` |
+| `attachments` / `with_attachments` (`AttachmentStore`) | `attachments: Record<string, Uint8Array>` | none | The bytes of the files the document's `attachments` name in `src`, by id. A `src` missing from them is `ATTACHMENT_NOT_REGISTERED` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
 | `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
 | `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
@@ -392,7 +394,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
-| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, or transparency under PDF/A-1b. The path names the first such use. Only `render` reports it: `validate` does not know the level |
+| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use. Only `render` reports it: `validate` does not know the level |
 | `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA-1 requires (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. Only `render` reports it: `validate` does not know the options |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
@@ -429,7 +431,9 @@ document is valid; `render` can still fail on an option, on the page
 limit or the limit on content repeated on every page (`LAYOUT_ERROR`), on
 a font that cannot be shaped or embedded (`FONT_ERROR`), on
 something its PDF/A level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`, which
-`validate` cannot know),
+`validate` cannot know), on an attachment's `src` that is not among the render's
+`attachments` or is too large (`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`: `validate`
+does not have the files),
 or on a failure in writing the PDF (`PDF_ERROR`). `validate` reads the
 document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the
