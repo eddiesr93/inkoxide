@@ -360,6 +360,8 @@ test('render options of the wrong type are INVALID_ARGUMENT at their path', asyn
     [{ pdfA: 5 }, 'options.pdfA'],
     [{ images: [] }, 'options.images'],
     [{ images: { logo: 'logo.png' } }, 'options.images.logo'],
+    [{ attachments: [] }, 'options.attachments'],
+    [{ attachments: { 'terms.txt': 'terms' } }, 'options.attachments.terms.txt'],
     [
       { encryption: { userPassword: 'u', permissions: { copying: 'yes' } } },
       'options.encryption.permissions.copying',
@@ -371,6 +373,7 @@ test('render options of the wrong type are INVALID_ARGUMENT at their path', asyn
     // napi refuses null where it takes undefined.
     [{ threads: null }, 'options.threads'],
     [{ images: null }, 'options.images'],
+    [{ attachments: null }, 'options.attachments'],
     [{ encryption: null }, 'options.encryption'],
     [{ encryption: { userPassword: 'u', permissions: null } }, 'options.encryption.permissions'],
   ]) {
@@ -592,6 +595,33 @@ test('registered hyphenation patterns win over the built-in ones', () => {
 });
 
 test(
+  'after a trap, the WebAssembly engine has the hyphenation patterns as registered',
+  { skip: !wasm },
+  () => {
+    const doc = fixture('docs/text-hyphenate-en-patterns.json');
+    const patterns = fixture('hyphenation/text-hyphenate-en-patterns.en-us.tex');
+    const without = ink.renderSync(doc, { compress: false });
+    ink.registerHyphenationPatterns('en-US', patterns);
+    const withPatterns = ink.renderSync(doc, { compress: false });
+    // Removed under another spelling of the tag: the new instance does not have them.
+    assert.strictEqual(ink.unregisterHyphenationPatterns('EN_us'), true);
+    assert.throws(() => ink.InkoxideError.__testPanic());
+    assert.strictEqual(ink.unregisterHyphenationPatterns('en-US'), false);
+    assert.deepStrictEqual(ink.renderSync(doc, { compress: false }), without);
+    // Replaced under another spelling: the new instance has the last ones registered.
+    ink.registerHyphenationPatterns('en-US', patterns);
+    ink.registerHyphenationPatterns('EN-US', '\\patterns{1a}');
+    ink.registerHyphenationPatterns('en-US', patterns);
+    assert.throws(() => ink.InkoxideError.__testPanic());
+    try {
+      assert.deepStrictEqual(ink.renderSync(doc, { compress: false }), withPatterns);
+    } finally {
+      assert.strictEqual(ink.unregisterHyphenationPatterns('en-us'), true);
+    }
+  },
+);
+
+test(
   'the WebAssembly engine fetches the hyphenation patterns a document needs',
   { skip: !wasm },
   async () => {
@@ -653,3 +683,44 @@ test('the WebAssembly engine fetches the deferred fonts a document needs', { ski
   assert.deepStrictEqual(ink.renderSync(doc('\u01C4'), { deferredFonts }), pdf);
   assert.strictEqual(ink.unregisterFont('Deferred-Noto'), true);
 });
+
+test(
+  'the WebAssembly engine fetches a deferred fallback only for a character the font of its run lacks',
+  { skip: !wasm },
+  async () => {
+    const font = (file) => new URL(`../../../fixtures/fonts/${file}.ttf`, import.meta.url);
+    const deferredFonts = {
+      'Deferred-Inter': font('Inter-Regular'),
+      'Deferred-Noto': font('NotoSans-Regular'),
+    };
+    const doc = (text) =>
+      JSON.stringify({
+        version: 1,
+        fonts: [
+          { id: 'Inter-Bold', family: 'Inter', weight: 700 },
+          { id: 'Deferred-Inter', family: 'Inter' },
+          { id: 'Deferred-Noto', family: 'Noto Sans' },
+        ],
+        fallbackFonts: ['Deferred-Noto'],
+        pages: [
+          {
+            size: { width: 200, height: 200 },
+            children: [{ type: 'text', runs: [{ text, font: 'Deferred-Inter', size: 10 }] }],
+          },
+        ],
+      });
+    try {
+      // Inter has every character: Noto is not fetched.
+      assert.ok((await ink.render(doc('Hello'), { deferredFonts })).length > 0);
+      assert.strictEqual(ink.unregisterFont('Deferred-Noto'), false);
+      assert.strictEqual(ink.unregisterFont('Deferred-Inter'), true);
+      // Inter has no U+01C4: once Inter is loaded, Noto is fetched too.
+      const pdf = await ink.render(doc('Hello Ǆ'), { deferredFonts });
+      assert.deepStrictEqual(ink.renderSync(doc('Hello Ǆ'), { deferredFonts }), pdf);
+      assert.strictEqual(ink.unregisterFont('Deferred-Noto'), true);
+    } finally {
+      ink.unregisterFont('Deferred-Inter');
+      ink.unregisterFont('Deferred-Noto');
+    }
+  },
+);

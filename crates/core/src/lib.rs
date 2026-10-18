@@ -292,7 +292,9 @@ pub struct RenderOptions {
     /// browser would otherwise download for every document. One that is
     /// not registered may be: a render that draws with it, or might (it is
     /// tried for a character), fails with [`InkoxideError::NotLoaded`]
-    /// naming it; one that does not renders as if it were registered.
+    /// naming it; one that does not renders as if it were registered. A
+    /// fallback is tried for a character only once the font of its run is
+    /// registered: until then the render names the run's font alone.
     pub deferred_fonts: Vec<String>,
     /// Write tagged PDF (default `false`): a structure tree that gives the
     /// reading order (document order) and what each part of the content

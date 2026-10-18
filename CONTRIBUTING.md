@@ -53,9 +53,10 @@ pnpm test                  # the TypeScript packages
 - **Generated files** are committed. `scripts/check-generated.sh` runs every generator and fails
   when one of their files changed: besides the schema files above, the fixtures that
   `scripts/fixtures/` generates, the version `@inkoxide/react` reports
-  (`scripts/gen-react-version.mjs`), the Tailwind theme (`scripts/gen-tailwind-theme.mjs`) and
-  `docs/TAILWIND_SUPPORT.md` (`scripts/gen-tailwind-docs.ts`). After it fails, the regenerated
-  files are in place: review and commit them.
+  (`scripts/gen-react-version.mjs`), the Tailwind theme (`scripts/gen-tailwind-theme.mjs`),
+  `docs/TAILWIND_SUPPORT.md` (`scripts/gen-tailwind-docs.ts`) and the example sources in
+  `packages/render/README.md` and `examples/README.md` (`examples/render.ts --readme`). After it
+  fails, the regenerated files are in place: review and commit them.
 - **React and Tailwind changes** need a test in `packages/*/test`. A new Tailwind utility
   belongs in `packages/tailwind/src/supported.ts`; its examples are tests, and
   `pnpm exec tsx scripts/gen-tailwind-docs.ts` regenerates `docs/TAILWIND_SUPPORT.md`.

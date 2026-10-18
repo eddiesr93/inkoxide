@@ -137,18 +137,22 @@ function checkOptions(options) {
   if (options === undefined || options === null) return;
   checkObject(options, 'options');
   checkTypes(options, OPTION_TYPES, 'options');
-  const { images, encryption } = options;
+  const { images, attachments, encryption } = options;
   for (const key of ['pdfA', 'pdfUA']) {
     const v = options[key];
     if (v !== undefined && typeof v !== 'boolean' && typeof v !== 'string') {
       throw engineError('INVALID_ARGUMENT', `options.${key}`, 'must be a boolean or a string');
     }
   }
-  if (images !== undefined) {
-    checkObject(images, 'options.images');
-    for (const [id, bytes] of Object.entries(images)) {
+  for (const [name, files] of [
+    ['images', images],
+    ['attachments', attachments],
+  ]) {
+    if (files === undefined) continue;
+    checkObject(files, `options.${name}`);
+    for (const [id, bytes] of Object.entries(files)) {
       if (!(bytes instanceof Uint8Array)) {
-        throw engineError('INVALID_ARGUMENT', `options.images.${id}`, 'must be a Uint8Array');
+        throw engineError('INVALID_ARGUMENT', `options.${name}.${id}`, 'must be a Uint8Array');
       }
     }
   }

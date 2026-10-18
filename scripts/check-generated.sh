@@ -69,12 +69,15 @@ if [[ $python_only == 0 ]]; then
   node scripts/gen-react-version.mjs
   node scripts/gen-tailwind-theme.mjs
   pnpm exec tsx scripts/gen-tailwind-docs.ts >/dev/null
+  pnpm exec tsx examples/render.ts --readme >/dev/null
   generated+=(
     packages/schema/index.d.ts
     packages/react/src/tree/schema-validator.ts
     packages/react/src/version.ts
     packages/tailwind/src/tailwind-theme.ts
     docs/TAILWIND_SUPPORT.md
+    packages/render/README.md
+    examples/README.md
   )
 fi
 

@@ -299,6 +299,9 @@ fn itemize(
                 _ if sequence.is_some() => sequence.map_or(primary, |(_, f)| f),
                 Some((f, _)) if neutral => f,
                 _ if fonts.get(primary).glyph(c).is_some() || neutral => primary,
+                // Until a deferred font is registered, its characters are not looked for in the
+                // fallbacks: only then does the render know which of them it needs.
+                _ if fonts.get(primary).is_deferred() => primary,
                 _ => fonts
                     .fallback(|f| fonts.get(f).glyph(c).is_some())
                     .unwrap_or(primary),

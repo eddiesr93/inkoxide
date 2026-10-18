@@ -45,11 +45,11 @@ string, which is read as UTF-8 JSON.
 ## WebAssembly (`@inkoxide/wasm`)
 
 `@inkoxide/wasm` is the engine built for `wasm32-unknown-unknown`, with the functions and types
-of the Node package, and two more:
+of the Node package, and four more:
 
 | Function | Meaning |
 |---|---|
-| `init(source?, { hyphenation?, threads?, trapChannel? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module. Every other function throws until it resolves. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`). `threads` above 1 (at most 256) loads `inkoxide-threads.wasm` and starts a pool of that many workers, where memory can be shared; `trapChannel` names the `BroadcastChannel` a pool thread reports a bug on |
+| `init(source?, { hyphenation?, threads?, trapChannel? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module. Every other function throws `NOT_LOADED` until it resolves, and a module that cannot be fetched or compiled rejects it with `NOT_LOADED`. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`). `threads` above 1 (at most 256) loads `inkoxide-threads.wasm` and starts a pool of that many workers, where memory can be shared; `trapChannel` names the `BroadcastChannel` a pool thread reports a bug on |
 | `threadCount(): number` | The threads renders use: the pool's size, or 1 |
 | `loadHyphenation(langs): Promise<void>` | Fetches the built-in hyphenation patterns of BCP-47 tags, for `renderSync` |
 | `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text). The memory stays with the instance. |
@@ -104,7 +104,7 @@ How it differs from the Node package:
 | `pdf_ua_part` / `with_pdf_ua_part` (also sets `pdf_ua`) | `pdfUA: true \| '1' \| '2'` | `PdfUaPart::Ua1` | The PDF/UA part: 1 (ISO 14289-1, PDF 1.7) or 2 (ISO 14289-2, PDF 2.0; see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). `PdfUaPart` parses `"1"` and `"2"`. Part 2 with `pdf_a` is `INVALID_VALUE` at `options.pdfUA` in Rust and `INVALID_ARGUMENT` in Node. Node: another string is `INVALID_ARGUMENT` |
 | `attachments` / `with_attachments` (`AttachmentStore`) | `attachments: Record<string, Uint8Array>` | none | The bytes of the files the document's `attachments` name in `src`, by id. A `src` missing from them is `ATTACHMENT_NOT_REGISTERED` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
-| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
+| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it. A fallback is tried for a character only once the font of its run is registered |
 | `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions?, entropy? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
@@ -480,7 +480,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed, or a PDF/A-1b file would pass one of the limits of PDF/A-1 |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
-| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only: from `renderSync`, and from `render` when it cannot fetch what the document needs | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again (`@inkoxide/wasm`'s `render` fetches them and does). `@inkoxide/render/browser` reports a file it could not fetch as `INTERNAL` |
+| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only: from `renderSync`, from `render` when it cannot fetch what the document needs, from `init` when the module cannot be fetched or compiled, and from any call before `init` has resolved | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again, until it renders: a deferred fallback is needed only once the font of its run is registered (`@inkoxide/wasm`'s `render` fetches them and does). `@inkoxide/render/browser` reports a file it could not fetch as `INTERNAL` |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
 | `INVALID_ARGUMENT` | n/a (types are checked at compile time) | Node only | A JS argument has the wrong type or is out of range |
 

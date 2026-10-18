@@ -347,6 +347,22 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - A page's `header` or `footer` is checked as a page child is: a `gridArea` (no grid holds it)
   is `INVALID_VALUE`, and as a float it takes no absolute position, `flexGrow` or `flexBasis`;
   they were accepted.
+- `@inkoxide/wasm`: a call before `init` has resolved, and an `init` whose module cannot be
+  fetched or compiled, fail with an `InkoxideError` of code `NOT_LOADED` instead of a plain
+  `Error` or `TypeError`; `init` can be called again after such a failure.
+- `@inkoxide/wasm`: a later `init` call ignores its `hyphenation` option, as it does its other
+  arguments, instead of changing the folder later patterns are fetched from.
+- `@inkoxide/wasm`: after a bug in the engine (`INTERNAL`), the new instance has the hyphenation
+  patterns registered so far also when a tag was registered or removed under another spelling
+  (`en_GB`, `EN-gb`): removed patterns no longer come back, and replaced ones no longer win over
+  their replacement.
+- Deferred fonts: a character of a run in a deferred font that is not registered yet is not looked
+  for in the fallback fonts until that font is, so `@inkoxide/wasm`'s `render` no longer fetches a
+  deferred fallback no character needs. A document that needs both names the run's font first
+  (`NotLoaded` in Rust, `NOT_LOADED` from `renderSync`), and `render` fetches the fallback in a
+  second round.
+- `@inkoxide/wasm`: while its pool starts again after a bug in the engine, a render's `threads`
+  out of range is still `INVALID_ARGUMENT`, and `validate` takes the `threads` a render takes.
 
 ### Repository
 
@@ -359,6 +375,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   described in [docs/RELEASING.md](docs/RELEASING.md). `@inkoxide/react`, `@inkoxide/tailwind`
   and `@inkoxide/style` have READMEs, and `packages/schema/EXAMPLES.md` has examples of forms,
   notes, grids, floats, inline images and font features. The benchmark files lose their `-inkoxide` suffix.
+- `scripts/check-generated.sh` also checks the example sources in `packages/render/README.md` and
+  `examples/README.md`: `examples/render.ts --readme` rewrites them without rendering.
 
 ## 0.9.1 - 2026-10-16
 

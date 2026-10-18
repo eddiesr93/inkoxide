@@ -6,7 +6,7 @@ built as JSON. To write documents as React components, use
 this for you. [API.md](API.md) has the full API and
 [EXAMPLES.md](../packages/schema/EXAMPLES.md) has complete documents. In a browser,
 [`@inkoxide/wasm`](../packages/wasm/README.md) has the same functions, on one
-thread: its README covers the setup, and
+thread or a pool of Web Workers: its README covers the setup, and
 [API.md](API.md#webassembly-inkoxidewasm) the differences.
 
 ## Install

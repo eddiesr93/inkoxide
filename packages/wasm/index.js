@@ -1,7 +1,8 @@
 // Loader for the WebAssembly build of the engine plus the JS-side error type. Hand-written and
 // reviewed together with index.d.ts (the public contract, the one of the `inkoxide` package plus
-// `init` and `clearCaches`) and with the module's ABI, described in crates/wasm/src/lib.rs. The
-// option checks are those of packages/inkoxide/index.js; keep the two in step.
+// `init`, `threadCount`, `loadHyphenation` and `clearCaches`) and with the module's ABI, described
+// in crates/wasm/src/lib.rs. The option checks are those of packages/inkoxide/index.js; keep the
+// two in step.
 
 export class InkoxideError extends Error {
   constructor(code, path, message) {
@@ -136,22 +137,30 @@ async function fromFile(url) {
   return fs ? fs.readFile(url) : url;
 }
 
+// The engine's module from `source`; one that cannot be fetched or compiled is NOT_LOADED.
 async function compile(source) {
   if (source instanceof WebAssembly.Module) return source;
-  source = await source;
-  if (source === undefined) source = new URL('./inkoxide.wasm', import.meta.url);
-  if (typeof source === 'string') source = new URL(source, import.meta.url);
-  source = await fromFile(source);
-  if (source instanceof URL) source = await fetch(source);
-  if (typeof Response !== 'undefined' && source instanceof Response) {
-    if (!source.ok) throw new Error(`@inkoxide/wasm: ${source.url}: HTTP ${source.status}`);
-    // Streaming compilation needs the application/wasm content type.
-    if (WebAssembly.compileStreaming && source.headers.get('content-type') === 'application/wasm') {
-      return WebAssembly.compileStreaming(source);
+  let from = '';
+  try {
+    source = await source;
+    if (source === undefined) source = new URL('./inkoxide.wasm', import.meta.url);
+    if (typeof source === 'string') source = new URL(source, import.meta.url);
+    if (source instanceof URL) from = ` from ${source.href}`;
+    source = await fromFile(source);
+    if (source instanceof URL) source = await fetch(source);
+    if (typeof Response !== 'undefined' && source instanceof Response) {
+      if (source.url) from = ` from ${source.url}`;
+      if (!source.ok) throw new Error(`HTTP ${source.status}`);
+      // Streaming compilation needs the application/wasm content type.
+      if (WebAssembly.compileStreaming && source.headers.get('content-type') === 'application/wasm') {
+        return await WebAssembly.compileStreaming(source);
+      }
+      source = await source.arrayBuffer();
     }
-    source = await source.arrayBuffer();
+    return await WebAssembly.compile(source);
+  } catch (e) {
+    throw engineError('NOT_LOADED', '', `the engine's module could not be loaded${from}: ${e.message}`, e);
   }
-  return WebAssembly.compile(source);
 }
 
 // Whether this thread may share memory with workers and wait for them: a page that is
@@ -340,15 +349,13 @@ function stopPool() {
  * pool of that many threads with the module with threads, where memory can be shared.
  */
 export function init(source, options) {
-  if (options?.hyphenation !== undefined) {
-    const base = String(options.hyphenation);
-    hyphenationBase = new URL(
-      base.endsWith('/') ? base : `${base}/`,
-      globalThis.location?.href ?? import.meta.url,
-    );
-  }
   starting ??= (async () => {
     const threads = poolSize(options?.threads);
+    const base = options?.hyphenation === undefined ? undefined : String(options.hyphenation);
+    const hyphenation =
+      base === undefined
+        ? null
+        : new URL(base.endsWith('/') ? base : `${base}/`, globalThis.location?.href ?? import.meta.url);
     // The memory first: where there is none, the module with threads is not downloaded.
     const shared = threads > 1 && canShare() ? sharedMemory() : null;
     const module = await compile(
@@ -362,7 +369,9 @@ export function init(source, options) {
       try {
         await startPool(module, memory, e, () => true);
       } catch (err) {
-        if (err instanceof WebAssembly.RuntimeError) throw err;
+        if (err instanceof WebAssembly.RuntimeError) {
+          throw engineError('INTERNAL', '', `the engine stopped: ${err.message}`, err);
+        }
         // Workers that cannot start (a policy, or a bundler that leaves out thread.js): renders
         // run on one thread.
         pool.size = 1;
@@ -370,6 +379,7 @@ export function init(source, options) {
       }
     }
     // Calls wait until here: "call init() and wait for it first".
+    hyphenationBase = hyphenation;
     compiled = module;
     exports = e;
   })().catch((e) => {
@@ -384,7 +394,7 @@ export const threadCount = () => (pool.workers.length > 0 ? pool.size : 1);
 
 function engine() {
   if (exports) return exports;
-  if (!compiled) throw new Error('@inkoxide/wasm: call init() and wait for it first');
+  if (!compiled) throw engineError('NOT_LOADED', '', 'call init() and wait for it first');
   // After a trap: a new instance, with what the old one had registered. The module with threads
   // gets new memory, and a new pool once its workers have started; renders until then run on
   // one thread.
@@ -501,6 +511,14 @@ function resolveEntropy(options) {
   return { ...options, encryption: { ...options.encryption, entropy: random } };
 }
 
+// While a pool starts again after a trap, or after it could not: one thread, the same bytes. A
+// value the engine refuses is left for it to refuse.
+function onOneThread(rest) {
+  const { threads } = rest;
+  const pooled = Number.isInteger(threads) && threads > 1 && threads <= MAX_THREADS;
+  if (pool.size > 1 && pool.workers.length === 0 && pooled) rest.threads = 1;
+}
+
 // The options the engine reads as JSON; the entropy bytes go as an array of numbers.
 function optionsJson(rest) {
   const entropy = rest.encryption?.entropy;
@@ -521,16 +539,21 @@ export function unregisterFont(id) {
   return call((e) => e.ink_unregister_font(...put(e, key)) === 1);
 }
 
+// The tag the engine keeps patterns under (normalize_tag in crates/core/src/text/hyphen.rs):
+// ASCII letters in lowercase, `-` for `_`. The copy uses it too, so that `en_GB` replaces and
+// removes the patterns of `en-gb`, as in the engine.
+const tagKey = (lang) => lang.replace(/[A-Z]+/g, (s) => s.toLowerCase()).replaceAll('_', '-');
+
 export function registerHyphenationPatterns(lang, data) {
   stringOf(lang);
   const bytes = bytesOf(data);
   call((e) => registerIn(e, 'ink_register_hyphenation_patterns', lang, bytes));
-  patterns.set(lang, bytes.slice());
+  patterns.set(tagKey(lang), bytes.slice());
 }
 
 export function unregisterHyphenationPatterns(lang) {
   const key = encoder.encode(stringOf(lang));
-  patterns.delete(lang);
+  patterns.delete(tagKey(lang));
   return call((e) => e.ink_unregister_hyphenation_patterns(...put(e, key)) === 1);
 }
 
@@ -549,6 +572,7 @@ export function validate(doc, format, images, options) {
   images ??= optionImages;
   const has = images !== undefined && images !== null;
   const buf = has ? imagesBuffer(images) : new Uint8Array();
+  onOneThread(rest);
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
   const json = withOptions ? optionsJson(rest) : new Uint8Array();
   const files = attachments === undefined ? new Uint8Array() : imagesBuffer(attachments);
@@ -631,8 +655,7 @@ function renderOnce(doc, options) {
   const bytes = bytesOf(doc);
   checkOptions(options);
   const { images, attachments, deferredFonts, ...rest } = options ?? {};
-  // A pool that is starting again after a trap, or could not: one thread, the same bytes.
-  if (pool.size > 1 && pool.workers.length === 0 && rest.threads > 1) rest.threads = 1;
+  onOneThread(rest);
   // The engine renders without them until a render needs them: it takes their ids.
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
   const json = optionsJson(rest);
@@ -671,17 +694,19 @@ export function renderSync(doc, options) {
  */
 export async function render(doc, options) {
   checkOptions(options);
-  // Drawn once: the render after loading what the first needed uses the same bytes.
+  // Drawn once: the renders after loading what one needed use the same bytes.
   options = resolveEntropy(options);
-  const first = renderOnce(doc, options);
-  if (!first.needs) return first.pdf;
-  await Promise.all([
-    loadFonts(first.needs.fonts, options?.deferredFonts),
-    loadFiles(first.needs.hyphenation),
-  ]);
-  const { pdf, needs } = renderOnce(doc, options);
-  if (needs) throw notLoaded(needs);
-  return pdf;
+  // A deferred fallback is needed only once the font of its run is loaded: each round loads
+  // what the last one needed, until a round needs nothing new.
+  const loaded = new Set();
+  for (;;) {
+    const { pdf, needs } = renderOnce(doc, options);
+    if (!needs) return pdf;
+    const fonts = needs.fonts.filter((id) => !loaded.has(id));
+    if (fonts.length === 0 && needs.hyphenation.every((file) => builtins.has(file))) throw notLoaded(needs);
+    await Promise.all([loadFonts(fonts, options?.deferredFonts), loadFiles(needs.hyphenation)]);
+    for (const id of fonts) loaded.add(id);
+  }
 }
 
 export const version = () => call((e) => JSON.parse(decoder.decode(outcome(e, e.ink_version()))));

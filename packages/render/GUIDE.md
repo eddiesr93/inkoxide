@@ -1427,7 +1427,7 @@ apply:
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image, or a render option is out of range (`path` is `options.threads`, `options.creationDate`, …) |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
 | `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
-| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), a bundled font or hyphenation file could not be read or, in a browser, fetched (`engineCode` `NOT_LOADED`), `renderToFile` could not write the file, or a bug |
+| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), a bundled font or hyphenation file could not be read or, in a browser, fetched, or the engine's module could not be (`engineCode` `NOT_LOADED`), `renderToFile` could not write the file, or a bug |
 
 `INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. Besides `code`,
 `status`, `message`, `path`, `component` and `componentStack`, a `RenderError` may have
