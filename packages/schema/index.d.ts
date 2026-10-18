@@ -780,7 +780,7 @@ export interface Style {
   margin?: EdgesLength;
   position?: 'relative' | 'absolute';
   /**
-   * top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it.
+   * top/right/bottom/left offsets for positioned boxes. Percentages are of the containing block: its width for `left` and `right`, its height for `top` and `bottom` (the page content box, for a child of the page). A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it.
    */
   inset?: EdgesLength;
   gridTemplateColumns?: TemplateTrack[];
@@ -854,7 +854,7 @@ export interface Style {
    */
   transformOrigin?: [LengthPercent, LengthPercent];
   /**
-   * Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells.
+   * Paint order among siblings: higher paints later (above); equal values keep document order, except that floats paint after their siblings of the same `zIndex`, as in CSS. Default 0. Not on table cells.
    */
   zIndex?: number;
   /**
@@ -910,7 +910,7 @@ export interface Style {
    */
   widows?: number;
   /**
-   * table cells only
+   * table cells only. Places the cell's content down its row, whatever the cell's `flexDirection` or `display`: in a cell that is not a column (row, reversed, wrapping or grid), the content keeps its own height.
    */
   verticalAlign?: 'top' | 'middle' | 'bottom';
   /**
@@ -1047,7 +1047,7 @@ export interface Break {
    */
   minPresenceAhead?: NonNegative;
   /**
-   * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page.
+   * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page: where the flow's paint order puts it, without the opacity, transform and clip of the nodes around it. It is not painted inside a node with `display: "none"` or `opacity: 0`, nor on the pages that the `pages` of a node around it leave out.
    */
   fixed?: boolean;
 }
@@ -1286,6 +1286,9 @@ export interface TableNode {
    * @minItems 1
    */
   columns: [ColumnSpec, ...ColumnSpec[]];
+  /**
+   * The first rows, repeated at the top of every page the table continues on, below the header rows of the tables around it. Header rows that, with those, are as tall as the page are not repeated.
+   */
   headerRows?: number;
   rows: TableRow[];
 }

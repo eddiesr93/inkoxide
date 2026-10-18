@@ -16,25 +16,24 @@
 //! floats of its sides.
 //! Absolutely positioned children are placed against the padding box.
 //! When the container's height is known, its free room goes, as in a
-//! flexbox, to `auto` top and bottom margins, else to the children that
-//! grow (`flexGrow`), else around them (`justifyContent`): the children
-//! are placed again with it, the floats with them.
+//! flexbox, to the children that grow (`flexGrow`), then to `auto` top
+//! and bottom margins, else around the children (`justifyContent`, or a
+//! cell's `verticalAlign`): the children are placed again with it, the
+//! floats with them.
 //!
 //! Validation keeps the rest out: no `flexBasis` on the children, no
 //! `flexGrow` on a float, no `alignContent` on the container.
 
 use std::sync::Arc;
 
-use super::float::{FloatContext, Insets, LineBoxes, Placed, Side};
-use super::{AvailableSpace, Geometry, LayoutCtx, NodeIdx, RootMode, Size, Tree};
+use super::float::{FloatContext, Insets, LineBoxes, Placed, Side, EPS};
+use super::{AvailableSpace, Geometry, LayoutCtx, NodeIdx, Part, RootMode, Size, Tree};
 use crate::schema::{
     AlignItems, AlignSelf, Clear, Display, Edges, Float, JustifyContent, Length, LengthPercent,
-    NodeKind, Overflow, Position, Style,
+    NodeKind, Overflow, Position, Style, VerticalAlign,
 };
 use crate::InkoxideError;
 
-/// Tolerance of widths, points.
-const EPS: f32 = 1e-3;
 /// Deepest a box is laid out beside the floats of its container's
 /// container: deeper boxes are narrowed instead. Each level may be placed
 /// twice (to share out free room), so the work doubles with each.
@@ -420,48 +419,38 @@ struct Share {
 
 impl Share {
     /// The share of `free` room (positive) for placement `p` of a
-    /// container justified by `justify`: `auto` margins take it all, else
-    /// the children that grow, else `justifyContent` sets it around them.
+    /// container justified by `justify`, as in a column flexbox: the
+    /// children that grow take it first, then `auto` margins what is left,
+    /// else `justifyContent` sets that around them.
     fn of(p: &Arrangement, free: f32, justify: Option<JustifyContent>) -> Self {
+        // Children whose `flexGrow` adds up to less than 1 take only that
+        // part of it (CSS Flexbox §9.7).
+        let (per_grow, free) = if p.grow > 0.0 {
+            (free / p.grow.max(1.0), free * (1.0 - p.grow).max(0.0))
+        } else {
+            (0.0, free)
+        };
         if p.autos > 0 {
             return Self {
                 auto_margin: free / p.autos as f32,
-                ..Self::default()
-            };
-        }
-        if p.grow > 0.0 {
-            // Children whose `flexGrow` adds up to less than 1 take only
-            // that part of it (CSS Flexbox §9.7).
-            return Self {
-                per_grow: free / p.grow.max(1.0),
+                per_grow,
                 ..Self::default()
             };
         }
         let n = p.in_flow as f32;
-        match justify {
-            Some(JustifyContent::FlexEnd | JustifyContent::End) => Self {
-                lead: free,
-                ..Self::default()
-            },
-            Some(JustifyContent::Center) => Self {
-                lead: free / 2.0,
-                ..Self::default()
-            },
-            Some(JustifyContent::SpaceBetween) if p.in_flow > 1 => Self {
-                between: free / (n - 1.0),
-                ..Self::default()
-            },
-            Some(JustifyContent::SpaceAround) if p.in_flow > 0 => Self {
-                lead: free / n / 2.0,
-                between: free / n,
-                ..Self::default()
-            },
-            Some(JustifyContent::SpaceEvenly) => Self {
-                lead: free / (n + 1.0),
-                between: free / (n + 1.0),
-                ..Self::default()
-            },
-            _ => Self::default(),
+        let (lead, between) = match justify {
+            Some(JustifyContent::FlexEnd | JustifyContent::End) => (free, 0.0),
+            Some(JustifyContent::Center) => (free / 2.0, 0.0),
+            Some(JustifyContent::SpaceBetween) if p.in_flow > 1 => (0.0, free / (n - 1.0)),
+            Some(JustifyContent::SpaceAround) if p.in_flow > 0 => (free / n / 2.0, free / n),
+            Some(JustifyContent::SpaceEvenly) => (free / (n + 1.0), free / (n + 1.0)),
+            _ => (0.0, 0.0),
+        };
+        Self {
+            auto_margin: 0.0,
+            per_grow,
+            lead,
+            between,
         }
     }
 }
@@ -615,6 +604,37 @@ struct Item<'s> {
     grow: f32,
 }
 
+/// The box of child `item` beside floats, with its border box's top at
+/// `top`: as wide as it would be without them, placed across by its
+/// alignment, its height still 0. Also returns the height of its border
+/// and padding.
+fn own_box(
+    ctx: &mut LayoutCtx<'_>,
+    container: &Container<'_, '_>,
+    item: &Item<'_>,
+    top: f32,
+) -> Result<(Geometry, f32), InkoxideError> {
+    let (s, a) = (item.style, item.across);
+    let width = container.width;
+    let w = container.width(ctx, item.c, (s, a), width, item.align == Align::Stretch)?;
+    let (x, ml, mr) = a.place(item.align, 0.0, width, w);
+    let (pad, bor) = insets(s, width);
+    let geo = Geometry {
+        x,
+        y: top,
+        w,
+        border: bor,
+        padding: pad,
+        margin: Edges {
+            right: mr,
+            left: ml,
+            ..Edges::default()
+        },
+        ..Geometry::default()
+    };
+    Ok((geo, bor.top + pad.top + pad.bottom + bor.bottom))
+}
+
 /// Text child `item` with its border box's top at `top`, beside floats:
 /// its own box, as wide as it would be without them, and its lines in
 /// the room the floats leave in it. Also returns those line boxes and the
@@ -626,43 +646,24 @@ fn wrap_text(
     item: &Item<'_>,
     top: f32,
 ) -> Result<(Geometry, Arc<LineBoxes>, f32), InkoxideError> {
-    let (s, a) = (item.style, item.across);
-    let width = container.width;
-    let w = container.width(ctx, item.c, (s, a), width, item.align == Align::Stretch)?;
-    let (x, ml, mr) = a.place(item.align, 0.0, width, w);
-    let (pad, bor) = insets(s, width);
-    let cx = x + bor.left + pad.left;
-    let cy = top + bor.top + pad.top;
-    let cw = (w - bor.left - pad.left - pad.right - bor.right).max(0.0);
+    let s = item.style;
+    let (mut geo, edges_h) = own_box(ctx, container, item, top)?;
+    let cb = geo.content_box();
     let boxes = Arc::new(LineBoxes {
-        width: cw,
-        bands: floats.bands(cx, cy, cw).into(),
+        width: cb.w,
+        bands: floats.bands(cb.x, cb.y, cb.w).into(),
     });
     let node = container.tree.nodes[item.c as usize]
         .node()
         .expect("a text child is a node");
     let measured = ctx.leaves.measure_lines(node, &boxes);
-    let edges_h = bor.top + pad.top + pad.bottom + bor.bottom;
     let parent_h = container.parent_h;
-    let h = clamp(
+    geo.h = clamp(
         len_h(s.height, parent_h).unwrap_or(measured.height + edges_h) + item.grow,
         len_h(s.min_height, parent_h),
         len_h(s.max_height, parent_h),
     );
-    let geo = Geometry {
-        x,
-        y: top,
-        w,
-        h,
-        border: bor,
-        padding: pad,
-        margin: Edges {
-            right: mr,
-            left: ml,
-            ..Edges::default()
-        },
-    };
-    Ok((geo, boxes, cy + measured.wrapped))
+    Ok((geo, boxes, cb.y + measured.wrapped))
 }
 
 /// Whether box `c`, beside floats, is laid out in the room they leave,
@@ -695,51 +696,31 @@ fn share_floats(
     item: &Item<'_>,
     top: f32,
 ) -> Result<(Geometry, FlowLayout), InkoxideError> {
-    let (s, a) = (item.style, item.across);
-    let tree = container.tree;
-    let width = container.width;
-    let w = container.width(ctx, item.c, (s, a), width, item.align == Align::Stretch)?;
-    let (x, ml, mr) = a.place(item.align, 0.0, width, w);
-    let (pad, bor) = insets(s, width);
-    let cx = x + bor.left + pad.left;
-    let cy = top + bor.top + pad.top;
-    let cw = (w - bor.left - pad.left - pad.right - bor.right).max(0.0);
-    let edges_h = bor.top + pad.top + pad.bottom + bor.bottom;
+    let s = item.style;
+    let (mut geo, edges_h) = own_box(ctx, container, item, top)?;
+    let cb = geo.content_box();
     let parent_h = container.parent_h;
     let own = len_h(s.height, parent_h).map(|h| (h - edges_h).max(0.0));
     let inner = Container {
-        tree,
-        width: cw,
+        tree: container.tree,
+        width: cb.w,
         parent_h: own,
         collect: container.collect,
         depth: container.depth + 1,
     };
-    let seeds = floats.seeds(cx, cy);
+    let seeds = floats.seeds(cb.x, cb.y);
     let mut fl = layout_in(ctx, &inner, item.c, own, &seeds)?;
-    let h = clamp(
+    geo.h = clamp(
         own.map_or(fl.size.height, |o| o) + edges_h + item.grow,
         len_h(s.min_height, parent_h),
         len_h(s.max_height, parent_h),
     );
     // Taller than its own height or its content (`minHeight`,
     // `flexGrow`): its children share out that room.
-    let content = h - edges_h;
+    let content = geo.h - edges_h;
     if content > own.unwrap_or(fl.size.height) + EPS {
         fl = layout_in(ctx, &inner, item.c, Some(content), &seeds)?;
     }
-    let geo = Geometry {
-        x,
-        y: top,
-        w,
-        h,
-        border: bor,
-        padding: pad,
-        margin: Edges {
-            right: mr,
-            left: ml,
-            ..Edges::default()
-        },
-    };
     Ok((geo, fl))
 }
 
@@ -842,7 +823,17 @@ fn layout_in(
     // placed again with it, as floats may then sit beside other lines.
     if let Some(h) = height {
         let free = h - placement.bottom;
-        let justify = tree.nodes[idx as usize].style().justify_content;
+        let ln = &tree.nodes[idx as usize];
+        // A cell places its content by `verticalAlign`, as Taffy lays out
+        // a cell without floats.
+        let justify = match ln.part {
+            Part::Cell(c) => Some(match c.style.vertical_align {
+                Some(VerticalAlign::Middle) => JustifyContent::Center,
+                Some(VerticalAlign::Bottom) => JustifyContent::FlexEnd,
+                _ => JustifyContent::FlexStart,
+            }),
+            _ => ln.style().justify_content,
+        };
         let share = Share::of(&placement, free, justify);
         if free > EPS && share != Share::default() {
             placement = place(ctx, container, idx, share, outer)?;
@@ -998,8 +989,15 @@ fn absolute(
         container.width + pad.left + pad.right,
         height + pad.top + pad.bottom,
     );
+    // Percentage heights, `top` and `bottom` are of the page content box
+    // for a child of the page (as in `to_taffy_on_page`), else of the
+    // padding box.
+    let pct_h = match container.parent_h {
+        Some(page_h) if container.tree.nodes[c as usize].parent == 0 => page_h,
+        _ => ph,
+    };
     let x_of = |l: Option<Length>| l.and_then(|l| len(l, pw));
-    let y_of = |l: Option<Length>| l.and_then(|l| len(l, ph));
+    let y_of = |l: Option<Length>| l.and_then(|l| len(l, pct_h));
     let (left, right, top, bottom) = match s.inset {
         Some(i) => (x_of(i.left), x_of(i.right), y_of(i.top), y_of(i.bottom)),
         None => (None, None, None, None),
@@ -1019,7 +1017,7 @@ fn absolute(
         width: AvailableSpace::Definite(w),
         fit: false,
         height: None,
-        parent_h: Some(ph),
+        parent_h: Some(pct_h),
     };
     let mut h = ctx
         .layout_subtree(container.tree, c, mode, false)?

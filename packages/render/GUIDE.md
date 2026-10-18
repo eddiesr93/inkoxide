@@ -610,8 +610,8 @@ page. Lengths are points or strings with a unit:
   the wider wins. With `borderCollapse: 'separate'` (`border-separate`), each cell draws its own
   borders, background and radius, `borderSpacing` (`border-spacing-*`) apart and from the
   table's edge. Both go on the `Table`.
-- **Pagination.** Header rows repeat on every page. Rows split across pages, and a row taller
-  than a page splits inside its cells.
+- **Pagination.** Header rows repeat on every page, unless they are as tall as the page. Rows
+  split across pages, and a row taller than a page splits inside its cells.
 - **Cells.** `colSpan`, `rowSpan` and `verticalAlign` are available on `Cell`. The columns set a
   cell's width, and a cell's `height` and `minHeight` are minimums: the row grows to fit the
   content. Styles that place or size the cell itself (`width`, `minWidth`, `maxWidth`, `margin`,

@@ -49,6 +49,22 @@ version 2.
   documented; it took one as midnight.
 - **Font declarations:** `fonts` holds at most 256 declarations (`maxItems`). Each costs memory
   in every render, and past 65 536 of them text drew in another declaration's font.
+- **Fixed nodes:** a fixed node inside a node with `display: "none"` or `opacity: 0`, or on a page
+  that the `pages` of a node around it leaves out, is not painted there; it was painted on every
+  page.
+- **Tables:** a cell that spans `auto` columns widens them, by equal parts, to hold its content;
+  they were as wide as their single-column cells.
+- **Cells:** `verticalAlign` places a cell's content down its row whatever the cell's
+  `flexDirection` or `display`; on a row or grid cell it moved the content across. A cell holding
+  floats takes it too.
+- **Offsets:** a percentage `top` or `bottom` on a child of the page is of the page content height;
+  a relative one was ignored unless the page held floats, and an absolute one was of the whole
+  flow.
+- **Floats:** in a box with floats, children with `flexGrow` take the free room before `auto`
+  margins, as in a column box; the margins took it all.
+- **Tables:** header rows as tall as the page (with those of the tables around them) are not
+  repeated; room was kept for them on every continuation page, which left pages with only the
+  header.
 
 ## 2.5.1 - 2026-10-16
 

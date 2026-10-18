@@ -724,6 +724,50 @@ fn fixed_nodes_in_the_flow_are_painted_in_paint_order() {
 }
 
 #[test]
+fn fixed_nodes_inside_a_node_left_out_of_a_page_are_left_out_there() {
+    // A fixed box, told apart by its red component, in a box 10 high.
+    let around = |red: f32, extra: &str, style: &str| {
+        format!(
+            r#"{{"type":"box"{extra},"style":{{"height":10{style}}},"children":[{{"type":"box"{FIXED},"style":{{"backgroundColor":[{red},0,0,1],"height":10}}}}]}}"#
+        )
+    };
+    let children = [
+        around(0.1, r#","pages":"first""#, ""),
+        around(0.2, r#","pages":"notFirst""#, ""),
+        around(0.3, "", r#","opacity":0"#),
+        around(0.4, "", r#","display":"none""#),
+        around(0.5, "", r#","opacity":0.5"#),
+    ];
+    // Where its parent is only not on the page, it is still painted; it
+    // keeps its own opacity whatever its parent's.
+    assert_eq!(
+        fills(&with_fixed(2, &children.join(","))),
+        [vec![0.1, 0.5], vec![0.2, 0.5], vec![0.2, 0.5]]
+    );
+}
+
+#[test]
+fn header_rows_as_tall_as_a_page_are_not_painted_again() {
+    // A header row 85 high on pages with 80 of content height, then a row
+    // that splits inside its cell: its boxes, told apart by their red
+    // component, continue at the top of the next pages, under no header.
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},
+            "margin":{{"top":{M},"right":{M},"bottom":{M},"left":{M}}},
+            "children":[{{"type":"table","columns":[{{"width":"1fr"}}],"headerRows":1,"rows":[
+              {{"cells":[{{"style":{{"height":85,"backgroundColor":[0.1,0,0,1]}}}}]}},
+              {{"cells":[{{"children":[
+                {{"type":"box","style":{{"height":50,"backgroundColor":[0.2,0,0,1]}}}},
+                {{"type":"box","style":{{"height":50,"backgroundColor":[0.3,0,0,1]}}}},
+                {{"type":"box","style":{{"height":50,"backgroundColor":[0.4,0,0,1]}}}}]}}]}}]}}]}}]}}"#
+    );
+    assert_eq!(
+        fills(&json),
+        [vec![0.1], vec![0.1, 0.2], vec![0.3], vec![0.4]]
+    );
+}
+
+#[test]
 fn overlays_with_a_negative_z_index_are_painted_under_the_flow() {
     // Boxes told apart by their red component.
     let shade = |red: f32, extra: &str, style: &str| {

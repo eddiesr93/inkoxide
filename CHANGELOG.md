@@ -323,6 +323,23 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - A font with colour bitmaps (`CBDT` or `sbix`) whose CFF outlines cannot be embedded registers
   and draws its colour glyphs, as a bitmap font without outlines does; it was refused with an
   error that said it had no colour bitmaps.
+- A fixed element inside an element with `display: 'none'` or `opacity: 0`, or on a page that the
+  `pages` of an element around it leaves out, is not painted there, as 0.8.0 meant; it was painted
+  on every page.
+- A table cell that spans `auto` columns widens them, by equal parts, to hold its content; the
+  columns took the width of their single-column cells only, so a heading across them could break
+  inside its words.
+- `verticalAlign` on a table cell with `flexDirection: 'row'` or `'row-reverse'`, a wrapping or
+  reversed column, or `display: 'grid'` places its content down the row, as on other cells; it
+  moved the content across, or not at all. A cell with floats inside takes its `verticalAlign` too.
+- A percentage `top` or `bottom` on a child of the page is a share of the page content height, as
+  its `height` is: a relative one was ignored unless the page had floats, and an absolute one was a
+  share of the whole flow, across all its pages (so was its percentage `height`, beside floats).
+- In an element with floats, children with `flexGrow` take the free room before `auto` margins, as
+  in an element without floats; the margins took it all, so the same layout changed when a float
+  was added.
+- Table header rows as tall as the page are not repeated; each page the table continued on was
+  pushed down past room kept for them, which left pages holding only the header.
 
 ### Repository
 

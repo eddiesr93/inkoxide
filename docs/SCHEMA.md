@@ -284,7 +284,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 | `after` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page after the node when in-flow content follows it: a break at the end of the flow adds no page. Allowed where `before` is. |
 | `inside` | `"auto"` \| `"avoid"` |  | default `"auto"`; `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole. |
 | `minPresenceAhead` | [`NonNegative`](#nonnegative) |  | Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: "page"` on a first child moves the box the same way. |
-| `fixed` | `boolean` |  | default `false`; Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page. |
+| `fixed` | `boolean` |  | default `false`; Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page: where the flow's paint order puts it, without the opacity, transform and clip of the nodes around it. It is not painted inside a node with `display: "none"` or `opacity: 0`, nor on the pages that the `pages` of a node around it leave out. |
 
 ### GridPlacement
 
@@ -384,7 +384,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `padding` | [`EdgesLengthPercent`](#edgeslengthpercent) |  |  |
 | `margin` | [`EdgesLength`](#edgeslength) |  |  |
 | `position` | `"relative"` \| `"absolute"` |  | default `"relative"` |
-| `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it. |
+| `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. Percentages are of the containing block: its width for `left` and `right`, its height for `top` and `bottom` (the page content box, for a child of the page). A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it. |
 | `gridTemplateColumns` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateRows` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. At most 10000 cells (rows × columns; `OUT_OF_RANGE`). |
@@ -410,7 +410,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `rotate` | `number` |  | ≥ -1000000, ≤ 1000000; Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
 | `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | exactly 2 items; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells. |
-| `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
+| `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order, except that floats paint after their siblings of the same `zIndex`, as in CSS. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0, ≤ 100; text nodes only; multiplier of the largest run size on the line |
 | `maxLines` | `integer` |  | ≥ 1, ≤ 4294967295; text nodes only |
@@ -424,7 +424,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |
 | `widows` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines carried to the top of the next page when the paragraph breaks |
-| `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only |
+| `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only. Places the cell's content down its row, whatever the cell's `flexDirection` or `display`: in a cell that is not a column (row, reversed, wrapping or grid), the content keeps its own height. |
 | `borderCollapse` | `"collapse"` \| `"separate"` |  | default `"collapse"`; Tables only. `collapse`: adjacent cell borders merge into one, drawn in the winner's style and colour: the wider wins, and at equal widths solid wins over dashed and dashed over dotted. `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart. |
 | `borderSpacing` | [`NonNegative`](#nonnegative) |  | Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0. |
 
@@ -582,7 +582,7 @@ An image painted behind the box's children and over its `backgroundColor`, under
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
-| `headerRows` | `integer` |  | ≥ 0, ≤ 4294967295, default `0` |
+| `headerRows` | `integer` |  | ≥ 0, ≤ 4294967295, default `0`; The first rows, repeated at the top of every page the table continues on, below the header rows of the tables around it. Header rows that, with those, are as tall as the page are not repeated. |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
 
 ### PageBreakNode

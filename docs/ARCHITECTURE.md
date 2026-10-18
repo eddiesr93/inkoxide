@@ -287,8 +287,15 @@ same maps when the PDF is written (`FontPrograms::field_text`).
 `pipeline::run` lays out every page template (flow, header, footer,
 overlays), paginates each flow, then paints page by page: background →
 overlays with a negative `zIndex` → flow (clipped to the content band,
-only nodes and lines on the page) → fixed nodes → the other overlays →
-header → footer. An overlay is a page child that is fixed and absolutely
+only nodes and lines on the page) → the other overlays → header →
+footer. The flow's fixed nodes are painted in it, where its paint order
+puts them (by `zIndex`, then document order), at their place on their
+first page: `BoxPainter::fixed` paints each without the band clip and
+the opacity, transform and clip of the nodes around it, and sets those
+up again after it. A fixed node is not painted on a page where a node
+around it has `display: none` or `opacity: 0`, or `pages` without that
+page; it is painted where a node around it is only not on the page.
+An overlay is a page child that is fixed and absolutely
 positioned: it is laid out on its own against the page content box, like
 a band, instead of in the flow. Overlays are painted by `zIndex`, then in
 document order. `FlowPart` tells
@@ -311,6 +318,13 @@ header, footer or overlay that shows page numbers is laid out again on each page
 in the page's paint job: `text::PageText` puts the page's digits in place
 of the stand-ins and breaks those paragraphs' lines again, and reads every
 other paragraph from the shared cache.
+
+Flow and paged coordinates are `f32`. Below 2²⁰ pt of flow (some 1,200
+A4 pages in one flow) one step is under `PAGED_EPS` (0.1 pt); past that it
+doubles with each power of two, so content in a flow tens of thousands of
+pages long is placed only to within a few points. Each `pages` entry is a
+flow of its own, so a long document split into several keeps full
+precision.
 
 ## Testing
 

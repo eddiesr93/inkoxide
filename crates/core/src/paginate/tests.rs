@@ -408,6 +408,27 @@ fn tables_split_between_rows_and_reserve_header_space() {
 }
 
 #[test]
+fn header_rows_as_tall_as_a_page_are_not_repeated() {
+    // 150 points of header rows on 100-point pages: the body rows follow
+    // them page after page, with no room kept above them.
+    let header = r#"{"cells":[{"style":{"height":50}}]}"#;
+    let body: Vec<String> = (0..20)
+        .map(|_| r#"{"cells":[{"style":{"height":10}}]}"#.to_string())
+        .collect();
+    let d = doc(&format!(
+        r#"{{"type":"table","columns":[{{"width":"1fr"}}],"headerRows":3,"rows":[{header},{header},{header},{}]}}"#,
+        body.join(",")
+    ));
+    let (t, p) = run(&d);
+    let rows: Vec<u32> = t.children(1).collect();
+    for (k, &r) in rows[3..].iter().enumerate() {
+        assert_eq!(rect(&t, &p, r).0, 150.0 + 10.0 * k as f32, "row {r}");
+    }
+    assert_eq!(p.pages, 4);
+    check_invariants(&t, &p);
+}
+
+#[test]
 fn horizontal_padding_narrows_measured_text() {
     // Regression: Taffy hands leaf measures the border-box width; text
     // must wrap at the content width, or it overflows its box.

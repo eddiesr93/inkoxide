@@ -526,7 +526,7 @@
           "description": "Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: \"page\"` on a first child moves the box the same way."
         },
         "fixed": {
-          "description": "Paint the node on every page of its flow. A child of the page with `position: \"absolute\"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page.",
+          "description": "Paint the node on every page of its flow. A child of the page with `position: \"absolute\"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page: where the flow's paint order puts it, without the opacity, transform and clip of the nodes around it. It is not painted inside a node with `display: \"none\"` or `opacity: 0`, nor on the pages that the `pages` of a node around it leave out.",
           "type": "boolean",
           "default": false
         }
@@ -1030,7 +1030,7 @@
         },
         "inset": {
           "$ref": "#/$defs/EdgesLength",
-          "description": "top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it."
+          "description": "top/right/bottom/left offsets for positioned boxes. Percentages are of the containing block: its width for `left` and `right`, its height for `top` and `bottom` (the page content box, for a child of the page). A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it."
         },
         "gridTemplateColumns": {
           "type": "array",
@@ -1191,7 +1191,7 @@
           "type": "integer",
           "minimum": -2147483648,
           "maximum": 2147483647,
-          "description": "Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells."
+          "description": "Paint order among siblings: higher paints later (above); equal values keep document order, except that floats paint after their siblings of the same `zIndex`, as in CSS. Default 0. Not on table cells."
         },
         "textAlign": {
           "enum": [
@@ -1289,7 +1289,7 @@
             "middle",
             "bottom"
           ],
-          "description": "table cells only"
+          "description": "table cells only. Places the cell's content down its row, whatever the cell's `flexDirection` or `display`: in a cell that is not a column (row, reversed, wrapping or grid), the content keeps its own height."
         },
         "borderCollapse": {
           "enum": [
@@ -2103,7 +2103,8 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 4294967295,
-          "default": 0
+          "default": 0,
+          "description": "The first rows, repeated at the top of every page the table continues on, below the header rows of the tables around it. Header rows that, with those, are as tall as the page are not repeated."
         },
         "rows": {
           "type": "array",

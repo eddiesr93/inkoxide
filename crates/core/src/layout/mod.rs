@@ -411,10 +411,12 @@ pub(crate) struct LayoutCtx<'m> {
     /// Cell sizes by (cell node, width key); insets are fixed per cell
     /// within a table.
     cells: HashMap<(NodeIdx, SpaceKey), Size<f32>>,
-    /// Closed-form layout of simple cells (`fast.rs`); off only in tests.
-    pub fast_cells: bool,
     /// Float container sizes by (container, width key).
     flow_sizes: HashMap<(NodeIdx, SpaceKey), Size<f32>>,
+    /// Closed-form layout of simple cells (`fast.rs`): off only in tests,
+    /// to check it against Taffy.
+    #[cfg(test)]
+    pub fast_cells: bool,
     /// Lay out every column box as a float container: only tests, to check
     /// `flow.rs` against Taffy.
     #[cfg(test)]
@@ -460,8 +462,9 @@ impl<'m> LayoutCtx<'m> {
             leaves,
             tables: HashMap::new(),
             cells: HashMap::new(),
-            fast_cells: true,
             flow_sizes: HashMap::new(),
+            #[cfg(test)]
+            fast_cells: true,
             #[cfg(test)]
             flow_all: false,
         }
@@ -526,7 +529,11 @@ impl<'m> LayoutCtx<'m> {
         mode: RootMode,
         collect: bool,
     ) -> Result<SubLayout, InkoxideError> {
-        if let (true, RootMode::Cell(space)) = (self.fast_cells, mode) {
+        #[cfg(test)]
+        let fast = self.fast_cells;
+        #[cfg(not(test))]
+        let fast = true;
+        if let (true, RootMode::Cell(space)) = (fast, mode) {
             if let Some((child, pad)) = fast::simple_cell(tree, root) {
                 if let Some(sub) = fast::cell(tree, root, child, pad, self.leaves, space, collect) {
                     return Ok(sub);
@@ -823,11 +830,15 @@ fn root_style(ln: &LNode<'_>, mode: RootMode) -> taffy::Style {
                 s.min_size.height = LengthPercentageAuto::length(h);
                 s.max_size.height = LengthPercentageAuto::length(h);
             }
-            s.justify_content = Some(match ln.style().vertical_align {
-                Some(VerticalAlign::Middle) => JustifyContent::CENTER,
-                Some(VerticalAlign::Bottom) => JustifyContent::FLEX_END,
-                _ => JustifyContent::FLEX_START,
-            });
+            // A column cell places its content by `verticalAlign` on its
+            // main axis; `lay_out_tree` moves the content of other cells.
+            if ln.style().column() {
+                s.justify_content = Some(match ln.style().vertical_align {
+                    Some(VerticalAlign::Middle) => JustifyContent::CENTER,
+                    Some(VerticalAlign::Bottom) => JustifyContent::FLEX_END,
+                    _ => JustifyContent::FLEX_START,
+                });
+            }
             s
         }
         RootMode::Item {
@@ -870,11 +881,13 @@ pub(crate) fn compute(
     min_height: f32,
     measure: &mut dyn LeafMeasure,
 ) -> Result<(), InkoxideError> {
-    compute_tree(tree, width, min_height, measure, true)
+    let mut ctx = LayoutCtx::new(measure);
+    lay_out_tree(&mut ctx, tree, width, min_height)
 }
 
 /// [`compute`], with the simple-cell fast path switchable so
 /// tests can check it against Taffy.
+#[cfg(test)]
 fn compute_tree(
     tree: &mut Tree<'_>,
     width: f32,
@@ -937,15 +950,38 @@ fn lay_out_tree(
                 };
             }
             for cell in &layout.cells {
+                let width = AvailableSpace::Definite(cell.w);
+                // The content of a cell that is not a column keeps its own
+                // height and moves down by `verticalAlign`, as CSS places a
+                // cell's content (a column cell places it itself).
+                let s = tree.nodes[cell.idx as usize].style();
+                let at = match s.vertical_align {
+                    Some(VerticalAlign::Middle) if !s.column() => 0.5,
+                    Some(VerticalAlign::Bottom) if !s.column() => 1.0,
+                    _ => 0.0,
+                };
+                let height = if at > 0.0 {
+                    let own = ctx.cell_size(tree, cell.idx, width, cell.insets)?.height;
+                    own.min(cell.h)
+                } else {
+                    cell.h
+                };
                 let space = CellSpace {
-                    width: AvailableSpace::Definite(cell.w),
-                    height: Some(cell.h),
+                    width,
+                    height: Some(height),
                     insets: cell.insets,
                 };
                 let sub = ctx.layout_subtree(tree, cell.idx, RootMode::Cell(space), true)?;
                 let (ox, oy) = (cx + cell.x, cy + cell.y);
-                for (n, g) in sub.geos {
-                    tree.nodes[n as usize].geo = g.offset(ox, oy);
+                let dy = (cell.h - height) * at;
+                for (n, mut g) in sub.geos {
+                    g = g.offset(ox, oy);
+                    if n == cell.idx {
+                        g.h = cell.h;
+                    } else {
+                        g.y += dy;
+                    }
+                    tree.nodes[n as usize].geo = g;
                 }
             }
             tree.tables.insert(idx, layout);
