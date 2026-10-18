@@ -28,7 +28,7 @@ use crate::schema::{
 use crate::{AttachmentStore, FontStore, ImageStore};
 
 /// Stop collecting after this many problems; the rest is usually noise.
-const MAX_ERRORS: usize = 100;
+pub(crate) const MAX_ERRORS: usize = 100;
 
 /// Largest page edge PDF viewers accept (200 in, PDF 1.6+ user unit aside).
 pub(crate) const MAX_PAGE_EDGE: f32 = 14_400.0;

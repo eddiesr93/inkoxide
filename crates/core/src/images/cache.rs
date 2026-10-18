@@ -25,7 +25,7 @@ fn size_of(image: &DecodedImage, encoded: usize) -> usize {
     match &image.body {
         ImageBody::Jpeg { bytes, .. } => bytes.len() + encoded,
         ImageBody::Raw { samples, alpha, .. } => {
-            samples.len() + alpha.as_ref().map_or(0, Vec::len) + encoded
+            samples.len() + alpha.as_ref().map_or(0, |a| a.plane.len()) + encoded
         }
         // A parsed tree is several times larger than its source; its text
         // is kept apart from the tree.

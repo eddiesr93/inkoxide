@@ -52,6 +52,7 @@ pub(crate) fn parse(json: &[u8]) -> Result<Parsed, Failure> {
             .transpose()?,
         tagged: boolean(&o, at, "tagged")?,
         pdf_ua: boolean(&o, at, "pdfUA")?,
+        flatten_alpha: boolean(&o, at, "flattenAlpha")?,
     };
     let deferred_fonts = match o.get("deferredFonts") {
         None => Vec::new(),

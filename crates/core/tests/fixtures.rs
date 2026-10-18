@@ -72,7 +72,6 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
     ),
     ("emoji-images", "emojiImages.❤\u{FE0F}"),
     ("emoji-colr", "pages[0].children[3].runs[1].color"),
-    ("emoji-cbdt", "pages[0].children[1].runs[0]"),
     (
         "background-image",
         "pages[0].children[2].children[0].children[1].backgroundImage.src",
@@ -89,7 +88,7 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
     ),
     (
         "images-gif-webp",
-        "pages[0].children[1].children[0].children[0].src",
+        "pages[0].children[1].children[2].children[0].src",
     ),
     (
         "images-jpeg-png",
@@ -148,6 +147,28 @@ fn pdf_a_fixtures() {
                     Err(InkoxideError::Validation(e)) => {
                         assert_eq!(e.code, ValidationCode::PdfaConflict, "{name}: {e}");
                         assert_eq!(e.path, *path, "{name}: {e}");
+                        // With partial alpha drawn on white, the image is
+                        // taken: the document renders, or fails further on.
+                        if e.message.contains("partial alpha") {
+                            let flat = opts.clone().with_flatten_alpha(true);
+                            match inkoxide::render(
+                                &input,
+                                InputFormat::Json,
+                                &flat,
+                                &fonts,
+                                &images,
+                            ) {
+                                Ok(pdf) => {
+                                    let out = out_dir.join(format!("{fixture}-flattened.pdf"));
+                                    fs::write(&out, &pdf).unwrap();
+                                    outputs.push(out);
+                                }
+                                Err(InkoxideError::Validation(f)) => {
+                                    assert_ne!(f.path, e.path, "{name}, flattened: {f}");
+                                }
+                                Err(f) => panic!("{name}, flattened: {f}"),
+                            }
+                        }
                     }
                     other => panic!("{name}: not rejected: {:?}", other.map(|_| ())),
                 }

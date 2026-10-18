@@ -80,7 +80,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks; page numbers (`pipeline/numbering.rs`) |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
 | PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, the structure tree of tagged PDF and PDF/UA (`pdf/tag.rs`), PDF/A-1b, 2b, 2a, 3b and 3a, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
-| Images | `images` | JPEG passthrough, PNG with SMask, GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
+| Images | `images` | JPEG passthrough, PNG with SMask (a stencil mask for binary alpha at PDF/A-1b), GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
 | SVG | `images/svg/` | Parsing through usvg with limits for untrusted input: what a file's copies, markers and references expand to is checked before usvg converts it (`check.rs`, against `limits.rs`); the root `viewBox` (`view_box.rs`); the text converted again with a render's fonts, cached across renders (`text.rs`) |
 | Forms | `forms` | AcroForm fields: intrinsic sizes, the widget ops painting hands to the PDF writer, and field formats (`forms/format.rs`) |
 | Notes | `notes`, `icons` | Text notes, from `note` nodes and note runs, as icon annotations: shown at a fixed size at a point |
@@ -93,6 +93,8 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 ```rust
 pub fn validate(doc: &[u8], format: InputFormat, fonts: &FontStore, images: &ImageStore) -> Vec<ValidationError>;
 pub fn validate_without_images(doc: &[u8], format: InputFormat, fonts: &FontStore) -> Vec<ValidationError>;
+pub fn validate_with_options(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &FontStore,
+    images: Option<&ImageStore>) -> Vec<ValidationError>;
 pub fn render(doc: &[u8], format: InputFormat, options: &RenderOptions, fonts: &FontStore, images: &ImageStore)
     -> Result<Vec<u8>, InkoxideError>;
 pub fn clear_caches();

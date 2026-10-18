@@ -9,7 +9,7 @@ mod parse;
 pub(crate) mod rules;
 
 pub(crate) use parse::parse;
-pub(crate) use rules::{check, transparency_conflict};
+pub(crate) use rules::{check, transparency_conflict, MAX_ERRORS};
 
 #[cfg(test)]
 mod tests;

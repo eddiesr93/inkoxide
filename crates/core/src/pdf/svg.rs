@@ -624,19 +624,36 @@ fn probe_of(p: &usvg::Path, probes: &Probes) -> Option<(usize, u32)> {
 /// blend mode), which PDF/A-1 forbids; `None` when it draws none. Follows
 /// the writer: what [`Svg::group`] and the functions it calls draw, with
 /// the same depth limit. A path in `probes` is text, which is drawn with
-/// its paint like a path, but is not a simple clip.
-pub(crate) fn transparency(tree: &usvg::Tree, probes: Option<&Probes>) -> Option<&'static str> {
+/// its paint like a path, but is not a simple clip. Raster images are
+/// written with `profile`.
+pub(crate) fn transparency(
+    tree: &usvg::Tree,
+    probes: Option<&Probes>,
+    profile: Profile,
+) -> Option<&'static str> {
     let empty = Probes::new();
-    scan_group(tree.root(), 0, false, probes.unwrap_or(&empty))
+    let scan = Scan {
+        probes: probes.unwrap_or(&empty),
+        profile,
+    };
+    scan_group(tree.root(), 0, false, scan)
+}
+
+/// What [`transparency`] scans with: the probes of the text, and the
+/// profile raster images are written with.
+#[derive(Clone, Copy)]
+struct Scan<'a> {
+    probes: &'a Probes,
+    profile: Profile,
 }
 
 /// [`Svg::group`]'s transparency.
-fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'static str> {
+fn scan_group(g: &Group, depth: u32, clip: bool, scan: Scan<'_>) -> Option<&'static str> {
     if depth > MAX_DEPTH {
         return None;
     }
     if let Some(cp) = g.clip_path() {
-        match clip_kind(cp, |p| probe_of(p, probes).is_some()) {
+        match clip_kind(cp, |p| probe_of(p, scan.probes).is_some()) {
             Clip::Simple(..) => {}
             Clip::Empty => return None,
             Clip::Masks => return Some("a clip path other than a single path"),
@@ -646,7 +663,7 @@ fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'st
         return Some(what);
     }
     g.children().iter().find_map(|n| match n {
-        Node::Group(child) => scan_group(child, depth + 1, clip, probes),
+        Node::Group(child) => scan_group(child, depth + 1, clip, scan),
         Node::Path(_) if clip => None,
         Node::Path(p) if p.is_visible() => {
             let fill = p.fill().map(|f| (f.paint(), f.opacity().get()));
@@ -654,7 +671,7 @@ fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'st
             [fill, stroke]
                 .into_iter()
                 .flatten()
-                .find_map(|(paint, opacity)| scan_paint(paint, opacity, depth, probes))
+                .find_map(|(paint, opacity)| scan_paint(paint, opacity, depth, scan))
         }
         Node::Image(img) if !clip && img.is_visible() => match img.kind() {
             usvg::ImageKind::JPEG(data)
@@ -662,22 +679,22 @@ fn scan_group(g: &Group, depth: u32, clip: bool, probes: &Probes) -> Option<&'st
             | usvg::ImageKind::GIF(data)
             | usvg::ImageKind::WEBP(data) => crate::images::decode_embedded(data)
                 .ok()
-                .and_then(|d| super::image::transparency(&d)),
-            usvg::ImageKind::SVG(tree) => scan_group(tree.root(), depth + 1, clip, probes),
+                .and_then(|d| super::image::transparency(&d, scan.profile)),
+            usvg::ImageKind::SVG(tree) => scan_group(tree.root(), depth + 1, clip, scan),
         },
         Node::Path(_) | Node::Image(_) => None,
-        Node::Text(t) => scan_group(t.flattened(), depth + 1, clip, probes),
+        Node::Text(t) => scan_group(t.flattened(), depth + 1, clip, scan),
     })
 }
 
 /// [`Svg::set_paint`]'s transparency.
-fn scan_paint(paint: &Paint, opacity: f32, depth: u32, probes: &Probes) -> Option<&'static str> {
+fn scan_paint(paint: &Paint, opacity: f32, depth: u32, scan: Scan<'_>) -> Option<&'static str> {
     let stops = match paint {
         Paint::Color(_) => &[][..],
         Paint::LinearGradient(l) => l.stops(),
         Paint::RadialGradient(r) => r.stops(),
         Paint::Pattern(pt) => {
-            if let Some(what) = scan_group(pt.root(), depth + 1, false, probes) {
+            if let Some(what) = scan_group(pt.root(), depth + 1, false, scan) {
                 return Some(what);
             }
             &[][..]
@@ -2016,17 +2033,28 @@ mod tests {
     }
 
     /// Under PDF/A-1b, a colour glyph that needs transparency in the text
-    /// of an SVG fails the render at the image, as in page text.
+    /// of an SVG fails the render at the image, as in page text; one whose
+    /// image has binary alpha is drawn with a stencil mask.
     #[test]
     fn pdf_a_1b_rejects_colour_glyphs_of_svg_text_that_need_transparency() {
         let body = svg(r#"<text x="5" y="20" font-size="10">a 😀</text>"#);
-        let err = rendered_emoji(&body, Some("EmojiTest-CBDT"), Some(crate::PdfALevel::A1b));
+        let out = rendered_emoji(&body, Some("EmojiTest-CBDT"), Some(crate::PdfALevel::A1b));
+        let out = out.unwrap();
+        assert!(
+            out.contains("/ImageMask true") && !out.contains("/SMask"),
+            "{out}"
+        );
+        let err = rendered_emoji(&body, Some("EmojiTest-COLR"), Some(crate::PdfALevel::A1b));
         let Err(crate::InkoxideError::Validation(e)) = err else {
             panic!("rendered: {err:?}");
         };
         assert_eq!(e.code, crate::ValidationCode::PdfaConflict);
         assert_eq!(e.path, "pages[0].children[1].src");
-        assert!(e.message.contains("an alpha channel"), "{}", e.message);
+        assert!(
+            e.message.contains("fill or stroke opacity"),
+            "{}",
+            e.message
+        );
     }
 
     /// An SVG without a size takes it from what it draws, which leaves its
@@ -2146,7 +2174,7 @@ mod tests {
                 Some("group opacity"),
             ),
             (format!(r#"<image width="9" height="9" href="{photo}"/>"#), None),
-            (format!(r#"<image width="9" height="9" href="{logo}"/>"#), Some("an alpha channel")),
+            (format!(r#"<image width="9" height="9" href="{logo}"/>"#), Some(super::super::image::PARTIAL_ALPHA)),
             (format!(r#"<image width="9" height="9" href="{veil}"/>"#), Some("fill or stroke opacity")),
             // Inside a clip path, only the outline counts.
             (
@@ -2163,7 +2191,7 @@ mod tests {
             else {
                 panic!("not an SVG");
             };
-            assert_eq!(super::transparency(&tree, None), want, "{body}");
+            assert_eq!(super::transparency(&tree, None, one_b), want, "{body}");
             // The writer refuses exactly what the scan finds.
             let refused = super::write_svg(
                 &mut Writer::new(Out::plain()),

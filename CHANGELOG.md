@@ -163,6 +163,18 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   text and in `Font.register` (a width or a range, `[75, 100]`, drawn at its `wdth`), and
   `@inkoxide/tailwind` reads `font-stretch-*`. An instance's `FontBBox` holds its own outlines;
   it was the default instance's, which a heavy instance can exceed.
+- PDF/A-1b takes images with alpha. One whose alpha is only clear or opaque, as a GIF's
+  transparency, is written with a stencil mask, which PDF/A-1b allows; it was refused. The new
+  `flattenAlpha` render option (`flatten_alpha` in Rust, `<Document flattenAlpha>` in
+  `@inkoxide/render`, `--flatten-alpha` in the CLI) draws images with partial alpha on white at
+  PDF/A-1b, instead of failing with `PDFA_CONFLICT`, whose message names the option. Other
+  levels keep the alpha.
+- Validation that knows the render: `validate_with_options` in Rust, and an `options` argument
+  to `validate` in `inkoxide` and `@inkoxide/wasm` (the object `render` takes), report what a
+  render with those options would refuse: what the PDF/A level or PDF/UA does not allow
+  (`PDFA_CONFLICT`, `UA_CONFLICT`), attachments missing from them, and their invalid
+  `creationDate` or `encryption`. The CLI's `validate` takes `--pdf-a`, `--pdf-ua`,
+  `--flatten-alpha` and `--attachments` for the same.
 
 ### Changed
 

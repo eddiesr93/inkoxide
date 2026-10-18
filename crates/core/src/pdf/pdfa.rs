@@ -40,18 +40,39 @@ pub(crate) mod limits {
 pub(crate) struct Profile {
     level: Option<PdfALevel>,
     ua: bool,
+    flatten_alpha: bool,
 }
 
 impl Profile {
     /// PDF/A at `level`; `None` is plain PDF.
     pub fn new(level: Option<PdfALevel>) -> Self {
-        Self { level, ua: false }
+        Self {
+            level,
+            ua: false,
+            flatten_alpha: false,
+        }
     }
 
     /// The profile, and PDF/UA-1 with `ua`.
     #[must_use]
     pub fn with_ua(self, ua: bool) -> Self {
         Self { ua, ..self }
+    }
+
+    /// The profile, drawing images with partial alpha on white where
+    /// transparency is forbidden with `flatten`.
+    #[must_use]
+    pub fn with_flatten_alpha(self, flatten: bool) -> Self {
+        Self {
+            flatten_alpha: flatten,
+            ..self
+        }
+    }
+
+    /// Whether images with partial alpha are drawn on white, without it:
+    /// asked for, where transparency is forbidden.
+    pub fn flattens_alpha(self) -> bool {
+        self.flatten_alpha && !self.transparency()
     }
 
     /// Writing PDF/UA-1.

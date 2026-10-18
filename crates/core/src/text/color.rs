@@ -671,9 +671,11 @@ mod tests {
             let colors = ColorGlyphs::load(fonts, &used, &mut images, false);
             let transparency = |font, gid| {
                 let image = colors.image(font, gid, &images)?;
-                crate::pdf::image_transparency(image)
+                let one_b = crate::pdf::Profile::new(Some(crate::PdfALevel::A1b));
+                crate::pdf::image_transparency(image, one_b)
             };
-            assert_eq!(transparency(1, glyph(cbdt, '😀')), Some("an alpha channel"));
+            // Binary alpha: a stencil mask.
+            assert_eq!(transparency(1, glyph(cbdt, '😀')), None);
             assert!(transparency(0, grin).is_some());
             // Solid layers only.
             assert!(colors.image(0, heart, &images).is_some());

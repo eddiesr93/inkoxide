@@ -99,6 +99,13 @@ export interface RenderOptions {
    * `listItem`), fails with `UA_CONFLICT`. Default `false`.
    */
   pdfUA?: boolean;
+  /**
+   * At PDF/A-1b, which forbids transparency, draw images whose alpha is partial (neither only
+   * clear nor only opaque) on white instead of failing with `PDFA_CONFLICT`. Other levels keep
+   * the alpha. Binary alpha, such as a GIF's, needs no option: PDF/A-1b writes it as a stencil
+   * mask. Default `false`.
+   */
+  flattenAlpha?: boolean;
   /** Image bytes (JPEG, PNG, GIF, WebP or SVG) by id, for this document only. */
   images?: Record<string, Uint8Array>;
   /**
@@ -180,19 +187,26 @@ export function registerHyphenationPatterns(lang: string, data: Uint8Array | str
 export function unregisterHyphenationPatterns(lang: string): boolean;
 /**
  * Validates a document against the schema and the registered fonts. Image
- * references (`src`) are checked only when `images` is given: each must be
- * there and decode. Inline images (`data`) are always checked. Returns at
- * most 100 problems; one in the document's structure is returned alone. An
- * empty array means the document is valid; `render` can still fail on an
- * option, the page limit, the limit on content repeated on every page, a
- * font that cannot be embedded, what its PDF/A level or PDF/UA does not
- * allow (`PDFA_CONFLICT`, `UA_CONFLICT`), or an attachment's `src` file
- * missing from its `attachments` or too large.
+ * references (`src`) are checked only when `images` (or `options.images`) is
+ * given: each must be there and decode. Inline images (`data`) are always
+ * checked. Returns at most 100 problems; one in the document's structure is
+ * returned alone. An empty array means the document is valid.
+ *
+ * With `options`, those a render will be given (`format` and `images` win
+ * over theirs), it also reports what that render would refuse: what the PDF/A
+ * level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`), an
+ * attachment's `src` missing from `options.attachments` or too large, and an
+ * invalid `creationDate` or `encryption` (`INVALID_VALUE` at `options.…`). A
+ * wrong type or value of another option throws, as `render` does. Without
+ * them, `render` can also fail on those. Either way it can fail on the page
+ * limit, the limit on content repeated on every page, a font that cannot be
+ * embedded, or at PDF/A-1b a colour glyph that needs transparency.
  */
 export function validate(
   doc: Uint8Array | string,
   format?: 'json' | 'msgpack',
   images?: Record<string, Uint8Array>,
+  options?: RenderOptions,
 ): ValidationError[];
 /** Renders to PDF on the libuv thread pool; never blocks the event loop. */
 export function render(doc: Uint8Array | string, options?: RenderOptions): Promise<Uint8Array>;

@@ -437,10 +437,18 @@ export interface DocumentProps {
   /**
    * Write PDF/A, for archiving: `'PDF/A-2b'` (or `'PDF/A-2'`), `'PDF/A-3b'`, `'PDF/A-1b'`, or
    * `'PDF/A-2a'` and `'PDF/A-3a'`, which are tagged. PDF/A-1b has no transparency: a render
-   * fails with `PDFA_CONFLICT` at the first colour with alpha, `opacity`, image with an alpha
-   * channel or `debug` outline. The render option `pdfA` wins over this prop. Default: plain PDF.
+   * fails with `PDFA_CONFLICT` at the first colour with alpha, `opacity`, image with partial
+   * alpha (see `flattenAlpha`) or `debug` outline; an image whose alpha is only clear or opaque,
+   * such as a GIF's, is drawn with a stencil mask. The render option `pdfA` wins over this prop.
+   * Default: plain PDF.
    */
   conformance?: Conformance;
+  /**
+   * At PDF/A-1b, draw images whose alpha is partial on white instead of failing with
+   * `PDFA_CONFLICT`. Other levels and plain PDF keep the alpha. The render option
+   * `flattenAlpha` wins over this prop.
+   */
+  flattenAlpha?: boolean;
   /**
    * Encrypts the PDF (AES-256): the password that opens it. Printable ASCII, at most 127 bytes.
    * Not part of the document tree, and never in the render result. The render option

@@ -144,7 +144,7 @@ fn msgpack_is_a_parse_error() {
     let f = failed(render(&[0x80], br#"{"format":"msgpack"}"#, b"", b""));
     assert_eq!(f.code, "PARSE_ERROR");
     let errors: serde_json::Value =
-        serde_json::from_str(&validate(&[0x80], b"msgpack", None).unwrap()).unwrap();
+        serde_json::from_str(&validate(&[0x80], b"msgpack", None, None).unwrap()).unwrap();
     assert_eq!(errors[0]["code"], "PARSE_ERROR");
 }
 
@@ -164,6 +164,49 @@ fn images_come_in_one_buffer() {
     ] {
         assert_eq!(images::parse(bad).unwrap_err().code, "INTERNAL");
     }
+}
+
+/// With a render's options, validation reports what the PDF/A level
+/// refuses, and the options' own problems.
+#[test]
+fn validates_with_a_renders_options() {
+    let png = fixture("images/logo.png");
+    let images = images_buffer(&[("logo", &png)]);
+    let doc = br#"{"version":1,"pages":[{"size":{"width":100,"height":100},"children":[
+        {"type":"image","src":"logo","style":{"width":10,"height":10}}]}]}"#;
+    let codes = |options: Option<&[u8]>| {
+        let json = validate(doc, b"", Some(&images), options.map(|o| (o, &b""[..]))).unwrap();
+        let errors: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
+        errors
+            .iter()
+            .map(|e| {
+                format!(
+                    "{} {}",
+                    e["code"].as_str().unwrap(),
+                    e["path"].as_str().unwrap()
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(codes(None), Vec::<String>::new());
+    assert_eq!(codes(Some(b"")), Vec::<String>::new());
+    assert_eq!(
+        codes(Some(br#"{"pdfA":"1b"}"#)),
+        ["PDFA_CONFLICT pages[0].children[0].src"]
+    );
+    assert_eq!(
+        codes(Some(br#"{"pdfA":"1b","flattenAlpha":true}"#)),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        codes(Some(br#"{"creationDate":"soon"}"#)),
+        ["INVALID_VALUE options.creationDate"]
+    );
+    let f = validate(doc, b"", None, Some((br#"{"pdfA":"9z"}"#, b""))).unwrap_err();
+    assert_eq!(
+        (f.code.as_str(), f.path.as_str()),
+        ("INVALID_ARGUMENT", "options.pdfA")
+    );
 }
 
 #[test]

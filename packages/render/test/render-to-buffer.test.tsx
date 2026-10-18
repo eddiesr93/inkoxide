@@ -15,6 +15,7 @@ import {
   Document,
   type DocumentProps,
   FieldSet,
+  Image,
   Footer,
   Line,
   Link,
@@ -726,6 +727,29 @@ describe('renderToBuffer', () => {
       component: 'View',
     });
     expect((err as RenderError).componentStack).toContain('Faded');
+  });
+
+  it('draws partial alpha on white at PDF/A-1b with <Document flattenAlpha> or the option', async () => {
+    const logo = readFileSync(new URL('../../../fixtures/images/logo.png', import.meta.url));
+    const doc = (flattenAlpha?: boolean) => (
+      <Document conformance="PDF/A-1b" flattenAlpha={flattenAlpha}>
+        <Page>
+          <Image src="logo" style={{ width: 20 }} />
+        </Page>
+      </Document>
+    );
+    const opts = { images: { logo } };
+    const refused = await renderToBuffer(doc(), opts).catch((e: unknown) => e);
+    expect(refused).toMatchObject({ engineCode: 'PDFA_CONFLICT', path: 'pages[0].children[0].src' });
+    expect((refused as Error).message).toContain('flattenAlpha');
+    for (const pdf of [
+      await renderToBuffer(doc(true), opts),
+      await renderToBuffer(doc(), { ...opts, flattenAlpha: true }),
+    ]) {
+      expect(Buffer.from(pdf).toString('latin1')).not.toContain('/SMask');
+    }
+    const kept = renderToBuffer(doc(true), { ...opts, flattenAlpha: false });
+    await expect(kept).rejects.toMatchObject({ engineCode: 'PDFA_CONFLICT' });
   });
 
   it('tags as <Document tagged pdfUA> say, unless the tagged and pdfUA options say otherwise', async () => {
