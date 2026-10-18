@@ -69,6 +69,22 @@ import { inkoxideTailwindEsbuild } from '@inkoxide/tailwind/plugin';
 await esbuild.build({ bundle: true, plugins: [inkoxideTailwindEsbuild()], … });
 ```
 
+```js
+// webpack 5 and Rspack, for builds that target a browser
+import { inkoxideTailwindWebpack } from '@inkoxide/tailwind/plugin';
+
+export default { plugins: [inkoxideTailwindWebpack()], … };
+```
+
+```ts
+// next.config.ts (Next.js 15.3 or later, with Turbopack or webpack)
+import { withInkoxideTailwind } from '@inkoxide/tailwind/plugin';
+
+const nextConfig = { … };
+
+export default withInkoxideTailwind(nextConfig, { safelist: ['bg-red-500'] });
+```
+
 The options are all optional: `css`, the theme (or `cssFile`, a file whose `@import`s resolve
 from its folder), which `initTailwind({ css })` in the browser must then be given as well;
 `sources`, the directories and files to scan, relative to the project root (by default the root,
@@ -77,15 +93,44 @@ the scanner knows, such as `.tsx`, `.vue` or `.html`, and a file named here what
 and `safelist`, classes to keep whatever the scan finds. A Vite dev server scans each file that
 is created or changes and reloads the page when it brings a class the table lacks.
 
+A webpack or Rspack build scans again on each run, and in watch mode on each rebuild. Builds whose
+`target` is Node (`node`, `async-node`, `electron-main` and the like) are left alone and keep the
+compiler. `withInkoxideTailwind` takes the config as an object or a function, and its second
+argument is the plugin's options. With Turbopack (the default in Next.js 16) it writes the table
+to `node_modules/.cache/@inkoxide/tailwind/browser.js` at `next dev` and `next build`, and sets
+`turbopack.resolveAlias` so that the browser gets it; with `next build --webpack` it adds the
+webpack plugin to the client builds. Server bundles keep the compiler. Turbopack has no hook to
+scan again: `next dev` scans when the server starts, so a class that is new since then needs a
+restart, or a place in `safelist`.
+
 A class the scan does not see is unknown in the browser: write each class whole
 (`bg-red-500`, not `` `bg-${color}-500` ``), or put it in `safelist`. It fails as an unknown
 class does, in strict mode with a message that says so.
 
+### `@source` directives
+
+When the theme comes from `cssFile` or `css`, its `@source` directives name sources as Tailwind
+reads them, and add to the scan. Paths are relative to the CSS file that has them, an imported
+file too.
+
+```css
+@import 'tailwindcss' source('../app'); /* start the scan here, not at the project root */
+@source '../lib'; /* a directory or a file */
+@source '../src/**/*.tsx'; /* a glob */
+@source not '../src/legacy'; /* leave these out */
+@source inline('bg-red-{100..900..100}'); /* keep these classes */
+@source not inline('bg-red-500'); /* never keep these */
+```
+
+`@import 'tailwindcss' source(none)` scans only what the directives name. The `sources` option,
+when given, replaces the project root as before; the directives add to it. In a Vite dev server,
+a change to the theme file, or to a CSS file it imports, scans again.
+
 The scan reads the sources' text, not `.gitignore`: it leaves out `node_modules`, hidden
 directories and build output directly under a root (`dist`, `build`, `out`, …), and the
-bundle's output directory. A Vite dev server reads each file that is created or changes; Rollup's and
-esbuild's watch modes scan again on each build, but watch only the files there were at the last
-scan. In a plain Rollup config, put the plugin before `@rollup/plugin-node-resolve`, so that it
+bundle's output directory. A Vite dev server reads each file that is created or changes; the
+watch modes of Rollup, esbuild, webpack and Rspack scan again on each build, but watch only the
+files there were at the last scan. In a plain Rollup config, put the plugin before `@rollup/plugin-node-resolve`, so that it
 sees `@inkoxide/tailwind` first. `@inkoxide/tailwind/precompiled` has the entry's documented
 API; the deprecated `TailwindCompiler`, `SUPPORTED` and `UNSUPPORTED` are not in it.
 

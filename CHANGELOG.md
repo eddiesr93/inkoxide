@@ -28,7 +28,16 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   JavaScript a page downloads goes from about 90 KB to about 6 KB with brotli, and styles are
   the same. Server bundles keep the compiler. A class the scan does not see fails as an unknown
   class, with a reason that says so; the plugin's `safelist` keeps classes put together at run
-  time.
+  time. `inkoxideTailwindWebpack()` is the plugin for webpack 5 and Rspack (builds that target
+  Node keep the compiler; each build, and in watch mode each rebuild, scans again), and
+  `withInkoxideTailwind(nextConfig)` the one for Next.js 15.3 or later, with Turbopack (the
+  default in Next.js 16) and with `next build --webpack`; server bundles keep the compiler. Next's
+  Turbopack has no hook to scan again, so `next dev` scans when it starts, and a class that is
+  new since then needs a restart or a `safelist` entry. The plugins also read the theme's
+  `@source` directives (from `cssFile` or `css`): directories, files and globs, `@source not`,
+  `@source inline("bg-red-{100..900..100}")` and `@source not inline(…)`, and `source(none)` and
+  `source("…")` on `@import "tailwindcss"`, with paths relative to the CSS file that has them. A
+  Vite dev server scans again when the theme file, or a CSS file it imports, changes.
 
 - Vertical SVG text and SVG text on a path. `writing-mode` (`vertical-rl`, `vertical-lr`, `tb`,
   `tb-rl`, `sideways-rl`, `sideways-lr`) lays text down a column, CJK upright in its vertical

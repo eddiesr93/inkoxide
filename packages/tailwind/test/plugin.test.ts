@@ -3,22 +3,37 @@
  * its sources, and none of Tailwind's compiler; a server bundle keeps the compiler; a dev server
  * reloads the page when a file brings a new class.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync } from 'node:zlib';
 
+import { rspack, type Configuration as RspackConfiguration } from '@rspack/core';
 import * as esbuild from 'esbuild';
 import { build as viteBuild, type Rollup } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
+import webpack, { type Configuration as WebpackConfiguration } from 'webpack';
 
-import { inkoxideTailwind, inkoxideTailwindEsbuild } from '../src/plugin.ts';
+import {
+  inkoxideTailwind,
+  inkoxideTailwindEsbuild,
+  inkoxideTailwindWebpack,
+  withInkoxideTailwind,
+} from '../src/plugin.ts';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 
 /** A project whose page maps a class string, written in its source and safelisted. */
-const dir = mkdtempSync(join(tmpdir(), 'inkoxide-plugin-'));
+const dir = realpathSync(mkdtempSync(join(tmpdir(), 'inkoxide-plugin-')));
 mkdirSync(join(dir, 'src'));
 writeFileSync(
   join(dir, 'src/main.ts'),
@@ -103,6 +118,65 @@ describe('the build plugin', () => {
     expect(styles[1]).toEqual({ backgroundColor: expect.any(Array) });
   });
 
+  /** The config of a webpack or Rspack build of the page into `out`, as an ES module. */
+  const webpackConfig = (out: string, rule: object) => ({
+    mode: 'production' as const,
+    context: dir,
+    entry: join(dir, 'src/main.ts'),
+    target: 'web',
+    output: { path: join(dir, out), filename: 'main.js', module: true, library: { type: 'module' as const } },
+    experiments: { outputModule: true },
+    optimization: { minimize: false },
+    module: { rules: [{ test: /\.ts$/, ...rule }] },
+    plugins: [inkoxideTailwindWebpack({ safelist: ['bg-lime-900'] })],
+  });
+
+  const built = (out: string) => readFileSync(join(dir, out, 'main.js'), 'utf8');
+
+  it('works with webpack, for the browser only', async () => {
+    const rule = { loader: fileURLToPath(new URL('./esbuild-loader.ts', import.meta.url)) };
+    const build = (config: WebpackConfiguration) =>
+      new Promise<void>((done, fail) =>
+        webpack(config, (error, stats) => {
+          if (error ?? stats?.hasErrors()) fail(error ?? new Error(stats?.toString('errors-only')));
+          else done();
+        }),
+      );
+    await build(webpackConfig('webpack', rule));
+    const code = built('webpack');
+    expect(code).not.toContain('candidatesToCss');
+    const { styles } = await run(code);
+    expect(styles[1]).toEqual({ backgroundColor: expect.any(Array) });
+  });
+
+  it('leaves webpack builds for Node to the compiler', () => {
+    const tap = () => {};
+    for (const target of ['node22', ['node', 'es2022'], 'async-node', 'electron-main']) {
+      const options = { target, resolve: {}, module: { rules: [] } };
+      const compiler = { context: dir, options, hooks: { run: { tap }, watchRun: { tap } } };
+      inkoxideTailwindWebpack().apply(compiler);
+      expect(options, JSON.stringify(target)).toEqual({ target, resolve: {}, module: { rules: [] } });
+    }
+  });
+
+  it('works with Rspack', async () => {
+    const rule = {
+      loader: 'builtin:swc-loader',
+      options: { jsc: { parser: { syntax: 'typescript' }, target: 'es2023' } },
+    };
+    await new Promise<void>((done, fail) =>
+      rspack(webpackConfig('rspack', rule) as RspackConfiguration, (error, stats) => {
+        if (error ?? stats?.hasErrors())
+          fail(error ?? new Error(stats?.toString({ all: false, errors: true })));
+        else done();
+      }),
+    );
+    const code = built('rspack');
+    expect(code).not.toContain('candidatesToCss');
+    const { styles } = await run(code);
+    expect(styles[1]).toEqual({ backgroundColor: expect.any(Array) });
+  });
+
   it('keeps the compiler out of the browser entry, which is small', async () => {
     const result = await esbuild.build({
       entryPoints: [join(SRC, 'precompiled.ts')],
@@ -164,5 +238,63 @@ describe('the build plugin', () => {
     const table = await plugin.load.call({}, join(SRC, 'table.ts'));
     expect(table?.code).toContain('m-3');
     expect(table?.code).toContain('m-5');
+  });
+
+  it("scans what the theme's @source directives name", async () => {
+    mkdirSync(join(dir, 'theme/lib'), { recursive: true });
+    writeFileSync(join(dir, 'theme/lib/card.ts'), "export const card = 'text-blue-500 p-4';");
+    writeFileSync(
+      join(dir, 'theme/theme.css'),
+      `@import "tailwindcss" source(none);
+@source "./lib";
+@source inline("m-{1..2}");
+@source not inline("p-4");
+`,
+    );
+    const plugin = inkoxideTailwind({ cssFile: 'theme/theme.css' });
+    plugin.configResolved({ root: dir });
+    const watched: string[] = [];
+    await plugin.buildStart.call({ addWatchFile: (f: string) => void watched.push(f) });
+    expect(watched).toContain(join(dir, 'theme/lib/card.ts'));
+    expect(watched).toContain(join(dir, 'theme/theme.css'));
+    const code = (await plugin.load.call({}, join(SRC, 'table.ts')))?.code ?? '';
+    for (const kept of ['text-blue-500', 'm-1', 'm-2']) expect(code).toContain(`\\"${kept}\\"`);
+    // Not under the theme's sources, and never kept.
+    for (const left of ['text-red-500', 'p-4']) expect(code).not.toContain(`\\"${left}\\"`);
+  });
+
+  it('wraps a Next.js config, for Turbopack and webpack', async () => {
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const userWebpack = (config: { plugins?: unknown[] }) => ({ ...config, user: true });
+      const wrapped = withInkoxideTailwind(
+        () => ({ reactStrictMode: true, turbopack: { resolveAlias: { a: './b.js' } }, webpack: userWebpack }),
+        { safelist: ['bg-lime-900'] },
+      );
+      const context = { defaultConfig: {} };
+      // `next start` bundles nothing: no module.
+      await wrapped('phase-production-server', context);
+      const module = join(dir, 'node_modules/.cache/@inkoxide/tailwind/browser.js');
+      expect(existsSync(module)).toBe(false);
+      const config = await wrapped('phase-production-build', context);
+      expect(config.reactStrictMode).toBe(true);
+      expect(config.turbopack?.resolveAlias).toEqual({
+        a: './b.js',
+        '@inkoxide/tailwind': { browser: './node_modules/.cache/@inkoxide/tailwind/browser.js' },
+      });
+      const text = readFileSync(module, 'utf8');
+      expect(text).toContain('bg-lime-900');
+      const pkg = JSON.parse(readFileSync(join(dirname(module), 'package.json'), 'utf8'));
+      expect(pkg).toEqual({ type: 'module', sideEffects: true });
+      const from = /export \* from "(.*)";/.exec(text)?.[1] ?? '';
+      expect(resolve(dirname(module), from)).toBe(realpathSync(join(SRC, 'precompiled.ts')));
+      const browser = config.webpack?.({}, { isServer: false, dir }) as { plugins: unknown[]; user: boolean };
+      expect(browser.user).toBe(true);
+      expect(browser.plugins).toHaveLength(1);
+      expect(config.webpack?.({}, { isServer: true, dir })).toEqual({ user: true });
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
