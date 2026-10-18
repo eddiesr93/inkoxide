@@ -16,7 +16,7 @@ how the pieces fit together, for contributors.
 | `packages/wasm` | The npm package for it: loader, types; it runs the tests of `packages/inkoxide`. |
 | `crates/binding` | What the two bindings share: the render options as JavaScript passes them, their checks, and errors as JSON. |
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
-| `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms and positions that React and Tailwind share: `@inkoxide/style`. |
+| `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms, positions and page media queries that React and Tailwind share: `@inkoxide/style`. |
 | `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`, optional. |
 | `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
 | `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`; in a browser, with the engine as WebAssembly in a Web Worker: `@inkoxide/render/browser`. The shared code reaches the engine and the bundled assets through an `EngineHost` (`host.ts`): `node-host.ts` in Node, `browser-host.ts` and `worker.ts` in a browser. |
@@ -48,7 +48,10 @@ mapped to engine styles), style objects are read with the same readers of
 lengths, keywords, colours, `flex`, transforms and positions from
 `@inkoxide/style` (`em`, `vw` and `vh` resolve against the element's font
 size and the page in both), and fonts are resolved against the font
-registry with CSS font matching. In development the tree is validated
+registry with CSS font matching. `@media` blocks of style objects and page
+variants of classes are answered there, for the page each element is on
+(`@inkoxide/style`'s `parseMedia`): the blocks and declarations that match
+are applied, the others only checked, so the document holds no query. In development the tree is validated
 against the JSON Schema, and errors carry the component stack.
 
 `@inkoxide/render` registers the bundled fonts with the engine once per

@@ -111,6 +111,7 @@ const MAIN_TYPES = [
   'ListProps',
   'LocalImageOptions',
   'MarkerProps',
+  'MediaStyle',
   'NoteProps',
   'PageBreakProps',
   'PageInfo',

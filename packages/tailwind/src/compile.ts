@@ -1,11 +1,18 @@
-import postcss, { type AtRule, type Rule } from 'postcss';
+import { type MediaQuery, parseMedia } from '@inkoxide/style/internal';
+import postcss, { type AtRule, type Container, type Rule } from 'postcss';
 
 import { DEFAULT_THEME_CSS } from './theme.ts';
 
+/**
+ * A declaration, `[property, value, media]`: `media` are the page media it is for (`md:`,
+ * `landscape:`), all of which must match; none for most.
+ */
+export type Decl = readonly [property: string, value: string, media: readonly MediaQuery[]];
+
 /** What Tailwind emits for one class, before any value is resolved. */
 export interface CandidateCss {
-  /** Declarations in source order, `[property, value]`; custom properties included. */
-  decls: Array<[string, string]>;
+  /** Declarations in source order; custom properties included. */
+  decls: Decl[];
   /** `@property --tw-*` initial values the rule depends on. */
   initials: Array<[string, string]>;
 }
@@ -13,8 +20,14 @@ export interface CandidateCss {
 /** Why a class cannot be used, when Tailwind's output already says so. */
 export type CandidateProblem =
   | { kind: 'unknown' }
-  | { kind: 'variant'; detail: string }
-  | { kind: 'selector'; detail: string };
+  /** A media query around the rule that does not parse or reads the screen: why, quoting it. */
+  | { kind: 'media'; message: string }
+  /** An at-rule other than `@media` and `@supports` (`@container …`). */
+  | { kind: 'atRule'; rule: string }
+  /** `@media` inside the rule: sizes that follow the screen's (`container`). */
+  | { kind: 'screenSizes'; rule: string }
+  /** A selector beyond the class: a state (`&:hover`), a part (`::marker`), other elements. */
+  | { kind: 'selector'; selector: string };
 
 export type CandidateResult = { ok: true; css: CandidateCss } | { ok: false; problem: CandidateProblem };
 
@@ -98,38 +111,63 @@ export class TailwindCompiler {
     if (css == null) return { ok: false, problem: { kind: 'unknown' } };
     const root = postcss.parse(css);
     const out: CandidateCss = { decls: [], initials: [] };
-    let found = false;
+    // The declarations of the first rule: a variant repeats them, a utility's own `@media` not.
+    let first: string | undefined;
     let problem: CandidateProblem | undefined;
-    root.each((node) => {
-      if (node.type === 'rule') {
-        const rule = node as Rule;
-        if (rule.selector.trim().startsWith('.') && !/[\s>:+~[\]]/.test(rule.selector.replace(/\\./g, ''))) {
-          found = true;
-          rule.each((d) => {
-            if (d.type === 'decl') out.decls.push([d.prop, d.value]);
-            else if (d.type === 'atrule' && (d as AtRule).name === 'supports') {
-              // A progressive-enhancement override; the plain declarations are the fallback.
-            } else if (d.type === 'rule' || d.type === 'atrule') {
-              problem ??= { kind: 'selector', detail: d.toString().split('{')[0]?.trim() ?? '' };
+    // Page variants wrap the rule in `@media`, nested for each one (`sm:landscape:`); a custom
+    // variant may put it under several, any of which applies its declarations.
+    const visit = (container: Container, media: readonly MediaQuery[]) =>
+      container.each((node) => {
+        if (node.type === 'rule') {
+          const rule = node as Rule;
+          if (
+            rule.selector.trim().startsWith('.') &&
+            !/[\s>:+~[\]]/.test(rule.selector.replace(/\\./g, ''))
+          ) {
+            // `md:container`, whose screen sizes Tailwind lifts out of the rule.
+            const decls = rule.nodes.map(String).join(';');
+            first ??= decls;
+            if (decls !== first) {
+              problem ??= { kind: 'screenSizes', rule: `@media ${media.map((q) => q.source).join(' and ')}` };
             }
-          });
-        } else {
-          problem ??= { kind: 'selector', detail: rule.selector };
+            rule.each((d) => {
+              if (d.type === 'decl') out.decls.push([d.prop, d.value, media]);
+              else if (d.type === 'rule') problem ??= { kind: 'selector', selector: (d as Rule).selector };
+              else if (d.type === 'atrule') {
+                const at = d as AtRule;
+                const text = `@${at.name} ${at.params}`;
+                // `@supports`: a progressive-enhancement override; the plain declarations are the fallback.
+                if (at.name === 'media') problem ??= { kind: 'screenSizes', rule: text };
+                else if (at.name !== 'supports') problem ??= { kind: 'atRule', rule: text };
+              }
+            });
+          } else {
+            problem ??= { kind: 'selector', selector: rule.selector };
+          }
+        } else if (node.type === 'atrule') {
+          const at = node as AtRule;
+          if (at.name === 'property') {
+            at.each((d) => {
+              if (d.type === 'decl' && d.prop === 'initial-value')
+                out.initials.push([at.params.trim(), d.value]);
+            });
+          } else if (at.name === 'media') {
+            let query: MediaQuery;
+            try {
+              query = parseMedia(at.params);
+            } catch (e) {
+              problem ??= { kind: 'media', message: (e as Error).message };
+              return;
+            }
+            visit(at, [...media, query]);
+          } else if (at.name !== 'supports') {
+            problem ??= { kind: 'atRule', rule: `@${at.name} ${at.params}` };
+          }
         }
-      } else if (node.type === 'atrule') {
-        const at = node as AtRule;
-        if (at.name === 'property') {
-          at.each((d) => {
-            if (d.type === 'decl' && d.prop === 'initial-value')
-              out.initials.push([at.params.trim(), d.value]);
-          });
-        } else if (at.name !== 'supports') {
-          problem ??= { kind: 'variant', detail: `@${at.name} ${at.params}` };
-        }
-      }
-    });
+      });
+    visit(root, []);
     if (problem) return { ok: false, problem };
-    if (!found) return { ok: false, problem: { kind: 'unknown' } };
+    if (first === undefined) return { ok: false, problem: { kind: 'unknown' } };
     return { ok: true, css: out };
   }
 }

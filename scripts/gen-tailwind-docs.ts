@@ -30,6 +30,8 @@ that are supported and tested; each example is a unit test.
   (the element's font size; in \`text-[…]\`, the inherited one), \`vw\` and \`vh\` (1% of the
   page's width and height): \`w-[2em]\`, \`h-[10vh]\`.
 - Arbitrary values (\`[…]\`) work for every supported property.
+- Page variants (\`md:\`, \`landscape:\`, \`print:\`) read the page the element is on; see
+  [Page variants](#page-variants).
 - In development an unsupported class throws, naming the class and the CSS property; in
   production it is logged once and ignored.
 - Text utilities on \`Page\`, \`View\`, \`Cell\` or \`Row\` are inherited by the text inside.

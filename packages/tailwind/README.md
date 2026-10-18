@@ -1,9 +1,9 @@
 # @inkoxide/tailwind
 
 Turns Tailwind class strings into Inkoxide style objects, with the Tailwind v4 compiler itself.
-Units are tuned for print: `1rem` is 12pt and `1px` 0.75pt. An unsupported class (a variant
-such as `md:`, a shadow, a gradient) throws outside production, and is logged once and ignored
-in production.
+Units are tuned for print: `1rem` is 12pt and `1px` 0.75pt. Page variants (`md:`, `landscape:`,
+`print:`) read the page the element is on. An unsupported class (a variant such as `hover:`, a
+shadow, a gradient) throws outside production, and is logged once and ignored in production.
 
 Install it next to [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render) to
 style documents with `className`; without it, `style` works alone. The render

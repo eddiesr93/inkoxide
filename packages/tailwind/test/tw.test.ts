@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { DEFAULT_THEME_CSS, TailwindCompiler } from '../src/compile.ts';
 import {
   initTailwind,
   parseColor,
@@ -8,6 +9,7 @@ import {
   tw,
   UnsupportedUtilityError,
 } from '../src/index.ts';
+import { mapClasses } from '../src/parse.ts';
 import { A4_UNITS, SUPPORTED, UNSUPPORTED } from '../src/supported.ts';
 
 beforeAll(async () => {
@@ -317,7 +319,9 @@ describe('values out of the range the engine takes', () => {
 describe('unsupported-class reasons', () => {
   it('suggest gap only for classes that style children', () => {
     expect(errorOf('space-x-2').reason).toContain('use gap');
-    expect(errorOf('container').reason).toMatch(/^media queries have no meaning in a PDF/);
+    expect(errorOf('container').reason).toMatch(
+      /^it sizes the element by the screen width .*; use max-w-\* or w-full$/,
+    );
     expect(errorOf('placeholder-red-500').reason).not.toContain('gap');
   });
 });
@@ -339,5 +343,94 @@ describe('strict mode', () => {
       setTailwindStrict(true);
     }
     expect(() => tw('p-1 shadow-xl')).toThrow(UnsupportedUtilityError);
+  });
+});
+
+describe('page variants', () => {
+  const A5 = { parentFontSize: 12, page: { width: 419.53, height: 595.28 } };
+  const LANDSCAPE = { parentFontSize: 12, page: { width: 841.89, height: 595.28 } };
+  const AT_MD = { parentFontSize: 12, page: { width: 576, height: 800 } };
+
+  it('apply on the pages they match, and are cached per page size', () => {
+    expect(tw('p-2 md:p-4', A4_UNITS).paddingTop).toBe(12);
+    expect(tw('p-2 md:p-4', A5).paddingTop).toBe(6);
+    expect(tw('p-2 md:p-4', A4_UNITS).paddingTop).toBe(12);
+    expect(tw('landscape:flex-row sm:landscape:gap-2', LANDSCAPE)).toEqual({
+      flexDirection: 'row',
+      rowGap: 6,
+      columnGap: 6,
+    });
+    expect(tw('landscape:flex-row sm:landscape:gap-2', A4_UNITS)).toEqual({});
+  });
+
+  it('meet at the breakpoint without overlapping', () => {
+    expect(tw('max-md:p-1 md:p-3', AT_MD).paddingTop).toBe(9);
+    expect(tw('max-md:p-1 md:p-3', { ...AT_MD, page: { width: 575.99, height: 800 } }).paddingTop).toBe(3);
+  });
+
+  it('leave out the custom properties of a variant that does not match', () => {
+    expect(tw('translate-y-2 md:translate-x-4', A5)).toEqual({ translate: [0, 6] });
+    expect(tw('translate-y-2 md:translate-x-4', A4_UNITS)).toEqual({ translate: [12, 6] });
+  });
+
+  it('check a variant on every page size, and need the page', () => {
+    expect(() => tw('md:w-[3ex]', A5)).toThrow(UnsupportedUtilityError);
+    expect(() => tw('md:w-[3ex]', A4_UNITS)).toThrow(UnsupportedUtilityError);
+    expect(errorOf('md:p-4').reason).toBe(
+      'its page variant depends on the font or page size, which is not known here',
+    );
+  });
+
+  it('name what a variant for screens lacks', () => {
+    const hover = (() => {
+      try {
+        tw('hover:p-4', A4_UNITS);
+      } catch (e) {
+        return (e as UnsupportedUtilityError).reason;
+      }
+      return '';
+    })();
+    expect(hover).toBe(
+      'the variant `hover:` has no meaning in a PDF (@media (hover: hover): "hover" has no meaning in a PDF); page variants work: sm: … 2xl:, max-sm: … max-2xl:, min-[…]:, max-[…]:, portrait:, landscape:, print:, [@media(…)]:',
+    );
+    expect(errorOf('focus:p-4').reason).toMatch(
+      /^the variant `focus:` has no meaning in a PDF; page variants work/,
+    );
+    expect(errorOf('@sm:p-4').reason).toMatch(
+      /^the variant `@sm:` has no meaning in a PDF \(@container \(width >= 24rem\)\);/,
+    );
+    expect(errorOf('md:not-a-class').reason).toMatch(/^not a Tailwind utility/);
+    // A page variant on a class that fails without it: the class's own reason.
+    expect(errorOf('md:space-x-2').reason).toMatch(/^it styles other elements .*; use gap instead/);
+    expect(errorOf('md:container').reason).toMatch(/^it sizes the element by the screen width/);
+  });
+
+  it('apply a custom variant under either of its @media', async () => {
+    const compiler = await TailwindCompiler.load(
+      `${DEFAULT_THEME_CSS}\n@custom-variant wide-or-landscape {\n  @media (width >= 600pt) { @slot; }\n  @media (orientation: landscape) { @slot; }\n}`,
+    );
+    const style = (units: typeof A5) =>
+      mapClasses(
+        compiler,
+        ['p-1', 'wide-or-landscape:p-4'],
+        (e) => {
+          throw e;
+        },
+        units,
+      ).style.paddingTop;
+    expect(style(A5)).toBe(3);
+    expect(style(LANDSCAPE)).toBe(12);
+    expect(style({ ...A5, page: { width: 612, height: 792 } })).toBe(12);
+    // Checked on every page: a mistake fails on a page neither matches.
+    expect(() =>
+      mapClasses(
+        compiler,
+        ['wide-or-landscape:w-[3ex]'],
+        (e) => {
+          throw e;
+        },
+        A5,
+      ),
+    ).toThrow(UnsupportedUtilityError);
   });
 });

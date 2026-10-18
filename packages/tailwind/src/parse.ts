@@ -20,7 +20,7 @@ import {
   verticalAlignKeyword,
 } from '@inkoxide/style/internal';
 
-import type { CandidateProblem, TailwindCompiler } from './compile.ts';
+import type { CandidateCss, CandidateProblem, Decl, TailwindCompiler } from './compile.ts';
 
 /** A class that cannot be turned into an engine style. Thrown in strict (dev) mode. */
 export class UnsupportedUtilityError extends Error {
@@ -41,28 +41,62 @@ function problemReason(p: CandidateProblem): string {
   switch (p.kind) {
     case 'unknown':
       return 'not a Tailwind utility (check the spelling, or see docs/TAILWIND_SUPPORT.md)';
-    case 'variant':
-      return `variants and media queries have no meaning in a PDF (${p.detail})`;
+    case 'media':
+      return p.message;
+    case 'atRule':
+      return `at-rules have no meaning in a PDF (${p.rule})`;
+    case 'screenSizes':
+      return `it sizes the element by the screen width (${p.rule}); use max-w-* or w-full`;
     case 'selector':
-      if (p.detail.startsWith('@media')) return `media queries have no meaning in a PDF (${p.detail})`;
-      if (p.detail.startsWith('@')) return `at-rules have no meaning in a PDF (${p.detail})`;
       // `space-x-*` and `divide-*` style the element's children.
-      if (/[>+~]/.test(p.detail)) {
-        return `it styles other elements (${p.detail}); use gap instead of space-x/y and divide-*`;
+      if (/[>+~]/.test(p.selector)) {
+        return `it styles other elements (${p.selector}); use gap instead of space-x/y and divide-*`;
       }
-      return `it styles a part of the element that a PDF does not have (${p.detail})`;
+      return `it styles a part of the element that a PDF does not have (${p.selector})`;
   }
 }
 
-/** True when the class has a variant prefix (`md:`, `hover:`) outside an arbitrary value. */
-function hasVariant(cls: string): boolean {
+/** The variant prefixes of a class (`md:hover:` of `md:hover:p-4`), outside arbitrary values. */
+function variantOf(cls: string): string {
   let depth = 0;
-  for (const c of cls) {
+  let end = 0;
+  for (let i = 0; i < cls.length; i++) {
+    const c = cls[i];
     if (c === '[' || c === '(') depth++;
     else if (c === ']' || c === ')') depth--;
-    else if (c === ':' && depth === 0) return true;
+    else if (c === ':' && depth === 0) end = i + 1;
   }
-  return false;
+  return cls.slice(0, end);
+}
+
+/** The page variants, as errors and the docs name them. */
+export const PAGE_VARIANTS: readonly string[] = [
+  'sm: … 2xl:',
+  'max-sm: … max-2xl:',
+  'min-[…]:',
+  'max-[…]:',
+  'portrait:',
+  'landscape:',
+  'print:',
+  '[@media(…)]:',
+];
+
+/**
+ * Why class `cls` cannot be used, from Tailwind's `problem`: its own when the class without its
+ * variants has it too (`md:space-x-2`), or else its variants'.
+ */
+function candidateReason(compiler: TailwindCompiler, cls: string, problem: CandidateProblem): string {
+  const variant = variantOf(cls);
+  if (!variant || problem.kind === 'unknown') return problemReason(problem);
+  const base = compiler.candidate(cls.slice(variant.length));
+  if (!base.ok) return problemReason(base.problem.kind === 'unknown' ? problem : base.problem);
+  const why =
+    problem.kind === 'media'
+      ? ` (${problem.message})`
+      : problem.kind === 'atRule'
+        ? ` (${problem.rule})`
+        : '';
+  return `the variant \`${variant}\` has no meaning in a PDF${why}; page variants work: ${PAGE_VARIANTS.join(', ')}`;
 }
 
 /** Expands a 1-4 value CSS edge shorthand into [top, right, bottom, left]. */
@@ -527,32 +561,38 @@ export function mapClasses(
   const elementVars = new Map<string, string>();
   const initials = new Map<string, string>();
   const usable: string[] = [];
+  // Read on use, to tell a style that depends on the units from one that can be cached alone.
+  let relative = false;
 
   for (const cls of classes) {
-    if (hasVariant(cls)) {
-      onError(new UnsupportedUtilityError(cls, 'variants (md:, hover:, print:, …) have no meaning in a PDF'));
-      continue;
-    }
     const r = compiler.candidate(cls);
     if (!r.ok) {
-      onError(new UnsupportedUtilityError(cls, problemReason(r.problem)));
+      onError(new UnsupportedUtilityError(cls, candidateReason(compiler, cls, r.problem)));
       continue;
+    }
+    if (r.css.decls.some(([, , media]) => media.length > 0)) {
+      relative = true;
+      if (!units) {
+        onError(new UnsupportedUtilityError(cls, `its page variant ${UNITS_UNKNOWN}`));
+        continue;
+      }
     }
     usable.push(cls);
   }
+  // Declarations for another page size are checked, not applied.
+  const applies = ([, , media]: Decl): boolean =>
+    media.every((q) => units !== undefined && q.matches(units.page));
 
   const ordered = compiler.sort(usable);
   for (const cls of ordered) {
     const r = compiler.candidate(cls);
     if (!r.ok) continue;
     for (const [name, value] of r.css.initials) initials.set(name, value);
-    for (const [prop, value] of r.css.decls) if (prop.startsWith('--')) elementVars.set(prop, value);
+    for (const d of r.css.decls) if (d[0].startsWith('--') && applies(d)) elementVars.set(d[0], d[1]);
   }
   const lookup = (name: string): string | undefined =>
     elementVars.get(name) ?? initials.get(name) ?? compiler.themeValue(name);
 
-  // Read on use, to tell a style that depends on the units from one that can be cached alone.
-  let relative = false;
   let ownEm = false;
   const unitsOf = (em: () => number, own: boolean): Units => ({
     get em() {
@@ -570,7 +610,7 @@ export function mapClasses(
   const parentEm = () => units?.parentFontSize ?? 0;
   const fontUnits = unitsOf(parentEm, false);
   const apply = (em: () => number): FlatStyle =>
-    applyClasses(compiler, ordered, lookup, onError, (prop) =>
+    applyClasses(compiler, ordered, applies, lookup, onError, (prop) =>
       prop === 'font-size' ? fontUnits : unitsOf(em, true),
     );
 
@@ -583,74 +623,100 @@ export function mapClasses(
   return { style, relative };
 }
 
-/** Applies the declarations of `ordered` classes, each with the units `unitsFor` its property. */
+/**
+ * Applies the declarations of `ordered` classes, each with the units `unitsFor` its property. Those
+ * that do not `apply`, for another page size, are read and dropped: a mistake in them fails anyway.
+ */
 function applyClasses(
   compiler: TailwindCompiler,
   ordered: string[],
+  applies: (decl: Decl) => boolean,
   lookup: (name: string) => string | undefined,
   onError: (e: UnsupportedUtilityError) => void,
   unitsFor: (prop: string) => Units,
 ): FlatStyle {
-  let style: FlatStyle = {};
-  let lines: GridLines = {};
+  let applied: Applied = { style: {}, lines: {} };
   for (const cls of ordered) {
     const r = compiler.candidate(cls);
     if (!r.ok) continue;
-    const decls = r.css.decls;
-    const clamp = decls.find(([p]) => p === '-webkit-line-clamp');
-    // `truncate`: one line with an ellipsis. `text-ellipsis` alone has no engine meaning.
-    const ellipsis =
-      decls.some(([p, v]) => p === 'text-overflow' && v.trim() === 'ellipsis') &&
-      decls.some(([p, v]) => p === 'white-space' && v.trim() === 'nowrap');
-    // Apply into a scratch copy so a failing class leaves no partial result behind.
-    const next: FlatStyle = { ...style };
-    const nextLines: GridLines = { ...lines };
     try {
-      if (clamp) {
-        const n = clamp[1].trim();
-        if (n === 'none' || n === 'unset') {
-          delete next.maxLines;
-          delete next.ellipsis;
-        } else {
-          next.maxLines = new Reader('-webkit-line-clamp').integer(n, 1);
-          next.ellipsis = true;
-        }
-      } else if (ellipsis) {
-        next.maxLines = 1;
-        next.ellipsis = true;
-      }
-      for (const [prop, raw] of decls) {
-        if (prop.startsWith('--')) continue;
-        if (clamp && (prop === 'overflow' || prop === 'display' || prop.startsWith('-webkit-'))) continue;
-        if (ellipsis && (prop === 'overflow' || prop === 'text-overflow' || prop === 'white-space')) continue;
-        if (prop === 'text-overflow')
-          throw new UnsupportedValueError(prop, `text-overflow: ${raw} (use truncate)`);
-        // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
-        const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
-        try {
-          applyDecl(
-            next,
-            sideStyle ? 'border-style' : prop,
-            substituteVars(raw, lookup),
-            unitsFor(prop),
-            nextLines,
-          );
-        } catch (e) {
-          // A value that does not parse at all (`var()` with no value, five edges): name the property.
-          if (e instanceof ValueError)
-            throw new UnsupportedValueError(prop, `${prop}: ${raw} (${e.message})`);
-          throw e;
-        }
-      }
-      style = next;
-      lines = nextLines;
+      const next = applyDecls(r.css.decls.filter(applies), lookup, applied, unitsFor);
+      const other = r.css.decls.filter((d) => !applies(d));
+      // They read the class's own custom properties, which the element's leave out.
+      if (other.length > 0) applyDecls(other, withOwnVars(r.css, lookup), applied, unitsFor);
+      applied = next;
     } catch (e) {
       if (e instanceof UnsupportedValueError) onError(new UnsupportedUtilityError(cls, e.detail, e.property));
       else if (e instanceof ValueError) onError(new UnsupportedUtilityError(cls, e.message));
       else throw e;
     }
   }
-  return style;
+  return applied.style;
+}
+
+/** A style as classes build it, and the grid lines it has read so far. */
+interface Applied {
+  style: FlatStyle;
+  lines: GridLines;
+}
+
+/**
+ * `decls` of one class applied over `to`, their custom properties read with `read`. Into a copy:
+ * a failing class leaves no partial result behind.
+ */
+function applyDecls(
+  decls: readonly Decl[],
+  read: (name: string) => string | undefined,
+  to: Applied,
+  unitsFor: (prop: string) => Units,
+): Applied {
+  const next: FlatStyle = { ...to.style };
+  const lines: GridLines = { ...to.lines };
+  const clamp = decls.find(([p]) => p === '-webkit-line-clamp');
+  // `truncate`: one line with an ellipsis. `text-ellipsis` alone has no engine meaning.
+  const ellipsis =
+    decls.some(([p, v]) => p === 'text-overflow' && v.trim() === 'ellipsis') &&
+    decls.some(([p, v]) => p === 'white-space' && v.trim() === 'nowrap');
+  if (clamp) {
+    const n = clamp[1].trim();
+    if (n === 'none' || n === 'unset') {
+      delete next.maxLines;
+      delete next.ellipsis;
+    } else {
+      next.maxLines = new Reader('-webkit-line-clamp').integer(n, 1);
+      next.ellipsis = true;
+    }
+  } else if (ellipsis) {
+    next.maxLines = 1;
+    next.ellipsis = true;
+  }
+  for (const [prop, raw] of decls) {
+    if (prop.startsWith('--')) continue;
+    if (clamp && (prop === 'overflow' || prop === 'display' || prop.startsWith('-webkit-'))) continue;
+    if (ellipsis && (prop === 'overflow' || prop === 'text-overflow' || prop === 'white-space')) continue;
+    if (prop === 'text-overflow')
+      throw new UnsupportedValueError(prop, `text-overflow: ${raw} (use truncate)`);
+    // `border-b` sets `border-bottom-style: var(--tw-border-style)`: the box's one style.
+    const sideStyle = /^border-[a-z-]+-style$/.test(prop) && raw.trim() === 'var(--tw-border-style)';
+    try {
+      applyDecl(next, sideStyle ? 'border-style' : prop, substituteVars(raw, read), unitsFor(prop), lines);
+    } catch (e) {
+      // A value that does not parse at all (`var()` with no value, five edges): name the property.
+      if (e instanceof ValueError) throw new UnsupportedValueError(prop, `${prop}: ${raw} (${e.message})`);
+      throw e;
+    }
+  }
+  return { style: next, lines };
+}
+
+/** `lookup`, after the custom properties `css` sets and the initial values it declares. */
+function withOwnVars(
+  css: CandidateCss,
+  lookup: (name: string) => string | undefined,
+): (name: string) => string | undefined {
+  const own = new Map(css.initials);
+  for (const [p, v] of css.decls) if (p.startsWith('--')) own.set(p, v);
+  return (name) => own.get(name) ?? lookup(name);
 }
 
 /** Splits a class string into classes; the normalised string is the cache key. */

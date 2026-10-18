@@ -14,6 +14,8 @@ that are supported and tested; each example is a unit test.
   (the element's font size; in `text-[…]`, the inherited one), `vw` and `vh` (1% of the
   page's width and height): `w-[2em]`, `h-[10vh]`.
 - Arbitrary values (`[…]`) work for every supported property.
+- Page variants (`md:`, `landscape:`, `print:`) read the page the element is on; see
+  [Page variants](#page-variants).
 - In development an unsupported class throws, naming the class and the CSS property; in
   production it is logged once and ignored.
 - Text utilities on `Page`, `View`, `Cell` or `Row` are inherited by the text inside.
@@ -124,11 +126,20 @@ that are supported and tested; each example is a unit test.
 | `text-wrap`, `text-pretty`, `text-nowrap` | `textWrap`, `whiteSpace` | `text-wrap` → `{"textWrap":"wrap"}` | `text-pretty` breaks lines over the whole paragraph for even lines (`textWrap: pretty`); `text-nowrap` is `whiteSpace: nowrap`. |
 | `hyphens-auto`, `hyphens-manual`, `hyphens-none` | `hyphenate` | `hyphens-auto` → `{"hyphenate":true}` | The `hyphenate` prop on `Text` does the same. Soft hyphens (U+00AD) always work. |
 
+## Page variants
+
+| Utilities | Engine property | Example → result | Notes |
+|---|---|---|---|
+| `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, `[@media(…)]:` | the class, on pages it matches | `md:p-4` → `{"paddingTop":12,"paddingRight":12,"paddingBottom":12,"paddingLeft":12}` | Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`). |
+
 ## Not supported
 
 | Example | Why |
 |---|---|
-| `md:p-4` | Variants and breakpoints (`md:`, `hover:`, `print:`) have no meaning in a PDF. |
+| `hover:p-4` | Variants of interaction and state (`hover:`, `focus:`, `first:`, `group-*:`): a PDF has no states. |
+| `dark:bg-black` | Media features of screens (`dark:`, `motion-safe:`, `contrast-more:`): a page has width, height and orientation only. |
+| `@sm:p-4` | Container queries (`@sm:`, `@container`). |
+| `container` | `container`: it follows the screen width; use `max-w-*` or `w-full`. |
 | `shadow-md` | Shadows (`shadow-*`, `ring-*`) are not drawn by the engine. |
 | `ring-2` | Shadows (`shadow-*`, `ring-*`) are not drawn by the engine. |
 | `space-x-2` | `space-x/y` and `divide-*` style child elements; use `gap-*` and borders. |
