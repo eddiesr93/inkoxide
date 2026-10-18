@@ -3,7 +3,8 @@
 //! so that the patterns can also come at run time. A build with the
 //! `embedded-hyphenation` feature (the default) has them all; one without it
 //! (the WebAssembly engine) gets each from [`crate::HyphenationStore`] when a
-//! document needs it.
+//! document needs it. Romanian is not among them: hyph-utf8's Romanian patterns
+//! have no licence, so the engine hyphenates it by rule (`romanian.rs`).
 //!
 //! The matching is hypher 0.1.8's (`hyphenate_bounded`, MIT or Apache-2.0, by
 //! Laurenz Mädje, <https://github.com/typst/hypher>), with every read checked: patterns given

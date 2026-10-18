@@ -1,12 +1,13 @@
 //! Hyphenation behind a trait, so pattern sources can change
 //! without touching line layout. Patterns registered at runtime
-//! ([`HyphenationStore`]) win over the built-in ones (`builtin.rs`).
+//! ([`HyphenationStore`]) win over the built-in ones (`builtin.rs`), and
+//! over the rules for Romanian (`romanian.rs`).
 
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, LazyLock};
 
-use super::builtin;
+use super::{builtin, romanian};
 use crate::error::Missing;
 use crate::InkoxideError;
 
@@ -40,7 +41,8 @@ fn embedded(_: &builtin::Language) -> Option<&'static [u8]> {
 /// The file of the built-in patterns that text in `lang` (a BCP-47 tag) is
 /// hyphenated with when no patterns are registered for it: `de` for
 /// `de-AT`, `no` for `nb`. What a build without the `embedded-hyphenation`
-/// feature loads with [`HyphenationStore::register_builtin`].
+/// feature loads with [`HyphenationStore::register_builtin`]. Romanian has
+/// none: the engine hyphenates it by rule, in every build.
 #[must_use]
 pub fn builtin_hyphenation_file(lang: &str) -> Option<&'static str> {
     builtin::language(&paragraph_tag(lang)?).map(|l| l.file)
@@ -88,8 +90,8 @@ pub(crate) fn paragraph_tag(tag: &str) -> Option<String> {
 /// `\hyphenation{…}` groups of exception words (`ta-ble`), in UTF-8. When a
 /// paragraph asks for hyphenation, the patterns registered for its tag are
 /// used first, then those of each less specific tag (`en-GB`, then `en`),
-/// then the built-in patterns for the language; soft hyphens in the text
-/// are always honoured.
+/// then the built-in patterns for the language (for Romanian, the
+/// engine's rules); soft hyphens in the text are always honoured.
 ///
 /// Cloning is cheap: parsed patterns are shared.
 ///
@@ -249,12 +251,17 @@ impl<'a> ResolvedHyphenator<'a> {
 
 impl Hyphenator for ResolvedHyphenator<'_> {
     fn supports(&self, lang: &str) -> bool {
-        self.store.lookup(lang).is_some() || builtin::language(lang).is_some()
+        self.store.lookup(lang).is_some()
+            || romanian::serves(lang)
+            || builtin::language(lang).is_some()
     }
 
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize> {
         if let Some(p) = self.store.lookup(lang) {
             return p.hyphenate(word);
+        }
+        if romanian::serves(lang) {
+            return romanian::hyphenate(word);
         }
         let Some(l) = builtin::language(lang) else {
             return Vec::new();
@@ -561,6 +568,26 @@ mod tests {
         );
         assert!(store.unregister("ja"));
         assert!(!store.unregister("ja"));
+    }
+
+    #[test]
+    fn romanian_is_hyphenated_by_rule_unless_patterns_are_registered() {
+        let mut store = HyphenationStore::new();
+        let h = ResolvedHyphenator::new(&store);
+        assert!(h.supports("ro") && h.supports("ro-md"));
+        assert_eq!(
+            split("calitate", &h.hyphenate("calitate", "ro")),
+            "ca-li-ta-te"
+        );
+        assert!(h.not_loaded().is_empty());
+        assert_eq!(builtin_hyphenation_file("ro"), None);
+
+        store.register("ro", br"\hyphenation{ cali-tate }").unwrap();
+        let h = ResolvedHyphenator::new(&store);
+        assert_eq!(
+            split("calitate", &h.hyphenate("calitate", "ro-md")),
+            "cali-tate"
+        );
     }
 
     #[test]

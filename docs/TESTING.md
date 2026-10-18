@@ -135,8 +135,9 @@ only on demand, from the Actions tab, with the ID of that release run.
   that needs patterns it has not been given fails with `NOT_LOADED` naming
   them, and renders once they are registered; with the feature, it renders
   as it is. Both PDFs must match the digest in
-  `builtin_hyphenation.sha256`. `ci.yml` and `scripts/ci.sh` run it
-  without default features as well.
+  `builtin_hyphenation.sha256`. Romanian needs no file: it is
+  hyphenated by rule, with or without the feature. `ci.yml` and
+  `scripts/ci.sh` run it without default features as well.
 - `scripts/check-schema.py`: fixtures conform to the JSON Schema.
 - `scripts/visual-diff.py`: rasterises fixture PDFs and compares them with
   `fixtures/expected/*.png`; `scripts/update-expected.sh` regenerates the

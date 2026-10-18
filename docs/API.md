@@ -282,7 +282,10 @@ The patterns of a language are chosen in this order:
    (`en-GB`, then `en`);
 2. the built-in patterns for the language (48 languages, English
    included: hypher's, in `crates/core/hyphenation`; `builtin_hyphenation_file`
-   names the file of a tag);
+   names the file of a tag), or, for Romanian (`ro`, `ro-MD`), the engine's
+   rules: hyph-utf8's Romanian patterns have no licence, so the engine
+   hyphenates Romanian by the syllable rules of DOOM2, in every build,
+   with no file to load;
 3. none.
 
 Soft hyphens (U+00AD) in the text are always honoured.

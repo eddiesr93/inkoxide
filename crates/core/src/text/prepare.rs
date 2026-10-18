@@ -1110,6 +1110,8 @@ mod tests {
     #[test]
     fn built_in_languages() {
         assert!(builtin_only().supports("de"));
+        // Romanian, by rule.
+        assert!(builtin_only().supports("ro"));
         // Languages without built-in patterns.
         assert!(!builtin_only().supports("ja"));
     }

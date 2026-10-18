@@ -28,11 +28,15 @@ const DOC: &str = r#"{"version":1,"meta":{"lang":"de-AT","producer":"Inkoxide te
     {"type":"text","style":{"lang":"en"},"runs":[{"text":"No hyphens here","font":"Inter-Regular","size":10}]}]}]}"#;
 
 fn render(store: &HyphenationStore) -> Result<Vec<u8>, InkoxideError> {
+    render_json(DOC, store)
+}
+
+fn render_json(doc: &str, store: &HyphenationStore) -> Result<Vec<u8>, InkoxideError> {
     let options = RenderOptions::default()
         .with_creation_date("2026-10-08T00:00:00Z")
         .with_hyphenation(store.clone());
     inkoxide::render(
-        DOC.as_bytes(),
+        doc.as_bytes(),
         InputFormat::Json,
         &options,
         &fonts(),
@@ -54,6 +58,23 @@ fn files_are_named_by_language() {
     assert_eq!(inkoxide::builtin_hyphenation_file("nb"), Some("no"));
     assert_eq!(inkoxide::builtin_hyphenation_file("EN_gb"), Some("en"));
     assert_eq!(inkoxide::builtin_hyphenation_file("ja"), None);
+}
+
+/// Romanian is hyphenated by rule: no file to load, in either build.
+#[test]
+fn romanian_needs_no_file() {
+    assert_eq!(inkoxide::builtin_hyphenation_file("ro-MD"), None);
+    let doc = |hyphenate: bool| {
+        format!(
+            r#"{{"version":1,"meta":{{"lang":"ro","producer":"Inkoxide tests"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+  "pages":[{{"size":{{"width":200,"height":400}},"children":[
+    {{"type":"text","style":{{"width":60,"hyphenate":{hyphenate}}},
+     "runs":[{{"text":"Întreprinderea funcționează","font":"Inter-Regular","size":10}}]}}]}}]}}"#
+        )
+    };
+    let store = HyphenationStore::new();
+    let hyphenated = render_json(&doc(true), &store).unwrap();
+    assert_ne!(hyphenated, render_json(&doc(false), &store).unwrap());
 }
 
 #[test]

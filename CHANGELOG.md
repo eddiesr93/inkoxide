@@ -104,6 +104,12 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   licence, keywords and categories. The packages leave out the tests and benchmarks, which read
   fixtures outside the crate.
 - `@inkoxide/render`: `<Svg>` and `<Canvas>` take `alt`, as `<Image>` does.
+- Romanian hyphenation (`ro`, `ro-MD`). hyph-utf8's Romanian patterns have no licence, so the
+  engine hyphenates Romanian by the syllable rules of DOOM2: a hyphen goes only between the
+  consonants that separate two vowels (`ca-li-ta-te`, `în-tre-prin-de-re`, `sculp-tor`,
+  `func-ție`), never between vowels, with `ș`/`ț` written with a comma or a cedilla. It works in
+  every build, `@inkoxide/wasm` included, with no file to load; patterns registered for `ro` still
+  take precedence.
 
 ### Changed
 
