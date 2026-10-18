@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "happy-dom": "20.14.6",
     "json-schema-to-typescript": "16.0.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",

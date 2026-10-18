@@ -18,7 +18,10 @@ import { type BrowserRenderOptions, renderToBlob } from './browser-api.ts';
 export interface UsePdfResult {
   /** The PDF of the last render that finished, or null. */
   blob: Blob | null;
-  /** An object URL of `blob`, revoked when a new one replaces it and on unmount; or null. */
+  /**
+   * An object URL of `blob`, revoked when a new one replaces it and on unmount; or null, and null
+   * again while the component is hidden (`<Activity mode="hidden">`) until it renders again.
+   */
   url: string | null;
   /** Whether a render is running. */
   loading: boolean;
@@ -81,6 +84,8 @@ export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}):
       running.current?.abort();
       if (url.current) URL.revokeObjectURL(url.current);
       url.current = null;
+      // React also cleans up without unmounting (a hidden `<Activity>`): no revoked URL to show.
+      setState((s) => ({ ...s, url: null }));
     };
   }, [update]);
 

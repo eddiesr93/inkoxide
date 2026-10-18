@@ -18,7 +18,9 @@ import {
   initEngine,
   refusedEmoji,
   renderPdf,
+  renderSignal,
   startupError,
+  untilAborted,
   version,
 } from './engine.ts';
 import { fontsPending, loadRegisteredFonts } from './font.ts';
@@ -26,7 +28,7 @@ import { engineHost } from './host.ts';
 import { type ImagePolicies, loadEmojiImages, loadImages } from './images.ts';
 import { checkImageLimits, checkOptionTypes, DEFAULT_IMAGE_TIMEOUT_MS, isProduction } from './policy.ts';
 import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
-import { type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
+import { type Abortable, type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
 /**
  * A template for `generate`: a component that takes `{ data }`, the zod schema of that data and
@@ -48,14 +50,16 @@ let engine: Promise<EngineStatus> | undefined;
  * Tailwind's design system (when `@inkoxide/tailwind` is installed), the bundled fonts and
  * hyphenation patterns and the schema check, once per process; then the fonts added with
  * `Font.register` since the last call. Every render calls it, so calling it yourself only moves
- * that cost to startup. A start-up failure is an
- * `INTERNAL` RenderError; a font that cannot be loaded, `INVALID_FONT`.
+ * that cost to startup. A start-up failure is an `INTERNAL` RenderError, and the next call tries
+ * again; a font that cannot be loaded, `INVALID_FONT`.
  */
 export async function init(): Promise<EngineStatus> {
   engine ??= (async () => {
     await loadTailwind();
     return initEngine();
   })().catch((e: unknown) => {
+    // The next call starts it again: the module may download then, say.
+    engine = undefined;
     throw startupError(e);
   });
   const status = await engine;
@@ -247,7 +251,7 @@ export async function generate<S extends z.ZodType>(
   const first = tree;
   const settled = await settle(tree, { ...t.images }, opts, policies);
   tree = settled.tree;
-  const { pdf, passes, fetchMs } = settled;
+  const { pdf, pages, passes, fetchMs } = settled;
   const e1 = performance.now();
   const v = version();
   return {
@@ -262,7 +266,7 @@ export async function generate<S extends z.ZodType>(
       totalMs: e1 - t0,
     },
     passes,
-    pages: countPages(pdf),
+    pages,
     bytes: pdf.byteLength,
     schemaVersion: v.schema,
     engineVersion: v.engine,
@@ -305,9 +309,12 @@ interface Settled {
 async function settle(
   first: TreeResult,
   images: Record<string, Uint8Array>,
-  opts: RenderOpts,
+  opts: RenderOpts & Abortable,
   policies: ImagePolicies,
 ): Promise<Settled> {
+  // One time limit for the whole render: its images and every pass.
+  const signal = renderSignal(opts);
+  const passOpts = { ...opts, signal, timeoutMs: undefined };
   const registered = { ...images, ...opts.images };
   const all: Record<string, Uint8Array> = { ...registered };
   let fetchMs = 0;
@@ -319,50 +326,62 @@ async function settle(
     const emoji = new Set(Object.values(tr.document.emojiImages ?? {}));
     const isEmoji = (id: string) => emoji.has(id);
     const f0 = performance.now();
-    const [images, emojiImages] = await Promise.all([
-      loadImages(
-        split(missing, (id) => !isEmoji(id)),
-        registered,
-        policies,
-      ),
-      loadEmojiImages(split(missing, isEmoji), registered, policies),
-    ]);
+    const [images, emojiImages] = await untilAborted(
+      Promise.all([
+        loadImages(
+          split(missing, (id) => !isEmoji(id)),
+          registered,
+          policies,
+        ),
+        loadEmojiImages(split(missing, isEmoji), registered, policies),
+      ]),
+      signal,
+    );
     Object.assign(all, images, emojiImages.loaded);
     fetchMs += performance.now() - f0;
     dropEmoji(tr, 'could not be loaded', (_, id) => emojiImages.failed[id]);
     // So are those whose image the engine refuses: not an image, or one too large.
-    const refused = emoji.size > 0 ? await refusedEmoji(tr.document, all) : {};
+    const refused = emoji.size > 0 ? await untilAborted(refusedEmoji(tr.document, all), signal) : {};
     dropEmoji(tr, 'cannot be drawn', (sequence) => refused[sequence]);
     try {
-      return await renderPdf(tr.document, opts, all, tr.output);
+      return await renderPdf(tr.document, passOpts, all, tr.output);
     } catch (e) {
       throw locateEngineError(e, tr);
     }
   };
-  let tree = first;
+  let tree = own(first);
   let pdf = await render(tree);
+  let pages = countPages(pdf);
   let passes = 1;
   let treeMs = 0;
-  while (tree.dynamic && passes < MAX_PASSES) {
-    const pages = countPages(pdf);
-    if (pages === tree.pageCount) break;
+  while (tree.dynamic && passes < MAX_PASSES && pages !== tree.pageCount) {
     const r0 = performance.now();
     try {
-      tree = tree.rebuild(pages);
+      tree = own(tree.rebuild(pages));
     } catch (e) {
       fromTemplateError(e);
     }
     treeMs += performance.now() - r0;
     pdf = await render(tree);
+    pages = countPages(pdf);
     passes++;
   }
-  const pages = countPages(pdf);
   if (tree.dynamic && pages !== tree.pageCount) {
     tree.warnings.push(
       `render props did not settle on a page count after ${MAX_PASSES} passes; page numbers they show may be off.`,
     );
   }
   return { tree, pdf, pages, passes, images: all, fetchMs, treeMs };
+}
+
+/**
+ * `tree` with its own `emojiImages` and `warnings`, which a render changes: the caller's tree
+ * stays as it was, to render again.
+ */
+function own(tree: TreeResult): TreeResult {
+  const { emojiImages } = tree.document;
+  const document = emojiImages ? { ...tree.document, emojiImages: { ...emojiImages } } : tree.document;
+  return { ...tree, document, warnings: [...tree.warnings] };
 }
 
 /**

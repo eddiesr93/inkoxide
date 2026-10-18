@@ -5,7 +5,7 @@
  * own, as in an application, since both keep process-wide state. Needs packages/wasm/inkoxide.wasm
  * (scripts/build-wasm.sh): without it the tests skip, except in CI.
  */
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -196,7 +196,8 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
     );
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const browser = await load<Entry>('../src/browser.ts');
-    await browser.init({ worker: false, assets: pathToFileURL(`${dir}/`) });
+    // A folder without the `/` at the end is the same folder.
+    await browser.init({ worker: false, assets: pathToFileURL(dir) });
     const { Document, Page, Text } = browser;
     const page = (text: string, lang?: string) => (
       <Document lang={lang}>
@@ -219,6 +220,84 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
       engineCode: 'NOT_LOADED',
       message: expect.stringContaining(`${url}/hyphenation/de.bin`),
     });
+  });
+
+  it('falls back from hyphenation patterns it cannot read, and fails with INTERNAL on a font it cannot read', async () => {
+    // What a server that answers a missing file with its page sends.
+    const page = '<!doctype html><title>App</title>';
+    const dir = mkdtempSync(join(tmpdir(), 'inkoxide-assets-'));
+    mkdirSync(join(dir, 'fonts'));
+    mkdirSync(join(dir, 'hyphenation'));
+    writeFileSync(join(dir, 'fonts/Inter-Regular.ttf'), page);
+    writeFileSync(join(dir, 'hyphenation/hyph-en-us.tex'), page);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const browser = await load<Entry>('../src/browser.ts');
+    const status = await browser.init({ worker: false, assets: pathToFileURL(`${dir}/`) });
+    expect(status.hyphenation).toEqual({ en: false });
+    expect(status.warnings).toContainEqual(
+      expect.stringMatching(
+        /^en hyphenation patterns not readable: .*Text falls back to the engine's built-in patterns\.$/,
+      ),
+    );
+    const { Document, Page, Text } = browser;
+    const err = await browser
+      .renderToBuffer(
+        <Document>
+          <Page>
+            <Text>Hello</Text>
+          </Page>
+        </Document>,
+      )
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(browser.RenderError);
+    expect(err).toMatchObject({
+      code: 'INTERNAL',
+      status: 500,
+      message: expect.stringContaining(
+        `The bundled font Inter-Regular from ${pathToFileURL(dir).href}/fonts/Inter-Regular.ttf could not be loaded: `,
+      ),
+    });
+  });
+
+  it('keeps the options of the first init, and starts again after a start that failed', async () => {
+    const browser = await load<Entry>('../src/browser.ts');
+    // Not a WebAssembly module.
+    const broken = browser.init({ worker: false, wasm: new Uint8Array([1, 2, 3, 4]) });
+    // Before the engine has started: the options of the first call still count.
+    const plain = browser.init();
+    for (const call of [broken, plain]) {
+      await expect(call).rejects.toMatchObject({
+        code: 'INTERNAL',
+        message: expect.stringMatching(/^The engine could not start: /),
+      });
+    }
+    expect(browser.engineStatus()).toBeUndefined();
+    const status = await browser.init({ worker: false });
+    expect(status.version.schema).toBeGreaterThan(0);
+    expect(browser.engineStatus()).toBe(status);
+  });
+
+  it('stops a render at timeoutMs, or when its signal aborts, while its images load', async () => {
+    const browser = await load<Entry>('../src/browser.ts');
+    await browser.init({ worker: false });
+    const { Document, Page, Image } = browser;
+    const slow = () => new Promise<Uint8Array>((ok) => setTimeout(() => ok(PNG), 2000));
+    const doc = (
+      <Document>
+        <Page>
+          <Image src={slow} style={{ width: 32, height: 32 }} />
+        </Page>
+      </Document>
+    );
+    const t0 = performance.now();
+    const timedOut = await browser.renderToBuffer(doc, { timeoutMs: 50 }).catch((e: unknown) => e);
+    expect(timedOut).toBeInstanceOf(DOMException);
+    expect(timedOut).toMatchObject({ name: 'TimeoutError' });
+    const reason = new Error('stop');
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(reason), 50);
+    await expect(browser.renderToBuffer(doc, { signal: controller.signal })).rejects.toBe(reason);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it('checks timeoutMs, and renders the same after clearCaches', async () => {

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  countPages,
   Document,
   init,
   Page,
@@ -57,5 +58,11 @@ describe('engine start-up', () => {
         `The engine could not start: No fonts found in ${join(empty, 'fonts')}. Set INKOXIDE_ASSETS_DIR to a folder with the package's fonts/ and hyphenation/ folders (its assets/).`,
       );
     }
+  });
+
+  it('starts on a later call once the fonts are there', async () => {
+    delete process.env.INKOXIDE_ASSETS_DIR;
+    await expect(init()).resolves.toMatchObject({ fonts: expect.arrayContaining(['Inter-Regular']) });
+    expect(countPages(await renderToBuffer(<Doc />))).toBe(1);
   });
 });

@@ -421,6 +421,18 @@ describe('image functions and promises', () => {
     }
   });
 
+  it('fails the render with IMAGE_READ_FAILED for a Blob that cannot be read', async () => {
+    // A File changed on disk since it was picked.
+    const file = new File([logo], 'logo.png');
+    file.arrayBuffer = () =>
+      Promise.reject(new DOMException('The file could not be read.', 'NotReadableError'));
+    for (const src of [file, () => file]) {
+      const err = await failure(src);
+      expect(err).toMatchObject({ code: 'IMAGE_READ_FAILED', status: 400 });
+      expect(err.message).toBe('Cannot read the image Blob: The file could not be read.');
+    }
+  });
+
   it('calls a function once per render, however many images use it', async () => {
     let calls = 0;
     const src = () => {
@@ -602,6 +614,12 @@ describe('Font.registerEmojiSource', () => {
     expect(settled.tree.warnings).toEqual([
       expect.stringMatching(/^The image of the emoji 👍 could not be loaded, so a font draws it: .*404/),
     ]);
+    // The tree passed in is left as it was: it renders again the same way.
+    expect(Object.keys(first.document.emojiImages ?? {})).toEqual(['😀', '🇫🇷', '👍']);
+    expect(first.warnings).toEqual([]);
+    const again = await renderSettled(first, first.images, opts);
+    expect(pageImages(again.pdf)).toEqual([[PALETTE, LOGO]]);
+    expect(again.tree.warnings).toEqual(settled.tree.warnings);
   });
 
   it('leaves to the fonts the emoji whose image is not one, or is too large', async () => {

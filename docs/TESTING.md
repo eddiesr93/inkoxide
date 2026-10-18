@@ -259,7 +259,8 @@ only on demand, from the Actions tab, with the ID of that release run.
   errors and order; `scan.test.ts` the scanner, and which files it reads.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers,
   Tailwind class mapping and `initTailwind` options, the React tree
-  builder, `renderToBuffer`, `Font.register`, error messages, the
+  builder, `renderToBuffer`, `Font.register`, `usePdf` (in happy-dom),
+  error messages, the
   export lists of `@inkoxide/style` and `@inkoxide/render`, and the
   examples and benchmark invoices, each run through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated

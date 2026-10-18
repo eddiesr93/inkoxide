@@ -706,9 +706,9 @@ A flattened image is opaque: on a coloured background it shows a white box where
 transparent. The u levels (`'PDF/A-2u'`) and PDF/A-1a are not
 supported: they fail with `TEMPLATE_ERROR`.
 
-`conformance` is not part of the document tree: to render a stored `result.document` again at
-the same level, pass `pdfA` to [`renderDocument`](#serving-templates), from
-`@inkoxide/render/templates`.
+`conformance` and `flattenAlpha` are not part of the document tree: to render a stored
+`result.document` again at the same level, pass `pdfA` (and `flattenAlpha`) to
+[`renderDocument`](#serving-templates), from `@inkoxide/render/templates`.
 
 ### Passwords and permissions
 
@@ -1186,7 +1186,9 @@ render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the compone
 the same requirements, and links and bookmarks may not go to decoration (`fixed` or
 `role="artifact"`), which has no element for them. PDF/A-1, -2 and -3 are older than PDF 2.0, so `pdfUA="2"` with
 `conformance` fails the render, naming `options.pdfUA`. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
-options `tagged` and `pdfUA` do the same and win over the props.
+options `tagged` and `pdfUA` do the same and win over the props. Neither prop is part of the
+document tree: to render a stored `result.document` tagged again, pass the render options to
+[`renderDocument`](#serving-templates).
 
 - **What is what.** A `Text` is a paragraph, an `Image`, `Svg` or `Canvas` a figure with its
   `alt`, a `Table` a table (its header rows head their columns; `<Cell header>` heads its row;
@@ -1349,7 +1351,8 @@ without `root`). A fractional timeout is rounded up to a whole millisecond.
 
 **`init()`** loads Tailwind's compiler (when `@inkoxide/tailwind` is installed), the engine and
 the fonts. The first render does it anyway; call it at server startup so the first request does
-not wait. It resolves to the same status as `engineStatus()`.
+not wait. It resolves to the same status as `engineStatus()`. When the engine cannot start, it
+rejects with `INTERNAL`, and the next call or render tries again.
 
 **Health checks.** `version()` returns `{ engine, schema, gitSha }`: the engine's version, the
 document schema version it reads and the commit it was built from. `engineStatus()` returns
@@ -1426,7 +1429,7 @@ apply:
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image, or a render option is out of range (`path` is `options.threads`, `options.creationDate`, …) |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
-| `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
+| `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened; or a `Blob` `src` could not be read (a `File` changed on disk since it was picked) |
 | `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), a bundled font or hyphenation file could not be read or, in a browser, fetched, or the engine's module could not be (`engineCode` `NOT_LOADED`), `renderToFile` could not write the file, or a bug |
 
 `INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. Besides `code`,
@@ -1521,7 +1524,9 @@ options under the same id replaces the template's.
 - **`renderDocument(document, images?, options?)`** renders a document tree that is already
   built, such as a stored `result.document`, and resolves to `{ pdf, pages, engineMs }`. The
   document names its images by id, so pass their bytes in `images` or the `images` option
-  (`renderDocument(result.document, result.images)`); the other image options do not apply.
+  (`renderDocument(result.document, result.images)`); the other image options do not apply. The
+  render options its `<Document>` set (`conformance` as `pdfA`, `flattenAlpha`, `tagged`,
+  `pdfUA` and the passwords) are not in the tree: pass them again in `options`.
 
 Data that does not match the schema fails with `INVALID_DATA` (400) before anything renders. Its
 `issues` list every problem as `{ path, message, code }`, with readable messages:
@@ -1574,15 +1579,17 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
 - **`renderToBuffer`**, **`renderToBlob`** and **`renderToStream`** render outside React
   components, and **`generate`** renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
   `GenerateOptions` for `generate`) are those of the Node entry, with a `signal` or `timeoutMs`
-  (a time in ms) that stops a render: its worker ends, and the next render starts a new one. A
-  render that times out rejects with a `DOMException` named `TimeoutError`.
+  (a time in ms) that stops a render: its worker ends, and the next render starts a new one.
+  `timeoutMs` counts the whole render, the loading of its images and every pass. A render that
+  times out rejects with a `DOMException` named `TimeoutError`.
   `renderToStream` returns a promise of a web `ReadableStream<Uint8Array>` of the PDF in 64 KiB
   chunks: pass it to a `Response` (in a service worker, say), or write it to a file the user
   picked, with `(await renderToStream(<Invoice />)).pipeTo(await handle.createWritable())` for a
   `handle` from `showSaveFilePicker()`. As in Node, the stream starts once the PDF is ready, and
   a failed render rejects the promise.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
-  first call count. The options (`BrowserOptions`): `wasm` is where the module comes from (a
+  first call count. When the engine cannot start (the module did not download, say), the call
+  rejects with `INTERNAL`, and the next one starts it again, with its own options. The options (`BrowserOptions`): `wasm` is where the module comes from (a
   URL, a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module); `assets` is
   a folder to serve the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/`
   from `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
@@ -1666,8 +1673,9 @@ engine's nested worker), the engine renders on one thread.
   about 90 KB when templates use `className`, or a few KB with the [build plugin](#tailwind).
   A bundled font (65 to
   245 KB with brotli) is downloaded when a document first draws with it: Noto Sans, the
-  fallback, only for a character Inter lacks. A language's hyphenation patterns (1 to 350 KB)
-  are downloaded when a document first hyphenates text in it.
+  fallback, only for a character Inter lacks. The English hyphenation patterns (34 KB) are
+  downloaded when the engine starts, and another language's (1 to 350 KB) when a document first
+  hyphenates text in it.
 - The PDF has the bytes Node renders, except where SVG markers are rotated and where SVG text
   follows a path: their numbers can differ in the last digits, since the browser's math library
   rounds differently.
@@ -1699,8 +1707,8 @@ The bundled fonts and hyphenation patterns are files in the package's `assets/` 
 webpack) moves the code into one file, for a serverless function say, they are no longer there.
 Copy that folder into the deployment and point the `INKOXIDE_ASSETS_DIR` environment variable at
 the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyphenation/`
-(`hyph-en-us.tex`). Without the hyphenation patterns, text still renders with the engine's
-built-in ones, and `engineStatus().warnings` says so.
+(`hyph-en-us.tex`). Without the hyphenation patterns, or with a file that is not patterns, text
+still renders with the engine's built-in ones, and `engineStatus().warnings` says so.
 
 **Do I need Tailwind installed?**
 Only to style with `className`: install `@inkoxide/tailwind` ([Tailwind](#tailwind)). It brings

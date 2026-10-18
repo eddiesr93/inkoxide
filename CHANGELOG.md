@@ -363,6 +363,31 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   second round.
 - `@inkoxide/wasm`: while its pool starts again after a bug in the engine, a render's `threads`
   out of range is still `INVALID_ARGUMENT`, and `validate` takes the `threads` a render takes.
+- `@inkoxide/render/browser`: `timeoutMs` counts the whole render, the loading of its images and
+  every pass for `render` props, and `timeoutMs` and `signal` stop a render while its images
+  load. Each pass had a timer of its own, and the images none.
+- `@inkoxide/render/browser`: only the options of the first `init` count, as documented; an
+  `init()` made before the engine had started replaced them. An engine that could not start (a
+  module that did not download, say) starts again on the next `init` or render, with that
+  call's options, instead of failing every render until the page is reloaded. In Node, the next
+  `init` or render tries again too.
+- `@inkoxide/render/browser`: an `assets` folder written without the `/` at the end
+  (`'/static/inkoxide'`) is that folder; the fonts and hyphenation patterns were looked for in
+  its parent.
+- `@inkoxide/render/browser`: a bundled font the engine cannot read (the page a server answers a
+  missing file with, say) fails the render with an `INTERNAL` `RenderError`, not the engine's
+  own error, and hyphenation patterns it cannot read are a start-up warning, with the engine's
+  built-in patterns, as missing ones are, instead of stopping the engine from starting.
+- `usePdf` no longer returns an object URL it has revoked: when React cleans up its effects
+  without unmounting it (a hidden `<Activity>`), `url` is `null` until the next render.
+- `renderSettled` leaves the tree it is given as it was. It took out of the tree the emoji whose
+  image could not be used, and added its warnings, so the same tree rendered again differently.
+- The render option `attachments: null` is an option left out, as `null` is for the others; it
+  failed the render.
+- An `<Image src>` `Blob` that cannot be read (a `File` changed on disk since it was picked)
+  fails the render with `IMAGE_READ_FAILED`, instead of the browser's own error.
+- The guide says that `tagged`, `pdfUA` and `flattenAlpha`, like `conformance`, are not part
+  of `result.document`: to render it again the same way, pass them to `renderDocument`.
 
 ### Repository
 

@@ -9,7 +9,7 @@ import type { RenderOptions } from 'inkoxide';
 
 import { latin1 } from './bytes.ts';
 import { DEFAULT_FACES } from './fonts.ts';
-import { engineHost, type EngineVersion } from './host.ts';
+import { type EngineIssue, engineHost, type EngineVersion } from './host.ts';
 import { HYPHENATION_FILES } from './hyphenation.ts';
 import { checkEncryptionTypes, checkOptionTypes, timerMs } from './policy.ts';
 import { type Abortable, RenderError, type RenderOpts } from './types.ts';
@@ -102,16 +102,21 @@ async function startEngine(): Promise<EngineStatus> {
   for (const [lang, file] of Object.entries(HYPHENATION_FILES)) {
     const path = host.assetLocation(`hyphenation/${file}`);
     const bytes = await host.readAsset(`hyphenation/${file}`);
+    let problem = 'not found';
     if (bytes !== undefined) {
-      await host.registerHyphenationPatterns(lang, bytes);
-      hyphenation[lang] = true;
-    } else {
-      hyphenation[lang] = false;
-      warnings.push(
-        `${lang} hyphenation patterns not found (${path}). ` +
-          "Text falls back to the engine's built-in patterns.",
-      );
+      try {
+        await host.registerHyphenationPatterns(lang, bytes);
+        hyphenation[lang] = true;
+        continue;
+      } catch (e) {
+        // Not patterns: a page a server answers for a missing file, say.
+        problem = `not readable: ${e instanceof Error ? e.message : String(e)}`;
+      }
     }
+    hyphenation[lang] = false;
+    warnings.push(
+      `${lang} hyphenation patterns ${problem} (${path}). Text falls back to the engine's built-in patterns.`,
+    );
   }
   for (const w of warnings) console.warn(`[inkoxide] ${w}`);
   // The fonts the engine has: not yet the bundled ones a document has not used (`defersFonts`).
@@ -156,7 +161,15 @@ async function loadDocumentFonts(
             `The bundled font ${id} could not be read from ${host.assetLocation(path)}.`,
           );
         }
-        await host.registerFont(id, bytes);
+        try {
+          await host.registerFont(id, bytes);
+        } catch (e) {
+          throw new RenderError(
+            'INTERNAL',
+            `The bundled font ${id} from ${host.assetLocation(path)} could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+            { engineCode: host.isEngineError(e) ? e.code : undefined, cause: e },
+          );
+        }
         lazyFaces.delete(id);
         status?.fonts.push(id);
       })();
@@ -192,6 +205,7 @@ export function version(): EngineVersion {
  * `INTERNAL`, as a bundled font that cannot be read, since the deployment is broken.
  */
 export function toRenderError(e: unknown): RenderError {
+  if (e instanceof RenderError) return e;
   if (engineHost().isEngineError(e)) {
     const badOption = e.code === 'INVALID_ARGUMENT' && e.path.startsWith('options.');
     if (e.code === 'INTERNAL' || e.code === 'NOT_LOADED' || (e.code === 'INVALID_ARGUMENT' && !badOption)) {
@@ -228,7 +242,11 @@ export async function refusedEmoji(
   }
   const refused: Record<string, string> = {};
   const at = 'emojiImages.';
-  await loadDocumentFonts(doc);
+  try {
+    await loadDocumentFonts(doc);
+  } catch (e) {
+    throw toRenderError(e);
+  }
   // `validate` returns at most 100 problems: check again without those found until none is left.
   for (;;) {
     // The document's fonts draw the text of SVG images.
@@ -238,9 +256,13 @@ export async function refusedEmoji(
       emojiImages: map,
       pages: [{ size: { width: 100, height: 100 } }],
     };
-    const found = (await engineHost().validate(JSON.stringify(check), own)).filter((e) =>
-      e.path.startsWith(at),
-    );
+    let issues: EngineIssue[];
+    try {
+      issues = await engineHost().validate(JSON.stringify(check), own);
+    } catch (e) {
+      throw toRenderError(e);
+    }
+    const found = issues.filter((e) => e.path.startsWith(at));
     for (const e of found) {
       const sequence = e.path.slice(at.length);
       refused[sequence] = e.message;
@@ -264,7 +286,7 @@ export async function renderPdf(
   // The <Document> passwords and permissions, which JavaScript can give any type.
   checkEncryptionTypes(opts.encryption ?? output.encryption);
   const options: RenderOptions = { images };
-  if (opts.attachments !== undefined) options.attachments = opts.attachments;
+  if (opts.attachments != null) options.attachments = opts.attachments;
   if (opts.creationDate != null) options.creationDate = opts.creationDate;
   if (opts.threads != null) options.threads = opts.threads;
   if (opts.compress != null) options.compress = opts.compress;
@@ -279,10 +301,10 @@ export async function renderPdf(
   if (flattenAlpha !== undefined) options.flattenAlpha = flattenAlpha;
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
-  const signal = withTimeout(opts.signal, opts.timeoutMs);
+  const signal = renderSignal(opts);
   signal?.throwIfAborted();
-  const deferredFonts = await loadDocumentFonts(doc);
   try {
+    const deferredFonts = await untilAborted(loadDocumentFonts(doc), signal);
     return await engineHost().render(JSON.stringify(doc), options, signal, deferredFonts);
   } catch (e) {
     if (signal?.aborted && e === signal.reason) throw e;
@@ -290,15 +312,33 @@ export async function renderPdf(
   }
 }
 
-/** `signal`, and a timeout after `timeoutMs`: a signal that aborts with whichever comes first. */
-function withTimeout(
-  signal: AbortSignal | undefined,
-  timeoutMs: number | undefined,
-): AbortSignal | undefined {
+/**
+ * The `signal` of a render, and a timeout after its `timeoutMs`: a signal that aborts with
+ * whichever comes first, from now.
+ */
+export function renderSignal({ signal, timeoutMs }: Abortable): AbortSignal | undefined {
   const ms = timeoutMs === undefined ? undefined : timerMs(timeoutMs);
   if (ms === undefined) return signal;
   const timeout = AbortSignal.timeout(ms);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+/** `promise`, or a rejection with the reason of `signal` as soon as it aborts. */
+export async function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  let abort = () => {};
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        abort = () => reject(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+      }),
+    ]);
+  } finally {
+    signal.removeEventListener('abort', abort);
+  }
 }
 
 /**

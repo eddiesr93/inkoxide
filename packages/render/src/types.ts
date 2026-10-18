@@ -80,9 +80,9 @@ export interface RenderOpts {
 export interface Abortable {
   signal?: AbortSignal;
   /**
-   * Time a render may take, in ms from 0 (`Infinity`, the default, for no limit): past it, the
-   * render stops as with `signal`, and rejects with a `DOMException` named `TimeoutError`.
-   * A fraction is rounded up to a whole ms.
+   * Time a render may take, in ms from 0 (`Infinity`, the default, for no limit), the loading of
+   * its images and every pass included: past it, the render stops as with `signal`, and rejects
+   * with a `DOMException` named `TimeoutError`. A fraction is rounded up to a whole ms.
    */
   timeoutMs?: number;
 }
@@ -154,7 +154,9 @@ export interface RenderResult {
   /**
    * The images `document` was rendered with, by id: the bytes behind the ids the tree generated
    * (`image-0`, `remote-0`, …) and the images passed in. With `document`, they render it again
-   * (`renderDocument(result.document, result.images)`).
+   * (`renderDocument(result.document, result.images, options)`); `options` gives again the render
+   * options the `<Document>` set, which are not in the tree: `pdfA`, `flattenAlpha`, `tagged`,
+   * `pdfUA` and `encryption`.
    */
   images: Record<string, Uint8Array>;
 }
