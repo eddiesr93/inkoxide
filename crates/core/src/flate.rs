@@ -37,3 +37,24 @@ pub(crate) fn inflate(data: &[u8], len: usize) -> std::io::Result<Vec<u8>> {
         )))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{deflate, inflate, LEVEL};
+
+    /// Data inflates only to the length it was compressed at: shorter is
+    /// an error, and so is longer, which stops one byte past that length.
+    #[test]
+    fn inflate_takes_exactly_the_compressed_length() {
+        let data = vec![7u8; 10_000];
+        let packed = deflate(&data, LEVEL).unwrap();
+        assert_eq!(inflate(&packed, data.len()).unwrap(), data);
+        let short = inflate(&packed, 10_001).unwrap_err();
+        assert!(
+            short.to_string().contains("10000 bytes where 10001"),
+            "{short}"
+        );
+        let long = inflate(&packed, 10).unwrap_err();
+        assert!(long.to_string().contains("11 bytes where 10"), "{long}");
+    }
+}

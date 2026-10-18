@@ -87,6 +87,13 @@ impl TableLayout {
             .iter()
             .sum()
     }
+
+    /// Whether the header rows repeat on the pages the table continues on,
+    /// `page_h` high, below `above` of the header rows of the tables around
+    /// it: only when they leave room there.
+    pub fn repeats_header(&self, above: f32, page_h: f32) -> bool {
+        self.header_rows > 0 && above + self.header_height() < page_h
+    }
 }
 
 /// A cell's place in the grid.
@@ -381,20 +388,24 @@ pub(crate) fn compute(
         c.width == ColumnWidth::Auto
             || (available.is_none() && matches!(c.width, ColumnWidth::Fr(_)))
     });
-    // (min-content, max-content) per column from single-span cells.
+    // Whether column `c` takes the width of its content.
+    let wants = |c: usize| match table.columns[c].width {
+        ColumnWidth::Auto => true,
+        ColumnWidth::Fr(_) => available.is_none(),
+        ColumnWidth::Points(_) => false,
+    };
+    // (min-content, max-content) per column from single-span cells, then
+    // widened for the cells that span columns.
     let mut content = vec![(0.0f32, 0.0f32); ncols];
     if needs_content {
+        let mut spanning = Vec::new();
         for (k, cell) in g.cells.iter().enumerate() {
             let (cidx, c) = (cell.idx, cell.col);
             if cell.col_span != 1 {
+                spanning.push(k);
                 continue;
             }
-            let wants = match table.columns[c].width {
-                ColumnWidth::Auto => true,
-                ColumnWidth::Fr(_) => available.is_none(),
-                ColumnWidth::Points(_) => false,
-            };
-            if !wants {
+            if !wants(c) {
                 continue;
             }
             let min = ctx
@@ -405,6 +416,45 @@ pub(crate) fn compute(
                 .width;
             content[c].0 = content[c].0.max(min);
             content[c].1 = content[c].1.max(max.max(min));
+        }
+        // A cell that spans columns widens those that take the width of
+        // their content, by equal parts, to hold its own (narrower spans
+        // first), unless an `fr` column in the span takes the room left.
+        spanning.sort_by_key(|&k| g.cells[k].col_span);
+        for k in spanning {
+            let cell = &g.cells[k];
+            let span = cell.col..cell.col + cell.col_span;
+            let sized: Vec<usize> = span.clone().filter(|&c| wants(c)).collect();
+            let flexible = span
+                .clone()
+                .any(|c| !wants(c) && matches!(table.columns[c].width, ColumnWidth::Fr(_)));
+            if sized.is_empty() || flexible {
+                continue;
+            }
+            let taken = span
+                .filter_map(|c| match table.columns[c].width {
+                    ColumnWidth::Points(w) => Some(w),
+                    _ => None,
+                })
+                .sum::<f32>()
+                + sp * (cell.col_span - 1) as f32;
+            let min = ctx
+                .cell_size(tree, cell.idx, AvailableSpace::MinContent, cell_insets[k])?
+                .width;
+            let max = ctx
+                .cell_size(tree, cell.idx, AvailableSpace::MaxContent, cell_insets[k])?
+                .width
+                .max(min);
+            let n = sized.len() as f32;
+            let (have_min, have_max) = sized.iter().fold((0.0, 0.0), |(a, b), &c| {
+                (a + content[c].0, b + content[c].1)
+            });
+            let more_min = ((min - taken - have_min) / n).max(0.0);
+            let more_max = ((max - taken - have_max) / n).max(0.0);
+            for &c in &sized {
+                content[c].0 += more_min;
+                content[c].1 = (content[c].1 + more_max).max(content[c].0);
+            }
         }
     }
     let mut fixed = 0.0;

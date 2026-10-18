@@ -521,6 +521,10 @@ impl PdfWriterSink {
                     self.profile.ua_part(),
                 );
                 w.out.metadata(&mut w.pdf, m, &xmp, |_| {});
+                // PDF 2.0 requires a file identifier (ISO 32000-2, 7.5.5).
+                if self.profile.pdf_2() {
+                    w.pdf.set_file_id(file_id(doc, &xmp));
+                }
             }
             return Ok(());
         };
@@ -551,26 +555,7 @@ impl PdfWriterSink {
                 .range([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
                 .filter(Filter::FlateDecode);
         });
-        // Deterministic: a hash of the page content streams and the XMP
-        // metadata, which mirrors the document information.
-        let mut h = xxhash_rust::xxh3::Xxh3::new();
-        for page in doc.pages {
-            h.update(&page.stream);
-        }
-        h.update(&xmp);
-        // Two documents that differ only in their files, or in their
-        // names and types, differ in `/ID`.
-        for f in doc.files {
-            h.update(&f.hash.to_le_bytes());
-            for part in [f.name.as_bytes(), f.mime_type.as_bytes()] {
-                // As u64: a `usize` has 4 bytes in WebAssembly, and
-                // the browser writes the same bytes as Node.
-                h.update(&(part.len() as u64).to_le_bytes());
-                h.update(part);
-            }
-        }
-        let id = h.digest128().to_be_bytes().to_vec();
-        w.pdf.set_file_id((id.clone(), id));
+        w.pdf.set_file_id(file_id(doc, &xmp));
         Ok(())
     }
 
@@ -729,6 +714,30 @@ fn page_layout(layout: schema::PageLayout) -> PageLayout {
     }
 }
 
+/// The file identifier of `doc`, deterministic: a hash of the page content
+/// streams and of the XMP metadata `xmp`, which mirrors the document
+/// information.
+fn file_id(doc: &DocumentOut<'_>, xmp: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let mut h = xxhash_rust::xxh3::Xxh3::new();
+    for page in doc.pages {
+        h.update(&page.stream);
+    }
+    h.update(xmp);
+    // Two documents that differ only in their files, or in their
+    // names and types, differ in `/ID`.
+    for f in doc.files {
+        h.update(&f.hash.to_le_bytes());
+        for part in [f.name.as_bytes(), f.mime_type.as_bytes()] {
+            // As u64: a `usize` has 4 bytes in WebAssembly, and
+            // the browser writes the same bytes as Node.
+            h.update(&(part.len() as u64).to_le_bytes());
+            h.update(part);
+        }
+    }
+    let id = h.digest128().to_be_bytes().to_vec();
+    (id.clone(), id)
+}
+
 /// A PDF date string (`D:YYYYMMDDHHmmSS` and `Z` or `±HH'mm`). Written by
 /// hand: `pdf_writer::Date` takes the offset's sign from its hours, so an
 /// offset under an hour west of UTC (`-00:30`) would come out east of it.
@@ -801,4 +810,99 @@ pub(super) fn write_page_tree(w: &mut Writer, pages: &[Ref]) -> PageTree {
         pdf.pages(r).parent(parent).kids(kids).count(count as i32);
     }
     PageTree { root, leaf_parents }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use pdf_writer::Ref;
+
+    use super::{write_page_tree, PAGE_TREE_FANOUT};
+    use crate::pdf::{Out, Writer};
+
+    /// Each `/Pages` node written, by object number: its kids, its count
+    /// and its parent.
+    type Nodes = HashMap<i32, (Vec<i32>, usize, Option<i32>)>;
+
+    fn nodes(out: &[u8]) -> Nodes {
+        let text = String::from_utf8_lossy(out);
+        let mut nodes = Nodes::new();
+        for obj in text.split("endobj") {
+            let Some(at) = obj.find(" 0 obj") else {
+                continue;
+            };
+            let id = obj[..at]
+                .split_whitespace()
+                .last()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let words: Vec<&str> = obj[at..].split_whitespace().collect();
+            let after = |key: &str| {
+                words
+                    .iter()
+                    .position(|w| *w == key)
+                    .map(|i| &words[i + 1..])
+            };
+            let kids = after("/Kids").unwrap();
+            let end = kids.iter().position(|w| w.ends_with(']')).unwrap();
+            let kids = kids[..=end]
+                .iter()
+                .step_by(3)
+                .map(|w| w.trim_start_matches('[').parse().unwrap())
+                .collect();
+            let count = after("/Count").unwrap()[0].parse().unwrap();
+            let parent = after("/Parent").map(|w| w[0].parse().unwrap());
+            nodes.insert(id, (kids, count, parent));
+        }
+        nodes
+    }
+
+    /// Checks node `id` under `parent` and the nodes under it: each names
+    /// its parent, has at most [`PAGE_TREE_FANOUT`] kids and counts the
+    /// pages under it. Adds each page, with its node, to `pages`; returns
+    /// the count.
+    fn walk(nodes: &Nodes, id: i32, parent: Option<i32>, pages: &mut Vec<(i32, i32)>) -> usize {
+        let (kids, count, up) = &nodes[&id];
+        assert_eq!(*up, parent, "the parent of {id}");
+        assert!(
+            kids.len() <= PAGE_TREE_FANOUT,
+            "{id} has {} kids",
+            kids.len()
+        );
+        let mut under = 0;
+        for &k in kids {
+            if nodes.contains_key(&k) {
+                under += walk(nodes, k, Some(id), pages);
+            } else {
+                pages.push((k, id));
+                under += 1;
+            }
+        }
+        assert_eq!(*count, under, "the count of {id}");
+        under
+    }
+
+    /// Page trees of one level, two, and three from 2,501 pages, up to the
+    /// most pages a document has: the pages come in order, each under its
+    /// leaf parent.
+    #[test]
+    fn page_trees_hold_every_page_in_order() {
+        for n in [1, 50, 51, 2_500, 2_501, 100_000] {
+            let mut w = Writer::new(Out::plain());
+            // Numbered apart from the tree's nodes; pages are not written.
+            let pages: Vec<Ref> = (0..n).map(|i| Ref::new(1_000_000 + i)).collect();
+            let tree = write_page_tree(&mut w, &pages);
+            let nodes = nodes(&w.pdf.finish());
+            let mut found = Vec::new();
+            assert_eq!(walk(&nodes, tree.root.get(), None, &mut found), pages.len());
+            let want: Vec<(i32, i32)> = pages
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (p.get(), tree.leaf_parents[i / PAGE_TREE_FANOUT].get()))
+                .collect();
+            assert_eq!(found, want, "{n} pages");
+        }
+    }
 }

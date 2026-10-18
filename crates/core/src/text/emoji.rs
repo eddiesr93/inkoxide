@@ -151,8 +151,10 @@ pub(crate) fn font(seq: &Sequence, primary: FontKey, fonts: &FontSet<'_>) -> Fon
     let color = |f: FontKey| fonts.get(f).has_color();
     let fallback = |want: &dyn Fn(FontKey) -> bool| fonts.fallback(|f| want(f) && has(f));
     let first = if seq.emoji { fallback(&color) } else { None };
+    // A deferred run font that is not registered keeps the sequence, as in `prepare.rs`.
+    let deferred = fonts.get(primary).is_deferred();
     first
-        .or_else(|| has(primary).then_some(primary))
+        .or_else(|| (has(primary) || deferred).then_some(primary))
         .or_else(|| fallback(&|_| true))
         .unwrap_or(primary)
 }

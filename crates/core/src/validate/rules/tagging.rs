@@ -63,7 +63,7 @@ impl Checker<'_> {
 
     /// The first thing PDF/UA-1 asks of the document that it lacks: the
     /// render's conflict, at `field` of the node checked.
-    fn lacks(&mut self, field: &str, message: String) {
+    pub(super) fn lacks(&mut self, field: &str, message: String) {
         if self.conflict.is_none() {
             self.conflict = Some(ValidationError {
                 code: Code::UaConflict,
@@ -108,7 +108,13 @@ impl Checker<'_> {
             ),
             _ => {}
         }
-        if let Some(level) = node.role.and_then(Role::heading) {
+        // A heading inside an element that holds content (a paragraph, a
+        // figure) makes no element of its own: it is not in the order.
+        let heading = node
+            .role
+            .and_then(Role::heading)
+            .filter(|_| !self.structure.merged);
+        if let Some(level) = heading {
             let ok = match self.last_heading {
                 None => level == 1,
                 Some(prev) => level <= prev + 1,

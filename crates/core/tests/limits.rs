@@ -12,7 +12,9 @@ use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
 use common::{assert_as_fast, assert_bounded, assert_linear};
-use inkoxide::{FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, RenderOptions};
+use inkoxide::{
+    FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, PdfUaPart, RenderOptions,
+};
 
 /// Counts the heap each thread holds, for tests that bound a render's
 /// memory: one-thread renders run on the calling thread.
@@ -957,6 +959,41 @@ fn text_paths_are_read_once_and_bounded() {
     .unwrap();
 }
 
+/// An SVG draws at most 5 000 000 path segments, counting every copy and
+/// its fill and stroke apart: past that, validation refuses it at its
+/// path, and so does the render, before anything is written.
+#[test]
+fn path_segments_drawn_are_bounded_when_the_svg_is_decoded() {
+    // `copies` × 10 000 circles so large that each draws 26 segments, for
+    // its fill and again for its stroke.
+    let svg = |copies: usize| {
+        let circles = r#"<circle r="9000000" stroke="red"/>"#.repeat(100);
+        let uses = r##"<use href="#a"/>"##.repeat(100);
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><g id="a">{circles}</g><g id="b">{uses}</g></defs>{}</svg>"#,
+            r##"<use href="#b"/>"##.repeat(copies)
+        )
+    };
+    let validate = |copies: usize| {
+        let (doc, images) = svg_doc("", &svg(copies));
+        inkoxide::validate(doc.as_bytes(), InputFormat::Json, &fonts(), &images)
+    };
+    // 4 680 000 segments.
+    let errors = validate(9);
+    assert!(errors.is_empty(), "{errors:?}");
+    // 5 200 000.
+    let errors = validate(10);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].code.as_str(), "INVALID_IMAGE", "{errors:?}");
+    assert_eq!(errors[0].path, "pages[0].children[0].src", "{errors:?}");
+    let err = render_svg("", &svg(10)).unwrap_err();
+    assert_eq!(err.code(), "INVALID_IMAGE", "{err}");
+    assert!(
+        err.to_string().contains("more than 5000000 path segments"),
+        "{err}"
+    );
+}
+
 /// Vertical SVG text shapes under the same glyph limit as other text.
 #[test]
 fn vertical_svg_text_spends_the_glyph_limit() {
@@ -970,4 +1007,34 @@ fn vertical_svg_text_spends_the_glyph_limit() {
         assert_eq!(err.code(), "FONT_ERROR", "{err}");
         assert!(err.to_string().contains("glyphs"), "{err}");
     }
+}
+
+/// Under PDF/UA-2 a caption stays one only first or last in what it
+/// captions: telling which does not look at every sibling of each.
+#[test]
+fn captions_under_pdf_ua_2_are_tagged_in_linear_time() {
+    let fonts = fonts();
+    let options = RenderOptions::default()
+        .with_pdf_ua_part(PdfUaPart::Ua2)
+        .with_threads(1);
+    let caption = r#"{"type":"text","role":"caption","runs":[{"text":"Caption.","font":"Inter-Regular","size":10}]}"#;
+    assert_linear("captions", 5_000, |n| {
+        let d = format!(
+            r#"{{"version":1,"meta":{{"title":"Captions","lang":"en"}},
+               "fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+               "pages":[{{"size":{{"width":14400,"height":14400}},
+               "children":[{{"type":"box","role":"section","children":[{}]}}]}}]}}"#,
+            vec![caption; n].join(",")
+        );
+        let t = Instant::now();
+        inkoxide::render(
+            d.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts,
+            &ImageStore::new(),
+        )
+        .unwrap();
+        t.elapsed()
+    });
 }

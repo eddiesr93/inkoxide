@@ -306,10 +306,13 @@ export class Reader {
     throw this.error(`${this.prop}: ${value} (expected an angle)`);
   }
 
-  integer(value: string, min: number): number {
+  /** An integer from `min` to `max`. */
+  integer(value: string, min: number, max = Number.POSITIVE_INFINITY): number {
     const n = this.num(value);
-    if (!Number.isInteger(n) || n < min)
-      throw this.error(`${this.prop}: ${value} (expected an integer ≥ ${min})`);
+    if (!Number.isInteger(n) || n < min || n > max) {
+      const range = max === Number.POSITIVE_INFINITY ? `≥ ${min}` : `from ${min} to ${max}`;
+      throw this.error(`${this.prop}: ${value} (expected an integer ${range})`);
+    }
     return n;
   }
 

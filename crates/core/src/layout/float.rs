@@ -153,6 +153,10 @@ impl Placed {
 /// that it still meets the floats at its top.
 const MIN_HEIGHT: f32 = 1e-3;
 
+/// Tolerance of lengths, points: a box wider than its room by no more
+/// than this still fits it.
+pub(super) const EPS: f32 = 1e-3;
+
 /// Most shape strips the floats of one container have; floats beyond
 /// that take the room of their margin box from lines too.
 const MAX_SHAPE_STRIPS: usize = 4096;
@@ -286,7 +290,7 @@ impl FloatContext {
         let mut y = min_y;
         loop {
             let taken = self.band(y, h);
-            if w <= taken.room(self.width) + 1e-3 || taken.is_empty() {
+            if w <= taken.room(self.width) + EPS || taken.is_empty() {
                 return (y, taken);
             }
             match self.next_change(y) {

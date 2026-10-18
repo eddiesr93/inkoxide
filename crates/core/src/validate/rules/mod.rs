@@ -12,7 +12,7 @@ mod tables;
 mod tagging;
 mod text;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -22,8 +22,9 @@ use crate::error::{ValidationCode as Code, ValidationError};
 use crate::images::ContentKey;
 use crate::pdf::{Profile, PDF_A_MIN_PAGE_EDGE};
 use crate::schema::{
-    is_area_name, parse_areas, BorderCollapse, Break, BreakMode, Document, FieldKind, FontFeature,
-    Length, LengthPercent, Node, NodeKind, PageSpec, Position, Style, TrackBreadth, SCHEMA_VERSION,
+    is_area_name, parse_areas, Areas, BorderCollapse, Break, BreakMode, Document, FieldKind,
+    FontFeature, Length, LengthPercent, Node, NodeKind, PageSpec, Position, Style, TrackBreadth,
+    SCHEMA_VERSION,
 };
 use crate::{AttachmentStore, FontStore, ImageStore};
 
@@ -115,7 +116,7 @@ pub(crate) fn check(
         structure: tagging::Structure::default(),
         path: String::with_capacity(128),
         errors: Vec::new(),
-        declared: BTreeSet::new(),
+        declared: BTreeMap::new(),
         fonts,
         deferred,
         images,
@@ -147,6 +148,11 @@ pub(crate) fn transparency_conflict(path: String, what: &str) -> ValidationError
     }
 }
 
+/// Whether `n` floats: it has `float` and is displayed.
+fn floated(n: &Node) -> bool {
+    n.style.floats().is_some() && n.style.display != Some(crate::schema::Display::None)
+}
+
 /// How the painter uses a colour's alpha.
 #[derive(Clone, Copy, PartialEq)]
 enum Alpha {
@@ -162,7 +168,9 @@ enum Alpha {
 struct Checker<'a> {
     path: String,
     errors: Vec<ValidationError>,
-    declared: BTreeSet<&'a str>,
+    /// The declared font ids, each with the registered font it draws with
+    /// (its `source`).
+    declared: BTreeMap<&'a str, &'a str>,
     fonts: &'a FontStore,
     /// Font ids that may be missing from `fonts`.
     deferred: &'a [String],
@@ -184,8 +192,9 @@ struct Checker<'a> {
     /// Where the node checked is in the structure of tagged output.
     structure: tagging::Structure,
     doc: &'a Document,
-    /// Ids that `#id` links can reach, collected on the first such link.
-    anchors: Option<HashSet<&'a str>>,
+    /// Ids that `#id` links can reach, collected on the first such link:
+    /// whether the first displayed node with each is decoration.
+    anchors: Option<HashMap<&'a str, bool>>,
     /// Inside a header or footer (at any depth).
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
@@ -245,6 +254,9 @@ pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
 /// Longest alternative text of an inline image, in characters.
 pub(crate) const MAX_ALT: usize = 1024;
+/// Most font declarations (`fonts`): each is parsed for layout and for
+/// shaping in every render.
+pub(crate) const MAX_FONTS: usize = 256;
 /// Most entries of `fallbackFonts`.
 pub(crate) const MAX_FALLBACK_FONTS: usize = 256;
 /// Most entries of `emojiImages`.
@@ -274,8 +286,6 @@ pub(crate) const MAX_VARIATIONS: usize = 16;
 /// Largest axis value, either way: the range of the 16.16 numbers `fvar`
 /// stores.
 pub(crate) const MAX_VARIATION_VALUE: f32 = 32_767.0;
-/// Most font declarations with `variations`: each embeds a program.
-pub(crate) const MAX_FONT_INSTANCES: usize = 64;
 /// Bounds of a font declaration's `stretch` and `stretchRange`, percent.
 pub(crate) const MIN_STRETCH: f32 = 1.0;
 pub(crate) const MAX_STRETCH: f32 = 1000.0;
@@ -288,6 +298,9 @@ pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
 /// Most floated children of one box: placing each looks at the others.
 pub(crate) const MAX_FLOATS: usize = 1000;
 
+/// Most font declarations with `variations`: each embeds a program.
+pub(crate) const MAX_FONT_INSTANCES: usize = 64;
+
 /// Most different sets of `fontFeatures` in a document: each is shaped
 /// with plans and words of its own.
 pub(crate) const MAX_FEATURE_SETS: usize = 64;
@@ -298,13 +311,15 @@ pub(crate) const MAX_TABLE_SLOTS: usize = 1_000_000;
 
 /// Ids of the nodes that get a destination: the page body (flow and
 /// overlays) that is displayed (not headers or footers, not under
-/// `display: none`). `node` is displayed.
-fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
+/// `display: none`), each with whether its first node is decoration, as
+/// `node` is when `decoration` is set. `node` is displayed.
+fn collect_anchors<'a>(node: &'a Node, decoration: bool, out: &mut HashMap<&'a str, bool>) {
+    let decoration = decoration || node.is_decoration();
     if let Some(id) = &node.id {
-        out.insert(id);
+        out.entry(id.as_str()).or_insert(decoration);
     }
     for c in node.shown_children() {
-        collect_anchors(c, out);
+        collect_anchors(c, decoration, out);
     }
 }
 
@@ -380,7 +395,7 @@ impl<'a> Checker<'a> {
 
     /// Checks a reference to a font: an `Id` that `fonts` declares.
     fn font_ref(&mut self, field: Option<&str>, id: &str) {
-        if self.id(field, id) && !self.declared.contains(id) {
+        if self.id(field, id) && !self.declared.contains_key(id) {
             self.err(
                 Code::UnknownFont,
                 field,
@@ -474,7 +489,7 @@ impl<'a> Checker<'a> {
                     c.font_ranges(f);
                 });
             });
-            self.declared.insert(&f.id);
+            self.declared.insert(&f.id, f.source());
         }
         let instances = doc.fonts.iter().filter(|f| f.variations.is_some()).count();
         if instances > MAX_FONT_INSTANCES {
@@ -482,6 +497,16 @@ impl<'a> Checker<'a> {
                 Code::OutOfRange,
                 Some("fonts"),
                 format!("at most {MAX_FONT_INSTANCES} fonts declare variations; this document has {instances}"),
+            );
+        }
+        if doc.fonts.len() > MAX_FONTS {
+            self.err(
+                Code::OutOfRange,
+                Some("fonts"),
+                format!(
+                    "at most {MAX_FONTS} font declarations; this document has {}",
+                    doc.fonts.len()
+                ),
             );
         }
         if doc.fallback_fonts.len() > MAX_FALLBACK_FONTS {
@@ -577,11 +602,18 @@ impl<'a> Checker<'a> {
         }
         self.debug(page.debug);
         self.in_fixed = true;
-        if let Some(h) = &page.header {
-            self.at("header", |c| c.node(h, Ctx::Fixed));
-        }
-        if let Some(f) = &page.footer {
-            self.at("footer", |c| c.node(f, Ctx::Fixed));
+        // A header or footer is placed as a page child is: no grid holds
+        // it, and it floats in a column.
+        for (key, root) in [("header", &page.header), ("footer", &page.footer)] {
+            if let Some(n) = root {
+                self.at(key, |c| {
+                    c.node(n, Ctx::Fixed);
+                    c.grid_area(n, None);
+                    if floated(n) {
+                        c.float_sibling(n, true);
+                    }
+                });
+            }
         }
         self.in_fixed = false;
         self.children(None, &page.children, Ctx::Page);
@@ -597,24 +629,31 @@ impl<'a> Checker<'a> {
             for (i, n) in children.iter().enumerate() {
                 c.at_index(i, |c| {
                     c.node(n, ctx);
-                    let Some(name) = &n.style.grid_area else {
-                        return;
-                    };
-                    let st = &n.style;
-                    let reported =
-                        !is_area_name(name) || st.grid_row.is_some() || st.grid_column.is_some();
-                    if !reported && !areas.as_ref().is_some_and(|a| a.has(name)) {
-                        c.at("style", |c| {
-                            c.err(
-                                Code::InvalidValue,
-                                Some("gridArea"),
-                                format!("the parent's `gridTemplateAreas` has no area `{name}`"),
-                            );
-                        });
-                    }
+                    c.grid_area(n, areas.as_ref());
                 });
             }
         });
+    }
+
+    /// The `gridArea` of child `n`: an area of its parent's template
+    /// `areas` (`None`: the parent has none, or `n` has no parent). A name
+    /// that is malformed, or combined with `gridRow` or `gridColumn`, is
+    /// reported by the style's own checks.
+    fn grid_area(&mut self, n: &Node, areas: Option<&Areas<'_>>) {
+        let Some(name) = &n.style.grid_area else {
+            return;
+        };
+        let st = &n.style;
+        let reported = !is_area_name(name) || st.grid_row.is_some() || st.grid_column.is_some();
+        if !reported && !areas.is_some_and(|a| a.has(name)) {
+            self.at("style", |c| {
+                c.err(
+                    Code::InvalidValue,
+                    Some("gridArea"),
+                    format!("the parent's `gridTemplateAreas` has no area `{name}`"),
+                );
+            });
+        }
     }
 
     /// Checks the floated children of a box with `parent` style (`None`:
@@ -623,9 +662,6 @@ impl<'a> Checker<'a> {
     /// order, so it takes no `alignContent`, they no `flexBasis`, and a
     /// float, shrink-to-fit, no `flexGrow`.
     fn floats(&mut self, parent: Option<&Style>, children: &[Node]) {
-        let floated = |n: &Node| {
-            n.style.floats().is_some() && n.style.display != Some(crate::schema::Display::None)
-        };
         let count = children.iter().filter(|n| floated(n)).count();
         if count == 0 {
             return;
@@ -649,38 +685,54 @@ impl<'a> Checker<'a> {
         }
         self.at("children", |c| {
             for (i, n) in children.iter().enumerate() {
-                c.at_index(i, |c| {
-                    let s = &n.style;
-                    if column {
-                        let problem = if s.flex_basis.is_some() {
-                            Some(("flexBasis", "`flexBasis` does not apply in a box with floated children"))
-                        } else if s.flex_grow.is_some() && floated(n) {
-                            Some(("flexGrow", "a float does not grow: it is as wide and as tall as its content"))
-                        } else {
-                            None
-                        };
-                        if let Some((name, message)) = problem {
-                            c.at("style", |c| c.err(Code::StyleNotApplicable, Some(name), message));
-                        }
-                    }
-                    if !floated(n) {
-                        return;
-                    }
-                    let problem = if !column {
-                        Some("floats only apply to children of a column box, not of a row, grid, wrapping or reversed box")
-                    } else if s.position == Some(Position::Absolute) {
-                        Some("a float cannot be absolutely positioned")
-                    } else if n.brk.before == BreakMode::Page || n.brk.after == BreakMode::Page {
-                        Some("a float cannot force a page break")
-                    } else {
-                        None
-                    };
-                    if let Some(message) = problem {
-                        c.at("style", |c| c.err(Code::InvalidValue, Some("float"), message));
-                    }
-                });
+                c.at_index(i, |c| c.float_sibling(n, column));
             }
         });
+    }
+
+    /// Checks child `n` of a box with floated children (`column`: a column
+    /// box, or the page): it takes no `flexBasis`; and when it floats, it
+    /// needs a column box, does not grow, is not absolutely positioned and
+    /// forces no page break.
+    fn float_sibling(&mut self, n: &Node, column: bool) {
+        let s = &n.style;
+        if column {
+            let problem = if s.flex_basis.is_some() {
+                Some((
+                    "flexBasis",
+                    "`flexBasis` does not apply in a box with floated children",
+                ))
+            } else if s.flex_grow.is_some() && floated(n) {
+                Some((
+                    "flexGrow",
+                    "a float does not grow: it is as wide and as tall as its content",
+                ))
+            } else {
+                None
+            };
+            if let Some((name, message)) = problem {
+                self.at("style", |c| {
+                    c.err(Code::StyleNotApplicable, Some(name), message);
+                });
+            }
+        }
+        if !floated(n) {
+            return;
+        }
+        let problem = if !column {
+            Some("floats only apply to children of a column box, not of a row, grid, wrapping or reversed box")
+        } else if s.position == Some(Position::Absolute) {
+            Some("a float cannot be absolutely positioned")
+        } else if n.brk.before == BreakMode::Page || n.brk.after == BreakMode::Page {
+            Some("a float cannot force a page break")
+        } else {
+            None
+        };
+        if let Some(message) = problem {
+            self.at("style", |c| {
+                c.err(Code::InvalidValue, Some("float"), message);
+            });
+        }
     }
 
     /// Reports the properties of `style` that only tables take, for a

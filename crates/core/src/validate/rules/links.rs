@@ -1,6 +1,6 @@
 //! The checks of links and bookmarks.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use super::{collect_anchors, Checker, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_LINK};
 use crate::error::ValidationCode as Code;
@@ -19,20 +19,29 @@ impl Checker<'_> {
         if let Some(id) = link.strip_prefix('#') {
             let doc = self.doc;
             let anchors = self.anchors.get_or_insert_with(|| {
-                let mut out = HashSet::new();
+                let mut out = HashMap::new();
                 for n in doc.pages.iter().flat_map(|p| &p.children) {
                     if !n.hidden() {
-                        collect_anchors(n, &mut out);
+                        collect_anchors(n, false, &mut out);
                     }
                 }
                 out
             });
-            if !anchors.contains(id) {
-                self.err(
+            match anchors.get(id).copied() {
+                None => self.err(
                     Code::UnknownAnchor,
                     Some("link"),
                     format!("no displayed node in the page body (flow and overlays) has id `{id}`"),
-                );
+                ),
+                // PDF/UA-2 links go to their target's element too (ISO
+                // 14289-2, 8.8), and decoration has none.
+                Some(true) if self.profile.pdf_2() => self.lacks(
+                    "link",
+                    format!(
+                        "PDF/UA-2 links go to a structure element: `{id}` is decoration (fixed, or with the role `artifact`), which has none"
+                    ),
+                ),
+                Some(_) => {}
             }
             return;
         }
@@ -58,6 +67,15 @@ impl Checker<'_> {
     }
 
     pub(super) fn bookmark(&mut self, b: &Bookmark) {
+        // PDF/UA-2 bookmarks go to their node's element too (ISO 14289-2,
+        // 8.8), and decoration has none. Headers and footers take no
+        // bookmarks at all (below).
+        if self.profile.pdf_2() && self.decoration > 0 && !self.in_fixed {
+            self.lacks(
+                "bookmark",
+                "PDF/UA-2 bookmarks go to a structure element: decoration (fixed, or with the role `artifact`) has none".into(),
+            );
+        }
         self.at("bookmark", |c| {
             if c.in_fixed {
                 c.err(

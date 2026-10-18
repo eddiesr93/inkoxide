@@ -70,7 +70,10 @@ impl Checker<'_> {
                                 while col < ncols && busy[col] > ri {
                                     col += 1;
                                 }
+                                // Saturating: on a 32-bit target a span near
+                                // u32::MAX would wrap past the column count.
                                 let span = cell.col_span.max(1) as usize;
+                                let rows_to = ri.saturating_add(cell.row_span as usize);
                                 if cell.col_span == 0 || cell.row_span == 0 {
                                     c.err(
                                         Code::InvalidTable,
@@ -78,7 +81,7 @@ impl Checker<'_> {
                                         "colSpan and rowSpan must be at least 1",
                                     );
                                 }
-                                if col + span > ncols
+                                if col.saturating_add(span) > ncols
                                     || busy[col..col + span].iter().any(|&b| b > ri)
                                 {
                                     c.err(
@@ -86,14 +89,14 @@ impl Checker<'_> {
                                         None,
                                         format!("cell does not fit: row has {ncols} columns"),
                                     );
-                                } else if ri + cell.row_span as usize > nrows {
+                                } else if rows_to > nrows {
                                     c.err(
                                         Code::InvalidTable,
                                         Some("rowSpan"),
                                         "rowSpan extends past the last row",
                                     );
                                 } else if ri < t.header_rows as usize
-                                    && ri + cell.row_span as usize > t.header_rows as usize
+                                    && rows_to > t.header_rows as usize
                                 {
                                     c.err(
                                         Code::InvalidTable,
@@ -101,9 +104,9 @@ impl Checker<'_> {
                                         "a header cell cannot span into body rows",
                                     );
                                 } else {
-                                    busy[col..col + span].fill(ri + cell.row_span as usize);
+                                    busy[col..col + span].fill(rows_to);
                                 }
-                                col += span;
+                                col = col.saturating_add(span);
                                 c.debug(cell.debug);
                                 c.at("style", |c| {
                                     c.style(&cell.style, false, true);

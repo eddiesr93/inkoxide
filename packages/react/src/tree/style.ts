@@ -153,6 +153,17 @@ export function runAlignOf(s: FlatStyle): RunAlign | undefined {
   return typeof v === 'string' && (RUN_ALIGNS as readonly string[]).includes(v) ? (v as RunAlign) : undefined;
 }
 
+/**
+ * `c` drawn on white, opaque: the engine paints a page background as an opaque fill and ignores
+ * its alpha, so a translucent one (`bg-transparent`, `bg-black/5`) is mixed with the paper here.
+ */
+export function onWhite(c: Color): Color {
+  const a = c[3];
+  if (a === 1) return c;
+  const mix = (v: number): number => round(v * a + (1 - a));
+  return [mix(c[0]), mix(c[1]), mix(c[2]), 1];
+}
+
 /** A colour, with `currentColor` as `current`. */
 export const resolveColor = (c: ColorValue, current: Color): Color => (c === 'currentColor' ? current : c);
 
@@ -270,8 +281,11 @@ interface BoxPlan {
   fixed: Style | undefined;
   /** True when a border or background resolves to `currentColor`. */
   usesCurrent: boolean;
-  byColor?: Map<Color, Style | undefined>;
+  byColor?: Map<string, Style | undefined>;
 }
+
+/** How many text colours one style keeps a box for: more than a template has, not unbounded for data. */
+const MAX_CACHED_COLORS = 16;
 
 const plans = new WeakMap<FlatStyle, BoxPlan>();
 const cellPlans = new WeakMap<FlatStyle, BoxPlan>();
@@ -301,10 +315,14 @@ export function boxStyle(s: FlatStyle, currentColor: Color, cell = false): Style
     cache.set(s, plan);
   }
   if (!plan.usesCurrent) return plan.fixed;
+  // By value: the builder makes a colour of its own on every build, so identity would add an entry
+  // to a style that outlives it (the Tailwind cache keeps the style) on every render.
+  const key = currentColor.join(',');
   plan.byColor ??= new Map();
-  if (plan.byColor.has(currentColor)) return plan.byColor.get(currentColor);
+  if (plan.byColor.has(key)) return plan.byColor.get(key);
   const out = computeBox(s, currentColor, cell);
-  plan.byColor.set(currentColor, out);
+  if (plan.byColor.size >= MAX_CACHED_COLORS) plan.byColor.clear();
+  plan.byColor.set(key, out);
   return out;
 }
 

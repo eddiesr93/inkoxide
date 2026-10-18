@@ -1,8 +1,6 @@
 // What a `<Document>` sets besides the tree: its PDF/A level and its encryption.
 import type { Permissions } from '../components/index.ts';
-
-/** Throws the template error of a prop, with `message`. */
-type Fail = (message: string) => never;
+import type { Fail } from '../errors.ts';
 
 export interface OutputOptions {
   /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */

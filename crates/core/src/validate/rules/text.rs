@@ -4,7 +4,7 @@
 use super::{
     Checker, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS, MAX_FEATURE_VALUE,
     MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE, MAX_STRETCH,
-    MAX_VARIATIONS, MAX_VARIATION_VALUE, MIN_STRETCH,
+    MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{FontFeature, RunAlign, RunImage, TextRun};
@@ -26,16 +26,19 @@ impl Checker<'_> {
     }
 
     /// A font declaration's `weightRange`, `stretch` and `stretchRange`:
-    /// weights from 1 to 1000, widths from [`MIN_STRETCH`] to
+    /// weights from 1 to [`MAX_WEIGHT`], widths from [`MIN_STRETCH`] to
     /// [`MAX_STRETCH`] percent, a range lowest first.
     pub(super) fn font_ranges(&mut self, f: &crate::schema::FontDecl) {
         let within = |v: f32, lo: f32, hi: f32| (lo..=hi).contains(&v);
         if let Some([lo, hi]) = f.weight_range {
-            if !(within(lo, 1.0, 1000.0) && within(hi, 1.0, 1000.0) && lo <= hi) {
+            let max = f32::from(MAX_WEIGHT);
+            if !(within(lo, 1.0, max) && within(hi, 1.0, max) && lo <= hi) {
                 self.err(
                     Code::OutOfRange,
                     Some("weightRange"),
-                    format!("[{lo}, {hi}] is not two weights from 1 to 1000, the lower first"),
+                    format!(
+                        "[{lo}, {hi}] is not two weights from 1 to {MAX_WEIGHT}, the lower first"
+                    ),
                 );
             }
         }

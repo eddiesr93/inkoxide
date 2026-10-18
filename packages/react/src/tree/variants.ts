@@ -7,7 +7,10 @@ import type { Node as SchemaNode, Style } from '@inkoxide/schema';
 export const FLOW_KEYS = ['id', 'break', 'link', 'bookmark', 'pages'] as const;
 export type FlowKey = (typeof FLOW_KEYS)[number];
 
-/** Style keys that place an element among its siblings (kept on a per-page wrapper). */
+/**
+ * Style keys that place an element among its siblings (kept on a per-page wrapper): floats too,
+ * which do not float inside the grid cell the variants are stacked in.
+ */
 const OUTER_KEYS = [
   'margin',
   'inset',
@@ -27,6 +30,10 @@ const OUTER_KEYS = [
   'maxHeight',
   'aspectRatio',
   'zIndex',
+  'float',
+  'clear',
+  'shapeOutside',
+  'shapeMargin',
   'rotate',
   'transform',
   'transformOrigin',

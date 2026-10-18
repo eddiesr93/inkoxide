@@ -20,7 +20,9 @@ Inkoxide is designed to render documents built from untrusted data:
 - The engine is written in safe Rust (`#![forbid(unsafe_code)]` in the core crate) and is fuzzed
   every night with JSON, structured documents, SVG images and fonts as input.
 - Documents are validated before rendering, and page counts, nesting depth, image sizes, SVG
-  complexity and the colour glyphs drawn from fonts are limited, so hostile input fails with an error instead of exhausting memory.
+  complexity, font declarations and the instances of variable fonts, the size a WOFF or WOFF2
+  font decodes to, and the colour glyphs drawn from fonts are limited, so hostile input fails
+  with an error instead of exhausting memory.
   Attachments are limited to 1000 files, 64 MiB each and 256 MiB in all.
 - `@inkoxide/render` does not fetch remote images unless the caller allows their origins (an
   entry without a port allows only its scheme's default port), and does not follow a redirect from an allowed URL, since its target could be outside them. Each
@@ -51,7 +53,9 @@ does not do:
   any encrypted PDF. Stream lengths are measured after compression, so they say something about
   the content: the length of a font subset, roughly how many glyphs it holds. The subset tags
   of font names are keyed, and the widths cover every glyph of the font, so neither tells which
-  glyphs the file uses.
+  glyphs the file uses. Colour glyphs (emoji) are the exception: they are drawn by fonts of
+  their own, whose widths, bounding box and number of glyphs are those of the colour glyphs
+  used.
 - **Hide which form choices are made.** PDF writes this state as names and numbers, which are
   never encrypted: whether each checkbox is checked, which radio button of a group is on (by a
   position in the group, not its value), and which options of a list box are selected and

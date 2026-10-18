@@ -56,11 +56,18 @@ const BUNDLED: Readonly<Record<string, () => URL>> = {
 export const BUNDLED_ASSETS: readonly string[] = Object.keys(BUNDLED);
 
 let options: BrowserOptions = {};
-let started = false;
+/** Whether `options` are set for good: by the first `init`, or by a start; until a start fails. */
+let configured = false;
 
-/** Sets the options of the host; they are read when it starts, so only before the first render counts. */
+/**
+ * Sets the options of the host, which it reads when it starts: those of the first call count, and
+ * a call after a render has started the host changes nothing. After a start that failed, the next
+ * call sets them again.
+ */
 export function configureBrowser(opts: BrowserOptions = {}): void {
-  if (!started) options = opts;
+  if (configured) return;
+  options = opts;
+  configured = true;
 }
 
 /** An error of the engine, as the worker sends it back. */
@@ -230,6 +237,14 @@ class WorkerEngine implements Engine {
     });
   }
 
+  /** Ends the worker, when the engine could not start in it. */
+  close(): void {
+    this.worker?.terminate();
+    this.worker = undefined;
+    this.channel?.close();
+    this.channel = undefined;
+  }
+
   private post(message: Request): void {
     this.worker ??= this.spawn();
     this.worker.postMessage(this.withChannel(message));
@@ -309,8 +324,15 @@ export async function clearCaches(): Promise<void> {
 
 /** The URL of a bundled asset. */
 function assetUrl(path: string): URL | undefined {
-  if (options.assets !== undefined) return new URL(path, onPage(options.assets));
+  if (options.assets !== undefined) return new URL(path, assetsFolder(options.assets));
   return BUNDLED[path]?.();
+}
+
+/** The `assets` folder, with the `/` that ends a folder's URL: `/static/inkoxide` is that folder too. */
+function assetsFolder(assets: string | URL): URL {
+  const url = onPage(assets);
+  if (!url.pathname.endsWith('/')) url.pathname += '/';
+  return url;
 }
 
 /** The bytes at `url`, or undefined when there are none. A `file:` URL is read in Node (the tests). */
@@ -330,17 +352,28 @@ async function readUrl(url: URL): Promise<Uint8Array | undefined> {
 
 const browserHost: EngineHost = {
   async start() {
-    started = true;
+    configured = true;
+    // The worker of a start that failed after it (an engine of another schema version).
+    if (engine instanceof WorkerEngine) engine.close();
     const inWorker = options.worker ?? typeof Worker !== 'undefined';
-    engine = inWorker ? new WorkerEngine() : direct;
-    const { wasm: source } = options;
-    const init: InitOptions = { threads: threadsFor(inWorker) };
-    // The engine's built-in hyphenation patterns are served from `assets` too, when it is set.
-    if (options.assets !== undefined) init.hyphenation = assetUrl('hyphenation/')?.href;
-    const module = source === undefined ? undefined : inWorker ? await forWorker(source) : source;
-    await engine.call('init', [module, init]);
-    engineVersion = (await engine.call('version', [])) as EngineVersion;
-    engineThreads = (await engine.call('threadCount', [])) as number;
+    const starting = inWorker ? new WorkerEngine() : direct;
+    engine = starting;
+    try {
+      const { wasm: source } = options;
+      const init: InitOptions = { threads: threadsFor(inWorker) };
+      // The engine's built-in hyphenation patterns are served from `assets` too, when it is set.
+      if (options.assets !== undefined) init.hyphenation = assetUrl('hyphenation/')?.href;
+      const module = source === undefined ? undefined : inWorker ? await forWorker(source) : source;
+      await starting.call('init', [module, init]);
+      engineVersion = (await starting.call('version', [])) as EngineVersion;
+      engineThreads = (await starting.call('threadCount', [])) as number;
+    } catch (e) {
+      // The next `init` starts again, with its own options.
+      if (starting instanceof WorkerEngine) starting.close();
+      engine = undefined;
+      configured = false;
+      throw e;
+    }
   },
   version() {
     if (!engineVersion) throw new Error('@inkoxide/render/browser: the engine has not started; call init().');

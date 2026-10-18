@@ -59,8 +59,8 @@ Worker.
 - **The worker.** One worker runs the renders in order and keeps its fonts registered. Images
   are copied to it, since a render may need them again; the PDF is transferred back. `signal`
   and `timeoutMs` end the worker and start a new one; `timeoutMs` rejects with a `DOMException`
-  named `TimeoutError`. In Node, where the native render cannot be stopped, neither has an
-  effect on it.
+  named `TimeoutError`, and counts the whole render: the loading of its images and every pass.
+  In Node, where the native render cannot be stopped, neither has an effect on it.
 - **No Node in shared code.** `@inkoxide/react` validates trees in development with a validator
   Ajv generates ahead of time (`scripts/gen-schema-validator.mjs`), so no page needs
   `unsafe-eval`, and reads its version from a generated file (`scripts/gen-react-version.mjs`),

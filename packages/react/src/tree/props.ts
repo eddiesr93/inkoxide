@@ -14,6 +14,7 @@ export const BLOCK_ONLY = [
   'bookmark',
   'pages',
   'render',
+  'role',
   'dir',
   'orphans',
   'widows',

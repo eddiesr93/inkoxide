@@ -1,5 +1,6 @@
 //! The root `viewBox`: how an SVG fills the box it is drawn in.
 
+use svgtypes::{Align, AspectRatio, NumberListParser};
 use usvg::roxmltree::Node;
 
 use crate::geom::Rect;
@@ -20,57 +21,50 @@ pub(crate) struct ViewBox {
 }
 
 impl ViewBox {
-    /// Reads the root element's `viewBox` and `preserveAspectRatio`.
-    /// `None` without a usable `viewBox`.
+    /// Reads the root element's `viewBox` and `preserveAspectRatio`, as
+    /// `usvg` does. `None` without a usable `viewBox`: one of zero or
+    /// negative size is none.
     pub(crate) fn of(svg: Node<'_, '_>) -> Option<Self> {
-        let v: Vec<f32> = svg
-            .attribute("viewBox")?
-            .split(|c: char| c.is_ascii_whitespace() || c == ',')
-            .filter(|s| !s.is_empty())
-            .map(str::parse)
-            .collect::<Result<_, _>>()
-            .ok()?;
-        let &[x, y, w, h] = v.as_slice() else {
-            return None;
-        };
-        if !(v.iter().all(|n| n.is_finite()) && w > 0.0 && h > 0.0) {
+        let rect = Self::rect_of(svg)?;
+        let [.., w, h] = rect;
+        if !(w > 0.0 && h > 0.0) {
             return None;
         }
-        let mut words = svg
+        // An invalid value is the default, `xMidYMid meet`.
+        let ratio = svg
             .attribute("preserveAspectRatio")
-            .unwrap_or("")
-            .split_ascii_whitespace()
-            .skip_while(|&w| w == "defer");
-        let align = match words.next() {
-            Some("none") => None,
-            Some(a) if a.len() == 8 && a.starts_with('x') && a[4..].starts_with('Y') => {
-                let frac = |s: &str| match s {
-                    "Min" => Some(0.0),
-                    "Mid" => Some(0.5),
-                    "Max" => Some(1.0),
-                    _ => None,
-                };
-                // An invalid value is the default, `xMidYMid meet`.
-                let Some(pair) = frac(&a[1..4]).zip(frac(&a[5..8])) else {
-                    return Some(Self::new([x, y, w, h], Some((0.5, 0.5)), false));
-                };
-                Some(pair)
-            }
-            _ => Some((0.5, 0.5)),
+            .and_then(|v| v.parse::<AspectRatio>().ok())
+            .unwrap_or_default();
+        let align = match ratio.align {
+            Align::None => None,
+            Align::XMinYMin => Some((0.0, 0.0)),
+            Align::XMidYMin => Some((0.5, 0.0)),
+            Align::XMaxYMin => Some((1.0, 0.0)),
+            Align::XMinYMid => Some((0.0, 0.5)),
+            Align::XMidYMid => Some((0.5, 0.5)),
+            Align::XMaxYMid => Some((1.0, 0.5)),
+            Align::XMinYMax => Some((0.0, 1.0)),
+            Align::XMidYMax => Some((0.5, 1.0)),
+            Align::XMaxYMax => Some((1.0, 1.0)),
         };
-        Some(Self::new(
-            [x, y, w, h],
-            align,
-            words.next() == Some("slice"),
-        ))
+        Some(Self::new(rect, align, ratio.slice))
+    }
+
+    /// The four numbers of the root element's `viewBox`, as `usvg` reads
+    /// them (no separator is needed before a sign), whatever their sign;
+    /// `None` when they are not four finite numbers.
+    pub(super) fn rect_of(svg: Node<'_, '_>) -> Option<[f32; 4]> {
+        let mut numbers = NumberListParser::from(svg.attribute("viewBox")?);
+        let mut next = || Some(numbers.next()?.ok()? as f32);
+        let rect = [next()?, next()?, next()?, next()?];
+        rect.iter().all(|n| n.is_finite()).then_some(rect)
     }
 
     pub(super) fn new(rect: [f32; 4], align: Option<(f32, f32)>, slice: bool) -> Self {
         Self { rect, align, slice }
     }
 
-    /// The part of `size` (the viewport, from the origin) the `viewBox`
-    /// covers.
+    /// The part of the viewport `(x, y, w, h)` that the `viewBox` covers.
     pub(crate) fn fit(&self, (x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
         let [_, _, vw, vh] = self.rect;
         let Some((ax, ay)) = self.align else {

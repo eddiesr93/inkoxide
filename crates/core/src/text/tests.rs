@@ -1391,3 +1391,89 @@ fn vertical_text_shapes_top_to_bottom_with_vertical_forms() {
         assert!((g.y_offset + 8.8).abs() < 1e-4, "{g:?}");
     }
 }
+
+/// A text node holds more than 65 535 runs: the last run of one with
+/// 65 537 is shaped, measured and drawn with its own size, not the first
+/// run's.
+#[test]
+fn a_text_node_holds_more_than_65_535_runs() {
+    let s = store();
+    let mut runs =
+        vec![r#"{"text":"","font":"Inter-Regular","size":10}"#; usize::from(u16::MAX) + 2];
+    runs[0] = r#"{"text":"a","font":"Inter-Regular","size":10}"#;
+    *runs.last_mut().unwrap() = r#"{"text":"a","font":"Inter-Regular","size":40}"#;
+    let d = doc(&format!(r#"{{"type":"text","runs":[{}]}}"#, runs.join(",")));
+    let fonts = FontSet::load(&d, &s).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    let height = cache.layout(node, 500.0).unwrap().height;
+    let (p, _) = cache.prepared(node).unwrap();
+    let last = p.segments.last().unwrap();
+    assert_eq!(last.run as usize, usize::from(u16::MAX) + 1);
+    let advance = |seg: &Segment| p.glyphs[seg.glyphs.start as usize].advance;
+    assert!((advance(last) - 4.0 * advance(&p.segments[0])).abs() < 1e-3);
+    assert!(height > 40.0, "{height}");
+}
+
+/// Only displayed text asks a variable font for its sizes: not a hidden
+/// node, nor the text of a hidden box or table cell.
+#[test]
+fn hidden_text_asks_no_font_size() {
+    let mut store = FontStore::new();
+    let opsz = crate::test_fixtures::fixture("fonts/VarTest-opsz.ttf");
+    store.register("opsz", opsz).unwrap();
+    let text = |size: u32, style: &str| {
+        format!(
+            r#"{{"type":"text","style":{{{style}}},"runs":[{{"text":"a","font":"o","size":{size}}}]}}"#
+        )
+    };
+    let hidden = r#""display":"none""#;
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"o","family":"O","source":"opsz"}}],
+            "pages":[{{"size":{{"width":600,"height":800}},"children":[{},{},
+            {{"type":"box","children":[{}]}},
+            {{"type":"table","columns":[{{"width":"auto"}},{{"width":"auto"}}],"rows":[{{"cells":[
+              {{"children":[{}]}},{{"style":{{{hidden}}},"children":[{}]}}]}}]}}]}}]}}"#,
+        text(8, ""),
+        text(9, hidden),
+        text(10, hidden),
+        text(11, ""),
+        text(12, ""),
+    );
+    let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
+    let fonts = FontSet::load(&d, &store).unwrap();
+    let images = crate::images::ImageSet::load(
+        &d.pages,
+        &crate::ImageStore::new(),
+        &crate::images::ImageCrateDecoder,
+    )
+    .unwrap();
+    let sizes: Vec<f32> = font_asks(&d, &fonts, &images)
+        .iter()
+        .map(|(_, ask)| ask.size)
+        .collect();
+    assert_eq!(sizes, [8.0, 11.0]);
+}
+
+#[test]
+fn segments_in_a_glyph_range() {
+    let st = store();
+    let run = |text: &str, font: &str| format!(r#"{{"text":"{text}","font":"{font}","size":10}}"#);
+    // Three runs, three segments of 3, 1 and 3 glyphs.
+    let d = doc(&format!(
+        r#"{{"type":"text","runs":[{},{},{}]}}"#,
+        run("abc", "Inter-Regular"),
+        run("d", "Inter-Bold"),
+        run("efg", "Inter-Regular")
+    ));
+    let fonts = FontSet::load(&d, &st).unwrap();
+    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let node = &d.pages[0].children[0];
+    cache.layout(node, 500.0).unwrap();
+    let (p, _) = cache.prepared(node).unwrap();
+    let runs = |a: usize, b: usize| p.segments_in(a, b).map(|seg| seg.run).collect::<Vec<_>>();
+    assert_eq!(runs(0, 3), [0]);
+    assert_eq!(runs(2, 4), [0, 1]);
+    assert_eq!(runs(3, 7), [1, 2]);
+    assert!(runs(4, 4).is_empty());
+}

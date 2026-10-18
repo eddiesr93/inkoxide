@@ -41,9 +41,19 @@ export interface TailwindOptions extends ThemeOptions {
 let source: ClassSource | undefined;
 /** The source load asked for last, until it settles: a later theme replaces an earlier one. */
 let loading: Promise<ClassSource> | undefined;
-let strict =
-  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NODE_ENV !==
-  'production';
+/**
+ * Whether classes that cannot be mapped throw: outside production. `process.env.NODE_ENV` is
+ * written out so that a bundler replaces it; a browser has no `process` otherwise.
+ */
+function defaultStrict(): boolean {
+  try {
+    return process.env.NODE_ENV !== 'production';
+  } catch {
+    return true;
+  }
+}
+
+let strict = defaultStrict();
 let cache = new Lru<FlatStyle>(5000);
 const warned = new Set<string>();
 const EMPTY: FlatStyle = Object.freeze({}) as FlatStyle;
@@ -127,9 +137,12 @@ export function tw(className: string | undefined | null | false, units?: TwUnits
   return style;
 }
 
-/** Pre-computes the styles of known class strings (e.g. at server start). */
-tw.warm = (classNames: Iterable<string>): void => {
-  for (const c of classNames) tw(c);
+/**
+ * Pre-computes the styles of known class strings (e.g. at server start). Give the `units` a
+ * render passes to `tw()` for classes with page variants or `em`, `vw` and `vh` values.
+ */
+tw.warm = (classNames: Iterable<string>, units?: TwUnits): void => {
+  for (const c of classNames) tw(c, units);
 };
 
 /** Cache statistics, for diagnostics and tests. */

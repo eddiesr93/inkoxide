@@ -8,7 +8,7 @@ use super::Cache;
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageBody, ImageKey, ImageSet};
 use crate::pdf::{image_transparency, Profile};
-use crate::schema::{Display, Document, Node, NodeKind};
+use crate::schema::{Display, Document, ImageSource, Node, NodeKind};
 use crate::text::ColorGlyphs;
 use crate::ValidationError;
 
@@ -78,7 +78,17 @@ pub(super) fn transparent_svg_color_glyph(
         None
     };
     let found = find_shown(doc, |node, path| {
-        let image = images.key(node).map(|k| (k, format!("{path}.src")));
+        let image = images.key(node).map(|k| {
+            // An inline image's source is its `data`, as validation names it.
+            let field = match &node.kind {
+                NodeKind::Image {
+                    source: ImageSource::Inline(_),
+                    ..
+                } => "data",
+                _ => "src",
+            };
+            (k, format!("{path}.{field}"))
+        });
         let background = images
             .background_key(node)
             .map(|k| (k, format!("{path}.backgroundImage")));

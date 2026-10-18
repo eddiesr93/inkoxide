@@ -74,6 +74,14 @@ test('after a trap on the render thread, a new engine starts its own pool', { sk
     WebAssembly.Memory = Memory;
   }
   assert.deepEqual(maxima, [32768, 16384, 8192, 4096]);
+  // Meanwhile a value out of range is refused as before, and validate takes what render takes.
+  for (const threads of [1.5, 257, Infinity]) {
+    assert.throws(() => ink.renderSync(fixture('docs/invoice.json'), { threads }), {
+      code: 'INVALID_ARGUMENT',
+      path: 'options.threads',
+    });
+  }
+  assert.deepEqual(ink.validate(fixture('docs/invoice.json'), undefined, undefined, { threads: 2 }), []);
   for (let i = 0; i < 100 && ink.threadCount() === 1; i++) await new Promise((r) => setTimeout(r, 50));
   assert.equal(ink.threadCount(), 2);
   assert.deepEqual(ink.renderSync(fixture('docs/invoice.json')), pdf);

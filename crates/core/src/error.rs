@@ -71,9 +71,10 @@ validation_codes! {
     /// An `attachment` node or run names a file that `attachments` does
     /// not declare.
     UnknownAttachment = "UNKNOWN_ATTACHMENT",
-    /// An attachment's `src` is not in the render's attachment store. Only
-    /// [`render`](crate::render) reports it: [`validate`](crate::validate)
-    /// does not see the store.
+    /// An attachment's `src` is not in the render's attachment store.
+    /// [`render`](crate::render) and
+    /// [`validate_with_options`](crate::validate_with_options) report it:
+    /// [`validate`](crate::validate) does not see the store.
     AttachmentNotRegistered = "ATTACHMENT_NOT_REGISTERED",
     /// An attachment is over 64 MiB, or a document's attachments are over
     /// 256 MiB together.
@@ -92,16 +93,21 @@ validation_codes! {
     /// an image with an alpha channel, an SVG drawn with opacity, a mask or
     /// a blend mode, an isolated group, a clip path of more than one path,
     /// or a colour glyph that needs transparency); under PDF/A-1b, 2b and
-    /// 2a, `attachments`. Only
-    /// [`render`](crate::render) reports it: [`validate`](crate::validate)
-    /// does not know the level.
+    /// 2a, `attachments`. [`render`](crate::render) reports the first such
+    /// use, and so does
+    /// [`validate_with_options`](crate::validate_with_options), which knows
+    /// the level, but for colour glyphs: a render checks those once the
+    /// text is shaped, after the rest, and names one only when nothing else
+    /// conflicts. [`validate`](crate::validate) does not know the level.
     PdfaConflict = "PDFA_CONFLICT",
     /// The document lacks something PDF/UA requires (either part): a title, a
     /// language, alternative text on an image or a `figure` box, a label
     /// on a form field, headings that go down one level at a time from
     /// `h1`, or lists made of items (a `listItem` inside a `list`, a
-    /// `listBody` inside a `listItem`). Only [`render`](crate::render) reports it, with
-    /// [`RenderOptions::pdf_ua`](crate::RenderOptions::pdf_ua).
+    /// `listBody` inside a `listItem`); under part 2, a `#id` link or a
+    /// bookmark that goes to decoration. [`render`](crate::render) reports
+    /// it, with [`RenderOptions::pdf_ua`](crate::RenderOptions::pdf_ua),
+    /// and so does [`validate_with_options`](crate::validate_with_options).
     UaConflict = "UA_CONFLICT",
 }
 

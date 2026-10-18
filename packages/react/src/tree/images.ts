@@ -4,6 +4,7 @@
  * `src`s with the same rules.
  */
 import type { ImageRequest, ImageSrcValue } from '../components/index.ts';
+import type { Fail } from '../errors.ts';
 
 /** Which remote image URLs `<Image src>` may use; the caller fetches them (`@inkoxide/render` does). */
 export interface RemoteImagePolicy {
@@ -175,11 +176,7 @@ export class ImageTable {
    * missing, a request without a uri, or a URL the remote image policy does not allow; messages
    * name the element as `component`.
    */
-  resolve(
-    src: unknown,
-    fail: (message: string) => never,
-    component = 'Image',
-  ): { src: string } | { data: string } {
+  resolve(src: unknown, fail: Fail, component = 'Image'): { src: string } | { data: string } {
     const s = imageSource(src, (id) => this.opts.registered.has(id));
     switch (s.kind) {
       case 'bytes': {

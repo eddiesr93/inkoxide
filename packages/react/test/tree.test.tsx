@@ -24,6 +24,7 @@ import {
   View,
 } from '../src/index.ts';
 import { hostConfig } from '../src/reconciler/host-config.ts';
+import { transformText } from '../src/tree/text.ts';
 import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);
@@ -97,6 +98,18 @@ describe('text inheritance and runs', () => {
   it('applies locale-aware text-transform', () => {
     const r = render(<Text className="uppercase">café and naïve</Text>);
     expect(first<TextNode>(r).runs[0]?.text).toBe('CAFÉ AND NAÏVE');
+  });
+
+  it('cases a word split over several strings as one word', () => {
+    // JSX makes `{fruit}s pie` the strings 'apple' and 's pie'.
+    const fruit = 'apple';
+    const r = render(<Text className="capitalize">{fruit}s pie</Text>);
+    expect(first<TextNode>(r).runs.map((x) => x.text)).toEqual(['Apples Pie']);
+  });
+
+  it('keeps casing text after many language tags have been seen', () => {
+    for (let i = 0; i < 300; i++) transformText('x', 'uppercase', `en-x-t${i}`);
+    expect(transformText('istanbul', 'uppercase', 'tr')).toBe('İSTANBUL');
   });
 
   it('cases text in a lang Intl does not take by the default rules', () => {
@@ -443,6 +456,17 @@ describe('hyphenation callback', () => {
     expect(texts(r)).toEqual([`Inkoxide: typ${SHY}esetting, 2026 (rég${SHY}ions) a b`]);
   });
 
+  it('asks for a word split over several strings whole', () => {
+    const seen: string[] = [];
+    const record = (word: string) => {
+      seen.push(word);
+      return [word];
+    };
+    const fruit = 'apple';
+    render(<Text hyphenationCallback={record}>{fruit}s pie</Text>);
+    expect(seen).toEqual(['apples', 'pie']);
+  });
+
   it('leaves words that already have soft hyphens as written', () => {
     const r = render(<Text hyphenationCallback={thirds}>{`hyph${SHY}enation words`}</Text>);
     expect(texts(r)).toEqual([`hyph${SHY}enation wor${SHY}ds`]);
@@ -731,6 +755,22 @@ describe('fonts', () => {
     expect(r.warnings[0]).toBe('Font "Inter 600" is not registered; using Inter-Bold (Text in Page).');
   });
 
+  it('reports an empty registry as a template error with the component stack', () => {
+    const e = thrown(() =>
+      renderTemplate(
+        <Document>
+          <Page>
+            <Text>hi</Text>
+          </Page>
+        </Document>,
+        { fonts: new FontRegistry() },
+      ),
+    );
+    expect(e.kind).toBe('props');
+    expect(e.message).toMatch(/^No fonts are registered: add one with fonts\.register/);
+    expect(e.componentStack).toMatch(/^\n {4}in Text\n {4}in Page\n {4}in Document/);
+  });
+
   it('declares only the fonts the document uses, plus the fallback font', () => {
     const r = render(<Text>a</Text>);
     expect(r.document.fonts?.map((f) => f.id)).toEqual(['Inter-Regular', 'NotoSans-Regular']);
@@ -945,6 +985,21 @@ describe('pages, images and structure', () => {
     expect(p.header?.type).toBe('box');
     expect(p.footer?.type).toBe('box');
     expect(p.children).toEqual([{ type: 'spacer', style: { height: 10 } }]);
+  });
+
+  it('draws a translucent page background on white, as the engine paints it opaque', () => {
+    const background = (className: string) =>
+      renderTemplate(
+        <Document>
+          <Page className={className}>
+            <Spacer h={10} />
+          </Page>
+        </Document>,
+        { fonts },
+      ).document.pages[0].background;
+    expect(background('bg-transparent')).toEqual([1, 1, 1, 1]);
+    expect(background('bg-black/5')).toEqual([0.95, 0.95, 0.95, 1]);
+    expect(background('bg-black')).toEqual([0, 0, 0, 1]);
   });
 
   it('reads percentage padding on a page as a share of the page width, on every side', () => {

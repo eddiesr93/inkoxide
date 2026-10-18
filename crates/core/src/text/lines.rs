@@ -149,6 +149,14 @@ impl<'a, 'p> Breaker<'a, 'p> {
         }
     }
 
+    /// Whether glyphs `start..pos`, with the hyphen a break of `kind` before
+    /// glyph `pos` shows, fit in `limit`: the test of first fit, which
+    /// [`Self::greedy`] and [`Self::first_fit_lines`] share (balancing
+    /// relies on them agreeing).
+    fn fits(&self, start: usize, pos: usize, kind: BreakKind, limit: f32) -> bool {
+        self.width(start, pos) + self.hyphen_width(pos, kind) <= limit + WIDTH_EPS
+    }
+
     /// The box of a line with its top at `y`.
     fn box_at(&self, y: f32) -> LineBox {
         if self.boxes.banded() {
@@ -319,7 +327,7 @@ impl<'a, 'p> Breaker<'a, 'p> {
                 continue;
             }
             let limit = self.room(self.lines.len() + lines, self.y, cap);
-            if self.width(start, pos) + self.hyphen_width(pos, kind) <= limit + WIDTH_EPS {
+            if self.fits(start, pos, kind, limit) {
                 if kind == BreakKind::Mandatory {
                     return Some(lines + 1);
                 }
@@ -355,8 +363,7 @@ impl<'a, 'p> Breaker<'a, 'p> {
                 continue;
             }
             let limit = self.limit();
-            let fits = self.width(start, pos) + self.hyphen_width(pos, kind) <= limit + WIDTH_EPS;
-            if fits {
+            if self.fits(start, pos, kind, limit) {
                 if kind == BreakKind::Mandatory {
                     self.push(start, pos, kind);
                     return;
@@ -385,7 +392,8 @@ impl<'a, 'p> Breaker<'a, 'p> {
                 }
                 None => {
                     // A single unbreakable word wider than the line: break it
-                    // between clusters (overflow-wrap: anywhere).
+                    // between clusters (overflow-wrap: break-word; min-content
+                    // still counts the word whole).
                     let mut e = start + 1;
                     while e < pos
                         && (p.glyphs[e].cluster == p.glyphs[e - 1].cluster
@@ -603,15 +611,7 @@ fn metrics(line: &mut Line, para: &Para<'_>) {
     let s = line.start as usize;
     let e = (line.end as usize).max(s);
     let mut any = false;
-    // Segments are in glyph order: those on the line follow the first
-    // that ends after its start.
-    let from = p
-        .segments
-        .partition_point(|seg| seg.glyphs.end as usize <= s);
-    for seg in p.segments[from..]
-        .iter()
-        .take_while(|seg| (seg.glyphs.start as usize) < e)
-    {
+    for seg in p.segments_in(s, e) {
         if seg.glyphs.end as usize > s {
             add(seg);
             any = true;

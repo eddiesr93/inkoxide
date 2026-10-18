@@ -17,6 +17,13 @@ import {
   ValueError,
 } from '@inkoxide/style';
 import {
+  MAX_ASPECT_RATIO,
+  MAX_FONT_SIZE,
+  MAX_LINE_HEIGHT,
+  MAX_LINES,
+  MAX_WIDOW_LINES,
+  MAX_Z_INDEX,
+  MIN_Z_INDEX,
   parseFontFamily,
   Reader,
   substituteVars,
@@ -135,6 +142,13 @@ function candidateReason(compiler: ClassSource, cls: string, problem: CandidateP
   return `the variant \`${variant}\` has no meaning in a PDF${why}; page variants work: ${PAGE_VARIANTS.join(', ')}`;
 }
 
+/** `n`, read from `v`, when it is not negative: sizes, padding, gaps and border widths cannot be. */
+function unsigned<T extends number | string>(r: Reader, v: string, n: T): T {
+  if (typeof n === 'number' ? n < 0 : n.startsWith('-'))
+    throw r.error(`${r.prop}: ${v} (cannot be negative)`);
+  return n;
+}
+
 /** Expands a 1-4 value CSS edge shorthand into [top, right, bottom, left]. */
 function edges(value: string): [string, string, string, string] {
   const p = splitTopLevel(value, ' ');
@@ -235,40 +249,46 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       s.flexShrink = r.factor(v);
       return;
     case 'flex-basis':
-      s.flexBasis = r.len(v);
+      s.flexBasis = unsigned(r, v, r.len(v));
       return;
     case 'gap': {
       const [row, column = row] = splitTopLevel(v, ' ');
-      s.rowGap = r.lenPercent(row ?? v);
-      s.columnGap = r.lenPercent(column ?? v);
+      s.rowGap = unsigned(r, v, r.lenPercent(row ?? v));
+      s.columnGap = unsigned(r, v, r.lenPercent(column ?? v));
       return;
     }
     case 'row-gap':
-      s.rowGap = r.lenPercent(v);
+      s.rowGap = unsigned(r, v, r.lenPercent(v));
       return;
     case 'column-gap':
-      s.columnGap = r.lenPercent(v);
+      s.columnGap = unsigned(r, v, r.lenPercent(v));
       return;
     case 'width':
     case 'height':
     case 'min-width':
     case 'min-height': {
       const key = prop.replace(/-(\w)/, (_, c: string) => c.toUpperCase());
-      keyed[key] = r.len(v);
+      keyed[key] = unsigned(r, v, r.len(v));
       return;
     }
     case 'max-width':
     case 'max-height': {
       const key = prop === 'max-width' ? 'maxWidth' : 'maxHeight';
       if (v === 'none') delete keyed[key];
-      else keyed[key] = r.len(v);
+      else keyed[key] = unsigned(r, v, r.len(v));
       return;
     }
     case 'aspect-ratio': {
       const [a, b] = v.split('/').map((x) => x.trim());
-      if (a === undefined || a === 'auto') throw r.error(`aspect-ratio: ${v}`);
+      if (a === 'auto') {
+        delete s.aspectRatio;
+        return;
+      }
+      if (a === undefined) throw r.error(`aspect-ratio: ${v}`);
       const ratio = round(r.num(a) / (b === undefined ? 1 : r.num(b)));
-      if (!(ratio > 0 && ratio <= 1e6)) throw r.error(`aspect-ratio: ${v} (a ratio above 0)`);
+      if (!(ratio > 0 && ratio <= MAX_ASPECT_RATIO)) {
+        throw r.error(`aspect-ratio: ${v} (a ratio above 0 and at most ${MAX_ASPECT_RATIO})`);
+      }
       s.aspectRatio = ratio;
       return;
     }
@@ -349,7 +369,12 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     }
     case 'border-radius': {
       if (v.includes('/')) throw r.error(`border-radius: ${v} (elliptical corners are not supported)`);
-      const [tl, tr, br, bl] = edges(v).map((x) => r.radius(x)) as [number, number, number, number];
+      const [tl, tr, br, bl] = edges(v).map((x) => unsigned(r, x, r.radius(x))) as [
+        number,
+        number,
+        number,
+        number,
+      ];
       for (const c of Object.values(CORNERS)) delete keyed[`border${c}Radius`];
       if (tl === tr && tr === br && br === bl) s.borderRadius = tl;
       else {
@@ -374,7 +399,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     }
     case 'z-index':
       if (v === 'auto') delete s.zIndex;
-      else s.zIndex = r.integer(v, Number.MIN_SAFE_INTEGER);
+      else s.zIndex = r.integer(v, MIN_Z_INDEX, MAX_Z_INDEX);
       return;
     case 'translate': {
       if (v === 'none') {
@@ -428,10 +453,10 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       s.direction = r.oneOf('direction', v);
       return;
     case 'orphans':
-      s.orphans = r.integer(v, 1);
+      s.orphans = r.integer(v, 1, MAX_WIDOW_LINES);
       return;
     case 'widows':
-      s.widows = r.integer(v, 1);
+      s.widows = r.integer(v, 1, MAX_WIDOW_LINES);
       return;
     case 'border-collapse':
       if (v !== 'collapse' && v !== 'separate') throw r.error(`border-collapse: ${v}`);
@@ -442,7 +467,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       if (x === undefined || (y !== undefined && y !== x && r.points(y) !== r.points(x))) {
         throw r.error(`border-spacing: ${v} (one value for both axes)`);
       }
-      s.borderSpacing = r.points(x);
+      s.borderSpacing = unsigned(r, v, r.points(x));
       return;
     }
     case 'vertical-align': {
@@ -488,9 +513,14 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       else if (v === 'italic' || v.startsWith('oblique')) s.fontStyle = 'italic';
       else throw r.error(`font-style: ${v}`);
       return;
-    case 'font-size':
-      s.fontSize = r.points(v);
+    case 'font-size': {
+      const size = r.points(v);
+      if (!(size > 0 && size <= MAX_FONT_SIZE)) {
+        throw r.error(`font-size: ${v} (more than 0 and at most ${MAX_FONT_SIZE}pt)`);
+      }
+      s.fontSize = size;
       return;
+    }
     case 'color': {
       const c = r.color(v);
       if (c === 'currentColor') throw r.error('color: currentColor');
@@ -502,7 +532,11 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
         delete s.lineHeight;
         return;
       }
-      s.lineHeight = r.lineHeight(v);
+      const lh = r.lineHeight(v);
+      if ('mult' in lh && !(lh.mult > 0 && lh.mult <= MAX_LINE_HEIGHT)) {
+        throw r.error(`line-height: ${v} (a multiplier above 0 and at most ${MAX_LINE_HEIGHT})`);
+      }
+      s.lineHeight = lh;
       return;
     }
     case 'letter-spacing': {
@@ -539,7 +573,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       else s.shapeOutside = parseShape(prop, v, units);
       return;
     case 'shape-margin':
-      s.shapeMargin = r.points(v);
+      s.shapeMargin = unsigned(r, v, r.points(v));
       return;
     case 'text-wrap':
       // `text-nowrap` is white space that does not wrap.
@@ -561,7 +595,7 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
 
   const corner = /^border-([a-z]+-[a-z]+)-radius$/.exec(prop);
   if (corner?.[1] && CORNERS[corner[1]]) {
-    keyed[`border${CORNERS[corner[1]]}Radius`] = r.radius(v);
+    keyed[`border${CORNERS[corner[1]]}Radius`] = unsigned(r, v, r.radius(v));
     return;
   }
 
@@ -586,10 +620,10 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
     const key = family === 'border' ? (part === 'width' ? 'Width' : 'Color') : '';
     for (const sd of sidesOf(side)) {
       const raw = values ? (values[SIDES.indexOf(sd)] ?? v) : v;
-      if (family === 'padding') keyed[`padding${sd}`] = r.lenPercent(raw);
+      if (family === 'padding') keyed[`padding${sd}`] = unsigned(r, raw, r.lenPercent(raw));
       else if (family === 'margin') keyed[`margin${sd}`] = r.len(raw);
       else if (family === 'inset') keyed[`inset${sd}`] = r.len(raw);
-      else if (key === 'Width') keyed[`border${sd}Width`] = r.points(raw);
+      else if (key === 'Width') keyed[`border${sd}Width`] = unsigned(r, raw, r.points(raw));
       else keyed[`border${sd}Color`] = r.color(raw);
     }
     return;
@@ -746,7 +780,7 @@ function applyDecls(
       delete next.maxLines;
       delete next.ellipsis;
     } else {
-      next.maxLines = new Reader('-webkit-line-clamp').integer(n, 1);
+      next.maxLines = new Reader('-webkit-line-clamp').integer(n, 1, MAX_LINES);
       next.ellipsis = true;
     }
   } else if (ellipsis) {

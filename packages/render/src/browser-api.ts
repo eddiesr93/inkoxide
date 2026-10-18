@@ -24,7 +24,8 @@ export interface BrowserRenderOptions extends RenderToBufferOptions, Abortable {
 /**
  * Starts the engine with `opts` (where its module and the bundled assets are, and whether it runs
  * in a worker), and loads Tailwind when it is installed and the fonts added with `Font.register`.
- * Every render calls it; only the options of the first call count.
+ * Every render calls it; only the options of the first call count. When the engine cannot start,
+ * the next call starts it again, with its own options.
  */
 export function init(opts?: BrowserOptions): Promise<EngineStatus> {
   configureBrowser(opts);

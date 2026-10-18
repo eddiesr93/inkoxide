@@ -1,7 +1,9 @@
 //! The one place the writer puts strings and streams into the file.
 //!
 //! An encrypted file has every string and stream outside the `Encrypt`
-//! dictionary encrypted, so none may reach the file except through here:
+//! dictionary encrypted, but for the cross-reference stream and the
+//! strings inside object streams (encrypted whole, `objstm.rs`), so none
+//! may reach the file except through here:
 //! `clippy.toml` forbids `TextStr`, pdf-writer's other writers that make
 //! strings of their own (`TextStrWithLang`, `Date`, …) and its stream
 //! writers elsewhere in the crate. Strings inside content streams are left alone,
@@ -51,8 +53,10 @@ pub(crate) const fn most_written_text_len(chars: usize) -> usize {
     written_len(2 + 4 * chars)
 }
 
-/// Most bytes a string of `bytes` bytes takes in the file.
-const fn written_len(bytes: usize) -> usize {
+/// Most bytes a string of `bytes` bytes takes in the file: at most
+/// doubled by escapes or hex, and encrypted with up to 32 bytes of padding
+/// and IV first (`Crypt::seal`).
+pub(super) const fn written_len(bytes: usize) -> usize {
     2 + 2 * (bytes + 32)
 }
 

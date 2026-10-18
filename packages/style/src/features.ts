@@ -10,7 +10,7 @@ import {
 // engine's `fontFeatures` (tag → value); and CSS `font-variation-settings`, into a font
 // declaration's `variations`.
 import { UnsupportedValueError } from './reader.ts';
-import { splitTopLevel } from './values.ts';
+import { NUMBER_RE, NUMBER_SOURCE, splitTopLevel } from './values.ts';
 
 /** OpenType features by tag, as a run's `fontFeatures`: 0 turns one off, 1 on, more picks an alternate. */
 export type FontFeatures = Readonly<Record<string, number>>;
@@ -126,10 +126,7 @@ export function parseFontVariationSettings(prop: string, value: FontVariationSet
       // `'wght' 650`, `"wdth" 75.5`.
       const m = /^(["'])(.*)\1\s+(\S+)$/s.exec(item);
       if (!m) fail(`expected a quoted tag and a number, such as "'wght' 650"`);
-      set(
-        m[2] ?? '',
-        /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(m[3] ?? '') ? Number(m[3]) : Number.NaN,
-      );
+      set(m[2] ?? '', NUMBER_RE.test(m[3] ?? '') ? Number(m[3]) : Number.NaN);
     }
   }
   if (Object.keys(out).length > MAX_VARIATIONS) fail(`at most ${MAX_VARIATIONS} axes`);
@@ -158,6 +155,8 @@ export type FontStretchName = keyof typeof FONT_STRETCHES;
  */
 export type FontStretch = number | `${number}%` | FontStretchName;
 
+const PERCENT_RE = new RegExp(`^${NUMBER_SOURCE}%$`, 'i');
+
 /** Reads `fontStretch` (CSS `font-stretch`) into a percentage of the normal width, 1 to 1000. */
 export function parseFontStretch(prop: string, value: FontStretch): number {
   const fail: Fail = failing(prop, String(value));
@@ -165,7 +164,7 @@ export function parseFontStretch(prop: string, value: FontStretch): number {
   if (typeof value === 'number') n = value;
   else if (typeof value !== 'string') fail('a percentage or a CSS keyword such as condensed');
   else if (Object.hasOwn(FONT_STRETCHES, value)) n = FONT_STRETCHES[value as FontStretchName];
-  else if (/^[-+]?(?:\d+\.?\d*|\.\d+)%$/.test(value.trim())) n = Number.parseFloat(value);
+  else if (PERCENT_RE.test(value.trim())) n = Number.parseFloat(value);
   else fail('a percentage or a CSS keyword such as condensed');
   if (!Number.isFinite(n) || n < MIN_STRETCH || n > MAX_STRETCH) {
     fail(`a width of ${MIN_STRETCH}% to ${MAX_STRETCH}%`);

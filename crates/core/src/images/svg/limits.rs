@@ -52,6 +52,11 @@ pub(super) const MAX_RULE_MATCHES: usize = 50_000_000;
 /// patterns) and nested SVG images.
 pub(super) const MAX_TEXT_CHARS: usize = 1_000_000;
 
+/// Most path segments one SVG may draw, counting every copy
+/// ([`drawn_segments`]). The PDF writer holds the segments and the glyphs
+/// of the SVG's text, together, to the same number.
+pub(crate) const MAX_SEGMENTS: usize = 5_000_000;
+
 /// Most bytes the placeholders of one SVG document's text may take
 /// (`svg_text/rewrite.rs`), each counted once: they are parsed again, so
 /// the same as [`MAX_PARSED_BYTES`], but counted before they are written.
@@ -225,4 +230,50 @@ impl Meter {
         }
         Ok(())
     }
+}
+
+/// The path segments the PDF writer draws for group `g` (`clip`: in a
+/// clip path, where it only fills), counting every copy, as it counts them
+/// against [`MAX_SEGMENTS`]: a path once for its fill and once for its
+/// stroke, and the paths of clip paths, masks, patterns and nested SVG
+/// images each time they are drawn. At least what the writer draws.
+pub(super) fn drawn_segments(g: &usvg::Group, clip: bool) -> usize {
+    let mut n = 0usize;
+    let mut cp = g.clip_path();
+    while let Some(c) = cp {
+        n = n.saturating_add(drawn_segments(c.root(), true));
+        cp = c.clip_path();
+    }
+    let mut mask = g.mask().filter(|_| !clip);
+    while let Some(m) = mask {
+        n = n.saturating_add(drawn_segments(m.root(), false));
+        mask = m.mask();
+    }
+    for child in g.children() {
+        let k = match child {
+            usvg::Node::Group(c) => drawn_segments(c, clip),
+            usvg::Node::Path(p) if !p.is_visible() => 0,
+            usvg::Node::Path(p) if clip => p.fill().map_or(0, |_| p.data().len()),
+            usvg::Node::Path(p) => {
+                let fill = p.fill().map(usvg::Fill::paint);
+                let stroke = p.stroke().map(usvg::Stroke::paint);
+                let mut k = 0usize;
+                for paint in [fill, stroke].into_iter().flatten() {
+                    k = k.saturating_add(p.data().len());
+                    if let usvg::Paint::Pattern(pt) = paint {
+                        k = k.saturating_add(drawn_segments(pt.root(), false));
+                    }
+                }
+                k
+            }
+            usvg::Node::Image(img) if !clip && img.is_visible() => match img.kind() {
+                usvg::ImageKind::SVG(tree) => drawn_segments(tree.root(), false),
+                _ => 0,
+            },
+            usvg::Node::Image(_) => 0,
+            usvg::Node::Text(t) => drawn_segments(t.flattened(), clip),
+        };
+        n = n.saturating_add(k);
+    }
+    n
 }

@@ -73,8 +73,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   characters standing across it. A column of upright characters is one run of PDF text, in a
   vertical (`Identity-V`) font over the same embedded font. The text paths of an SVG with more
   than 100,000 segments in all fail with `INVALID_IMAGE`, as does an SVG's text with more than
-  64 different sets of font features; the SVGs of a render with more than 64 in all fail with
-  `IMAGE_ERROR`.
+  64 different sets of font features or a span with more than 32 features; the SVGs of a render
+  with more than 64 sets in all fail with `IMAGE_ERROR`.
 
 - Font properties set on an SVG `<use>` reach the text it copies, as in browsers: the copy is
   laid out with them (up to 64 such copies an SVG).
@@ -105,7 +105,11 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   (Rust), `pdfUA: '2'` (Node, WASM and `@inkoxide/render`; `true` and `'1'` are still PDF/UA-1;
   the type `PdfUaPart` is exported), `<Document pdfUA="2">` and `--pdf-ua=2` write the structure
   elements in PDF 2.0's namespace and link to structure destinations. The checks for a title,
-  a language, alternative text, labels, headings and lists are those of PDF/UA-1 (`UA_CONFLICT`).
+  a language, alternative text, labels, headings and lists are those of PDF/UA-1 (`UA_CONFLICT`);
+  a link within the document or a bookmark that goes to decoration (a fixed node, or one with the
+  role `artifact`) is refused too, as it has no element to go to. A box with a link holds what
+  is inside it in its link, which PDF 2.0 does not let hold a paragraph, so the roles inside it
+  make no elements: a link on a heading's runs keeps the heading.
   PDF/A-1, -2 and -3 are older than PDF 2.0, so PDF/UA-2 does not combine with PDF/A: that is
   refused (`INVALID_ARGUMENT` at `options.pdfUA` in JavaScript). veraPDF checks the output.
 
@@ -120,11 +124,13 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   its own with that text as its alternative text, inside the image's figure (and inside the
   figure of a part that contains it); an element with `aria-hidden="true"` is decoration.
   Only the outermost SVG counts, and only elements that are drawn: not those inside `defs`,
-  `symbol`, `clipPath`, `mask`, `marker`, a pattern, a gradient or a filter. Each placement of
-  such an image is a form XObject of its own. An image that is no figure of its own (inside a
+  `symbol`, `clipPath`, `mask`, `marker`, a pattern, a gradient or a filter. Inside a group
+  drawn in a layer of its own (with `opacity`, a mask, a blend mode, `isolation` or a clip path
+  other than one path), a part is a figure only when it is all the group draws, as a shape with
+  `opacity` is. Each placement of such an image is a form XObject of its own. An image that is no figure of its own (inside a
   paragraph's box, say) keeps its alternative text as before and its parts are not tagged.
-  An element with an empty `id`, or from an entity, is no part. Untagged output draws the
-  same. veraPDF checks PDF/UA-1, PDF/UA-2 and PDF/A-2a.
+  An element with an empty `id`, or one from an entity without an `id`, is no part. Untagged
+  output draws the same. veraPDF checks PDF/UA-1, PDF/UA-2 and PDF/A-2a.
 
 - File attachments. A document's `attachments` are files the PDF carries (from the render
   option `attachments`, or base64 `data`), listed in the viewer's attachments panel; `attachment`
@@ -215,10 +221,11 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   a percentage) and `weightRange` and `stretchRange`, as CSS `@font-face` does: SVG text is
   matched by `font-stretch` too (the family, then the width, the style, the weight, as CSS
   does) and draws at its own weight and width within the ranges. At most 64 such instances per
-  declaration. `@inkoxide/react` and `@inkoxide/render` have `fontStretch` in styles, on SVG
-  text and in `Font.register` (a width or a range, `[75, 100]`, drawn at its `wdth`), and
-  `@inkoxide/tailwind` reads `font-stretch-*`. An instance's `FontBBox` holds its own outlines;
-  it was the default instance's, which a heavy instance can exceed.
+  declaration, and 1024 in a document. `@inkoxide/react` and `@inkoxide/render` have
+  `fontStretch` in styles, on SVG text and in `Font.register` (a width or a range, `[75, 100]`,
+  drawn at its `wdth`), and `@inkoxide/tailwind` reads `font-stretch-*`. An instance's
+  `FontBBox` holds its own outlines; it was the default instance's, which a heavy instance can
+  exceed.
 - PDF/A-1b takes images with alpha. One whose alpha is only clear or opaque, as a GIF's
   transparency, is written with a stencil mask, which PDF/A-1b allows; it was refused. The new
   `flattenAlpha` render option (`flatten_alpha` in Rust, `<Document flattenAlpha>` in
@@ -243,7 +250,17 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   draws 32 bytes with `crypto.getRandomValues` for each render. Without it, encrypted output
   stays deterministic.
 
+- `tw.warm(classNames, units)` in `@inkoxide/tailwind` takes the units a render passes to `tw()`,
+  to warm class strings with page variants or `em`, `vw` and `vh` values; without them such a
+  string was an error.
+
 ### Changed
+
+- `@inkoxide/react` refuses what the guide says it refuses and used to ignore: `className`,
+  `style` and `id` on `<Document>`, `id` on `<Page>`, any prop on `<PageNumber>` and
+  `<TotalPages>`, `role` on a `<Text>`, `<Link>` or `<Image>` inside a `<Text>`, and
+  `verticalAlign` on a `<View>` or a `<Text>` where it places nothing (`top`, `middle`, `bottom`
+  on either, any value on a `View`).
 
 - Colour glyphs in text are the glyphs of Type 3 fonts, one per colour font for each 255 of its
   glyphs, instead of an image and an invisible space each: a glyph's image is in the PDF once,
@@ -259,9 +276,30 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   whole height, or moved below it. Boxes with `overflow: 'hidden'` or an `aspectRatio`, rows,
   grids, images and tables are still narrowed or moved below, as CSS does with boxes that make
   a block formatting context: give a box `overflow: 'hidden'` to keep the old layout.
+- A document declares at most 256 fonts (`OUT_OF_RANGE` at `fonts`; `maxItems` in the schema):
+  each declaration is parsed for layout and for shaping in every render, and past 65 536 of
+  them text drew in the wrong font.
 
 ### Fixed
 
+- `@inkoxide/react`: a page background with opacity (`bg-transparent`, `bg-black/5`) is drawn on
+  white. The engine paints a page background opaque, so it was the colour without its opacity:
+  solid black for `bg-transparent`.
+- `@inkoxide/react`: `float` and `clear` on an element with a `render` prop that differs by page
+  stay in the layout, on the wrapper of its variants; a template that rendered on one page was
+  refused as soon as it had two.
+- `@inkoxide/react`: a word that JSX splits over several strings (`{fruit}s pie`) is cased by
+  `capitalize` and handed to `hyphenationCallback` whole.
+- `@inkoxide/react`: an `<Svg>` and a `<Canvas>` take the text colour and the font of their own
+  classes, and `currentColor` in a drawing is the text colour around it, not black.
+- `@inkoxide/react`: a pdfkit standard font name in a `<Canvas>` (`p.font('Helvetica-Bold')`)
+  takes the canvas's family in that weight without a warning that the standard font is not
+  registered, and a family registered as `Helvetica` or `Times` no longer wins over it.
+- `@inkoxide/react`: rendering with a `FontRegistry` that has no font is a `TemplateError` of
+  kind `props` with the component stack, instead of a plain `Error`; an invalid `<Document>` prop
+  (`conformance`, `pdfUA`, `userPassword`) is of kind `props` too, not `structure`.
+- `@inkoxide/react`: bound the box styles it keeps for each text colour, and the language tags it
+  keeps, so that a long-running process does not keep more with every render.
 - An SVG whose tags nest more than 256 levels deep is refused (`IMAGE_ERROR`)
   before its XML is parsed.
 - A class for which Tailwind writes CSS that does not parse is an unknown class in
@@ -279,6 +317,127 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   check no longer reports them (ISO 14289-1, 7.21.7).
 - With `subsetFonts: false`, a variable font's instance that cannot be made for every glyph embeds
   the glyphs the document uses, as with subsetting, instead of failing the render.
+- An SVG image that draws more than 5,000,000 path segments, counting every copy and its fill
+  and stroke apart, is `INVALID_IMAGE` at its path, in validation too. It passed validation
+  and then failed the render with `IMAGE_ERROR`.
+- A radio group is read-only, or required, when any of its buttons is, and every button's
+  `label` is in the file: the group's tooltip (`/TU`) is the first, and a button with another
+  says it in its widget (`/Contents`). The first button decided for the whole group, and the
+  other labels were lost.
+- A text field with a `time` format refuses a date without a time (`INVALID_VALUE`), as the
+  schema says. It showed and stored the date as `00:00`.
+- A text node with more than 65,535 runs draws each run with its own font, size, colour and
+  link; past that number, a run took those of an earlier one. The same holds for SVG text.
+- Hyphenation patterns registered for a built-in language leave as many letters before and after
+  a hyphen as its built-in patterns do: with the US English patterns `@inkoxide/render` ships,
+  English text no longer breaks `want-ed`, `print-ed` or `real-ly`. Exception words still break
+  where they are written.
+- `direction: 'auto'` gives a text node one base direction, from its first strong character, for
+  all its lines: a line after a newline no longer takes a direction of its own, and a first line
+  without letters (`2024`) no longer leaves right-to-left text aligned left.
+- Hyphenation keeps a word whole across its combining marks and zero-width joiners: Hindi and the
+  other Indic languages with built-in patterns, whose conjuncts join letters with a virama, are
+  hyphenated, and in decomposed text an accent no longer splits a word or takes a hyphen before it.
+- A hyphen at the end of a line follows the word it breaks, in that word's direction: a
+  left-to-right word broken in a right-to-left paragraph reads `docu-`, not `-docu`, and a
+  right-to-left word in a left-to-right paragraph takes its hyphen on its left.
+- The root `viewBox` and `preserveAspectRatio` of an SVG are read as `usvg` reads them: a
+  `viewBox` whose numbers have no separator before a sign (`-0-0 20 20`) is used instead of
+  ignored, and a `preserveAspectRatio` that is not a valid value, in any characters, is the
+  default (`xMidYMid meet`).
+- An SVG whose `viewBox` width or height is zero or negative fails with `INVALID_IMAGE`, as one
+  under 0.00001 did, instead of being drawn as if it had no `viewBox`; a nested SVG image is
+  left out.
+- A font with colour bitmaps (`CBDT` or `sbix`) whose CFF outlines cannot be embedded registers
+  and draws its colour glyphs, as a bitmap font without outlines does; it was refused with an
+  error that said it had no colour bitmaps.
+- A fixed element inside an element with `display: 'none'` or `opacity: 0`, or on a page that the
+  `pages` of an element around it leaves out, is not painted there, as 0.8.0 meant; it was painted
+  on every page.
+- A table cell that spans `auto` columns widens them, by equal parts, to hold its content; the
+  columns took the width of their single-column cells only, so a heading across them could break
+  inside its words.
+- `verticalAlign` on a table cell with `flexDirection: 'row'` or `'row-reverse'`, a wrapping or
+  reversed column, or `display: 'grid'` places its content down the row, as on other cells; it
+  moved the content across, or not at all. A cell with floats inside takes its `verticalAlign` too.
+- A percentage `top` or `bottom` on a child of the page is a share of the page content height, as
+  its `height` is: a relative one was ignored unless the page had floats, and an absolute one was a
+  share of the whole flow, across all its pages (so was its percentage `height`, beside floats).
+- In an element with floats, children with `flexGrow` take the free room before `auto` margins, as
+  in an element without floats; the margins took it all, so the same layout changed when a float
+  was added.
+- Table header rows as tall as the page are not repeated; each page the table continued on was
+  pushed down past room kept for them, which left pages holding only the header.
+- `@inkoxide/wasm`: a table cell whose `colSpan` or `rowSpan` near its bound (4294967295) reaches
+  past the table is `INVALID_TABLE`, as in Node and Rust.
+- At PDF/A-1b, a colour glyph that needs transparency in the text of an inline SVG image is
+  reported at the image's `data`; the path named `src`, which the image does not have.
+- A page's `header` or `footer` is checked as a page child is: a `gridArea` (no grid holds it)
+  is `INVALID_VALUE`, and as a float it takes no absolute position, `flexGrow` or `flexBasis`;
+  they were accepted.
+- `@inkoxide/wasm`: a call before `init` has resolved, and an `init` whose module cannot be
+  fetched or compiled, fail with an `InkoxideError` of code `NOT_LOADED` instead of a plain
+  `Error` or `TypeError`; `init` can be called again after such a failure.
+- `@inkoxide/wasm`: a later `init` call ignores its `hyphenation` option, as it does its other
+  arguments, instead of changing the folder later patterns are fetched from.
+- `@inkoxide/wasm`: after a bug in the engine (`INTERNAL`), the new instance has the hyphenation
+  patterns registered so far also when a tag was registered or removed under another spelling
+  (`en_GB`, `EN-gb`): removed patterns no longer come back, and replaced ones no longer win over
+  their replacement.
+- Deferred fonts: a character of a run in a deferred font that is not registered yet is not looked
+  for in the fallback fonts until that font is, so `@inkoxide/wasm`'s `render` no longer fetches a
+  deferred fallback no character needs. A document that needs both names the run's font first
+  (`NotLoaded` in Rust, `NOT_LOADED` from `renderSync`), and `render` fetches the fallback in a
+  second round.
+- `@inkoxide/wasm`: while its pool starts again after a bug in the engine, a render's `threads`
+  out of range is still `INVALID_ARGUMENT`, and `validate` takes the `threads` a render takes.
+- `@inkoxide/render/browser`: `timeoutMs` counts the whole render, the loading of its images and
+  every pass for `render` props, and `timeoutMs` and `signal` stop a render while its images
+  load. Each pass had a timer of its own, and the images none.
+- `@inkoxide/render/browser`: only the options of the first `init` count, as documented; an
+  `init()` made before the engine had started replaced them. An engine that could not start (a
+  module that did not download, say) starts again on the next `init` or render, with that
+  call's options, instead of failing every render until the page is reloaded. In Node, the next
+  `init` or render tries again too.
+- `@inkoxide/render/browser`: an `assets` folder written without the `/` at the end
+  (`'/static/inkoxide'`) is that folder; the fonts and hyphenation patterns were looked for in
+  its parent.
+- `@inkoxide/render/browser`: a bundled font the engine cannot read (the page a server answers a
+  missing file with, say) fails the render with an `INTERNAL` `RenderError`, not the engine's
+  own error, and hyphenation patterns it cannot read are a start-up warning, with the engine's
+  built-in patterns, as missing ones are, instead of stopping the engine from starting.
+- `usePdf` no longer returns an object URL it has revoked: when React cleans up its effects
+  without unmounting it (a hidden `<Activity>`), `url` is `null` until the next render.
+- `renderSettled` leaves the tree it is given as it was. It took out of the tree the emoji whose
+  image could not be used, and added its warnings, so the same tree rendered again differently.
+- The render option `attachments: null` is an option left out, as `null` is for the others; it
+  failed the render.
+- An `<Image src>` `Blob` that cannot be read (a `File` changed on disk since it was picked)
+  fails the render with `IMAGE_READ_FAILED`, instead of the browser's own error.
+- The guide says that `tagged`, `pdfUA` and `flattenAlpha`, like `conformance`, are not part
+  of `result.document`: to render it again the same way, pass them to `renderDocument`.
+- `@inkoxide/tailwind`: a class whose value the document schema does not take fails where it is
+  read, naming the class, instead of later in the engine with a path: a negative size, padding,
+  gap, border width or radius (`w-[-10px]`, `rounded-[-4px]`), `text-[0px]`, a `z-*` past 32 bits,
+  `leading-[200]`, `orphans` or `widows` over 100, `line-clamp-[…]` past 32 bits, `aspect-[…]`
+  over 1,000,000, a colour opacity over 100% (`bg-red-500/[150%]`) and a `calc()` that is not a
+  number (`w-[calc(0px/0)]`).
+- A custom property that names others through many levels of `var()` in a Tailwind class stops
+  at 10,000 substitutions or 65,536 characters, as an unsupported class, instead of using time
+  and memory without bound.
+- `@inkoxide/style` reads a leading `+` in every length (`w-[+5px]`), and its readers share one
+  definition of a CSS number.
+- In a production browser bundle (a bundler that replaces `process.env.NODE_ENV`),
+  `@inkoxide/tailwind` logs an unsupported class once and ignores it, as documented; it threw
+  there, because the browser has no `process`.
+- `aspect-auto` removes the aspect ratio, so that `aspect-video md:aspect-auto` can be written.
+- A class that Tailwind's own parser cannot read (a value nested thousands of levels deep) is an
+  unknown class with strict mode off as well, instead of an exception from `tw()`.
+- A Vite dev server reads the files the build scan reads: not `tmp`, `coverage` and the other
+  build output directly under a root, nor hidden directories, nor files over 1 MiB. A file
+  named in the plugin's `sources` is read at any size; the README says so. The documented
+  custom breakpoint is written in `rem` (`--breakpoint-a4: 49.6067rem`): Tailwind sorts
+  breakpoints of different units by unit, so one in `pt` lost to `sm:`.
 
 ### Repository
 
@@ -291,6 +450,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   described in [docs/RELEASING.md](docs/RELEASING.md). `@inkoxide/react`, `@inkoxide/tailwind`
   and `@inkoxide/style` have READMEs, and `packages/schema/EXAMPLES.md` has examples of forms,
   notes, grids, floats, inline images and font features. The benchmark files lose their `-inkoxide` suffix.
+- `scripts/check-generated.sh` also checks the example sources in `packages/render/README.md` and
+  `examples/README.md`: `examples/render.ts --readme` rewrites them without rendering.
 
 ## 0.9.1 - 2026-10-16
 

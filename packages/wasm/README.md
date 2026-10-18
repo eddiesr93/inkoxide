@@ -3,8 +3,8 @@
 The Inkoxide PDF engine built as WebAssembly: a declarative document tree
 (JSON) in, PDF bytes out, in browsers. The same engine, limits and error codes
 as the native [`inkoxide`](https://www.npmjs.com/package/inkoxide) package,
-with the same functions, plus `init`, `loadHyphenation` and `clearCaches`, and
-one more render option, `deferredFonts`.
+with the same functions, plus `init`, `threadCount`, `loadHyphenation` and
+`clearCaches`, and one more render option, `deferredFonts`.
 
 This page is for using the engine directly. To render React components in a
 browser, in a Web Worker, use `@inkoxide/render/browser`, which runs this
@@ -51,7 +51,8 @@ How it differs from `inkoxide`:
   with `NOT_LOADED`: call `loadHyphenation(['de'])` first, or use `render`.
 - **`init(source?, options?)`** takes a URL, a `Response`, the bytes or a compiled
   `WebAssembly.Module`, of either module. On one thread it needs no cross-origin isolation; a
-  Content Security Policy needs `script-src 'wasm-unsafe-eval'`.
+  Content Security Policy needs `script-src 'wasm-unsafe-eval'`. A module that cannot be fetched
+  or compiled rejects it with `NOT_LOADED`, as does any call before it has resolved.
 - **A bug in the engine** (`INTERNAL`) ends its instance: the next call runs in
   a new one, with the fonts and hyphenation patterns registered so far, which
   the package keeps a copy of.
@@ -98,9 +99,9 @@ await init(fetch(`${base}inkoxide.wasm`, { integrity: 'sha384-<hash of inkoxide.
 });
 ```
 
-With threads, each module has its hash. Fetch only the one the page will use;
-the pool's `thread.js` must come from the page's origin, so the package is
-better bundled:
+With threads, each module has its hash. Fetch only the one the page will use.
+A hash covers the module alone: the pool's `thread.js`, which its workers
+import, and the hyphenation patterns load without one.
 
 ```js
 const threads = crossOriginIsolated ? 4 : 1;

@@ -235,7 +235,7 @@ fn font_sources_and_variations_are_checked() {
             "{variations}"
         );
     }
-    let many = (0..65)
+    let many = (0..=crate::validate::rules::MAX_FONT_INSTANCES)
         .map(|i| format!(r#"{{"id":"f{i}","family":"F","source":"Inter-Regular","variations":{{"wght":{i}}}}}"#))
         .collect::<Vec<_>>()
         .join(",");
@@ -374,6 +374,31 @@ fn pagination_controls_only_apply_in_the_flow() {
     // The defaults are not pagination controls.
     let defaults = r#"{"type":"box","break":{"before":"auto","inside":"auto","fixed":false}}"#;
     assert_eq!(run(&page("", &cell(defaults))), vec![]);
+}
+
+/// A header or footer is placed as a page child is: no grid holds it, and
+/// it floats in a column.
+#[test]
+fn headers_and_footers_are_placed_as_page_children() {
+    let page = |fixed: &str| {
+        format!(r#"{{"version":1,"pages":[{{"size":{{"width":100,"height":100}},{fixed}}}]}}"#)
+    };
+    for (fixed, path) in [
+        (
+            r#""header":{"type":"box","style":{"gridArea":"x"}}"#,
+            "pages[0].header.style.gridArea",
+        ),
+        (
+            r#""footer":{"type":"box","style":{"float":"left","position":"absolute"}}"#,
+            "pages[0].footer.style.float",
+        ),
+    ] {
+        assert_eq!(one(&page(fixed)), (C::InvalidValue, path.into()), "{fixed}");
+    }
+    assert_eq!(
+        run(&page(r#""header":{"type":"box","style":{"float":"left"}}"#)),
+        vec![]
+    );
 }
 
 #[test]
@@ -682,6 +707,35 @@ fn validate_without_images_checks_everything_else() {
             (C::InvalidImage, "pages[0].children[100].data".into()),
             (C::UnknownFont, "pages[0].children[101].runs[0].font".into()),
         ]
+    );
+}
+
+/// Validation returns at most `MAX_ERRORS` problems, whichever rule finds
+/// the last ones: here the fonts fill the cap before the XMP extensions,
+/// which only validation for a render checks.
+#[test]
+fn validation_returns_at_most_max_errors() {
+    use crate::validate::MAX_ERRORS;
+    let decls: Vec<String> = (0..MAX_ERRORS)
+        .map(|i| format!(r#"{{"id":"f{i}","family":"","source":"Inter-Regular"}}"#))
+        .collect();
+    let d = format!(
+        r#"{{"version":1,"meta":{{"xmpExtensions":[{{"schema":"S","namespace":"urn:x#","prefix":"fx","properties":[]}}]}},
+            "fonts":[{}],"pages":[{{"size":{{"width":100,"height":100}}}}]}}"#,
+        decls.join(",")
+    );
+    let errors = crate::validate_with_options(
+        d.as_bytes(),
+        InputFormat::Json,
+        &crate::RenderOptions::default(),
+        &fonts(),
+        None,
+    );
+    assert_eq!(errors.len(), MAX_ERRORS);
+    assert!(
+        errors.iter().all(|e| e.path.ends_with(".family")),
+        "{:?}",
+        errors.last()
     );
 }
 
@@ -2278,6 +2332,34 @@ fn form_fields_show_only_characters_their_font_has() {
     }
 }
 
+/// A field's font is checked as the registered font its declaration
+/// draws with, its `source`.
+#[test]
+fn form_field_fonts_are_checked_through_their_source() {
+    let mut fonts = fonts();
+    fonts
+        .register("Emoji", fixture("fonts/EmojiTest-CBDT.ttf"))
+        .unwrap();
+    let doc = r#"{"version":1,"fonts":[{"id":"ui","family":"UI","source":"Inter-Regular"},{"id":"pic","family":"Pic","source":"Emoji"}],
+        "pages":[{"size":{"width":100,"height":100},"children":[
+          {"type":"field","field":{"name":"a","kind":"text","font":"ui","value":"日本"}},
+          {"type":"field","field":{"name":"b","kind":"text","font":"pic"}}]}]}"#;
+    let errs = validate(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &fonts,
+        &ImageStore::new(),
+    );
+    let found: Vec<_> = errs.iter().map(|e| (e.code, e.path.as_str())).collect();
+    assert_eq!(
+        found,
+        [
+            (C::InvalidValue, "pages[0].children[0].field.value"),
+            (C::InvalidValue, "pages[0].children[1].field.font"),
+        ]
+    );
+}
+
 /// A text node whose one run has the extra properties `extra`.
 fn text_run(extra: &str) -> String {
     doc(&format!(
@@ -2519,6 +2601,25 @@ fn fallback_fonts_are_limited() {
 }
 
 #[test]
+fn font_declarations_are_limited() {
+    use crate::validate::rules::MAX_FONTS;
+    let with = |n: usize| {
+        let fonts: Vec<String> = (0..n)
+            .map(|i| format!(r#"{{"id":"f{i}","family":"Inter","source":"Inter-Regular"}}"#))
+            .collect();
+        format!(
+            r#"{{"version":1,"fonts":[{}],"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#,
+            fonts.join(",")
+        )
+    };
+    assert_eq!(run(&with(MAX_FONTS)), vec![]);
+    assert_eq!(
+        one(&with(MAX_FONTS + 1)),
+        (C::OutOfRange, "fonts".to_string())
+    );
+}
+
+#[test]
 fn emoji_images_are_checked() {
     let with = |map: &str| {
         format!(
@@ -2653,6 +2754,42 @@ fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
     let pdf = render("EmojiTest-CBDT", "😀 b").unwrap();
     let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
     assert_eq!((count(b"/ImageMask true"), count(b"/SMask")), (1, 0));
+}
+
+/// Under PDF/A-1b, a colour glyph in the text of an SVG image that needs
+/// transparency fails the render at the image's source: `src`, or `data`
+/// for an inline image.
+#[test]
+fn pdf_a_1b_names_the_source_of_an_svg_with_colour_glyphs() {
+    // `<svg …><text font-family="E" font-size="12">😀</text></svg>`.
+    const SVG: &str = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHRleHQgeD0iMCIgeT0iMTUiIGZvbnQtZmFtaWx5PSJFIiBmb250LXNpemU9IjEyIj7wn5iAPC90ZXh0Pjwvc3ZnPg==";
+    let mut fonts = fonts();
+    fonts
+        .register("EmojiTest-COLR", fixture("fonts/EmojiTest-COLR.ttf"))
+        .unwrap();
+    let mut images = ImageStore::new();
+    images.insert("svg", crate::images::base64::decode(SVG).unwrap());
+    let render = |image: &str| {
+        let d = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},{{"id":"EmojiTest-COLR","family":"E"}}],
+                "pages":[{{"size":{{"width":100,"height":100}},"children":[{image}]}}]}}"#
+        );
+        let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+        match crate::render(d.as_bytes(), InputFormat::Json, &options, &fonts, &images) {
+            Err(crate::InkoxideError::Validation(e)) => (e.code, e.path),
+            other => panic!("{:?}", other.map(|_| ())),
+        }
+    };
+    assert_eq!(
+        render(r#"{"type":"image","src":"svg"}"#),
+        (C::PdfaConflict, "pages[0].children[0].src".into())
+    );
+    assert_eq!(
+        render(&format!(
+            r#"{{"type":"image","data":"data:image/svg+xml;base64,{SVG}"}}"#
+        )),
+        (C::PdfaConflict, "pages[0].children[0].data".into())
+    );
 }
 
 #[test]
@@ -2853,6 +2990,37 @@ fn checks_wide_tables_in_linear_time() {
         assert_eq!(one(&d).0, C::OutOfRange);
         t.elapsed()
     });
+}
+
+/// Spans at the top of their range are refused, not added past it (on a
+/// 32-bit target the sum would wrap).
+#[test]
+fn the_largest_spans_do_not_fit() {
+    let table = |cells: &str| {
+        doc(&format!(
+            r#"{{"type":"table","columns":[{{"width":10}},{{"width":10}}],"rows":[{{"cells":[{cells}]}}]}}"#
+        ))
+    };
+    let path = "pages[0].children[0].rows[0].cells[1]";
+    assert_eq!(
+        one(&table(r#"{},{"colSpan":4294967295}"#)),
+        (C::InvalidTable, path.into())
+    );
+    assert_eq!(
+        one(&table(r#"{},{"rowSpan":4294967295}"#)),
+        (C::InvalidTable, format!("{path}.rowSpan"))
+    );
+    // From the second row on, the row it reaches is past `u32::MAX`.
+    let two_rows = doc(
+        r#"{"type":"table","columns":[{"width":10},{"width":10}],"rows":[{"cells":[{},{}]},{"cells":[{"rowSpan":4294967295},{}]}]}"#,
+    );
+    assert_eq!(
+        one(&two_rows),
+        (
+            C::InvalidTable,
+            "pages[0].children[0].rows[1].cells[0].rowSpan".into()
+        )
+    );
 }
 
 /// An integer written with a zero fraction reads as the integer, as JSON

@@ -40,7 +40,8 @@
 //! - Tables split between row groups (rows tied by row spans). A group
 //!   that does not fit moves to the next page, below room kept for the
 //!   repeated header rows (and those of the tables around a nested
-//!   table). A single row taller than a page splits inside
+//!   table); header rows that would leave no room on a page are not
+//!   repeated. A single row taller than a page splits inside
 //!   its cells: each cell's content paginates like a column from the row
 //!   top, and the row ends below the longest cell.
 
@@ -49,9 +50,12 @@ use crate::layout::{LineBoxes, NodeIdx, Tree};
 use crate::schema::{BreakMode, Display, InsideMode, Node, NodeKind, Position};
 use crate::text::{LineLayout, TextCache, TextShaper};
 
-/// Float tolerance in paged space, points. Paged coordinates of long
-/// documents reach ~10⁶ pt, where one f32 step is ~0.06 pt; 0.1 pt is
-/// still invisible.
+/// Float tolerance in paged space, points. Paged coordinates are `f32`,
+/// as layout's are: one step is 0.0625 pt below 2²⁰ pt (some 1,200 A4
+/// pages in one flow), where 0.1 pt is still invisible. Past that the
+/// step doubles with each power of two (8 pt past 2²⁶ pt), so a longer
+/// flow places its content less precisely than this tolerance; several
+/// `pages` entries, each a flow of its own, keep it.
 pub(crate) const PAGED_EPS: f32 = 0.1;
 
 /// Result of paginating one flow.
@@ -754,8 +758,13 @@ impl Paginator<'_, '_, '_> {
         };
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
         // Room kept at the top of a continuation page: this table's header
-        // rows, below those of the tables it is nested in.
-        let header_h = self.reserve + t.header_height();
+        // rows, below those of the tables it is nested in. Header rows that
+        // leave no room on a page are not repeated.
+        let header_h = if t.repeats_header(self.reserve, self.h) {
+            self.reserve + t.header_height()
+        } else {
+            self.reserve
+        };
         if self.reserve > 0.0 && t.header_rows > 0 {
             self.out.header_above.insert(i, self.reserve);
         }

@@ -63,13 +63,31 @@ export function splitTopLevel(s: string, sep = ','): string[] {
 }
 
 /**
+ * Most `var()`s one substitution may expand, and the longest value it may produce. Each `var()` is
+ * expanded again wherever it is used, so a value that names one property several times, at each of
+ * a few levels, grows exponentially; browsers bound it in the same way.
+ */
+const MAX_EXPANSIONS = 10_000;
+const MAX_SUBSTITUTED = 65_536;
+
+/**
  * Replaces every `var(--name, fallback)` with its value, recursively. `lookup` returns the value of
- * a custom property or undefined; an unresolvable `var()` without a fallback throws.
+ * a custom property or undefined; an unresolvable `var()` without a fallback throws, as does a
+ * substitution past {@link MAX_EXPANSIONS} `var()`s or {@link MAX_SUBSTITUTED} characters.
  */
 export function substituteVars(
   value: string,
   lookup: (name: string) => string | undefined,
   depth = 0,
+): string {
+  return substitute(value, lookup, depth, { expansions: 0 });
+}
+
+function substitute(
+  value: string,
+  lookup: (name: string) => string | undefined,
+  depth: number,
+  budget: { expansions: number },
 ): string {
   if (depth > 16) throw new ValueError(`var() nesting too deep in "${value}"`);
   let i = value.indexOf('var(');
@@ -77,6 +95,9 @@ export function substituteVars(
   let out = '';
   let last = 0;
   while (i >= 0) {
+    if (++budget.expansions > MAX_EXPANSIONS) {
+      throw new ValueError(`var() expands more than ${MAX_EXPANSIONS} times`);
+    }
     const close = matchParen(value, i + 3);
     const inner = value.slice(i + 4, close);
     const comma = inner.indexOf(',');
@@ -87,7 +108,10 @@ export function substituteVars(
       if (fallback === undefined) throw new ValueError(`cannot resolve var(${name})`);
       resolved = fallback;
     }
-    out += value.slice(last, i) + substituteVars(resolved, lookup, depth + 1);
+    out += value.slice(last, i) + substitute(resolved, lookup, depth + 1, budget);
+    if (out.length > MAX_SUBSTITUTED) {
+      throw new ValueError(`var() expands to more than ${MAX_SUBSTITUTED} characters`);
+    }
     last = close + 1;
     i = value.indexOf('var(', last);
   }
@@ -97,9 +121,16 @@ export function substituteVars(
 // ---------------------------------------------------------------------------------------------
 // calc() evaluation
 
+/** A CSS `<number>` as regular expression source: the one grammar every value reader shares. */
+export const NUMBER_SOURCE = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?`;
+/** A string that is a number and nothing else. */
+export const NUMBER_RE = new RegExp(`^${NUMBER_SOURCE}$`, 'i');
+
 // Units in any case (`5PX`), and after a space (`5 pt`), as the `style` prop has always read them.
-const UNIT_RE =
-  /^(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(?:\s*(px|rem|em|pt|mm|cm|in|pc|vw|vh|%|deg|turn|rad))?/i;
+const UNIT_RE = new RegExp(
+  `^(${NUMBER_SOURCE})(?:\\s*(px|rem|em|pt|mm|cm|in|pc|vw|vh|%|deg|turn|rad))?`,
+  'i',
+);
 
 /** Points per absolute CSS unit. `rem` is the root font size Tailwind uses. */
 export const PT_PER_UNIT: Readonly<Record<string, number>> = {
@@ -166,6 +197,8 @@ class CalcParser {
     const d = this.expr();
     this.ws();
     if (this.i < this.s.length) throw new ValueError(`unexpected "${this.s.slice(this.i)}" in "${this.s}"`);
+    // `calc(0 / 0)`, `calc(infinity - infinity)`: not a number, which no property takes.
+    if (Number.isNaN(d.v)) throw new ValueError(`"${this.s}" is not a number`);
     return d;
   }
 
@@ -269,8 +302,6 @@ const FLEX_KEYWORDS: Readonly<Record<string, readonly [number, number, 'auto']>>
   initial: [0, 1, 'auto'],
 };
 
-const NUMBER_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i;
-
 /**
  * Splits CSS `flex` into grow, shrink and basis, as CSS reads it: a keyword (`none`, `auto`,
  * `initial`), or `<grow> [<shrink>]` and a basis before or after them. The basis is the value
@@ -333,6 +364,7 @@ export function parseColor(value: string): Color | 'currentColor' {
     const base = parseColor(m?.[1] ?? first);
     if (base === 'currentColor') throw new ValueError('color-mix() with currentColor is not supported');
     const pct = m?.[2] !== undefined ? Number(m[2]) / 100 : 0.5;
+    if (!(pct >= 0 && pct <= 1)) throw new ValueError(`color-mix(): "${v}" (a percentage from 0% to 100%)`);
     return [base[0], base[1], base[2], round(base[3] * pct)];
   }
   // Colour keywords are case-insensitive, as in CSS; culori reads `transparent` only in lower case.

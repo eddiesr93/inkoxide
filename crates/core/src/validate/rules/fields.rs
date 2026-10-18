@@ -94,7 +94,12 @@ impl Checker<'_> {
         match (&f.font, f.is_text_like()) {
             (Some(font), _) => {
                 self.font_ref(Some("font"), font);
-                if self.fonts.get(font).is_some_and(|d| !d.has_outlines()) {
+                // The font it draws with: the declaration's `source`.
+                let data = self
+                    .declared
+                    .get(font.as_str())
+                    .and_then(|s| self.fonts.get(s));
+                if data.is_some_and(|d| !d.has_outlines()) {
                     self.err(
                         Code::InvalidValue,
                         Some("font"),
@@ -295,13 +300,12 @@ impl Checker<'_> {
     /// Checks that the font of valid field `f` has a glyph for every
     /// character its appearance shows: the text a text field shows, and
     /// the options of a select or list. Fields are drawn with their own
-    /// font only, without fallback fonts.
+    /// font only (its declaration's `source`), without fallback fonts.
     pub(super) fn field_glyphs(&mut self, f: &Field) {
-        let Some((font, data)) = f
-            .font
-            .as_deref()
-            .and_then(|id| Some((id, Arc::clone(self.fonts.get(id)?))))
-        else {
+        let Some((font, data)) = f.font.as_deref().and_then(|id| {
+            let source = self.declared.get(id)?;
+            Some((id, Arc::clone(self.fonts.get(source)?)))
+        }) else {
             return;
         };
         let lacks = |c: &mut Self, at: Option<&str>, text: &str| {

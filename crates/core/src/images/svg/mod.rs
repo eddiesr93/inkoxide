@@ -12,6 +12,10 @@
 //! for most copies, so the resolver also counts what it actually decodes,
 //! in one [`Meter`] for the whole SVG.
 //!
+//! Once converted, the path segments the tree draws are counted as the PDF
+//! writer draws them (`limits::drawn_segments`), so that an SVG the
+//! writer would refuse fails here, where validation sees it.
+//!
 //! Where mirroring `usvg` would be fragile, the input is refused instead:
 //! entities that expand to more than a little text, `href` chains that
 //! loop, and radii so large that an arc becomes millions of curves.
@@ -32,6 +36,7 @@ mod view_box;
 
 use check::check;
 pub(crate) use check::iri;
+pub(crate) use limits::MAX_SEGMENTS;
 use limits::{
     too_complex, Meter, Reject, MAX_ENTITY_TEXT, MAX_NESTING, MAX_SIDE, MAX_XML_DEPTH,
     MAX_XML_NODES, MIN_SIDE,
@@ -54,8 +59,8 @@ pub(crate) fn is_svg(bytes: &[u8]) -> bool {
 /// Parses an SVG document into a `usvg` tree without its text, with its
 /// root `viewBox`.
 pub(crate) fn parse(bytes: &[u8]) -> Result<(usvg::Tree, Option<ViewBox>), String> {
-    let (tree, view_box, ..) = parse_text(bytes)?;
-    Ok((tree, view_box))
+    let parsed = parse_text(bytes)?;
+    Ok((parsed.tree, parsed.view_box))
 }
 
 /// Parses an SVG document into a `usvg` tree, with its root `viewBox` and
@@ -217,15 +222,17 @@ fn check_entities(text: &str) -> Result<usize, Reject> {
     Ok(deepest)
 }
 
-/// A parsed SVG: its tree, its root `viewBox`, what converting its text
-/// needs, when it or a nested SVG has text, and its parts, when it has any
-/// (the outermost SVG only).
-pub(crate) type Parsed = (
-    usvg::Tree,
-    Option<ViewBox>,
-    Option<TextSource>,
-    Option<SvgParts>,
-);
+/// A parsed SVG.
+#[derive(Debug)]
+pub(crate) struct Parsed {
+    pub tree: usvg::Tree,
+    /// Its root `viewBox`.
+    pub view_box: Option<ViewBox>,
+    /// What converting its text needs, when it or a nested SVG has text.
+    pub text: Option<TextSource>,
+    /// Its parts, when it has any (the outermost SVG only).
+    pub parts: Option<SvgParts>,
+}
 
 fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
     parse_with_parts(bytes, at, None)
@@ -297,16 +304,33 @@ fn parse_with_parts(
             "SVG is {w}×{h} px; at least {MIN_SIDE} px per side"
         )));
     }
-    let view_box = ViewBox::of(doc.root_element());
-    if let Some([.., vw, vh]) = view_box.map(|v| v.rect) {
+    let root = doc.root_element();
+    // One of zero or negative size too, which `usvg` ignores.
+    if let Some([.., vw, vh]) = ViewBox::rect_of(root) {
         if vw < MIN_SIDE || vh < MIN_SIDE {
             return Err(Reject::Invalid(format!(
                 "SVG viewBox is {vw}×{vh}; at least {MIN_SIDE} per side"
             )));
         }
     }
+    let view_box = ViewBox::of(root);
+    // As decoded: a nested SVG counts where it is drawn, and a copy with
+    // its text converted for a render is held to it as it is written.
+    if at.level == 0
+        && at.rewrites.is_none()
+        && limits::drawn_segments(tree.root(), false) > MAX_SEGMENTS
+    {
+        return Err(too_complex(&format!(
+            "more than {MAX_SEGMENTS} path segments once references are expanded"
+        )));
+    }
     let text = TextSource::new(Arc::new(bytes.to_vec()), checked);
-    Ok((tree, view_box, text, parts))
+    Ok(Parsed {
+        tree,
+        view_box,
+        text,
+        parts,
+    })
 }
 
 /// What a decoded `data:` URL holds, as the resolver reads it.
@@ -369,7 +393,7 @@ fn resolve(
                 .and_then(|r| r.get(&ContentKey::new(data.clone())))
                 .cloned()
                 .unwrap_or(data);
-            Some(usvg::ImageKind::SVG(parse_nested(&data, at)?.0))
+            Some(usvg::ImageKind::SVG(parse_nested(&data, at)?.tree))
         }
         None => None,
     })

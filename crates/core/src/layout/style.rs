@@ -32,9 +32,10 @@ fn lpa(l: Option<Length>, default: LengthPercentageAuto) -> LengthPercentageAuto
     }
 }
 
-/// [`to_taffy`] for a child of the page: percentage heights are of the
-/// page content height `page_h`, as in CSS, instead of an unknown flow
-/// height (which would make them `auto`).
+/// [`to_taffy`] for a child of the page: percentage heights, `top` and
+/// `bottom` are of the page content height `page_h`, as in CSS, instead
+/// of an unknown flow height (which would make them `auto`) or the whole
+/// flow's.
 pub(super) fn to_taffy_on_page(s: &S, page_h: f32) -> Style {
     let of_page = |l: Option<Length>| match l {
         Some(Length::Percent(p)) => Some(Length::Points(p * page_h)),
@@ -45,6 +46,10 @@ pub(super) fn to_taffy_on_page(s: &S, page_h: f32) -> Style {
     t.size.height = dim(of_page(s.height));
     t.min_size.height = lpa(of_page(s.min_height), auto);
     t.max_size.height = lpa(of_page(s.max_height), auto);
+    if let Some(i) = &s.inset {
+        t.inset.top = lpa(of_page(i.top), auto);
+        t.inset.bottom = lpa(of_page(i.bottom), auto);
+    }
     t
 }
 

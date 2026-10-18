@@ -151,6 +151,28 @@ fn page_children_take_percentage_heights_of_the_page() {
 }
 
 #[test]
+fn page_children_take_percentage_offsets_of_the_page() {
+    // Relative and absolute, without and with a float (which lays the page
+    // out in `flow.rs`): `top` and `height` are shares of the page content
+    // height, not of the flow.
+    let float = r#"{"type":"box","style":{"float":"right","width":5,"height":5}},"#;
+    for float in ["", float] {
+        let d = doc(&format!(
+            r#"{float}{{"type":"box","style":{{"height":10}}}},
+               {{"type":"box","style":{{"inset":{{"top":"50%"}},"height":10}}}},
+               {{"type":"box","style":{{"position":"absolute","inset":{{"top":"25%"}},"width":10,"height":"10%"}}}},
+               {{"type":"box","style":{{"height":1000}}}}"#
+        ));
+        let mut tree = Tree::build(&d.pages[0].children);
+        compute(&mut tree, 100.0, 400.0, &mut NoContent).unwrap();
+        let k = usize::from(!float.is_empty());
+        let g = |i: usize| (tree.nodes[i + k].geo.y, tree.nodes[i + k].geo.h);
+        assert_eq!(g(2), (210.0, 10.0), "relative {float}");
+        assert_eq!(g(3), (100.0, 40.0), "absolute {float}");
+    }
+}
+
+#[test]
 fn a_cell_height_is_a_minimum() {
     let table = |prop: &str, height: u32| {
         doc(&format!(
@@ -176,6 +198,70 @@ fn a_cell_height_is_a_minimum() {
             "{prop}"
         );
     }
+}
+
+#[test]
+fn a_cell_spanning_auto_columns_widens_them() {
+    let table = |columns: &str| {
+        doc(&format!(
+            r#"{{"type":"table","columns":[{columns}],"rows":[
+                {{"cells":[{{"colSpan":2,"children":[{{"type":"box","style":{{"width":300,"height":10}}}}]}}]}},
+                {{"cells":[{{"children":[{{"type":"box","style":{{"width":20,"height":10}}}}]}},
+                           {{"children":[{{"type":"box","style":{{"width":40,"height":10}}}}]}}]}}]}}"#
+        ))
+    };
+    // Root, table, two rows, three cells, a box in each cell. The 240
+    // points the columns lack are shared out evenly.
+    let g = layout(&table(r#"{"width":"auto"},{"width":"auto"}"#), 500.0);
+    assert_eq!(g[4].2, 300.0);
+    assert_eq!((g[5].2, g[6].0, g[6].2), (140.0, 140.0, 160.0));
+    // An `fr` column in the span takes the room: the auto column keeps the
+    // width of its own cells.
+    let g = layout(&table(r#"{"width":"auto"},{"width":"1fr"}"#), 500.0);
+    assert_eq!((g[5].2, g[6].2), (20.0, 480.0));
+}
+
+#[test]
+fn vertical_align_places_a_cell_s_content_whatever_its_layout() {
+    // A cell as high as its neighbour's box (100), holding a 10 × 10 box.
+    let case = |style: &str, align: &str| {
+        let d = doc(&format!(
+            r#"{{"type":"table","columns":[{{"width":150}},{{"width":50}}],"rows":[{{"cells":[
+                {{"style":{{"verticalAlign":"{align}"{style}}},"children":[{{"type":"box","style":{{"width":10,"height":10}}}}]}},
+                {{"children":[{{"type":"box","style":{{"height":100}}}}]}}]}}]}}"#
+        ));
+        // Root, table, row, two cells, a box in each.
+        let g = layout(&d, 200.0);
+        (g[5].0, g[5].1)
+    };
+    let layouts = [
+        "",
+        r#","flexDirection":"row""#,
+        r#","flexDirection":"row-reverse""#,
+        r#","display":"grid""#,
+    ];
+    for style in layouts {
+        assert_eq!(case(style, "top").1, 0.0, "{style}");
+        assert_eq!(case(style, "middle").1, 45.0, "{style}");
+        assert_eq!(case(style, "bottom").1, 90.0, "{style}");
+    }
+    // Across, the content stays where the cell's own layout puts it.
+    assert_eq!(case(r#","flexDirection":"row""#, "middle").0, 0.0);
+    assert_eq!(case(r#","display":"grid""#, "bottom").0, 0.0);
+}
+
+#[test]
+fn a_cell_with_floats_takes_its_vertical_align() {
+    let children = r#"{"type":"table","columns":[{"width":150},{"width":50}],"rows":[{"cells":[
+        {"style":{"verticalAlign":"bottom"},"children":[
+            {"type":"box","style":{"float":"left","width":10,"height":10}},
+            {"type":"box","style":{"height":10}}]},
+        {"children":[{"type":"box","style":{"height":100}}]}]}]}"#;
+    with_floats(children, 200.0, |tree, _| {
+        // Root, table, row, two cells, the float and the box, the box.
+        assert_eq!(tree.nodes[5].geo.y, 90.0, "the float");
+        assert_eq!(tree.nodes[6].geo.y, 90.0, "the box beside it");
+    });
 }
 
 /// The closed-form cell layout (layout/fast.rs) must match Taffy exactly.
@@ -771,6 +857,34 @@ fn growing_children_take_the_free_room_beside_floats() {
         assert_eq!(g(9), (50.0, 200.0, 250.0, 37.5));
         // Within its `maxHeight`.
         assert_eq!(g(11), (50.0, 300.0, 250.0, 45.0));
+    });
+}
+
+#[test]
+fn growing_children_take_the_free_room_before_auto_margins_beside_floats() {
+    // As in a column box without floats: the children that grow take the
+    // room, and `auto` margins what they leave.
+    let children = r#"{"type":"box","style":{"height":200},"children":[
+        {"type":"box","style":{"float":"right","width":20,"height":20}},
+        {"type":"box","style":{"minHeight":10,"flexGrow":1}},
+        {"type":"box","style":{"height":20,"margin":{"top":"auto"}}}]},
+        {"type":"box","style":{"height":100},"children":[
+        {"type":"box","style":{"float":"right","width":20,"height":20}},
+        {"type":"box","style":{"height":10,"flexGrow":0.5}},
+        {"type":"box","style":{"height":20,"margin":{"top":"auto"}}}]}"#;
+    with_floats(children, 300.0, |tree, _| {
+        let g = |i: usize| {
+            let g = tree.nodes[i].geo;
+            (g.x, g.y, g.w, g.h)
+        };
+        // 170 of free room, all to the box that grows.
+        assert_eq!(g(4), (0.0, 0.0, 280.0, 180.0));
+        assert_eq!(g(5), (0.0, 180.0, 300.0, 20.0));
+        assert_eq!(tree.nodes[5].geo.margin.top, 0.0);
+        // 70: half of it to a `flexGrow` of 0.5, the rest to the margin.
+        assert_eq!(g(7), (0.0, 200.0, 280.0, 45.0));
+        assert_eq!(g(8), (0.0, 280.0, 300.0, 20.0));
+        assert_eq!(tree.nodes[8].geo.margin.top, 35.0);
     });
 }
 

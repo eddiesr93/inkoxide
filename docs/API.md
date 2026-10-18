@@ -45,11 +45,11 @@ string, which is read as UTF-8 JSON.
 ## WebAssembly (`@inkoxide/wasm`)
 
 `@inkoxide/wasm` is the engine built for `wasm32-unknown-unknown`, with the functions and types
-of the Node package, and two more:
+of the Node package, and four more:
 
 | Function | Meaning |
 |---|---|
-| `init(source?, { hyphenation?, threads?, trapChannel? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module. Every other function throws until it resolves. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`). `threads` above 1 (at most 256) loads `inkoxide-threads.wasm` and starts a pool of that many workers, where memory can be shared; `trapChannel` names the `BroadcastChannel` a pool thread reports a bug on |
+| `init(source?, { hyphenation?, threads?, trapChannel? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module. Every other function throws `NOT_LOADED` until it resolves, and a module that cannot be fetched or compiled rejects it with `NOT_LOADED`. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`). `threads` above 1 (at most 256) loads `inkoxide-threads.wasm` and starts a pool of that many workers, where memory can be shared; `trapChannel` names the `BroadcastChannel` a pool thread reports a bug on |
 | `threadCount(): number` | The threads renders use: the pool's size, or 1 |
 | `loadHyphenation(langs): Promise<void>` | Fetches the built-in hyphenation patterns of BCP-47 tags, for `renderSync` |
 | `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text). The memory stays with the instance. |
@@ -104,7 +104,7 @@ How it differs from the Node package:
 | `pdf_ua_part` / `with_pdf_ua_part` (also sets `pdf_ua`) | `pdfUA: true \| '1' \| '2'` | `PdfUaPart::Ua1` | The PDF/UA part: 1 (ISO 14289-1, PDF 1.7) or 2 (ISO 14289-2, PDF 2.0; see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). `PdfUaPart` parses `"1"` and `"2"`. Part 2 with `pdf_a` is `INVALID_VALUE` at `options.pdfUA` in Rust and `INVALID_ARGUMENT` in Node. Node: another string is `INVALID_ARGUMENT` |
 | `attachments` / `with_attachments` (`AttachmentStore`) | `attachments: Record<string, Uint8Array>` | none | The bytes of the files the document's `attachments` name in `src`, by id. A `src` missing from them is `ATTACHMENT_NOT_REGISTERED` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
-| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
+| `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it. A fallback is tried for a character only once the font of its run is registered |
 | `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions?, entropy? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
@@ -204,9 +204,12 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   text it covers, or else where it goes). A box is no element of its own
   unless its [`role`](SCHEMA.md#role) makes it one (`h1`–`h6`,
   `section`, `blockQuote`, `figure`, a list and its parts); a `figure`
-  box that draws only its background and borders is still a figure. A
-  list says how its labels number it (`/ListNumbering`), read from them:
-  `1.`, `a)`, `iv`, `•` and the like.
+  box that draws only its background and borders is still a figure.
+  Under part 2, a box with a `link` holds everything inside it in its
+  link, which PDF 2.0 does not let hold a paragraph: the roles inside it
+  make no elements, as inside a paragraph (a link on a heading's runs
+  keeps the heading). A list says how its labels number it
+  (`/ListNumbering`), read from them: `1.`, `a)`, `iv`, `•` and the like.
 - **Decoration** is marked as artifacts, which screen readers skip:
   headers and footers (pagination artifacts that say which), other
   content painted on every page, repeated table header rows, backgrounds
@@ -224,7 +227,11 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   image's figure; `aria-hidden="true"` makes an element decoration. Only
   the outermost SVG counts, and only elements that are drawn (not those
   in `defs`, `symbol`, `clipPath`, `mask`, `marker`, patterns, gradients
-  or filters). Each placement of the image is a form XObject of its own,
+  or filters). Inside a group drawn in a layer of its own (with
+  `opacity`, a mask, a blend mode, `isolation` or a clip path other than
+  one path), a part is a figure only when it is all the group draws; the
+  others are read with the figure around the group. Each placement of the
+  image is a form XObject of its own,
   with its parts marked inside it. An image with parts and `alt` is not
   one `/ActualText` span, which would hide them.
 - **`UA_CONFLICT`.** With `pdfUA` (either part), a document without a `meta.title`, a
@@ -233,7 +240,11 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   widget is tagged), headings that go down one level at a time from
   `h1`, or lists made of items (a `listItem` inside a `list`, a
   `listBody` inside a `listItem`) fails, at the path of the first thing
-  it lacks. Only `render` reports it. An encrypted file must keep
+  it lacks. Under part 2, so does a `#id` link to decoration (a `fixed`
+  node, one with the role `artifact`, or a node inside one) or a
+  bookmark on it: part 2 links and bookmarks go to a structure element,
+  which decoration has none of. `render` reports it, and so does
+  `validate` given the render's options. An encrypted file must keep
   `contentAccessibility`.
 
 Without these options the output does not change. A tagged file is the
@@ -286,7 +297,9 @@ password lifts the permissions.
   widths are listed for all its glyphs, not only those used, so neither
   tells which glyphs the file uses. Listing them all adds up to about 5
   bytes a glyph to each font (some 15 KB for a Latin font of 3,000
-  glyphs). Radio buttons, whose states are
+  glyphs). Colour glyphs (emoji) are drawn by fonts of their own, whose
+  widths and number of glyphs are those of the colour glyphs used.
+  Radio buttons, whose states are
   otherwise named after their values, are named by their position in the
   group instead, with the values in `/Opt`, so the values are encrypted
   too.
@@ -326,10 +339,14 @@ The patterns of a language are chosen in this order:
    with no file to load;
 3. none.
 
-Soft hyphens (U+00AD) in the text are always honoured.
+Soft hyphens (U+00AD) in the text are breaks with or without patterns,
+unless `hyphenationPenalty` is 10 000 or `whiteSpace` is `nowrap` or
+`pre`.
 
 When a word wider than its line is broken between characters (as CSS
-does with `overflow-wrap: anywhere`), a grapheme cluster is never split.
+does with `overflow-wrap: break-word`), a grapheme cluster is never split.
+The word still counts whole when a table column or a box is sized to its
+content.
 Text with `whiteSpace` `nowrap` or `pre` is not broken: a long word
 overflows the line.
 
@@ -341,7 +358,10 @@ every English tag without patterns of its own.
 Patterns are TeX files in the hyph-utf8 format: `\patterns{…}`, with
 an optional `\hyphenation{…}` exception list, in UTF-8. English is
 built in; to hyphenate it with another pattern set (or to add a
-language that is not built in), register a file:
+language that is not built in), register a file. A hyphen leaves at
+least as many letters before and after it as the language's built-in
+patterns do (two and three in English), else two; exception words
+break where they are written.
 
 1. Download a pattern file from hyph-utf8, for example `hyph-en-us.tex` from
    `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`.
@@ -403,8 +423,9 @@ only on the font and the clamped axis values.
   Matching follows CSS: the family, then the width (`stretch`, 100 when
   absent), the style, the weight.
 - Each of those instances is embedded as one of the declaration's, at most
-  64 per declaration (the smallest values first); text past them draws at
-  the declaration's own.
+  64 per declaration (the smallest values first) and 1024 in a document
+  (those of the first declarations first); text past them draws at the
+  declaration's own.
 - An instance's `FontBBox` holds its own outlines, which a heavy instance
   draws outside the default instance's `head` box.
 - `register` refuses (`FONT_ERROR`) a variable font with more than 63
@@ -452,14 +473,14 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
-| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use. `validate` reports it with the render's options |
+| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use; a colour glyph that needs transparency is found once the text is shaped, after the rest, and named only when nothing else conflicts. `validate` reports it with the render's options, but for colour glyphs |
 | `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA requires, at either part (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. `validate` reports it with the render's options |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
 | `PDF_ERROR` | `InkoxideError::Pdf` | same | Writing the PDF failed, or a PDF/A-1b file would pass one of the limits of PDF/A-1 |
 | `HYPHENATION_ERROR` | `InkoxideError::Hyphenation` | same | Hyphenation patterns cannot be parsed |
-| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only: from `renderSync`, and from `render` when it cannot fetch what the document needs | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again (`@inkoxide/wasm`'s `render` fetches them and does). `@inkoxide/render/browser` reports a file it could not fetch as `INTERNAL` |
+| `NOT_LOADED` | `InkoxideError::NotLoaded` (`NotLoaded { fonts, hyphenation }`) | `@inkoxide/wasm` only: from `renderSync`, from `render` when it cannot fetch what the document needs, from `init` when the module cannot be fetched or compiled, and from any call before `init` has resolved | The render needs a font of `deferred_fonts`, or built-in hyphenation patterns that a build without the `embedded-hyphenation` feature has not been given: register them and render again, until it renders: a deferred fallback is needed only once the font of its run is registered (`@inkoxide/wasm`'s `render` fetches them and does). `@inkoxide/render/browser` reports a file it could not fetch as `INTERNAL` |
 | `INTERNAL` | `InkoxideError::Internal`, also for a panic in `render` | same, plus caught panics in any call | A bug in the engine; the process keeps running |
 | `INVALID_ARGUMENT` | n/a (types are checked at compile time) | Node only | A JS argument has the wrong type or is out of range |
 
@@ -490,8 +511,10 @@ limit or the limit on content repeated on every page (`LAYOUT_ERROR`), on
 a font that cannot be shaped or embedded (`FONT_ERROR`), on
 something its PDF/A level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`), on an
 attachment's `src` that is not among the render's `attachments` or is too large
-(`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`),
-or on a failure in writing the PDF (`PDF_ERROR`). Given the render's
+(`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`), on an SVG image
+whose text, with its paths, draws more than 5,000,000 path segments and
+glyphs (`IMAGE_ERROR`; its paths alone are checked by validation), or on
+a failure in writing the PDF (`PDF_ERROR`). Given the render's
 options (Rust `validate_with_options`; in Node and WebAssembly the
 fourth argument, the object `render` takes, whose `format` and `images`
 the arguments override), `validate` reports the conflicts and the

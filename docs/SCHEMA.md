@@ -65,14 +65,14 @@
 | `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
 | `IMAGE_TOO_LARGE` | Raster image (not SVG) over 50 megapixels (width × height). An SVG has its own limit: a width or height over 100,000 px is `INVALID_IMAGE` |
 | `UNKNOWN_ATTACHMENT` | An `attachment` names a file not declared in `attachments` |
-| `ATTACHMENT_NOT_REGISTERED` | An attachment's `src` not provided in the render options. Only a render reports it |
+| `ATTACHMENT_NOT_REGISTERED` | An attachment's `src` not provided in the render options. A render reports it, and so does validation given the render's options |
 | `ATTACHMENT_TOO_LARGE` | An attachment over 64 MiB, or attachments over 256 MiB together |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with partial alpha (unless the render option `flattenAlpha` draws it on white; binary alpha is a stencil mask), an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with partial alpha or a layer with an opacity); under PDF/A-1b, 2b and 2a, `attachments` (at `attachments[0]`). A render reports it at the first such use, and so does validation given the render's options (but for colour glyphs) |
-| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`, a `listItem` inside a `list` and a `listBody` inside a `listItem`). A render reports it at the first such thing, and so does validation given the render's options |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with partial alpha (unless the render option `flattenAlpha` draws it on white; binary alpha is a stencil mask), an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with partial alpha or a layer with an opacity); under PDF/A-1b, 2b and 2a, `attachments` (at `attachments[0]`). A render reports it at the first such use, and so does validation given the render's options, but for colour glyphs: a render checks those once the text is shaped, after the rest, and names one only when nothing else conflicts |
+| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`, a `listItem` inside a `list` and a `listBody` inside a `listItem`; with `pdfUA: '2'`, no `#id` link to decoration, a `fixed` or `artifact` node, and no bookmark on it). A render reports it at the first such thing, and so does validation given the render's options |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -89,7 +89,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 |---|---|---|---|
 | `version` | `1` | yes |  |
 | `meta` | [`Meta`](#meta) |  |  |
-| `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
+| `fonts` | array of [`FontDecl`](#fontdecl) |  | max items 256; Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | max items 256; Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`; an id listed again is skipped. |
 | `emojiImages` | `object` |  | max properties 4096; Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the run's baseline (which its `verticalAlign` raises or lowers), and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
 | `attachments` | array of [`AttachmentDecl`](#attachmentdecl) |  | max items 1000; Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b and PDF/A-3a allow them; PDF/A-1b, PDF/A-2b and PDF/A-2a refuse them (`PDFA_CONFLICT`). |
@@ -124,7 +124,7 @@ Type: `boolean` (default `false`)
 
 ### Role
 
-What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it.
 
 Type: `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"p"` \| `"section"` \| `"blockQuote"` \| `"caption"` \| `"figure"` \| `"list"` \| `"listItem"` \| `"label"` \| `"listBody"` \| `"artifact"`
 
@@ -157,7 +157,7 @@ Type: `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"p"` \| `"sec
 | `stretchRange` | array of `number` (each ≥ 1, ≤ 1000) |  | exactly 2 items; A variable font's widths, as percentages, lowest first: SVG text of a width in it is drawn at that `wdth`, as `weightRange` draws weights. It replaces `stretch` in matching. |
 | `source` | [`Id`](#id) |  | The registered font it draws with; `id` when absent. One variable font can then serve several declarations, each with its own `variations`. |
 | `variations` | `object` |  | max properties 16; A variable font's axis values, by tag, as CSS `font-variation-settings` (`{"wght": 650, "wdth": 75}`): text in this font is drawn and measured at that instance, and the PDF embeds the instance, never the variable font. A value is clamped to its axis; an axis the font lacks is ignored, with a warning, as every axis of a static font is. Tags are four printable ASCII characters; at most 16 axes, and at most 64 declarations with `variations` in a document. |
-| `opticalSizing` | `"auto"` \| `"none"` |  | default `"auto"`; Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first), and text of another size draws at the declaration's own. |
+| `opticalSizing` | `"auto"` \| `"none"` |  | default `"auto"`; Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first) and 1024 in a document (those of the first declarations first), and text of another size draws at the declaration's own. |
 
 ### NonNegative
 
@@ -284,7 +284,7 @@ Pagination controls. They apply to flowing content only: on a header or footer, 
 | `after` | `"auto"` \| `"page"` |  | default `"auto"`; `page` starts a new page after the node when in-flow content follows it: a break at the end of the flow adds no page. Allowed where `before` is. |
 | `inside` | `"auto"` \| `"avoid"` |  | default `"auto"`; `avoid` keeps the node on one page: it moves to the next page whole when it does not fit. A node taller than a page splits anyway, and a forced page break inside it still starts a new page; the part before the break moves whole. |
 | `minPresenceAhead` | [`NonNegative`](#nonnegative) |  | Points of room the node needs from its top: when less is left on the page than this (or than its first unbreakable piece, when taller), the node moves to the next page. The node's own height counts, and nothing needs to follow it. On a box's first in-flow child it applies to the box too, so a box never leaves its top padding behind. `break.before: "page"` on a first child moves the box the same way. |
-| `fixed` | `boolean` |  | default `false`; Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page. |
+| `fixed` | `boolean` |  | default `false`; Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page: where the flow's paint order puts it, without the opacity, transform and clip of the nodes around it. It is not painted inside a node with `display: "none"` or `opacity: 0`, nor on the pages that the `pages` of a node around it leave out. |
 
 ### GridPlacement
 
@@ -384,7 +384,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `padding` | [`EdgesLengthPercent`](#edgeslengthpercent) |  |  |
 | `margin` | [`EdgesLength`](#edgeslength) |  |  |
 | `position` | `"relative"` \| `"absolute"` |  | default `"relative"` |
-| `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it. |
+| `inset` | [`EdgesLength`](#edgeslength) |  | top/right/bottom/left offsets for positioned boxes. Percentages are of the containing block: its width for `left` and `right`, its height for `top` and `bottom` (the page content box, for a child of the page). A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it. |
 | `gridTemplateColumns` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateRows` | array of [`TemplateTrack`](#templatetrack) |  |  |
 | `gridTemplateAreas` | array of `string` |  | min items 1; Rows of whitespace-separated area names, as in CSS; a token of dots is an unnamed cell. Every row has the same number of cells and each area is a rectangle. At most 10000 cells (rows × columns; `OUT_OF_RANGE`). |
@@ -402,7 +402,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `shapeOutside` | [`ShapeOutside`](#shapeoutside) |  | Floats only. The shape lines beside the float wrap around, instead of its margin box, as CSS `shape-outside` with a basic shape: a line takes the room of the shape's widest part beside it, so lines come closer where the shape narrows. Only lines: the float is placed, and boxes beside it are narrowed, by its margin box. The shape is followed in strips at least 2 points high, at most 128 a float; past 4096 strips in one box, a float's lines wrap beside its margin box. |
 | `shapeMargin` | [`NonNegative`](#nonnegative) |  | default `0`; Floats with a `shapeOutside` only. Points the lines beside the float keep from its shape, within its margin box. |
 | `backgroundColor` | [`Color`](#color) |  |  |
-| `opacity` | `number` |  | ≥ 0, ≤ 1; Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. |
+| `opacity` | `number` |  | ≥ 0, ≤ 1; Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. Form fields, notes and attachment icons, which viewers draw over the page, are not faded by an opacity above 0: only a field's background and border are. |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |
 | `borderColor` | [`EdgesColor`](#edgescolor) |  |  |
 | `borderRadius` | [`BorderRadius`](#borderradius) |  |  |
@@ -410,7 +410,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `rotate` | `number` |  | ≥ -1000000, ≤ 1000000; Degrees, clockwise, around the box centre. |
 | `transform` | array of [`TransformOp`](#transformop) |  | Transform functions, as in CSS: the list applies right to left, after `rotate`. Not on table cells. A transformed node moves to the next page as a whole. |
 | `transformOrigin` | array of [`LengthPercent`](#lengthpercent) |  | exactly 2 items; x and y of the origin of `rotate` and `transform` within the border box. Default `["50%", "50%"]`. Not on table cells. |
-| `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells. |
+| `zIndex` | `integer` |  | ≥ -2147483648, ≤ 2147483647; Paint order among siblings: higher paints later (above); equal values keep document order, except that floats paint after their siblings of the same `zIndex`, as in CSS. Default 0. Not on table cells. |
 | `textAlign` | `"left"` \| `"center"` \| `"right"` \| `"justify"` \| `"start"` \| `"end"` |  | text nodes only; `start`/`end` follow the paragraph direction. Default `start`. |
 | `lineHeight` | `number` |  | > 0, ≤ 100; text nodes only; multiplier of the largest run size on the line |
 | `maxLines` | `integer` |  | ≥ 1, ≤ 4294967295; text nodes only |
@@ -424,7 +424,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `direction` | `"ltr"` \| `"rtl"` \| `"auto"` |  | default `"ltr"`; text nodes only; base direction of the paragraph (`auto`: from its first strong character). Right-to-left runs are reordered with the Unicode bidi algorithm in any direction. |
 | `orphans` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines left at the bottom of a page when the paragraph breaks |
 | `widows` | `integer` |  | ≥ 1, ≤ 100, default `1`; text nodes only; minimum number of lines carried to the top of the next page when the paragraph breaks |
-| `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only |
+| `verticalAlign` | `"top"` \| `"middle"` \| `"bottom"` |  | table cells only. Places the cell's content down its row, whatever the cell's `flexDirection` or `display`: in a cell that is not a column (row, reversed, wrapping or grid), the content keeps its own height. |
 | `borderCollapse` | `"collapse"` \| `"separate"` |  | default `"collapse"`; Tables only. `collapse`: adjacent cell borders merge into one, drawn in the winner's style and colour: the wider wins, and at equal widths solid wins over dashed and dashed over dotted. `separate`: every cell draws its own borders, background and `borderRadius`, `borderSpacing` apart. |
 | `borderSpacing` | [`NonNegative`](#nonnegative) |  | Tables with `borderCollapse: separate` only: space between cells and around them, in points. Default 0. |
 
@@ -582,7 +582,7 @@ An image painted behind the box's children and over its `backgroundColor`, under
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
 | `columns` | array of [`ColumnSpec`](#columnspec) | yes | min items 1 |
-| `headerRows` | `integer` |  | ≥ 0, ≤ 4294967295, default `0` |
+| `headerRows` | `integer` |  | ≥ 0, ≤ 4294967295, default `0`; The first rows, repeated at the top of every page the table continues on, below the header rows of the tables around it. Header rows that, with those, are as tall as the page are not repeated. |
 | `rows` | array of [`TableRow`](#tablerow) | yes |  |
 
 ### PageBreakNode
@@ -639,13 +639,13 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
 | `noSpell` | `boolean` |  | default `false`; text, and select with `edit`: viewers do not check the spelling of what is typed. |
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
-| `readOnly` | `boolean` |  | default `false` |
-| `required` | `boolean` |  | default `false` |
+| `readOnly` | `boolean` |  | default `false`; A radio group is read-only when any of its buttons is. |
+| `required` | `boolean` |  | default `false`; A radio group is required (a button must be selected) when any of its buttons is. |
 | `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
-| `color` | [`Color`](#color) |  | text and mark colour; default black |
+| `color` | [`Color`](#color) |  | text and mark colour (its alpha is not used); default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
-| `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. |
+| `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. A radio group's tooltip is the label of its first button that has one; a button with another label says it in its widget (`/Contents`). |
 | `align` | `"left"` \| `"center"` \| `"right"` |  | default `"left"`; text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`). |
 
 ### FieldFormat
@@ -748,7 +748,7 @@ Type: `number` (≥ 0, ≤ 1000000) or [`NonNegativePercent`](#nonnegativepercen
 
 ### TemplateTrack
 
-Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
+Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum, and one of the repeated `tracks` a fixed size above 0 (its fixed maximum, or else its minimum).
 
 Type: [`TrackSize`](#tracksize) or `{repeat, tracks}` (`repeat`: `integer` (≥ 1, ≤ 1000) or `"auto-fill"` \| `"auto-fit"`; `tracks`: array of [`TrackSize`](#tracksize) (min items 1))
 

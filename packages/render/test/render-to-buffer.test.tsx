@@ -589,6 +589,7 @@ describe('renderToBuffer', () => {
       compress: null,
       pdfA: null,
       images: null,
+      attachments: null,
     } as unknown as RenderToBufferOptions;
     expect(countPages(await renderToBuffer(<Receipt customer="Ada" lines={[]} />, nulls))).toBe(1);
     // A <Document> permission of the wrong type, from JavaScript, is the same.

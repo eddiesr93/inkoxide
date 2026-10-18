@@ -248,7 +248,7 @@ async function resolveValue(
     case 'bytes':
       return src.bytes instanceof Uint8Array ? src.bytes : new Uint8Array(src.bytes);
     case 'blob':
-      return new Uint8Array(await src.blob.arrayBuffer());
+      return blobBytes(src.blob);
     case 'registered':
       return registered[src.src] as Uint8Array;
     case 'data':
@@ -264,6 +264,19 @@ async function resolveValue(
       break;
   }
   return fail(`${describe(value)}; expected bytes, a Blob, a string or a request`);
+}
+
+/** The bytes of a `Blob`; one that cannot be read (a `File` changed on disk since it was picked) fails the render. */
+async function blobBytes(blob: Blob): Promise<Uint8Array> {
+  try {
+    return new Uint8Array(await blob.arrayBuffer());
+  } catch (e) {
+    throw new RenderError(
+      'IMAGE_READ_FAILED',
+      `Cannot read the image Blob: ${(e as Error)?.message ?? String(e)}`,
+      { cause: e },
+    );
+  }
 }
 
 const describe = (v: unknown): string =>

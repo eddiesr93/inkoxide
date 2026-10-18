@@ -91,7 +91,12 @@ pub(crate) fn paragraph_tag(tag: &str) -> Option<String> {
 /// paragraph asks for hyphenation, the patterns registered for its tag are
 /// used first, then those of each less specific tag (`en-GB`, then `en`),
 /// then the built-in patterns for the language (for Romanian, the
-/// engine's rules); soft hyphens in the text are always honoured.
+/// engine's rules). A hyphen from registered patterns leaves as many
+/// letters before and after it as the language's built-in patterns do (two
+/// and three in English), else two; exception words break where they are
+/// written. Soft hyphens in the text are breaks with or without patterns,
+/// unless the paragraph does not wrap or its `hyphenationPenalty` is
+/// 10 000.
 ///
 /// Cloning is cheap: parsed patterns are shared.
 ///
@@ -258,7 +263,11 @@ impl Hyphenator for ResolvedHyphenator<'_> {
 
     fn hyphenate(&self, word: &str, lang: &str) -> Vec<usize> {
         if let Some(p) = self.store.lookup(lang) {
-            return p.hyphenate(word);
+            // A built-in language keeps its bounds, its hyph-utf8 file's
+            // `hyphenmins`: English leaves three letters after the last
+            // hyphen, so no `want-ed`.
+            let bounds = builtin::language(lang).map_or(BOUNDS, |l| l.bounds);
+            return p.hyphenate(word, bounds);
         }
         if romanian::serves(lang) {
             return romanian::hyphenate(word);
@@ -275,11 +284,10 @@ impl Hyphenator for ResolvedHyphenator<'_> {
     }
 }
 
-/// Minimum letters before the first and after the last hyphen (TeX's
-/// `\lefthyphenmin` / `\righthyphenmin`; hyph-utf8 uses 2/2 for most
-/// languages).
-const LEFT_MIN: usize = 2;
-const RIGHT_MIN: usize = 2;
+/// Fewest letters before the first and after the last hyphen (TeX's
+/// `\lefthyphenmin` and `\righthyphenmin`) with registered patterns for a
+/// language that is not built in: hyph-utf8's for most languages.
+const BOUNDS: (usize, usize) = (2, 2);
 
 /// A Liang pattern trie plus exception words.
 #[derive(Default)]
@@ -408,11 +416,13 @@ impl Patterns {
         Ok(())
     }
 
-    /// Byte offsets in `word` where a hyphen may go.
-    pub(crate) fn hyphenate(&self, word: &str) -> Vec<usize> {
+    /// Byte offsets in `word` where a hyphen may go, at least `left`
+    /// letters from its start and `right` from its end (an exception word's
+    /// points are kept as written).
+    pub(crate) fn hyphenate(&self, word: &str, (left, right): (usize, usize)) -> Vec<usize> {
         let starts: Vec<usize> = word.char_indices().map(|(i, _)| i).collect();
         let n = starts.len();
-        if n < LEFT_MIN + RIGHT_MIN {
+        if n < left + right {
             return Vec::new();
         }
         let lower: Vec<char> = word
@@ -448,7 +458,7 @@ impl Patterns {
             }
         }
         // A hyphen after word char k-1 sits before padded char k+1.
-        (LEFT_MIN..=n - RIGHT_MIN)
+        (left..=n - right)
             .filter(|&k| points[k + 1] % 2 == 1)
             .map(|k| starts[k])
             .collect()
@@ -479,11 +489,11 @@ mod tests {
         // The patterns Liang's thesis uses to hyphenate "hyphenation".
         let p = patterns(r"\patterns{ hy3ph he2n hena4 hen5at 1na n2at 1tio 2io o2n }");
         assert_eq!(
-            split("hyphenation", &p.hyphenate("hyphenation")),
+            split("hyphenation", &p.hyphenate("hyphenation", BOUNDS)),
             "hy-phen-ation"
         );
         assert_eq!(
-            split("Hyphenation", &p.hyphenate("Hyphenation")),
+            split("Hyphenation", &p.hyphenate("Hyphenation", BOUNDS)),
             "Hy-phen-ation"
         );
     }
@@ -492,16 +502,16 @@ mod tests {
     fn multibyte_letters_and_minimums() {
         let p = patterns("% comment \\patterns{ignored}\n\\patterns{ 1ç 1d 1n 1c }");
         // Offsets are byte offsets; no hyphen within 2 letters of either end.
-        assert_eq!(split("façade", &p.hyphenate("façade")), "fa-ça-de");
-        assert_eq!(split("garçon", &p.hyphenate("garçon")), "gar-çon");
-        assert!(p.hyphenate("ac").is_empty());
+        assert_eq!(split("façade", &p.hyphenate("façade", BOUNDS)), "fa-ça-de");
+        assert_eq!(split("garçon", &p.hyphenate("garçon", BOUNDS)), "gar-çon");
+        assert!(p.hyphenate("ac", BOUNDS).is_empty());
     }
 
     #[test]
     fn exceptions_win() {
         let p = patterns(r"\patterns{ 1b } \hyphenation{ ab-ba-ba }");
-        assert_eq!(split("Abbaba", &p.hyphenate("Abbaba")), "Ab-ba-ba");
-        assert_eq!(split("abbab", &p.hyphenate("abbab")), "ab-bab");
+        assert_eq!(split("Abbaba", &p.hyphenate("Abbaba", BOUNDS)), "Ab-ba-ba");
+        assert_eq!(split("abbab", &p.hyphenate("abbab", BOUNDS)), "ab-bab");
     }
 
     #[test]
@@ -538,7 +548,7 @@ mod tests {
         assert_eq!(paragraph_tag("en-").as_deref(), Some("en"));
         assert_eq!(paragraph_tag("EN_us.UTF-8").as_deref(), Some("en"));
         assert_eq!(paragraph_tag("english"), None);
-        // hypher goes by the language subtag.
+        // The built-in patterns go by the language subtag.
         assert!(builtin_only().supports("de-at"));
         assert!(!builtin_only().supports("deu"));
     }
@@ -547,7 +557,7 @@ mod tests {
     fn registered_patterns_come_first() {
         let mut store = HyphenationStore::new();
         let h = ResolvedHyphenator::new(&store);
-        // Built in (hypher), and none for Japanese.
+        // Built in, and none for Japanese.
         assert_eq!(
             h.hyphenate("documentation", "en"),
             builtin_only().hyphenate("documentation", "en")
@@ -568,6 +578,20 @@ mod tests {
         );
         assert!(store.unregister("ja"));
         assert!(!store.unregister("ja"));
+    }
+
+    #[test]
+    fn registered_patterns_keep_the_bounds_of_their_language() {
+        let mut store = HyphenationStore::new();
+        store.register("en", br"\patterns{ 1ed }").unwrap();
+        store.register("haw", br"\patterns{ 1ed }").unwrap();
+        let h = ResolvedHyphenator::new(&store);
+        // English leaves three letters after the last hyphen, as its
+        // built-in patterns do.
+        assert!(h.hyphenate("wanted", "en").is_empty());
+        assert!(h.hyphenate("wanted", "en-us").is_empty());
+        // A language that is not built in leaves two.
+        assert_eq!(split("wanted", &h.hyphenate("wanted", "haw")), "want-ed");
     }
 
     #[test]
@@ -603,7 +627,7 @@ mod tests {
         let h = ResolvedHyphenator::new(&store);
         assert_eq!(split("colour", &h.hyphenate("colour", "en-gb")), "colo-ur");
         assert_eq!(split("colour", &h.hyphenate("colour", "en-us")), "co-lour");
-        // Neither serves the bare language or another region: hypher does.
+        // Neither serves the bare language or another region: the built-in patterns do.
         assert!(!store.contains("en") && !store.contains("en-AU"));
         assert_eq!(
             h.hyphenate("colour", "en-au"),

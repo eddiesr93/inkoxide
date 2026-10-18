@@ -276,12 +276,10 @@ impl BoxPainter<'_, '_, '_, '_> {
             return;
         }
         let s = &node.style;
-        let hidden = s.display == Some(Display::None)
-            || node.pages.as_ref().is_some_and(|f| {
-                let n = self.content.numbers();
-                !f.shows(n.current, n.total)
-            });
-        if hidden || !self.mode.shows(i) {
+        if self.hidden(node) {
+            return;
+        }
+        if !self.mode.shows(i) {
             self.fixed_inside(i);
             return;
         }
@@ -327,7 +325,6 @@ impl BoxPainter<'_, '_, '_, '_> {
 
         let opacity = s.opacity.unwrap_or(1.0);
         if opacity <= 0.0 {
-            self.fixed_inside(i);
             return;
         }
         let clip = s.overflow == Some(Overflow::Hidden);
@@ -458,7 +455,7 @@ impl BoxPainter<'_, '_, '_, '_> {
 
     /// Paints fixed node `i` of a paged flow, where it is in paint order:
     /// at its place on its first page, without the band clip and the
-    /// effects of its ancestors (as on its first page), which are set up
+    /// opacity, transform and clip of its ancestors, which are set up
     /// again after it.
     fn fixed(&mut self, i: NodeIdx) {
         let Mode::Paged { placement, page } = self.mode else {
@@ -485,21 +482,39 @@ impl BoxPainter<'_, '_, '_, '_> {
     }
 
     /// Paints the fixed nodes inside node `i` of a paged flow, which is not
-    /// painted on this page (they are on every page).
+    /// on this page (they are on every page), unless `i` or a node between
+    /// them leaves them out: `display: none`, `opacity: 0`, or `pages`
+    /// without this page.
     fn fixed_inside(&mut self, i: NodeIdx) {
         if !self.mode.holds_fixed(i) {
             return;
         }
-        for c in paint_order(self.tree, i) {
-            let fixed = self.tree.nodes[c as usize]
-                .node()
-                .is_some_and(|n| n.brk.fixed);
+        let tree = self.tree;
+        let left_out = tree.nodes[i as usize]
+            .node()
+            .is_some_and(|n| self.hidden(n) || n.style.opacity.unwrap_or(1.0) <= 0.0);
+        if left_out {
+            return;
+        }
+        for c in paint_order(tree, i) {
+            let fixed = tree.nodes[c as usize].node().is_some_and(|n| n.brk.fixed);
             if fixed {
                 self.node(c);
             } else {
                 self.fixed_inside(c);
             }
         }
+    }
+
+    /// Whether node `n` is left out of this page with everything inside
+    /// it, its fixed nodes too: `display: none`, or `pages` without this
+    /// page.
+    fn hidden(&self, n: &Node) -> bool {
+        n.style.display == Some(Display::None)
+            || n.pages.as_ref().is_some_and(|f| {
+                let p = self.content.numbers();
+                !f.shows(p.current, p.total)
+            })
     }
 
     /// Records the boxes of a node for its `debug` outline. `window` is the
@@ -715,7 +730,10 @@ impl BoxPainter<'_, '_, '_, '_> {
         let Some((pl, page)) = self.mode.paged() else {
             return;
         };
-        if t.header_rows == 0 {
+        // Below the repeated header rows of the tables around it, when
+        // they leave room on the page (as pagination keeps it).
+        let above = pl.header_above.get(&i).copied().unwrap_or(0.0);
+        if !t.repeats_header(above, pl.page_h) {
             return;
         }
         let rows: Vec<NodeIdx> = self.tree.children(i).collect();
@@ -723,8 +741,7 @@ impl BoxPainter<'_, '_, '_, '_> {
         if pl.on_page(rows[0], page) {
             return;
         }
-        // Below the repeated header rows of the tables around it.
-        let page_top = pl.page_top(page) + pl.header_above.get(&i).copied().unwrap_or(0.0);
+        let page_top = pl.page_top(page) + above;
         // First body row on this page, if it starts below a reserved header.
         let Some(first) = (t.header_rows..rows.len()).find(|&r| pl.on_page(rows[r], page)) else {
             return;

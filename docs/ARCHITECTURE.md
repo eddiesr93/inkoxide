@@ -27,8 +27,8 @@ how the pieces fit together, for contributors.
 
 The npm packages depend on each other like this:
 
-- `@inkoxide/schema` and `@inkoxide/style` depend on no other Inkoxide package
-  (`@inkoxide/style` only on culori).
+- `@inkoxide/schema` depends on no other Inkoxide package. `@inkoxide/style` depends on
+  `@inkoxide/schema`, for the types of the styles it reads, and on culori.
 - `@inkoxide/react` depends on `@inkoxide/schema` and `@inkoxide/style`.
 - `@inkoxide/render` depends on `@inkoxide/react`, `@inkoxide/schema` and `inkoxide`.
 - `@inkoxide/tailwind` depends on `@inkoxide/style`. `@inkoxide/react` and
@@ -79,9 +79,9 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Floats | `layout/flow.rs`, `layout/float.rs`, `layout/shape.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them (around a `shapeOutside`, in strips), column boxes laid out beside them with the floats seeded in, other boxes narrowed |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks; page numbers (`pipeline/numbering.rs`) |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
-| PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, the structure tree of tagged PDF and PDF/UA-1 and 2 (`pdf/tag.rs`), PDF/A-1b, 2b, 2a, 3b and 3a, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
+| PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, the structure tree of tagged PDF and PDF/UA-1 and 2 (`pdf/tag.rs`), PDF/A-1b, 2b, 2a, 3b and 3a, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. The exceptions: in `pdf/crypt.rs`, `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it; in `pdf/mod.rs`, `Writer::packable_text` gives the strings of objects bound for object streams as they are, since the object stream is encrypted as a whole (ISO 32000-2, 7.6.2); and in `pdf/objstm.rs`, pdf-writer writes the cross-reference stream, which the standard leaves unencrypted |
 | Images | `images` | JPEG passthrough, PNG with SMask (a stencil mask for binary alpha at PDF/A-1b), GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
-| SVG | `images/svg/` | Parsing through usvg with limits for untrusted input: what a file's copies, markers and references expand to is checked before usvg converts it (`check.rs`, against `limits.rs`); the root `viewBox` (`view_box.rs`); the text converted again with a render's fonts, cached across renders (`text.rs`) |
+| SVG | `images/svg/` | Parsing through usvg with limits for untrusted input: what a file's copies, markers and references expand to is checked before usvg converts it (`check.rs`, against `limits.rs`), and the path segments the converted tree draws after (`limits.rs`); the root `viewBox` (`view_box.rs`); the text converted again with a render's fonts, cached across renders (`text.rs`) |
 | Forms | `forms` | AcroForm fields: intrinsic sizes, the widget ops painting hands to the PDF writer, and field formats (`forms/format.rs`) |
 | Notes | `notes`, `icons` | Text notes, from `note` nodes and note runs, as icon annotations: shown at a fixed size at a point |
 | Attachments | `attachments`, `pdf/attach.rs` | Files a document carries: `AttachmentStore` holds the caller's bytes by id (or only the size of a file too large to read), `attachments::prepare` decodes and compresses each once per render, after layout; the writer embeds them as file specifications, with icon annotations and, under PDF/A-3b and 3a, associated files |
@@ -101,8 +101,8 @@ pub fn clear_caches();
 ```
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
-`PdfALevel` and its `ParsePdfALevelError`, `Encryption`, `Permissions`,
-`Printing`, `InputFormat`, `FontStore`, `ImageStore`, `AttachmentStore`, `HyphenationStore`,
+`PdfALevel` and its `ParsePdfALevelError`, `PdfUaPart` and its `ParsePdfUaPartError`,
+`Encryption`, `Permissions`, `Printing`, `InputFormat`, `FontStore`, `ImageStore`, `AttachmentStore`, `HyphenationStore`,
 `InkoxideError` and its `NotLoaded`, `ValidationError`, `ValidationCode`),
 `builtin_hyphenation_file`, and the constants `ENGINE_VERSION` and
 `SCHEMA_VERSION`. `JSON_ONLY`, the message the bindings share for
@@ -242,8 +242,9 @@ size of its font size (`opsz`, unless the declaration sets it or
 matched by, within the declaration's `weightRange` and `stretchRange`.
 Before shaping, `text::font_asks` collects what the document asks (the
 sizes of its runs, the spans of its SVG text) and `FontSet::add_variants`
-makes those instances, in order of key and coordinates, at most 64 per
-declaration, as fonts of their own: their keys follow the declarations',
+makes those instances, in order of key and coordinates (those of deferred
+fonts last, so that a missing one moves no other key), at most 64 per
+declaration and 1024 in all, as fonts of their own: their keys follow the declarations',
 so the shaper loads a face for each, and itemizing swaps a run's font for
 its variant. An instance's `FontBBox` is the union of `head`'s box and its
 glyphs' boxes at its coordinates, of every glyph, so that an encrypted
@@ -286,8 +287,15 @@ same maps when the PDF is written (`FontPrograms::field_text`).
 `pipeline::run` lays out every page template (flow, header, footer,
 overlays), paginates each flow, then paints page by page: background →
 overlays with a negative `zIndex` → flow (clipped to the content band,
-only nodes and lines on the page) → fixed nodes → the other overlays →
-header → footer. An overlay is a page child that is fixed and absolutely
+only nodes and lines on the page) → the other overlays → header →
+footer. The flow's fixed nodes are painted in it, where its paint order
+puts them (by `zIndex`, then document order), at their place on their
+first page: `BoxPainter::fixed` paints each without the band clip and
+the opacity, transform and clip of the nodes around it, and sets those
+up again after it. A fixed node is not painted on a page where a node
+around it has `display: none` or `opacity: 0`, or `pages` without that
+page; it is painted where a node around it is only not on the page.
+An overlay is a page child that is fixed and absolutely
 positioned: it is laid out on its own against the page content box, like
 a band, instead of in the flow. Overlays are painted by `zIndex`, then in
 document order. `FlowPart` tells
@@ -310,6 +318,13 @@ header, footer or overlay that shows page numbers is laid out again on each page
 in the page's paint job: `text::PageText` puts the page's digits in place
 of the stand-ins and breaks those paragraphs' lines again, and reads every
 other paragraph from the shared cache.
+
+Flow and paged coordinates are `f32`. Below 2²⁰ pt of flow (some 1,200
+A4 pages in one flow) one step is under `PAGED_EPS` (0.1 pt); past that it
+doubles with each power of two, so content in a flow tens of thousands of
+pages long is placed only to within a few points. Each `pages` entry is a
+flow of its own, so a long document split into several keeps full
+precision.
 
 ## Testing
 

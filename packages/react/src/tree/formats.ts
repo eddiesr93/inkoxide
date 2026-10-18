@@ -2,10 +2,7 @@
 import type { FieldFormat } from '@inkoxide/schema';
 
 import type { TextFormat } from '../components/index.ts';
-import type { TemplateErrorInit } from '../errors.ts';
-
-/** Throws the template error of a prop, with `message`. */
-type Fail = (message: string, init?: TemplateErrorInit) => never;
+import type { Fail } from '../errors.ts';
 
 /** A `TextField`'s format, from its readable keys or their other names. */
 export function textFieldFormat(f: TextFormat, fail: Fail): FieldFormat {

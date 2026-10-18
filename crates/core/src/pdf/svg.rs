@@ -38,7 +38,7 @@ use usvg::{Group, Node, Paint, Transform};
 use super::{alpha_key, font, key_alpha, number, Profile, Writer};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::geom::sin_cos_degrees;
-use crate::images::svg::{Part, ProbedText, SvgParts};
+use crate::images::svg::{Part, ProbedText, SvgParts, MAX_SEGMENTS};
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
 use crate::paint::FillRule;
@@ -56,8 +56,6 @@ impl From<usvg::FillRule> for FillRule {
     }
 }
 
-/// Most path segments one SVG may emit, copies included.
-const MAX_SEGMENTS: usize = 5_000_000;
 /// Deepest group nesting followed (usvg trees from checked input stay far
 /// below this).
 const MAX_DEPTH: u32 = 256;
@@ -256,11 +254,7 @@ struct Frame([f32; 6]);
 
 impl Frame {
     fn of(x: f32, y: f32, rotate: f32, scale_x: f32) -> Self {
-        let (sin, cos) = if rotate == 0.0 {
-            (0.0, 1.0)
-        } else {
-            rotate.to_radians().sin_cos()
-        };
+        let (sin, cos) = sin_cos_degrees(rotate);
         Frame([cos * scale_x, sin * scale_x, -sin, cos, x, y])
     }
 }
@@ -873,15 +867,22 @@ fn end_sequence(cv: &mut Canvas, open: &mut bool) {
     }
 }
 
-fn too_complex() -> InkoxideError {
-    InkoxideError::Image(format!(
-        "SVG is too complex: more than {MAX_SEGMENTS} path segments and glyphs"
-    ))
-}
-
 impl Svg<'_> {
     fn next(&mut self) -> Ref {
         self.w.alloc.next()
+    }
+
+    /// Spends `n` of the [`MAX_SEGMENTS`] path segments and glyphs the SVG
+    /// may draw, copies included. Decoding held its paths to it; its text
+    /// counts too.
+    fn spend(&mut self, n: usize) -> Res {
+        self.segments = self.segments.saturating_add(n);
+        if self.segments > MAX_SEGMENTS {
+            return Err(InkoxideError::Image(format!(
+                "SVG is too complex: more than {MAX_SEGMENTS} path segments and glyphs"
+            )));
+        }
+        Ok(())
     }
 
     fn write_form(
@@ -962,10 +963,7 @@ impl Svg<'_> {
     }
 
     fn emit_path(&mut self, c: &mut Content, path: &tiny_skia_path::Path) -> Res {
-        self.segments += path.len();
-        if self.segments > MAX_SEGMENTS {
-            return Err(too_complex());
-        }
+        self.spend(path.len())?;
         // Shapes that are not path data (`rect`, `line`, `image`) take any
         // number, and a simple clip path is written transformed.
         let n = number;
@@ -1188,12 +1186,8 @@ impl Svg<'_> {
         let plain = Scope { marks: false, ..at };
         let mut open = false;
         for n in g.children() {
-            let part = self
-                .tagging
-                .as_ref()
-                .and_then(|t| t.parts.by_id.get(n.id()))
-                .cloned();
             let holds = self.holds(n, at.clip);
+            let part = self.part_of(n, !holds);
             match part {
                 Some(Part::Hidden) => {
                     end_sequence(cv, &mut open);
@@ -1252,6 +1246,23 @@ impl Svg<'_> {
             .is_some_and(|cp| matches!(clip_kind(cp, |p| self.probe(p).is_some()), Clip::Masks))
             || (!clip && g.mask().is_some());
         !masks && group_transparency(g, clip).is_none()
+    }
+
+    /// The part `n` is. Drawn as a whole (`whole`), a group that draws one
+    /// element only is that element's part: so is the group usvg makes
+    /// around a shape with `opacity`, to draw it in a layer.
+    fn part_of(&self, n: &Node, whole: bool) -> Option<Part> {
+        let t = self.tagging.as_ref()?;
+        if let Some(p) = t.parts.by_id.get(n.id()) {
+            return Some(p.clone());
+        }
+        match n {
+            Node::Group(g) if whole => match g.children() {
+                [only] => self.part_of(only, true),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     /// Opens a sequence of the owner drawn now, unless `open`.
@@ -1404,10 +1415,7 @@ impl Svg<'_> {
         res: TextResources<'_, '_>,
     ) -> Res {
         for (frame, ops) in image_ops(laid, Some(paint), res.ink) {
-            self.segments += ops.len();
-            if self.segments > MAX_SEGMENTS {
-                return Err(too_complex());
-            }
+            self.spend(ops.len())?;
             cv.c.save_state();
             cv.c.transform(frame.0.map(number));
             for op in ops {
@@ -1452,8 +1460,26 @@ impl Svg<'_> {
                             );
                         }
                     }
-                    // Colour glyphs and images draw nothing else.
-                    _ => {}
+                    // `image_ops` pushes nothing else: colour glyphs as
+                    // images (not glyphs of Type 3 fonts), and `glyphs`
+                    // draws the other glyphs of their fonts.
+                    Op::Transform(_)
+                    | Op::ClipPath { .. }
+                    | Op::FillRect { .. }
+                    | Op::FillPath { .. }
+                    | Op::StrokePath { .. }
+                    | Op::Text(_)
+                    | Op::SetOpacity(_)
+                    | Op::Link { .. }
+                    | Op::Field(_)
+                    | Op::Icon(_)
+                    | Op::ColorGlyph(_)
+                    | Op::Tag(_)
+                    | Op::FigureArea { .. }
+                    | Op::EndTag
+                    | Op::Decoration
+                    | Op::EndDecoration
+                    | Op::Band(_) => {}
                 }
             }
             cv.c.restore_state();
@@ -1485,10 +1511,8 @@ impl Svg<'_> {
     ) -> Res {
         let mut any = false;
         for d in laid.decorations_of(paint).iter().filter(|d| d.over == over) {
-            self.segments += 5;
-            if self.segments > MAX_SEGMENTS {
-                return Err(too_complex());
-            }
+            // A quad: a move, three lines and a close.
+            self.spend(5)?;
             let [a, b, c, e] = d.quad.map(|p| p.map(number));
             cv.c.move_to(a[0], a[1]);
             cv.c.line_to(b[0], b[1]);
@@ -1532,10 +1556,7 @@ impl Svg<'_> {
         if glyphs.is_empty() {
             return Ok(());
         }
-        self.segments += glyphs.len();
-        if self.segments > MAX_SEGMENTS {
-            return Err(too_complex());
-        }
+        self.spend(glyphs.len())?;
         cv.c.begin_text();
         if stroke {
             cv.c.set_text_rendering_mode(TextRenderingMode::Stroke);
@@ -2097,6 +2118,47 @@ mod tests {
         }
         // Turning with the arc.
         assert!(angles.windows(2).all(|w| w[1] > w[0]), "{angles:?}");
+    }
+
+    /// An image in SVG text turned by a quarter has no trace of rounding in
+    /// its matrix, as glyphs turned so have none.
+    #[test]
+    fn images_in_svg_text_turn_exactly_by_quarters() {
+        let frame = |rotate: f32, scale_x: f32| super::Frame::of(1.0, 2.0, rotate, scale_x).0;
+        assert_eq!(frame(90.0, 1.0), [0.0, 1.0, -1.0, 0.0, 1.0, 2.0]);
+        assert_eq!(frame(-90.0, 2.0), [0.0, -2.0, 1.0, 0.0, 1.0, 2.0]);
+        assert_eq!(frame(180.0, 1.0), [-1.0, 0.0, 0.0, -1.0, 1.0, 2.0]);
+        assert_eq!(frame(0.0, 1.0), [1.0, 0.0, 0.0, 1.0, 1.0, 2.0]);
+    }
+
+    /// The writer holds an SVG to `MAX_SEGMENTS` path segments and glyphs
+    /// in all, whatever its decoding let through: its text counts too.
+    #[test]
+    fn the_writer_stops_at_the_segment_limit() {
+        let mut w = Writer::new(Out::plain());
+        let mut s = super::Svg {
+            w: &mut w,
+            alphas: std::collections::HashMap::new(),
+            images: std::collections::HashMap::new(),
+            segments: 0,
+            profile: Profile::default(),
+            text: None,
+            tagging: None,
+        };
+        s.spend(super::MAX_SEGMENTS).unwrap();
+        let mut path = usvg::tiny_skia_path::PathBuilder::new();
+        path.move_to(0.0, 0.0);
+        path.line_to(1.0, 1.0);
+        let path = path.finish().unwrap();
+        let err = s
+            .emit_path(&mut pdf_writer::Content::new(), &path)
+            .unwrap_err();
+        assert_eq!(err.code(), "IMAGE_ERROR", "{err}");
+        assert!(
+            err.to_string()
+                .contains("more than 5000000 path segments and glyphs"),
+            "{err}"
+        );
     }
 
     /// Vertical text: upright glyphs down one column, a Latin letter turned

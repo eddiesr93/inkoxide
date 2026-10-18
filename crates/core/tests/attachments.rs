@@ -318,7 +318,7 @@ fn levels_and_documents_that_cannot_carry_them_are_refused() {
         code(&doc(FACTUR_X), &options),
         ("INVALID_VALUE".into(), "meta.xmpExtensions".into())
     );
-    // Only a render knows the store.
+    // A render looks the files up in its store.
     assert_eq!(
         code(&doc(""), &RenderOptions::default()),
         (

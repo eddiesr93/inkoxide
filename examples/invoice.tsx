@@ -41,6 +41,7 @@ export interface InvoiceProps {
 }
 
 const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const percent = (n: number) => n.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 2 });
 
 function Logo() {
   return (
@@ -142,7 +143,7 @@ export default function Invoice({ number, issued, due, from, to, items, taxRate 
             <Text>{money(subtotal)}</Text>
           </View>
           <View className="flex-row justify-between text-gray-600">
-            <Text>Tax ({taxRate * 100}%)</Text>
+            <Text>Tax ({percent(taxRate)})</Text>
             <Text>{money(tax)}</Text>
           </View>
           <View className="mt-1 flex-row justify-between rounded-md bg-indigo-50 px-3 py-2.5 text-sm font-bold text-indigo-700">

@@ -59,6 +59,22 @@ describe('unsupported utilities throw in strict mode', () => {
     }
   });
 
+  it('takes a class that Tailwind cannot parse for an unknown one, strict or not', async () => {
+    const compiler = await TailwindCompiler.load();
+    const nested = `w-[calc(${'('.repeat(20_000)}1px${')'.repeat(20_000)})]`;
+    expect(compiler.candidate(nested)).toEqual({ ok: false, problem: { kind: 'unknown' } });
+    expect(() => tw(`p-2 ${nested}`)).toThrow(UnsupportedUtilityError);
+    setTailwindStrict(false);
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      expect(tw(`p-2 ${nested}`).paddingTop).toBe(6);
+    } finally {
+      console.warn = warn;
+      setTailwindStrict(true);
+    }
+  });
+
   it('ignores the class and warns once when not strict', () => {
     setTailwindStrict(false);
     const warn = console.warn;
@@ -275,6 +291,19 @@ describe('arbitrary lengths', () => {
   });
 });
 
+describe('custom properties', () => {
+  it('that name each other without bound are refused, naming the class', () => {
+    // --v0 names --v1 four times, --v1 names --v2 four times, and so on: 4^12 expansions.
+    const link = (i: number) =>
+      `[--v${i}:${i === 12 ? '0' : Array.from({ length: 4 }, () => `var(--v${i + 1})`).join('_')}]`;
+    const classes = `${Array.from({ length: 13 }, (_, i) => link(i)).join(' ')} w-(--v0)`;
+    const error = errorOf(classes);
+    expect(error.className).toBe('w-(--v0)');
+    expect(error.property).toBe('width');
+    expect(error.reason).toContain('var() expands more than 10000 times');
+  });
+});
+
 describe('em, vw and vh', () => {
   const page = { width: 600, height: 800 };
 
@@ -322,6 +351,52 @@ describe('values out of the range the engine takes', () => {
     expect(errorOf('col-span-0').property).toBe('grid-column');
     expect(errorOf('aspect-[0]').property).toBe('aspect-ratio');
     expect(errorOf('skew-x-[90deg]').property).toBe('transform');
+  });
+
+  it('fail for a length, size or number the schema does not take, naming the property', () => {
+    const properties: Record<string, string> = {
+      'w-[-10px]': 'width',
+      'min-w-[-1pt]': 'min-width',
+      'max-h-[-1pt]': 'max-height',
+      'basis-[-1pt]': 'flex-basis',
+      'p-[-4px]': 'padding',
+      'pt-[-4px]': 'padding-top',
+      'gap-[-2px]': 'gap',
+      'gap-x-[-2px]': 'column-gap',
+      'border-[-2px]': 'border-width',
+      'border-t-[-2px]': 'border-top-width',
+      'rounded-[-4px]': 'border-radius',
+      'rounded-t-[-4px]': 'border-top-left-radius',
+      '[border-spacing:-1pt]': 'border-spacing',
+      '[shape-margin:-1pt]': 'shape-margin',
+      'text-[0px]': 'font-size',
+      'text-[1001pt]': 'font-size',
+      'leading-[200]': 'line-height',
+      'leading-[0]': 'line-height',
+      'z-[3000000000]': 'z-index',
+      '[orphans:500]': 'orphans',
+      '[widows:0]': 'widows',
+      'line-clamp-[5000000000]': '-webkit-line-clamp',
+      'aspect-[2000000]': 'aspect-ratio',
+      'w-[calc(0px/0)]': 'width',
+      'bg-red-500/[150%]': 'background-color',
+      'text-red-500/[200%]': 'color',
+    };
+    for (const [cls, property] of Object.entries(properties)) {
+      expect(errorOf(cls).property, cls).toBe(property);
+    }
+  });
+
+  it('take the bounds themselves', () => {
+    expect(tw('text-[1000pt] leading-[100] z-[2147483647] [orphans:100] aspect-[1000000]')).toEqual({
+      fontSize: 1000,
+      lineHeight: { mult: 100 },
+      zIndex: 2147483647,
+      orphans: 100,
+      aspectRatio: 1000000,
+    });
+    expect(tw('line-clamp-[4294967295] -z-[2147483648]').zIndex).toBe(-2147483648);
+    expect(tw('bg-red-500/[100%]').backgroundColor?.[3]).toBe(1);
   });
 });
 
@@ -380,6 +455,40 @@ describe('page variants', () => {
   it('leave out the custom properties of a variant that does not match', () => {
     expect(tw('translate-y-2 md:translate-x-4', A5)).toEqual({ translate: [0, 6] });
     expect(tw('translate-y-2 md:translate-x-4', A4_UNITS)).toEqual({ translate: [12, 6] });
+  });
+
+  it('reset a ratio with aspect-auto', () => {
+    expect(tw('aspect-video md:aspect-auto', A4_UNITS)).toEqual({});
+    expect(tw('aspect-video md:aspect-auto', A5)).toEqual({ aspectRatio: 1.777778 });
+  });
+
+  it('order a custom breakpoint by its unit first, so write it in rem', async () => {
+    const style = async (breakpoint: string, classes: string[]) => {
+      const compiler = await TailwindCompiler.load(
+        `${DEFAULT_THEME_CSS}\n@theme { --breakpoint-a4: ${breakpoint}; }`,
+      );
+      return mapClasses(
+        compiler,
+        classes,
+        (e) => {
+          throw e;
+        },
+        A4_UNITS,
+      ).style.paddingTop;
+    };
+    // 49.6067rem is 595.28pt (1rem = 12pt): a4 is wider than sm and md, and wins.
+    expect(await style('49.6067rem', ['sm:p-4', 'a4:p-8'])).toBe(24);
+    expect(await style('49.6067rem', ['md:p-4', 'a4:p-8'])).toBe(24);
+    // The same width in pt sorts before every rem breakpoint, so sm and md win.
+    expect(await style('595.28pt', ['sm:p-4', 'a4:p-8'])).toBe(12);
+  });
+
+  it('are warmed ahead with the units a render gives', () => {
+    tw.warm(['p-4 md:flex-row'], A4_UNITS);
+    const size = tw.cacheSize();
+    expect(tw('p-4 md:flex-row', A4_UNITS).flexDirection).toBe('row');
+    expect(tw.cacheSize()).toBe(size);
+    expect(() => tw.warm(['p-4 md:flex-row'])).toThrow(UnsupportedUtilityError);
   });
 
   it('check a variant on every page size, and need the page', () => {

@@ -724,6 +724,50 @@ fn fixed_nodes_in_the_flow_are_painted_in_paint_order() {
 }
 
 #[test]
+fn fixed_nodes_inside_a_node_left_out_of_a_page_are_left_out_there() {
+    // A fixed box, told apart by its red component, in a box 10 high.
+    let around = |red: f32, extra: &str, style: &str| {
+        format!(
+            r#"{{"type":"box"{extra},"style":{{"height":10{style}}},"children":[{{"type":"box"{FIXED},"style":{{"backgroundColor":[{red},0,0,1],"height":10}}}}]}}"#
+        )
+    };
+    let children = [
+        around(0.1, r#","pages":"first""#, ""),
+        around(0.2, r#","pages":"notFirst""#, ""),
+        around(0.3, "", r#","opacity":0"#),
+        around(0.4, "", r#","display":"none""#),
+        around(0.5, "", r#","opacity":0.5"#),
+    ];
+    // Where its parent is only not on the page, it is still painted; it
+    // keeps its own opacity whatever its parent's.
+    assert_eq!(
+        fills(&with_fixed(2, &children.join(","))),
+        [vec![0.1, 0.5], vec![0.2, 0.5], vec![0.2, 0.5]]
+    );
+}
+
+#[test]
+fn header_rows_as_tall_as_a_page_are_not_painted_again() {
+    // A header row 85 high on pages with 80 of content height, then a row
+    // that splits inside its cell: its boxes, told apart by their red
+    // component, continue at the top of the next pages, under no header.
+    let json = format!(
+        r#"{{"version":1,"pages":[{{"size":{{"width":{W},"height":{H}}},
+            "margin":{{"top":{M},"right":{M},"bottom":{M},"left":{M}}},
+            "children":[{{"type":"table","columns":[{{"width":"1fr"}}],"headerRows":1,"rows":[
+              {{"cells":[{{"style":{{"height":85,"backgroundColor":[0.1,0,0,1]}}}}]}},
+              {{"cells":[{{"children":[
+                {{"type":"box","style":{{"height":50,"backgroundColor":[0.2,0,0,1]}}}},
+                {{"type":"box","style":{{"height":50,"backgroundColor":[0.3,0,0,1]}}}},
+                {{"type":"box","style":{{"height":50,"backgroundColor":[0.4,0,0,1]}}}}]}}]}}]}}]}}]}}"#
+    );
+    assert_eq!(
+        fills(&json),
+        [vec![0.1], vec![0.1, 0.2], vec![0.3], vec![0.4]]
+    );
+}
+
+#[test]
 fn overlays_with_a_negative_z_index_are_painted_under_the_flow() {
     // Boxes told apart by their red component.
     let shade = |red: f32, extra: &str, style: &str| {
@@ -1445,6 +1489,55 @@ fn inline_images_follow_the_visual_order_of_right_to_left_text() {
     assert!(second < image && image < first, "{first} {image} {second}");
     let (first, image, second) = paint("ltr", ["ab ", " cdefg"]);
     assert!(first < image && image < second, "{first} {image} {second}");
+}
+
+/// A hyphen follows the word it breaks, in the word's direction: after a
+/// left-to-right word broken in a right-to-left paragraph, on its right
+/// (`docu-`), between it and the Hebrew before it.
+#[test]
+fn a_hyphen_follows_its_word_in_the_words_direction() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Hebrew","family":"Hebrew"}},{{"id":"Inter","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"width":60}},"children":[
+              {{"type":"text","style":{{"direction":"rtl"}},"runs":[
+                {{"text":"אב ","font":"Hebrew","size":10}},
+                {{"text":"docu­mentation","font":"Inter","size":10}}]}}]}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let mut store = FontStore::new();
+    let font = |name: &str| crate::test_fixtures::fixture(&format!("fonts/{name}.ttf"));
+    store
+        .register("Hebrew", font("NotoSansHebrew-Regular"))
+        .unwrap();
+    store.register("Inter", font("Inter-Regular")).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        (Profile::default(), None),
+        Ok,
+    )
+    .unwrap();
+    // The x of the first line's text ops, by glyph count: the word's start
+    // (`docu`, 4), the hyphen (1), and the Hebrew word with its space (3).
+    let x = |n: usize| {
+        pages[0]
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                Op::Text(t) if t.glyphs.len() == n => Some(t.x),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let (word, hyphen, hebrew) = (x(4), x(1), x(3));
+    assert!(word < hyphen && hyphen < hebrew, "{word} {hyphen} {hebrew}");
 }
 
 /// A paragraph's `debug` outline boxes each image run around its image,

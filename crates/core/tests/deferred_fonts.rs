@@ -104,3 +104,25 @@ fn only_deferred_fonts_may_be_missing() {
     let err = render(&d, &store(&[]), &ALL).unwrap_err();
     assert_eq!(err.code(), "NOT_LOADED", "{err}");
 }
+
+#[test]
+fn a_run_in_a_deferred_font_needs_no_fallback_until_it_is_registered() {
+    // Inter has no U+01C4; Noto Sans has. Until Inter is registered, its characters are not
+    // looked for in the fallbacks: the render names Inter alone.
+    let d = doc("Hello \u{01C4}", "Inter-Regular");
+    let deferred = ["Inter-Regular", "NotoSans-Regular"];
+    let needs = |registered: &FontStore| match render(&d, registered, &deferred) {
+        Err(InkoxideError::NotLoaded(NotLoaded { fonts, .. })) => fonts,
+        Err(e) => panic!("{e}"),
+        Ok(_) => panic!("rendered"),
+    };
+    assert_eq!(needs(&store(&["RobotoMono-Regular"])), ["Inter-Regular"]);
+    // With Inter registered, the character needs the fallback.
+    assert_eq!(needs(&store(&WITHOUT_NOTO)), ["NotoSans-Regular"]);
+    let expected = render(&d, &store(&ALL), &[]).unwrap();
+    let registered = render(&d, &store(&ALL), &deferred).unwrap();
+    assert!(
+        registered == expected,
+        "registered, they render as ordinary fonts"
+    );
+}

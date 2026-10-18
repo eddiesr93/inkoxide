@@ -216,6 +216,16 @@ mod tests {
         parse(&named);
     }
 
+    /// An element from an entity that has an `id` of its own is a part:
+    /// only an `id` it lacks cannot be written for it.
+    #[test]
+    fn an_element_from_an_entity_with_an_id_is_a_part() {
+        let svg = r#"<!DOCTYPE svg [<!ENTITY e "<rect id='r' aria-label='E'/>">]><svg xmlns="http://www.w3.org/2000/svg">&e;</svg>"#;
+        let (parts, _) = parts(svg).unwrap();
+        assert_eq!(parts.by_id.len(), 1);
+        assert_eq!(parts.by_id["r"], Part::Named("E".into()));
+    }
+
     #[test]
     fn an_svg_without_parts_has_none() {
         assert!(

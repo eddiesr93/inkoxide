@@ -220,7 +220,7 @@ impl FontData {
         // Parsed only with their companion tables (`CBLC`, `CPAL`).
         let bitmaps = tables.cbdt.is_some() || tables.sbix.is_some();
         let color = bitmaps || tables.colr.is_some() || tables.svg.is_some();
-        let outlines = outlines(&face, &bytes).map_err(err)?;
+        let outlines = outlines(&face, &bytes, bitmaps).map_err(err)?;
         if outlines == Outlines::None && !bitmaps {
             return Err(err(
                 "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
@@ -495,8 +495,13 @@ fn read_metrics(face: &ttf_parser::Face<'_>, fallback_name: &str, color: bool) -
 /// The outlines of `face` (`bytes`), or why they cannot be used. A
 /// variable font's are read by two parsers, ttf-parser for layout and
 /// skrifa (in the subsetter) for the outlines embedded, which must agree
-/// on it.
-fn outlines(face: &ttf_parser::Face<'_>, bytes: &[u8]) -> Result<Outlines, &'static str> {
+/// on it. CFF outlines that cannot be embedded are none: a font with
+/// colour `bitmaps` draws those, and `FontData::parse` refuses one without.
+fn outlines(
+    face: &ttf_parser::Face<'_>,
+    bytes: &[u8],
+    bitmaps: bool,
+) -> Result<Outlines, &'static str> {
     let raw = |tag: &[u8; 4]| face.raw_face().table(ttf_parser::Tag::from_bytes(tag));
     // By the tables present, as the subsetter picks them, parsed or not.
     let has = |tag: &[u8; 4]| raw(tag).is_some();
@@ -507,16 +512,14 @@ fn outlines(face: &ttf_parser::Face<'_>, bytes: &[u8]) -> Result<Outlines, &'sta
         if !has(b"CFF ") {
             return Ok(Outlines::None);
         }
-        if cff::reals_fit(bytes) == Some(false) {
+        // It checks the reals before the subsetter reads them.
+        if cff::full_program(bytes).is_some() {
+            return Ok(Outlines::Cff);
+        }
+        if !bitmaps && cff::reals_fit(bytes) == Some(false) {
             return Err("the CFF table is malformed (a number in a DICT is out of range)");
         }
-        if cff::full_program(bytes).is_none() {
-            return Err(
-                "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
-                 bitmaps (CBDT or sbix)",
-            );
-        }
-        return Ok(Outlines::Cff);
+        return Ok(Outlines::None);
     }
     // The subsetter reads CFF before CFF2, and CFF has no variations.
     if !has(b"glyf") && (has(b"CFF ") || !has(b"CFF2")) {
@@ -665,8 +668,8 @@ impl FontStore {
     ///   are accepted: a declaration's `variations` picks the instance);
     /// - fonts with neither TrueType (`glyf`) nor CFF outlines that can be
     ///   embedded, nor colour bitmaps (`CBDT` or `sbix`): a font with
-    ///   colour bitmaps and no outlines is accepted, never embedded, and
-    ///   draws only its colour glyphs;
+    ///   colour bitmaps and no outlines that can be embedded is accepted,
+    ///   never embedded, and draws only its colour glyphs;
     /// - fonts without a Unicode `cmap` (text is mapped to glyphs through
     ///   it);
     /// - fonts whose `GSUB` or `GPOS` lookups point to coverage tables
@@ -1006,6 +1009,11 @@ impl Ask {
 /// Text that asks for more draws with the declaration's instance.
 const MAX_VARIANTS: usize = 64;
 
+/// Most instances the declarations of a document draw besides their own,
+/// in all: the shaper loads a face for each, and text asks one of every
+/// variable declaration at every size, drawn with or not.
+const MAX_ALL_VARIANTS: usize = 1024;
+
 /// Axis values, by tag, as the bits of their values: what tells variants
 /// apart.
 type AxisKey = Vec<([u8; 4], u32)>;
@@ -1021,6 +1029,8 @@ pub(crate) struct FontSet<'a> {
     decls: &'a [FontDecl],
     /// The variants: a declaration's key and the axis values asked of it.
     variants: BTreeMap<(FontKey, AxisKey), FontKey>,
+    /// By key, whether a declaration's font is deferred, registered or not.
+    late: Vec<bool>,
     needed: Needed,
 }
 
@@ -1047,9 +1057,11 @@ impl<'a> FontSet<'a> {
         let stand_in = doc.fonts.iter().find_map(|d| store.get(d.source()));
         let mut fonts = Vec::with_capacity(doc.fonts.len());
         let mut by_id = BTreeMap::new();
+        let mut late = Vec::with_capacity(doc.fonts.len());
         for decl in &doc.fonts {
             let source = decl.source();
             let is_deferred = missing(source);
+            late.push(deferred.iter().any(|d| d == source));
             let data = if is_deferred {
                 stand_in.ok_or_else(|| {
                     let mut fonts: Vec<String> = Vec::new();
@@ -1080,6 +1092,8 @@ impl<'a> FontSet<'a> {
                 _ => None,
             };
             set_coords(&mut face, instance.as_ref().map_or(&[][..], |i| &i.coords));
+            // Validation allows at most 256 declarations (`MAX_FONTS`), and
+            // `add_variants` adds at most `MAX_ALL_VARIANTS`: every key fits.
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
             fonts.push(LoadedFont {
                 id: &decl.id,
@@ -1106,6 +1120,7 @@ impl<'a> FontSet<'a> {
             fallbacks,
             decls: &doc.fonts,
             variants: BTreeMap::new(),
+            late,
             needed,
         })
     }
@@ -1162,21 +1177,27 @@ impl<'a> FontSet<'a> {
 
     /// Makes the instances `asks` ask of the declared fonts besides
     /// theirs, in order of key and axis values (so that their keys do not
-    /// depend on the order of `asks`), at most [`MAX_VARIANTS`] per
-    /// declaration. Before shaping: the shaper loads a face per key.
+    /// depend on the order of `asks`), those of deferred fonts last (so
+    /// that whether one is registered moves no other key), at most
+    /// [`MAX_VARIANTS`] per declaration and [`MAX_ALL_VARIANTS`] in all.
+    /// Before shaping: the shaper loads a face per key.
     pub fn add_variants(&mut self, asks: impl IntoIterator<Item = (FontKey, Ask)>) {
-        let mut wanted: std::collections::BTreeSet<(FontKey, AxisKey)> =
+        let mut wanted: std::collections::BTreeSet<(bool, FontKey, AxisKey)> =
             std::collections::BTreeSet::new();
         for (key, ask) in asks {
             let asked = self.asked(key, ask);
             if !asked.is_empty() {
-                wanted.insert((key, asked.iter().map(|(t, v)| (*t, v.to_bits())).collect()));
+                let bits = asked.iter().map(|(t, v)| (*t, v.to_bits())).collect();
+                wanted.insert((self.late[key as usize], key, bits));
             }
         }
         let mut made: BTreeMap<FontKey, usize> = BTreeMap::new();
-        for (key, bits) in wanted {
+        for (_, key, bits) in wanted {
+            if self.variants.len() >= MAX_ALL_VARIANTS {
+                break;
+            }
             let n = made.entry(key).or_default();
-            if *n >= MAX_VARIANTS || self.fonts.len() >= usize::from(FontKey::MAX) {
+            if *n >= MAX_VARIANTS {
                 continue;
             }
             let base = &self.fonts[key as usize];
@@ -1276,6 +1297,35 @@ mod tests {
         crate::test_fixtures::fixture(&format!("fonts/{name}"))
     }
 
+    /// `sfnt` with its tables as `edit` leaves them, by tag.
+    fn edit_tables(sfnt: &[u8], edit: impl FnOnce(&mut BTreeMap<[u8; 4], Vec<u8>>)) -> Vec<u8> {
+        let face = ttf_parser::RawFace::parse(sfnt, 0).unwrap();
+        let mut tables: BTreeMap<[u8; 4], Vec<u8>> = face
+            .table_records
+            .into_iter()
+            .map(|t| {
+                let range = t.offset as usize..(t.offset + t.length) as usize;
+                (t.tag.to_bytes(), sfnt[range].to_vec())
+            })
+            .collect();
+        edit(&mut tables);
+        let start = 12 + 16 * tables.len();
+        let mut out = sfnt[..4].to_vec(); // sfnt version
+        out.extend_from_slice(&(tables.len() as u16).to_be_bytes());
+        out.extend_from_slice(&[0; 6]); // searchRange, entrySelector, rangeShift
+        let mut data = Vec::new();
+        for (tag, table) in &tables {
+            out.extend_from_slice(tag);
+            out.extend_from_slice(&[0; 4]); // checksum
+            out.extend_from_slice(&((start + data.len()) as u32).to_be_bytes());
+            out.extend_from_slice(&(table.len() as u32).to_be_bytes());
+            data.extend_from_slice(table);
+            data.resize(data.len().next_multiple_of(4), 0);
+        }
+        out.extend_from_slice(&data);
+        out
+    }
+
     #[test]
     fn registers_truetype_and_reads_metrics() {
         let mut s = FontStore::new();
@@ -1298,6 +1348,50 @@ mod tests {
         let set = FontSet::load(&doc, &store).unwrap();
         let ids: Vec<_> = set.fallbacks.iter().map(|&k| set.get(k).id).collect();
         assert_eq!(ids, ["NotoSans-Regular", "Inter-Regular"]);
+    }
+
+    #[test]
+    fn refuses_fonts_without_outlines_or_a_unicode_cmap() {
+        let otf = fixture("InterDisplay-Bold.otf");
+        let sbix = fixture("EmojiTest-sbix.ttf");
+        let refused = |bytes: Vec<u8>| {
+            FontStore::new()
+                .register("x", bytes)
+                .unwrap_err()
+                .to_string()
+        };
+        let with_cff = |font: &[u8], cff: &[u8]| {
+            edit_tables(font, |t| {
+                t.insert(*b"CFF ", cff.to_vec());
+            })
+        };
+        let none = "neither TrueType (glyf) nor embeddable CFF outlines, nor colour bitmaps";
+        // A CFF header with nothing after it.
+        let cut = vec![1, 0, 4, 1];
+        // Name INDEX ("A"), and a Top DICT whose FontMatrix (12 7) is the
+        // real 1E999, which overflows `f32`.
+        let mut huge = vec![1, 0, 4, 1, 0, 1, 1, 1, 2, b'A', 0, 1, 1, 1, 7];
+        huge.extend([30, 0x1b, 0x99, 0x9f, 12, 7]);
+        let e = refused(with_cff(&otf, &cut));
+        assert!(e.contains(none), "{e}");
+        let e = refused(edit_tables(&otf, |t| {
+            t.remove(b"CFF ");
+        }));
+        assert!(e.contains(none), "{e}");
+        let e = refused(with_cff(&otf, &huge));
+        assert!(e.contains("a number in a DICT is out of range"), "{e}");
+        // With colour bitmaps, CFF that cannot be embedded is no outlines:
+        // the font draws its colour glyphs only.
+        for cff in [&cut, &huge] {
+            let mut s = FontStore::new();
+            s.register("x", with_cff(&sbix, cff)).unwrap();
+            let data = s.get("x").unwrap();
+            assert!(!data.has_outlines() && data.has_color());
+        }
+        let e = refused(edit_tables(&otf, |t| {
+            t.remove(b"cmap");
+        }));
+        assert!(e.contains("no Unicode cmap"), "{e}");
     }
 
     fn variations(pairs: &[(&str, f32)]) -> Vec<FontVariation> {
@@ -1334,6 +1428,15 @@ mod tests {
             let e = s.register("x", fixture(file)).unwrap_err().to_string();
             assert!(e.contains(why), "{file}: {e}");
         }
+        // CFF2 outlines the instancer cannot read.
+        let unreadable = edit_tables(&fixture("VarTest-CFF2.otf"), |t| {
+            t.get_mut(b"CFF2").unwrap().fill(0);
+        });
+        let e = s.register("x", unreadable).unwrap_err().to_string();
+        assert!(
+            e.contains("the outlines of the variable font cannot be read"),
+            "{e}"
+        );
     }
 
     #[test]
@@ -1420,12 +1523,97 @@ mod tests {
     }
 
     #[test]
+    fn a_document_has_at_most_1024_variants() {
+        let mut store = FontStore::new();
+        store.register("opsz", fixture("VarTest-opsz.ttf")).unwrap();
+        let decls: Vec<String> = (0..20)
+            .map(|i| format!(r#"{{"id":"o{i}","family":"O","source":"opsz"}}"#))
+            .collect();
+        let json = format!(
+            r#"{{"version":1,"fonts":[{}],"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#,
+            decls.join(",")
+        );
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let mut set = FontSet::load(&doc, &store).unwrap();
+        let keys: Vec<FontKey> = set.variable().collect();
+        // 64 sizes of each of the 20 declarations: 1280 asked.
+        let asks: Vec<(FontKey, Ask)> = keys
+            .iter()
+            .flat_map(|&k| (0..64).map(move |i| (k, Ask::sized(72.0 - 0.5 * i as f32))))
+            .collect();
+        set.add_variants(asks);
+        assert_eq!(set.fonts.len(), keys.len() + MAX_ALL_VARIANTS);
+        // In order of key: the first 16 declarations have all theirs.
+        assert_ne!(set.variant(keys[15], Ask::sized(72.0)), keys[15]);
+        assert_eq!(set.variant(keys[16], Ask::sized(72.0)), keys[16]);
+    }
+
+    #[test]
+    fn a_missing_deferred_font_moves_no_variant() {
+        let json = r#"{"version":1,"fonts":[
+            {"id":"d","family":"D","source":"D"},{"id":"v","family":"V","source":"V"}],
+            "pages":[{"size":{"width":10,"height":10}}]}"#;
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let deferred = ["D".to_string()];
+        let mut missing = FontStore::new();
+        missing.register("V", fixture("VarTest-opsz.ttf")).unwrap();
+        let mut registered = missing.clone();
+        registered
+            .register("D", fixture("VarTest-opsz.ttf"))
+            .unwrap();
+        let small = |store: &FontStore| {
+            let mut set = FontSet::load_with(&doc, store, &deferred).unwrap();
+            let (d, v) = (set.key("d").unwrap(), set.key("v").unwrap());
+            set.add_variants([(d, Ask::sized(8.0)), (v, Ask::sized(8.0))]);
+            (
+                set.variant(v, Ask::sized(8.0)),
+                set.variant(d, Ask::sized(8.0)),
+            )
+        };
+        // Missing, `d` has no variant; registered, its variant follows `v`'s.
+        assert_eq!(small(&missing), (2, 0));
+        assert_eq!(small(&registered), (2, 3));
+    }
+
+    #[test]
     fn an_instance_is_italic_at_ital_or_any_slant() {
         assert!(!leans(None, None));
         assert!(!leans(Some(0.4), Some(0.0)));
         assert!(leans(Some(0.5), None));
         assert!(leans(None, Some(-12.0)));
         assert!(leans(None, Some(8.0)));
+    }
+
+    #[test]
+    fn instance_names_are_cut_to_63_characters() {
+        let at = |base: &str| instance_name(base, &[(*b"wght", 900.0)]);
+        // 55 characters and `_900wght`: 63, kept whole.
+        assert_eq!(at(&"A".repeat(55)), format!("{}_900wght", "A".repeat(55)));
+        let cut = at(&"A".repeat(56));
+        assert_eq!(cut.len(), 63);
+        assert!(cut.starts_with(&format!("{}-", "A".repeat(46))), "{cut}");
+        // The hash is of the whole name: other coordinates, another name.
+        let other = instance_name(&"A".repeat(56), &[(*b"wght", 800.0)]);
+        assert_eq!(other.len(), 63);
+        assert_ne!(cut, other);
+    }
+
+    #[test]
+    fn a_font_keeps_its_latest_instances() {
+        let mut s = FontStore::new();
+        s.register("v", fixture("VarTest-glyf.ttf")).unwrap();
+        let data = s.get("v").unwrap();
+        let at = |w: f32| data.instance(&variations(&[("wght", w)]), |_| {}).unwrap();
+        let first = at(100.0);
+        for i in 1..MAX_KEPT_INSTANCES {
+            at(100.0 + i as f32);
+        }
+        assert!(Arc::ptr_eq(&first, &at(100.0)));
+        // One more instance: the oldest is made again when asked.
+        at(500.0);
+        let again = at(100.0);
+        assert!(!Arc::ptr_eq(&first, &again));
+        assert_eq!(again.coords, first.coords);
     }
 
     #[test]

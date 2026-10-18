@@ -115,7 +115,7 @@ that are supported and tested; each example is a unit test.
 | `italic`, `not-italic` | run `font` (style) | `italic` → `{"fontStyle":"italic"}` |  |
 | `text-{colour}`, `text-[#…]` | run `color` | `text-black` → `{"color":[0,0,0,1]}` |  |
 | `text-left`, `text-center`, `text-right`, `text-justify`, `text-start`, `text-end` | `textAlign` | `text-left` → `{"textAlign":"left"}` |  |
-| `leading-*` | `lineHeight` | `leading-none` → `{"lineHeight":{"mult":1}}` | Unitless values are multipliers; lengths (`leading-6`) are divided by the text size. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5). |
+| `leading-*` | `lineHeight` | `leading-none` → `{"lineHeight":{"mult":1}}` | Unitless values are multipliers; lengths (`leading-6`) are divided by the text size, so a larger run on the line makes it taller. Without any `leading-*`, the engine uses the font's natural line height (no preflight 1.5). |
 | `tracking-*` | run `letterSpacing` | `tracking-wide` → `{"letterSpacing":{"em":0.025}}` |  |
 | `font-features-[…]` | run `fontFeatures` | `font-features-['tnum','ss01']` → `{"fontFeatureSettings":{"tnum":1,"ss01":1}}` | CSS `font-feature-settings`, with `_` for spaces: `font-features-['tnum','ss01']`. |
 | `[font-variation-settings:…]` | `fontVariationSettings` | `[font-variation-settings:'wdth'_75]` → `{"fontVariationSettings":{"wdth":75}}` | Axis values of a variable font, as an arbitrary property with `_` for spaces: `[font-variation-settings:'wdth'_75]`. A `wght` in it wins over the weight. |
@@ -134,7 +134,7 @@ that are supported and tested; each example is a unit test.
 
 | Utilities | Engine property | Example → result | Notes |
 |---|---|---|---|
-| `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, `[@media(…)]:` | the class, on pages it matches | `md:p-4` → `{"paddingTop":12,"paddingRight":12,"paddingBottom":12,"paddingLeft":12}` | Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`). |
+| `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`, `max-[…]:`, `portrait:`, `landscape:`, `print:`, `[@media(…)]:` | the class, on pages it matches | `md:p-4` → `{"paddingTop":12,"paddingRight":12,"paddingBottom":12,"paddingLeft":12}` | Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 49.6067rem`, 595.28pt, gives `a4:` and `max-a4:`; write them all in `rem`, as Tailwind sorts breakpoints of different units by unit, not by size). Variants stack (`sm:landscape:`). |
 
 ## Not supported
 

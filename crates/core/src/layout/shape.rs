@@ -52,8 +52,9 @@ pub(crate) fn strips(shape: &ShapeOutside, margin: f32, w: f32, h: f32) -> Arc<[
         return Arc::from([]);
     }
     let resolved = resolve(shape, w, h);
-    // At least `STRIP` high each, and at most `MAX_STRIPS`.
-    let n = ((h / STRIP).ceil() as usize).clamp(1, MAX_STRIPS);
+    // At least `STRIP` high each (one when the box is lower), and at most
+    // `MAX_STRIPS`.
+    let n = ((h / STRIP).floor() as usize).clamp(1, MAX_STRIPS);
     let step = h / n as f32;
     (0..n)
         .map(|i| {
@@ -275,5 +276,18 @@ mod tests {
         assert_eq!(strips(&circle, 0.0, 10.0, 1e6).len(), MAX_STRIPS);
         assert_eq!(strips(&circle, 0.0, 10.0, 0.5).len(), 1);
         assert!(strips(&circle, 0.0, 10.0, 0.0).is_empty());
+    }
+
+    #[test]
+    fn strips_are_at_least_two_points_high() {
+        let circle = ShapeOutside::Circle(ShapeCircle::default());
+        for h in [3.0, 5.0, 201.0, 255.0] {
+            let s = strips(&circle, 0.0, 10.0, h);
+            assert!(
+                s.iter().all(|s| s.bottom - s.top >= STRIP - 1e-3),
+                "{h}: {s:?}"
+            );
+        }
+        assert_eq!(strips(&circle, 0.0, 10.0, 201.0).len(), 100);
     }
 }

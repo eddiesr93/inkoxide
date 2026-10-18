@@ -88,7 +88,8 @@ only on demand, from the Actions tab, with the ID of that release run.
   of SVG text, the work budget of one `COLR` glyph, deepest accepted
   nesting on a small stack). Variable font instances render in time
   linear in their number, up to the 64 a document declares, and more are
-  refused before any is made. SVG text at scale (thousands of texts on
+  refused before any is made. Thousands of captions in one element are
+  tagged in linear time under PDF/UA-2. SVG text at scale (thousands of texts on
   one point, of spans with their own paint, of text nodes) renders in
   linear time and bounded memory, measured with a counting allocator;
   its placeholders are bounded before they are written; and validation
@@ -119,6 +120,10 @@ only on demand, from the Actions tab, with the ID of that release run.
   and the integer limits the schema states.
 - `packages/inkoxide/test/schema-parity.test.js`: ajv with the schema and
   the engine accept the same percentages, `fr` sizes and integers.
+- `packages/style/test/bounds.test.ts`: the bounds the style readers and the
+  class mapper check (grid lines, font features and variations, stretch,
+  `zIndex`, `orphans`, `maxLines`, line height, aspect ratio, run size) are
+  the ones in the schema, read from `document.v1.json`.
 - `crates/core/tests/threads.rs`: concurrent one-thread renders each run
   on their calling thread, at the same time.
 - `crates/core/tests/clear_caches.rs`: after `clear_caches`, a render
@@ -255,12 +260,17 @@ only on demand, from the Actions tab, with the ID of that release run.
   `precompiled.test.ts` maps every class string of the mapper's tests, the
   documented subset, the examples, benchmarks and React and render tests
   through a table and through the compiler, and expects the same styles,
-  errors and order; `scan.test.ts` the scanner, and which files it reads.
-- `packages/*/test` (Vitest, `pnpm test`): the style value readers,
-  Tailwind class mapping and `initTailwind` options, the React tree
-  builder, `renderToBuffer`, `Font.register`, error messages, the
-  export lists of `@inkoxide/style` and `@inkoxide/render`, and the
-  examples and benchmark invoices, each run through a symlinked path.
+  errors and order; `scan.test.ts` the scanner, and which files it reads
+  (`isSource` agrees with `sourceFiles`, which the dev server relies on);
+  `sources.test.ts` a theme's `@source` directives (brace expansion, globs,
+  `not`, `inline`); `browser.test.ts` the browser entry, which maps classes as
+  the Node one does and is strict outside production.
+- `packages/*/test` (Vitest, `pnpm test`): the style value readers and page
+  media queries, Tailwind class mapping and `initTailwind` options, the React
+  tree builder, `renderToBuffer`, `Font.register`, `usePdf` (in happy-dom),
+  error messages, the export lists of `@inkoxide/style` and
+  `@inkoxide/render`, and the examples and benchmark invoices, each run
+  through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture
@@ -319,7 +329,9 @@ the `ci` workflow builds them and runs clippy on them):
   sequences), which a colour font draws from its colour tables. Seeded with
   `fixtures/fonts`, its WOFF files and its malformed and limit fonts.
 
-All share one oracle: no panic; `render` succeeds only when `validate`
+All share one oracle: no panic (also one the engine catches and returns
+as `INTERNAL` or as the shaper's `FONT_ERROR`: the fuzzer aborts on a
+panic, and `repro` fails the oracle); `render` succeeds only when `validate`
 is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
 which only a PDF/A-1b render reports (by input length, a quarter of the
 inputs render as plain PDF and a quarter at each PDF/A level); the
@@ -327,15 +339,16 @@ writer never refuses transparency at 1b, which would mean validation
 missed it (for SVG, that its scan disagrees with the writer). What only
 a render knows is not a finding either: PDF/A-2b refusing files, a file
 `src` the store lacks (`ATTACHMENT_NOT_REGISTERED`), and XMP extensions
-without PDF/A to go in. A quarter of the documents also render tagged
-(an eighth as PDF/UA-1), and render or fail as untagged does, with the
-same code; PDF/UA may refuse more only with `UA_CONFLICT`. Every
+without PDF/A to go in. A quarter of the inputs also render tagged (an
+eighth as PDF/UA-1), picked by their length apart from the PDF/A level,
+and render or fail as untagged does, with the same code; PDF/UA may
+refuse more only with `UA_CONFLICT`. Every
 form script (`/JS`, read from the parsed object syntax, so a script
 written as a hex string is checked and a document title that looks like
 one is not) is a call of a standard form function (`AFNumber_Format`
 and the like) with only integers, booleans and string literals as
 arguments, and PDF/A output has no scripts and no `/AA` (`check_scripts`);
-the output is a complete
+the output, tagged too, is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
 from MessagePack (the image and font targets included), and a document

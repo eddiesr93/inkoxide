@@ -11,13 +11,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { candidatesIn, matchesGlob, SCANNED, scanFiles, type SourceGlob, sourceFiles } from './scan.ts';
+import { candidatesIn, isSource, scanFiles, type SourceGlob, sourceFiles } from './scan.ts';
 import { themeSources } from './sources.ts';
 import { TableBuilder } from './table-builder.ts';
-import type { Table } from './table-source.ts';
+import { type Table, TABLE_KEY } from './table-source.ts';
 import type { ThemeOptions } from './tw.ts';
 import { webpackScans } from './webpack-scans.ts';
 
@@ -47,9 +47,14 @@ function themeOf(options: TailwindPluginOptions, root: string): ThemeOptions & {
   return { css: readFileSync(file, 'utf8'), base: dirname(file), file };
 }
 
-/** The table stub's code with `table` in it: parsed as JSON, which is faster than a literal. */
+/** `table` as an expression: parsed as JSON, which is faster than a literal. */
+function tableExpression(table: Table): string {
+  return `JSON.parse(${JSON.stringify(JSON.stringify(table))})`;
+}
+
+/** The table stub's code with `table` in it. */
 function tableModule(table: Table): string {
-  return `export const TABLE = JSON.parse(${JSON.stringify(JSON.stringify(table))});\n`;
+  return `export const TABLE = ${tableExpression(table)};\n`;
 }
 
 /** What a scan read, and what it takes for one of the sources. */
@@ -92,10 +97,16 @@ class SourceScan {
     return [...files, ...theme];
   }
 
+  /** The table of the classes, and the files they were read from. */
+  async classes(): Promise<{ table: Table; files: string[] }> {
+    const { builder } = await this.start();
+    return { table: builder.table(), files: await this.files() };
+  }
+
   /** The table stub's code with the table of the classes, and the files they were read from. */
   async table(): Promise<{ code: string; files: string[] }> {
-    const { builder } = await this.start();
-    return { code: tableModule(builder.table()), files: await this.files() };
+    const { table, files } = await this.classes();
+    return { code: tableModule(table), files };
   }
 
   /** Whether `file` is one of the theme's CSS files, once scanned: a change needs a new scan. */
@@ -139,16 +150,7 @@ class SourceScan {
     builder.add(keep(scanFiles(files)));
     builder.add(keep([...(this.options.safelist ?? []), ...(named?.inline ?? [])]));
     const themeFiles = [...(theme.file === undefined ? [] : [theme.file]), ...(named?.files ?? [])];
-    const under = (file: string, dir: string) => file === dir || file.startsWith(dir + sep);
-    const has = (file: string) => {
-      if ([...exclude].some((d) => under(file, d))) return false;
-      if (excludeGlobs.some((g) => matchesGlob(file, g))) return false;
-      return roots.some((r) =>
-        typeof r === 'string'
-          ? r === file || (SCANNED.has(extname(file)) && under(file, r))
-          : matchesGlob(file, r),
-      );
-    };
+    const has = (file: string) => isSource(file, roots, exclude, excludeGlobs);
     return { builder, files, theme: themeFiles, has, never };
   }
 }
@@ -380,12 +382,11 @@ const NEXT_MODULE = 'node_modules/.cache/@inkoxide/tailwind/browser.js';
  * `@inkoxide/tailwind/…` too.
  */
 async function writeNextModule(sources: SourceScan, root: string): Promise<void> {
-  const { code } = await sources.table();
-  const table = code.slice('export const TABLE = '.length).trimEnd().replace(/;$/, '');
+  const { table } = await sources.classes();
   const file = join(root, NEXT_MODULE);
   const precompiled = relative(dirname(file), PRECOMPILED).split(sep).join('/');
   const text = `// The Tailwind build plugin's module (withInkoxideTailwind()): the table of the classes the sources use.
-globalThis[Symbol.for('@inkoxide/tailwind table')] = ${table};
+globalThis[Symbol.for(${JSON.stringify(TABLE_KEY)})] = ${tableExpression(table)};
 export * from ${JSON.stringify(precompiled)};
 `;
   try {

@@ -375,7 +375,8 @@ pub(crate) fn write_font(
         });
     }
     if let Some(r) = cid_set_ref {
-        let set = deflate(&cid_set_bits(used), flate::LEVEL)?;
+        let mapped = program.cid_to_gid.is_some();
+        let set = deflate(&cid_set_bits(used, mapped), flate::LEVEL)?;
         out.stream(pdf, r, &set, |s| {
             s.filter(Filter::FlateDecode);
         });
@@ -491,12 +492,20 @@ fn width_runs(
 
 /// A `CIDSet`: bit `c` (high bit first) is set for each CID `c` the
 /// subset holds. A subset holds the glyphs `used`, under their original
-/// ids, and `.notdef`.
-fn cid_set_bits(used: &BTreeSet<u16>) -> Vec<u8> {
+/// ids, and `.notdef`. A TrueType subset's `CIDToGIDMap` (`mapped`) maps
+/// every CID up to the last used one, an unused one to `.notdef`, so it
+/// holds all of them (ISO 14289-1, 7.21.4.2).
+fn cid_set_bits(used: &BTreeSet<u16>, mapped: bool) -> Vec<u8> {
     let last = used.last().copied().unwrap_or(0);
     let mut bits = vec![0u8; usize::from(last) / 8 + 1];
-    for c in used.iter().copied().chain([0]) {
-        bits[usize::from(c) / 8] |= 0x80 >> (c % 8);
+    if mapped {
+        for c in 0..=last {
+            bits[usize::from(c) / 8] |= 0x80 >> (c % 8);
+        }
+    } else {
+        for c in used.iter().copied().chain([0]) {
+            bits[usize::from(c) / 8] |= 0x80 >> (c % 8);
+        }
     }
     bits
 }
@@ -505,8 +514,6 @@ fn cid_set_bits(used: &BTreeSet<u16>) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    /// Two different fonts get their own subsets, even when their hashes
-    /// are equal.
     #[test]
     fn width_runs_keep_to_the_array_limit() {
         let used = BTreeSet::from([1, 2, 3, 7, 9, 10]);
@@ -571,13 +578,24 @@ mod tests {
     }
 
     #[test]
-    fn cid_sets_hold_the_used_cids_and_notdef() {
-        assert_eq!(cid_set_bits(&BTreeSet::new()), [0x80]);
-        assert_eq!(cid_set_bits(&BTreeSet::from([1, 7])), [0xC1]);
+    fn cid_sets_hold_every_cid_the_subset_holds() {
+        // A CFF subset: the CIDs used, and `.notdef`.
+        assert_eq!(cid_set_bits(&BTreeSet::new(), false), [0x80]);
+        assert_eq!(cid_set_bits(&BTreeSet::from([1, 7]), false), [0xC1]);
         assert_eq!(
-            cid_set_bits(&BTreeSet::from([3, 8, 17])),
+            cid_set_bits(&BTreeSet::from([3, 8, 17]), false),
             [0x90, 0x80, 0x40]
         );
-        assert_eq!(cid_set_bits(&BTreeSet::from([u16::MAX])).len(), 8192);
+        assert_eq!(cid_set_bits(&BTreeSet::from([u16::MAX]), false).len(), 8192);
+        // A TrueType subset: every CID its map covers, up to the last used.
+        assert_eq!(cid_set_bits(&BTreeSet::new(), true), [0x80]);
+        assert_eq!(
+            cid_set_bits(&BTreeSet::from([3, 8, 17]), true),
+            [0xFF, 0xFF, 0xC0]
+        );
+        assert_eq!(
+            cid_set_bits(&BTreeSet::from([u16::MAX]), true),
+            [0xFF; 8192]
+        );
     }
 }

@@ -4,8 +4,9 @@
 // index.js and the `inkoxide` package.
 
 /**
- * Where the engine's WebAssembly module comes from: a URL, a `Response`, its
- * bytes, or the module compiled already. By default `inkoxide.wasm` next to
+ * Where the engine's WebAssembly module comes from: a URL (a relative one is
+ * resolved against this module's URL), a `Response`, its bytes, or the module
+ * compiled already. By default `inkoxide.wasm` next to
  * this module, or `inkoxide-threads.wasm`, the module with threads, for a
  * pool. A module given is the one used, either of the two: the module with
  * threads needs a page that can share memory.
@@ -15,7 +16,9 @@ export type WasmSource = URL | string | Response | PromiseLike<Response> | Buffe
 export interface InitOptions {
   /**
    * The folder of the built-in hyphenation patterns (`<file>.bin`), fetched as documents need
-   * them. Default: the package's `hyphenation/`, which bundlers copy.
+   * them. A relative URL is resolved against the page's location (a worker's own, in a worker),
+   * not this module's as a `source` string is. Default: the package's `hyphenation/`, which
+   * bundlers copy.
    */
   hyphenation?: string | URL;
   /**
@@ -25,9 +28,10 @@ export interface InitOptions {
    * (`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
    * require-corp`), and a worker, since a page's main thread cannot wait (Node has both). Where
    * either is missing, or the module's memory (at most 2 GiB) cannot be reserved, it loads the
-   * one-thread module; where the pool's workers cannot start (`thread.js`, next to this module,
-   * must be a script of the page's origin), it renders on one thread. `threadCount()` tells
-   * which. A pool has one 4 MiB stack per thread: more threads than cores gain nothing.
+   * one-thread module; where the pool's workers cannot start (a policy that forbids them, or a
+   * bundler that leaves out `thread.js`, next to this module), it renders on one thread.
+   * `threadCount()` tells which. A pool has one 4 MiB stack per thread: more threads than cores
+   * gain nothing.
    */
   threads?: number;
   /**
@@ -40,9 +44,11 @@ export interface InitOptions {
 }
 
 /**
- * Compiles and instantiates the engine, and starts its pool of threads.
- * Every other function throws until the promise resolves. Later calls
- * return the same promise and ignore their arguments.
+ * Compiles and instantiates the engine, and starts its pool of threads. A
+ * module that cannot be fetched or compiled rejects it with `NOT_LOADED`,
+ * and it may be called again. Every other function throws `NOT_LOADED` until
+ * the promise resolves. Later calls return the same promise and ignore their
+ * arguments.
  */
 export function init(source?: WasmSource, options?: InitOptions): Promise<void>;
 
@@ -197,9 +203,10 @@ export interface RenderOptions {
   encryption?: EncryptionOptions;
   /**
    * Fonts the document declares that are fetched only if the render needs them, by id: the URL
-   * of each. A render that does not draw with one, or try it for a character (a fallback),
-   * renders as if it were registered; `render` fetches and registers those it needs, and
-   * `renderSync` fails with `NOT_LOADED`.
+   * of each, resolved as `InitOptions.hyphenation` is. A render that does not draw with one, or
+   * try it for a character (a fallback, tried only once the font of its run is loaded), renders
+   * as if it were registered; `render` fetches and registers those it needs, and `renderSync`
+   * fails with `NOT_LOADED`.
    */
   deferredFonts?: Record<string, string | URL>;
 }

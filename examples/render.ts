@@ -11,13 +11,15 @@
  * and the table of examples in examples/README.md (`<!-- examples:start -->`).
  *
  *   pnpm --filter @inkoxide/examples render [name…]
+ *
+ * With `--readme` it only rewrites the READMEs, without the engine or poppler, as
+ * scripts/check-generated.sh does to find a README the examples have left behind.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { renderToBuffer } from '@inkoxide/render';
 import { type ComponentType, createElement } from 'react';
 
 import { decodePng, encodePng, type Rgb } from './png.ts';
@@ -110,9 +112,12 @@ function frame(page: Rgb): Rgb {
 
 mkdirSync(OUT, { recursive: true });
 mkdirSync(MEDIA, { recursive: true });
-const names = process.argv.length > 2 ? process.argv.slice(2) : ALL;
+const readmeOnly = process.argv[2] === '--readme';
+const names = readmeOnly ? [] : process.argv.length > 2 ? process.argv.slice(2) : ALL;
 
 for (const name of names) {
+  // Imported here, so that `--readme` runs without the engine.
+  const { renderToBuffer } = await import('@inkoxide/render');
   const mod = (await import(`./${name}.tsx`)) as { default: ComponentType<object>; sample: object };
   const t0 = performance.now();
   const pdf = await renderToBuffer(createElement(mod.default, mod.sample));

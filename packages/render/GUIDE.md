@@ -37,7 +37,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | Component | What it is |
 |---|---|
 | `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` and `flattenAlpha` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword`, `permissions` and `entropy` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
-| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
+| `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. A `bg-*` class sets its background, which is opaque: a colour with opacity (`bg-black/5`, `bg-transparent`) is drawn on white. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
 | `Link` | A link (`href`, or `src`): a linked run inside a `Text`, a box like a `View` elsewhere. |
@@ -72,9 +72,11 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   `fontSize`, the inherited one; in `lineHeight` and `letterSpacing`, the size of the text they
   apply to, so they scale with each run), `vw` and `vh` (1% of the page's width and height), or a
   percentage. `lineHeight` is a multiplier of the text size (`1.4`, `'140%'`, `'1.4em'`) or a
-  length (`'14pt'`). `calc()` adds lengths (`'calc(10mm + 1em)'`) or percentages, but not one to the
-  other. A class's arbitrary value (`w-[…]`) takes the same syntax and reads the same. A page's
-  `size` takes the units that do not depend on the font or the page.
+  length (`'14pt'`), which is read as that multiple of the text's own size: a larger run on the
+  line makes the line taller than the length. `calc()` adds lengths (`'calc(10mm + 1em)'`) or
+  percentages, but not one to the other. A class's arbitrary value (`w-[…]`) takes the same
+  syntax and reads the same. A page's `size` takes the units that do not depend on the font or
+  the page.
   Percentages follow CSS: widths, padding and margins are of the parent's width, and gaps of
   the element's own size. A percentage height needs a parent with a set height; a child of the
   `Page` takes it of the page.
@@ -169,7 +171,9 @@ it.
   `min-[200mm]:flex-row`, `landscape:flex-row`, `print:hidden`, and stacked, `sm:landscape:`.
   Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg`
   768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own
-  (`--breakpoint-a4: 595.28pt` gives `a4:` and `max-a4:`).
+  (`--breakpoint-a4: 49.6067rem`, which is 595.28pt, gives `a4:` and `max-a4:`). Write them in
+  `rem`: Tailwind sorts breakpoints of different units by unit, not by size, so one in `pt`
+  comes before `sm:` and loses to it.
 - **Not supported:** variants for screens and states (`hover:`, `focus:`, `dark:`), container
   queries (`@sm:`), shadows, gradients and `space-*`/`divide-*` (use `gap-*` and borders). Using one throws and names the class; in production (`NODE_ENV=production`) it is logged once and ignored.
 - **In a browser**, the Tailwind compiler is about 90 KB to download with brotli. The build
@@ -266,8 +270,10 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   italic as well. Each combination a document uses is a static instance, embedded as TrueType
   (CFF2 outlines too), so viewers show exactly what was laid out. TrueType (`gvar`) and CFF2
   variable fonts work; one with more than 63 axes or an `avar` table other than version 1.0 is
-  refused when it loads. A document uses at most 64 instances (`OUT_OF_RANGE` at `fonts`). Text
-  in an `<Svg>` takes the nearest instance the document declares.
+  refused when it loads. A document uses at most 64 instances picked by a weight, a width or
+  `fontVariationSettings` (`OUT_OF_RANGE` at `fonts`). Optical sizes add at most 64 instances
+  to each face or instance, and 1024 to a document; text at a size past them draws at its
+  face's own. Text in an `<Svg>` takes the nearest instance the document declares.
 - **Colour emoji.** Register a colour emoji font, such as Noto Color Emoji, and list it in
   [`fallbackFonts`](#links-bookmarks-and-metadata):
 
@@ -382,9 +388,9 @@ const logo = readFileSync('logo.png');
   ```
 
 - **Background images.** `ImageBackground` is a `View` with an image behind its children. It
-  takes the props of a `View` and `src` in any form `Image` takes; `fit`, `objectFit` and
-  `objectPosition` (and the `object-*` classes) place the image as on an `Image`, `fill` by
-  default. The image fills the padding box, inside the borders, as a CSS `background-image`
+  takes the props of a `View`, except `render`, and `src` in any form `Image` takes; `fit`,
+  `objectFit` and `objectPosition` (and the `object-*` classes) place the image as on an `Image`,
+  `fill` by default. The image fills the padding box, inside the borders, as a CSS `background-image`
   does: it is drawn over the background colour and under the borders and the children, and
   clipped to the box, rounded by `borderRadius`. A box split across pages is sliced with its
   image, like its background colour. `source`, `imageStyle` and `srcSet` throw: pass the image
@@ -608,8 +614,8 @@ page. Lengths are points or strings with a unit:
   the wider wins. With `borderCollapse: 'separate'` (`border-separate`), each cell draws its own
   borders, background and radius, `borderSpacing` (`border-spacing-*`) apart and from the
   table's edge. Both go on the `Table`.
-- **Pagination.** Header rows repeat on every page. Rows split across pages, and a row taller
-  than a page splits inside its cells.
+- **Pagination.** Header rows repeat on every page, unless they are as tall as the page. Rows
+  split across pages, and a row taller than a page splits inside its cells.
 - **Cells.** `colSpan`, `rowSpan` and `verticalAlign` are available on `Cell`. The columns set a
   cell's width, and a cell's `height` and `minHeight` are minimums: the row grows to fit the
   content. Styles that place or size the cell itself (`width`, `minWidth`, `maxWidth`, `margin`,
@@ -704,9 +710,9 @@ A flattened image is opaque: on a coloured background it shows a white box where
 transparent. The u levels (`'PDF/A-2u'`) and PDF/A-1a are not
 supported: they fail with `TEMPLATE_ERROR`.
 
-`conformance` is not part of the document tree: to render a stored `result.document` again at
-the same level, pass `pdfA` to [`renderDocument`](#serving-templates), from
-`@inkoxide/render/templates`.
+`conformance` and `flattenAlpha` are not part of the document tree: to render a stored
+`result.document` again at the same level, pass `pdfA` (and `flattenAlpha`) to
+[`renderDocument`](#serving-templates), from `@inkoxide/render/templates`.
 
 ### Passwords and permissions
 
@@ -771,10 +777,12 @@ reader without it may do:
   patterns, and Romanian (`ro`) its syllable rules. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
   `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
   `hyphenationCallback`. A soft hyphen
-  (`\u00AD`) in the text is always a possible break.
+  (`\u00AD`) in the text is a possible break with or without `hyphenate`, unless
+  `hyphenationPenalty` is 10 000 or the text does not wrap (`whitespace-nowrap`, `whitespace-pre`).
 - **Words wider than the line.** A word that does not fit its line is broken between any two
-  characters, hyphenated or not, as CSS does with `overflow-wrap: anywhere` (never inside a
-  grapheme cluster, such as a letter with its accent or an emoji). `[word]` from a hyphenation
+  characters, hyphenated or not, as CSS does with `overflow-wrap: break-word` (never inside a
+  grapheme cluster, such as a letter with its accent or an emoji); the word still counts whole
+  when an `'auto'` table column or a box is sized to its content. `[word]` from a hyphenation
   callback keeps a word from being hyphenated, but not from being broken this way. Text with
   `whitespace-nowrap` or `whitespace-pre` is never broken: a long word overflows the line.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each
@@ -833,7 +841,9 @@ reader without it may do:
   superscripts and subscripts, for text of its size; `'baseline'` puts it back. The size stays
   the one you set: give the superscript a smaller `fontSize`. The line grows to fit it, as in
   CSS. A `Text` inside a superscript stays on its baseline. On a `Cell`, `verticalAlign` places
-  the content (`top`, `middle`, `bottom`), and `super` or `sub` there is an error.
+  the content (`top`, `middle`, `bottom`), and `super` or `sub` there is an error. On a `View` or
+  a `Text` it would place nothing, so `top`, `middle` and `bottom` there, and any value on a
+  `View`, are errors too.
 - **OpenType features.** `fontFeatureSettings` takes a CSS string
   (`"'tnum' 1, 'liga' off"`), a list of tags to turn on (`['tnum', 'smcp']`), or an object of
   tags to values or switches (`{ tnum: 1, liga: false, salt: 2 }`): 1 turns a feature on, 0
@@ -865,7 +875,9 @@ utilities that draw: `fill-*`, `stroke-*` (colours, `none`, `current`), `stroke-
 the SVG attributes CSS sets (`style={{ fill: 'teal', strokeWidth: 2 }}`). As in CSS, the
 classes win over the attributes and `style` over both, and other utilities or keys are an
 error. On the `<Svg>`, `fill-*`, `stroke-*` and `stroke-<n>` set the paint the drawing
-inherits; on any other component they are an error. `Canvas`
+inherits, and a text colour (what `currentColor` is) and the font utilities are the text style of
+its text, over the ones around it; on any other component `fill-*`, `stroke-*` and `stroke-<n>`
+are an error. `Canvas`
 draws in code with a pdfkit-style painter. An SVG file can also go straight into
 `<Image src={svgBytes} />`.
 
@@ -1012,9 +1024,10 @@ In an SVG, whether in `<Svg>` or an image file:
   laid out as described above, and read in their order when the PDF's text is copied or
   extracted; a column of upright characters is one run of PDF text, in a vertical
   (`Identity-V`) font. The text paths of an SVG that has more than 100,000 path segments in
-  all fail the render with `INVALID_IMAGE`: convert them to outlines in your design tool. An
-  SVG's text uses at most 64 different sets of font features, and so do the SVGs of a
-  document in all. Font properties set on a `<use>` reach the text it copies, as in browsers;
+  all fail the render with `INVALID_IMAGE`: convert them to outlines in your design tool. A
+  span of an SVG's text takes at most 32 font features, as a run does, and an SVG's text uses
+  at most 64 different sets of them, and so do the SVGs of a document in all. Font properties
+  set on a `<use>` reach the text it copies, as in browsers;
   past the 64th `<use>` of an SVG that sets other fonts than the text's own, and in a `<use>` or
   element with text that an XML entity writes, the copy keeps the text's own. A `<text>`
   element that an XML entity expands to fails with `INVALID_IMAGE`:
@@ -1178,9 +1191,12 @@ and text extraction what each part of the page is, in reading order. `pdfUA` wri
 field (in a `Header` or `fixed` too), headings in order and lists made of items: without one, the
 render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the component that lacks it. `pdfUA` and
 `pdfUA="1"` write part 1, on PDF 1.7; `pdfUA="2"` writes **PDF/UA-2** (ISO 14289-2), on PDF 2.0, with
-the same requirements. PDF/A-1, -2 and -3 are older than PDF 2.0, so `pdfUA="2"` with
+the same requirements, and links and bookmarks may not go to decoration (`fixed` or
+`role="artifact"`), which has no element for them. PDF/A-1, -2 and -3 are older than PDF 2.0, so `pdfUA="2"` with
 `conformance` fails the render, naming `options.pdfUA`. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
-options `tagged` and `pdfUA` do the same and win over the props.
+options `tagged` and `pdfUA` do the same and win over the props. Neither prop is part of the
+document tree: to render a stored `result.document` tagged again, pass the render options to
+[`renderDocument`](#serving-templates).
 
 - **What is what.** A `Text` is a paragraph, an `Image`, `Svg` or `Canvas` a figure with its
   `alt`, a `Table` a table (its header rows head their columns; `<Cell header>` heads its row;
@@ -1343,7 +1359,8 @@ without `root`). A fractional timeout is rounded up to a whole millisecond.
 
 **`init()`** loads Tailwind's compiler (when `@inkoxide/tailwind` is installed), the engine and
 the fonts. The first render does it anyway; call it at server startup so the first request does
-not wait. It resolves to the same status as `engineStatus()`.
+not wait. It resolves to the same status as `engineStatus()`. When the engine cannot start, it
+rejects with `INTERNAL`, and the next call or render tries again.
 
 **Health checks.** `version()` returns `{ engine, schema, gitSha }`: the engine's version, the
 document schema version it reads and the commit it was built from. `engineStatus()` returns
@@ -1390,7 +1407,7 @@ Node's `UV_THREADPOOL_SIZE` (default 4) caps how many renders run at the same ti
 
 Mistakes fail loudly, with the component that caused them: a style key or value an element
 cannot use, and a prop it would ignore (`<Page wrap={false}>`, `href` on a `Cell` or a
-`Header`, `className` on an SVG shape, `render` on an `Image`). An error inside a `render` prop
+`Header`, `id` on a `Page`, `render` on an `Image`). An error inside a `render` prop
 names the components around it too. A `View` inside a `Text`:
 
 ```tsx
@@ -1401,7 +1418,7 @@ stops the render with:
 
 ```
 RenderError: <View> cannot be inside <Text>. A Text contains only strings, numbers,
-<Text>, <Link>, <Image>, <Note>, <PageNumber> and <TotalPages>.
+<Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber> and <TotalPages>.
     in View
     in Text
     in Page
@@ -1420,8 +1437,8 @@ apply:
 | `INVALID_FONT` | A registered font could not be read, fetched or parsed |
 | `ENGINE_REJECTED` | The engine refused the document, for example an unreadable image, or a render option is out of range (`path` is `options.threads`, `options.creationDate`, …) |
 | `IMAGE_FETCH_FAILED` | An allowed remote image could not be fetched: an HTTP error, a redirect, a timeout, a dropped connection or over `maxBytes` |
-| `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened |
-| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), a bundled font or hyphenation file could not be read or, in a browser, fetched (`engineCode` `NOT_LOADED`), `renderToFile` could not write the file, or a bug |
+| `IMAGE_READ_FAILED` | An image file could not be read: missing or outside the `localImages` folders, a network path, not a valid `file:` URL, not a regular file, over the size limit, permission denied, or a `localImages` folder that cannot be opened; or a `Blob` `src` could not be read (a `File` changed on disk since it was picked) |
+| `INTERNAL` | The engine could not start (no fonts in the assets folder, `inkoxide` and `@inkoxide/schema` versions that do not match), a bundled font or hyphenation file could not be read or, in a browser, fetched, or the engine's module could not be (`engineCode` `NOT_LOADED`), `renderToFile` could not write the file, or a bug |
 
 `INTERNAL` has status 500, `IMAGE_FETCH_FAILED` 502 and the others 400. Besides `code`,
 `status`, `message`, `path`, `component` and `componentStack`, a `RenderError` may have
@@ -1515,7 +1532,9 @@ options under the same id replaces the template's.
 - **`renderDocument(document, images?, options?)`** renders a document tree that is already
   built, such as a stored `result.document`, and resolves to `{ pdf, pages, engineMs }`. The
   document names its images by id, so pass their bytes in `images` or the `images` option
-  (`renderDocument(result.document, result.images)`); the other image options do not apply.
+  (`renderDocument(result.document, result.images)`); the other image options do not apply. The
+  render options its `<Document>` set (`conformance` as `pdfA`, `flattenAlpha`, `tagged`,
+  `pdfUA` and the passwords) are not in the tree: pass them again in `options`.
 
 Data that does not match the schema fails with `INVALID_DATA` (400) before anything renders. Its
 `issues` list every problem as `{ path, message, code }`, with readable messages:
@@ -1568,15 +1587,17 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
 - **`renderToBuffer`**, **`renderToBlob`** and **`renderToStream`** render outside React
   components, and **`generate`** renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
   `GenerateOptions` for `generate`) are those of the Node entry, with a `signal` or `timeoutMs`
-  (a time in ms) that stops a render: its worker ends, and the next render starts a new one. A
-  render that times out rejects with a `DOMException` named `TimeoutError`.
+  (a time in ms) that stops a render: its worker ends, and the next render starts a new one.
+  `timeoutMs` counts the whole render, the loading of its images and every pass. A render that
+  times out rejects with a `DOMException` named `TimeoutError`.
   `renderToStream` returns a promise of a web `ReadableStream<Uint8Array>` of the PDF in 64 KiB
   chunks: pass it to a `Response` (in a service worker, say), or write it to a file the user
   picked, with `(await renderToStream(<Invoice />)).pipeTo(await handle.createWritable())` for a
   `handle` from `showSaveFilePicker()`. As in Node, the stream starts once the PDF is ready, and
   a failed render rejects the promise.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
-  first call count. The options (`BrowserOptions`): `wasm` is where the module comes from (a
+  first call count. When the engine cannot start (the module did not download, say), the call
+  rejects with `INTERNAL`, and the next one starts it again, with its own options. The options (`BrowserOptions`): `wasm` is where the module comes from (a
   URL, a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module); `assets` is
   a folder to serve the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/`
   from `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
@@ -1660,8 +1681,9 @@ engine's nested worker), the engine renders on one thread.
   about 90 KB when templates use `className`, or a few KB with the [build plugin](#tailwind).
   A bundled font (65 to
   245 KB with brotli) is downloaded when a document first draws with it: Noto Sans, the
-  fallback, only for a character Inter lacks. A language's hyphenation patterns (1 to 350 KB)
-  are downloaded when a document first hyphenates text in it.
+  fallback, only for a character Inter lacks. The English hyphenation patterns (34 KB) are
+  downloaded when the engine starts, and another language's (1 to 350 KB) when a document first
+  hyphenates text in it.
 - The PDF has the bytes Node renders, except where SVG markers are rotated and where SVG text
   follows a path: their numbers can differ in the last digits, since the browser's math library
   rounds differently.
@@ -1693,8 +1715,8 @@ The bundled fonts and hyphenation patterns are files in the package's `assets/` 
 webpack) moves the code into one file, for a serverless function say, they are no longer there.
 Copy that folder into the deployment and point the `INKOXIDE_ASSETS_DIR` environment variable at
 the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyphenation/`
-(`hyph-en-us.tex`). Without the hyphenation patterns, text still renders with the engine's
-built-in ones, and `engineStatus().warnings` says so.
+(`hyph-en-us.tex`). Without the hyphenation patterns, or with a file that is not patterns, text
+still renders with the engine's built-in ones, and `engineStatus().warnings` says so.
 
 **Do I need Tailwind installed?**
 Only to style with `className`: install `@inkoxide/tailwind` ([Tailwind](#tailwind)). It brings

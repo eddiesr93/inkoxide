@@ -5,14 +5,19 @@ Node bindings and React/TypeScript packages on top. This brief asks for a review
 PDF files. It describes the construction precisely enough to review without reading the code first,
 and then points to the code.
 
-Commit reviewed: the tag `v0.9.1` (`7a08f9a`). Since then `crypt.rs` and `pdf/font.rs` have changed
-only by refactoring that keeps the output: the six letters of a subset tag are made by a function
-the two files share, and the font writer takes the new `Writer`. `pdf/mod.rs` was split into
-modules, and `emit` now returns a `Writer`; `pdf/out.rs` and `encryption.rs` are unchanged. Code:
+Code described: the commit this file is in. The brief was first written for the tag `v0.9.1`
+(`7a08f9a`). Since then the construction has changed in three places: passwords are prepared
+with SASLprep, and the optional `entropy` goes into `D` through an HMAC (`encryption.rs`,
+`crypt.rs`; see Inputs); tagged output packs objects into object streams and ends with a
+cross-reference stream (`pdf/objstm.rs`; see Object streams and the cross-reference stream); and
+colour glyphs are drawn by Type 3 fonts (`pdf/type3.rs`; see Font subset tags and widths).
+`pdf/mod.rs` was split into modules, and `emit` returns a `Writer`. Code:
 
 - `crates/core/src/pdf/crypt.rs`: the whole derivation, Algorithm 2.B, CBC, HMAC, and the
   unit tests;
 - `crates/core/src/pdf/out.rs`: the only writer of strings and streams;
+- `crates/core/src/pdf/objstm.rs`: object streams and the cross-reference stream, with
+  `Writer::packable` and `Writer::packable_text` in `crates/core/src/pdf/mod.rs`;
 - `crates/core/src/pdf/mod.rs`, `PdfWriterSink::write`: the two passes, each running `emit` into a
   `Writer`;
 - `crates/core/src/encryption.rs`: options and password checks;
@@ -71,7 +76,8 @@ subject of this review.**
 - **P**: the permission bits, a 32-bit integer: bits 1–2 clear, 7–8 and 13–32 set, the others from
   the options.
 - **D**: SHA-256 of the complete file that the same render would write **unencrypted**: every
-  object, the cross-reference table and the trailer.
+  object, and the cross-reference table and trailer, or the cross-reference stream of a file
+  with object streams.
   - The engine writes the file twice: once in plain to compute `D`, then once encrypted. Both
     passes are deterministic and differ only in what `out.rs` does to strings and streams, and in
     the font subset tags and widths below.
@@ -116,7 +122,8 @@ distinct, and `D` has a fixed length, so every input decodes in one way.
 
 ### Strings and streams
 
-Every string outside the `Encrypt` dictionary and every stream is sealed:
+Every string outside the `Encrypt` dictionary and every stream is sealed, but for the strings
+of objects in object streams and the cross-reference stream (next section):
 
 ```
 seal(place, plain):
@@ -133,6 +140,20 @@ stream of object r:                            place = "stream" ‖ BE32(r)
 - **Synthetic IV.** The IV is a PRF of the place and the plaintext, an SIV-style construction over
   CBC, so a repeated IV implies a repeated (place, plaintext) pair.
 - **Encryption order.** Streams are compressed (Flate) before encryption.
+
+### Object streams and the cross-reference stream
+
+Tagged output with compression on, other than at PDF/A-1b, packs the structure elements and
+the parent tree into object streams (ISO 32000-2, 7.5.7), up to 128 objects each, and ends with
+a cross-reference stream (7.5.8) instead of a table.
+
+- The strings of a packed object are written as they are (`Writer::packable_text`): the object
+  stream that holds them is sealed as a whole, like any other stream, and 7.6.2 says that
+  strings in an object stream are not encrypted on their own.
+- The cross-reference stream is not encrypted, as 7.6.2 requires. It holds object numbers,
+  offsets and the trailer entries (`/Root`, `/Info`, `/ID`, `/Encrypt`), none of the document's
+  strings. `splice_encrypt` adds `/Encrypt` to its dictionary.
+- Both passes pack the same objects, so `D` covers the object streams as written unencrypted.
 
 ### Font subset tags and widths
 
@@ -152,6 +173,12 @@ a run of equal widths as one range. The widths then depend on the font alone. Th
 about 5 bytes a glyph: some 15 KB for a Latin font of 3,000 glyphs, some 40 KB for a CJK font of
 50,000, whose widths are mostly equal.
 
+Colour glyphs (emoji) are drawn by Type 3 fonts, one for each 255 colour glyphs used from a
+font. A Type 3 font's `/Widths`, `/FontBBox` and number of glyph procedures are numbers and
+names, never encrypted, and describe the colour glyphs used: how many a document draws from
+each font, their advances and the box around them stay visible. Their procedures and images
+are streams, and are sealed.
+
 ## Where secrets go
 
 | Value | Public? | Depends on |
@@ -160,6 +187,7 @@ about 5 bytes a glyph: some 15 KB for a Latin font of 3,000 glyphs, some 40 KB f
 | `UE`, `OE`, `Perms`, `/ID`, the IVs | yes | passwords, `D`, content |
 | font subset tags | yes | passwords, `D`, glyph set |
 | font widths (`/DW`, `/W`) | yes | the font only: every glyph is listed |
+| Type 3 font widths, box and glyph count | yes | the colour glyphs used |
 | `D`, `S_u`, `S_o`, `IK_u`, `IK_o`, `M`, the keys | no | |
 
 A reader with the user password computes `IK_u`, decrypts `UE`, gets `file_key` and reads
@@ -178,7 +206,8 @@ permissions, when there is nothing for the owner password to guard).
 - **Structure stays visible**, as in any revision 6 file: page count and sizes, object structure,
   annotation rectangles, font names, and the length of every string and stream. Streams are
   compressed before encryption, so their lengths depend on the content: the length of a font
-  subset says roughly how many glyphs it holds.
+  subset says roughly how many glyphs it holds. A Type 3 font of colour glyphs lists the widths
+  of those used.
 - **Form field state stays visible** where the standard makes it a name or a number: checkbox
   states (`/V /Yes`, `/AS`), the position of the radio button that is on (radio states are named
   by position when encrypted, with the values in the encrypted `/Opt`), and the positions of a

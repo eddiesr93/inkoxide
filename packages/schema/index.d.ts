@@ -80,7 +80,7 @@ export type Length = number | Percent | 'auto';
  */
 export type Percent = string;
 /**
- * Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum.
+ * Entry of a track template: a track, or CSS `repeat()` as `{repeat, tracks}`. `auto-fill`/`auto-fit` may appear once per list, and then every track in the list needs a fixed (points or percentage) minimum or maximum, and one of the repeated `tracks` a fixed size above 0 (its fixed maximum, or else its minimum).
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "TemplateTrack".
@@ -295,7 +295,7 @@ export type Link = string;
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
 /**
- * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+ * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Role".
@@ -330,6 +330,8 @@ export interface Document {
   meta?: Meta;
   /**
    * Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early.
+   *
+   * @maxItems 256
    */
   fonts?: FontDecl[];
   /**
@@ -610,7 +612,7 @@ export interface FontDecl {
     [k: string]: number | undefined;
   };
   /**
-   * Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first), and text of another size draws at the declaration's own.
+   * Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first) and 1024 in a document (those of the first declarations first), and text of another size draws at the declaration's own.
    */
   opticalSizing?: 'auto' | 'none';
 }
@@ -778,7 +780,7 @@ export interface Style {
   margin?: EdgesLength;
   position?: 'relative' | 'absolute';
   /**
-   * top/right/bottom/left offsets for positioned boxes. A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it.
+   * top/right/bottom/left offsets for positioned boxes. Percentages are of the containing block: its width for `left` and `right`, its height for `top` and `bottom` (the page content box, for a child of the page). A relative box (the default `position`) is moved by them before pagination, so pagination sees it where it is drawn: moved past the foot of a page, it moves to the next page or runs onto it.
    */
   inset?: EdgesLength;
   gridTemplateColumns?: TemplateTrack[];
@@ -826,7 +828,7 @@ export interface Style {
   shapeMargin?: NonNegative;
   backgroundColor?: Color;
   /**
-   * Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them.
+   * Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. Form fields, notes and attachment icons, which viewers draw over the page, are not faded by an opacity above 0: only a field's background and border are.
    */
   opacity?: number;
   borderWidth?: EdgesNumber;
@@ -852,7 +854,7 @@ export interface Style {
    */
   transformOrigin?: [LengthPercent, LengthPercent];
   /**
-   * Paint order among siblings: higher paints later (above); equal values keep document order. Default 0. Not on table cells.
+   * Paint order among siblings: higher paints later (above); equal values keep document order, except that floats paint after their siblings of the same `zIndex`, as in CSS. Default 0. Not on table cells.
    */
   zIndex?: number;
   /**
@@ -908,7 +910,7 @@ export interface Style {
    */
   widows?: number;
   /**
-   * table cells only
+   * table cells only. Places the cell's content down its row, whatever the cell's `flexDirection` or `display`: in a cell that is not a column (row, reversed, wrapping or grid), the content keeps its own height.
    */
   verticalAlign?: 'top' | 'middle' | 'bottom';
   /**
@@ -1045,7 +1047,7 @@ export interface Break {
    */
   minPresenceAhead?: NonNegative;
   /**
-   * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page.
+   * Paint the node on every page of its flow. A child of the page with `position: "absolute"` is laid out on its own, against the page content box (`inset` and percentages are relative to one page's content box, inside the margins), takes no space and is painted over the flow, or under it when its `zIndex` is negative; no other pagination control applies to it or inside it, and it cannot hold a `pageBreak`. Any other fixed node is laid out in the flow, takes its space there once, and is painted at the same place on every page: where the flow's paint order puts it, without the opacity, transform and clip of the nodes around it. It is not painted inside a node with `display: "none"` or `opacity: 0`, nor on the pages that the `pages` of a node around it leave out.
    */
   fixed?: boolean;
 }
@@ -1284,6 +1286,9 @@ export interface TableNode {
    * @minItems 1
    */
   columns: [ColumnSpec, ...ColumnSpec[]];
+  /**
+   * The first rows, repeated at the top of every page the table continues on, below the header rows of the tables around it. Header rows that, with those, are as tall as the page are not repeated.
+   */
   headerRows?: number;
   rows: TableRow[];
 }
@@ -1421,7 +1426,13 @@ export interface Field {
    * text only; maximum number of characters
    */
   maxLength?: number;
+  /**
+   * A radio group is read-only when any of its buttons is.
+   */
   readOnly?: boolean;
+  /**
+   * A radio group is required (a button must be selected) when any of its buttons is.
+   */
   required?: boolean;
   /**
    * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option.
@@ -1432,12 +1443,12 @@ export interface Field {
    */
   size?: number;
   /**
-   * text and mark colour; default black
+   * text and mark colour (its alpha is not used); default black
    */
   color?: Color;
   format?: FieldFormat;
   /**
-   * What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it.
+   * What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. A radio group's tooltip is the label of its first button that has one; a button with another label says it in its widget (`/Contents`).
    */
   label?: string;
   /**

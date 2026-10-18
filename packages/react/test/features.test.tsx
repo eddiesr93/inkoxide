@@ -72,6 +72,7 @@ import {
   usePage,
   View,
 } from '../src/index.ts';
+import { boxStyle } from '../src/tree/style.ts';
 import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);
@@ -1002,6 +1003,22 @@ describe('page filters, sizes and per-page content', () => {
       [[1, 2], 'Continued →', { textAlign: 'right', gridRow: { start: 1 }, gridColumn: { start: 1 } }],
       [[3], 'Last page', { textAlign: 'right', gridRow: { start: 1 }, gridColumn: { start: 1 } }],
     ]);
+  });
+
+  it('keeps float and clear on the wrapper of a render prop, where the layout reads them', () => {
+    const r = tree(
+      <View
+        style={{ float: 'left', clear: 'both', width: 40 }}
+        render={({ pageNumber }) => <Text>{pageNumber}</Text>}
+      />,
+      { pageCount: 2 },
+    );
+    const wrapper = first<BoxNode>(r);
+    expect(wrapper.style).toEqual({ display: 'grid', float: 'left', clear: 'both', width: 40 });
+    for (const v of (wrapper.children ?? []) as TextNode[]) {
+      expect(v.style).toEqual({ gridRow: { start: 1 }, gridColumn: { start: 1 } });
+    }
+    expect(r.validate()).toEqual([]);
   });
 
   it('gives components in a render prop the page through usePage()', () => {
@@ -2089,7 +2106,7 @@ describe('drawings', () => {
     // a warning.
     expect(svg).toContain(`font-family="'Noto Sans'" font-weight="400" font-size="9" dominant-baseline`);
     expect(r.warnings).toContain(
-      'Font "Helvetica 700 italic" is not registered; using NotoSans-Regular (Canvas in View).',
+      'Font "Noto Sans 700 italic" is not registered; using NotoSans-Regular (Canvas in View).',
     );
     expect((r.document.fonts ?? []).map((f) => f.id)).toEqual(
       expect.arrayContaining(['NotoSans-Regular', 'Inter-Bold', 'RobotoMono-Regular']),
@@ -2098,6 +2115,29 @@ describe('drawings', () => {
     expect(
       thrown(() => tree(<Canvas width={10} height={10} paint={(p) => p.text('two\nlines', 0, 0)} />)).message,
     ).toContain('painter.text draws one line');
+  });
+
+  it("takes a pdfkit standard name as the canvas's family in that weight, with no warning", () => {
+    const r = tree(
+      <View className="font-[Inter]">
+        <Canvas width={100} height={20} paint={(p) => p.font('Helvetica-Bold').text('x', 0, 0)} />
+      </View>,
+    );
+    expect(decode(((first<BoxNode>(r).children ?? [])[0] as ImageNode).data)).toContain(
+      `font-family="'Inter'" font-weight="700"`,
+    );
+    expect(r.warnings).toEqual([]);
+    // A registered family of the same name as the standard font does not win over the canvas's.
+    const reg = registry().register({ id: 'Times-Face', family: 'Times' });
+    const named = renderTemplate(
+      <Document>
+        <Page className="font-[Inter]">
+          <Canvas width={100} height={20} paint={(p) => p.font('Times-Roman').text('x', 0, 0)} />
+        </Page>
+      </Document>,
+      { fonts: reg },
+    );
+    expect(decode((body(named)[0] as ImageNode).data)).toContain(`font-family="'Inter'"`);
   });
 
   it("aligns Canvas text with justify as with left: a line doesn't wrap", () => {
@@ -2585,6 +2625,23 @@ describe('Image inside Text', () => {
   });
 });
 
+describe('box style cache', () => {
+  it('keeps one box style per text colour value, not per colour array', () => {
+    const border = { borderBottomWidth: 1 } as never;
+    const a = boxStyle(border, [0, 0, 0, 1]);
+    expect(a?.borderColor).toBeDefined();
+    // The builder makes a colour array of its own on every build.
+    expect(boxStyle(border, [0, 0, 0, 1])).toBe(a);
+    const red = boxStyle(border, [1, 0, 0, 1]);
+    expect(red).not.toBe(a);
+    expect(boxStyle(border, [1, 0, 0, 1])).toBe(red);
+    // More colours than are kept: each still gets its own.
+    for (let i = 0; i < 40; i++) boxStyle(border, [i / 40, 0, 0, 1]);
+    expect(boxStyle(border, [0.5, 0, 0, 1])).toEqual(boxStyle(border, [0.5, 0, 0, 1]));
+    expect(boxStyle(border, [0.25, 0, 0, 1])).not.toEqual(boxStyle(border, [0.75, 0, 0, 1]));
+  });
+});
+
 describe('props and style values that would do nothing', () => {
   const doc = (props: Record<string, unknown>, page: Record<string, unknown> = {}) =>
     renderTemplate(
@@ -2639,6 +2696,89 @@ describe('props and style values that would do nothing', () => {
     );
     expect(thrown(() => doc({}, { href: '#x' })).kind).toBe('props');
     expect(() => doc({}, { wrap: true })).not.toThrow();
+  });
+
+  it('rejects the props the guide says a Document, a Page, a PageNumber and a TotalPages do not take', () => {
+    for (const key of ['className', 'style', 'id']) {
+      const e = thrown(() => doc({ [key]: key === 'style' ? { fontSize: 20 } : 'x' }));
+      expect(e.message).toContain(`<Document> does not take \`${key}\``);
+      expect(e.kind).toBe('props');
+    }
+    expect(thrown(() => doc({}, { id: 'cover' })).message).toBe(
+      '<Page> does not take `id`: put it on an element inside it.',
+    );
+    for (const [El, name] of [
+      [PageNumber, 'PageNumber'],
+      [TotalPages, 'TotalPages'],
+    ] as const) {
+      const props: Record<string, never> = { className: 'font-bold' as never };
+      const e = thrown(() =>
+        tree(
+          <Text>
+            <El {...props} />
+          </Text>,
+        ),
+      );
+      expect(e.message).toBe(
+        `<${name}> takes no props, so \`className\` has no effect. Style the <Text> around it.`,
+      );
+      expect(e.kind).toBe('props');
+    }
+    expect(() =>
+      tree(
+        <Text>
+          <PageNumber /> of <TotalPages />
+        </Text>,
+      ),
+    ).not.toThrow();
+  });
+
+  it('reports the Document props with an invalid value as props errors', () => {
+    expect(thrown(() => doc({ conformance: 'PDF/A-9' })).kind).toBe('props');
+    expect(thrown(() => doc({ pdfUA: 'x' })).kind).toBe('props');
+    expect(thrown(() => doc({ userPassword: 1 })).kind).toBe('props');
+  });
+
+  it('rejects role on a Text, a Link and an Image inside a Text', () => {
+    const inline = (run: ReactNode) => () => tree(<Text>Intro {run}</Text>);
+    expect(thrown(inline(<Text role="h1">Title</Text>)).message).toMatch(
+      /^A nested <Text> is an inline run of the paragraph, so `role` has nothing to apply to\./,
+    );
+    expect(thrown(inline(<Link href="#x" {...{ role: 'artifact' }} />)).message).toMatch(
+      /so `role` has nothing/,
+    );
+    expect(thrown(inline(<Image src="logo" role="artifact" alt="" />)).message).toBe(
+      'An <Image> inside <Text> is part of the line, so `role` does not apply to it.',
+    );
+    // On the paragraph itself, and on a block image, it is what it was.
+    expect(first<TextNode>(tree(<Text role="h1">Title</Text>)).role).toBe('h1');
+  });
+
+  it('rejects a cell alignment on a View and on a Text, and a run alignment on a View', () => {
+    const e = thrown(() => tree(<View style={{ verticalAlign: 'middle' }} />));
+    expect(e.message).toBe(
+      'verticalAlign "middle" (from its style) applies to a <Cell> or to a run in a <Text>, not <View>.',
+    );
+    expect(e.kind).toBe('props');
+    const cls = thrown(() => tree(<Text className="align-middle">x</Text>));
+    expect(cls.message).toBe(
+      "verticalAlign \"middle\" (from className=\"align-middle\") applies to a <Cell>, not <Text>: a <Text> takes 'super', 'sub' or 'baseline'.",
+    );
+    expect(cls.kind).toBe('tailwind');
+    expect(thrown(() => tree(<View className="align-super" />)).message).toContain('not <View>');
+    // The places it applies to.
+    expect(() =>
+      tree(
+        <>
+          <Text style={{ verticalAlign: 'super' }}>x</Text>
+          <Table columns={[1]}>
+            <Row>
+              <Cell style={{ verticalAlign: 'middle' }}>x</Cell>
+            </Row>
+          </Table>
+        </>,
+      ),
+    ).not.toThrow();
   });
 
   it('rejects the Document options that are not available', () => {
@@ -2766,6 +2906,41 @@ describe('props and style values that would do nothing', () => {
     expect(thrown(() => tree(<View className="fill-[#ff0000]" />)).message).toBe(
       'fill (from className="fill-[#ff0000]") applies to an <Svg> and the elements inside it, not <View>.',
     );
+  });
+
+  it('gives the drawing the text colour and font around it and the ones of its own classes', () => {
+    const drawing = (svgClass?: string) => {
+      const r = tree(
+        <View className="text-[#ff0000] font-bold">
+          <Svg width={40} height={20} className={svgClass}>
+            <Path d="M0 0L5 5" className="fill-current" />
+            <Text x={1} y={15}>
+              a
+            </Text>
+          </Svg>
+        </View>,
+      );
+      return decode(((first<BoxNode>(r).children ?? [])[0] as ImageNode).data);
+    };
+    // What it inherits from the View: currentColor is red, the text bold.
+    const inherited = drawing();
+    expect(inherited).toMatch(/<svg [^>]* color="rgb\(255,0,0\)" font-size="10">/);
+    expect(inherited).toContain('font-weight="700"');
+    // Its own classes win over what it inherits.
+    const own = drawing('text-[#0000ff] text-xs font-normal');
+    expect(own).toMatch(/<svg [^>]* color="rgb\(0,0,255\)" font-size="9">/);
+    expect(own).toContain('font-weight="400"');
+    // With the default colour there is nothing to say.
+    const plain = decode(
+      first<ImageNode>(
+        tree(
+          <Svg width={40} height={20}>
+            <Path d="M0 0L5 5" />
+          </Svg>,
+        ),
+      ).data,
+    );
+    expect(plain).not.toContain('color=');
   });
 
   it('keeps the components around a render prop in the stack of an error inside it', () => {

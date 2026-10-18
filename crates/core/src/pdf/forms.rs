@@ -121,6 +121,7 @@ pub(super) fn write_fields(
         let widgets = &widgets_of[full];
         let states = on_states(widgets, out.is_encrypted());
         let first = widgets[0].1;
+        let tu = field_label(widgets);
         if let Some(k) = first.font {
             if ctx.font_refs.contains_key(&k) && !form.fonts.contains(&k) {
                 form.fonts.push(k);
@@ -144,7 +145,7 @@ pub(super) fn write_fields(
             field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps, states.on[0]);
-            widget_contents(&mut annot, out, first, ctx.profile);
+            widget_contents(&mut annot, out, first, tu, ctx.profile);
             struct_parent(&mut annot, key(field_ref, widgets[0].0, first));
             annot.finish();
             annots[widgets[0].0].push(field_ref);
@@ -158,7 +159,7 @@ pub(super) fn write_fields(
             f.parent(field_ref);
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, (page, op), &aps, states.on[i]);
-            widget_contents(&mut annot, out, op, ctx.profile);
+            widget_contents(&mut annot, out, op, tu, ctx.profile);
             struct_parent(&mut annot, key(kid, page, op));
             annot.finish();
             annots[page].push(kid);
@@ -246,13 +247,27 @@ fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
     }
 }
 
-/// PDF/UA-2: a widget says what it is for itself, in `/Contents`, as
-/// its field's `/TU` does (ISO 14289-2, 8.10.2.3): a widget of several is
-/// not the field.
-fn widget_contents(annot: &mut Annotation<'_>, out: &mut Out, op: &FieldOp, profile: Profile) {
-    if let Some(label) = op.field.label.as_deref().filter(|_| profile.pdf_2()) {
+/// A widget says what it is for itself, in `/Contents`: under PDF/UA-2
+/// always, as its field's `/TU` does (ISO 14289-2, 8.10.2.3), since a
+/// widget of several is not the field; and anywhere when its label is not
+/// the field's `tu` (a radio button labelled apart from its group).
+fn widget_contents(
+    annot: &mut Annotation<'_>,
+    out: &mut Out,
+    op: &FieldOp,
+    tu: Option<&str>,
+    profile: Profile,
+) {
+    let label = op.field.label.as_deref();
+    if let Some(label) = label.filter(|&l| profile.pdf_2() || Some(l) != tu) {
         annot.pair(Name(b"Contents"), Str(&out.text(label)));
     }
+}
+
+/// A field's label (`/TU`): for a radio group, that of its first button
+/// with one.
+fn field_label<'a>(widgets: &[(usize, &'a FieldOp)]) -> Option<&'a str> {
+    widgets.iter().find_map(|(_, w)| w.field.label.as_deref())
 }
 
 /// The field-level entries: type, name, flags, value, default appearance,
@@ -269,14 +284,16 @@ fn field_entries(
     let spec = &op.field;
     f.pair(Name(b"T"), Str(&out.text(name)));
     // What screen readers and tooltips say for the field.
-    if let Some(label) = &spec.label {
+    if let Some(label) = field_label(widgets) {
         f.pair(Name(b"TU"), Str(&out.text(label)));
     }
     let mut flags = FieldFlags::empty();
-    if spec.read_only {
+    // A radio group is read-only, or required, as a whole: when any of
+    // its buttons is.
+    if widgets.iter().any(|(_, w)| w.field.read_only) {
         flags |= FieldFlags::READ_ONLY;
     }
-    if spec.required {
+    if widgets.iter().any(|(_, w)| w.field.required) {
         flags |= FieldFlags::REQUIRED;
     }
     if spec.sort {
@@ -687,6 +704,36 @@ mod tests {
             .collect();
         assert_eq!(found.len(), 1, "{t}: {found:?}");
         found[0]
+    }
+
+    /// A radio group is read-only, or required, when any of its buttons
+    /// is. Its tooltip is the first label, and a button labelled otherwise
+    /// says its own in its widget.
+    #[test]
+    fn a_radio_group_takes_the_flags_and_labels_of_every_button() {
+        let radio = |value: &str, extra: &str| {
+            format!(
+                r#"{{"type":"field","field":{{"name":"r","kind":"radio","value":"{value}"{extra}}}}}"#
+            )
+        };
+        let pdf = render(
+            &[
+                radio("a", r#","label":"Option A""#),
+                radio(
+                    "b",
+                    r#","label":"Option B","readOnly":true,"required":true,"checked":true"#,
+                ),
+                radio("c", r#","label":"Option A""#),
+            ]
+            .join(","),
+        );
+        // Read-only (bit 1), required (bit 2), no toggle to off (bit 15)
+        // and radio (bit 16).
+        let flags = 1 | (1 << 1) | (1 << 14) | (1 << 15);
+        assert!(pdf.contains(&format!("/Ff {flags}")), "{pdf}");
+        assert_eq!(pdf.matches("/TU (Option A)").count(), 1, "{pdf}");
+        assert_eq!(pdf.matches("/Contents (Option B)").count(), 1, "{pdf}");
+        assert!(!pdf.contains("/Contents (Option A)"), "{pdf}");
     }
 
     #[test]

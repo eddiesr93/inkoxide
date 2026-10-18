@@ -49,6 +49,14 @@ fn pdf_ua_and_the_accessible_pdf_a_levels_pass_verapdf() {
         verapdf(level.as_str(), std::slice::from_ref(&both));
         verapdf("ua1", &[both]);
     }
+    // PDF/A-1b is not tagged of its own, but takes PDF/UA-1: the CIDSets
+    // of its subsets hold every CID the subset maps.
+    let options = RenderOptions::default()
+        .with_pdf_a_level(PdfALevel::A1b)
+        .with_pdf_ua(true);
+    let both = write("1b-ua1", &render(&fixture(), &options).unwrap());
+    verapdf("1b", std::slice::from_ref(&both));
+    verapdf("ua1", &[both]);
 }
 
 /// PDF/UA-2 with what the fixtures lack: a section, a block quotation, a
@@ -104,6 +112,8 @@ fn pdf_ua_2_passes_verapdf_with_every_role() {
     let ua2 = RenderOptions::default().with_pdf_ua_part(PdfUaPart::Ua2);
     let plain = render(doc.as_bytes(), &ua2).unwrap();
     assert!(plain.starts_with(b"%PDF-2.0"));
+    // PDF 2.0 requires a file identifier (ISO 32000-2, 7.5.5).
+    assert!(plain.windows(5).any(|w| w == b"/ID ["), "no /ID");
     let text = String::from_utf8_lossy(
         &render(doc.as_bytes(), &ua2.clone().with_compress(false)).unwrap(),
     )
@@ -362,6 +372,19 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
             doc(meta, &format!("{},{}", text("h1"), text("h3"))),
             "pages[0].children[1].role",
         ),
+        // A heading inside a figure makes no element: the file's first
+        // heading is this h2.
+        (
+            doc(
+                meta,
+                &format!(
+                    r#"{{"type":"box","role":"figure","alt":"A","children":[{}]}},{}"#,
+                    text("h1"),
+                    text("h2")
+                ),
+            ),
+            "pages[0].children[1].role",
+        ),
     ] {
         assert_eq!(
             refused(d, &ua),
@@ -373,6 +396,12 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
     let list = r#"{"type":"box","role":"list","children":[{"type":"box","children":[
         {"type":"box","role":"listItem","children":[{"type":"box","role":"listBody","children":[]}]}]}]}"#;
     render(doc(meta, list).as_bytes(), &ua).unwrap();
+    // Nor does a heading inside a heading count after it.
+    let nested = format!(
+        r#"{{"type":"box","role":"h1","children":[{}]}}"#,
+        text("h3")
+    );
+    render(doc(meta, &nested).as_bytes(), &ua).unwrap();
     // Decoration needs none of it, and tagging alone needs no title.
     let decorative = doc(meta, &image.replace("\"data\"", r#""alt":"","data""#));
     render(decorative.as_bytes(), &ua).unwrap();
@@ -382,6 +411,30 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
         &RenderOptions::default().with_tagged(true),
     )
     .unwrap();
+    // PDF/UA-2 links and bookmarks go to structure elements, which
+    // decoration has none of; PDF/UA-1 takes them.
+    let ua2 = RenderOptions::default().with_pdf_ua_part(PdfUaPart::Ua2);
+    let stamp = |extra: &str| {
+        format!(
+            r#"{{"type":"text"{extra},"break":{{"fixed":true}},"style":{{"position":"absolute"}},"runs":[{{"text":"x","font":"Inter-Regular","size":9}}]}}"#
+        )
+    };
+    let to_stamp = r##"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9,"link":"#stamp"}]}"##;
+    let linked = doc(meta, &format!("{to_stamp},{}", stamp(r#","id":"stamp""#)));
+    let marked = doc(meta, &stamp(r#","bookmark":{"title":"Stamp"}"#));
+    assert_eq!(
+        refused(linked.clone(), &ua2),
+        (
+            "UA_CONFLICT".into(),
+            "pages[0].children[0].runs[0].link".into()
+        )
+    );
+    assert_eq!(
+        refused(marked.clone(), &ua2),
+        ("UA_CONFLICT".into(), "pages[0].children[0].bookmark".into())
+    );
+    render(linked.as_bytes(), &ua).unwrap();
+    render(marked.as_bytes(), &ua).unwrap();
     // Assistive technology must be able to read an encrypted file.
     let locked = ua.with_encryption(
         Encryption::new()
@@ -910,4 +963,73 @@ fn named_parts_of_an_svg_are_figures_of_their_own() {
         .filter(|k| k.get("/Stm").is_some())
         .count();
     assert!(stm >= 6, "{stm}");
+}
+
+/// An SVG drawn only with its parts tagged draws its text as it does
+/// untagged: a font only its text uses is embedded, and so are the images
+/// of its colour glyphs.
+#[test]
+fn the_text_of_an_svg_with_tagged_parts_is_embedded() {
+    let (fonts, mut images) = stores();
+    images.insert(
+        "chart".to_string(),
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40">
+  <rect aria-label="A bar" x="2" y="2" width="10" height="20"/>
+  <text x="20" y="30" font-family="Inter" font-weight="bold" font-size="10">Quarterly</text>
+  <text x="20" y="15" font-family="Emoji" font-size="10">😀</text>
+</svg>"#
+            .as_bytes()
+            .to_vec(),
+    );
+    let doc = r#"{"version":1,"meta":{"title":"T","lang":"en"},
+      "fonts":[{"id":"Inter-Regular","family":"Inter"},
+        {"id":"Inter-Bold","family":"Inter","weight":700},
+        {"id":"EmojiTest-CBDT","family":"Emoji"}],
+      "pages":[{"size":{"width":200,"height":200},"children":[
+        {"type":"text","runs":[{"text":"Page","font":"Inter-Regular","size":10}]},
+        {"type":"image","alt":"Chart","src":"chart","style":{"width":80,"height":40}}]}]}"#;
+    let run = |options: RenderOptions| {
+        let options = options.with_compress(false);
+        let pdf =
+            inkoxide::render(doc.as_bytes(), InputFormat::Json, &options, &fonts, &images).unwrap();
+        String::from_utf8_lossy(&pdf).into_owned()
+    };
+    let plain = run(RenderOptions::default());
+    let tagged = run(RenderOptions::default().with_tagged(true));
+    for needle in ["+Inter-Bold", "/Subtype /Image"] {
+        let count = plain.matches(needle).count();
+        assert!(count > 0, "{needle}");
+        assert_eq!(tagged.matches(needle).count(), count, "{needle}");
+    }
+}
+
+/// A part drawn in a layer of its own is a figure when it is all the layer
+/// draws: a shape with `opacity` (which usvg draws in a group around it),
+/// or a shape alone in a group with `opacity`. One beside others in such
+/// a group is read with the figure around it.
+#[test]
+fn parts_drawn_in_layers_are_figures_when_they_are_all_the_layer_draws() {
+    let (fonts, mut images) = stores();
+    images.insert(
+        "chart".to_string(),
+        br#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+  <rect aria-label="Own opacity" width="5" height="5" opacity="0.5"/>
+  <g opacity="0.5"><rect aria-label="Alone in a group" x="10" width="5" height="5"/></g>
+  <g opacity="0.5"><rect aria-label="Beside another" x="20" width="5" height="5"/><rect x="30" width="5" height="5"/></g>
+</svg>"#
+            .to_vec(),
+    );
+    let doc = r#"{"version":1,"meta":{"title":"T","lang":"en"},
+      "pages":[{"size":{"width":200,"height":200},"children":[
+        {"type":"image","alt":"Chart","src":"chart","style":{"width":80,"height":40}}]}]}"#;
+    let options = RenderOptions::default()
+        .with_pdf_ua(true)
+        .with_compress(false);
+    let pdf =
+        inkoxide::render(doc.as_bytes(), InputFormat::Json, &options, &fonts, &images).unwrap();
+    let text = String::from_utf8_lossy(&pdf);
+    for alt in ["Chart", "Own opacity", "Alone in a group"] {
+        assert!(text.contains(&format!("/Alt ({alt})")), "{alt}");
+    }
+    assert!(!text.contains("/Alt (Beside another)"));
 }

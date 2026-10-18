@@ -298,11 +298,11 @@ impl Checker<'_> {
             });
         }
         if self.rendering && !self.profile.is_pdf_a() && !schemas.is_empty() {
-            self.errors.push(ValidationError {
-                code: Code::InvalidValue,
-                path: "meta.xmpExtensions".into(),
-                message: "XMP extensions go in the PDF/A metadata: render PDF/A".into(),
-            });
+            self.err(
+                Code::InvalidValue,
+                None,
+                "XMP extensions go in the PDF/A metadata: render PDF/A",
+            );
         }
     }
 }
