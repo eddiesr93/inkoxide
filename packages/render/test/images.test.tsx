@@ -400,6 +400,27 @@ describe('image functions and promises', () => {
     }
   });
 
+  it('takes a Blob or a File, directly or resolved, and reads it once per render', async () => {
+    for (const blob of [new Blob([logo], { type: 'image/png' }), new File([logo], 'logo.png')]) {
+      let reads = 0;
+      const read = blob.arrayBuffer.bind(blob);
+      blob.arrayBuffer = () => (reads++, read());
+      const pdf = await renderToBuffer(
+        <Document>
+          <Page>
+            <Image src={blob} className="h-10 w-10" />
+            <Image src={blob} className="h-10 w-10" />
+          </Page>
+        </Document>,
+        { compress: false },
+      );
+      expect(pageImages(pdf)).toEqual([[LOGO]]);
+      expect(reads).toBe(1);
+      expect(countPages(await render(() => blob))).toBe(1);
+      expect(countPages(await render(Promise.resolve(blob)))).toBe(1);
+    }
+  });
+
   it('calls a function once per render, however many images use it', async () => {
     let calls = 0;
     const src = () => {
@@ -483,7 +504,7 @@ describe('image functions and promises', () => {
       '<Image src="https://example.com/logo.png">: this URL is not in the remoteImages allowlist. Add its origin to the option remoteImages.allow (or the INKOXIDE_REMOTE_IMAGES variable), or pass the bytes.',
     );
     expect((await failure((() => 42) as unknown as ImageSrc)).message).toBe(
-      'An <Image src> function or promise resolved to number; expected bytes, a string or a request.',
+      'An <Image src> function or promise resolved to number; expected bytes, a Blob, a string or a request.',
     );
   });
 });

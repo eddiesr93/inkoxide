@@ -208,6 +208,64 @@ function poolSize(threads) {
   return threads;
 }
 
+/**
+ * The script of a worker that runs the script at `url`, of another origin. A classic worker (a
+ * bundler's that loads chunks with `importScripts`) imports it so. A module worker imports it
+ * dynamically: a static import would be fetched as the worker's own script, which WebKit refuses
+ * from another origin on an isolated page. The messages that come meanwhile are kept, and sent on
+ * once the module has its handler; an import that fails is an error of the worker's, which the
+ * page hears of.
+ */
+function importing(url, module) {
+  if (!module) return `importScripts(${JSON.stringify(url)});\n`;
+  return `const kept = [];
+const keep = (e) => {
+  e.stopImmediatePropagation();
+  kept.push(e);
+};
+addEventListener('message', keep);
+try {
+  await import(${JSON.stringify(url)});
+  removeEventListener('message', keep);
+  for (const e of kept) dispatchEvent(new MessageEvent('message', { data: e.data }));
+} catch (e) {
+  setTimeout(() => {
+    throw e;
+  });
+}
+`;
+}
+
+/**
+ * The worker `start` makes, as it makes it: `new Worker(new URL(…, import.meta.url))`, which
+ * bundlers see and copy the script of. Meanwhile `Worker` also takes a script of another origin
+ * (this module served by a CDN): a page cannot start a worker from it, so the worker is one of
+ * the page's origin that imports it, and that needs the script served with CORS.
+ */
+function startWorker(start) {
+  const Native = globalThis.Worker;
+  globalThis.Worker = class extends Native {
+    constructor(url, options) {
+      const at = new URL(url, globalThis.location?.href);
+      const own = globalThis.location === undefined || at.origin === globalThis.location.origin;
+      const local = own || at.protocol === 'blob:' || at.protocol === 'data:';
+      const blob = local
+        ? undefined
+        : URL.createObjectURL(
+            new Blob([importing(at.href, options?.type === 'module')], { type: 'text/javascript' }),
+          );
+      super(blob ?? url, options);
+      // The worker has it now.
+      if (blob) URL.revokeObjectURL(blob);
+    }
+  };
+  try {
+    return start();
+  } finally {
+    globalThis.Worker = Native;
+  }
+}
+
 /** A worker of the pool, in a page or in Node, running thread.js. */
 function spawnThread() {
   const nodeThreads = globalThis.process?.getBuiltinModule?.('node:worker_threads');
@@ -225,7 +283,7 @@ function spawnThread() {
       terminate: () => w.terminate(),
     };
   }
-  const w = new Worker(new URL('./thread.js', import.meta.url), { type: 'module' });
+  const w = startWorker(() => new Worker(new URL('./thread.js', import.meta.url), { type: 'module' }));
   return {
     send: (m) => w.postMessage(m),
     onReply: (f) => {

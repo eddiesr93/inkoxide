@@ -219,8 +219,9 @@ Font.register({
 
 Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lora]"`.
 
-- **Sources.** `src` is a file path, a `file:`, `https:` or `http:` URL, or the bytes
-  (`Uint8Array` or `ArrayBuffer`). Prefer `https:`: a font fetched over `http:` can be changed on
+- **Sources.** `src` is a file path, a `file:`, `https:` or `http:` URL, the bytes
+  (`Uint8Array` or `ArrayBuffer`), or a `Blob`, such as a `File` the user picked (read before the
+  next render, as a path is). Prefer `https:`: a font fetched over `http:` can be changed on
   the way. Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
   (`.woff2`). Font collections (`.ttc`) are not supported: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
@@ -313,7 +314,8 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   ```
 
 - **Faces.** A face is a family, a weight and a style. Registering one again from the same
-  source (the same path, URL or bytes) does nothing, and from another source throws. A face the
+  source (the same path, URL, bytes or `Blob` object) does nothing, and from another source
+  throws; two different `Blob`s are different sources, even with the same bytes. A face the
   bundled fonts have (`Inter` 400) cannot be replaced: register your build under another family
   name. You can add the faces they lack, such as `Inter` bold italic. Two family names that
   differ only in spaces and hyphens (`Brand Two`, `Brand-Two`) give the same font id to faces of
@@ -328,6 +330,7 @@ import { readFileSync } from 'node:fs';
 const logo = readFileSync('logo.png');
 
 <Image src={logo} className="h-10 w-10" fit="contain" />         // bytes: Uint8Array, Buffer, ArrayBuffer
+<Image src={file} />                                            // a Blob, such as a File from an <input type="file">
 <Image src="data:image/png;base64,iVBORw0…" />                  // a base64 data: URL
 <Image src="logo" />                                            // an id from options.images
 <Image src="./images/logo.png" />                               // a file, when allowed
@@ -412,6 +415,9 @@ const logo = readFileSync('logo.png');
   template wrote it, and is the same for a missing file and a file outside the folders:
   `Cannot read the image ../secret.png: no such file in the localImages folders.`
   (`IMAGE_READ_FAILED`).
+- **Blobs and files.** A `Blob` is read when the render loads its images, once per render
+  however many images use it. A `File` from `<input type="file">` or a drop works in a browser
+  and in Node alike. A function or promise may resolve to one.
 - **Ids first.** A string that names an image in the `images` option (or a
   [template's](#serving-templates) `images`) is that image, even when it looks like a path or a
   URL. No file is read for it.
@@ -426,7 +432,7 @@ const logo = readFileSync('logo.png');
   download that times out, breaks off or grows past the limit fails with `IMAGE_FETCH_FAILED`.
 - **Functions and promises.** A function is called once per render, after the tree is built and
   before the engine runs, with the other images loading in parallel; a promise is awaited
-  then. Either resolves to bytes, a string or a request, read as if written in `src`. If it
+  then. Either resolves to bytes, a `Blob`, a string or a request, read as if written in `src`. If it
   throws, rejects or does not settle within `imageTimeoutMs` (default 10 000 ms), the render
   fails with `TEMPLATE_ERROR`. A `render` prop that creates a new function or promise each time
   has it loaded again when it renders again for the page count. Prefer a function to a promise
@@ -1324,7 +1330,7 @@ not an integer from 1 to 256, or a timeout or `maxBytes` that is not a number fr
 negative number, a string), or an option of the wrong type (`threads: '4'`, `localImages`
 without `root`). A fractional timeout is rounded up to a whole millisecond.
 
-**`Font.register({ family, src })`** adds a font family, from a path, a URL or bytes. See
+**`Font.register({ family, src })`** adds a font family, from a path, a URL, bytes or a `Blob`. See
 [Fonts](#fonts).
 
 **`Font.registerHyphenationCallback(fn)`** splits words for hyphenation with your own function;
@@ -1428,7 +1434,7 @@ or the stack. Two more codes come from [templates](#serving-templates): `INVALID
 
 `Font.register`, `Font.registerHyphenationCallback` and `Font.registerEmojiSource` check their
 arguments when you call them and throw a plain `Error` straight away: a missing family name or
-`src`, a `src` that is not a path, a URL or bytes, an unknown weight, a weight range that is not
+`src`, a `src` that is not a path, a URL, bytes or a `Blob`, an unknown weight, a weight range that is not
 two weights from the lower one, a malformed `fontVariationSettings`, a face already registered
 from another source, a face the bundled fonts have, a family whose font id another family has, a
 callback that is not a function, or an emoji source with neither a `url` string nor a `builder`
@@ -1559,11 +1565,16 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   `options`, `fallback` (shown until the first render has finished, and when it failed),
   `title` (default `'PDF'`) and the props of an `<iframe>`. Each renders when it mounts: give it
   another `key` to render again. Their props are `PdfDownloadLinkProps` and `PdfViewerProps`.
-- **`renderToBuffer`** and **`renderToBlob`** render outside React components, and **`generate`**
-  renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
+- **`renderToBuffer`**, **`renderToBlob`** and **`renderToStream`** render outside React
+  components, and **`generate`** renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
   `GenerateOptions` for `generate`) are those of the Node entry, with a `signal` or `timeoutMs`
   (a time in ms) that stops a render: its worker ends, and the next render starts a new one. A
   render that times out rejects with a `DOMException` named `TimeoutError`.
+  `renderToStream` returns a promise of a web `ReadableStream<Uint8Array>` of the PDF in 64 KiB
+  chunks: pass it to a `Response` (in a service worker, say), or write it to a file the user
+  picked, with `(await renderToStream(<Invoice />)).pipeTo(await handle.createWritable())` for a
+  `handle` from `showSaveFilePicker()`. As in Node, the stream starts once the PDF is ready, and
+  a failed render rejects the promise.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
   first call count. The options (`BrowserOptions`): `wasm` is where the module comes from (a
   URL, a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module); `assets` is
@@ -1588,17 +1599,27 @@ import unchanged. To use the engine without React, with document trees as JSON, 
 
 **Fonts and images.** A bundled font is downloaded the first time a document uses it, as a
 TrueType file, for the same PDF as on the server. `Font.register` takes a URL (relative to the
-page) or the bytes; a file path (a `file:` URL, a drive letter or a backslash) fails the render
-with `INVALID_FONT`. A WOFF2 font gives other PDF bytes than its TrueType file;
-WOFF gives the same. Images come as bytes in `images`, or from the hosts allowed in
-`remoteImages`: the requests carry no cookies, need CORS, and a redirect is refused.
-`localImages` is not available.
+page), the bytes or a `Blob`; a file path (a `file:` URL, a drive letter or a backslash) fails
+the render with `INVALID_FONT`. A WOFF2 font gives other PDF bytes than its TrueType file;
+WOFF gives the same. Images come as bytes in `images`, as a `Blob` (a `File` from
+`<input type="file">` or a drop) in `<Image src>`, or from the hosts allowed in `remoteImages`:
+the requests carry no cookies, need CORS, and a redirect is refused. `localImages` is not
+available.
 
 **Content Security Policy.** The engine needs `script-src 'wasm-unsafe-eval'` and a worker of
 the page's origin (`worker-src 'self'`). `<PdfViewer>` shows the PDF from an object URL
 (`blob:`), as does a frame or an image given `usePdf().url`: allow it with `frame-src blob:`, and
 `img-src blob:` for an image. The policy of examples/browser allows both. Nothing needs `'unsafe-eval'`, and the page needs no
 cross-origin isolation (COOP and COEP), unless it wants threads.
+
+**From a CDN.** A page cannot start a worker from a script of another origin. When
+`@inkoxide/render` and `@inkoxide/wasm` are served from one (a CDN), the engine's worker, and
+the pool's threads, start as a worker of the page's origin from a `blob:` URL that imports the
+script. The CDN must serve the scripts and assets with CORS (`Access-Control-Allow-Origin`), and
+the policy needs `worker-src blob:`, with `script-src` and `connect-src` allowing the CDN. On a
+page that is cross-origin isolated, the CDN's files also need CORS or `Cross-Origin-Resource-Policy:
+cross-origin`. Scripts of the page's own origin start workers as before, and `worker-src 'self'`
+is enough. Bundlers still see `new Worker(new URL(…, import.meta.url))`.
 
 ### Threads in the browser
 
@@ -1634,7 +1655,7 @@ engine's nested worker), the engine renders on one thread.
 - Renders run in one worker, one at a time, on one thread unless the page is cross-origin
   isolated ([threads](#threads-in-the-browser)); without a pool `threads` may only be `1`, and
   with one, any larger number uses the whole pool.
-- `renderToFile`, `renderToStream` and image files are not available.
+- `renderToFile` and image files are not available.
 - The engine module is about 1.4 MB to download with brotli, once, and Tailwind's compiler
   about 90 KB when templates use `className`, or a few KB with the [build plugin](#tailwind).
   A bundled font (65 to

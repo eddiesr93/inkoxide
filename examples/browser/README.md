@@ -27,6 +27,11 @@ does not show it; the tests render it. The engine fetches its German hyphenation
 Noto Sans, the fallback font, only when a document needs them, as this one does: the invoice
 needs neither.
 
+`vite.config.ts` also serves the build as a CDN would, for `tests/cdn.spec.ts`: with
+`INKOXIDE_CDN=assets`, `vite preview` serves the scripts and assets on port 4181 with CORS, and
+with `INKOXIDE_CDN=page`, the page on port 4182, cross-origin isolated, under a policy with
+`worker-src blob:`. Playwright starts both.
+
 ## Tests
 
 `pnpm test` builds the page, serves it with `vite preview`, and checks in Chromium, Firefox and
@@ -46,3 +51,10 @@ WebKit (after `scripts/build-node.sh`, both `scripts/build-wasm.sh` builds and
 renders on a pool of threads with the bytes Node renders; that `signal` and `timeoutMs` stop a
 render on the pool; and that a bug on a pool thread fails the render with `INTERNAL`. After each,
 the next render succeeds.
+
+`tests/cdn.spec.ts` serves the build again as a CDN would: its scripts and assets on port 4181
+(`INKOXIDE_CDN=assets`, with CORS), and the page on port 4182 (`INKOXIDE_CDN=page`,
+cross-origin isolated, under a policy with `worker-src blob:`). A page cannot start a worker
+from a script of another origin, so the engine's worker and its pool's start from `blob:` URLs of
+the page's origin; the test checks that, and that the engine renders on a pool of threads with
+the bytes Node renders. Playwright starts both servers.

@@ -84,8 +84,9 @@ Worker.
   natively it is an error and the process goes on.
 - Renders in the browser use one thread, and an instance has at most 4 GiB of memory (ADR 0003:
   the module with threads renders on up to 256, with at most 2 GiB).
-- Not available in the browser: `renderToFile`, `renderToStream`, and local image files
-  (`localImages`).
+- Not available in the browser: `renderToFile` and local image files (`localImages`).
+  `renderToStream` is a web stream, and an image or a font can come from a `Blob`, such as a
+  `File` the user picked.
 
 ## Alternatives
 

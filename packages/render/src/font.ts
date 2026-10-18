@@ -27,9 +27,10 @@ import { RenderError } from './types.ts';
 
 /**
  * A TrueType, CFF OpenType, WOFF or WOFF2 font: a file path, a `file:`, `https:` or `http:` URL,
- * or its bytes. In a browser, text is a URL, relative to the page.
+ * its bytes, or a `Blob` (a `File` the page's user picked, say). In a browser, text is a URL,
+ * relative to the page.
  */
-export type FontSrc = string | URL | Uint8Array | ArrayBuffer;
+export type FontSrc = string | URL | Uint8Array | ArrayBuffer | Blob;
 
 export type FontWeight = number | FontWeightName;
 
@@ -149,11 +150,26 @@ function rangeOf(range: readonly unknown[], family: string): readonly [number, n
   return [a, b];
 }
 
+/** Whether `src` is a `Blob` (a `File` too), where there are blobs. */
+const isBlob = (src: unknown): src is Blob => typeof Blob === 'function' && src instanceof Blob;
+
 const describe = (src: FontSrc): string =>
-  typeof src === 'string' ? src : src instanceof URL ? src.href : `${src.byteLength} bytes`;
+  typeof src === 'string'
+    ? src
+    : src instanceof URL
+      ? src.href
+      : isBlob(src)
+        ? 'name' in src && typeof src.name === 'string' && src.name !== ''
+          ? `the file ${src.name}`
+          : `a Blob of ${src.size} bytes`
+        : `${src.byteLength} bytes`;
 
 const isFontSrc = (src: unknown): src is FontSrc =>
-  typeof src === 'string' || src instanceof URL || src instanceof Uint8Array || src instanceof ArrayBuffer;
+  typeof src === 'string' ||
+  src instanceof URL ||
+  src instanceof Uint8Array ||
+  src instanceof ArrayBuffer ||
+  isBlob(src);
 
 const bytesView = (src: FontSrc): Uint8Array | undefined =>
   src instanceof Uint8Array ? src : src instanceof ArrayBuffer ? new Uint8Array(src) : undefined;
@@ -161,6 +177,8 @@ const bytesView = (src: FontSrc): Uint8Array | undefined =>
 /** Whether two sources are the same font: the same bytes, or the same path or URL. */
 function sameSource(a: FontSrc, b: FontSrc): boolean {
   if (a === b) return true;
+  // Two blobs are read when the font loads: the same one only.
+  if (isBlob(a) || isBlob(b)) return false;
   const x = bytesView(a);
   const y = bytesView(b);
   if (x || y) return x !== undefined && y !== undefined && sameBytes(x, y);
@@ -170,6 +188,7 @@ function sameSource(a: FontSrc, b: FontSrc): boolean {
 async function bytesOf(src: FontSrc): Promise<Uint8Array> {
   if (src instanceof Uint8Array) return src;
   if (src instanceof ArrayBuffer) return new Uint8Array(src);
+  if (isBlob(src)) return new Uint8Array(await src.arrayBuffer());
   const files = engineHost().files;
   // Without files (in a browser), text is a URL, relative to the page; a file path is an error
   // (`file:`, a drive letter or a backslash).
@@ -216,7 +235,7 @@ export const Font = {
       if (!isFontSrc(src)) {
         const what = src === null ? 'null' : typeof src === 'object' ? 'an object' : `a ${typeof src}`;
         throw new Error(
-          `Font "${family}": src must be a path, a URL or the bytes (Uint8Array or ArrayBuffer), not ${what}.`,
+          `Font "${family}": src must be a path, a URL, the bytes (Uint8Array or ArrayBuffer) or a Blob, not ${what}.`,
         );
       }
       const fw = face.fontWeight;

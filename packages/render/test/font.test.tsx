@@ -182,6 +182,20 @@ describe('Font.register', () => {
     });
   });
 
+  it('reads a Blob or a File, and tells two apart by identity', async () => {
+    const bytes = readFileSync(file('Inter-Regular.ttf'));
+    const picked = new File([bytes], 'Picked.ttf');
+    Font.register({ family: 'Blob Font', src: new Blob([bytes]) });
+    Font.register({ family: 'File Font', src: picked });
+    expect(() => Font.register({ family: 'File Font', src: picked })).not.toThrow();
+    expect(() => Font.register({ family: 'File Font', src: new File([bytes], 'Picked.ttf') })).toThrow(
+      'Font "File Font" 400 is already registered from the file Picked.ttf.',
+    );
+    await renderToBuffer(<Doc family="File Font" />);
+    expect(fonts.has('Blob-Font-400')).toBe(true);
+    expect(fonts.has('File-Font-400')).toBe(true);
+  });
+
   it('reads a file: URL as a string and as a URL', async () => {
     const url = pathToFileURL(file('Inter-Bold.ttf'));
     Font.register({ family: 'File String', src: url.href });
@@ -342,7 +356,7 @@ describe('Font.register', () => {
   it('refuses a src that is not a path, a URL or bytes when it is registered', async () => {
     for (const src of [null, 42, {}]) {
       expect(() => Font.register({ family: 'Bad Src', src: src as never })).toThrow(
-        'Font "Bad Src": src must be a path, a URL or the bytes (Uint8Array or ArrayBuffer)',
+        'Font "Bad Src": src must be a path, a URL, the bytes (Uint8Array or ArrayBuffer) or a Blob',
       );
       expect(() =>
         Font.register({

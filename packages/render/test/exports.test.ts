@@ -171,7 +171,7 @@ const TEMPLATES_TYPES = [
  * `clearCaches`, and `generate` from the templates.
  */
 const BROWSER_VALUES = [
-  ...MAIN_VALUES.filter((n) => n !== 'renderToFile' && n !== 'renderToStream'),
+  ...MAIN_VALUES.filter((n) => n !== 'renderToFile'),
   'clearCaches',
   'generate',
   'PdfDownloadLink',

@@ -11,6 +11,28 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Added
 
+- `renderToStream` in `@inkoxide/render/browser`: the PDF as a web `ReadableStream<Uint8Array>`
+  in 64 KiB chunks, for a `Response` (in a service worker, say) or to write to a file the user
+  picked (`showSaveFilePicker()`, then `stream.pipeTo(await handle.createWritable())`). As in
+  Node, the stream starts once the PDF is ready, and a failed render rejects the promise. It
+  takes the browser's render options, `signal` and `timeoutMs` too.
+
+- Local files in the browser. `<Image src>` takes a `Blob`, such as a `File` from
+  `<input type="file">` or a drop, directly or as what a function or promise `src` resolves to;
+  it is read when the render loads its images, once per render however many images use it.
+  `Font.register({ src })` takes a `Blob` too: two different `Blob` objects are different
+  sources, so registering a face again with another one throws, and with the same one does
+  nothing. `ImageSrcValue` and `FontSrc` include `Blob`. This works in Node as well.
+
+- Threads from a CDN. When `@inkoxide/render` and `@inkoxide/wasm` are served from another
+  origin than the page, which cannot start a worker from such a script, the render entry's
+  engine worker and the pool's threads (`thread.js`) start as a worker of the page's origin from
+  a `blob:` URL that imports the script. The CDN must serve the scripts and assets with CORS; on
+  a cross-origin isolated page its files need CORS or `Cross-Origin-Resource-Policy:
+  cross-origin`; a Content Security Policy needs `worker-src blob:`. Scripts of the page's own
+  origin start workers as before. Bundlers still see `new Worker(new URL(…, import.meta.url))`.
+  `examples/browser/tests/cdn.spec.ts` tests it in Chromium, Firefox and WebKit.
+
 - Threads in the browser. On a page that is cross-origin isolated, `@inkoxide/render/browser`
   renders on a pool of Web Workers that share the engine's memory: its `threads` option is
   `'auto'` by default (the number of cores, at most 8), and `engineStatus().threads` says how many

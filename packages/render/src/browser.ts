@@ -1,7 +1,7 @@
 // `@inkoxide/render/browser`: the components and rendering in a browser, with the engine as
 // WebAssembly (`@inkoxide/wasm`) in a Web Worker. The API of the main entry without what needs
-// Node (renderToFile, renderToStream, image files), with renderToBlob, the React helpers usePdf,
-// PdfDownloadLink and PdfViewer, and generate for templates.
+// Node (renderToFile, image files), with renderToStream as a web stream, renderToBlob, the React
+// helpers usePdf, PdfDownloadLink and PdfViewer, and generate for templates.
 // test/exports.test.ts pins the list.
 // In a browser: the engine in a worker, and the bundled assets fetched.
 import './browser-host.ts';
@@ -15,6 +15,7 @@ export {
   init,
   renderToBlob,
   renderToBuffer,
+  renderToStream,
 } from './browser-api.ts';
 export * from './components.ts';
 export {

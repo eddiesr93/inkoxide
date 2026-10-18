@@ -5,8 +5,7 @@ or should come sooner.
 
 ## Later
 
-- **In the browser**: `renderToStream`; reading local files; threads from a CDN, with the pool's
-  worker served from another origin; a module with threads on stable Rust, once its standard
-  library can be rebuilt there.
+- **In the browser**: a module with threads on stable Rust, once its standard library can be
+  rebuilt there.
 - **Encryption**: an independent review of the key derivation by cryptographers. It has had an
   internal review only.

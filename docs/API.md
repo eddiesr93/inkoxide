@@ -63,7 +63,9 @@ How it differs from the Node package:
   `require-corp`), or in Node, the module with threads renders on a pool of Web Workers (worker
   threads in Node) that share its memory; a render's `threads: 1` keeps to the calling thread,
   and any other number up to 256 uses the pool. The bytes are those of one thread. Where the
-  pool's workers cannot start, it renders on one thread. A bug on a pool thread leaves the call
+  pool's workers cannot start, it renders on one thread. From a script of another origin (a CDN),
+  a thread starts as a worker of the page's origin from a `blob:` URL that imports `thread.js`: it
+  needs CORS on the CDN's files and `worker-src blob:` in a Content Security Policy. A bug on a pool thread leaves the call
   waiting: the thread posts `{ message }` on the `trapChannel` (a name of its own: a channel
   reaches every tab of the origin), and whoever listens ends the worker that waits (`timeoutMs` does too, in
   `@inkoxide/render/browser`). See [ADR 0003](adr/0003-browser-threads.md).
