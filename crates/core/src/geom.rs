@@ -93,3 +93,38 @@ pub(crate) fn invert(m: [f32; 6]) -> Option<[f32; 6]> {
 pub(crate) fn apply(m: [f32; 6], (x, y): (f32, f32)) -> (f32, f32) {
     (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
 }
+
+/// The sine and cosine of `degrees`, exact for quarter turns (sideways
+/// glyphs in vertical text), where `sin_cos` leaves a trace of rounding.
+pub(crate) fn sin_cos_degrees(degrees: f32) -> (f32, f32) {
+    match degrees.rem_euclid(360.0) {
+        0.0 => (0.0, 1.0),
+        90.0 => (1.0, 0.0),
+        180.0 => (0.0, -1.0),
+        270.0 => (-1.0, 0.0),
+        d => d.to_radians().sin_cos(),
+    }
+}
+
+/// Point `(x, y)` rotated by `degrees` (clockwise, y down) about the
+/// origin.
+pub(crate) fn rotate((x, y): (f32, f32), degrees: f32) -> (f32, f32) {
+    let (sin, cos) = sin_cos_degrees(degrees);
+    (x * cos - y * sin, x * sin + y * cos)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn quarter_turns_are_exact() {
+        use super::{rotate, sin_cos_degrees};
+        assert_eq!(sin_cos_degrees(0.0), (0.0, 1.0));
+        assert_eq!(sin_cos_degrees(90.0), (1.0, 0.0));
+        assert_eq!(sin_cos_degrees(-90.0), (-1.0, 0.0));
+        assert_eq!(sin_cos_degrees(450.0), (1.0, 0.0));
+        let (sin, cos) = sin_cos_degrees(30.0);
+        assert!((sin - 0.5).abs() < 1e-6 && (cos - 0.75f32.sqrt()).abs() < 1e-6);
+        assert_eq!(rotate((2.0, 1.0), 90.0), (-1.0, 2.0));
+        assert_eq!(rotate((2.0, 1.0), -90.0), (1.0, -2.0));
+    }
+}

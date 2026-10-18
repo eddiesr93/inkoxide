@@ -889,7 +889,10 @@ export interface SvgTextProps extends SvgPresentation {
  * Text along a path: a `TextPath` directly inside a `Text` in an `<Svg>`. Its characters take
  * no positions of their own (a `Tspan` inside it can shift them).
  */
-export interface TextPathProps extends Omit<SvgTextProps, 'x' | 'y' | 'dx' | 'dy' | 'rotate'> {
+export interface TextPathProps extends Omit<
+  SvgTextProps,
+  'x' | 'y' | 'dx' | 'dy' | 'rotate' | 'writingMode'
+> {
   /** The path or basic shape to follow, by id: `#curve`. */
   href?: string;
   /** Path data to follow instead of an element (SVG 2). */
@@ -905,7 +908,7 @@ export interface TextPathProps extends Omit<SvgTextProps, 'x' | 'y' | 'dx' | 'dy
 }
 
 /** A span of SVG text: a `Tspan` inside a `Text` in an `<Svg>`. */
-export interface TspanProps extends SvgTextProps {
+export interface TspanProps extends Omit<SvgTextProps, 'writingMode'> {
   /** Raises (positive, `super`) or lowers (`sub`) the span from the baseline. */
   baselineShift?: number | string;
   alignmentBaseline?: SvgPresentation['dominantBaseline'];

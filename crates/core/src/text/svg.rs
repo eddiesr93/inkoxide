@@ -22,12 +22,12 @@
 use std::collections::HashMap;
 
 use super::objects::InlineObject;
-use super::vertical::{self, Orientation as Vo};
+use super::vertical;
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
-use crate::geom::Rect;
+use crate::geom::{self, Rect};
 use crate::images::svg_text::{
-    Anchor, Baseline, Orientation, Shift, SvgSpan, SvgText, TextPathSpec, Writing,
+    Anchor, Baseline, Shift, SvgSpan, SvgText, TextOrientation, TextPathSpec, Writing,
 };
 use crate::images::ImageKey;
 use crate::schema::{Direction, FontStyle, TextAlign, TextRun, TextWrap, WhiteSpace};
@@ -235,7 +235,7 @@ pub(crate) fn lay_out<S: TextShaper>(text: &SvgText, shaper: &mut S) -> LaidText
         .map(|r| {
             let first = text.chars[r.start];
             let chars: Vec<usize> = r.filter(|&i| drawn(i)).collect();
-            let clusters = if text.writing == Writing::Horizontal {
+            let clusters = if text.writing.is_horizontal() {
                 shape(text, &chars, &keys, shaper, false)
             } else {
                 shape_column(text, &chars, &keys, shaper, &mut forms)
@@ -255,12 +255,12 @@ pub(crate) fn lay_out<S: TextShaper>(text: &SvgText, shaper: &mut S) -> LaidText
         spacing(text, &mut chunk.clusters);
     }
     length_adjust(text, &mut chunks);
-    let mut laid = if text.writing == Writing::Horizontal {
+    let mut laid = if text.writing.is_horizontal() {
         place(text, &chunks, fonts)
     } else {
         place_vertical(text, &chunks, fonts)
     };
-    if text.writing != Writing::Horizontal || !text.paths.is_empty() {
+    if !text.writing.is_horizontal() || !text.paths.is_empty() {
         laid.actual = actual_text(&laid, text.paints.len());
     }
     laid
@@ -332,12 +332,14 @@ fn stands_upright(
     let c = text.chars[i];
     let span = c.span as usize;
     match text.spans[span].orientation {
-        Orientation::Upright => true,
-        Orientation::Sideways => false,
-        Orientation::Mixed => match vertical::orientation(c.c) {
+        TextOrientation::Upright => true,
+        TextOrientation::Sideways => false,
+        TextOrientation::Mixed => match vertical::orientation(c.c) {
             None => false,
-            Some(Vo::Upright | Vo::TransformedUpright) => true,
-            Some(Vo::TransformedRotated) => keys[span].is_some_and(|k| {
+            Some(vertical::Orientation::Upright | vertical::Orientation::TransformedUpright) => {
+                true
+            }
+            Some(vertical::Orientation::TransformedRotated) => keys[span].is_some_and(|k| {
                 *forms
                     .entry((k, c.c))
                     .or_insert_with(|| fonts.get(k).has_vertical_form(c.c))
@@ -595,15 +597,6 @@ fn central_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
     (m.ascender + m.descender) * font.scale(span.size) / 2.0
 }
 
-/// A point turned by `deg` degrees (clockwise, y down) about the origin.
-fn turn((x, y): (f32, f32), deg: f32) -> (f32, f32) {
-    if deg == 0.0 {
-        return (x, y);
-    }
-    let (sin, cos) = deg.to_radians().sin_cos();
-    (x * cos - y * sin, x * sin + y * cos)
-}
-
 /// The box of `points`, grown into `ink`.
 fn grow(ink: &mut Option<[f32; 4]>, points: impl IntoIterator<Item = (f32, f32)>) {
     for (x, y) in points {
@@ -662,7 +655,7 @@ fn put_cluster(
         grow(
             &mut out.ink,
             corners.map(|(u, v)| {
-                let (px, py) = turn((u * scale_x, v), rotate);
+                let (px, py) = geom::rotate((u * scale_x, v), rotate);
                 (ox + px, oy + py)
             }),
         );
@@ -690,7 +683,7 @@ fn put_cluster(
         } else {
             ((pen + x_offset) * scale_x, -y_offset)
         };
-        let (gx, gy) = turn(at, rotate);
+        let (gx, gy) = geom::rotate(at, rotate);
         let g = SvgGlyph {
             font: c.font,
             id,
@@ -711,7 +704,7 @@ fn put_cluster(
             grow(
                 &mut out.ink,
                 corners.map(|(u, v)| {
-                    let (px, py) = turn((u * scale * scale_x, -v * scale), g.rotate);
+                    let (px, py) = geom::rotate((u * scale * scale_x, -v * scale), g.rotate);
                     (g.x + px, g.y + py)
                 }),
             );
@@ -732,32 +725,60 @@ fn anchored(chunk: &Chunk) -> f32 {
     }
 }
 
+/// What placing the chunks of a text builds: the laid text, the outline
+/// boxes read so far, and the decoration runs of the chunk being placed.
+#[derive(Default)]
+struct Placing {
+    out: LaidText,
+    boxes: Boxes,
+    runs: Vec<DecorationRun>,
+}
+
+impl Placing {
+    /// Draws a cluster from `origin` turned `rotate` ([`put_cluster`]).
+    fn put(
+        &mut self,
+        cluster: (&Cluster, &SvgSpan, &LoadedFont<'_>),
+        origin: (f32, f32),
+        rotate: f32,
+    ) {
+        put_cluster(&mut self.out, &mut self.boxes, cluster, origin, rotate);
+    }
+}
+
+/// Places every chunk that has clusters with `place_chunk`, which gets
+/// where the chunk starts (where the text before it ended, unless it
+/// has a position) and returns where the text after it goes on (`None`:
+/// where it was). Each chunk's decorations are drawn after it.
+fn place_chunks(
+    text: &SvgText,
+    chunks: &[Chunk],
+    fonts: &FontSet<'_>,
+    mut place_chunk: impl FnMut(&Chunk, (f32, f32), &mut Placing) -> Option<(f32, f32)>,
+) -> LaidText {
+    let mut p = Placing::default();
+    let (mut last_x, mut last_y) = (0.0f32, 0.0f32);
+    for chunk in chunks.iter().filter(|c| !c.clusters.is_empty()) {
+        let start = (chunk.x.unwrap_or(last_x), chunk.y.unwrap_or(last_y));
+        if let Some(end) = place_chunk(chunk, start, &mut p) {
+            (last_x, last_y) = end;
+        }
+        draw_decorations(&mut p.out, text, &p.runs, fonts);
+        p.runs.clear();
+    }
+    sort(&mut p.out);
+    p.out
+}
+
 /// Places the clusters of every chunk (`resolve_clusters_positions`),
 /// with anchors, baselines, decorations and the ink box.
 fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
-    let mut out = LaidText::default();
-    let mut boxes = Boxes::new();
-    let (mut last_x, mut last_y) = (0.0f32, 0.0f32);
-    for chunk in chunks {
-        if chunk.clusters.is_empty() {
-            continue;
+    place_chunks(text, chunks, fonts, |chunk, (x0, y0), p| {
+        if let Some(path) = chunk.path {
+            return place_on_path(text, chunk, &text.paths[usize::from(path)], fonts, p);
         }
-        if let Some(p) = chunk.path {
-            if let Some(end) = place_on_path(
-                text,
-                chunk,
-                &text.paths[usize::from(p)],
-                fonts,
-                (&mut out, &mut boxes),
-            ) {
-                (last_x, last_y) = end;
-            }
-            continue;
-        }
-        let (x0, y0) = (chunk.x.unwrap_or(last_x), chunk.y.unwrap_or(last_y));
         let mut x = anchored(chunk);
         let mut y = 0.0;
-        let mut runs: Vec<DecorationRun> = Vec::new();
         for c in &chunk.clusters {
             let ch = text.chars[c.char];
             x += ch.dx;
@@ -767,16 +788,12 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             let font = fonts.get(c.font);
             let down = baseline_drop(span, font);
             let origin = (x0 + x, y0 + y + down);
-            put_cluster(&mut out, &mut boxes, (c, span, font), origin, ch.rotate);
-            decorate(&mut runs, c, shifted, origin, ch.rotate);
+            p.put((c, span, font), origin, ch.rotate);
+            decorate(&mut p.runs, c, shifted, origin, ch.rotate);
             x += c.advance;
         }
-        draw_decorations(&mut out, text, &runs, fonts);
-        last_x = x0 + x;
-        last_y = y0 + y;
-    }
-    sort(&mut out);
-    out
+        Some((x0 + x, y0 + y))
+    })
 }
 
 /// Places the clusters of a chunk on a path (`resolve_clusters_positions_path`):
@@ -791,30 +808,28 @@ fn place_on_path(
     chunk: &Chunk,
     path: &TextPathSpec,
     fonts: &FontSet<'_>,
-    (out, boxes): (&mut LaidText, &mut Boxes),
+    p: &mut Placing,
 ) -> Option<(f32, f32)> {
     let mut along = chunk.x.unwrap_or(0.0) + path.start + anchored(chunk);
     let mut dy = 0.0;
-    let mut runs: Vec<DecorationRun> = Vec::new();
     let mut end = None;
     for c in &chunk.clusters {
         let ch = text.chars[c.char];
         along += ch.dx;
         dy += ch.dy;
         let half = c.advance / 2.0;
-        if let Some(p) = path.geom.at(along + half) {
+        if let Some(at) = path.geom.at(along + half) {
             let span = &text.spans[c.span];
             let font = fonts.get(c.font);
-            let (ux, uy) = turn((-half, dy + baseline_drop(span, font)), p.angle);
-            let origin = (p.x + ux, p.y + uy);
-            let rotate = p.angle + ch.rotate;
-            put_cluster(out, boxes, (c, span, font), origin, rotate);
-            decorate(&mut runs, c, true, origin, rotate);
-            end = Some((p.x + c.advance, p.y));
+            let (ux, uy) = geom::rotate((-half, dy + baseline_drop(span, font)), at.angle);
+            let origin = (at.x + ux, at.y + uy);
+            let rotate = at.angle + ch.rotate;
+            p.put((c, span, font), origin, rotate);
+            decorate(&mut p.runs, c, true, origin, rotate);
+            end = Some((at.x + c.advance, at.y));
         }
         along += c.advance;
     }
-    draw_decorations(out, text, &runs, fonts);
     end
 }
 
@@ -826,24 +841,16 @@ fn place_on_path(
 /// the central one. `dx` and `dy` move across and along as they move x
 /// and y; the anchor and `textLength` act along the line.
 fn place_vertical(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
-    let line = text.writing.turn();
-    let mut out = LaidText::default();
-    let mut boxes = Boxes::new();
-    let (mut last_x, mut last_y) = (0.0f32, 0.0f32);
-    for chunk in chunks {
-        if chunk.clusters.is_empty() {
-            continue;
-        }
-        let (x0, y0) = (chunk.x.unwrap_or(last_x), chunk.y.unwrap_or(last_y));
+    let line = text.writing.line_angle();
+    place_chunks(text, chunks, fonts, |chunk, (x0, y0), p| {
         // A point `along` the line and `across` it (down from the glyphs'
         // view), in user space, after the shifts so far.
         let at = |along: f32, across: f32, (sx, sy): (f32, f32)| {
-            let (px, py) = turn((along, across), line);
+            let (px, py) = geom::rotate((along, across), line);
             (x0 + sx + px, y0 + sy + py)
         };
         let mut along = anchored(chunk);
         let mut shift = (0.0f32, 0.0f32);
-        let mut runs: Vec<DecorationRun> = Vec::new();
         for c in &chunk.clusters {
             let ch = text.chars[c.char];
             shift.0 += ch.dx;
@@ -855,19 +862,15 @@ fn place_vertical(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> Laid
             let baseline = at(along, down, shift);
             if c.upright {
                 let origin = at(along, down - central_drop(span, font), shift);
-                put_cluster(&mut out, &mut boxes, (c, span, font), origin, ch.rotate);
+                p.put((c, span, font), origin, ch.rotate);
             } else {
-                let rotate = line + ch.rotate;
-                put_cluster(&mut out, &mut boxes, (c, span, font), baseline, rotate);
+                p.put((c, span, font), baseline, line + ch.rotate);
             }
-            decorate(&mut runs, c, shifted, baseline, line);
+            decorate(&mut p.runs, c, shifted, baseline, line);
             along += c.advance;
         }
-        draw_decorations(&mut out, text, &runs, fonts);
-        (last_x, last_y) = at(along, 0.0, shift);
-    }
-    sort(&mut out);
-    out
+        Some(at(along, 0.0, shift))
+    })
 }
 
 /// Each probe draws one paint style: stable sorts keep the order.
@@ -924,7 +927,7 @@ fn draw_decorations(
             }
             let (top, bottom) = (offset - thick / 2.0, offset + thick / 2.0);
             let quad = [(0.0, top), (w, top), (w, bottom), (0.0, bottom)].map(|p| {
-                let (px, py) = turn(p, rotate);
+                let (px, py) = geom::rotate(p, rotate);
                 [rx + px, ry + py]
             });
             grow(&mut out.ink, quad.map(|p| (p[0], p[1])));

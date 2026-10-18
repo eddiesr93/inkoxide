@@ -14,8 +14,8 @@ use usvg::roxmltree::{Document, Node, NodeId};
 
 use super::path::{self, TextPathGeom, MAX_TEXT_PATH_SEGMENTS};
 use super::{
-    Anchor, Baseline, LengthAdjust, Orientation, ProbeForm, ProbeShape, Shift, SvgChar, SvgSpan,
-    SvgText, SvgTextDoc, TextPathSpec, Writing,
+    Anchor, Baseline, LengthAdjust, ProbeForm, ProbeShape, Shift, SvgChar, SvgSpan, SvgText,
+    SvgTextDoc, TextOrientation, TextPathSpec, Writing,
 };
 use crate::images::svg::{iri, SVG_NS, XLINK_NS};
 use crate::schema::FontFeature;
@@ -217,8 +217,17 @@ struct Cascade<'a, 'i> {
     segments: usize,
     /// Feature lists by the declared values they come from, and the
     /// different lists.
-    features: HashMap<[Option<String>; 3], Arc<[FontFeature]>>,
+    features: HashMap<FeatureDecls, Arc<[FontFeature]>>,
     feature_sets: HashSet<Arc<[FontFeature]>>,
+}
+
+/// The inherited values of `font-kerning`, `font-variant` and
+/// `font-feature-settings`, which a feature list comes from.
+#[derive(PartialEq, Eq, Hash)]
+struct FeatureDecls {
+    kerning: Option<String>,
+    variant: Option<String>,
+    settings: Option<String>,
 }
 
 impl<'a, 'i: 'a> Cascade<'a, 'i> {
@@ -258,8 +267,11 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
     /// then `font-feature-settings` over them (CSS Fonts 3, 7.2), read
     /// once per distinct declaration.
     fn features(&mut self, n: Node<'a, 'i>) -> Result<Arc<[FontFeature]>, TextError> {
-        let key =
-            ["font-kerning", "font-variant", "font-feature-settings"].map(|p| self.inherited(n, p));
+        let key = FeatureDecls {
+            kerning: self.inherited(n, "font-kerning"),
+            variant: self.inherited(n, "font-variant"),
+            settings: self.inherited(n, "font-feature-settings"),
+        };
         if let Some(f) = self.features.get(&key) {
             return Ok(f.clone());
         }
@@ -268,15 +280,20 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
             Some(t) => t.1 = value,
             None => tags.push((*tag, value)),
         };
-        if key[0].as_deref() == Some("none") {
+        if key.kerning.as_deref() == Some("none") {
             set(b"kern", 0);
         }
-        for word in key[1].as_deref().unwrap_or("").split_ascii_whitespace() {
+        for word in key
+            .variant
+            .as_deref()
+            .unwrap_or("")
+            .split_ascii_whitespace()
+        {
             for (tag, value) in variant(word) {
                 set(tag, *value);
             }
         }
-        if let Some(list) = key[2].as_deref().and_then(feature_settings) {
+        if let Some(list) = key.settings.as_deref().and_then(feature_settings) {
             for (tag, value) in list {
                 set(&tag, value);
             }
@@ -304,7 +321,11 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
                 list
             }
         };
-        let bytes = key.iter().flatten().map(String::len).sum();
+        let bytes = [&key.kerning, &key.variant, &key.settings]
+            .into_iter()
+            .flatten()
+            .map(String::len)
+            .sum();
         self.keep(bytes)?;
         self.features.insert(key, list.clone());
         Ok(list)
@@ -954,7 +975,7 @@ fn read_text<'a, 'i>(
     let mut off_path = vec![false; total];
     for e in elems.iter().filter(|e| e.text_path) {
         let direct = e.node.parent_element() == Some(text);
-        if direct && writing != Writing::Horizontal {
+        if direct && !writing.is_horizontal() {
             return Err(TextError::Unsupported(
                 "vertical SVG text on a path is not supported; convert the text to outlines (paths)"
                     .into(),
@@ -1162,7 +1183,7 @@ fn span_props<'a, 'i>(
     }
     let alignment = cascade.own_or_parent(n, "alignment-baseline");
     // Vertical text sits on its central baseline unless told otherwise.
-    let auto = if writing == Writing::Horizontal {
+    let auto = if writing.is_horizontal() {
         Baseline::Alphabetic
     } else {
         Baseline::Central
@@ -1173,9 +1194,9 @@ fn span_props<'a, 'i>(
     };
     // `glyph-orientation-vertical` is the SVG 1.1 name (SVG 2, 11.10.1.3).
     let orientation = match cascade.inherited(n, "text-orientation").as_deref() {
-        Some("upright") => Some(Orientation::Upright),
-        Some("sideways" | "sideways-right") => Some(Orientation::Sideways),
-        Some("mixed") => Some(Orientation::Mixed),
+        Some("upright") => Some(TextOrientation::Upright),
+        Some("sideways" | "sideways-right") => Some(TextOrientation::Sideways),
+        Some("mixed") => Some(TextOrientation::Mixed),
         _ => None,
     };
     let orientation = orientation.unwrap_or_else(|| {
@@ -1183,9 +1204,9 @@ fn span_props<'a, 'i>(
             .inherited(n, "glyph-orientation-vertical")
             .as_deref()
         {
-            Some("0" | "0deg") => Orientation::Upright,
-            Some("90" | "90deg") => Orientation::Sideways,
-            _ => Orientation::Mixed,
+            Some("0" | "0deg") => TextOrientation::Upright,
+            Some("90" | "90deg") => TextOrientation::Sideways,
+            _ => TextOrientation::Mixed,
         }
     });
     let mut shift = Vec::new();

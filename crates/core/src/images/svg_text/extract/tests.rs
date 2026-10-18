@@ -294,7 +294,7 @@ fn reads_direction_and_percentages_of_the_viewport() {
 
 #[test]
 fn reads_writing_modes_and_orientations() {
-    use Orientation::{Mixed, Sideways, Upright};
+    use TextOrientation::{Mixed, Sideways, Upright};
     for (mode, want) in [
         ("tb", Writing::Vertical),
         ("tb-rl", Writing::Vertical),
@@ -319,7 +319,7 @@ fn reads_writing_modes_and_orientations() {
            <tspan text-orientation="inherit" glyph-orientation-vertical="0">d</tspan>
            <tspan dominant-baseline="alphabetic">e</tspan></text>"#,
     );
-    let o: Vec<Orientation> = t.spans.iter().map(|s| s.orientation).collect();
+    let o: Vec<TextOrientation> = t.spans.iter().map(|s| s.orientation).collect();
     assert_eq!(o, [Upright, Sideways, Mixed, Upright, Upright]);
     let b: Vec<Baseline> = t.spans.iter().map(|s| s.baseline).collect();
     assert_eq!(b[0], Baseline::Central);

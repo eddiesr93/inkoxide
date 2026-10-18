@@ -202,8 +202,13 @@ pub(crate) enum Writing {
 }
 
 impl Writing {
-    /// How far the line turns from horizontal, in degrees clockwise.
-    pub fn turn(self) -> f32 {
+    /// Whether lines go across (`horizontal-tb`), not down or up.
+    pub fn is_horizontal(self) -> bool {
+        self == Writing::Horizontal
+    }
+
+    /// The angle of the line from horizontal, in degrees clockwise.
+    pub fn line_angle(self) -> f32 {
         match self {
             Writing::Horizontal => 0.0,
             Writing::Vertical | Writing::SidewaysRl => 90.0,
@@ -214,7 +219,7 @@ impl Writing {
 
 /// How characters stand in vertical text (`text-orientation`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Orientation {
+pub(crate) enum TextOrientation {
     /// By their Unicode `Vertical_Orientation`.
     Mixed,
     Upright,
@@ -266,7 +271,7 @@ pub(crate) struct SvgSpan {
     pub overline: bool,
     pub line_through: bool,
     /// `text-orientation`, in vertical text.
-    pub orientation: Orientation,
+    pub orientation: TextOrientation,
     /// OpenType features from `font-feature-settings`, `font-kerning` and
     /// `font-variant`, sorted by tag, shared by the spans that declare
     /// the same; empty: the font's defaults.

@@ -37,6 +37,7 @@ use usvg::{Group, Node, Paint, Transform};
 
 use super::{alpha_key, key_alpha, number, Profile, Writer};
 use crate::fonts::{FontKey, FontSet};
+use crate::geom::sin_cos_degrees;
 use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
@@ -1243,7 +1244,7 @@ impl Svg<'_> {
                 cv.c.set_font(Name(name.as_bytes()), 1.0);
                 font = Some(g0.font);
             }
-            let (sin, cos) = turn(g0.rotate);
+            let (sin, cos) = sin_cos_degrees(g0.rotate);
             let (size, k) = (g0.size, g0.scale_x);
             // Text space is y up; SVG user space is y down.
             cv.c.set_text_matrix(
@@ -1554,18 +1555,6 @@ impl Svg<'_> {
     }
 }
 
-/// The sine and cosine of `degrees`, exact for quarter turns (sideways
-/// glyphs in vertical text), where `sin_cos` leaves a trace of rounding.
-fn turn(degrees: f32) -> (f32, f32) {
-    match degrees.rem_euclid(360.0) {
-        0.0 => (0.0, 1.0),
-        90.0 => (1.0, 0.0),
-        180.0 => (0.0, -1.0),
-        270.0 => (-1.0, 0.0),
-        d => d.to_radians().sin_cos(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
@@ -1814,16 +1803,6 @@ mod tests {
             [([10.0, 0.0, 0.0, -10.0, 5.0, 20.0], 3)],
             "{form}"
         );
-    }
-
-    #[test]
-    fn quarter_turns_are_exact() {
-        assert_eq!(super::turn(0.0), (0.0, 1.0));
-        assert_eq!(super::turn(90.0), (1.0, 0.0));
-        assert_eq!(super::turn(-90.0), (-1.0, 0.0));
-        assert_eq!(super::turn(450.0), (1.0, 0.0));
-        let (sin, cos) = super::turn(30.0);
-        assert!((sin - 0.5).abs() < 1e-6 && (cos - 0.75f32.sqrt()).abs() < 1e-6);
     }
 
     /// Renders `svg` uncompressed after a line of page text, with Inter

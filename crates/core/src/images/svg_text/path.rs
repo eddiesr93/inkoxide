@@ -251,6 +251,16 @@ struct Builder {
 }
 
 impl Builder {
+    fn new(ts: svgtypes::Transform, budget: usize) -> Self {
+        Self {
+            segments: Vec::new(),
+            start: [0.0; 2],
+            at: [0.0; 2],
+            ts,
+            budget,
+        }
+    }
+
     fn map(&self, [x, y]: Point) -> Point {
         let t = &self.ts;
         [t.a * x + t.c * y + t.e, t.b * x + t.d * y + t.f]
@@ -445,13 +455,7 @@ pub(crate) fn geometry(
         },
         None => svgtypes::Transform::default(),
     };
-    let mut b = Builder {
-        segments: Vec::new(),
-        start: [0.0; 2],
-        at: [0.0; 2],
-        ts,
-        budget: *budget,
-    };
+    let mut b = Builder::new(ts, *budget);
     let viewport = (f64::from(viewport.0), f64::from(viewport.1));
     let known = if n.tag_name().name() == "path" {
         path_data(&mut b, n.attribute("d").unwrap_or(""))?;
@@ -472,13 +476,7 @@ pub(crate) fn data_geometry(
     reverse: bool,
     budget: &mut usize,
 ) -> Result<Option<TextPathGeom>, TextError> {
-    let mut b = Builder {
-        segments: Vec::new(),
-        start: [0.0; 2],
-        at: [0.0; 2],
-        ts: svgtypes::Transform::default(),
-        budget: *budget,
-    };
+    let mut b = Builder::new(svgtypes::Transform::default(), *budget);
     path_data(&mut b, d)?;
     *budget = b.budget;
     Ok(TextPathGeom::new(b.segments, reverse))

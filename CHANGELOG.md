@@ -18,8 +18,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   `<textPath>` sets text along a path or basic shape, or its own `path` data, with
   `startOffset` and `side`. Both read in order when the PDF's text is extracted. SVG text also
   takes `font-feature-settings`, `font-variant` and `font-kerning`. `@inkoxide/render` has
-  `<TextPath>`, and `writingMode`, `textOrientation`, `fontFeatureSettings`, `fontVariant` and
-  `fontKerning` on SVG text. Vertical text on a path fails with `INVALID_IMAGE`, as do the text
+  `<TextPath>`, `writingMode` on SVG `<Text>`, and `textOrientation`, `fontFeatureSettings`,
+  `fontVariant` and `fontKerning` on SVG text. Vertical text on a path fails with `INVALID_IMAGE`, as do the text
   paths of an SVG with more than 100,000 segments in all, and an SVG's text with more than 64
   different sets of font features; the SVGs of a render with more than 64 in all fail with
   `IMAGE_ERROR`.
