@@ -1,5 +1,6 @@
 //! Text: shaping (rustybuzz), line breaking (UAX #14), hyphenation
-//! (hypher), and the per-render paragraph cache.
+//! (`hyphen.rs`: registered patterns, the built-in ones of `builtin.rs`
+//! and the Romanian rules), and the per-render paragraph cache.
 //!
 //! Nothing outside this module sees shaping-library types: the rest of the
 //! engine works with [`Prepared`] paragraphs and [`LineLayout`]s. Inside
@@ -40,7 +41,7 @@ use crate::schema::{
 };
 use crate::InkoxideError;
 
-/// What the text of `doc` and of the SVGs in `images` asks of the variable
+/// What the displayed text of `doc` and of the SVGs in `images` asks of the variable
 /// fonts declared in `fonts` (see [`FontSet::add_variants`]): any of them
 /// may be a run's font, or a fallback, at each size of a run; SVG text
 /// asks its weight and width too.
@@ -50,17 +51,13 @@ pub(crate) fn font_asks(
     images: &crate::images::ImageSet,
 ) -> Vec<(FontKey, Ask)> {
     fn sizes(node: &Node, out: &mut std::collections::BTreeSet<u32>) {
-        match &node.kind {
-            NodeKind::Text { runs } => out.extend(runs.iter().map(|r| r.size.to_bits())),
-            NodeKind::Box { children, .. } => children.iter().for_each(|c| sizes(c, out)),
-            NodeKind::Table(t) => t
-                .rows
-                .iter()
-                .flat_map(|r| &r.cells)
-                .flat_map(|c| &c.children)
-                .for_each(|c| sizes(c, out)),
-            _ => {}
+        if node.hidden() {
+            return;
         }
+        if let NodeKind::Text { runs } = &node.kind {
+            out.extend(runs.iter().map(|r| r.size.to_bits()));
+        }
+        node.shown_children().for_each(|c| sizes(c, out));
     }
     let variable: Vec<FontKey> = fonts.variable().collect();
     if variable.is_empty() {
@@ -148,7 +145,7 @@ impl Glyph {
 /// A stretch of text in one run and one font.
 #[derive(Debug, Clone)]
 pub(crate) struct Segment {
-    pub run: u16,
+    pub run: u32,
     pub font: FontKey,
     /// Bidi embedding level of the whole segment.
     pub level: u8,
@@ -162,7 +159,8 @@ pub(crate) struct Segment {
 impl Segment {
     fn new(run: usize, font: FontKey, level: u8, text: Range<usize>) -> Self {
         Self {
-            run: run as u16,
+            // A paragraph's runs, like its bytes, number fewer than 2^32.
+            run: run as u32,
             font,
             level,
             text: text.start as u32..text.end as u32,
@@ -212,23 +210,10 @@ impl Prepared {
     /// of its cluster: the cluster's text. `None` on the cluster's other
     /// glyphs and on glyphs with no text (a newline, a soft hyphen).
     pub fn glyph_text(&self, seg: &Segment, k: usize) -> Option<&str> {
-        let (first, last) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
-        let g = self.glyphs.get(k)?;
-        let start = g.cluster as usize;
-        let c = self.text.get(start..)?.chars().next()?;
-        if c == '\n' || c == prepare::SHY || c.is_control() {
-            return None;
-        }
-        if k > first && self.glyphs[k - 1].cluster == g.cluster {
-            return None;
-        }
-        let end = self.glyphs[k + 1..last.max(k + 1)]
-            .iter()
-            .map(|n| n.cluster as usize)
-            .find(|&n| n != start)
-            .unwrap_or(seg.text.end as usize);
-        let end = end.max(start + c.len_utf8()).min(self.text.len());
-        self.text.get(start..end)
+        let first = seg.glyphs.start as usize;
+        let glyphs = self.glyphs.get(first..seg.glyphs.end as usize)?;
+        let k = k.checked_sub(first)?;
+        prepare::cluster_text(&self.text, glyphs, |g| g.cluster, k, seg.text.end as usize)
     }
 
     /// The end of glyphs `start..end` without their trailing spaces and
@@ -248,13 +233,24 @@ impl Prepared {
             .get(i)
             .filter(|s| s.glyphs.start <= g && g < s.glyphs.end)
     }
+
+    /// The segments with glyphs in `start..end`, in glyph order: those from
+    /// the first that ends after `start`.
+    pub fn segments_in(&self, start: usize, end: usize) -> impl Iterator<Item = &Segment> {
+        let from = self
+            .segments
+            .partition_point(|seg| seg.glyphs.end as usize <= start);
+        self.segments[from..]
+            .iter()
+            .take_while(move |seg| (seg.glyphs.start as usize) < end)
+    }
 }
 
 /// An extra glyph appended to a line (hyphen or ellipsis).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExtraGlyph {
     pub font: FontKey,
-    pub run: u16,
+    pub run: u32,
     pub glyph: u16,
     /// How many times the glyph repeats (3 for a `...` fallback).
     pub count: u8,
@@ -455,7 +451,7 @@ pub(crate) trait TextShaper {
     fn fonts(&self) -> &FontSet<'_>;
 }
 
-/// rustybuzz + unicode-linebreak + hypher implementation.
+/// rustybuzz + unicode-linebreak + `hyphen.rs` implementation.
 pub(crate) struct RustybuzzShaper<'f, 'a> {
     fonts: &'f FontSet<'a>,
     unicode: UnicodeMap,
@@ -467,8 +463,8 @@ pub(crate) struct RustybuzzShaper<'f, 'a> {
 impl<'f, 'a> RustybuzzShaper<'f, 'a> {
     /// Parses the fonts' shaping faces, once per render: shapers for
     /// other threads share them ([`TextCache::prepare_all`]). Hyphenates
-    /// with hypher's built-in patterns, unless given a
-    /// [hyphenator](Self::with_hyphenator).
+    /// with the built-in patterns (`builtin.rs`) and the Romanian rules,
+    /// unless given a [hyphenator](Self::with_hyphenator).
     pub fn new(fonts: &'f FontSet<'a>) -> Result<Self, InkoxideError> {
         let faces = prepare::Faces::load(fonts)?;
         Ok(Self::with_shapes(fonts, prepare::ShapeCache::new(faces)))
@@ -930,7 +926,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
             };
             let p = &e.prepared;
             for seg in p.segments.iter().filter(|s| wanted(s.font)) {
-                let Some(run) = runs.get(usize::from(seg.run)) else {
+                let Some(run) = runs.get(seg.run as usize) else {
                     continue;
                 };
                 let color = color::text_color(run.color.unwrap_or(crate::schema::BLACK));
@@ -966,7 +962,7 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
     /// The glyphs text node `node` draws from its runs' fonts (not its
     /// inline objects), once it is shaped: each as its run, its font and
     /// its id, in order.
-    pub fn run_glyphs(&self, node: &Node) -> impl Iterator<Item = (u16, FontKey, u16)> + '_ {
+    pub fn run_glyphs(&self, node: &Node) -> impl Iterator<Item = (u32, FontKey, u16)> + '_ {
         let p = self.entries.get(&node_key(node)).map(|e| &e.prepared);
         p.into_iter().flat_map(|p| {
             let segments = p.segments.iter().filter(|s| s.object.is_none());

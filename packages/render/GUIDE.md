@@ -771,10 +771,12 @@ reader without it may do:
   patterns, and Romanian (`ro`) its syllable rules. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
   `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
   `hyphenationCallback`. A soft hyphen
-  (`\u00AD`) in the text is always a possible break.
+  (`\u00AD`) in the text is a possible break with or without `hyphenate`, unless
+  `hyphenationPenalty` is 10 000 or the text does not wrap (`whitespace-nowrap`, `whitespace-pre`).
 - **Words wider than the line.** A word that does not fit its line is broken between any two
-  characters, hyphenated or not, as CSS does with `overflow-wrap: anywhere` (never inside a
-  grapheme cluster, such as a letter with its accent or an emoji). `[word]` from a hyphenation
+  characters, hyphenated or not, as CSS does with `overflow-wrap: break-word` (never inside a
+  grapheme cluster, such as a letter with its accent or an emoji); the word still counts whole
+  when an `'auto'` table column or a box is sized to its content. `[word]` from a hyphenation
   callback keeps a word from being hyphenated, but not from being broken this way. Text with
   `whitespace-nowrap` or `whitespace-pre` is never broken: a long word overflows the line.
 - **Your own hyphenation.** `Font.registerHyphenationCallback` sets a function that splits each

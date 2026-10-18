@@ -72,7 +72,7 @@ pub(crate) struct DebugLine {
     /// Each run's part of the line, in visual order, with the run's index:
     /// the advance of its glyphs, from its font's ascender to its
     /// descender around its own baseline.
-    pub runs: Vec<(Rect, u16)>,
+    pub runs: Vec<(Rect, u32)>,
 }
 
 /// What to outline while painting one part of a page.
@@ -264,7 +264,7 @@ fn lines(lines: &[DebugLine], ops: &mut Vec<Op>) {
     for (k, color) in RUN.into_iter().enumerate() {
         let mut path = Path::default();
         let runs = lines.iter().flat_map(|l| &l.runs);
-        for (rect, _) in runs.filter(|(_, run)| usize::from(*run) % 2 == k) {
+        for (rect, _) in runs.filter(|(_, run)| *run as usize % 2 == k) {
             push_rounded_rect(&mut path, *rect, &NO_RADII);
         }
         if !path.segs.is_empty() {

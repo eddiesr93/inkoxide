@@ -76,15 +76,18 @@ the text's ink, or a group of probes, one per paint style of its spans.
 - An SVG with text is converted again on each render that lays its text out differently.
 - Not in this version: text that an XML entity expands to (refused, as all text was: the
   placeholder replaces the element where it is in the source, and an entity's text is
-  somewhere else), vertical text on a path, font properties passed through `use`,
-  `font-stretch` and `tref`. An author `!important` rule that matches any element (`*`)
+  somewhere else) and `tref`. An author `!important` rule that matches any element (`*`)
   applies to the text's paint, as it does in a browser; one that names both `path` and
   `polygon` reaches the probes.
-- Text on a path and vertical text, added since, fit the design unchanged. The path a `textPath`
-  follows is read from the XML with the text (`usvg` never sees it, and a path in `<defs>` is
-  not in its tree), once per element it refers to, and the probe covers the ink wherever the
-  glyphs go. Each glyph on a curve, and each in a column, has its own text matrix, and the
-  text of each paint style is written once as `ActualText`, in logical order.
+- Text on a path and vertical text (along a path too), added since, fit the design unchanged.
+  The path a `textPath` follows is read from the XML with the text (`usvg` never sees it, and a
+  path in `<defs>` is not in its tree), once per element it refers to, and the probe covers the
+  ink wherever the glyphs go. Each glyph on a curve, and each in a column, has its own text
+  matrix, and the text of each paint style is written once as `ActualText`, in logical order.
+- `font-stretch` and font properties passed through `use`, also added since, stay in our
+  cascade: `font-stretch` selects a face's width, and a `use` that gives the text it names
+  other font properties gets a copy of that element, laid out with the `use`'s cascade and
+  written into the SVG under an id of its own (`UseCopy`, at most 64 an SVG).
 
 ## Alternatives
 

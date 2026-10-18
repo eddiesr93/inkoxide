@@ -970,7 +970,7 @@ fn path_segments_drawn_are_bounded_when_the_svg_is_decoded() {
         let circles = r#"<circle r="9000000" stroke="red"/>"#.repeat(100);
         let uses = r##"<use href="#a"/>"##.repeat(100);
         format!(
-            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><g id="a">{circles}</g><g id="b">{uses}</g></defs>{}</svg>"##,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><g id="a">{circles}</g><g id="b">{uses}</g></defs>{}</svg>"#,
             r##"<use href="#b"/>"##.repeat(copies)
         )
     };

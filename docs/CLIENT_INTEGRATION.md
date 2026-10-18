@@ -214,8 +214,9 @@ registerHyphenationPatterns('en', readFileSync('hyph-en-us.tex')); // from hyph-
   `en-GB` patterns, else `en` patterns, never `en-US` ones.
 - **Bad patterns.** A malformed file fails at registration with
   `HYPHENATION_ERROR`, not later during a render.
-- **Soft hyphens.** Soft hyphens (U+00AD) in the text are always
-  honoured, with or without patterns.
+- **Soft hyphens.** Soft hyphens (U+00AD) in the text are breaks with or
+  without patterns, unless `hyphenationPenalty` is 10 000 or `whiteSpace`
+  is `nowrap` or `pre`.
 
 [API.md](API.md#hyphenation-patterns) says where to download
 pattern files such as `hyph-en-us.tex`.

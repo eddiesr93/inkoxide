@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use unicode_linebreak::{linebreaks, BreakOpportunity};
+use unicode_properties::{GeneralCategoryGroup, UnicodeGeneralCategory};
 
 use super::hyphen::Hyphenator;
 use super::{
@@ -22,6 +23,38 @@ use crate::InkoxideError;
 
 /// Soft hyphen: an invisible break opportunity that shows `-` when used.
 pub(crate) const SHY: char = '\u{00AD}';
+
+/// A character with no text of its own: a soft hyphen, or a control
+/// character such as a newline. Its glyphs draw nothing.
+pub(super) fn no_text(c: char) -> bool {
+    c == SHY || c.is_control()
+}
+
+/// The text glyph `k` of `glyphs` stands for, on the first glyph of its
+/// cluster (each glyph's `cluster` is a byte offset in `text`, ascending):
+/// the cluster's text, up to the next cluster or `end`. `None` on the
+/// cluster's other glyphs and on clusters with no text ([`no_text`]).
+/// Shaping records it for `ToUnicode` and painting writes it as
+/// `ActualText`, so the two agree.
+pub(super) fn cluster_text<'t, G>(
+    text: &'t str,
+    glyphs: &[G],
+    cluster: impl Fn(&G) -> u32,
+    k: usize,
+    end: usize,
+) -> Option<&'t str> {
+    let start = cluster(glyphs.get(k)?) as usize;
+    let c = text.get(start..)?.chars().next()?;
+    if no_text(c) || (k > 0 && cluster(&glyphs[k - 1]) as usize == start) {
+        return None;
+    }
+    let next = glyphs[k + 1..]
+        .iter()
+        .map(|g| cluster(g) as usize)
+        .find(|&n| n != start)
+        .unwrap_or(end);
+    text.get(start..next.max(start + c.len_utf8()).min(text.len()))
+}
 
 /// Stand-in digits laid out in place of page-number placeholders until the
 /// page count is known. Headers, footers and overlays are laid out again
@@ -57,6 +90,14 @@ pub(crate) struct ParagraphOptions<'a> {
 /// Combining marks stay in the font of their base character.
 fn is_mark(c: char) -> bool {
     matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
+}
+
+/// A character that belongs to the letter before it: a combining mark (a
+/// virama, a nukta, an accent of decomposed text) or a zero-width joiner
+/// or non-joiner. A word to hyphenate takes it in, and no hyphen goes
+/// before it.
+fn extends_letter(c: char) -> bool {
+    matches!(c, '\u{200C}' | '\u{200D}') || c.general_category_group() == GeneralCategoryGroup::Mark
 }
 
 /// Tab stops of `pre` and `pre-wrap` text, in spaces (CSS `tab-size`).
@@ -140,7 +181,8 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     (text, ranges)
 }
 
-/// Inserts U+00AD at hyphenation points of words longer than five letters.
+/// Inserts U+00AD at hyphenation points of words longer than five
+/// characters: letters and the marks and joiners that extend them.
 fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> String {
     let mut out = String::with_capacity(s.len() + s.len() / 4);
     let mut word_start: Option<usize> = None;
@@ -148,6 +190,10 @@ fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> Stri
         if word.chars().count() > 5 {
             let mut last = 0;
             for at in hyphenator.hyphenate(word, lang) {
+                // Never between a letter and its mark.
+                if word[at..].starts_with(extends_letter) {
+                    continue;
+                }
                 out.push_str(&word[last..at]);
                 out.push(SHY);
                 last = at;
@@ -158,7 +204,7 @@ fn insert_soft_hyphens(s: &str, hyphenator: &dyn Hyphenator, lang: &str) -> Stri
         }
     };
     for (i, c) in s.char_indices() {
-        if c.is_alphabetic() {
+        if c.is_alphabetic() || (word_start.is_some() && extends_letter(c)) {
             word_start.get_or_insert(i);
         } else {
             if let Some(ws) = word_start.take() {
@@ -272,7 +318,7 @@ fn itemize(
     }
     // Each font at the instance the run's size asks for.
     for seg in &mut segs {
-        seg.font = fonts.variant(seg.font, Ask::sized(runs[usize::from(seg.run)].size));
+        seg.font = fonts.variant(seg.font, Ask::sized(runs[seg.run as usize].size));
     }
     (segs, objs)
 }
@@ -532,23 +578,9 @@ impl<'a> ShapeCache<'a> {
         let glyphs: Arc<[UnitGlyph]> = glyphs.into();
         // The first glyph of a cluster carries the cluster's text.
         for (k, g) in glyphs.iter().enumerate() {
-            let cluster = g.cluster as usize;
-            let Some(c) = word[cluster..].chars().next() else {
-                continue;
-            };
-            if c == '\n' || c == SHY || c.is_control() {
-                continue;
+            if let Some(text) = cluster_text(word, &glyphs[..], |u| u.cluster, k, word.len()) {
+                unicode.record(key, g.id, text);
             }
-            if k > 0 && glyphs[k - 1].cluster == g.cluster {
-                continue;
-            }
-            let next = glyphs[k + 1..]
-                .iter()
-                .map(|n| n.cluster as usize)
-                .find(|&n| n != cluster)
-                .unwrap_or(word.len());
-            let end = next.max(cluster + c.len_utf8()).min(word.len());
-            unicode.record(key, g.id, &word[cluster..end]);
         }
         self.words
             .insert((key, dir, set, Box::from(word)), glyphs.clone());
@@ -682,7 +714,7 @@ pub(crate) fn prepare(
                 if c == ' ' || c == '\u{00A0}' {
                     flags |= GLYPH_SPACE;
                 }
-                if c == '\n' || c == SHY || c.is_control() {
+                if no_text(c) {
                     flags |= GLYPH_INVISIBLE;
                 }
                 if c == '\t' {
@@ -934,7 +966,8 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
 
 /// Bidi embedding levels per byte of `text`, or `None` when the text is
 /// left to right throughout (the common case, skipped cheaply). Also the
-/// resolved base direction.
+/// resolved base direction: for `auto`, that of the first strong
+/// character, for every line (a newline starts no direction of its own).
 fn bidi_levels(text: &str, direction: Direction) -> (Option<Vec<u8>>, bool) {
     // Hebrew (U+0590) and later blocks hold every strong right-to-left
     // character; explicit marks and embeddings start at U+200E.
@@ -943,13 +976,15 @@ fn bidi_levels(text: &str, direction: Direction) -> (Option<Vec<u8>>, bool) {
         return (None, false);
     }
     let level = match direction {
-        Direction::Ltr => Some(unicode_bidi::Level::ltr()),
-        Direction::Rtl => Some(unicode_bidi::Level::rtl()),
-        Direction::Auto => None,
+        Direction::Ltr => unicode_bidi::Level::ltr(),
+        Direction::Rtl => unicode_bidi::Level::rtl(),
+        Direction::Auto => match unicode_bidi::get_base_direction_full(text) {
+            unicode_bidi::Direction::Rtl => unicode_bidi::Level::rtl(),
+            _ => unicode_bidi::Level::ltr(),
+        },
     };
-    let info = unicode_bidi::BidiInfo::new(text, level);
-    let rtl = info.paragraphs.first().is_some_and(|p| p.level.is_rtl())
-        || (text.is_empty() && direction == Direction::Rtl);
+    let info = unicode_bidi::BidiInfo::new(text, Some(level));
+    let rtl = level.is_rtl();
     let levels: Vec<u8> = info
         .levels
         .iter()
@@ -1065,6 +1100,32 @@ mod tests {
     }
 
     #[test]
+    fn auto_direction_is_the_first_strong_characters_for_every_line() {
+        // The first line has no strong character: the Hebrew after the
+        // newline makes the text right to left, digits included (level 2).
+        let (levels, rtl) = bidi_levels("2024\n\u{05E9}\u{05DC}", Direction::Auto);
+        assert!(rtl);
+        assert_eq!(levels.unwrap()[..4], [2, 2, 2, 2]);
+        // A left-to-right first line keeps the next one left to right: `cd`
+        // after the Hebrew stays at level 0, not 2.
+        let (levels, rtl) = bidi_levels("ab\n\u{05E9}\u{05DC} cd", Direction::Auto);
+        assert!(!rtl);
+        assert_eq!(levels.unwrap().last(), Some(&0));
+    }
+
+    #[test]
+    fn a_clusters_text_is_on_its_first_glyph() {
+        // A ligature `fi`, `e` and its accent as two glyphs of one cluster,
+        // a soft hyphen, then `x`.
+        let text = "fie\u{301}\u{AD}x";
+        let clusters = [0u32, 2, 2, 5, 7];
+        let texts: Vec<Option<&str>> = (0..clusters.len())
+            .map(|k| cluster_text(text, &clusters, |&c| c, k, text.len()))
+            .collect();
+        assert_eq!(texts, [Some("fi"), Some("e\u{301}"), None, None, Some("x")]);
+    }
+
+    #[test]
     fn nbsp_is_not_collapsed() {
         let runs = [run("1\u{00A0}000")];
         assert_eq!(text_of(&runs, WhiteSpace::Normal), "1\u{00A0}000");
@@ -1079,6 +1140,41 @@ mod tests {
             "{out:?}"
         );
         assert_eq!(out.replace('\u{AD}', ""), "a documentation hyphenation");
+    }
+
+    #[test]
+    fn words_to_hyphenate_keep_their_marks() {
+        // A virama joins the letters of a Hindi conjunct: the word is
+        // hyphenated whole, as the built-in patterns hyphenate it.
+        let h = builtin_only();
+        let word = "\u{0909}\u{0924}\u{094D}\u{0924}\u{0930}\u{092A}\u{094D}\u{0930}\u{0926}\u{0947}\u{0936}";
+        let points = h.hyphenate(word, "hi");
+        assert!(!points.is_empty());
+        let mut whole = word.to_string();
+        for &at in points.iter().rev() {
+            whole.insert(at, SHY);
+        }
+        assert_eq!(insert_soft_hyphens(word, h, "hi"), whole);
+    }
+
+    #[test]
+    fn no_hyphen_goes_before_a_mark() {
+        /// Hyphenates between every two characters.
+        struct Everywhere;
+        impl Hyphenator for Everywhere {
+            fn supports(&self, _: &str) -> bool {
+                true
+            }
+            fn hyphenate(&self, word: &str, _: &str) -> Vec<usize> {
+                word.char_indices().skip(1).map(|(i, _)| i).collect()
+            }
+        }
+        // `ö` decomposed: one word, and no hyphen between `o` and its
+        // diaeresis.
+        assert_eq!(
+            insert_soft_hyphens("Wo\u{0308}rter", &Everywhere, "de"),
+            "W\u{AD}o\u{0308}\u{AD}r\u{AD}t\u{AD}e\u{AD}r"
+        );
     }
 
     #[test]

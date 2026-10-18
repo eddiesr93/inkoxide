@@ -660,14 +660,14 @@ mod tests {
                 r#"{{"type":"text"{extra},"runs":[{{"text":"x","font":"Inter-Regular","size":9}}]}}"#
             )
         };
+        let hidden_box = format!(
+            r#"{{"type":"box","style":{{"display":"none"}},"children":[{}]}}"#,
+            text(r#","id":"inner""#)
+        );
         let json = format!(
             r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
-            "pages":[{{"size":{{"width":200,"height":200}},"children":[{},{},{},{}]}}]}}"#,
+            "pages":[{{"size":{{"width":200,"height":200}},"children":[{},{hidden_box},{},{}]}}]}}"#,
             text(r#","id":"dup","style":{"display":"none"}"#),
-            format!(
-                r#"{{"type":"box","style":{{"display":"none"}},"children":[{}]}}"#,
-                text(r#","id":"inner""#)
-            ),
             text(r#","id":"dup","role":"h1""#),
             text(r#","id":"inner","role":"h2""#),
         );

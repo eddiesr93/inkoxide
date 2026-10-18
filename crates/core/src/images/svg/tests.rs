@@ -743,7 +743,7 @@ fn counts_the_path_segments_drawn() {
     };
     // A move, two lines and a close.
     let shape = r#"d="M0 0H5V5Z""#;
-    assert_eq!(drawn(&format!(r#"<path {shape}/>"#)), 4);
+    assert_eq!(drawn(&format!(r"<path {shape}/>")), 4);
     assert_eq!(drawn(&format!(r#"<path {shape} stroke="red"/>"#)), 8);
     assert_eq!(drawn(&format!(r#"<path {shape} fill="none"/>"#)), 0);
     // Two copies, one clipped by the shape, which a clip path only fills.
@@ -756,7 +756,7 @@ fn counts_the_path_segments_drawn() {
     // Filled with a pattern that draws the shape.
     assert_eq!(
         drawn(&format!(
-            r##"<defs><pattern id="t" width="5" height="5" patternUnits="userSpaceOnUse"><path {shape}/></pattern></defs><path {shape} fill="url(#t)"/>"##
+            r#"<defs><pattern id="t" width="5" height="5" patternUnits="userSpaceOnUse"><path {shape}/></pattern></defs><path {shape} fill="url(#t)"/>"#
         )),
         8
     );

@@ -1447,6 +1447,55 @@ fn inline_images_follow_the_visual_order_of_right_to_left_text() {
     assert!(first < image && image < second, "{first} {image} {second}");
 }
 
+/// A hyphen follows the word it breaks, in the word's direction: after a
+/// left-to-right word broken in a right-to-left paragraph, on its right
+/// (`docu-`), between it and the Hebrew before it.
+#[test]
+fn a_hyphen_follows_its_word_in_the_words_direction() {
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Hebrew","family":"Hebrew"}},{{"id":"Inter","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"width":60}},"children":[
+              {{"type":"text","style":{{"direction":"rtl"}},"runs":[
+                {{"text":"אב ","font":"Hebrew","size":10}},
+                {{"text":"docu­mentation","font":"Inter","size":10}}]}}]}}]}}]}}"#
+    );
+    let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+    let mut store = FontStore::new();
+    let font = |name: &str| crate::test_fixtures::fixture(&format!("fonts/{name}.ttf"));
+    store
+        .register("Hebrew", font("NotoSansHebrew-Regular"))
+        .unwrap();
+    store.register("Inter", font("Inter-Regular")).unwrap();
+    let fonts = FontSet::load(&doc, &store).unwrap();
+    let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
+    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let (pages, _, _) = run(
+        &doc,
+        &fonts,
+        &mut text,
+        &mut images,
+        false,
+        (Profile::default(), None),
+        Ok,
+    )
+    .unwrap();
+    // The x of the first line's text ops, by glyph count: the word's start
+    // (`docu`, 4), the hyphen (1), and the Hebrew word with its space (3).
+    let x = |n: usize| {
+        pages[0]
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                Op::Text(t) if t.glyphs.len() == n => Some(t.x),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let (word, hyphen, hebrew) = (x(4), x(1), x(3));
+    assert!(word < hyphen && hyphen < hebrew, "{word} {hyphen} {hebrew}");
+}
+
 /// A paragraph's `debug` outline boxes each image run around its image,
 /// wherever its alignment puts it: here a tall one on the baseline and a
 /// short one at the top of the line, far above its font's ascender.

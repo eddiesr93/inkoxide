@@ -338,10 +338,14 @@ The patterns of a language are chosen in this order:
    with no file to load;
 3. none.
 
-Soft hyphens (U+00AD) in the text are always honoured.
+Soft hyphens (U+00AD) in the text are breaks with or without patterns,
+unless `hyphenationPenalty` is 10 000 or `whiteSpace` is `nowrap` or
+`pre`.
 
 When a word wider than its line is broken between characters (as CSS
-does with `overflow-wrap: anywhere`), a grapheme cluster is never split.
+does with `overflow-wrap: break-word`), a grapheme cluster is never split.
+The word still counts whole when a table column or a box is sized to its
+content.
 Text with `whiteSpace` `nowrap` or `pre` is not broken: a long word
 overflows the line.
 
@@ -353,7 +357,10 @@ every English tag without patterns of its own.
 Patterns are TeX files in the hyph-utf8 format: `\patterns{…}`, with
 an optional `\hyphenation{…}` exception list, in UTF-8. English is
 built in; to hyphenate it with another pattern set (or to add a
-language that is not built in), register a file:
+language that is not built in), register a file. A hyphen leaves at
+least as many letters before and after it as the language's built-in
+patterns do (two and three in English), else two; exception words
+break where they are written.
 
 1. Download a pattern file from hyph-utf8, for example `hyph-en-us.tex` from
    `https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`.

@@ -294,6 +294,21 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   other labels were lost.
 - A text field with a `time` format refuses a date without a time (`INVALID_VALUE`), as the
   schema says. It showed and stored the date as `00:00`.
+- A text node with more than 65,535 runs draws each run with its own font, size, colour and
+  link; past that number, a run took those of an earlier one. The same holds for SVG text.
+- Hyphenation patterns registered for a built-in language leave as many letters before and after
+  a hyphen as its built-in patterns do: with the US English patterns `@inkoxide/render` ships,
+  English text no longer breaks `want-ed`, `print-ed` or `real-ly`. Exception words still break
+  where they are written.
+- `direction: 'auto'` gives a text node one base direction, from its first strong character, for
+  all its lines: a line after a newline no longer takes a direction of its own, and a first line
+  without letters (`2024`) no longer leaves right-to-left text aligned left.
+- Hyphenation keeps a word whole across its combining marks and zero-width joiners: Hindi and the
+  other Indic languages with built-in patterns, whose conjuncts join letters with a virama, are
+  hyphenated, and in decomposed text an accent no longer splits a word or takes a hyphen before it.
+- A hyphen at the end of a line follows the word it breaks, in that word's direction: a
+  left-to-right word broken in a right-to-left paragraph reads `docu-`, not `-docu`, and a
+  right-to-left word in a left-to-right paragraph takes its hyphen on its left.
 
 ### Repository
 

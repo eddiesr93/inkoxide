@@ -476,7 +476,7 @@ fn shape<S: TextShaper>(
         };
         let object = seg.object.and_then(|o| prepared.objects.get(o as usize));
         let object = object.map(|o| {
-            let run = &runs[usize::from(seg.run)];
+            let run = &runs[seg.run as usize];
             let above = o.extent(run, shaper.fonts()).map_or(o.height, |e| e.0);
             (o.clone(), above)
         });

@@ -169,7 +169,7 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
 
 /// One output glyph sequence in a single run/font, or an inline object.
 struct Piece<'t> {
-    run: u16,
+    run: u32,
     font: u16,
     object: Option<u32>,
     glyphs: Vec<TextGlyph>,
@@ -187,14 +187,14 @@ struct Piece<'t> {
 struct PaintedLine {
     top: f32,
     baseline: f32,
-    pieces: Vec<(u16, Rect)>,
+    pieces: Vec<(u32, Rect)>,
 }
 
 impl PaintedLine {
     /// The line's `debug` outline: its painted extent, and one box per
     /// stretch of a run, around what its pieces draw.
     fn outline(&self, line: &Line) -> DebugLine {
-        let mut runs: Vec<(Rect, u16)> = Vec::new();
+        let mut runs: Vec<(Rect, u32)> = Vec::new();
         for &(run, rect) in &self.pieces {
             match runs.last_mut() {
                 // Pieces of one run (fonts, bidi levels, inline objects)
@@ -318,14 +318,9 @@ fn paint_line(
         0.0
     };
 
-    // Segment slices of the line, in visual order. Segments are in glyph
-    // order: those on the line follow the first that ends after its start.
-    let from = p
-        .segments
-        .partition_point(|seg| seg.glyphs.end as usize <= s);
-    let mut items: Vec<(&super::Segment, usize, usize)> = p.segments[from..]
-        .iter()
-        .take_while(|seg| (seg.glyphs.start as usize) < e)
+    // Segment slices of the line, in visual order.
+    let mut items: Vec<(&super::Segment, usize, usize)> = p
+        .segments_in(s, e)
         .filter_map(|seg| {
             let (gs, ge) = (seg.glyphs.start as usize, seg.glyphs.end as usize);
             let (a, b) = (gs.max(s), ge.min(e));
@@ -335,6 +330,12 @@ fn paint_line(
     if p.bidi {
         reorder(&mut items, |it| it.0.level);
     }
+    // The slice that ends the line logically, by its place in visual order,
+    // and whether it is right to left: the hyphen follows it.
+    let last = items
+        .iter()
+        .position(|it| it.2 == e)
+        .map(|i| (i, items[i].0.level % 2 == 1));
 
     // Collect pieces per segment slice, substituting placeholders.
     let mut pieces: Vec<Piece> = Vec::new();
@@ -400,9 +401,22 @@ fn paint_line(
         width += piece.width;
         pieces.push(piece);
     }
-    let extras = [(line.hyphen, "-"), (line.ellipsis, "\u{2026}")];
-    for (extra, text) in extras.into_iter().filter_map(|(e, t)| Some((e?, t))) {
-        let piece = extra_piece(&extra, text);
+    // A hyphen follows the word it breaks, on the side the word's direction
+    // ends (`docu-` in a right-to-left paragraph); an ellipsis ends the line
+    // in the paragraph's direction.
+    if let Some(hyphen) = line.hyphen {
+        let piece = extra_piece(&hyphen, "-");
+        width += piece.width;
+        let at = match last {
+            Some((i, true)) => i,
+            Some((i, false)) => i + 1,
+            None if rtl => 0,
+            None => pieces.len(),
+        };
+        pieces.insert(at, piece);
+    }
+    if let Some(ellipsis) = line.ellipsis {
+        let piece = extra_piece(&ellipsis, "\u{2026}");
         width += piece.width;
         if rtl {
             pieces.insert(0, piece);
@@ -423,7 +437,7 @@ fn paint_line(
     let baseline = cy + line.top + line.ascent;
     // Link areas of the line, adjacent pieces of one target merged
     // (adjacent pieces abut exactly), with the runs they cover.
-    let mut links: Vec<(f32, f32, &str, Vec<u16>)> = Vec::new();
+    let mut links: Vec<(f32, f32, &str, Vec<u32>)> = Vec::new();
     let mut painted = PaintedLine {
         top: cy + line.top,
         baseline,
@@ -495,7 +509,9 @@ fn paint_line(
                 y: baseline,
                 glyphs: piece.glyphs,
             };
-            // Colour glyphs become images, in spans with a space.
+            // Colour glyphs become glyphs of Type 3 fonts; the other glyphs
+            // of a font without outlines, spans with a space of the run's
+            // font (the strut).
             let strut = if fonts.get(piece.font).has_color() {
                 space_font(fonts, run)
             } else {
@@ -537,7 +553,7 @@ fn paint_line(
     for (x0, x1, target, covered) in links {
         if x1 > x0 {
             // In its run's `Link` element.
-            let owner = run_tags.and_then(|t| t[usize::from(covered[0])].link);
+            let owner = run_tags.and_then(|t| t[covered[0] as usize].link);
             // What it says it is: the text of its runs.
             let mut label = LinkText::default();
             for r in covered {

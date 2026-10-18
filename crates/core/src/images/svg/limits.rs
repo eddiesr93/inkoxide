@@ -255,8 +255,8 @@ pub(super) fn drawn_segments(g: &usvg::Group, clip: bool) -> usize {
             usvg::Node::Path(p) if !p.is_visible() => 0,
             usvg::Node::Path(p) if clip => p.fill().map_or(0, |_| p.data().len()),
             usvg::Node::Path(p) => {
-                let fill = p.fill().map(|f| f.paint());
-                let stroke = p.stroke().map(|s| s.paint());
+                let fill = p.fill().map(usvg::Fill::paint);
+                let stroke = p.stroke().map(usvg::Stroke::paint);
                 let mut k = 0usize;
                 for paint in [fill, stroke].into_iter().flatten() {
                     k = k.saturating_add(p.data().len());
