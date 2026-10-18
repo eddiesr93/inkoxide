@@ -710,6 +710,9 @@ interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fix
   label?: string;
 }
 
+/** Where a text, select or list field puts its value in the box; default `'left'`. */
+type FieldAlign = 'left' | 'center' | 'right';
+
 export interface TextFieldProps extends FieldCommon {
   value?: string;
   multiline?: boolean;
@@ -718,6 +721,9 @@ export interface TextFieldProps extends FieldCommon {
   maxLength?: number;
   /** How the value shows and is typed: a number, a date, a phone number… */
   format?: TextFormat;
+  /** Viewers do not check the spelling of what is typed. */
+  noSpell?: boolean;
+  align?: FieldAlign;
 }
 
 /**
@@ -774,13 +780,23 @@ type Choices = { options: string[]; select?: never } | { select: string[]; optio
 
 export type SelectProps = FieldCommon &
   Choices & {
-    /** The selected option. */
+    /** The selected option; with `edit`, any text. */
     value?: string;
+    /** The options in alphabetical order. */
+    sort?: boolean;
+    /** A value can be typed besides the options. */
+    edit?: boolean;
+    /** With `edit`: viewers do not check the spelling of what is typed. */
+    noSpell?: boolean;
+    align?: FieldAlign;
   };
 
 export type ListProps = FieldCommon &
-  Choices &
-  (
+  Choices & {
+    /** The options in alphabetical order. */
+    sort?: boolean;
+    align?: FieldAlign;
+  } & (
     | {
         multiSelect?: false;
         /** The selected option. */
@@ -799,6 +815,8 @@ export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
   author?: string;
   /** Shows the note's text when the document opens. */
   open?: boolean;
+  /** The icon: a note (the default), a speech bubble, a key, a question mark, a new paragraph, a pilcrow or a caret. */
+  icon?: 'note' | 'comment' | 'key' | 'help' | 'newParagraph' | 'paragraph' | 'insert';
   /** The note's text: strings and numbers only. */
   children?: ReactNode;
 }

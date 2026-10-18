@@ -1027,6 +1027,12 @@ array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkb
 `"radio"`, `"select"`, `"list"`), for forms built from data:
 `<Field kind={q.kind} name={q.name} … />`.
 
+`sort` puts the options of a `Select` or `List` in alphabetical order, ignoring case. A
+`Select` with `edit` takes a typed value besides its options, and its `value` can be any text.
+`noSpell` turns off the viewer's spelling check, on a `TextField` or on a `Select` with `edit`.
+`align` (`'left'`, `'center'` or `'right'`) puts the value of a `TextField`, `Select` or `List`
+in the middle or at the right of its box, in the appearance drawn and in viewers.
+
 A `FieldSet` groups fields: it is a `View`, with the same props (`render` too), whose `name`
 goes in front of the name of every field inside it, at any depth. Viewers show and export the
 fields by those full names, and sets nest:
@@ -1087,7 +1093,8 @@ no thousands separator, so `{ type: 'number', currencyPrepend: true }` shows `'1
 A `Note` is a text annotation: a sticky-note icon that viewers open to show its text, which is
 its children (strings and numbers only). `author` is shown as its title, `open` shows the text
 when the document opens, and its `backgroundColor` (or a `bg-*` class) is its colour, yellow by
-default. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
+default. `icon` picks the icon: `'note'` (the default), `'comment'`, `'key'`, `'help'`,
+`'newParagraph'`, `'paragraph'` or `'insert'`. It takes no space: the icon, 20 pt square at any zoom, sits at the top-left corner of
 its box, so a note placed before a paragraph in a row marks it, and `position: 'absolute'` with
 insets puts it anywhere. It is on the page where its box starts; in a `Header`, a `Footer` or a
 `fixed` element it is on every page. Under a `transform`, the icon stays upright and the same

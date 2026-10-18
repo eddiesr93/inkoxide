@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType};
+use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType, Quadding};
 use pdf_writer::writers::Field as FieldWriter;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
@@ -16,7 +16,7 @@ use super::{
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
-use crate::schema::{FieldKind, FieldValue, BLACK};
+use crate::schema::{FieldAlign, FieldKind, FieldValue, BLACK};
 use crate::InkoxideError;
 
 /// What the catalog's `/AcroForm` needs.
@@ -266,6 +266,15 @@ fn field_entries(
     if spec.required {
         flags |= FieldFlags::REQUIRED;
     }
+    if spec.sort {
+        flags |= FieldFlags::SORT;
+    }
+    if spec.edit {
+        flags |= FieldFlags::EDIT;
+    }
+    if spec.no_spell {
+        flags |= FieldFlags::DO_NOT_SPELL_CHECK;
+    }
     match spec.kind {
         FieldKind::Text => {
             f.field_type(FieldType::Text);
@@ -364,6 +373,11 @@ fn field_entries(
             Name(b"DA"),
             Str(&out.bytes(default_appearance(op).as_bytes())),
         );
+        match spec.align {
+            Some(FieldAlign::Center) => f.vartext_quadding(Quadding::Center),
+            Some(FieldAlign::Right) => f.vartext_quadding(Quadding::Right),
+            _ => f,
+        };
     }
 }
 
@@ -732,6 +746,39 @@ mod tests {
         // The highlight is drawn behind the selected row.
         let pdf = list(r#","value":"a""#);
         assert!(pdf.contains("0.6 0.75 0.86 rg"), "{pdf}");
+    }
+
+    #[test]
+    fn choices_sort_take_typed_values_and_align() {
+        let field = |kind: &str, extra: &str| {
+            render_inter(&format!(
+                r#"{{"type":"field","style":{{"width":100,"height":40}},"field":{{"name":"f","kind":"{kind}","font":"Inter-Regular"{extra}}}}}"#
+            ))
+        };
+        // Sorted: shown, stored and selected in that order; bit 20.
+        let pdf = field(
+            "list",
+            r#","options":["pear","Apple","banana"],"sort":true,"value":"pear","align":"center""#,
+        );
+        assert!(pdf.contains("/Opt [(Apple) (banana) (pear)]"), "{pdf}");
+        assert!(pdf.contains("/I [2]"), "{pdf}");
+        assert!(pdf.contains(&format!("/Ff {}", 1 << 19)), "{pdf}");
+        assert!(pdf.contains("/Q 1"), "{pdf}");
+        // A combo box with edit (bit 19) and no spell checking (bit 23),
+        // and a value of its own, aligned right.
+        let pdf = field(
+            "select",
+            r#","options":["a"],"edit":true,"noSpell":true,"value":"typed","align":"right""#,
+        );
+        let flags = (1 << 17) | (1 << 18) | (1 << 22);
+        assert!(pdf.contains(&format!("/Ff {flags}")), "{pdf}");
+        assert!(pdf.contains("/V (typed)") && pdf.contains("/Q 2"), "{pdf}");
+        // Left is the default: no `/Q`.
+        let pdf = field("text", r#","value":"x","align":"left","noSpell":true"#);
+        assert!(
+            !pdf.contains("/Q ") && pdf.contains(&format!("/Ff {}", 1 << 22)),
+            "{pdf}"
+        );
     }
 
     #[test]

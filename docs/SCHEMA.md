@@ -629,8 +629,11 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together |
 | `options` | array of `string` (each max length 1000) |  | min items 1, max items 1000; select and list only (required there): the choices, at most 1000 of at most 1000 characters each |
 | `multiSelect` | `boolean` |  | default `false`; list only: several options can be selected at once |
+| `sort` | `boolean` |  | default `false`; select and list only: the options sorted by their lowercase text (then their text), as the field shows and stores them. |
+| `edit` | `boolean` |  | default `false`; select only: a value can be typed as well as chosen; `value` need not be one of `options`. |
 | `multiline` | `boolean` |  | default `false`; text only |
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
+| `noSpell` | `boolean` |  | default `false`; text, and select with `edit`: viewers do not check the spelling of what is typed. |
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
 | `readOnly` | `boolean` |  | default `false` |
 | `required` | `boolean` |  | default `false` |
@@ -639,6 +642,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
 | `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. |
+| `align` | `"left"` \| `"center"` \| `"right"` |  | default `"left"`; text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`). |
 
 ### FieldFormat
 
@@ -676,6 +680,7 @@ A text annotation: a sticky-note icon that opens its text in the viewer. It take
 | `author` | `string` |  | max length 256; Who wrote it; viewers show it as the note's title. |
 | `color` | [`Color`](#color) |  | The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1]. |
 | `open` | `boolean` |  | default `false`; Whether viewers show the text when the document opens. |
+| `icon` | `"note"` \| `"comment"` \| `"key"` \| `"help"` \| `"newParagraph"` \| `"paragraph"` \| `"insert"` |  | default `"note"`; The icon: a sticky note, a speech bubble, a key, a question mark, a new paragraph, a paragraph sign or a caret. |
 
 ### AttachmentNode
 

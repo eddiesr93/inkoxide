@@ -1280,6 +1280,8 @@ class Builder {
         if (p.maxLength !== undefined) field.maxLength = p.maxLength;
         if (p.format !== undefined)
           field.format = textFieldFormat(p.format, (m, init) => this.fail(inst, m, init));
+        if (p.noSpell) field.noSpell = true;
+        if (p.align !== undefined) field.align = p.align;
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
@@ -1291,7 +1293,12 @@ class Builder {
       case 'select':
       case 'list':
         field.options = (p.options ?? p.select) as [string, ...string[]];
-        if (p.kind === 'list') {
+        if (p.sort) field.sort = true;
+        if (p.align !== undefined) field.align = p.align;
+        if (p.kind === 'select') {
+          if (p.edit) field.edit = true;
+          if (p.noSpell) field.noSpell = true;
+        } else {
           if (p.multiSelect) field.multiSelect = true;
           if (Array.isArray(p.value) && !p.multiSelect) {
             this.fail(inst, '<List value={[…]}>: several selected options need multiSelect.', {
@@ -1418,6 +1425,8 @@ class Builder {
     const note: NoteNode['note'] = { contents };
     if (typeof p.author === 'string') note.author = p.author;
     if (p.open) note.open = true;
+    // Checked against the schema's values with the rest of the document.
+    if (typeof p.icon === 'string') note.icon = p.icon as NoteNode['note']['icon'];
     if (color) note.color = color;
     return note;
   }

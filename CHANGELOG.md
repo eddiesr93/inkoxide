@@ -127,6 +127,14 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   `func-ție`), never between vowels, with `ș`/`ț` written with a comma or a cedilla. It works in
   every build, `@inkoxide/wasm` included, with no file to load; patterns registered for `ro` still
   take precedence.
+- Form fields: `sort` (the options of a select or list in alphabetical order), `edit` (a select
+  that takes a typed value besides its options), `noSpell` (no spelling check, on a text field
+  or a select with `edit`) and `align` (`left`, `center` or `right`: where the value of a text,
+  select or list field goes in its box, in the appearance and as the field's `/Q`). They are
+  props of the field components of `@inkoxide/react` and `@inkoxide/render`.
+- An `icon` for notes: `note` (the default), `comment`, `key`, `help`, `newParagraph`,
+  `paragraph` or `insert`, written as the annotation's `/Name` and drawn into its appearance; a
+  prop of `<Note>`.
 
 ### Changed
 

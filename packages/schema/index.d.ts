@@ -1186,6 +1186,10 @@ export interface Note {
    * Whether viewers show the text when the document opens.
    */
   open?: boolean;
+  /**
+   * The icon: a sticky note, a speech bubble, a key, a question mark, a new paragraph, a paragraph sign or a caret.
+   */
+  icon?: 'note' | 'comment' | 'key' | 'help' | 'newParagraph' | 'paragraph' | 'insert';
 }
 /**
  * This interface was referenced by `Document`'s JSON-Schema
@@ -1372,6 +1376,14 @@ export interface Field {
    */
   multiSelect?: boolean;
   /**
+   * select and list only: the options sorted by their lowercase text (then their text), as the field shows and stores them.
+   */
+  sort?: boolean;
+  /**
+   * select only: a value can be typed as well as chosen; `value` need not be one of `options`.
+   */
+  edit?: boolean;
+  /**
    * text only
    */
   multiline?: boolean;
@@ -1379,6 +1391,10 @@ export interface Field {
    * text only; the value is neither shown nor stored
    */
   password?: boolean;
+  /**
+   * text, and select with `edit`: viewers do not check the spelling of what is typed.
+   */
+  noSpell?: boolean;
   /**
    * text only; maximum number of characters
    */
@@ -1402,6 +1418,10 @@ export interface Field {
    * What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it.
    */
   label?: string;
+  /**
+   * text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`).
+   */
+  align?: 'left' | 'center' | 'right';
 }
 /**
  * Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.
