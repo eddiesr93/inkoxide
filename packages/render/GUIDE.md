@@ -625,8 +625,8 @@ is `'singlePage'`, `'oneColumn'` (continuous scrolling), `'twoColumnLeft'` or `'
 `fallbackFonts` lists the fonts tried, in order, for characters a run's font lacks. The default is
 `['NotoSans-Regular']`. The entries are font ids: the bundled `Inter-Regular`, `Inter-Italic`,
 `Inter-Bold`, `InterDisplay-Bold`, `NotoSans-Regular` and `RobotoMono-Regular`, or a face added
-with `Font.register`, whose id is its family with spaces as hyphens, its weight, and `-italic` for
-an italic face:
+with `Font.register`, whose id is its family with spaces as hyphens, its weight (or a variable
+face's range, `Inter-Var-100-900`), and `-italic` for an italic face:
 
 ```tsx
 Font.register({ family: 'Noto Sans Arabic', src: './fonts/NotoSansArabic-Regular.ttf' });
@@ -1198,7 +1198,8 @@ or the stack. Two more codes come from [templates](#serving-templates): `INVALID
 
 `Font.register`, `Font.registerHyphenationCallback` and `Font.registerEmojiSource` check their
 arguments when you call them and throw a plain `Error` straight away: a missing family name or
-`src`, a `src` that is not a path, a URL or bytes, an unknown weight, a face already registered
+`src`, a `src` that is not a path, a URL or bytes, an unknown weight, a weight range that is not
+two weights from the lower one, a malformed `fontVariationSettings`, a face already registered
 from another source, a face the bundled fonts have, a family whose font id another family has, a
 callback that is not a function, or an emoji source with neither a `url` string nor a `builder`
 function.

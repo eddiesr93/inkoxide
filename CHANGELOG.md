@@ -20,8 +20,9 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   types `FontVariationSettings` and `FontVariations`, and `@inkoxide/react` exports
   `fontVariationsValue`. An axis the font does not have is left out, with a warning. A variable
   font with more than 63 axes or an `avar` table of version 2 is refused, and so is one whose
-  outlines the instancer cannot vary (CFF with CFF2, or `glyf` without `gvar`). The WebAssembly engine grows by about 140 KB with brotli, for the
-  instancer.
+  outlines the instancer cannot vary (CFF with CFF2, or `glyf` without `gvar`). A declaration
+  takes at most 16 axes, and a document at most 64 declarations with `variations`. The
+  WebAssembly engine grows by about 140 KB with brotli, for the instancer.
 
 - `@media` for the page size. `@inkoxide/react` style objects take `'@media …'` blocks, and
   `@inkoxide/tailwind` the page variants `sm:` … `2xl:`, `max-sm:` … `max-2xl:`, `min-[…]:`,
